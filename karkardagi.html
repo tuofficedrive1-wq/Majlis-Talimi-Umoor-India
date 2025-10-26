@@ -126,9 +126,9 @@
                     <div id="setup-tab-content" class="tab-content hidden space-y-4">
                         
                         <div id="academic-months-setup" class="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                            <h4 class="text-lg font-semibold text-indigo-800 mb-3">Academic Days Per Month</h4>
+                            <h4 class="text-lg font-semibold text-indigo-800 mb-3">Academic Days Per Month (April to January)</h4>
                             <p class="text-sm text-indigo-700 mb-4">Har mahine ke total padhai ke din yahan set karein. Iske aadhaar par monthly target calculate hoga.</p>
-                            <div id="months-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            <div id="months-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                                 </div>
                             <button id="save-academic-months-btn" class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Save Monthly Days</button>
                         </div>
@@ -178,17 +178,16 @@
         const setupAccordionContainer = document.getElementById('setup-accordion-container');
         const reportingContainer = document.getElementById('reporting-container');
         const saveMonthlyReportBtn = document.getElementById('save-monthly-report-btn');
-        // ADDED: New DOM elements for Academic Days
         const academicMonthsSetup = document.getElementById('academic-months-setup');
         const saveAcademicMonthsBtn = document.getElementById('save-academic-months-btn');
         const monthsGrid = document.getElementById('months-grid');
 
         // --- Application State ---
         let currentUser = null;
-        let userProfileData = {}; // Stores { ...user, karkardagiStructure: [], academicMonths: {} }
-        let currentMonthReport = {}; // Stores { ...report, karkardagiReport: { data: [] } }
-        let karkardagiStructure = []; // Local copy of userProfileData.karkardagiStructure
-        let monthlyReportData = []; // Local copy of currentMonthReport.karkardagiReport.data
+        let userProfileData = {}; 
+        let currentMonthReport = {}; 
+        let karkardagiStructure = [];
+        let monthlyReportData = [];
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -248,24 +247,24 @@
             if (!currentUser) return;
             showLoader(true);
             
-            const { month, year, monthNum, yearNum } = getCurrentMonthYear();
+            const { month, year } = getCurrentMonthYear();
             document.getElementById('current-month-year').textContent = `Report for ${month} ${year}`;
             
             try {
-                // 1. Fetch User Profile
+                // Fetch User Profile
                 const userDocRef = doc(db, 'users', currentUser.uid);
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     userProfileData = userDocSnap.data();
                     karkardagiStructure = userProfileData.karkardagiStructure || [];
-                    // (academicMonths will be loaded by its own function)
                 } else {
                     showNotification("User profile nahi mila.", true);
                     karkardagiView.innerHTML = '<p class="text-red-500 text-center">User profile nahi mila.</p>';
                     return;
                 }
                 
-                // 2. Fetch Current Month's Report
+                // Fetch Current Month's Report
+                const { yearNum, monthNum } = getCurrentMonthYear();
                 const reportId = `${currentUser.uid}_${yearNum}_${monthNum}`;
                 const reportDocRef = doc(db, 'monthly_reports', reportId);
                 const reportDocSnap = await getDoc(reportDocRef);
@@ -277,8 +276,8 @@
                     monthlyReportData = [];
                 }
                 
-                // 3. Render all components
-                renderAcademicMonths(); // Render the new months section
+                // Render all components
+                renderAcademicMonths();
                 renderSetupTab();
                 renderReportingTab();
 
@@ -292,19 +291,23 @@
 
         // --- SETUP TAB LOGIC ---
         
-        // ADDED: Function to render Academic Months grid
+        // MODIFIED: Function to render Academic Months grid for the 10-month year
         const renderAcademicMonths = () => {
-            const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const academicMonthsList = [
+                { name: "April", index: 3 }, { name: "May", index: 4 }, { name: "June", index: 5 },
+                { name: "July", index: 6 }, { name: "August", index: 7 }, { name: "September", index: 8 },
+                { name: "October", index: 9 }, { name: "November", index: 10 }, { name: "December", index: 11 },
+                { name: "January", index: 0 }
+            ];
             const savedMonths = userProfileData.academicMonths || {};
-            monthsGrid.innerHTML = months.map((month, index) => `
+            monthsGrid.innerHTML = academicMonthsList.map(month => `
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">${month}</label>
-                    <input type="number" class="academic-month-input w-full p-2 border rounded-lg" data-month-index="${index}" value="${savedMonths[index] || ''}" placeholder="Days">
+                    <label class="block text-sm font-medium text-gray-700">${month.name}</label>
+                    <input type="number" class="academic-month-input w-full p-2 border rounded-lg" data-month-index="${month.index}" value="${savedMonths[month.index] || ''}" placeholder="Days">
                 </div>
             `).join('');
         };
         
-        // ADDED: Event listener for saving academic months
         saveAcademicMonthsBtn.addEventListener('click', async () => {
             const newAcademicMonths = {};
             document.querySelectorAll('.academic-month-input').forEach(input => {
@@ -320,9 +323,9 @@
             const userDocRef = doc(db, 'users', currentUser.uid);
             try {
                 await updateDoc(userDocRef, { academicMonths: newAcademicMonths });
-                userProfileData.academicMonths = newAcademicMonths; // Update local state
+                userProfileData.academicMonths = newAcademicMonths;
                 showNotification("Academic days saved!");
-                renderReportingTab(); // Re-render reporting tab as targets will change
+                renderReportingTab();
             } catch (error) {
                 console.error("Error saving academic months:", error);
                 showNotification("Error saving days.", true);
@@ -402,6 +405,7 @@
             });
         };
 
+        // MODIFIED: renderTeacherAccordion to include semester-wise inputs
         const renderTeacherAccordion = (jamiaName, teacher) => {
             const teacherId = teacher.id || `teacher-${Date.now()}-${Math.random()}`;
             return `
@@ -417,13 +421,25 @@
                 </button>
                 <div class="accordion-content">
                     <div class="p-3 border-t bg-white">
-                        <form class="add-period-form mb-4 p-3 bg-green-50 border border-green-200 rounded-lg space-y-3">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <form class="add-period-form mb-4 p-3 bg-green-50 border border-green-200 rounded-lg space-y-4">
+                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <input type="text" placeholder="Class ka Naam" class="period-class-input w-full p-2 border rounded-lg urdu-font" required>
                                 <input type="text" placeholder="Book ka Naam" class="period-book-input w-full p-2 border rounded-lg urdu-font" required>
-                                <input type="number" placeholder="Total Syllabus Pages" class="period-total-pages-input w-full p-2 border rounded-lg" required>
-                                <input type="number" placeholder="Total Academic Days (Full Year)" class="period-total-days-input w-full p-2 border rounded-lg" required>
-                            </div>
+                             </div>
+                             <div class="border-t pt-3">
+                                <h5 class="text-sm font-semibold text-gray-600 mb-2">Semester 1 (Apr-Aug) Details</h5>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <input type="number" placeholder="Sem 1 Total Pages" class="period-sem1-pages-input w-full p-2 border rounded-lg" required>
+                                    <input type="number" placeholder="Sem 1 Total Days" class="period-sem1-days-input w-full p-2 border rounded-lg" required>
+                                </div>
+                             </div>
+                              <div class="border-t pt-3">
+                                <h5 class="text-sm font-semibold text-gray-600 mb-2">Semester 2 (Sep-Jan) Details</h5>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <input type="number" placeholder="Sem 2 Total Pages" class="period-sem2-pages-input w-full p-2 border rounded-lg" required>
+                                    <input type="number" placeholder="Sem 2 Total Days" class="period-sem2-days-input w-full p-2 border rounded-lg" required>
+                                </div>
+                             </div>
                             <button type="submit" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Add Period</button>
                         </form>
                         <div class="periods-list-container">
@@ -435,6 +451,7 @@
             `;
         };
 
+        // MODIFIED: renderPeriodsTable to show semester data
         const renderPeriodsTable = (periods) => {
             if (!periods || periods.length === 0) {
                 return '<p class="text-gray-500 text-sm p-2">Abhi koi period add nahi hua hai.</p>';
@@ -443,7 +460,7 @@
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-100">
-                        <tr><th>Class</th><th>Book</th><th>Total Pages</th><th>Total Acad. Days</th><th>Action</th></tr>
+                        <tr><th>Class</th><th>Book</th><th>Sem 1 Pages/Days</th><th>Sem 2 Pages/Days</th><th>Action</th></tr>
                     </thead>
                     <tbody>
             `;
@@ -453,8 +470,8 @@
                 <tr data-period-id="${periodId}">
                     <td class="urdu-font">${period.className}</td>
                     <td class="urdu-font">${period.bookName}</td>
-                    <td>${period.totalPages}</td>
-                    <td>${period.totalAcademicDays}</td>
+                    <td>${period.semester1Pages} / ${period.semester1Days}</td>
+                    <td>${period.semester2Pages} / ${period.semester2Days}</td>
                     <td><button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1"><i class="fas fa-times-circle"></i></button></td>
                 </tr>
                 `;
@@ -539,7 +556,7 @@
             }
         };
 
-        // MODIFIED: handleAddPeriod function
+        // MODIFIED: handleAddPeriod to save semester data
         const handleAddPeriod = (e) => {
             e.preventDefault();
             const form = e.currentTarget;
@@ -550,20 +567,23 @@
             
             const classInput = form.querySelector('.period-class-input');
             const bookInput = form.querySelector('.period-book-input');
-            const totalPagesInput = form.querySelector('.period-total-pages-input');
-            const totalDaysInput = form.querySelector('.period-total-days-input'); // Changed
+            const sem1PagesInput = form.querySelector('.period-sem1-pages-input');
+            const sem1DaysInput = form.querySelector('.period-sem1-days-input');
+            const sem2PagesInput = form.querySelector('.period-sem2-pages-input');
+            const sem2DaysInput = form.querySelector('.period-sem2-days-input');
 
             const newPeriod = {
                 id: `period-${Date.now()}`,
                 className: classInput.value.trim(),
                 bookName: bookInput.value.trim(),
-                totalPages: parseInt(totalPagesInput.value, 10) || 0,
-                totalAcademicDays: parseInt(totalDaysInput.value, 10) || 0 // Changed
+                semester1Pages: parseInt(sem1PagesInput.value, 10) || 0,
+                semester1Days: parseInt(sem1DaysInput.value, 10) || 0,
+                semester2Pages: parseInt(sem2PagesInput.value, 10) || 0,
+                semester2Days: parseInt(sem2DaysInput.value, 10) || 0,
             };
             
-            // MODIFIED: Updated validation check
-            if (!newPeriod.className || !newPeriod.bookName || newPeriod.totalPages <= 0 || newPeriod.totalAcademicDays <= 0) {
-                 showNotification("Sabhi fields (Class, Book, Total Pages, Total Academic Days) sahi se bharein.", true);
+            if (!newPeriod.className || !newPeriod.bookName || newPeriod.semester1Pages <= 0 || newPeriod.semester1Days <= 0 || newPeriod.semester2Pages <= 0 || newPeriod.semester2Days <= 0) {
+                 showNotification("Class, Book, aur dono semester ke Pages/Days sahi se bharein.", true);
                  return;
             }
             
@@ -572,7 +592,7 @@
             
             if (teacherData) {
                 teacherData.periods.push(newPeriod);
-                saveKarkardagiStructure(); // This will save, refresh setup tab, and refresh reporting tab
+                saveKarkardagiStructure();
             } else {
                  showNotification("Teacher nahi mila. Page reload karein.", true);
             }
@@ -598,7 +618,7 @@
 
         // --- REPORTING TAB LOGIC ---
         
-        // MODIFIED: renderReportingTab function
+        // MODIFIED: renderReportingTab with semester logic
         const renderReportingTab = () => {
             if (karkardagiStructure.length === 0) {
                  reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar Teachers aur Periods add karein.</p>';
@@ -606,13 +626,16 @@
                  return;
             }
             
-            // Get current month's days from saved profile data
             const { monthNum } = getCurrentMonthYear();
+            // Semester 1: April (3) to August (7). Semester 2: Sep (8) to Jan (0)
+            const isSemester1 = monthNum >= 3 && monthNum <= 7;
+            
             const academicMonths = userProfileData.academicMonths || {};
             const daysThisMonth = academicMonths[monthNum] || 0;
             
             if (daysThisMonth === 0) {
-                 reportingContainer.innerHTML = `<p class="text-red-500">Is mahine (${new Date().toLocaleString('default', { month: 'long' })}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
+                 reportingContainer.innerHTML = `<p class="text-red-500">Is mahine (${currentMonthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
                  saveMonthlyReportBtn.classList.add('hidden');
                  return;
             }
@@ -625,13 +648,8 @@
                     <table class="min-w-full text-sm">
                         <thead class="bg-gray-100">
                             <tr>
-                                <th>Jamia</th>
-                                <th>Teacher</th>
-                                <th>Class</th>
-                                <th>Book</th>
-                                <th>Monthly Target</th>
-                                <th>Pages Taught (Is Mahine)</th>
-                                <th>Achievement %</th>
+                                <th>Jamia</th><th>Teacher</th><th>Class</th><th>Book</th>
+                                <th>Monthly Target</th><th>Pages Taught</th><th>Achievement %</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -643,10 +661,12 @@
                     if (teacher.periods.length === 0) allPeriodsExist = false;
                     teacher.periods.forEach(period => {
                         
-                        // Calculate monthly target
+                        const pagesForCalc = isSemester1 ? period.semester1Pages : period.semester2Pages;
+                        const daysForCalc = isSemester1 ? period.semester1Days : period.semester2Days;
+                        
                         let monthlyTarget = 0;
-                        if (period.totalAcademicDays > 0 && daysThisMonth > 0) {
-                            const perDayTarget = period.totalPages / period.totalAcademicDays;
+                        if (daysForCalc > 0 && daysThisMonth > 0) {
+                            const perDayTarget = pagesForCalc / daysForCalc;
                             monthlyTarget = Math.round(perDayTarget * daysThisMonth);
                         }
 
@@ -669,14 +689,9 @@
                             <td class="urdu-font">${period.className}</td>
                             <td class="urdu-font">${period.bookName}</td>
                             <td class="font-medium">${monthlyTarget}</td>
-                            <td>
-                                <input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}">
-                            </td>
-                            <td class="achievement-cell font-medium ${achievement >= 100 ? 'text-green-600' : 'text-red-600'}">
-                                ${achievement}%
-                            </td>
-                        </tr>
-                        `;
+                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}"></td>
+                            <td class="achievement-cell font-medium ${achievement >= 100 ? 'text-green-600' : 'text-red-600'}">${achievement}%</td>
+                        </tr>`;
                     });
                 });
             });
@@ -707,7 +722,6 @@
             });
         };
 
-        // MODIFIED: handleSaveMonthlyReport
         const handleSaveMonthlyReport = async () => {
             showLoader(true);
             const { month, year, monthNum, yearNum } = getCurrentMonthYear();
@@ -731,7 +745,7 @@
                         jamiaName: row.dataset.jamiaName,
                         teacherName: row.dataset.teacherName,
                         bookName: row.dataset.bookName,
-                        monthlyTarget: monthlyTarget, // Added this field
+                        monthlyTarget: monthlyTarget,
                         pagesTaught: pagesTaught,
                         achievement: achievement
                     });
