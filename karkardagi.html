@@ -144,7 +144,7 @@
                             </div>
                         </div>
                         
-                        <div id="academic-months-setup" class_A"mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                        <div id="academic-months-setup" class="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
                             <h4 class="text-lg font-semibold text-indigo-800 mb-3">Academic Days Per Month (April to January)</h4>
                             <p class="text-sm text-indigo-700 mb-4">Is saal ke har mahine ke total padhai ke din yahan set karein.</p>
                             <div id="months-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
@@ -200,7 +200,6 @@
         const academicMonthsSetup = document.getElementById('academic-months-setup');
         const saveAcademicMonthsBtn = document.getElementById('save-academic-months-btn');
         const monthsGrid = document.getElementById('months-grid');
-        // ADDED: New elements
         const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
         const createYearForm = document.getElementById('create-year-form');
         const newYearNameInput = document.getElementById('new-year-name-input');
@@ -211,9 +210,9 @@
         let currentUser = null;
         let userProfileData = {}; 
         let currentMonthReport = {}; 
-        let activeYear = null; // e.g., "2025-2026"
-        // This will hold *all* years data
-        let allAcademicYearsData = {}; // e.g., { "2025-2026": { academicMonths: {}, karkardagiStructure: [] } }
+        let activeYear = null; 
+        let allAcademicYearsData = {}; 
+        let monthlyReportData = [];
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -234,29 +233,27 @@
             const now = new Date();
             const month = now.toLocaleString('default', { month: 'long' });
             const year = now.getFullYear();
-            const monthNum = now.getMonth(); // 0 for Jan, 9 for Oct
+            const monthNum = now.getMonth(); 
             const yearNum = now.getFullYear();
             return { month, year, monthNum, yearNum };
         };
 
         // --- AUTHENTICATION & SYNC ---
         
-        // ADDED: Broadcast Channel for logout sync
         const authChannel = new BroadcastChannel('auth_channel');
         authChannel.onmessage = (event) => {
             if (event.data === 'logout') {
-                signOut(auth); // This will trigger onAuthStateChanged
+                signOut(auth); 
             }
         };
         
         logoutBtn.addEventListener('click', () => {
-            authChannel.postMessage('logout'); // Tell other tabs
+            authChannel.postMessage('logout'); 
             signOut(auth);
         });
 
-        // ADDED: Back button functionality
         backToDashboardBtn.addEventListener('click', () => {
-            window.close(); // Closes the tab/window
+            window.close(); 
         });
 
         // --- MAIN APP LOGIC ---
@@ -287,7 +284,6 @@
                     showLoader(false);
                 });
             
-            // Add listeners for Academic Year forms
             createYearForm.addEventListener('submit', handleCreateYear);
             activeYearSelect.addEventListener('change', handleYearChange);
         };
@@ -305,9 +301,8 @@
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     userProfileData = userDocSnap.data();
-                    // Load all academic years data
                     allAcademicYearsData = userProfileData.academicYears || {};
-                    populateYearSelector(); // Populate and set activeYear
+                    populateYearSelector(); // This sets activeYear
                 } else {
                     showNotification("User profile nahi mila.", true);
                     karkardagiView.innerHTML = '<p class="text-red-500 text-center">User profile nahi mila.</p>';
@@ -315,23 +310,8 @@
                 }
                 
                 // Fetch Current Month's Report
-                const { yearNum, monthNum } = getCurrentMonthYear();
-                // MODIFIED: Report ID now includes the active academic year
-                if (activeYear) {
-                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
-                    const reportDocRef = doc(db, 'monthly_reports', reportId);
-                    const reportDocSnap = await getDoc(reportDocRef);
-                    if (reportDocSnap.exists()) {
-                        currentMonthReport = reportDocSnap.data();
-                        monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
-                    } else {
-                        currentMonthReport = {};
-                        monthlyReportData = [];
-                    }
-                } else {
-                    monthlyReportData = []; // No active year, no data
-                }
-                
+                await loadMonthlyReportData(); // Load report data based on active year
+
                 // Render all components
                 refreshFullUI();
 
@@ -343,6 +323,26 @@
             }
         };
         
+        // ADDED: Function to load monthly report based on active year
+        const loadMonthlyReportData = async () => {
+            if (!activeYear || !currentUser) {
+                monthlyReportData = [];
+                currentMonthReport = {};
+                return;
+            }
+            const { yearNum, monthNum } = getCurrentMonthYear();
+            const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+            const reportDocRef = doc(db, 'monthly_reports', reportId);
+            const reportDocSnap = await getDoc(reportDocRef);
+            if (reportDocSnap.exists()) {
+                currentMonthReport = reportDocSnap.data();
+                monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
+            } else {
+                currentMonthReport = {};
+                monthlyReportData = [];
+            }
+        };
+
         // --- ACADEMIC YEAR MANAGEMENT ---
 
         const populateYearSelector = () => {
@@ -353,11 +353,26 @@
                 return;
             }
             
-            // Sort years descending (e.g., "2026-2027" before "2025-2026")
             yearNames.sort().reverse(); 
             
             activeYearSelect.innerHTML = yearNames.map(name => `<option value="${name}">${name}</option>`).join('');
-            activeYear = activeYearSelect.value; // Set activeYear to the first (newest) year
+            
+            // Try to select the year based on current date, otherwise default to newest
+            const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth(); // 0-11
+            let suggestedYear = null;
+            if (currentMonth >= 3) { // April onwards
+                 suggestedYear = `${currentYear}-${currentYear + 1}`;
+            } else { // Jan-Mar
+                 suggestedYear = `${currentYear - 1}-${currentYear}`;
+            }
+            
+            if (yearNames.includes(suggestedYear)) {
+                activeYearSelect.value = suggestedYear;
+            } else {
+                activeYearSelect.value = yearNames[0]; // Default to newest if current doesn't exist
+            }
+            activeYear = activeYearSelect.value; 
         };
 
         const handleCreateYear = async (e) => {
@@ -372,43 +387,39 @@
                 return;
             }
             
-            // Create empty data for this new year
-            allAcademicYearsData[newYearName] = {
-                academicMonths: {},
-                karkardagiStructure: []
-            };
+            allAcademicYearsData[newYearName] = { academicMonths: {}, karkardagiStructure: [] };
             
             showLoader(true);
             try {
                 const userDocRef = doc(db, 'users', currentUser.uid);
-                await updateDoc(userDocRef, {
-                    academicYears: allAcademicYearsData
-                });
+                await updateDoc(userDocRef, { academicYears: allAcademicYearsData });
                 
                 newYearNameInput.value = '';
                 showNotification(`Naya saal "${newYearName}" ban gaya hai!`);
-                populateYearSelector(); // Refresh dropdown
-                activeYear = newYearName; // Make the new year active
+                populateYearSelector(); 
+                activeYear = newYearName; 
                 activeYearSelect.value = newYearName;
-                refreshFullUI(); // Refresh setup/reporting tabs
+                await loadMonthlyReportData(); // Load report data for the new year (will be empty)
+                refreshFullUI(); 
             } catch (error) {
                 console.error("Error creating new year:", error);
                 showNotification("Naya saal banane me error.", true);
-                // Rollback local change
                 delete allAcademicYearsData[newYearName];
             } finally {
                 showLoader(false);
             }
         };
 
-        const handleYearChange = () => {
+        const handleYearChange = async () => {
             activeYear = activeYearSelect.value;
+            showLoader(true);
+            await loadMonthlyReportData(); // Load report data for the newly selected year
             refreshFullUI();
+            showLoader(false);
         };
 
         // --- UI REFRESH LOGIC ---
         
-        // This function re-renders everything based on the 'activeYear'
         const refreshFullUI = () => {
             if (!activeYear) {
                 academicMonthsSetup.classList.add('hidden');
@@ -435,7 +446,6 @@
                 { name: "October", index: 9 }, { name: "November", index: 10 }, { name: "December", index: 11 },
                 { name: "January", index: 0 }
             ];
-            // Get data for the *active* year
             const savedMonths = allAcademicYearsData[activeYear]?.academicMonths || {};
             monthsGrid.innerHTML = academicMonthsList.map(month => `
                 <div>
@@ -459,11 +469,9 @@
             showLoader(true);
             try {
                 const userDocRef = doc(db, 'users', currentUser.uid);
-                await updateDoc(userDocRef, {
-                    academicYears: allAcademicYearsData // Save the entire years object
-                });
+                await updateDoc(userDocRef, { academicYears: allAcademicYearsData });
                 showNotification("Academic days saved!");
-                renderReportingTab();
+                renderReportingTab(); // Only need to refresh reporting
             } catch (error) {
                 console.error("Error saving academic months:", error);
                 showNotification("Error saving days.", true);
@@ -480,7 +488,6 @@
                  return;
             }
             
-            // Get structure for the *active* year
             const karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
             
             setupAccordionContainer.innerHTML = jamiaat.map(jamiaName => {
@@ -538,7 +545,6 @@
             });
         };
 
-        // MODIFIED: renderTeacherAccordion with new Semester-Specific form
         const renderTeacherAccordion = (jamiaName, teacher) => {
             const teacherId = teacher.id || `teacher-${Date.now()}-${Math.random()}`;
             return `
@@ -587,7 +593,6 @@
             `;
         };
 
-        // MODIFIED: renderPeriodsTable with new semester columns
         const renderPeriodsTable = (periods) => {
             if (!periods || periods.length === 0) {
                 return '<p class="text-gray-500 text-sm p-2">Abhi koi period add nahi hua hai.</p>';
@@ -600,7 +605,6 @@
                     </thead>
                     <tbody>
             `;
-            // Sort periods by semester
             periods.sort((a, b) => a.semester.localeCompare(b.semester));
             
             periods.forEach(period => {
@@ -623,7 +627,6 @@
         
         // --- Setup Tab Event Handlers ---
 
-        // This function now saves the *entire* academicYears object
         const saveActiveYearStructure = async () => {
              if (!currentUser || !activeYear) return;
              showLoader(true);
@@ -633,7 +636,7 @@
                      academicYears: allAcademicYearsData 
                  });
                  showNotification("Structure saved successfully!");
-                 refreshFullUI(); // Refresh everything
+                 refreshFullUI(); 
              } catch (error) {
                  console.error("Error saving structure:", error);
                  showNotification("Structure save karne me error.", true);
@@ -690,7 +693,6 @@
             }
         };
 
-        // MODIFIED: handleAddPeriod for semester-specific data
         const handleAddPeriod = (e) => {
             e.preventDefault();
             if (!activeYear) return;
@@ -711,7 +713,7 @@
                 id: `period-${Date.now()}`,
                 className: classInput.value.trim(),
                 bookName: bookInput.value.trim(),
-                semester: semesterSelect.value, // "1" or "2"
+                semester: semesterSelect.value, 
                 totalPages: parseInt(totalPagesInput.value, 10) || 0,
                 totalAcademicDays: parseInt(totalDaysInput.value, 10) || 0
             };
@@ -758,7 +760,7 @@
         const renderReportingTab = () => {
             if (!activeYear) { /* Handled by refreshFullUI */ return; }
             
-            const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+            const karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
 
             if (karkardagiStructure.length === 0) {
                  reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar Teachers aur Periods add karein.</p>';
@@ -767,8 +769,6 @@
             }
             
             const { monthNum } = getCurrentMonthYear();
-            // Semester 1: April (3) to August (7)
-            // Semester 2: Sep (8), Oct (9), Nov (10), Dec (11), Jan (0)
             const isSemester1 = monthNum >= 3 && monthNum <= 7;
             const currentSemester = isSemester1 ? "1" : "2"; 
             
@@ -786,7 +786,7 @@
             karkardagiStructure.forEach(jamia => {
                 jamia.teachers.forEach(teacher => {
                     teacher.periods
-                        .filter(p => p.semester === currentSemester) // Filter for current semester
+                        .filter(p => p.semester === currentSemester) 
                         .forEach(period => {
                             allPeriodsForThisSemester.push({ jamia, teacher, period });
                         });
@@ -822,6 +822,7 @@
                     monthlyTarget = Math.round(perDayTarget * daysThisMonth);
                 }
 
+                // Use the globally loaded monthlyReportData
                 const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
                 const pagesTaught = savedEntry?.pagesTaught || '';
                 let achievement = 0;
@@ -872,7 +873,6 @@
             showLoader(true);
             const { month, year, monthNum, yearNum } = getCurrentMonthYear();
             
-            // MODIFIED: Report ID now includes the active year
             const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
             const reportRef = doc(db, 'monthly_reports', reportId);
 
@@ -909,13 +909,13 @@
                 userEmail: currentUser.email,
                 month: month,
                 year: year,
-                academicYear: activeYear, // Store which year this report belongs to
+                academicYear: activeYear, 
                 createdAt: serverTimestamp()
             };
 
             try {
                 await setDoc(reportRef, dataToSave, { merge: true });
-                monthlyReportData = newReportData;
+                monthlyReportData = newReportData; // Update local state for immediate refresh
                 showNotification("Monthly Karkardagi report saved!");
             } catch (error) {
                 console.error("Error saving monthly report:", error);
