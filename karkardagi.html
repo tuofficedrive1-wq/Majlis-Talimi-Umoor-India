@@ -86,9 +86,13 @@
     <div id="app" class="container mx-auto p-4 md:p-8 max-w-7xl">
 
         <header class="bg-white shadow-md rounded-lg p-4 mb-8 relative flex justify-between items-center min-h-[80px]">
-            <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 text-center absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full px-2">Talimi & Shashmahi Karkardagi</h1>
+            <button id="back-to-dashboard-btn" class="ml-auto bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-300 absolute left-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-2">
+                <i class="fas fa-arrow-left fa-sm"></i>
+                <span>Back</span>
+            </button>
+            <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 text-center absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full px-16">Talimi & Shashmahi Karkardagi</h1>
             <div id="user-info" class="hidden ml-auto flex items-center relative z-10">
-                <span id="user-email-display" class="font-medium text-gray-600"></span>
+                <span id="user-email-display" class="font-medium text-gray-600 hidden md:inline"></span>
                 <button id="logout-btn" class="ml-4 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-300">Logout</button>
             </div>
         </header>
@@ -100,7 +104,7 @@
         <div id="login-view">
              <div class="max-w-md mx-auto bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
                 <h2 class="text-2xl font-bold mb-6">Aap Logged In Nahi Hain</h2>
-                <p class="text-gray-600">Please pehle main dashboard page par login karein aur is page ko reload karein.</p>
+                <p class="text-gray-600">Connection lost. Please login on the main dashboard and reload. Ya is tab ko band kar dein.</p>
             </div>
         </div>
 
@@ -117,6 +121,7 @@
 
                 <div class="pt-6">
                     <div id="reporting-tab-content" class="tab-content space-y-4">
+                        <div id="reporting-year-info" class="p-3 bg-blue-100 text-blue-800 rounded-lg text-center font-medium"></div>
                         <p class="text-gray-600">Is mahine har kitab me padhaye gaye pages ki sankhya enter karein.</p>
                         <div id="reporting-container">
                             </div>
@@ -125,9 +130,23 @@
                     
                     <div id="setup-tab-content" class="tab-content hidden space-y-4">
                         
-                        <div id="academic-months-setup" class="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                        <div id="academic-year-management" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg space-y-4">
+                            <h4 class="text-lg font-semibold text-gray-800">Academic Year Management</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <form id="create-year-form" class="flex gap-2">
+                                    <input type="text" id="new-year-name-input" placeholder="Naya Saal (jaise 2025-2026)" class="w-full p-2 border rounded-lg" required>
+                                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Create</button>
+                                </form>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Select Active Year</label>
+                                    <select id="active-year-select" class="w-full p-2 border rounded-lg bg-white"></select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="academic-months-setup" class_A"mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
                             <h4 class="text-lg font-semibold text-indigo-800 mb-3">Academic Days Per Month (April to January)</h4>
-                            <p class="text-sm text-indigo-700 mb-4">Har mahine ke total padhai ke din yahan set karein. Iske aadhaar par monthly target calculate hoga.</p>
+                            <p class="text-sm text-indigo-700 mb-4">Is saal ke har mahine ke total padhai ke din yahan set karein.</p>
                             <div id="months-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                                 </div>
                             <button id="save-academic-months-btn" class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Save Monthly Days</button>
@@ -181,13 +200,20 @@
         const academicMonthsSetup = document.getElementById('academic-months-setup');
         const saveAcademicMonthsBtn = document.getElementById('save-academic-months-btn');
         const monthsGrid = document.getElementById('months-grid');
+        // ADDED: New elements
+        const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
+        const createYearForm = document.getElementById('create-year-form');
+        const newYearNameInput = document.getElementById('new-year-name-input');
+        const activeYearSelect = document.getElementById('active-year-select');
+        const reportingYearInfo = document.getElementById('reporting-year-info');
 
         // --- Application State ---
         let currentUser = null;
         let userProfileData = {}; 
         let currentMonthReport = {}; 
-        let karkardagiStructure = [];
-        let monthlyReportData = [];
+        let activeYear = null; // e.g., "2025-2026"
+        // This will hold *all* years data
+        let allAcademicYearsData = {}; // e.g., { "2025-2026": { academicMonths: {}, karkardagiStructure: [] } }
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -213,8 +239,25 @@
             return { month, year, monthNum, yearNum };
         };
 
-        // --- AUTHENTICATION ---
-        logoutBtn.addEventListener('click', () => signOut(auth));
+        // --- AUTHENTICATION & SYNC ---
+        
+        // ADDED: Broadcast Channel for logout sync
+        const authChannel = new BroadcastChannel('auth_channel');
+        authChannel.onmessage = (event) => {
+            if (event.data === 'logout') {
+                signOut(auth); // This will trigger onAuthStateChanged
+            }
+        };
+        
+        logoutBtn.addEventListener('click', () => {
+            authChannel.postMessage('logout'); // Tell other tabs
+            signOut(auth);
+        });
+
+        // ADDED: Back button functionality
+        backToDashboardBtn.addEventListener('click', () => {
+            window.close(); // Closes the tab/window
+        });
 
         // --- MAIN APP LOGIC ---
         const initApp = () => {
@@ -225,12 +268,14 @@
                         currentUser = user;
                         if (user) {
                             userInfo.classList.remove('hidden');
+                            backToDashboardBtn.classList.remove('hidden');
                             userEmailDisplay.textContent = user.email;
                             loginView.classList.add('hidden');
                             karkardagiView.classList.remove('hidden');
                             loadUserData();
                         } else {
                             userInfo.classList.add('hidden');
+                            backToDashboardBtn.classList.add('hidden');
                             loginView.classList.remove('hidden');
                             karkardagiView.classList.add('hidden');
                             showLoader(false);
@@ -241,6 +286,10 @@
                     console.error("Error setting persistence:", error);
                     showLoader(false);
                 });
+            
+            // Add listeners for Academic Year forms
+            createYearForm.addEventListener('submit', handleCreateYear);
+            activeYearSelect.addEventListener('change', handleYearChange);
         };
 
         const loadUserData = async () => {
@@ -256,7 +305,9 @@
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     userProfileData = userDocSnap.data();
-                    karkardagiStructure = userProfileData.karkardagiStructure || [];
+                    // Load all academic years data
+                    allAcademicYearsData = userProfileData.academicYears || {};
+                    populateYearSelector(); // Populate and set activeYear
                 } else {
                     showNotification("User profile nahi mila.", true);
                     karkardagiView.innerHTML = '<p class="text-red-500 text-center">User profile nahi mila.</p>';
@@ -265,21 +316,24 @@
                 
                 // Fetch Current Month's Report
                 const { yearNum, monthNum } = getCurrentMonthYear();
-                const reportId = `${currentUser.uid}_${yearNum}_${monthNum}`;
-                const reportDocRef = doc(db, 'monthly_reports', reportId);
-                const reportDocSnap = await getDoc(reportDocRef);
-                if (reportDocSnap.exists()) {
-                    currentMonthReport = reportDocSnap.data();
-                    monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
+                // MODIFIED: Report ID now includes the active academic year
+                if (activeYear) {
+                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+                    const reportDocRef = doc(db, 'monthly_reports', reportId);
+                    const reportDocSnap = await getDoc(reportDocRef);
+                    if (reportDocSnap.exists()) {
+                        currentMonthReport = reportDocSnap.data();
+                        monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
+                    } else {
+                        currentMonthReport = {};
+                        monthlyReportData = [];
+                    }
                 } else {
-                    currentMonthReport = {};
-                    monthlyReportData = [];
+                    monthlyReportData = []; // No active year, no data
                 }
                 
                 // Render all components
-                renderAcademicMonths();
-                renderSetupTab();
-                renderReportingTab();
+                refreshFullUI();
 
             } catch (error) {
                 console.error("Error loading user data:", error);
@@ -288,10 +342,92 @@
                 showLoader(false);
             }
         };
+        
+        // --- ACADEMIC YEAR MANAGEMENT ---
+
+        const populateYearSelector = () => {
+            const yearNames = Object.keys(allAcademicYearsData);
+            if (yearNames.length === 0) {
+                activeYearSelect.innerHTML = `<option value="">Pehle naya saal banayein</option>`;
+                activeYear = null;
+                return;
+            }
+            
+            // Sort years descending (e.g., "2026-2027" before "2025-2026")
+            yearNames.sort().reverse(); 
+            
+            activeYearSelect.innerHTML = yearNames.map(name => `<option value="${name}">${name}</option>`).join('');
+            activeYear = activeYearSelect.value; // Set activeYear to the first (newest) year
+        };
+
+        const handleCreateYear = async (e) => {
+            e.preventDefault();
+            const newYearName = newYearNameInput.value.trim();
+            if (!newYearName.match(/^\d{4}-\d{4}$/)) {
+                showNotification("Saal ka format galat hai. (Sahi: 2025-2026)", true);
+                return;
+            }
+            if (allAcademicYearsData[newYearName]) {
+                showNotification("Yeh saal pehle se maujood hai.", true);
+                return;
+            }
+            
+            // Create empty data for this new year
+            allAcademicYearsData[newYearName] = {
+                academicMonths: {},
+                karkardagiStructure: []
+            };
+            
+            showLoader(true);
+            try {
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                await updateDoc(userDocRef, {
+                    academicYears: allAcademicYearsData
+                });
+                
+                newYearNameInput.value = '';
+                showNotification(`Naya saal "${newYearName}" ban gaya hai!`);
+                populateYearSelector(); // Refresh dropdown
+                activeYear = newYearName; // Make the new year active
+                activeYearSelect.value = newYearName;
+                refreshFullUI(); // Refresh setup/reporting tabs
+            } catch (error) {
+                console.error("Error creating new year:", error);
+                showNotification("Naya saal banane me error.", true);
+                // Rollback local change
+                delete allAcademicYearsData[newYearName];
+            } finally {
+                showLoader(false);
+            }
+        };
+
+        const handleYearChange = () => {
+            activeYear = activeYearSelect.value;
+            refreshFullUI();
+        };
+
+        // --- UI REFRESH LOGIC ---
+        
+        // This function re-renders everything based on the 'activeYear'
+        const refreshFullUI = () => {
+            if (!activeYear) {
+                academicMonthsSetup.classList.add('hidden');
+                setupAccordionContainer.innerHTML = '<p class="text-red-500">Kaam shuru karne ke liye pehle "Create Year" karein ya ek "Active Year" select karein.</p>';
+                reportingContainer.innerHTML = '<p class="text-red-500">Reporting ke liye pehle ek "Active Year" select karein.</p>';
+                saveMonthlyReportBtn.classList.add('hidden');
+                reportingYearInfo.classList.add('hidden');
+            } else {
+                academicMonthsSetup.classList.remove('hidden');
+                reportingYearInfo.classList.remove('hidden');
+                reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
+                renderAcademicMonths();
+                renderSetupTab();
+                renderReportingTab();
+            }
+        };
 
         // --- SETUP TAB LOGIC ---
         
-        // MODIFIED: Function to render Academic Months grid for the 10-month year
         const renderAcademicMonths = () => {
             const academicMonthsList = [
                 { name: "April", index: 3 }, { name: "May", index: 4 }, { name: "June", index: 5 },
@@ -299,7 +435,8 @@
                 { name: "October", index: 9 }, { name: "November", index: 10 }, { name: "December", index: 11 },
                 { name: "January", index: 0 }
             ];
-            const savedMonths = userProfileData.academicMonths || {};
+            // Get data for the *active* year
+            const savedMonths = allAcademicYearsData[activeYear]?.academicMonths || {};
             monthsGrid.innerHTML = academicMonthsList.map(month => `
                 <div>
                     <label class="block text-sm font-medium text-gray-700">${month.name}</label>
@@ -309,21 +446,22 @@
         };
         
         saveAcademicMonthsBtn.addEventListener('click', async () => {
+            if (!activeYear) return;
             const newAcademicMonths = {};
             document.querySelectorAll('.academic-month-input').forEach(input => {
                 const monthIndex = input.dataset.monthIndex;
                 const days = parseInt(input.value, 10) || 0;
-                if (days > 0) {
-                    newAcademicMonths[monthIndex] = days;
-                }
+                if (days > 0) newAcademicMonths[monthIndex] = days;
             });
 
-            if (!currentUser) return;
+            allAcademicYearsData[activeYear].academicMonths = newAcademicMonths;
+
             showLoader(true);
-            const userDocRef = doc(db, 'users', currentUser.uid);
             try {
-                await updateDoc(userDocRef, { academicMonths: newAcademicMonths });
-                userProfileData.academicMonths = newAcademicMonths;
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                await updateDoc(userDocRef, {
+                    academicYears: allAcademicYearsData // Save the entire years object
+                });
                 showNotification("Academic days saved!");
                 renderReportingTab();
             } catch (error) {
@@ -341,6 +479,9 @@
                  setupAccordionContainer.innerHTML = '<p class="text-yellow-700">Aapke profile me koi Jamia add nahi hai.</p>';
                  return;
             }
+            
+            // Get structure for the *active* year
+            const karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
             
             setupAccordionContainer.innerHTML = jamiaat.map(jamiaName => {
                 let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
@@ -382,30 +523,22 @@
             });
             
             setupAccordionContainer.addEventListener('click', (e) => {
-                if (e.target.closest('.delete-teacher-btn')) {
-                    e.stopPropagation(); 
-                    handleDeleteTeacher(e);
-                    return;
-                }
+                if (e.target.closest('.delete-teacher-btn')) { e.stopPropagation(); handleDeleteTeacher(e); return; }
                 if (e.target.closest('.teacher-accordion-button')) {
                     const button = e.target.closest('.teacher-accordion-button');
                     const content = button.nextElementSibling;
                     button.classList.toggle('open');
                     content.classList.toggle('open');
                 }
-                if (e.target.closest('.delete-period-btn')) {
-                    handleDeletePeriod(e);
-                }
+                if (e.target.closest('.delete-period-btn')) { handleDeletePeriod(e); }
             });
 
             setupAccordionContainer.addEventListener('submit', (e) => {
-                 if (e.target.classList.contains('add-period-form')) {
-                    handleAddPeriod(e);
-                 }
+                 if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
             });
         };
 
-        // MODIFIED: renderTeacherAccordion to include semester-wise inputs
+        // MODIFIED: renderTeacherAccordion with new Semester-Specific form
         const renderTeacherAccordion = (jamiaName, teacher) => {
             const teacherId = teacher.id || `teacher-${Date.now()}-${Math.random()}`;
             return `
@@ -426,18 +559,21 @@
                                 <input type="text" placeholder="Class ka Naam" class="period-class-input w-full p-2 border rounded-lg urdu-font" required>
                                 <input type="text" placeholder="Book ka Naam" class="period-book-input w-full p-2 border rounded-lg urdu-font" required>
                              </div>
-                             <div class="border-t pt-3">
-                                <h5 class="text-sm font-semibold text-gray-600 mb-2">Semester 1 (Apr-Aug) Details</h5>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <input type="number" placeholder="Sem 1 Total Pages" class="period-sem1-pages-input w-full p-2 border rounded-lg" required>
-                                    <input type="number" placeholder="Sem 1 Total Days" class="period-sem1-days-input w-full p-2 border rounded-lg" required>
+                             <div class="border-t pt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700">Semester</label>
+                                    <select class="period-semester-select w-full p-2 border rounded-lg bg-white" required>
+                                        <option value="1">Semester 1 (Apr-Aug)</option>
+                                        <option value="2">Semester 2 (Sep-Jan)</option>
+                                    </select>
                                 </div>
-                             </div>
-                              <div class="border-t pt-3">
-                                <h5 class="text-sm font-semibold text-gray-600 mb-2">Semester 2 (Sep-Jan) Details</h5>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <input type="number" placeholder="Sem 2 Total Pages" class="period-sem2-pages-input w-full p-2 border rounded-lg" required>
-                                    <input type="number" placeholder="Sem 2 Total Days" class="period-sem2-days-input w-full p-2 border rounded-lg" required>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700">Total Pages (for this Sem)</label>
+                                    <input type="number" placeholder="Total Pages" class="period-total-pages-input w-full p-2 border rounded-lg" required>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700">Total Days (for this Sem)</label>
+                                    <input type="number" placeholder="Total Days" class="period-total-days-input w-full p-2 border rounded-lg" required>
                                 </div>
                              </div>
                             <button type="submit" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Add Period</button>
@@ -451,7 +587,7 @@
             `;
         };
 
-        // MODIFIED: renderPeriodsTable to show semester data
+        // MODIFIED: renderPeriodsTable with new semester columns
         const renderPeriodsTable = (periods) => {
             if (!periods || periods.length === 0) {
                 return '<p class="text-gray-500 text-sm p-2">Abhi koi period add nahi hua hai.</p>';
@@ -460,18 +596,23 @@
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-100">
-                        <tr><th>Class</th><th>Book</th><th>Sem 1 Pages/Days</th><th>Sem 2 Pages/Days</th><th>Action</th></tr>
+                        <tr><th>Class</th><th>Book</th><th>Semester</th><th>Total Pages</th><th>Total Days</th><th>Action</th></tr>
                     </thead>
                     <tbody>
             `;
+            // Sort periods by semester
+            periods.sort((a, b) => a.semester.localeCompare(b.semester));
+            
             periods.forEach(period => {
                 const periodId = period.id || `period-${Date.now()}-${Math.random()}`;
+                const semText = period.semester === "1" ? "Sem 1" : "Sem 2";
                 table += `
                 <tr data-period-id="${periodId}">
                     <td class="urdu-font">${period.className}</td>
                     <td class="urdu-font">${period.bookName}</td>
-                    <td>${period.semester1Pages} / ${period.semester1Days}</td>
-                    <td>${period.semester2Pages} / ${period.semester2Days}</td>
+                    <td>${semText}</td>
+                    <td>${period.totalPages}</td>
+                    <td>${period.totalAcademicDays}</td>
                     <td><button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1"><i class="fas fa-times-circle"></i></button></td>
                 </tr>
                 `;
@@ -482,18 +623,17 @@
         
         // --- Setup Tab Event Handlers ---
 
-        const saveKarkardagiStructure = async () => {
-             if (!currentUser) return;
+        // This function now saves the *entire* academicYears object
+        const saveActiveYearStructure = async () => {
+             if (!currentUser || !activeYear) return;
              showLoader(true);
              const userDocRef = doc(db, 'users', currentUser.uid);
              try {
                  await updateDoc(userDocRef, {
-                     karkardagiStructure: karkardagiStructure
+                     academicYears: allAcademicYearsData 
                  });
-                 userProfileData.karkardagiStructure = karkardagiStructure;
                  showNotification("Structure saved successfully!");
-                 renderSetupTab();
-                 renderReportingTab();
+                 refreshFullUI(); // Refresh everything
              } catch (error) {
                  console.error("Error saving structure:", error);
                  showNotification("Structure save karne me error.", true);
@@ -504,17 +644,16 @@
 
         const handleAddTeacher = (e) => {
             e.preventDefault();
+            if (!activeYear) return;
             const form = e.currentTarget;
             const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
             const jamiaName = jamiaDiv.dataset.jamiaName;
             const teacherNameInput = form.querySelector('.teacher-name-input');
             const teacherName = teacherNameInput.value.trim();
             
-            if (!teacherName) {
-                showNotification("Teacher ka naam likhein.", true);
-                return;
-            }
+            if (!teacherName) { showNotification("Teacher ka naam likhein.", true); return; }
             
+            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) {
                 jamiaData = { jamiaName: jamiaName, teachers: [] };
@@ -526,39 +665,36 @@
                  return;
             }
             
-            const newTeacher = {
-                id: `teacher-${Date.now()}`,
-                name: teacherName,
-                periods: []
-            };
-            
+            const newTeacher = { id: `teacher-${Date.now()}`, name: teacherName, periods: [] };
             jamiaData.teachers.push(newTeacher);
             teacherNameInput.value = '';
             
-            saveKarkardagiStructure();
+            saveActiveYearStructure();
         };
         
         const handleDeleteTeacher = (e) => {
+            if (!activeYear) return;
             const button = e.target.closest('.delete-teacher-btn');
             const teacherDiv = button.closest('.border.rounded-lg[data-teacher-id]');
             const teacherId = teacherDiv.dataset.teacherId;
             const jamiaDiv = button.closest('.border.rounded-lg[data-jamia-name]');
             const jamiaName = jamiaDiv.dataset.jamiaName;
 
-            if (!confirm("Kya aap waqai is teacher ko delete karna chahte hain? Inke saare periods bhi delete ho jayenge.")) {
-                return;
-            }
+            if (!confirm("Kya aap waqai is teacher ko delete karna chahte hain? Inke saare periods bhi delete ho jayenge.")) { return; }
             
+            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
             if (jamiaData) {
                  jamiaData.teachers = jamiaData.teachers.filter(t => t.id !== teacherId);
-                 saveKarkardagiStructure();
+                 saveActiveYearStructure();
             }
         };
 
-        // MODIFIED: handleAddPeriod to save semester data
+        // MODIFIED: handleAddPeriod for semester-specific data
         const handleAddPeriod = (e) => {
             e.preventDefault();
+            if (!activeYear) return;
+            
             const form = e.currentTarget;
             const teacherDiv = form.closest('.border.rounded-lg[data-teacher-id]');
             const teacherId = teacherDiv.dataset.teacherId;
@@ -567,38 +703,38 @@
             
             const classInput = form.querySelector('.period-class-input');
             const bookInput = form.querySelector('.period-book-input');
-            const sem1PagesInput = form.querySelector('.period-sem1-pages-input');
-            const sem1DaysInput = form.querySelector('.period-sem1-days-input');
-            const sem2PagesInput = form.querySelector('.period-sem2-pages-input');
-            const sem2DaysInput = form.querySelector('.period-sem2-days-input');
+            const semesterSelect = form.querySelector('.period-semester-select');
+            const totalPagesInput = form.querySelector('.period-total-pages-input');
+            const totalDaysInput = form.querySelector('.period-total-days-input');
 
             const newPeriod = {
                 id: `period-${Date.now()}`,
                 className: classInput.value.trim(),
                 bookName: bookInput.value.trim(),
-                semester1Pages: parseInt(sem1PagesInput.value, 10) || 0,
-                semester1Days: parseInt(sem1DaysInput.value, 10) || 0,
-                semester2Pages: parseInt(sem2PagesInput.value, 10) || 0,
-                semester2Days: parseInt(sem2DaysInput.value, 10) || 0,
+                semester: semesterSelect.value, // "1" or "2"
+                totalPages: parseInt(totalPagesInput.value, 10) || 0,
+                totalAcademicDays: parseInt(totalDaysInput.value, 10) || 0
             };
             
-            if (!newPeriod.className || !newPeriod.bookName || newPeriod.semester1Pages <= 0 || newPeriod.semester1Days <= 0 || newPeriod.semester2Pages <= 0 || newPeriod.semester2Days <= 0) {
-                 showNotification("Class, Book, aur dono semester ke Pages/Days sahi se bharein.", true);
+            if (!newPeriod.className || !newPeriod.bookName || newPeriod.totalPages <= 0 || newPeriod.totalAcademicDays <= 0) {
+                 showNotification("Sabhi fields (Class, Book, Semester, Pages, Days) sahi se bharein.", true);
                  return;
             }
             
+            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
             let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
             
             if (teacherData) {
                 teacherData.periods.push(newPeriod);
-                saveKarkardagiStructure();
+                saveActiveYearStructure();
             } else {
                  showNotification("Teacher nahi mila. Page reload karein.", true);
             }
         };
         
         const handleDeletePeriod = (e) => {
+            if (!activeYear) return;
             const button = e.target.closest('.delete-period-btn');
             const periodRow = button.closest('tr[data-period-id]');
             const periodId = periodRow.dataset.periodId;
@@ -607,19 +743,23 @@
             const jamiaDiv = button.closest('.border.rounded-lg[data-jamia-name]');
             const jamiaName = jamiaDiv.dataset.jamiaName;
 
+            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
             let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
             
             if (teacherData) {
                  teacherData.periods = teacherData.periods.filter(p => p.id !== periodId);
-                 saveKarkardagiStructure();
+                 saveActiveYearStructure();
             }
         };
 
         // --- REPORTING TAB LOGIC ---
         
-        // MODIFIED: renderReportingTab with semester logic
         const renderReportingTab = () => {
+            if (!activeYear) { /* Handled by refreshFullUI */ return; }
+            
+            const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+
             if (karkardagiStructure.length === 0) {
                  reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar Teachers aur Periods add karein.</p>';
                  saveMonthlyReportBtn.classList.add('hidden');
@@ -627,10 +767,12 @@
             }
             
             const { monthNum } = getCurrentMonthYear();
-            // Semester 1: April (3) to August (7). Semester 2: Sep (8) to Jan (0)
+            // Semester 1: April (3) to August (7)
+            // Semester 2: Sep (8), Oct (9), Nov (10), Dec (11), Jan (0)
             const isSemester1 = monthNum >= 3 && monthNum <= 7;
+            const currentSemester = isSemester1 ? "1" : "2"; 
             
-            const academicMonths = userProfileData.academicMonths || {};
+            const academicMonths = allAcademicYearsData[activeYear].academicMonths || {};
             const daysThisMonth = academicMonths[monthNum] || 0;
             
             if (daysThisMonth === 0) {
@@ -639,10 +781,26 @@
                  saveMonthlyReportBtn.classList.add('hidden');
                  return;
             }
+            
+            let allPeriodsForThisSemester = [];
+            karkardagiStructure.forEach(jamia => {
+                jamia.teachers.forEach(teacher => {
+                    teacher.periods
+                        .filter(p => p.semester === currentSemester) // Filter for current semester
+                        .forEach(period => {
+                            allPeriodsForThisSemester.push({ jamia, teacher, period });
+                        });
+                });
+            });
+
+            if (allPeriodsForThisSemester.length === 0) {
+                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
+                saveMonthlyReportBtn.classList.add('hidden');
+                return;
+            }
 
             saveMonthlyReportBtn.classList.remove('hidden');
 
-            let allPeriodsExist = true;
             let tableHTML = `
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
@@ -655,54 +813,41 @@
                         <tbody>
             `;
 
-            karkardagiStructure.forEach(jamia => {
-                if (jamia.teachers.length === 0) allPeriodsExist = false;
-                jamia.teachers.forEach(teacher => {
-                    if (teacher.periods.length === 0) allPeriodsExist = false;
-                    teacher.periods.forEach(period => {
-                        
-                        const pagesForCalc = isSemester1 ? period.semester1Pages : period.semester2Pages;
-                        const daysForCalc = isSemester1 ? period.semester1Days : period.semester2Days;
-                        
-                        let monthlyTarget = 0;
-                        if (daysForCalc > 0 && daysThisMonth > 0) {
-                            const perDayTarget = pagesForCalc / daysForCalc;
-                            monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                        }
+            allPeriodsForThisSemester.forEach(item => {
+                const { jamia, teacher, period } = item;
+                
+                let monthlyTarget = 0;
+                if (period.totalAcademicDays > 0 && daysThisMonth > 0) {
+                    const perDayTarget = period.totalPages / period.totalAcademicDays;
+                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                }
 
-                        const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
-                        const pagesTaught = savedEntry?.pagesTaught || '';
-                        let achievement = 0;
-                        if (pagesTaught > 0 && monthlyTarget > 0) {
-                            achievement = Math.round((pagesTaught / monthlyTarget) * 100);
-                        }
-                        
-                        tableHTML += `
-                        <tr class="reporting-row" 
-                            data-period-id="${period.id}" 
-                            data-jamia-name="${jamia.jamiaName}" 
-                            data-teacher-name="${teacher.name}" 
-                            data-book-name="${period.bookName}" 
-                            data-monthly-target="${monthlyTarget}">
-                            <td class="urdu-font bg-gray-50">${jamia.jamiaName}</td>
-                            <td class="urdu-font bg-gray-50">${teacher.name}</td>
-                            <td class="urdu-font">${period.className}</td>
-                            <td class="urdu-font">${period.bookName}</td>
-                            <td class="font-medium">${monthlyTarget}</td>
-                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}"></td>
-                            <td class="achievement-cell font-medium ${achievement >= 100 ? 'text-green-600' : 'text-red-600'}">${achievement}%</td>
-                        </tr>`;
-                    });
-                });
+                const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
+                const pagesTaught = savedEntry?.pagesTaught || '';
+                let achievement = 0;
+                if (pagesTaught > 0 && monthlyTarget > 0) {
+                    achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                }
+                
+                tableHTML += `
+                <tr class="reporting-row" 
+                    data-period-id="${period.id}" 
+                    data-jamia-name="${jamia.jamiaName}" 
+                    data-teacher-name="${teacher.name}" 
+                    data-book-name="${period.bookName}" 
+                    data-monthly-target="${monthlyTarget}">
+                    <td class="urdu-font bg-gray-50">${jamia.jamiaName}</td>
+                    <td class="urdu-font bg-gray-50">${teacher.name}</td>
+                    <td class="urdu-font">${period.className}</td>
+                    <td class="urdu-font">${period.bookName}</td>
+                    <td class="font-medium">${monthlyTarget}</td>
+                    <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}"></td>
+                    <td class="achievement-cell font-medium ${achievement >= 100 ? 'text-green-600' : 'text-red-600'}">${achievement}%</td>
+                </tr>`;
             });
 
             tableHTML += '</tbody></table></div>';
-            
-            if (!allPeriodsExist) {
-                reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar sabhi Teachers ke Periods (Books) add karein.</p>' + tableHTML;
-            } else {
-                 reportingContainer.innerHTML = tableHTML;
-            }
+            reportingContainer.innerHTML = tableHTML;
             
             reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
                 input.addEventListener('input', (e) => {
@@ -723,9 +868,12 @@
         };
 
         const handleSaveMonthlyReport = async () => {
+            if (!activeYear) return;
             showLoader(true);
             const { month, year, monthNum, yearNum } = getCurrentMonthYear();
-            const reportId = `${currentUser.uid}_${yearNum}_${monthNum}`;
+            
+            // MODIFIED: Report ID now includes the active year
+            const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
             const reportRef = doc(db, 'monthly_reports', reportId);
 
             const newReportData = [];
@@ -761,6 +909,7 @@
                 userEmail: currentUser.email,
                 month: month,
                 year: year,
+                academicYear: activeYear, // Store which year this report belongs to
                 createdAt: serverTimestamp()
             };
 
