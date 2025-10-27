@@ -497,9 +497,9 @@
         };
 
         const handleLogout = () => {
-             if (unsubscribeUserReports) unsubscribeUserReports(); 
-             if (unsubscribeAdminReports) unsubscribeAdminReports(); 
-             if (unsubscribeAdminUsers) unsubscribeAdminUsers(); 
+             if (unsubscribeUserReports) { unsubscribeUserReports(); unsubscribeUserReports = null; } 
+             if (unsubscribeAdminReports) { unsubscribeAdminReports(); unsubscribeAdminReports = null; } 
+             if (unsubscribeAdminUsers) { unsubscribeAdminUsers(); unsubscribeAdminUsers = null; } 
              authChannel.postMessage('logout'); 
              signOut(auth);
         }
@@ -614,8 +614,54 @@
             });
              closePhotoModalBtn.addEventListener('click', () => photoModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == photoModal) photoModal.classList.add('hidden'); });
-             savePhotoBtn.addEventListener('click', async () => { /* ...photo saving logic... */ });
-             saveAcademicStructureBtn.addEventListener('click', async () => { /* ...structure saving logic... */ });
+             savePhotoBtn.addEventListener('click', async () => { 
+                const newUrl = photoUrlInput.value.trim();
+                 photoError.textContent = '';
+                 if (!newUrl) { photoError.textContent = 'URL cannot be empty.'; return; }
+                 if (!newUrl.startsWith('http') && !newUrl.startsWith('/')) { photoError.textContent = 'Please enter a valid URL.'; return; }
+                 if (!currentUser) { showNotification("User not logged in.", true); return; }
+                 showLoader(true);
+                 const userDocRef = doc(db, 'users', currentUser.uid);
+                 try {
+                     await updateDoc(userDocRef, { photoURL: newUrl });
+                     userProfileData.photoURL = newUrl; 
+                     profilePhotoImg.src = convertGoogleDriveURL(newUrl); 
+                     photoModal.classList.add('hidden');
+                     showNotification("Profile photo updated successfully!");
+                 } catch (error) {
+                     console.error("Error updating photo:", error);
+                     showNotification("Failed to update photo.", true);
+                     photoError.textContent = "Error saving photo URL.";
+                 } finally { showLoader(false); }
+            });
+             saveAcademicStructureBtn.addEventListener('click', async () => { 
+                 const jsonInput = academicStructureJson.value.trim();
+                structureError.textContent = '';
+                if (!jsonInput) { structureError.textContent = 'JSON data cannot be empty.'; return; }
+                let parsedData;
+                try {
+                    parsedData = JSON.parse(jsonInput);
+                    if (!Array.isArray(parsedData)) { throw new Error("Data must be a JSON array."); }
+                    // Add more validation if needed
+                } catch (error) {
+                    console.error("JSON Parsing/Validation error:", error);
+                    structureError.textContent = `Invalid JSON format or structure: ${error.message}`; return;
+                }
+                if (!currentUser) { showNotification("User not logged in.", true); return; }
+                showLoader(true);
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                try {
+                     await updateDoc(userDocRef, { academicStructure: parsedData });
+                     userProfileData.academicStructure = parsedData; 
+                     academicStructureSetup.classList.add('hidden');
+                     showNotification("Academic Structure saved successfully!");
+                     renderUserDashboard(allUserReports); 
+                } catch (error) {
+                     console.error("Error saving academic structure:", error);
+                     showNotification("Failed to save structure.", true);
+                     structureError.textContent = "Error saving data to database.";
+                } finally { showLoader(false); }
+             });
              document.getElementById('jaiza-form').addEventListener('submit', handleJaizaSubmit);
              document.getElementById('past-reports-list').addEventListener('click', handlePastReportClick);
              
@@ -714,19 +760,28 @@
          };
          
         const renderJaizaTab = (currentReport) => {
-              const submittedJaizaat = currentReport.jaizaReport?.data || [];
+            const submittedJaizaat = currentReport.jaizaReport?.data || [];
             const allJamiaat = userProfileData.jamiaatList || [];
+            const jaizaTabContent = document.getElementById('jaiza-tab-content');
+            if (!jaizaTabContent) return; 
+
             if (!Array.isArray(allJamiaat)) {
                 console.error("jamiaatList is not an array:", allJamiaat);
-                document.getElementById('jaiza-tab-content').innerHTML = '<p class="text-center text-red-500">Jamiaat list format sahi nahi hai.</p>';
+                jaizaTabContent.innerHTML = '<p class="text-center text-red-500">Jamiaat list format sahi nahi hai.</p>';
                 return;
             }
             const submittedJaizaatNames = submittedJaizaat.map(j => j.name);
             const pendingJaizaat = allJamiaat.filter(name => !submittedJaizaatNames.includes(name));
 
-            const jaizaFormContainer = document.getElementById('jaiza-list-container');
-            const jaizaPendingTitle = document.getElementById('jaiza-pending-title');
-            const jaizaSaveBtn = document.getElementById('jaiza-save-btn');
+            const jaizaFormContainer = jaizaTabContent.querySelector('#jaiza-list-container');
+            const jaizaPendingTitle = jaizaTabContent.querySelector('#jaiza-pending-title');
+            const jaizaSaveBtn = jaizaTabContent.querySelector('#jaiza-save-btn');
+            const jaizaDisplayContainer = jaizaTabContent.querySelector('#jaiza-display-table');
+            const jaizaSubmittedTitle = jaizaTabContent.querySelector('#jaiza-submitted-title');
+            
+            if (!jaizaFormContainer || !jaizaPendingTitle || !jaizaSaveBtn || !jaizaDisplayContainer || !jaizaSubmittedTitle) {
+                 console.error("One or more Jaiza tab elements not found"); return;
+            }
 
             if (pendingJaizaat.length > 0) {
                 jaizaPendingTitle.classList.remove('hidden');
@@ -735,51 +790,38 @@
                     <div class="jaiza-row p-4 border rounded-lg bg-white shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
                         <div class="sm:col-span-1 font-semibold text-gray-700 urdu-font">${name}</div>
                         <div class="sm:col-span-1"><input type="date" class="jaiza-date w-full p-2 border rounded-lg"></div>
-                        <div class="sm:col-span-1">
-                            <select class="jaiza-type w-full p-2 border rounded-lg bg-white">
-                                <option value="Jaiza">Jaiza</option>
-                                <option value="Visit">Visit</option>
-                                <option value="Nahi Hua">Nahi Hua</option>
-                            </select>
-                        </div>
+                        <div class="sm:col-span-1"> <select class="jaiza-type w-full p-2 border rounded-lg bg-white"> <option value="Jaiza">Jaiza</option> <option value="Visit">Visit</option> <option value="Nahi Hua">Nahi Hua</option> </select> </div>
                         <div class="sm:col-span-1"><input type="text" placeholder="Majmui %" class="jaiza-percentage w-full p-2 border rounded-lg"></div>
                     </div>`).join('');
+                 // Add event listeners after populating
+                 jaizaFormContainer.querySelectorAll('.jaiza-type').forEach(selectElement => {
+                    selectElement.addEventListener('change', (e) => {
+                        const row = e.target.closest('.jaiza-row');
+                        const dateInput = row.querySelector('.jaiza-date');
+                        const percentageInput = row.querySelector('.jaiza-percentage');
+                        const selectedValue = e.target.value;
+                        const isNahiHua = (selectedValue === 'Nahi Hua');
+                        const isVisit = (selectedValue === 'Visit');
+                        dateInput.disabled = isNahiHua;
+                        percentageInput.disabled = isNahiHua || isVisit;
+                        if (isNahiHua) { dateInput.value = ''; percentageInput.value = ''; }
+                        if (isVisit) { percentageInput.value = ''; }
+                    });
+                    selectElement.dispatchEvent(new Event('change'));
+                });
+
             } else {
                 jaizaPendingTitle.classList.add('hidden');
                 jaizaSaveBtn.classList.add('hidden');
                 jaizaFormContainer.innerHTML = '<p class="text-sm text-gray-500">Sabhi Jamiaat ke Jaiza/Visit ki report submit ho chuki hai.</p>';
             }
             
-            document.querySelectorAll('#jaiza-list-container .jaiza-type').forEach(selectElement => {
-                selectElement.addEventListener('change', (e) => {
-                    const row = e.target.closest('.jaiza-row');
-                    const dateInput = row.querySelector('.jaiza-date');
-                    const percentageInput = row.querySelector('.jaiza-percentage');
-                    const selectedValue = e.target.value;
-                    const isNahiHua = (selectedValue === 'Nahi Hua');
-                    const isVisit = (selectedValue === 'Visit');
-                    dateInput.disabled = isNahiHua;
-                    percentageInput.disabled = isNahiHua || isVisit;
-                    if (isNahiHua) { dateInput.value = ''; percentageInput.value = ''; }
-                    if (isVisit) { percentageInput.value = ''; }
-                });
-                selectElement.dispatchEvent(new Event('change'));
-            });
-
-            const jaizaDisplayContainer = document.getElementById('jaiza-display-table');
-            const jaizaSubmittedTitle = document.getElementById('jaiza-submitted-title');
             if (submittedJaizaat.length > 0) {
                 jaizaSubmittedTitle.classList.remove('hidden');
-                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50"><tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jamia</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Percentage</th>
-                    </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
-                submittedJaizaat.forEach(item => {
-                    tableHTML += `<tr><td class="px-6 py-4 urdu-font">${item.name}</td><td class="px-6 py-4">${item.date || '-'}</td><td class="px-6 py-4">${item.type}</td><td class="px-6 py-4">${item.percentage || '-'}</td></tr>`;
-                });
-                tableHTML += `</tbody></table></div>`;
-                jaizaDisplayContainer.innerHTML = tableHTML;
+                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jamia</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Percentage</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                 submittedJaizaat.forEach(item => { tableHTML += `<tr><td class="px-6 py-4 urdu-font">${item.name}</td><td class="px-6 py-4">${item.date || '-'}</td><td class="px-6 py-4">${item.type}</td><td class="px-6 py-4">${item.percentage || '-'}</td></tr>`; });
+                 tableHTML += `</tbody></table></div>`;
+                 jaizaDisplayContainer.innerHTML = tableHTML;
             } else {
                  jaizaSubmittedTitle.classList.add('hidden');
                  jaizaDisplayContainer.innerHTML = '';
@@ -843,19 +885,31 @@
                 tadrisAccordionContainer.appendChild(accordionItem);
 
                 const classSelect = content.querySelector('.tadris-class-select');
-                 if (jamia.classes && typeof jamia.classes === 'object') { // Add check for classes
+                 if (jamia.classes && typeof jamia.classes === 'object') { 
                     Object.keys(jamia.classes).forEach(className => { classSelect.innerHTML += `<option value="${className}">${className}</option>`; });
                  }
                  
-                 header.addEventListener('click', () => { /* ... accordion toggle ... */ });
+                 header.addEventListener('click', () => {
+                     const isOpen = content.classList.contains('open');
+                     document.querySelectorAll('#tadris-accordion-container .accordion-content.open').forEach(openContent => {
+                         if (openContent !== content) {
+                             openContent.classList.remove('open');
+                             const correspondingHeader = openContent.previousElementSibling;
+                             if(correspondingHeader && correspondingHeader.classList.contains('accordion-button')) { correspondingHeader.classList.remove('open'); }
+                         }
+                     });
+                     content.classList.toggle('open');
+                     header.classList.toggle('open'); 
+                 });
+
                  classSelect.addEventListener('change', (e) => { 
                     const selectedClass = e.target.value;
                      const kitabSelect = content.querySelector('.tadris-kitab-select');
                      kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
                      kitabSelect.disabled = true;
-                     if (selectedClass && jamia.classes && jamia.classes[selectedClass]) { // Add checks
+                     if (selectedClass && jamia.classes && jamia.classes[selectedClass]) { 
                          const kitabs = jamia.classes[selectedClass]?.kitabs || [];
-                         if(Array.isArray(kitabs)) { // Ensure kitabs is an array
+                         if(Array.isArray(kitabs)) { 
                              kitabs.forEach(kitabName => { kitabSelect.innerHTML += `<option value="${kitabName}">${kitabName}</option>`; });
                              kitabSelect.disabled = false;
                          }
@@ -870,7 +924,49 @@
             });
          };
          
-         async function handleAddTadrisEntry(e) { /* ... Same as previous version ... */ }
+         async function handleAddTadrisEntry(e) {
+             const button = e.target;
+             const content = button.closest('.p-4.border-t');
+             if (!content) return;
+
+             const classSelect = content.querySelector('.tadris-class-select');
+             const kitabSelect = content.querySelector('.tadris-kitab-select');
+             const teacherNameInput = content.querySelector('.tadris-teacher-name');
+             const dateInput = content.querySelector('.tadris-date');
+             const tasuratInput = content.querySelector('.tadris-tasurat');
+
+             const jamiaName = button.dataset.jamiaName;
+             const className = classSelect.value;
+             const kitabName = kitabSelect.value;
+             const teacherName = teacherNameInput.value.trim();
+             const date = dateInput.value;
+             const tasurat = tasuratInput.value.trim();
+
+             if (!className || !kitabName || !teacherName || !date) { showNotification("Class, Kitab, Teacher ka Naam aur Date bharna zaroori hai.", true); return; }
+
+             const newEntry = { jamiaName, className, kitabName, teacherName, date, tasurat };
+             
+             showLoader(true);
+             try {
+                 await saveReportData({}); 
+                 const docSnap = await getDoc(reportRef); 
+                 const existingData = docSnap.exists() ? docSnap.data().tadrisRecording?.data || [] : [];
+                 const mergedData = [...existingData, newEntry]; 
+                 await updateDoc(reportRef, { tadrisRecording: { status: 'Done', data: mergedData } }); 
+                 showNotification("Tadris entry saved!"); 
+
+                 classSelect.value = '';
+                 kitabSelect.innerHTML = '<option value="">Select Class First</option>';
+                 kitabSelect.disabled = true;
+                 teacherNameInput.value = '';
+                 dateInput.value = '';
+                 tasuratInput.value = '';
+                 
+             } catch(error) {
+                 console.error("Error adding Tadris entry:", error);
+                 // Notification is handled by saveReportData
+             } finally { showLoader(false); }
+         }
         
         const renderTestTab = (currentReport) => {
               const submittedTestData = currentReport.monthlyTest?.data || [];
@@ -892,14 +988,55 @@
                 const existingEntry = submittedTestData.find(entry => entry.name === jamiaName);
                 const accordionItem = document.createElement('div');
                 accordionItem.className = 'border rounded-lg bg-white shadow-sm overflow-hidden';
-                const header = document.createElement('button'); /* ... header ... */
-                const content = document.createElement('div'); /* ... content (form or display) ... */
+                const header = document.createElement('button');
+                header.type = 'button';
+                header.className = 'accordion-button w-full flex justify-between items-center p-4 text-left font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none';
+                header.innerHTML = `
+                    <span class="urdu-font">${jamiaName}</span>
+                    <span class="text-sm font-normal ${existingEntry ? 'text-green-600' : 'text-yellow-600'}">${existingEntry ? 'Saved' : 'Pending'}</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                `;
+                const content = document.createElement('div');
+                content.className = 'accordion-content'; 
                 
+                if (existingEntry) {
+                     content.innerHTML = `
+                         <div class="p-4 border-t space-y-2 text-sm">
+                            <p><strong>Status:</strong> ${existingEntry.status}</p>
+                            ${existingEntry.month ? `<p><strong>Month:</strong> ${existingEntry.month}</p>` : ''}
+                            ${existingEntry.percentage ? `<p><strong>Percentage:</strong> ${existingEntry.percentage}</p>` : ''}
+                            ${existingEntry.wajah ? `<p class="urdu-font"><strong>Wajah:</strong> ${existingEntry.wajah}</p>` : ''}
+                         </div>`;
+                } else {
+                     content.innerHTML = `
+                         <form class="test-entry-form p-4 border-t space-y-3">
+                            <input type="hidden" class="jamia-name-hidden" value="${jamiaName}"> 
+                            <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                                <div> <label class="block text-sm font-medium text-gray-700 mb-1">Status</label> <select class="test-status w-full p-2 border rounded-lg bg-white"> <option value="Test Hua">Test Hua</option> <option value="Nahi Hua">Nahi Hua</option> </select> </div>
+                                <div> <label class="block text-sm font-medium text-gray-700 mb-1">Month</label> <input type="month" class="test-month w-full p-2 border rounded-lg" value="${monthInputFormat}"> </div>
+                                <div> <label class="block text-sm font-medium text-gray-700 mb-1">Total %</label> <input type="text" placeholder="%" class="test-percentage w-full p-2 border rounded-lg"> </div>
+                                <div class="sm:col-span-4"> <label class="block text-sm font-medium text-gray-700 mb-1">Wajah (Agar Nahi Hua)</label> <textarea rows="1" placeholder="Wajah likhein" class="test-wajah w-full p-2 border rounded-lg urdu-font" disabled></textarea> </div>
+                            </div>
+                            <button type="submit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Save Status</button>
+                         </form>`;
+                 }
+
                 accordionItem.appendChild(header);
                 accordionItem.appendChild(content);
                 testAccordionContainer.appendChild(accordionItem);
 
-                 header.addEventListener('click', () => { /* ... accordion toggle ... */ });
+                 header.addEventListener('click', () => {
+                     const isOpen = content.classList.contains('open');
+                     document.querySelectorAll('#test-accordion-container .accordion-content.open').forEach(openContent => {
+                         if (openContent !== content) {
+                             openContent.classList.remove('open');
+                             const correspondingHeader = openContent.previousElementSibling;
+                             if(correspondingHeader && correspondingHeader.classList.contains('accordion-button')) { correspondingHeader.classList.remove('open'); }
+                         }
+                     });
+                     content.classList.toggle('open');
+                     header.classList.toggle('open'); 
+                 });
 
                  if (!existingEntry) {
                      const statusSelect = content.querySelector('.test-status');
@@ -907,7 +1044,14 @@
                      const percentageInput = content.querySelector('.test-percentage');
                      const wajahTextarea = content.querySelector('.test-wajah');
 
-                     statusSelect.addEventListener('change', (e) => { /* ... enable/disable fields ... */ });
+                     statusSelect.addEventListener('change', (e) => {
+                         const isNahiHua = e.target.value === 'Nahi Hua';
+                         monthInput.disabled = isNahiHua;
+                         percentageInput.disabled = isNahiHua;
+                         wajahTextarea.disabled = !isNahiHua;
+                         if (isNahiHua) { monthInput.value = ''; percentageInput.value = ''; } 
+                         else { wajahTextarea.value = ''; monthInput.value = monthInputFormat; } 
+                     });
                      wajahTextarea.disabled = true; 
                      monthInput.value = monthInputFormat; 
 
@@ -920,10 +1064,66 @@
             });
         };
         
-        async function handleTestSubmit(e) { /* ... Same as previous version ... */ }
+        async function handleTestSubmit(e) {
+             e.preventDefault();
+             const form = e.target;
+             const content = form.closest('.accordion-content'); 
+             if(!content) return;
+             const statusSelect = content.querySelector('.test-status');
+             const monthInput = content.querySelector('.test-month');
+             const percentageInput = content.querySelector('.test-percentage');
+             const wajahTextarea = content.querySelector('.test-wajah');
+             const jamiaNameHidden = content.querySelector('.jamia-name-hidden');
+             const jamiaName = jamiaNameHidden.value;
+             const selectedStatus = statusSelect.value;
+             let newEntryData = { name: jamiaName, status: selectedStatus };
+             let validationFailed = false;
 
-        const renderPastReports = (reports) => { /* ... Same as previous version ... */ };
+             if (selectedStatus === 'Nahi Hua') {
+                 if (wajahTextarea.value.trim()) { newEntryData.wajah = wajahTextarea.value.trim(); newEntryData.month = ''; newEntryData.percentage = ''; } 
+                 else { validationFailed = true; showNotification(`Test Nahi Hua ke liye Wajah likhna zaroori hai. (${jamiaName})`, true); }
+             } else { 
+                 if (monthInput.value && percentageInput.value) { newEntryData.month = monthInput.value; newEntryData.percentage = percentageInput.value; newEntryData.wajah = ''; } 
+                 else { validationFailed = true; showNotification(`Test Hua ke liye Month aur Percentage dono fill karna zaroori hai. (${jamiaName})`, true); }
+             }
+             if (validationFailed) return;
+             showLoader(true);
+             try {
+                 await saveReportData({}); 
+                 const docSnap = await getDoc(reportRef); 
+                 const existingReportData = docSnap.exists() ? docSnap.data().monthlyTest?.data || [] : [];
+                 const filteredExisting = existingReportData.filter(ex => ex.name !== jamiaName);
+                 const mergedData = [...filteredExisting, newEntryData];
+                 await updateDoc(reportRef, { monthlyTest: { status: 'Done', data: mergedData } }); 
+                 showNotification("Test status saved!"); 
+             } catch (error) {
+                 console.error("Error saving Test status:", error);
+             } finally { showLoader(false); }
+        }
         
+        const renderPastReports = (reports) => {
+             const { monthNum, yearNum } = reportingDateInfo;
+             const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+             const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; 
+             const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`;
+             const pastReportsList = document.getElementById('past-reports-list');
+             if (!pastReportsList) return;
+
+             const sortedPastReports = reports
+                .filter(r => r.id !== currentReportIdSimple && r.id !== currentReportIdWithYear) 
+                .sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            
+            if(sortedPastReports.length > 0) {
+                pastReportsList.innerHTML = sortedPastReports.map(report => `
+                     <div class="p-4 bg-gray-50 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center text-center sm:text-left space-y-2 sm:space-y-0">
+                        <div class="flex-grow"><p class="font-semibold text-lg">${report.month} ${report.year} ${report.academicYear ? `(${report.academicYear})` : ''}</p><p class="text-sm text-gray-500">Submitted: ${report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}</p></div>
+                        <button class="view-past-report-btn bg-teal-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-600 w-full sm:w-auto" data-report-id="${report.id}">View</button>
+                    </div>`).join('');
+            } else {
+                pastReportsList.innerHTML = `<p class="text-gray-500">Koyi pichli report nahi mili.</p>`;
+            }
+        };
+
         const saveReportData = async (dataToSave) => {
             showLoader(true);
             const { month, year, monthNum, yearNum } = reportingDateInfo; 
@@ -939,7 +1139,7 @@
 
             try {
                 await setDoc(reportRef, finalData, { merge: true }); 
-                // Don't show generic notification here
+                // Notification will be shown by the calling function (e.g., handleJaizaSubmit)
             } catch (error) {
                 console.error("Error saving report section: ", error);
                 showNotification(`Failed to save ${month} ${year} report. Please try again.`, true);
@@ -955,7 +1155,21 @@
             const filledJaizaat = [];
             let validationFailed = false;
             let validationMessage = "";
-            document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => { /* ... validation logic ... */ });
+            document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
+                 const name = row.querySelector('.font-semibold').textContent;
+                 const typeSelect = row.querySelector('.jaiza-type');
+                 const dateInput = row.querySelector('.jaiza-date');
+                 const percentageInput = row.querySelector('.jaiza-percentage');
+                 const selectedType = typeSelect.value;
+                 if (selectedType === 'Nahi Hua') { filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' }); } 
+                 else if (selectedType === 'Visit') {
+                     if (dateInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' }); } 
+                     else if (typeSelect.selectedIndex > 0 && !dateInput.disabled) { validationFailed = true; validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`; }
+                 } else if (selectedType === 'Jaiza') {
+                     if (dateInput.value && percentageInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value }); } 
+                     else if ((dateInput.value || percentageInput.value) && !dateInput.disabled && !percentageInput.disabled) { validationFailed = true; validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`; }
+                 }
+             });
             if (validationFailed) { showNotification(validationMessage, true); return; }
             if (filledJaizaat.length === 0) { showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); return; }
             
@@ -971,7 +1185,6 @@
                  showNotification("Jaiza report saved!"); 
             } catch(error) {
                 console.error("Error updating Jaiza report:", error);
-                // Notification already shown by saveReportData if it failed
             } finally { showLoader(false); }
          };
          
@@ -990,9 +1203,14 @@
             console.log("Switching user tab to:", tabId); 
             const userTabButtons = userView.querySelectorAll('.tab-btn'); 
             const userTabContents = userView.querySelectorAll('.tab-content'); 
-            userTabButtons.forEach(btn => { /* ... remove/add styles ... */ });
+            
+            userTabButtons.forEach(btn => { 
+                 btn.classList.remove('active');
+                 if(!btn.id?.includes('kkd')) btn.classList.add('text-gray-500','hover:text-gray-700','hover:border-gray-300'); 
+            });
             e.target.classList.add('active');
             e.target.classList.remove('text-gray-500','hover:text-gray-700','hover:border-gray-300'); 
+            
             userTabContents.forEach(content => content.classList.add('hidden'));
             const targetContent = userView.querySelector(`#${tabId}-tab-content`); 
             if(targetContent) targetContent.classList.remove('hidden');
@@ -1007,10 +1225,97 @@
              window.open('karkardagi.html', '_blank');
         };
 
-        const showReportModal = (report, isAdmin = false) => { /* ... unchanged ... */ };
+        const showReportModal = (report, isAdmin = false) => { 
+            
+             let reportDetailsHTML = `<div class="space-y-6">`;
+             
+             // --- Jaiza Section ---
+             if (report.jaizaReport?.data?.length > 0) {
+                 const sectionTitleHTML = `<div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Jaiza Report</h4></div>`;
+                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-100"><tr><th class="px-4 py-2 text-left font-medium">Jamia</th><th class="px-4 py-2 text-left font-medium">Date</th><th class="px-4 py-2 text-left font-medium">Type</th><th class="px-4 py-2 text-left font-medium">%</th>${isAdmin ? '<th class="px-4 py-2 text-right font-medium">Action</th>' : ''}</tr></thead><tbody>`;
+                 report.jaizaReport.data.forEach((item, index) => {
+                     const deleteButton = isAdmin ? `<button data-report-id="${report.id}" data-section="jaizaReport" data-index="${index}" class="delete-entry-btn">Delete</button>` : '';
+                     tableHTML += `<tr class="border-t"><td class="px-4 py-2 urdu-font">${item.name}</td><td class="px-4 py-2">${item.date || '-'}</td><td class="px-4 py-2">${item.type}</td><td class="px-4 py-2">${item.percentage || '-'}</td>${isAdmin ? `<td class="px-4 py-2 text-right">${deleteButton}</td>` : ''}</tr>`;
+                 });
+                 tableHTML += `</tbody></table></div>`;
+                 reportDetailsHTML += `<div class="border-b pb-4">${sectionTitleHTML}${tableHTML}</div>`;
+            } else if (isAdmin) { 
+                 reportDetailsHTML += `<div class="border-b pb-4"><div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Jaiza Report</h4><span class="text-xs font-medium text-yellow-600">Pending</span></div></div>`;
+            }
+
+            // --- Tadris Section ---
+             if (report.tadrisRecording?.data?.length > 0) {
+                 const sectionTitleHTML = `<div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Tadris Recording</h4></div>`;
+                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-100"><tr><th class="px-4 py-2 text-left font-medium">Jamia</th><th class="px-4 py-2 text-left font-medium">Teacher</th><th class="px-4 py-2 text-left font-medium">Class</th><th class="px-4 py-2 text-left font-medium">Kitab</th><th class="px-4 py-2 text-left font-medium">Date</th><th class="px-4 py-2 text-left font-medium">Tasurat</th>${isAdmin ? '<th class="px-4 py-2 text-right font-medium">Action</th>' : ''}</tr></thead><tbody>`;
+                 report.tadrisRecording.data.forEach((item, index) => {
+                     const deleteButton = isAdmin ? `<button data-report-id="${report.id}" data-section="tadrisRecording" data-index="${index}" class="delete-entry-btn">Delete</button>` : '';
+                     tableHTML += `<tr class="border-t"><td class="px-4 py-2 urdu-font">${item.jamiaName}</td><td class="px-4 py-2 urdu-font">${item.teacherName}</td><td class="px-4 py-2 urdu-font">${item.className}</td><td class="px-4 py-2 urdu-font">${item.kitabName}</td><td class="px-4 py-2">${item.date}</td><td class="px-4 py-2 urdu-font">${item.tasurat || '-'}</td>${isAdmin ? `<td class="px-4 py-2 text-right">${deleteButton}</td>` : ''}</tr>`;
+                 });
+                 tableHTML += `</tbody></table></div>`;
+                 reportDetailsHTML += `<div class="border-b pb-4">${sectionTitleHTML}${tableHTML}</div>`;
+             } else if (isAdmin) { 
+                 reportDetailsHTML += `<div class="border-b pb-4"><div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Tadris Recording</h4><span class="text-xs font-medium text-yellow-600">Pending</span></div></div>`;
+            }
+
+             // --- Monthly Test Section ---
+            if (report.monthlyTest?.data?.length > 0) {
+                 const sectionTitleHTML = `<div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Monthly Test</h4></div>`;
+                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-100"><tr><th class="px-4 py-2 text-left font-medium">Jamia</th><th class="px-4 py-2 text-left font-medium">Status</th><th class="px-4 py-2 text-left font-medium">Month</th><th class="px-4 py-2 text-left font-medium">%</th><th class="px-4 py-2 text-left font-medium">Wajah</th>${isAdmin ? '<th class="px-4 py-2 text-right font-medium">Action</th>' : ''}</tr></thead><tbody>`;
+                 report.monthlyTest.data.forEach((item, index) => {
+                    const deleteButton = isAdmin ? `<button data-report-id="${report.id}" data-section="monthlyTest" data-index="${index}" class="delete-entry-btn">Delete</button>` : '';
+                    tableHTML += `<tr class="border-t"><td class="px-4 py-2 urdu-font">${item.name}</td><td class="px-4 py-2">${item.status}</td><td class="px-4 py-2">${item.month || '-'}</td><td class="px-4 py-2">${item.percentage || '-'}</td><td class="px-4 py-2 urdu-font">${item.wajah || '-'}</td>${isAdmin ? `<td class="px-4 py-2 text-right">${deleteButton}</td>` : ''}</tr>`;
+                 });
+                 tableHTML += `</tbody></table></div>`;
+                 reportDetailsHTML += `<div class="border-b pb-4">${sectionTitleHTML}${tableHTML}</div>`;
+            } else if (isAdmin) { 
+                 reportDetailsHTML += `<div class="border-b pb-4"><div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Monthly Test</h4><span class="text-xs font-medium text-yellow-600">Pending</span></div></div>`;
+            }
+
+            // --- Karkardagi Section ---
+             if (report.karkardagiReport?.data?.length > 0) {
+                 const sectionTitleHTML = `<div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Talimi & Shashmahi Karkardagi ${report.academicYear ? `(${report.academicYear})` : ''}</h4></div>`;
+                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-100"><tr>
+                     <th class="px-4 py-2 text-left font-medium">Jamia</th> <th class="px-4 py-2 text-left font-medium">Teacher</th> <th class="px-4 py-2 text-left font-medium">Book</th>
+                     <th class="px-4 py-2 text-left font-medium">Target</th> <th class="px-4 py-2 text-left font-medium">Taught</th> <th class="px-4 py-2 text-left font-medium">Achieved %</th>
+                     ${isAdmin ? '<th class="px-4 py-2 text-right font-medium">Action</th>' : ''}</tr></thead><tbody>`;
+                 
+                 report.karkardagiReport.data.forEach((item, index) => {
+                     const deleteButton = isAdmin ? `<button data-report-id="${report.id}" data-section="karkardagiReport" data-index="${index}" class="delete-entry-btn">Delete</button>` : '';
+                     tableHTML += `<tr class="border-t">
+                         <td class="px-4 py-2 urdu-font">${item.jamiaName}</td> <td class="px-4 py-2 urdu-font">${item.teacherName}</td> <td class="px-4 py-2 urdu-font">${item.bookName}</td>
+                         <td class="px-4 py-2">${item.monthlyTarget}</td> <td class="px-4 py-2">${item.pagesTaught}</td> <td class="px-4 py-2">${item.achievement || '0'}%</td>
+                         ${isAdmin ? `<td class="px-4 py-2 text-right">${deleteButton}</td>` : ''}
+                     </tr>`;
+                 });
+                 tableHTML += `</tbody></table></div>`;
+                 reportDetailsHTML += `<div class="border-b pb-4">${sectionTitleHTML}${tableHTML}</div>`;
+             } else if (isAdmin) { 
+                 reportDetailsHTML += `<div class="border-b pb-4"><div class="flex justify-between items-center mb-2"><h4 class="text-lg font-bold text-teal-700">Talimi & Shashmahi Karkardagi</h4><span class="text-xs font-medium text-yellow-600">Pending</span></div></div>`;
+             }
+             
+            reportDetailsHTML += `</div>`;
+            
+            let titleName = report.userEmail || (report.month + ' ' + report.year);
+            if (isAdmin && allUsersData) {
+                const userProfile = allUsersData.find(u => u.id === report.userId);
+                titleName = userProfile?.name || report.userEmail;
+            }
+             const titleClass = (titleName && /[\u0600-\u06FF]/.test(titleName)) ? 'urdu-font' : '';
+            document.getElementById('modal-title').innerText = `Report Details for ${titleName} (${report.month} ${report.year})`;
+            document.getElementById('modal-title').className = `text-xl leading-6 font-medium text-gray-900 text-center ${titleClass}`;
+            
+            modalContent.innerHTML = reportDetailsHTML;
+            
+            modalContent.querySelectorAll('.delete-entry-btn').forEach(button => {
+                 button.addEventListener('click', handleDeleteReportEntry);
+            });
+             
+            reportModal.classList.remove('hidden');
+        };
         closeModalBtn.addEventListener('click', () => reportModal.classList.add('hidden'));
         window.addEventListener('click', (event) => { if (event.target == reportModal) reportModal.classList.add('hidden'); });
-        const handleDeleteReportEntry = async (event) => { /* ... unchanged ... */ };
+        
+         const handleDeleteReportEntry = async (event) => { /* ... unchanged ... */ };
         document.getElementById('past-reports-list').addEventListener('click', (e) => { /* ... unchanged ... */ });
 
          // --- ADMIN VIEW LOGIC ---
@@ -1083,7 +1388,10 @@
              console.log("Switching admin tab to:", tabId); 
              const adminButtons = adminView.querySelectorAll('.admin-tab-btn');
              const adminContents = adminView.querySelectorAll('.admin-tab-content');
-             adminButtons.forEach(btn => { /* ... remove/add styles ... */ });
+             adminButtons.forEach(btn => { 
+                btn.classList.remove('active');
+                btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+             });
              e.target.classList.add('active');
              e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
              adminContents.forEach(content => content.classList.add('hidden'));
@@ -1096,16 +1404,99 @@
              if (tabId === 'summary' && fetchedAdminReports.length > 0) { renderReportSummary(fetchedAdminReports); }
          };
 
-         const populateAdminFilters = () => { /* ... unchanged ... */ };
-         const fetchAndRenderAdminReports = () => { /* ... unchanged ... */ };
+         const populateAdminFilters = () => {
+              const { monthNum, yearNum } = getReportingMonthYear(); // Use reporting month for default
+             const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+             adminMonthSelect.innerHTML = months.map((m, i) => `<option value="${m}" ${i === monthNum ? 'selected' : ''}>${m}</option>`).join('');
+             adminYearSelect.innerHTML = '';
+             for (let i = 0; i < 3; i++) {
+                 const year = yearNum - i;
+                 adminYearSelect.innerHTML += `<option value="${year}" ${i === 0 ? 'selected' : ''}>${year}</option>`;
+             }
+         };
+
+         const fetchAndRenderAdminReports = () => {
+              const selectedMonth = adminMonthSelect.value;
+             const selectedYear = parseInt(adminYearSelect.value, 10);
+             showLoader(true);
+             adminReportsTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading reports...</td></tr>';
+             summaryLoadingMsg.classList.remove('hidden');
+             summaryTablesContainer.classList.add('hidden');
+             if (unsubscribeAdminReports) unsubscribeAdminReports(); 
+             const reportsRef = collection(db, 'monthly_reports');
+             const q = query(reportsRef, where("month", "==", selectedMonth), where("year", "==", selectedYear));
+
+             unsubscribeAdminReports = onSnapshot(q, (snapshot) => {
+                 fetchedAdminReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                 renderAdminTable(fetchedAdminReports);
+                 renderReportSummary(fetchedAdminReports); 
+                 showLoader(false);
+             }, (error) => {
+                 console.error("Error fetching admin reports: ", error);
+                 showNotification("Could not load reports for this period.", true);
+                 adminReportsTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Error loading reports.</td></tr>';
+                 summaryLoadingMsg.textContent = "Error loading reports.";
+                 showLoader(false);
+             });
+         };
+         
          const calculateOverallStatus = (report, userJamiaatCount = 0) => { /* ... unchanged ... */ };
-         const renderAdminTable = (reports) => { /* ... unchanged ... */ };
+         
+         const renderAdminTable = (reports) => {
+             if (reports.length === 0) {
+                 adminReportsTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No reports found for this period.</td></tr>';
+                 return;
+             }
+             adminReportsTbody.innerHTML = reports.map(report => {
+                 const userProfileForReport = allUsersData.find(u => u.id === report.userId);
+                 const jamiaatCount = userProfileForReport?.jamiaatList?.length || 0; 
+                 const status = calculateOverallStatus(report, jamiaatCount);
+                 const submittedDate = report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString() : 'N/A';
+                 const academicYearTag = report.academicYear ? `<span class="text-xs text-gray-500 ml-1">(${report.academicYear})</span>` : '';
+                 return `
+                     <tr class="hover:bg-gray-50">
+                         <td class="whitespace-nowrap urdu-font">${userProfileForReport?.name || report.userEmail || 'N/A'} ${academicYearTag}</td>
+                         <td class="whitespace-nowrap"> <span class="px-3 py-1 text-xs font-semibold rounded-full ${status.bgColor} ${status.color}">${status.text}</span> </td>
+                         <td class="whitespace-nowrap text-sm text-gray-500">${submittedDate}</td>
+                         <td class="whitespace-nowrap"> <button class="admin-view-details-btn text-teal-600 hover:text-teal-800 text-sm font-medium mr-2" data-report-id="${report.id}">View</button> </td>
+                     </tr>
+                 `;
+             }).join('');
+             document.querySelectorAll('.admin-view-details-btn').forEach(button => {
+                 button.addEventListener('click', (e) => {
+                     const reportId = e.target.dataset.reportId;
+                     const report = fetchedAdminReports.find(r => r.id === reportId);
+                     if (report) { showReportModal(report, true); } 
+                     else { showNotification("Could not find report details.", true); }
+                 });
+             });
+         };
+
          const renderReportSummary = (reports) => { /* ... unchanged ... */ };
          const handleExcelDownload = () => { /* ... unchanged ... */ };
          const handleImageDownload = () => { /* ... unchanged ... */ };
-         const fetchAndRenderAdminUsers = () => { /* ... unchanged ... */ };
-         const renderAdminUsersTable = (users) => { 
-              if (users.length === 0) {
+         
+         const fetchAndRenderAdminUsers = () => {
+              adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading users...</td></tr>';
+             const usersRef = collection(db, 'users');
+             const q = query(usersRef); 
+             if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
+             unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
+                  allUsersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  renderAdminUsersTable(allUsersData);
+                   const activeAdminTab = document.querySelector('.admin-tab-btn.active')?.dataset.adminTab;
+                  if (activeAdminTab === 'reports' && !unsubscribeAdminReports) {
+                       fetchAndRenderAdminReports(); 
+                  }
+             }, (error) => {
+                 console.error("Error fetching users for admin:", error);
+                 adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Error loading users.</td></tr>';
+                 adminReportsTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Error loading user data needed for reports.</td></tr>';
+             });
+         };
+
+         const renderAdminUsersTable = (users) => {
+               if (users.length === 0) {
                  adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No users found.</td></tr>'; return;
              }
               adminUsersTbody.innerHTML = users
@@ -1151,7 +1542,21 @@
           };
          
         // --- MODAL LOGIC (GLOBAL) ---
-          const openEditUserModal = (userData) => { /* ... unchanged ... */ };
+          const openEditUserModal = (userData) => { 
+              editUserError.textContent = '';
+             document.getElementById('edit-user-uid').value = userData.id;
+             document.getElementById('edit-user-name').value = userData.name || '';
+             document.getElementById('edit-user-email').value = userData.email || ''; 
+             document.getElementById('edit-user-zimmedari').value = userData.zimmedari || '';
+             document.getElementById('edit-user-contact').value = userData.contact || '';
+             document.getElementById('edit-user-ajeer-code').value = userData.ajeerCode || '';
+             document.getElementById('edit-user-photoURL').value = userData.photoURL || '';
+             document.getElementById('edit-user-totalJamiaat').value = userData.totalJamiaat || 0;
+             document.getElementById('edit-user-totalAsatiza').value = userData.totalAsatiza || 0;
+             document.getElementById('edit-user-jamiaatList').value = JSON.stringify(userData.jamiaatList || [], null, 2); 
+             document.getElementById('edit-user-academicStructure').value = JSON.stringify(userData.academicStructure || [], null, 2);
+             editUserModal.classList.remove('hidden');
+           };
           const openDeadlineModal = (userData) => { 
               deadlineError.textContent = '';
               deadlineUserIdInput.value = userData.id;
@@ -1167,7 +1572,49 @@
               deadlineDateInput.value = currentDeadlineValue;
               deadlineModal.classList.remove('hidden');
            };
-          const handleSaveDeadline = async (e) => { /* ... unchanged ... */ };
+          const handleSaveDeadline = async (e) => { 
+               e.preventDefault();
+               deadlineError.textContent = '';
+               const userId = deadlineUserIdInput.value;
+               const dateString = deadlineDateInput.value; 
+               if (!userId) { deadlineError.textContent = "User ID missing."; return; }
+               let newDeadlineTimestamp = null; 
+               if (dateString) {
+                    try {
+                        const dateParts = dateString.split('-');
+                        const year = parseInt(dateParts[0]);
+                        const month = parseInt(dateParts[1]) - 1; 
+                        const day = parseInt(dateParts[2]);
+                        const deadlineDate = new Date(year, month, day, 23, 59, 59, 999);
+                        const todayStart = new Date();
+                         todayStart.setHours(0, 0, 0, 0); 
+                         if (deadlineDate < todayStart) {
+                             deadlineError.textContent = "Deadline cannot be set in the past.";
+                             return;
+                         }
+                        newDeadlineTimestamp = Timestamp.fromDate(deadlineDate); 
+                    } catch (err) {
+                        console.error("Error parsing date:", err);
+                        deadlineError.textContent = "Invalid date selected.";
+                        return;
+                    }
+               }
+               console.log("Saving deadline for user:", userId, "New Deadline:", newDeadlineTimestamp ? newDeadlineTimestamp.toDate() : "Cleared");
+               showLoader(true);
+               const userDocRef = doc(db, 'users', userId);
+               try {
+                    await updateDoc(userDocRef, {
+                        gracePeriodOverrideUntil: newDeadlineTimestamp 
+                    });
+                    showNotification("Deadline updated successfully!");
+                    deadlineModal.classList.add('hidden');
+                    // Data will refresh via onSnapshot
+               } catch (error) {
+                    console.error("Error updating deadline:", error);
+                    deadlineError.textContent = "Failed to save deadline.";
+                    showNotification("Failed to update deadline.", true);
+               } finally { showLoader(false); }
+           };
 
         // --- Init ---
         initApp();
