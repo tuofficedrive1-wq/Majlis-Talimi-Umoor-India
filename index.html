@@ -310,6 +310,7 @@
         const db = getFirestore(app);
 
         // --- DOM Elements ---
+        // (List all DOM elements here as before)
         const loader = document.getElementById('loader');
         const loginView = document.getElementById('login-view');
         const userView = document.getElementById('user-view');
@@ -398,9 +399,7 @@
         };
         
         const convertGoogleDriveURL = (url) => {
-             if (!url || typeof url !== 'string' || (!url.startsWith('http') && !url.startsWith('/'))) { 
-                 return 'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'; 
-             }
+             if (!url || typeof url !== 'string' || (!url.startsWith('http') && !url.startsWith('/'))) { return 'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'; }
              if (!url.includes('drive.google.com')) { return url; } 
              const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
              return (match && match[1]) ? `https://drive.google.com/uc?export=view&id=${match[1]}` : url; 
@@ -419,7 +418,6 @@
                  try {
                      const overrideDate = overrideTimestamp.toDate(); 
                      overrideDate.setHours(23, 59, 59, 999); 
-                     
                      if (now <= overrideDate) {
                          const prevMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
                          if (overrideDate.getFullYear() === prevMonthDate.getFullYear() && overrideDate.getMonth() === prevMonthDate.getMonth()) {
@@ -543,25 +541,22 @@
                 currentUser = user;
                 if (user) {
                     let overrideTimestamp = null;
-                    // Fetch user profiledata including override, needed to set reportingDateInfo
                     try {
                          const userDocRef = doc(db, 'users', user.uid);
                          const userDocSnap = await getDoc(userDocRef);
                          if (userDocSnap.exists()) {
-                             userProfileData = userDocSnap.data(); // Store profile data 
-                             if (user.uid !== ADMIN_UID) { // Only check override for non-admins
+                             userProfileData = userDocSnap.data(); 
+                             if (user.uid !== ADMIN_UID) { 
                                  overrideTimestamp = userProfileData.gracePeriodOverrideUntil || null;
                              }
                              console.log("User profile loaded in auth check, override:", overrideTimestamp);
                          } else { 
                             console.error("User profile not found during auth check."); 
-                            // If profile doesn't exist for a logged-in user, treat as error? Or proceed cautiously?
-                            // Let's proceed, initUserView will handle showing profile not found.
                             userProfileData = {}; 
                          }
                      } catch (err) { 
                         console.error("Error fetching user profile during auth:", err); 
-                        userProfileData = {}; // Ensure it's an object even on error
+                        userProfileData = {}; 
                     }
                     
                     reportingDateInfo = getReportingMonthYear(overrideTimestamp); 
@@ -577,7 +572,7 @@
                     } else {
                         userView.classList.remove('hidden');
                         adminView.classList.add('hidden');
-                        initUserView(user); // initUserView now uses the already fetched userProfileData
+                        initUserView(user); 
                     }
                 } else {
                     reportingDateInfo = getReportingMonthYear(); 
@@ -593,19 +588,77 @@
         
         // --- USER VIEW LOGIC ---
         const initUserView = (user) => { 
-             editPhotoBtn.addEventListener('click', () => { /* ...photo modal logic... */ });
-             closePhotoModalBtn.addEventListener('click', () => { /* ...photo modal logic... */ });
-             window.addEventListener('click', (event) => { /* ...photo modal logic... */ });
-             savePhotoBtn.addEventListener('click', async () => { /* ...photo saving logic... */ });
-             saveAcademicStructureBtn.addEventListener('click', async () => { /* ...structure saving logic... */ });
+             editPhotoBtn.addEventListener('click', () => {
+                 photoUrlInput.value = userProfileData.photoURL || ''; 
+                 photoError.textContent = '';
+                 photoModal.classList.remove('hidden');
+            });
+             closePhotoModalBtn.addEventListener('click', () => photoModal.classList.add('hidden'));
+             window.addEventListener('click', (event) => { if (event.target == photoModal) photoModal.classList.add('hidden'); });
+             savePhotoBtn.addEventListener('click', async () => {
+                 const newUrl = photoUrlInput.value.trim();
+                 photoError.textContent = '';
+                 if (!newUrl) { photoError.textContent = 'URL cannot be empty.'; return; }
+                 if (!newUrl.startsWith('http') && !newUrl.startsWith('/')) { photoError.textContent = 'Please enter a valid URL.'; return; }
+                 if (!currentUser) { showNotification("User not logged in.", true); return; }
+
+                 showLoader(true);
+                 const userDocRef = doc(db, 'users', currentUser.uid);
+                 try {
+                     await updateDoc(userDocRef, { photoURL: newUrl });
+                     userProfileData.photoURL = newUrl; 
+                     profilePhotoImg.src = convertGoogleDriveURL(newUrl); 
+                     photoModal.classList.add('hidden');
+                     showNotification("Profile photo updated successfully!");
+                 } catch (error) {
+                     console.error("Error updating photo:", error);
+                     showNotification("Failed to update photo.", true);
+                     photoError.textContent = "Error saving photo URL.";
+                 } finally { showLoader(false); }
+            });
+             saveAcademicStructureBtn.addEventListener('click', async () => {
+                 const jsonInput = academicStructureJson.value.trim();
+                structureError.textContent = '';
+                if (!jsonInput) { structureError.textContent = 'JSON data cannot be empty.'; return; }
+                let parsedData;
+                try {
+                    parsedData = JSON.parse(jsonInput);
+                    if (!Array.isArray(parsedData)) { throw new Error("Data must be a JSON array."); }
+                    // Add more validation if needed
+                } catch (error) {
+                    console.error("JSON Parsing/Validation error:", error);
+                    structureError.textContent = `Invalid JSON format or structure: ${error.message}`; return;
+                }
+                if (!currentUser) { showNotification("User not logged in.", true); return; }
+                showLoader(true);
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                try {
+                     await updateDoc(userDocRef, { academicStructure: parsedData });
+                     userProfileData.academicStructure = parsedData; 
+                     academicStructureSetup.classList.add('hidden');
+                     showNotification("Academic Structure saved successfully!");
+                     renderUserDashboard(allUserReports); 
+                } catch (error) {
+                     console.error("Error saving academic structure:", error);
+                     showNotification("Failed to save structure.", true);
+                     structureError.textContent = "Error saving data to database.";
+                } finally { showLoader(false); }
+            });
              document.getElementById('jaiza-form').addEventListener('submit', handleJaizaSubmit);
              document.getElementById('past-reports-list').addEventListener('click', handlePastReportClick);
              
-             tabButtons.forEach(button => { /* ... tab switching logic ... */ });
+             tabButtons.forEach(button => { 
+                if (button.dataset.tab) { button.addEventListener('click', handleTabSwitch); }
+             });
              const kkdTabLink = document.getElementById('kkd-tab-link');
-             if (kkdTabLink) { /* ... kkd link logic ... */ }
+             if (kkdTabLink) { 
+                kkdTabLink.addEventListener('click', (e) => {
+                     tabButtons.forEach(btn => btn.classList.remove('active'));
+                     e.currentTarget.classList.add('active');
+                     window.open('karkardagi.html', '_blank');
+                 });
+             }
 
-            // Use already fetched profile data
             if (userProfileData && Object.keys(userProfileData).length > 0) {
                  document.getElementById('user-name').textContent = userProfileData.name || 'N/A';
                  document.getElementById('user-zimmedari').textContent = userProfileData.zimmedari || 'N/A';
@@ -648,12 +701,9 @@
 
         const renderUserDashboard = (reports) => {
             const { monthNum, yearNum } = reportingDateInfo; 
-             // Determine current academic year based on reporting date
              const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
-             const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; // Fallback ID without year
-             const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`; // Preferred ID with year
-             
-             // Prioritize finding the report with the academic year in the ID
+             const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; 
+             const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`; 
              const currentReport = reports.find(r => r.id === currentReportIdWithYear) || reports.find(r => r.id === currentReportIdSimple) || {};
 
             console.log("Rendering dashboard for report:", currentReportIdWithYear, "or", currentReportIdSimple, "Found:", currentReport);
@@ -734,19 +784,15 @@
                     const dateInput = row.querySelector('.jaiza-date');
                     const percentageInput = row.querySelector('.jaiza-percentage');
                     const selectedValue = e.target.value;
-                    
                     const isNahiHua = (selectedValue === 'Nahi Hua');
                     const isVisit = (selectedValue === 'Visit');
-
                     dateInput.disabled = isNahiHua;
                     percentageInput.disabled = isNahiHua || isVisit;
-
                     if (isNahiHua) { dateInput.value = ''; percentageInput.value = ''; }
                     if (isVisit) { percentageInput.value = ''; }
                 });
                 selectElement.dispatchEvent(new Event('change'));
             });
-
 
             const jaizaDisplayContainer = document.getElementById('jaiza-display-table');
             const jaizaSubmittedTitle = document.getElementById('jaiza-submitted-title');
@@ -768,7 +814,106 @@
             }
         };
         
-        const renderTadrisTab = (currentReport) => { /* ... unchanged ... */ };
+        const renderTadrisTab = (currentReport) => {
+              const academicData = userProfileData.academicStructure || [];
+            const submittedTadrisData = currentReport.tadrisRecording?.data || [];
+            tadrisAccordionContainer.innerHTML = ''; 
+            
+            if (!academicStructureSetup.classList.contains('hidden') || !Array.isArray(academicData) || academicData.length === 0) {
+                 tadrisLoadingMsg.classList.add('hidden');
+                 tadrisNoDataMsg.classList.remove('hidden'); return; 
+            }
+            
+            tadrisLoadingMsg.classList.add('hidden');
+            tadrisNoDataMsg.classList.add('hidden');
+
+            academicData.forEach((jamia, jamiaIndex) => {
+                const jamiaSavedRecordings = submittedTadrisData.filter(rec => rec.jamiaName === jamia.jamiaName);
+                const accordionItem = document.createElement('div');
+                accordionItem.className = 'border rounded-lg bg-white shadow-sm overflow-hidden';
+                
+                const header = document.createElement('button');
+                header.type = 'button';
+                header.className = 'accordion-button w-full flex justify-between items-center p-4 text-left font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none';
+                header.innerHTML = `
+                    <span class="urdu-font">${jamia.jamiaName}</span>
+                    <span class="text-sm font-normal text-teal-600">${jamiaSavedRecordings.length} Recording${jamiaSavedRecordings.length !== 1 ? 's' : ''} Saved</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                `;
+                
+                const content = document.createElement('div');
+                content.className = 'accordion-content'; 
+                content.innerHTML = `
+                 <div class="p-4 border-t"> 
+                    <div class="space-y-4 mb-6"> 
+                        <h5 class="text-md font-semibold text-gray-700 urdu-font">Add New Recording for ${jamia.jamiaName}</h5>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div><label class="block text-sm font-medium text-gray-700 mb-1">Class</label><select class="tadris-class-select w-full p-2 border rounded-lg bg-white urdu-font" data-jamia-index="${jamiaIndex}"><option value="">Select Class</option></select></div>
+                            <div><label class="block text-sm font-medium text-gray-700 mb-1">Kitab</label><select class="tadris-kitab-select w-full p-2 border rounded-lg bg-white urdu-font" disabled><option value="">Select Class First</option></select></div>
+                             <div><label class="block text-sm font-medium text-gray-700 mb-1">Teacher ka Naam</label><input type="text" placeholder="Teacher ka naam" class="tadris-teacher-name w-full p-2 border rounded-lg urdu-font"></div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label class="block text-sm font-medium text-gray-700 mb-1">Date</label><input type="date" class="tadris-date w-full p-2 border rounded-lg"></div>
+                            <div class="md:col-span-2"><label class="block text-sm font-medium text-gray-700 mb-1">Recording par Tasurat</label><textarea rows="2" placeholder="Comments" class="tadris-tasurat w-full p-2 border rounded-lg urdu-font"></textarea></div>
+                        </div>
+                        <button type="button" class="add-tadris-entry-btn w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg" data-jamia-name="${jamia.jamiaName}">Add Entry</button>
+                    </div>
+                    <div>
+                        <h5 class="text-md font-semibold text-gray-600 mb-2 border-b pb-1 urdu-font">Saved Recordings for ${jamia.jamiaName}</h5>
+                        <div class="saved-recordings-list space-y-2">
+                           ${jamiaSavedRecordings.length > 0 ? jamiaSavedRecordings.map(rec => `<div class="p-2 bg-gray-100 rounded text-sm"><p class="urdu-font"><strong>${rec.className} - ${rec.kitabName}</strong> (${rec.teacherName}, ${rec.date})</p>${rec.tasurat ? `<p class="mt-1 text-gray-700 urdu-font">${rec.tasurat}</p>`: ''}</div>`).join('') : '<p class="text-sm text-gray-500">Is Jamia ke liye abhi koi recording save nahi hui hai.</p>'}
+                        </div>
+                    </div>
+                  </div> 
+                `;
+                
+                accordionItem.appendChild(header);
+                accordionItem.appendChild(content);
+                tadrisAccordionContainer.appendChild(accordionItem);
+
+                const classSelect = content.querySelector('.tadris-class-select');
+                 Object.keys(jamia.classes).forEach(className => { classSelect.innerHTML += `<option value="${className}">${className}</option>`; });
+                 
+                 header.addEventListener('click', () => { /* ... accordion toggle ... */ });
+                 classSelect.addEventListener('change', (e) => { /* ... populate kitab select ... */ });
+                 
+                 content.querySelector('.add-tadris-entry-btn').addEventListener('click', async (e) => {
+                     const jamiaName = e.target.dataset.jamiaName;
+                     const className = classSelect.value;
+                     const kitabSelect = content.querySelector('.tadris-kitab-select');
+                     const kitabName = kitabSelect.value;
+                     const teacherNameInput = content.querySelector('.tadris-teacher-name');
+                     const teacherName = teacherNameInput.value.trim();
+                     const dateInput = content.querySelector('.tadris-date');
+                     const date = dateInput.value;
+                     const tasuratInput = content.querySelector('.tadris-tasurat');
+                     const tasurat = tasuratInput.value.trim();
+
+                     if (!className || !kitabName || !teacherName || !date) { showNotification("Class, Kitab, Teacher ka Naam aur Date bharna zaroori hai.", true); return; }
+
+                     const newEntry = { jamiaName, className, kitabName, teacherName, date, tasurat };
+                     
+                     showLoader(true);
+                     try {
+                         const docSnap = await getDoc(reportRef); // Use global reportRef defined by saveReportData
+                         const existingData = docSnap.exists() ? docSnap.data().tadrisRecording?.data || [] : [];
+                         const mergedData = [...existingData, newEntry]; 
+                         await saveReportData({ tadrisRecording: { status: 'Done', data: mergedData } }); 
+
+                         classSelect.value = '';
+                         kitabSelect.innerHTML = '<option value="">Select Class First</option>';
+                         kitabSelect.disabled = true;
+                         teacherNameInput.value = '';
+                         dateInput.value = '';
+                         tasuratInput.value = '';
+                         
+                     } catch(error) {
+                         console.error("Error adding Tadris entry:", error);
+                         showNotification("Entry save karne me error aaya.", true);
+                     } finally { showLoader(false); }
+                 });
+            });
+        };
         
         const renderTestTab = (currentReport) => {
               const submittedTestData = currentReport.monthlyTest?.data || [];
@@ -778,8 +923,7 @@
             if (!Array.isArray(allJamiaat) || allJamiaat.length === 0) {
                 testLoadingMsg.classList.add('hidden');
                 testNoDataMsg.classList.remove('hidden');
-                testNoDataMsg.textContent = "Jamiaat list profile me nahi mili.";
-                return;
+                testNoDataMsg.textContent = "Jamiaat list profile me nahi mili."; return;
             }
             
             testLoadingMsg.classList.add('hidden');
@@ -790,7 +934,6 @@
                 const existingEntry = submittedTestData.find(entry => entry.name === jamiaName);
                 const accordionItem = document.createElement('div');
                 accordionItem.className = 'border rounded-lg bg-white shadow-sm overflow-hidden';
-
                 const header = document.createElement('button');
                 header.type = 'button';
                 header.className = 'accordion-button w-full flex justify-between items-center p-4 text-left font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none';
@@ -799,19 +942,11 @@
                     <span class="text-sm font-normal ${existingEntry ? 'text-green-600' : 'text-yellow-600'}">${existingEntry ? 'Saved' : 'Pending'}</span>
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 `;
-
                 const content = document.createElement('div');
                 content.className = 'accordion-content'; 
                 
-                if (existingEntry) {
-                     content.innerHTML = `
-                         <div class="p-4 border-t space-y-2 text-sm">
-                            <p><strong>Status:</strong> ${existingEntry.status}</p>
-                            ${existingEntry.month ? `<p><strong>Month:</strong> ${existingEntry.month}</p>` : ''}
-                            ${existingEntry.percentage ? `<p><strong>Percentage:</strong> ${existingEntry.percentage}</p>` : ''}
-                            ${existingEntry.wajah ? `<p class="urdu-font"><strong>Wajah:</strong> ${existingEntry.wajah}</p>` : ''}
-                         </div>`;
-                } else {
+                if (existingEntry) { /* ... display saved data ... */ } 
+                else { 
                      content.innerHTML = `
                          <form class="test-entry-form p-4 border-t space-y-3">
                             <input type="hidden" class="jamia-name-hidden" value="${jamiaName}"> 
@@ -823,7 +958,7 @@
                             </div>
                             <button type="submit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Save Status</button>
                          </form>`;
-                }
+                 }
 
                 accordionItem.appendChild(header);
                 accordionItem.appendChild(content);
@@ -841,32 +976,76 @@
                      wajahTextarea.disabled = true; 
                      monthInput.value = monthInputFormat; 
 
-                     content.querySelector('.test-entry-form').addEventListener('submit', async (e) => { /* ... form submission uses saveReportData ... */ });
+                     content.querySelector('.test-entry-form').addEventListener('submit', async (e) => { 
+                          e.preventDefault();
+                         const jamiaName = content.querySelector('.jamia-name-hidden').value;
+                         const selectedStatus = statusSelect.value;
+                         let newEntryData = { name: jamiaName, status: selectedStatus };
+                         let validationFailed = false;
+
+                         if (selectedStatus === 'Nahi Hua') {
+                             if (wajahTextarea.value.trim()) {
+                                 newEntryData.wajah = wajahTextarea.value.trim(); newEntryData.month = ''; newEntryData.percentage = '';
+                             } else { validationFailed = true; showNotification(`Test Nahi Hua ke liye Wajah likhna zaroori hai. (${jamiaName})`, true); }
+                         } else { 
+                             if (monthInput.value && percentageInput.value) {
+                                 newEntryData.month = monthInput.value; newEntryData.percentage = percentageInput.value; newEntryData.wajah = '';
+                             } else { validationFailed = true; showNotification(`Test Hua ke liye Month aur Percentage dono fill karna zaroori hai. (${jamiaName})`, true); }
+                         }
+                         if (validationFailed) return;
+                         showLoader(true);
+                         try {
+                             const docSnap = await getDoc(reportRef); // Use global reportRef defined by saveReportData
+                             const existingReportData = docSnap.exists() ? docSnap.data().monthlyTest?.data || [] : [];
+                             const filteredExisting = existingReportData.filter(ex => ex.name !== jamiaName);
+                             const mergedData = [...filteredExisting, newEntryData];
+                             await saveReportData({ monthlyTest: { status: 'Done', data: mergedData } }); 
+                         } catch (error) {
+                             console.error("Error saving Test status:", error);
+                             showNotification("Test status save karne me error aaya.", true);
+                         } finally { showLoader(false); }
+                     });
                  }
             });
         };
         
-        const renderPastReports = (reports) => { /* ... uses reportingDateInfo ... */ };
-        
+        const renderPastReports = (reports) => {
+             const { monthNum, yearNum } = reportingDateInfo;
+             // Determine current academic year based on reporting date
+             const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+             const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; 
+             const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`;
+
+             const pastReportsList = document.getElementById('past-reports-list');
+             const sortedPastReports = reports
+                .filter(r => r.id !== currentReportIdSimple && r.id !== currentReportIdWithYear) 
+                .sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            
+            if(sortedPastReports.length > 0) {
+                pastReportsList.innerHTML = sortedPastReports.map(report => `
+                     <div class="p-4 bg-gray-50 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center text-center sm:text-left space-y-2 sm:space-y-0">
+                        <div class="flex-grow"><p class="font-semibold text-lg">${report.month} ${report.year} ${report.academicYear ? `(${report.academicYear})` : ''}</p><p class="text-sm text-gray-500">Submitted: ${report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}</p></div>
+                        <button class="view-past-report-btn bg-teal-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-600 w-full sm:w-auto" data-report-id="${report.id}">View</button>
+                    </div>`).join('');
+            } else {
+                pastReportsList.innerHTML = `<p class="text-gray-500">Koyi pichli report nahi mili.</p>`;
+            }
+        };
+
+        // Global reportRef for submit handlers to use
+        let reportRef; 
+
         const saveReportData = async (dataToSave) => {
             showLoader(true);
             const { month, year, monthNum, yearNum } = reportingDateInfo; 
-            
-            // Determine academic year based on reporting month/year
-             const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
-             
-            // Use ID format including academic year
+            const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
             const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
 
-            const reportRef = doc(db, 'monthly_reports', reportId);
+            // Set the global reportRef
+            reportRef = doc(db, 'monthly_reports', reportId); 
 
             const finalData = { 
-                ...dataToSave, 
-                userId: currentUser.uid, 
-                userEmail: currentUser.email, 
-                month, year, 
-                academicYear, // Store the calculated academic year
-                createdAt: serverTimestamp() 
+                ...dataToSave, userId: currentUser.uid, userEmail: currentUser.email, month, year, academicYear, createdAt: serverTimestamp() 
             };
              console.log("Saving report data with ID:", reportId, "Data:", finalData);
 
@@ -876,13 +1055,42 @@
             } catch (error) {
                 console.error("Error saving report section: ", error);
                 showNotification(`Failed to save ${month} ${year} report. Please try again.`, true);
+                 // Rethrow error so submit handlers know it failed
+                 throw error; 
             } finally {
                 showLoader(false);
             }
         };
         
         // --- USER FORM SUBMIT HANDLERS ---
-        const handleJaizaSubmit = async (e) => { /* ... uses saveReportData ... */ };
+        const handleJaizaSubmit = async (e) => { 
+            e.preventDefault();
+            const filledJaizaat = [];
+            let validationFailed = false;
+            let validationMessage = "";
+            document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => { /* ... validation logic ... */ });
+            if (validationFailed) { showNotification(validationMessage, true); return; }
+            if (filledJaizaat.length === 0) { showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); return; }
+            
+            showLoader(true);
+            try {
+                 // Call saveReportData first to set the reportRef
+                 await saveReportData({}); // Save empty object just to set ref and timestamp initially
+                 const docSnap = await getDoc(reportRef); // Now get the doc using the set ref
+                 const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
+                 const existingNames = filledJaizaat.map(f => f.name);
+                 const filteredExisting = existingData.filter(ex => !existingNames.includes(ex.name));
+                 const mergedData = [...filteredExisting, ...filledJaizaat];
+                 // Now update with the actual Jaiza data
+                 await updateDoc(reportRef, { jaizaReport: { status: 'Done', data: mergedData } }); 
+                 showNotification("Jaiza report saved!"); // Override previous notification
+            } catch(error) {
+                console.error("Error updating Jaiza report:", error);
+                // Notification already shown by saveReportData if it failed there
+            } finally {
+                showLoader(false);
+            }
+         };
         const handlePastReportClick = (e) => { /* ... unchanged ... */ };
         const handleTabSwitch = (e) => { /* ... unchanged ... */ };
         
@@ -898,11 +1106,9 @@
              closeEditUserModalBtn.addEventListener('click', () => editUserModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == editUserModal) editUserModal.classList.add('hidden'); });
              editUserForm.addEventListener('submit', async (e) => { /* ... edit user save logic ... */ });
-             
              closeDeadlineModalBtn.addEventListener('click', () => deadlineModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == deadlineModal) deadlineModal.classList.add('hidden'); });
              deadlineForm.addEventListener('submit', handleSaveDeadline); 
-
              populateAdminFilters();
              adminFetchBtn.addEventListener('click', fetchAndRenderAdminReports);
              fetchAndRenderAdminUsers(); 
@@ -918,15 +1124,11 @@
          const renderReportSummary = (reports) => { /* ... unchanged ... */ };
          const handleExcelDownload = () => { /* ... unchanged ... */ };
          const handleImageDownload = () => { /* ... unchanged ... */ };
-         
-         // --- Manage Users Tab ---
-          const fetchAndRenderAdminUsers = () => { /* ... unchanged ... */ };
-          const renderAdminUsersTable = (users) => { /* ... unchanged ... */ };
-         
-        // --- MODAL LOGIC (GLOBAL) ---
-          const openEditUserModal = (userData) => { /* ... unchanged ... */ };
-          const openDeadlineModal = (userData) => { /* ... unchanged ... */ };
-          const handleSaveDeadline = async (e) => { /* ... unchanged ... */ };
+         const fetchAndRenderAdminUsers = () => { /* ... unchanged ... */ };
+         const renderAdminUsersTable = (users) => { /* ... unchanged ... */ };
+         const openEditUserModal = (userData) => { /* ... unchanged ... */ };
+         const openDeadlineModal = (userData) => { /* ... unchanged ... */ };
+         const handleSaveDeadline = async (e) => { /* ... unchanged ... */ };
 
         // --- Init ---
         initApp();
