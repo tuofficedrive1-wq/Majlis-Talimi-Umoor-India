@@ -156,7 +156,7 @@
         const academicMonthsSetup = document.getElementById('academic-months-setup');
         const saveAcademicMonthsBtn = document.getElementById('save-academic-months-btn');
         const monthsGrid = document.getElementById('months-grid');
-        const backToDashboardBtn = document.getElementById('back-to-dashboard-btn'); // Now a button
+        const backToDashboardBtn = document.getElementById('back-to-dashboard-btn'); 
         const createYearForm = document.getElementById('create-year-form');
         const newYearNameInput = document.getElementById('new-year-name-input');
         const activeYearSelect = document.getElementById('active-year-select');
@@ -174,11 +174,14 @@
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
         
         const showNotification = (message, isError = false) => {
+            console[isError ? 'error' : 'log']("Notification:", message); // Debug log
             const notification = document.getElementById('notification');
             notification.textContent = message;
             notification.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] transition-transform transform ${isError ? 'bg-red-500' : 'bg-emerald-600'}`;
-            notification.classList.remove('hidden');
-            setTimeout(() => notification.classList.remove('translate-x-full'), 10);
+            notification.classList.remove('hidden', 'translate-x-full'); // Ensure it's visible
+            // Force reflow to restart animation if needed
+            void notification.offsetWidth; 
+            setTimeout(() => notification.classList.remove('translate-x-full'), 10); // Start animation
             setTimeout(() => {
                 notification.classList.add('translate-x-full');
                 setTimeout(() => notification.classList.add('hidden'), 300);
@@ -199,26 +202,32 @@
         const authChannel = new BroadcastChannel('auth_channel');
         authChannel.onmessage = (event) => {
             if (event.data === 'logout') {
+                console.log("Received logout message via BroadcastChannel"); // Debug log
                 signOut(auth); 
             }
         };
         
         logoutBtn.addEventListener('click', () => {
+            console.log("Logout button clicked"); // Debug log
             authChannel.postMessage('logout'); 
             signOut(auth);
         });
 
-        // MODIFIED: Back button uses JavaScript navigation
+        // MODIFIED: Back button listener added
         backToDashboardBtn.addEventListener('click', () => {
+            console.log("Back button clicked"); // Debug log
             window.location.href = 'index (7).html'; // Navigate back
         });
 
         // --- MAIN APP LOGIC ---
         const initApp = () => {
+             console.log("Initializing App..."); // Debug log
              showLoader(true);
              setPersistence(auth, browserSessionPersistence)
                 .then(() => {
+                    console.log("Persistence set to session."); // Debug log
                     onAuthStateChanged(auth, user => {
+                        console.log("Auth state changed:", user ? user.uid : 'No user'); // Debug log
                         currentUser = user;
                         if (user) {
                             userInfo.classList.remove('hidden');
@@ -246,7 +255,8 @@
         };
 
         const loadUserData = async () => {
-            if (!currentUser) return;
+            if (!currentUser) { console.log("loadUserData: No current user."); return; }
+            console.log("Loading user data for:", currentUser.uid); // Debug log
             showLoader(true);
             
             const { month, year } = getCurrentMonthYear();
@@ -258,11 +268,15 @@
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     userProfileData = userDocSnap.data();
+                    console.log("User profile loaded:", userProfileData); // Debug log
                     allAcademicYearsData = userProfileData.academicYears || {};
-                    populateYearSelector(); 
+                    console.log("All academic years data:", allAcademicYearsData); // Debug log
+                    populateYearSelector(); // Sets activeYear
+                    console.log("Active year after populate:", activeYear); // Debug log
                 } else {
                     showNotification("User profile nahi mila.", true);
                     karkardagiView.innerHTML = '<p class="text-red-500 text-center">User profile nahi mila.</p>';
+                    showLoader(false); // Stop loader here
                     return;
                 }
                 
@@ -283,16 +297,23 @@
         const loadMonthlyReportData = async () => {
             monthlyReportData = []; 
             currentMonthReport = {};
-            if (!activeYear || !currentUser) return;
+            if (!activeYear || !currentUser) {
+                console.log("loadMonthlyReportData: No active year or user."); // Debug log
+                return;
+            }
 
             const { yearNum, monthNum } = getCurrentMonthYear();
             const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+            console.log("Loading monthly report for ID:", reportId); // Debug log
             const reportDocRef = doc(db, 'monthly_reports', reportId);
             try {
                 const reportDocSnap = await getDoc(reportDocRef);
                 if (reportDocSnap.exists()) {
                     currentMonthReport = reportDocSnap.data();
                     monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
+                    console.log("Monthly report data loaded:", monthlyReportData); // Debug log
+                } else {
+                    console.log("No monthly report found for this period."); // Debug log
                 }
             } catch (error) {
                  console.error("Error loading monthly report data:", error);
@@ -304,6 +325,7 @@
 
         const populateYearSelector = () => {
             const yearNames = Object.keys(allAcademicYearsData);
+            console.log("Populating year selector with:", yearNames); // Debug log
             if (yearNames.length === 0) {
                 activeYearSelect.innerHTML = `<option value="">Pehle naya saal banayein</option>`;
                 activeYear = null;
@@ -322,11 +344,13 @@
             if (yearNames.includes(suggestedYear)) { activeYearSelect.value = suggestedYear; } 
             else { activeYearSelect.value = yearNames[0]; }
             activeYear = activeYearSelect.value; 
+            console.log("Selected active year:", activeYear); // Debug log
         };
 
         const handleCreateYear = async (e) => {
             e.preventDefault();
             const newYearName = newYearNameInput.value.trim();
+            console.log("Attempting to create year:", newYearName); // Debug log
             if (!newYearName.match(/^\d{4}-\d{4}$/)) {
                 showNotification("Saal ka format galat hai. (Sahi: 2025-2026)", true); return;
             }
@@ -359,6 +383,7 @@
 
         const handleYearChange = async () => {
             activeYear = activeYearSelect.value;
+            console.log("Active year changed to:", activeYear); // Debug log
             showLoader(true);
             await loadMonthlyReportData(); 
             refreshFullUI();
@@ -368,6 +393,7 @@
         // --- UI REFRESH LOGIC ---
         
         const refreshFullUI = () => {
+             console.log("Refreshing full UI for year:", activeYear); // Debug log
             if (!activeYear) {
                 academicMonthsSetup.classList.add('hidden');
                 setupAccordionContainer.innerHTML = '<p class="text-red-500">Kaam shuru karne ke liye pehle "Create Year" karein ya ek "Active Year" select karein.</p>';
@@ -387,6 +413,8 @@
         // --- SETUP TAB LOGIC ---
         
         const renderAcademicMonths = () => {
+             if (!activeYear) return; // Add check
+             console.log("Rendering academic months for year:", activeYear); // Debug log
             const academicMonthsList = [
                 { name: "April", index: 3 }, { name: "May", index: 4 }, { name: "June", index: 5 },
                 { name: "July", index: 6 }, { name: "August", index: 7 }, { name: "September", index: 8 },
@@ -404,6 +432,7 @@
         
         saveAcademicMonthsBtn.addEventListener('click', async () => {
             if (!activeYear || !allAcademicYearsData[activeYear]) return; 
+             console.log("Saving academic months for year:", activeYear); // Debug log
             const newAcademicMonths = {};
             document.querySelectorAll('.academic-month-input').forEach(input => {
                 const monthIndex = input.dataset.monthIndex;
@@ -429,6 +458,8 @@
 
 
         const renderSetupTab = () => {
+            if (!activeYear) return; // Add check
+            console.log("Rendering setup tab for year:", activeYear); // Debug log
             const jamiaat = userProfileData.jamiaatList || [];
             if (jamiaat.length === 0) {
                  setupAccordionContainer.innerHTML = '<p class="text-yellow-700">Aapke profile me koi Jamia add nahi hai.</p>';
@@ -464,6 +495,7 @@
                 `;
             }).join('');
             
+            // Re-attach event listeners after innerHTML update
             setupAccordionContainer.querySelectorAll('.accordion-button').forEach(button => {
                  button.addEventListener('click', (e) => {
                     const content = e.currentTarget.nextElementSibling;
@@ -476,24 +508,36 @@
                 form.addEventListener('submit', handleAddTeacher);
             });
             
-            setupAccordionContainer.addEventListener('click', (e) => {
-                if (e.target.closest('.delete-teacher-btn')) { e.stopPropagation(); handleDeleteTeacher(e); return; }
-                if (e.target.closest('.teacher-accordion-button')) {
-                    const button = e.target.closest('.teacher-accordion-button');
-                    const content = button.nextElementSibling;
-                    button.classList.toggle('open');
-                    content.classList.toggle('open');
-                }
-                if (e.target.closest('.delete-period-btn')) { handleDeletePeriod(e); }
-            });
-
-            setupAccordionContainer.addEventListener('submit', (e) => {
-                 if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
-            });
+            setupAccordionContainer.removeEventListener('click', handleSetupClickDelegation); // Remove old listener
+            setupAccordionContainer.addEventListener('click', handleSetupClickDelegation); // Add new one
+            
+            setupAccordionContainer.removeEventListener('submit', handleSetupSubmitDelegation); // Remove old listener
+            setupAccordionContainer.addEventListener('submit', handleSetupSubmitDelegation); // Add new one
         };
+        
+        // ADDED: Consolidated click handler for setup tab
+        function handleSetupClickDelegation(e) {
+            if (e.target.closest('.delete-teacher-btn')) { e.stopPropagation(); handleDeleteTeacher(e); return; }
+            if (e.target.closest('.teacher-accordion-button')) {
+                const button = e.target.closest('.teacher-accordion-button');
+                const content = button.nextElementSibling;
+                button.classList.toggle('open');
+                content.classList.toggle('open');
+            }
+            if (e.target.closest('.delete-period-btn')) { handleDeletePeriod(e); }
+        }
+        
+        // ADDED: Consolidated submit handler for setup tab
+        function handleSetupSubmitDelegation(e) {
+             if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
+        }
+
 
         const renderTeacherAccordion = (jamiaName, teacher) => {
             const teacherId = teacher.id || `teacher-${Date.now()}-${Math.random()}`;
+            // Ensure teacher has an id if missing (important for finding later)
+            if(!teacher.id) teacher.id = teacherId; 
+            
             return `
             <div class="border rounded-lg bg-gray-50 overflow-hidden" data-teacher-id="${teacherId}">
                 <button type="button" class="teacher-accordion-button w-full flex justify-between items-center p-3 text-left font-medium text-gray-800 bg-gray-200 hover:bg-gray-300">
@@ -556,6 +600,8 @@
             
             periods.forEach(period => {
                 const periodId = period.id || `period-${Date.now()}-${Math.random()}`;
+                if(!period.id) period.id = periodId; // Ensure ID exists in data
+                
                 const semText = period.semester === "1" ? "Sem 1" : "Sem 2";
                 table += `
                 <tr data-period-id="${periodId}">
@@ -576,6 +622,7 @@
 
         const saveActiveYearStructure = async () => {
              if (!currentUser || !activeYear || !allAcademicYearsData[activeYear]) return; 
+             console.log("Saving structure for year:", activeYear, "Data:", allAcademicYearsData[activeYear].karkardagiStructure); // Debug log
              showLoader(true);
              const userDocRef = doc(db, 'users', currentUser.uid);
              try {
@@ -583,7 +630,7 @@
                      academicYears: allAcademicYearsData 
                  });
                  showNotification("Structure saved successfully!");
-                 refreshFullUI(); 
+                 refreshFullUI(); // Refresh UI after saving
              } catch (error) {
                  console.error("Error saving structure:", error);
                  showNotification("Structure save karne me error.", true);
@@ -594,7 +641,10 @@
 
         const handleAddTeacher = (e) => {
             e.preventDefault();
-            if (!activeYear || !allAcademicYearsData[activeYear]) return;
+            console.log("handleAddTeacher triggered"); // Debug log
+            if (!activeYear || !allAcademicYearsData[activeYear]) {
+                 showNotification("Active year selected nahi hai.", true); return;
+            }
             const form = e.currentTarget;
             const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
             const jamiaName = jamiaDiv.dataset.jamiaName;
@@ -618,14 +668,16 @@
                  return;
             }
             
-            const newTeacher = { id: `teacher-${Date.now()}`, name: teacherName, periods: [] };
+            const newTeacher = { id: `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, name: teacherName, periods: [] };
             jamiaData.teachers.push(newTeacher);
+            console.log("Added new teacher:", newTeacher, "to Jamia:", jamiaName); // Debug log
             teacherNameInput.value = '';
             
             saveActiveYearStructure();
         };
         
         const handleDeleteTeacher = (e) => {
+            console.log("handleDeleteTeacher triggered"); // Debug log
             if (!activeYear || !allAcademicYearsData[activeYear]) return;
             const button = e.target.closest('.delete-teacher-btn');
             const teacherDiv = button.closest('.border.rounded-lg[data-teacher-id]');
@@ -638,27 +690,32 @@
             let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             let jamiaData = karkardagiStructure?.find(j => j.jamiaName === jamiaName);
             if (jamiaData && Array.isArray(jamiaData.teachers)) {
+                 console.log("Deleting teacher:", teacherId, "from Jamia:", jamiaName); // Debug log
                  jamiaData.teachers = jamiaData.teachers.filter(t => t.id !== teacherId);
                  saveActiveYearStructure();
+            } else {
+                 console.error("Could not find Jamia or teachers array for deletion."); // Debug log
             }
         };
 
-        // MODIFIED: handleAddPeriod - Corrected logic
+        // MODIFIED: handleAddPeriod - Enhanced checks and logging
         const handleAddPeriod = (e) => {
             e.preventDefault();
+            console.log("handleAddPeriod triggered"); // Debug log
             if (!activeYear || !allAcademicYearsData[activeYear]) {
-                showNotification("Active academic year selected nahi hai.", true);
-                return;
+                showNotification("Active academic year selected nahi hai.", true); return;
             }
             
             const form = e.currentTarget;
             const teacherDiv = form.closest('.border.rounded-lg[data-teacher-id]');
-            const teacherId = teacherDiv.dataset.teacherId;
+            const teacherId = teacherDiv?.dataset.teacherId; // Use optional chaining
             const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
-            const jamiaName = jamiaDiv.dataset.jamiaName;
+            const jamiaName = jamiaDiv?.dataset.jamiaName; // Use optional chaining
             
             if (!teacherId || !jamiaName) {
-                 showNotification("Error: Teacher ya Jamia ID nahi mili.", true); return;
+                 showNotification("Error: Teacher ya Jamia ID nahi mili.", true); 
+                 console.error("Missing teacherId or jamiaName", { teacherId, jamiaName }); // Debug log
+                 return;
             }
 
             const classInput = form.querySelector('.period-class-input');
@@ -668,7 +725,7 @@
             const totalDaysInput = form.querySelector('.period-total-days-input');
 
             const newPeriod = {
-                id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // More unique ID
+                id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
                 className: classInput.value.trim(),
                 bookName: bookInput.value.trim(),
                 semester: semesterSelect.value, 
@@ -676,41 +733,47 @@
                 totalAcademicDays: parseInt(totalDaysInput.value, 10) || 0
             };
             
+            console.log("New period data:", newPeriod); // Debug log
+
             if (!newPeriod.className || !newPeriod.bookName || newPeriod.totalPages <= 0 || newPeriod.totalAcademicDays <= 0) {
-                 showNotification("Sabhi fields (Class, Book, Semester, Pages, Days) sahi se bharein.", true);
+                 showNotification("Sabhi fields (Class, Book, Semester, Pages > 0, Days > 0) sahi se bharein.", true);
                  return;
             }
             
-            // Get the current structure for the active year
+            // Get the current structure for the active year, ensuring it exists
             let karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure;
-             // Ensure structure exists and is an array
              if (!Array.isArray(karkardagiStructure)) { 
+                console.log("karkardagiStructure was not an array, initializing."); // Debug log
                 karkardagiStructure = []; 
-                // Initialize if the year exists but structure doesn't
-                if(allAcademicYearsData[activeYear]) {
-                    allAcademicYearsData[activeYear].karkardagiStructure = karkardagiStructure;
-                } else {
-                    showNotification("Error: Active year data structure nahi mila.", true); return;
-                }
+                allAcademicYearsData[activeYear].karkardagiStructure = karkardagiStructure;
              }
 
             let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
              if (!jamiaData) {
-                showNotification(`Error: Jamia data (${jamiaName}) nahi mila.`, true); return;
+                console.error(`Error: Jamia data (${jamiaName}) not found in structure.`); // Debug log
+                showNotification(`Error: Jamia data (${jamiaName}) nahi mila.`, true); 
+                return;
             }
             
             // Ensure teachers array exists
-            if (!Array.isArray(jamiaData.teachers)) { jamiaData.teachers = []; }
+            if (!Array.isArray(jamiaData.teachers)) { 
+                console.log("jamiaData.teachers was not an array, initializing."); // Debug log
+                jamiaData.teachers = []; 
+            }
 
             let teacherData = jamiaData.teachers.find(t => t.id === teacherId);
             
             if (teacherData) {
                  // Ensure periods array exists
-                if (!Array.isArray(teacherData.periods)) { teacherData.periods = []; }
+                if (!Array.isArray(teacherData.periods)) { 
+                     console.log("teacherData.periods was not an array, initializing."); // Debug log
+                    teacherData.periods = []; 
+                }
 
+                console.log("Adding period to teacher:", teacherId); // Debug log
                 teacherData.periods.push(newPeriod);
                 
-                // Clear the form AFTER successful push
+                // Clear the form AFTER successful push validation (though save is async)
                 classInput.value = '';
                 bookInput.value = '';
                 semesterSelect.value = '1'; 
@@ -719,11 +782,13 @@
 
                 saveActiveYearStructure(); // Save the updated structure
             } else {
+                 console.error(`Error: Teacher data (${teacherId}) not found for Jamia (${jamiaName}).`); // Debug log
                  showNotification("Teacher nahi mila. Page reload karein.", true);
             }
         };
         
         const handleDeletePeriod = (e) => {
+            console.log("handleDeletePeriod triggered"); // Debug log
             if (!activeYear || !allAcademicYearsData[activeYear]) return;
             const button = e.target.closest('.delete-period-btn');
             const periodRow = button.closest('tr[data-period-id]');
@@ -738,15 +803,19 @@
             let teacherData = jamiaData?.teachers?.find(t => t.id === teacherId);
             
             if (teacherData && Array.isArray(teacherData.periods)) {
+                 console.log("Deleting period:", periodId, "from teacher:", teacherId); // Debug log
                  teacherData.periods = teacherData.periods.filter(p => p.id !== periodId);
                  saveActiveYearStructure();
+            } else {
+                 console.error("Could not find teacher or periods array for deletion."); // Debug log
             }
         };
 
         // --- REPORTING TAB LOGIC ---
         
         const renderReportingTab = () => {
-            if (!activeYear || !allAcademicYearsData[activeYear]) { /* Handled by refreshFullUI */ return; }
+             if (!activeYear || !allAcademicYearsData[activeYear]) { /* Handled by refreshFullUI */ return; }
+             console.log("Rendering reporting tab for year:", activeYear); // Debug log
             
             const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
@@ -759,9 +828,11 @@
             const { monthNum } = getCurrentMonthYear();
             const isSemester1 = monthNum >= 3 && monthNum <= 7;
             const currentSemester = isSemester1 ? "1" : "2"; 
+            console.log("Current Semester:", currentSemester); // Debug log
             
             const academicMonths = allAcademicYearsData[activeYear].academicMonths || {};
             const daysThisMonth = academicMonths[monthNum] || 0;
+             console.log("Days this month:", daysThisMonth); // Debug log
             
             if (daysThisMonth === 0) {
                  const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
@@ -780,6 +851,7 @@
                         });
                 });
             });
+             console.log("Periods for this semester:", allPeriodsForThisSemester.length); // Debug log
 
             if (allPeriodsForThisSemester.length === 0) {
                 reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
@@ -857,6 +929,7 @@
 
         const handleSaveMonthlyReport = async () => {
             if (!activeYear) return;
+            console.log("Saving monthly report for year:", activeYear); // Debug log
             showLoader(true);
             const { month, year, monthNum, yearNum } = getCurrentMonthYear();
             
@@ -886,6 +959,7 @@
                     });
                 }
             });
+             console.log("Data to save in monthly report:", newReportData); // Debug log
 
             const dataToSave = {
                 karkardagiReport: {
