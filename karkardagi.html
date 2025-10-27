@@ -173,7 +173,6 @@
         const newYearNameInput = document.getElementById('new-year-name-input');
         const activeYearSelect = document.getElementById('active-year-select');
         const reportingYearInfo = document.getElementById('reporting-year-info');
-        // ADDED: Semester Days Inputs
         const sem1TotalDaysInput = document.getElementById('sem1-total-days-input');
         const sem2TotalDaysInput = document.getElementById('sem2-total-days-input');
 
@@ -184,6 +183,8 @@
         let activeYear = null; 
         let allAcademicYearsData = {}; 
         let monthlyReportData = [];
+        // ADDED: State for reporting month/year
+        let reportingDateInfo = {}; 
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -202,12 +203,23 @@
             }, 3000);
         };
         
-        const getCurrentMonthYear = () => {
+        // MODIFIED: Function now implements Grace Period logic
+        const getReportingMonthYear = () => {
             const now = new Date();
-            const month = now.toLocaleString('default', { month: 'long' });
-            const year = now.getFullYear();
-            const monthNum = now.getMonth(); 
-            const yearNum = now.getFullYear();
+            const currentDay = now.getDate();
+            let targetDate = now;
+
+            // If it's between 1st and 5th, report for the previous month
+            if (currentDay >= 1 && currentDay <= 5) {
+                // Go back one day from the 1st to get the last day of the previous month
+                targetDate = new Date(now.getFullYear(), now.getMonth(), 0); 
+            }
+
+            const month = targetDate.toLocaleString('default', { month: 'long' });
+            const year = targetDate.getFullYear();
+            const monthNum = targetDate.getMonth(); // 0 for Jan, 11 for Dec
+            const yearNum = targetDate.getFullYear();
+             console.log(`Current Day: ${currentDay}, Reporting for: ${month} ${yearNum} (Month Num: ${monthNum})`); // Debug log
             return { month, year, monthNum, yearNum };
         };
 
@@ -272,8 +284,9 @@
             console.log("Loading user data for:", currentUser.uid); 
             showLoader(true);
             
-            const { month, year } = getCurrentMonthYear();
-            document.getElementById('current-month-year').textContent = `Report for ${month} ${year}`;
+            // Set reporting date info
+            reportingDateInfo = getReportingMonthYear(); 
+            document.getElementById('current-month-year').textContent = `Report for ${reportingDateInfo.month} ${reportingDateInfo.year}`;
             
             try {
                 // Fetch User Profile
@@ -293,7 +306,7 @@
                     return;
                 }
                 
-                // Fetch Current Month's Report
+                // Fetch Month's Report (using reporting date)
                 await loadMonthlyReportData(); 
 
                 // Render all components
@@ -307,15 +320,16 @@
             }
         };
         
+        // MODIFIED: Uses reportingDateInfo
         const loadMonthlyReportData = async () => {
             monthlyReportData = []; 
             currentMonthReport = {};
-            if (!activeYear || !currentUser) {
-                console.log("loadMonthlyReportData: No active year or user."); 
+            if (!activeYear || !currentUser || !reportingDateInfo) {
+                console.log("loadMonthlyReportData: No active year, user, or reporting date info."); 
                 return;
             }
 
-            const { yearNum, monthNum } = getCurrentMonthYear();
+            const { yearNum, monthNum } = reportingDateInfo; // Use reporting date
             const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
             console.log("Loading monthly report for ID:", reportId); 
             const reportDocRef = doc(db, 'monthly_reports', reportId);
@@ -371,7 +385,6 @@
                 showNotification("Yeh saal pehle se maujood hai.", true); return;
             }
             
-            // Initialize with semester days as well
             allAcademicYearsData[newYearName] = { academicMonths: {}, sem1TotalDays: 0, sem2TotalDays: 0, karkardagiStructure: [] };
             
             showLoader(true);
@@ -418,7 +431,7 @@
                 academicMonthsSetup.classList.remove('hidden');
                 reportingYearInfo.classList.remove('hidden');
                 reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
-                renderAcademicMonths(); // Will render months and semester days
+                renderAcademicMonths();
                 renderSetupTab();
                 renderReportingTab();
             }
@@ -426,9 +439,8 @@
 
         // --- SETUP TAB LOGIC ---
         
-        // MODIFIED: Renders months AND semester days
         const renderAcademicMonths = () => {
-             if (!activeYear || !allAcademicYearsData[activeYear]) return; // Check if active year data exists
+             if (!activeYear || !allAcademicYearsData[activeYear]) return; 
              console.log("Rendering academic months for year:", activeYear); 
             const academicMonthsList = [
                 { name: "April", index: 3 }, { name: "May", index: 4 }, { name: "June", index: 5 },
@@ -439,11 +451,9 @@
             const yearData = allAcademicYearsData[activeYear];
             const savedMonths = yearData.academicMonths || {};
             
-            // Populate Semester Days
             sem1TotalDaysInput.value = yearData.sem1TotalDays || '';
             sem2TotalDaysInput.value = yearData.sem2TotalDays || '';
 
-            // Populate Monthly Days
             monthsGrid.innerHTML = academicMonthsList.map(month => `
                 <div>
                     <label class="block text-sm font-medium text-gray-700">${month.name}</label>
@@ -452,7 +462,6 @@
             `).join('');
         };
         
-        // MODIFIED: Saves months AND semester days
         saveAcademicMonthsBtn.addEventListener('click', async () => {
             if (!activeYear || !allAcademicYearsData[activeYear]) return; 
              console.log("Saving academic months and semester days for year:", activeYear); 
@@ -463,11 +472,9 @@
                 if (days > 0) newAcademicMonths[monthIndex] = days;
             });
 
-            // Read semester days
             const sem1Days = parseInt(sem1TotalDaysInput.value, 10) || 0;
             const sem2Days = parseInt(sem2TotalDaysInput.value, 10) || 0;
 
-            // Update the data for the active year
             allAcademicYearsData[activeYear].academicMonths = newAcademicMonths;
             allAcademicYearsData[activeYear].sem1TotalDays = sem1Days;
             allAcademicYearsData[activeYear].sem2TotalDays = sem2Days;
@@ -477,7 +484,7 @@
                 const userDocRef = doc(db, 'users', currentUser.uid);
                 await updateDoc(userDocRef, { academicYears: allAcademicYearsData });
                 showNotification("Days setup saved!");
-                renderReportingTab(); // Refresh reporting as targets depend on this
+                renderReportingTab(); 
             } catch (error) {
                 console.error("Error saving days setup:", error);
                 showNotification("Error saving days setup.", true);
@@ -526,7 +533,6 @@
                 `;
             }).join('');
             
-            // Re-attach all listeners after updating innerHTML
             setupAccordionContainer.querySelectorAll('.accordion-button').forEach(button => {
                  button.addEventListener('click', (e) => {
                     const content = e.currentTarget.nextElementSibling;
@@ -539,7 +545,6 @@
                 form.addEventListener('submit', handleAddTeacher);
             });
             
-            // Use event delegation for dynamic content
             setupAccordionContainer.removeEventListener('click', handleSetupClickDelegation); 
             setupAccordionContainer.addEventListener('click', handleSetupClickDelegation); 
             
@@ -564,7 +569,7 @@
              if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
         }
 
-        // MODIFIED: renderTeacherAccordion - Removed Total Days input from Add Period form
+
         const renderTeacherAccordion = (jamiaName, teacher) => {
             const teacherId = teacher.id || `teacher-${Date.now()}-${Math.random()}`;
             if(!teacher.id) teacher.id = teacherId; 
@@ -616,7 +621,6 @@
             `;
         };
 
-        // MODIFIED: renderPeriodsTable - Removed Total Days column
         const renderPeriodsTable = (periods) => {
             if (!periods || periods.length === 0) {
                 return '<p class="text-gray-500 text-sm p-2">Abhi koi period add nahi hua hai.</p>';
@@ -735,7 +739,7 @@
             }
         };
 
-        // MODIFIED: handleAddPeriod - Removed total days input reading
+        // MODIFIED: handleAddPeriod uses hidden inputs and reads semester days
         const handleAddPeriod = (e) => {
             e.preventDefault();
             console.log("handleAddPeriod triggered via delegation"); 
@@ -761,7 +765,7 @@
             const bookInput = form.querySelector('.period-book-input');
             const semesterSelect = form.querySelector('.period-semester-select');
             const totalPagesInput = form.querySelector('.period-total-pages-input');
-            // REMOVED: const totalDaysInput = form.querySelector('.period-total-days-input');
+            // REMOVED: Total Days input reading
 
             const newPeriod = {
                 id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
@@ -769,7 +773,7 @@
                 bookName: bookInput.value.trim(),
                 semester: semesterSelect.value, 
                 totalPages: parseInt(totalPagesInput.value, 10) || 0,
-                // REMOVED: totalAcademicDays: parseInt(totalDaysInput.value, 10) || 0
+                // REMOVED: totalAcademicDays field
             };
             
             console.log("New period data (before validation):", newPeriod); 
@@ -781,14 +785,17 @@
             }
             
             try {
+                // Ensure the path exists before trying to push
                 if (!allAcademicYearsData[activeYear]) { allAcademicYearsData[activeYear] = { karkardagiStructure: [] }; }
                 if (!allAcademicYearsData[activeYear].karkardagiStructure) { allAcademicYearsData[activeYear].karkardagiStructure = []; }
                 
                 let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
                 let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
                 if (!jamiaData) {
-                    jamiaData = { jamiaName: jamiaName, teachers: [] };
-                    karkardagiStructure.push(jamiaData);
+                    // This case should ideally not happen if add teacher works correctly
+                    console.error("Jamia data missing when trying to add period.");
+                    showNotification("Jamia data missing. Please re-add teacher if needed.", true);
+                    return; 
                 }
                 if (!jamiaData.teachers) { jamiaData.teachers = []; } 
 
@@ -800,6 +807,7 @@
                     console.log("Adding period to teacher:", teacherId); 
                     teacherData.periods.push(newPeriod);
                     
+                    // Call save FIRST, then clear the form in the .then() block
                     saveActiveYearStructure().then(() => {
                         const currentForm = document.querySelector(`[data-teacher-id="${teacherId}"] .add-period-form`);
                         if(currentForm) {
@@ -807,7 +815,6 @@
                             currentForm.querySelector('.period-book-input').value = '';
                             currentForm.querySelector('.period-semester-select').value = '1'; 
                             currentForm.querySelector('.period-total-pages-input').value = '';
-                           // REMOVED: currentForm.querySelector('.period-total-days-input').value = '';
                         } else { console.warn("Could not find form to clear after adding period"); }
                     }).catch(err => {
                         console.error("Error during save after adding period:", err);
@@ -851,7 +858,7 @@
 
         // --- REPORTING TAB LOGIC ---
         
-        // MODIFIED: renderReportingTab - Retrieves semester total days
+        // MODIFIED: renderReportingTab uses semester total days from year data
         const renderReportingTab = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) { /* Handled by refreshFullUI */ return; }
              console.log("Rendering reporting tab for year:", activeYear); 
@@ -865,11 +872,11 @@
                  return;
             }
             
-            const { monthNum } = getCurrentMonthYear();
+            const { monthNum } = reportingDateInfo; // Use reporting month
             const isSemester1 = monthNum >= 3 && monthNum <= 7;
             const currentSemester = isSemester1 ? "1" : "2"; 
-            console.log("Current Semester:", currentSemester); 
-
+            console.log("Current Reporting Semester:", currentSemester); 
+            
             // Get semester total days for calculation
             const sem1TotalDays = yearData.sem1TotalDays || 0;
             const sem2TotalDays = yearData.sem2TotalDays || 0;
@@ -883,12 +890,11 @@
              }
             
             const academicMonths = yearData.academicMonths || {};
-            const daysThisMonth = academicMonths[monthNum] || 0;
-             console.log("Days this month:", daysThisMonth); 
+            const daysThisMonth = academicMonths[monthNum] || 0; // Use reporting month
+             console.log(`Days this reporting month (${reportingDateInfo.month}):`, daysThisMonth); 
             
             if (daysThisMonth === 0) {
-                 const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
-                 reportingContainer.innerHTML = `<p class="text-red-500">Is mahine (${currentMonthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${reportingDateInfo.month}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
                  saveMonthlyReportBtn.classList.add('hidden');
                  return;
             }
@@ -928,8 +934,8 @@
             allPeriodsForThisSemester.forEach(item => {
                 const { jamia, teacher, period } = item;
                 
-                // Use the semesterTotalDays for calculation
                 let monthlyTarget = 0;
+                // Calculation uses semesterTotalDays
                 if (semesterTotalDays > 0 && daysThisMonth > 0 && period.totalPages > 0) {
                     const perDayTarget = period.totalPages / semesterTotalDays;
                     monthlyTarget = Math.round(perDayTarget * daysThisMonth);
@@ -980,11 +986,12 @@
             });
         };
 
+        // MODIFIED: handleSaveMonthlyReport uses reportingDateInfo
         const handleSaveMonthlyReport = async () => {
             if (!activeYear) return;
             console.log("Saving monthly report for year:", activeYear); 
             showLoader(true);
-            const { month, year, monthNum, yearNum } = getCurrentMonthYear();
+            const { month, year, monthNum, yearNum } = reportingDateInfo; // Use reporting date
             
             const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
             const reportRef = doc(db, 'monthly_reports', reportId);
@@ -1021,8 +1028,8 @@
                 },
                 userId: currentUser.uid,
                 userEmail: currentUser.email,
-                month: month,
-                year: year,
+                month: month, // Reporting month name
+                year: year,   // Reporting year
                 academicYear: activeYear, 
                 createdAt: serverTimestamp()
             };
@@ -1030,7 +1037,7 @@
             try {
                 await setDoc(reportRef, dataToSave, { merge: true });
                 monthlyReportData = newReportData; 
-                showNotification("Monthly Karkardagi report saved!");
+                showNotification(`Monthly Karkardagi report for ${month} ${year} saved!`);
             } catch (error) {
                 console.error("Error saving monthly report:", error);
                 showNotification("Report save karne me error.", true);
