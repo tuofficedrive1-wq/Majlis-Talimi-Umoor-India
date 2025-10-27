@@ -527,6 +527,7 @@
         }
         
         function handleSetupSubmitDelegation(e) {
+             // Use e.target for submit events
              if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
         }
 
@@ -550,6 +551,9 @@
                 <div class="accordion-content">
                     <div class="p-3 border-t bg-white">
                         <form class="add-period-form mb-4 p-3 bg-green-50 border border-green-200 rounded-lg space-y-4">
+                             <input type="hidden" class="hidden-jamia-name" value="${jamiaName}">
+                             <input type="hidden" class="hidden-teacher-id" value="${teacherId}">
+                             
                              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <input type="text" placeholder="Class ka Naam" class="period-class-input w-full p-2 border rounded-lg urdu-font" required>
                                 <input type="text" placeholder="Book ka Naam" class="period-book-input w-full p-2 border rounded-lg urdu-font" required>
@@ -643,7 +647,7 @@
             if (!activeYear || !allAcademicYearsData[activeYear]) {
                  showNotification("Active year selected nahi hai.", true); return;
             }
-            const form = e.currentTarget;
+            const form = e.currentTarget; // Correct for direct form listener
             const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
             const jamiaName = jamiaDiv?.dataset.jamiaName; 
             const teacherNameInput = form.querySelector('.teacher-name-input');
@@ -700,10 +704,10 @@
             }
         };
 
-        // MODIFIED: handleAddPeriod - Corrected .closest() logic
+        // MODIFIED: handleAddPeriod uses hidden inputs
         const handleAddPeriod = (e) => {
             e.preventDefault();
-            console.log("handleAddPeriod triggered"); 
+            console.log("handleAddPeriod triggered via delegation"); 
             if (!activeYear || !allAcademicYearsData[activeYear]) {
                 showNotification("Active academic year selected nahi hai.", true); return;
             }
@@ -711,21 +715,15 @@
             const form = e.target; // The form element that was submitted
             console.log("Form element:", form); 
 
-            // Find the teacher div by going up from the form's PARENT element
-            const teacherDiv = form.parentElement.closest('.border.rounded-lg[data-teacher-id]'); 
-            console.log("Found teacherDiv:", teacherDiv); 
-            const teacherId = teacherDiv?.dataset.teacherId; 
-
-            // Find the jamia div by going up from the TEACHER div
-            const jamiaDiv = teacherDiv?.closest('.border.rounded-lg[data-jamia-name]');
-             console.log("Found jamiaDiv:", jamiaDiv); 
-            const jamiaName = jamiaDiv?.dataset.jamiaName; 
-
-            console.log("Extracted IDs:", { teacherId, jamiaName }); 
+            // --- Get IDs from hidden inputs within the form ---
+            const jamiaName = form.querySelector('.hidden-jamia-name')?.value;
+            const teacherId = form.querySelector('.hidden-teacher-id')?.value;
+            
+            console.log("Extracted IDs from hidden inputs:", { teacherId, jamiaName }); 
 
             if (!teacherId || !jamiaName) {
-                 showNotification("Error: Teacher ya Jamia ID nahi mili.", true); 
-                 console.error("Missing teacherId or jamiaName in handleAddPeriod", { teacherId, jamiaName }); 
+                 showNotification("Error: Teacher ya Jamia ID nahi mili (hidden input).", true); 
+                 console.error("Missing teacherId or jamiaName from hidden inputs", { teacherId, jamiaName }); 
                  return; 
             }
 
@@ -772,19 +770,23 @@
                     console.log("Adding period to teacher:", teacherId); 
                     teacherData.periods.push(newPeriod);
                     
-                    // Clear form only if save is initiated successfully
+                    // Call save FIRST, then clear the form in the .then() block
                     saveActiveYearStructure().then(() => {
-                        // Clear form only after successful save and UI refresh
-                        const currentForm = document.querySelector(`[data-teacher-id="${teacherId}"] .add-period-form`);
-                        if(currentForm) {
+                        // Find the specific form again to clear it
+                         const currentForm = document.querySelector(`[data-teacher-id="${teacherId}"] .add-period-form`);
+                         if(currentForm) {
                             currentForm.querySelector('.period-class-input').value = '';
                             currentForm.querySelector('.period-book-input').value = '';
                             currentForm.querySelector('.period-semester-select').value = '1'; 
                             currentForm.querySelector('.period-total-pages-input').value = '';
                             currentForm.querySelector('.period-total-days-input').value = '';
-                        }
+                         } else {
+                              console.warn("Could not find form to clear after adding period");
+                         }
                     }).catch(err => {
                         console.error("Error during save after adding period:", err);
+                        // Optionally show error to user if save fails
+                        showNotification("Period add karne me save error.", true);
                     }); 
                 } else {
                      console.error(`Error: Teacher data (${teacherId}) not found for Jamia (${jamiaName}).`); 
