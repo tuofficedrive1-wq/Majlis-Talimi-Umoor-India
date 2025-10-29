@@ -345,10 +345,16 @@
          // --- ADMIN VIEW LOGIC ---
            const initAdminView = () => {
              console.log("Initializing Admin View");
+             
+             // Report Modal Listeners
+             closeModalBtn.addEventListener('click', () => reportModal.classList.add('hidden'));
+
+             // Edit User Modal Listeners
              closeEditUserModalBtn.addEventListener('click', () => editUserModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == editUserModal) editUserModal.classList.add('hidden'); });
              editUserForm.addEventListener('submit', handleEditUserSubmit); 
              
+             // Deadline Modal Listeners
              closeDeadlineModalBtn.addEventListener('click', () => deadlineModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == deadlineModal) deadlineModal.classList.add('hidden'); });
              deadlineForm.addEventListener('submit', handleSaveDeadline); 
@@ -591,8 +597,136 @@
              document.getElementById('summary-kkd-section').innerHTML = kkdHtml;
          };
          
-         const handleExcelDownload = () => { /* ... unchanged ... */ };
-         const handleImageDownload = () => { /* ... unchanged ... */ };
+         const handleExcelDownload = () => {
+             if (typeof XLSX === 'undefined') {
+                 showNotification("Excel library load nahi hui.", true); return;
+             }
+             if (fetchedAdminReports.length === 0) {
+                 showNotification("Download karne ke liye koi data nahi hai.", true); return;
+             }
+             
+             showLoader(true);
+             
+             try {
+                const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
+                const selectedMonth = adminMonthSelect.value;
+                const selectedYear = adminYearSelect.value;
+                const filename = `ReportSummary_${selectedMonth}_${selectedYear}.xlsx`;
+                
+                const wb = XLSX.utils.book_new();
+                const reports = fetchedAdminReports; // Use the globally fetched reports
+
+                // 1. Jaiza Sheet
+                let jaizaEntries = [];
+                reports.forEach(r => (r.jaizaReport?.data || []).forEach(entry => jaizaEntries.push({
+                    "User": getUserName(r.userId),
+                    "Jamia": entry.name,
+                    "Date": entry.date || '-',
+                    "Type": entry.type,
+                    "Percentage": entry.percentage || '-'
+                })));
+                if (jaizaEntries.length > 0) {
+                    const ws_jaiza = XLSX.utils.json_to_sheet(jaizaEntries);
+                    XLSX.utils.book_append_sheet(wb, ws_jaiza, "Jaiza Summary");
+                }
+
+                // 2. Tadris Sheet
+                let tadrisEntries = [];
+                reports.forEach(r => (r.tadrisRecording?.data || []).forEach(entry => tadrisEntries.push({
+                    "User": getUserName(r.userId),
+                    "Jamia": entry.jamiaName,
+                    "Teacher": entry.teacherName,
+                    "Class": entry.className,
+                    "Kitab": entry.kitabName,
+                    "Date": entry.date,
+                    "Tasurat": entry.tasurat || '-'
+                })));
+                if (tadrisEntries.length > 0) {
+                    const ws_tadris = XLSX.utils.json_to_sheet(tadrisEntries);
+                    XLSX.utils.book_append_sheet(wb, ws_tadris, "Tadris Summary");
+                }
+
+                // 3. Test Sheet
+                let testEntries = [];
+                reports.forEach(r => (r.monthlyTest?.data || []).forEach(entry => testEntries.push({
+                    "User": getUserName(r.userId),
+                    "Jamia": entry.name,
+                    "Status": entry.status,
+                    "Month": entry.month || '-',
+                    "Percentage": entry.percentage || '-',
+                    "Wajah": entry.wajah || '-'
+                })));
+                if (testEntries.length > 0) {
+                    const ws_test = XLSX.utils.json_to_sheet(testEntries);
+                    XLSX.utils.book_append_sheet(wb, ws_test, "Monthly Test Summary");
+                }
+
+                // 4. KKd Sheet
+                let kkdEntries = [];
+                reports.forEach(r => (r.karkardagiReport?.data || []).forEach(entry => kkdEntries.push({
+                    "User": getUserName(r.userId),
+                    "Academic Year": r.academicYear || 'N/A',
+                    "Jamia": entry.jamiaName,
+                    "Teacher": entry.teacherName,
+                    "Book": entry.bookName,
+                    "Monthly Target": entry.monthlyTarget,
+                    "Pages Taught": entry.pagesTaught,
+                    "Achievement %": entry.achievement || '0'
+                })));
+                if (kkdEntries.length > 0) {
+                    const ws_kkd = XLSX.utils.json_to_sheet(kkdEntries);
+                    XLSX.utils.book_append_sheet(wb, ws_kkd, "KKd Summary");
+                }
+                
+                if (wb.SheetNames.length === 0) {
+                    showNotification("Excel ke liye koi data nahi mila.", true);
+                } else {
+                    XLSX.writeFile(wb, filename);
+                    showNotification("Excel file download ho gayi hai!");
+                }
+
+             } catch (error) {
+                 console.error("Excel download error:", error);
+                 showNotification("Excel download karne mein error.", true);
+             } finally {
+                 showLoader(false);
+             }
+         };
+         
+         const handleImageDownload = () => {
+             if (typeof html2canvas === 'undefined') {
+                 showNotification("Image library (html2canvas) load nahi hui.", true); return;
+             }
+             
+             const summaryContainer = document.getElementById('summary-tables-container');
+             if (!summaryContainer) {
+                 showNotification("Summary container nahi mila.", true); return;
+             }
+             
+             showLoader(true);
+             const selectedMonth = adminMonthSelect.value;
+             const selectedYear = adminYearSelect.value;
+             const filename = `ReportSummary_${selectedMonth}_${selectedYear}.png`;
+
+             html2canvas(summaryContainer, {
+                 scale: 2, // High quality
+                 useCORS: true,
+                 backgroundColor: '#ffffff' // Force white background
+             }).then(canvas => {
+                 const link = document.createElement('a');
+                 link.href = canvas.toDataURL('image/png');
+                 link.download = filename;
+                 document.body.appendChild(link);
+                 link.click();
+                 document.body.removeChild(link);
+                 showNotification("Summary image download ho gayi hai!");
+             }).catch(err => {
+                 console.error("Image download error:", err);
+                 showNotification("Image download karne mein error.", true);
+             }).finally(() => {
+                 showLoader(false);
+             });
+         };
          
          const fetchAndRenderAdminUsers = () => {
               if(!adminUsersTbody) return; // Add check
@@ -736,6 +870,107 @@
                } finally { showLoader(false); }
            };
            
+        // +++ NAYA FUNCTION YAHAN ADD KIYA GAYA HAI +++
+        const showReportModal = (report, isAdminView = false) => {
+            if (!report) {
+                modalContent.innerHTML = '<p class="text-red-500">Report details not found.</p>';
+                reportModal.classList.remove('hidden');
+                return;
+            }
+
+            const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
+            const userName = isAdminView ? (getUserName(report.userId) || report.userEmail) : 'Aapki Report';
+            const reportMonthYear = `${report.month} ${report.year}`;
+            
+            document.getElementById('modal-title').innerHTML = `Report: <span class="urdu-font">${userName}</span> (${reportMonthYear})`;
+
+            let html = '';
+
+            // Helper function to create table
+            const createTableHtml = (title, headers, data, renderRow) => {
+                if (!data || data.length === 0) {
+                    return `<h4 class="text-md font-semibold mt-4 mb-2 urdu-font">${title} - (Data Maujood Nahi)</h4>`;
+                }
+                let table = `<h4 class="text-md font-semibold mt-4 mb-2">${title}</h4>
+                             <div class="overflow-x-auto border rounded-lg">
+                               <table class="summary-table w-full text-sm">
+                                 <thead class="bg-gray-100"><tr class="!text-left">`;
+                headers.forEach(h => table += `<th class="!p-2">${h}</th>`);
+                table += `</tr></thead><tbody>`;
+                data.forEach(item => table += renderRow(item));
+                table += `</tbody></table></div>`;
+                return table;
+            };
+
+            // 1. Jaiza Report
+            html += createTableHtml(
+                'Jaiza Report',
+                ['Jamia', 'Date', 'Type', '%'],
+                report.jaizaReport?.data,
+                item => `<tr>
+                            <td class="urdu-font">${item.name}</td>
+                            <td>${item.date || '-'}</td>
+                            <td>${item.type}</td>
+                            <td>${item.percentage || '-'}</td>
+                         </tr>`
+            );
+
+            // 2. Tadris Recording
+            html += createTableHtml(
+                'Tadris Recording',
+                ['Jamia', 'Teacher', 'Class', 'Kitab', 'Date', 'Tasurat'],
+                report.tadrisRecording?.data,
+                item => `<tr>
+                            <td class="urdu-font">${item.jamiaName}</td>
+                            <td class="urdu-font">${item.teacherName}</td>
+                            <td class="urdu-font">${item.className}</td>
+                            <td class="urdu-font">${item.kitabName}</td>
+                            <td>${item.date}</td>
+                            <td class="urdu-font">${item.tasurat || '-'}</td>
+                         </tr>`
+            );
+
+            // 3. Monthly Test
+            html += createTableHtml(
+                'Monthly Test',
+                ['Jamia', 'Status', 'Month', '%', 'Wajah'],
+                report.monthlyTest?.data,
+                item => `<tr>
+                            <td class="urdu-font">${item.name}</td>
+                            <td>${item.status}</td>
+                            <td>${item.month || '-'}</td>
+                            <td>${item.percentage || '-'}</td>
+                            <td class="urdu-font">${item.wajah || '-'}</td>
+                         </tr>`
+            );
+            
+            // 4. Karkardagi Report (KKd)
+            html += createTableHtml(
+                'Talimi & Shashmahi KKd',
+                ['Jamia', 'Teacher', 'Book', 'Target', 'Taught', 'Achieved %'],
+                report.karkardagiReport?.data,
+                item => `<tr>
+                            <td class="urdu-font">${item.jamiaName}</td>
+                            <td class="urdu-font">${item.teacherName}</td>
+                            <td class="urdu-font">${item.bookName}</td>
+                            <td>${item.monthlyTarget}</td>
+                            <td>${item.pagesTaught}</td>
+                            <td>${item.achievement || '0'}%</td>
+                         </tr>`
+            );
+
+            // 5. Admin Comment
+            if (report.comment) {
+                html += `<h4 class="text-md font-semibold mt-4 mb-2">Admin Comment</h4>
+                         <div class="comment-display urdu-font">${report.comment}</div>`;
+            }
+
+            modalContent.innerHTML = html;
+            reportModal.classList.remove('hidden');
+        };
+        // +++ NAYA FUNCTION YAHAN KHATAM HUA +++
+
+
         // --- NEW FEATURES LOGIC (Announcements, Reminders) ---
 
         const listenForAnnouncements = () => {
@@ -873,5 +1108,3 @@
         // --- Init ---
         initApp();
     </script>
-</body>
-</html>
