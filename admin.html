@@ -130,8 +130,30 @@
                                 <button id="download-image-btn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2"><i class="fas fa-file-image"></i> Download Image</button>
                             </div>
                         </div>
+
+                        <div class="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
+                            <div class="flex-1">
+                                <label for="summary-user-filter" class="block text-sm font-medium text-gray-700 mb-1">Select User</label>
+                                <select id="summary-user-filter" class="w-full p-2 border rounded-lg bg-white urdu-font">
+                                    <option value="all">All Users</option>
+                                    </select>
+                            </div>
+                            <div class="flex-1">
+                                <label for="summary-section-filter" class="block text-sm font-medium text-gray-700 mb-1">Select Section</label>
+                                <select id="summary-section-filter" class="w-full p-2 border rounded-lg bg-white">
+                                    <option value="all">All Sections</option>
+                                    <option value="jaiza">Jaiza Report</option>
+                                    <option value="tadris">Tadris Recording</option>
+                                    <option value="test">Monthly Test</option>
+                                    <option value="kkd">Talimi & Shashmahi KKd</option>
+                                </select>
+                            </div>
+                            <div class="self-end">
+                                <button id="summary-apply-filter-btn" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg">Apply Filter</button>
+                            </div>
+                        </div>
                         <div id="summary-tables-container" class="bg-white p-4 rounded-lg border">
-                            <p id="summary-loading-msg" class="text-center text-gray-500">Loading summary data... (Data is loaded from 'Monthly Reports' tab)</p>
+                            <p id="summary-loading-msg" class="text-center text-gray-500">Please apply filters to view summary. (Data is loaded from 'Monthly Reports' tab)</p>
                             <div id="summary-jaiza-section" class="mb-6"></div>
                             <div id="summary-tadris-section" class="mb-6"></div>
                             <div id="summary-test-section" class="mb-6"></div>
@@ -205,8 +227,7 @@
         // --- DOM Elements ---
         const loader = document.getElementById('loader');
         const loginView = document.getElementById('login-view');
-        const userView = document.getElementById('user-view'); // REMOVED
-        const adminView = document.getElementById('admin-view'); // KEPT
+        const adminView = document.getElementById('admin-view');
         const userInfo = document.getElementById('user-info');
         const logoutBtn = document.getElementById('logout-btn');
         // Admin View Elements
@@ -222,6 +243,11 @@
         const downloadImageBtn = document.getElementById('download-image-btn');
         const summaryTablesContainer = document.getElementById('summary-tables-container');
         const summaryLoadingMsg = document.getElementById('summary-loading-msg');
+        // NAYE SUMMARY FILTERS
+        const summaryUserFilter = document.getElementById('summary-user-filter');
+        const summarySectionFilter = document.getElementById('summary-section-filter');
+        const summaryApplyFilterBtn = document.getElementById('summary-apply-filter-btn');
+        
         const elanaatForm = document.getElementById('elanaat-form'); 
         const elanaatTextarea = document.getElementById('elanaat-textarea'); 
         const elanaatListDiv = document.getElementById('elanaat-list'); 
@@ -234,7 +260,6 @@
         const reportModal = document.getElementById('report-modal');
         const closeModalBtn = document.getElementById('close-modal-btn');
         const modalContent = document.getElementById('modal-content');
-        // Reset Password Elements (REMOVED)
         // Deadline Modal elements
         const deadlineModal = document.getElementById('deadline-modal');
         const deadlineForm = document.getElementById('deadline-form');
@@ -248,13 +273,13 @@
 
         // --- Application State ---
         let currentUser = null;
-        let userProfileData = {}; // Still needed for admin view (to get names)
+        let userProfileData = {};
         let unsubscribeAdminReports = null; 
         let unsubscribeAdminUsers = null;
-        let unsubscribeAnnouncements = null; // New
+        let unsubscribeAnnouncements = null;
         let fetchedAdminReports = []; 
         let allUsersData = [];
-        let reportRef; // Global ref for current report doc
+        let reportRef;
 
 
         // --- HELPER FUNCTIONS ---
@@ -281,7 +306,6 @@
              return (match && match[1]) ? `https://drive.google.com/uc?export=view&id=${match[1]}` : url; 
         };
 
-        // Admin panel uses current month for filters, not grace period
         const getCurrentMonthYear = () => {
             const now = new Date();
             const month = now.toLocaleString('default', { month: 'long' });
@@ -294,8 +318,12 @@
             if(adminReportsTbody) adminReportsTbody.innerHTML = '';
             if(adminUsersTbody) adminUsersTbody.innerHTML = '';
             if(summaryTablesContainer) summaryTablesContainer.classList.add('hidden');
-            if(summaryLoadingMsg) summaryLoadingMsg.classList.remove('hidden');
+            if(summaryLoadingMsg) {
+                summaryLoadingMsg.textContent = "Please apply filters to view summary. (Data is loaded from 'Monthly Reports' tab)";
+                summaryLoadingMsg.classList.remove('hidden');
+            }
             if(elanaatListDiv) elanaatListDiv.innerHTML = '<p class="text-gray-500">Koi elaan nahi mila.</p>';
+            if(summaryUserFilter) summaryUserFilter.innerHTML = '<option value="all">All Users</option>';
         };
 
         // --- AUTHENTICATION ---
@@ -306,7 +334,7 @@
              if (unsubscribeAdminUsers) { unsubscribeAdminUsers(); unsubscribeAdminUsers = null; } 
              if (unsubscribeAnnouncements) { unsubscribeAnnouncements(); unsubscribeAnnouncements = null; }
              authChannel.postMessage('logout'); 
-             signOut(auth); // This will trigger onAuthStateChanged
+             signOut(auth); 
         }
         
         logoutBtn.addEventListener('click', handleLogout);
@@ -323,38 +351,29 @@
                 currentUser = user;
                 if (user) {
                     if (user.uid === ADMIN_UID) {
-                        // Admin is logged in
                         userInfo.classList.remove('hidden');
                         adminView.classList.remove('hidden');
-                        loginView.classList.add('hidden'); // Hide login view
+                        loginView.classList.add('hidden');
                         initAdminView(); 
                     } else {
-                        // Not an admin, redirect to user page (index.html)
                         window.location.href = 'index.html'; 
                     }
                 } else {
-                    // Not logged in, redirect to login page (index.html)
                     window.location.href = 'index.html';
                 }
                 showLoader(false); 
             });
         };
         
-        // --- USER VIEW LOGIC (REMOVED) ---
-
          // --- ADMIN VIEW LOGIC ---
            const initAdminView = () => {
              console.log("Initializing Admin View");
              
-             // Report Modal Listeners
              closeModalBtn.addEventListener('click', () => reportModal.classList.add('hidden'));
-
-             // Edit User Modal Listeners
              closeEditUserModalBtn.addEventListener('click', () => editUserModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == editUserModal) editUserModal.classList.add('hidden'); });
              editUserForm.addEventListener('submit', handleEditUserSubmit); 
              
-             // Deadline Modal Listeners
              closeDeadlineModalBtn.addEventListener('click', () => deadlineModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == deadlineModal) deadlineModal.classList.add('hidden'); });
              deadlineForm.addEventListener('submit', handleSaveDeadline); 
@@ -363,15 +382,16 @@
 
              populateAdminFilters();
              adminFetchBtn.addEventListener('click', fetchAndRenderAdminReports);
-             fetchAndRenderAdminUsers(); // Fetch users first
-             listenForAnnouncements(); // Admin also listens to render list
+             fetchAndRenderAdminUsers(); 
+             listenForAnnouncements();
              
-             // Setup Admin Tab Switching
              adminTabButtons.forEach(button => {
                  button.removeEventListener('click', handleAdminTabSwitch); 
                  button.addEventListener('click', handleAdminTabSwitch); 
              });
 
+             // SUMMARY TAB LISTENERS
+             summaryApplyFilterBtn.addEventListener('click', () => renderReportSummary(fetchedAdminReports));
              downloadExcelBtn.addEventListener('click', handleExcelDownload);
              downloadImageBtn.addEventListener('click', handleImageDownload);
          };
@@ -436,9 +456,7 @@
              if (targetContent) targetContent.classList.remove('hidden');
              else console.error("Could not find admin tab content for:", tabId);
 
-             if (tabId === 'reports' && allUsersData.length > 0) { fetchAndRenderAdminReports(); }
-             if (tabId === 'users') { fetchAndRenderAdminUsers(); }
-             if (tabId === 'summary' && fetchedAdminReports.length > 0) { renderReportSummary(fetchedAdminReports); }
+             // Note: Summary is now rendered by 'Apply Filter' button, not by tab switch
          };
 
          const populateAdminFilters = () => {
@@ -453,12 +471,20 @@
          };
 
          const fetchAndRenderAdminReports = () => {
-              const selectedMonth = adminMonthSelect.value;
+             const selectedMonth = adminMonthSelect.value;
              const selectedYear = parseInt(adminYearSelect.value, 10);
              showLoader(true);
              adminReportsTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading reports...</td></tr>';
+             
+             // Reset summary tab
+             summaryLoadingMsg.textContent = "Loading reports... Please wait.";
              summaryLoadingMsg.classList.remove('hidden');
              summaryTablesContainer.classList.add('hidden');
+             document.getElementById('summary-jaiza-section').innerHTML = '';
+             document.getElementById('summary-tadris-section').innerHTML = '';
+             document.getElementById('summary-test-section').innerHTML = '';
+             document.getElementById('summary-kkd-section').innerHTML = '';
+             
              if (unsubscribeAdminReports) unsubscribeAdminReports(); 
              const reportsRef = collection(db, 'monthly_reports');
              const q = query(reportsRef, where("month", "==", selectedMonth), where("year", "==", selectedYear));
@@ -466,7 +492,13 @@
              unsubscribeAdminReports = onSnapshot(q, (snapshot) => {
                  fetchedAdminReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                  renderAdminTable(fetchedAdminReports);
-                 renderReportSummary(fetchedAdminReports); 
+                 
+                 // Update summary tab state
+                 summaryLoadingMsg.textContent = "Reports loaded. Please apply filters to view summary.";
+                 if(fetchedAdminReports.length === 0) {
+                     summaryLoadingMsg.textContent = "No reports found for this period. Apply filters to check.";
+                 }
+                 
                  showLoader(false);
              }, (error) => {
                  console.error("Error fetching admin reports: ", error);
@@ -481,7 +513,7 @@
               const jaizaDone = report.jaizaReport?.status === 'Done';
               const tadrisDone = report.tadrisRecording?.status === 'Done';
               const testDone = report.monthlyTest?.status === 'Done'; 
-              const kkdDone = report.karkardagiReport?.status === 'Done'; // Check new key
+              const kkdDone = report.karkardagiReport?.status === 'Done'; 
               
               const submittedTestCount = report.monthlyTest?.data?.length || 0;
               const validJamiaatCount = userJamiaatCount > 0 ? userJamiaatCount : 1; 
@@ -527,155 +559,206 @@
              });
          };
 
+         // === UPDATED SUMMARY FUNCTION ===
          const renderReportSummary = (reports) => {
+             const selectedUserId = summaryUserFilter.value;
+             const selectedSection = summarySectionFilter.value;
+             
+             if (reports.length === 0) {
+                 summaryLoadingMsg.textContent = "No report data to filter. Please fetch reports first.";
+                 summaryLoadingMsg.classList.remove('hidden');
+                 summaryTablesContainer.classList.add('hidden');
+                 return;
+             }
+
+             // Filter reports based on selected user
+             const filteredReports = (selectedUserId === 'all') 
+                 ? reports 
+                 : reports.filter(r => r.userId === selectedUserId);
+             
+             if (filteredReports.length === 0) {
+                 summaryLoadingMsg.textContent = "No reports found for the selected user.";
+                 summaryLoadingMsg.classList.remove('hidden');
+                 summaryTablesContainer.classList.add('hidden');
+                 return;
+             }
+             
              summaryLoadingMsg.classList.add('hidden');
              summaryTablesContainer.classList.remove('hidden');
+             
              const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
              
+             const jaizaSection = document.getElementById('summary-jaiza-section');
+             const tadrisSection = document.getElementById('summary-tadris-section');
+             const testSection = document.getElementById('summary-test-section');
+             const kkdSection = document.getElementById('summary-kkd-section');
+             
+             let dataFound = false;
+
              // 1. Jaiza Summary
-             let jaizaHtml = '<h4 class="text-lg font-semibold mt-4 mb-2">Jaiza Report Summary</h4>';
-             let jaizaEntries = [];
-             reports.forEach(r => (r.jaizaReport?.data || []).forEach(entry => jaizaEntries.push({ ...entry, userName: getUserName(r.userId) })));
-             if (jaizaEntries.length > 0) {
-                 jaizaHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100"><th class="!p-2">User</th><th class="!p-2">Jamia</th><th class="!p-2">Date</th><th class="!p-2">Type</th><th class="!p-2">%</th></tr></thead><tbody>`;
-                 jaizaEntries.forEach(item => {
-                     jaizaHtml += `<tr><td class="urdu-font">${item.userName}</td><td class="urdu-font">${item.name}</td><td>${item.date || '-'}</td><td>${item.type}</td><td>${item.percentage || '-'}</td></tr>`;
-                 });
-                 jaizaHtml += '</tbody></table></div>';
-             } else { jaizaHtml += '<p class="text-sm text-gray-500">No Jaiza data submitted.</p>'; }
-             document.getElementById('summary-jaiza-section').innerHTML = jaizaHtml;
+             if (selectedSection === 'all' || selectedSection === 'jaiza') {
+                 let jaizaHtml = '<h4 class="text-lg font-semibold mt-4 mb-2">Jaiza Report Summary</h4>';
+                 let jaizaEntries = [];
+                 filteredReports.forEach(r => (r.jaizaReport?.data || []).forEach(entry => jaizaEntries.push({ ...entry, userName: getUserName(r.userId) })));
+                 if (jaizaEntries.length > 0) {
+                     jaizaHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100"><th class="!p-2">User</th><th class="!p-2">Jamia</th><th class="!p-2">Date</th><th class="!p-2">Type</th><th class="!p-2">%</th></tr></thead><tbody>`;
+                     jaizaEntries.forEach(item => {
+                         jaizaHtml += `<tr><td class="urdu-font">${item.userName}</td><td class="urdu-font">${item.name}</td><td>${item.date || '-'}</td><td>${item.type}</td><td>${item.percentage || '-'}</td></tr>`;
+                     });
+                     jaizaHtml += '</tbody></table></div>';
+                     dataFound = true;
+                 } else { jaizaHtml += '<p class="text-sm text-gray-500">No Jaiza data submitted for this filter.</p>'; }
+                 jaizaSection.innerHTML = jaizaHtml;
+                 jaizaSection.style.display = 'block';
+             } else { jaizaSection.style.display = 'none'; }
 
              // 2. Tadris Summary
-             let tadrisHtml = '<h4 class="text-lg font-semibold mt-6 mb-2">Tadris Recording Summary</h4>';
-             let tadrisEntries = [];
-             reports.forEach(r => (r.tadrisRecording?.data || []).forEach(entry => tadrisEntries.push({ ...entry, userName: getUserName(r.userId) })));
-              if (tadrisEntries.length > 0) {
-                 tadrisHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100"><th class="!p-2">User</th><th class="!p-2">Jamia</th><th class="!p-2">Teacher</th><th class="!p-2">Class</th><th class="!p-2">Kitab</th><th class="!p-2">Date</th><th class="!p-2">Tasurat</th></tr></thead><tbody>`;
-                 tadrisEntries.forEach(item => {
-                     tadrisHtml += `<tr><td class="urdu-font">${item.userName}</td><td class="urdu-font">${item.jamiaName}</td><td class="urdu-font">${item.teacherName}</td><td class="urdu-font">${item.className}</td><td class="urdu-font">${item.kitabName}</td><td>${item.date}</td><td class="urdu-font">${item.tasurat || '-'}</td></tr>`;
-                 });
-                 tadrisHtml += '</tbody></table></div>';
-             } else { tadrisHtml += '<p class="text-sm text-gray-500">No Tadris Recording data submitted.</p>'; }
-             document.getElementById('summary-tadris-section').innerHTML = tadrisHtml;
+             if (selectedSection === 'all' || selectedSection === 'tadris') {
+                 let tadrisHtml = '<h4 class="text-lg font-semibold mt-6 mb-2">Tadris Recording Summary</h4>';
+                 let tadrisEntries = [];
+                 filteredReports.forEach(r => (r.tadrisRecording?.data || []).forEach(entry => tadrisEntries.push({ ...entry, userName: getUserName(r.userId) })));
+                  if (tadrisEntries.length > 0) {
+                     tadrisHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100"><th class="!p-2">User</th><th class="!p-2">Jamia</th><th class="!p-2">Teacher</th><th class="!p-2">Class</th><th class="!p-2">Kitab</th><th class="!p-2">Date</th><th class="!p-2">Tasurat</th></tr></thead><tbody>`;
+                     tadrisEntries.forEach(item => {
+                         tadrisHtml += `<tr><td class="urdu-font">${item.userName}</td><td class="urdu-font">${item.jamiaName}</td><td class="urdu-font">${item.teacherName}</td><td class="urdu-font">${item.className}</td><td class="urdu-font">${item.kitabName}</td><td>${item.date}</td><td class="urdu-font">${item.tasurat || '-'}</td></tr>`;
+                     });
+                     tadrisHtml += '</tbody></table></div>';
+                     dataFound = true;
+                 } else { tadrisHtml += '<p class="text-sm text-gray-500">No Tadris Recording data submitted for this filter.</p>'; }
+                 tadrisSection.innerHTML = tadrisHtml;
+                 tadrisSection.style.display = 'block';
+             } else { tadrisSection.style.display = 'none'; }
 
              // 3. Test Summary
-             let testHtml = '<h4 class="text-lg font-semibold mt-6 mb-2">Monthly Test Summary</h4>';
-             let testEntries = [];
-             reports.forEach(r => (r.monthlyTest?.data || []).forEach(entry => testEntries.push({ ...entry, userName: getUserName(r.userId) })));
-              if (testEntries.length > 0) {
-                 testHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100"><th class="!p-2">User</th><th class="!p-2">Jamia</th><th class="!p-2">Status</th><th class="!p-2">Month</th><th class="!p-2">%</th><th class="!p-2">Wajah</th></tr></thead><tbody>`;
-                 testEntries.forEach(item => {
-                     testHtml += `<tr><td class="urdu-font">${item.userName}</td><td class="urdu-font">${item.name}</td><td>${item.status}</td><td>${item.month || '-'}</td><td>${item.percentage || '-'}</td><td class="urdu-font">${item.wajah || '-'}</td></tr>`;
-                 });
-                 testHtml += '</tbody></table></div>';
-             } else { testHtml += '<p class="text-sm text-gray-500">No Monthly Test data submitted.</p>'; }
-             document.getElementById('summary-test-section').innerHTML = testHtml;
+             if (selectedSection === 'all' || selectedSection === 'test') {
+                 let testHtml = '<h4 class="text-lg font-semibold mt-6 mb-2">Monthly Test Summary</h4>';
+                 let testEntries = [];
+                 filteredReports.forEach(r => (r.monthlyTest?.data || []).forEach(entry => testEntries.push({ ...entry, userName: getUserName(r.userId) })));
+                  if (testEntries.length > 0) {
+                     testHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100"><th class="!p-2">User</th><th class="!p-2">Jamia</th><th class="!p-2">Status</th><th class="!p-2">Month</th><th class="!p-2">%</th><th class="!p-2">Wajah</th></tr></thead><tbody>`;
+                     testEntries.forEach(item => {
+                         testHtml += `<tr><td class="urdu-font">${item.userName}</td><td class="urdu-font">${item.name}</td><td>${item.status}</td><td>${item.month || '-'}</td><td>${item.percentage || '-'}</td><td class="urdu-font">${item.wajah || '-'}</td></tr>`;
+                     });
+                     testHtml += '</tbody></table></div>';
+                     dataFound = true;
+                 } else { testHtml += '<p class="text-sm text-gray-500">No Monthly Test data submitted for this filter.</p>'; }
+                 testSection.innerHTML = testHtml;
+                 testSection.style.display = 'block';
+             } else { testSection.style.display = 'none'; }
 
-             // 4. KKd Summary (New Karkardagi)
-             let kkdHtml = '<h4 class="text-lg font-semibold mt-6 mb-2">Talimi & Shashmahi KKd Summary</h4>';
-             let kkdEntries = [];
-             reports.forEach(r => (r.karkardagiReport?.data || []).forEach(entry => kkdEntries.push({ ...entry, userName: getUserName(r.userId), academicYear: r.academicYear })));
-              if (kkdEntries.length > 0) {
-                 kkdHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100">
-                    <th class="!p-2">User</th><th class="!p-2">Year</th><th class="!p-2">Jamia</th><th class="!p-2">Teacher</th><th class="!p-2">Book</th>
-                    <th class="!p-2">Target</th><th class="!p-2">Taught</th><th class="!p-2">Achieved %</th>
-                    </tr></thead><tbody>`;
-                 kkdEntries.forEach(item => {
-                     kkdHtml += `<tr>
-                        <td class="urdu-font">${item.userName}</td>
-                        <td>${item.academicYear || 'N/A'}</td>
-                        <td class="urdu-font">${item.jamiaName}</td>
-                        <td class="urdu-font">${item.teacherName}</td>
-                        <td class="urdu-font">${item.bookName}</td>
-                        <td>${item.monthlyTarget}</td>
-                        <td>${item.pagesTaught}</td>
-                        <td>${item.achievement || '0'}%</td>
-                    </tr>`;
-                 });
-                 kkdHtml += '</tbody></table></div>';
-             } else { kkdHtml += '<p class="text-sm text-gray-500">No KKd data submitted.</p>'; }
-             document.getElementById('summary-kkd-section').innerHTML = kkdHtml;
+             // 4. KKd Summary
+             if (selectedSection === 'all' || selectedSection === 'kkd') {
+                 let kkdHtml = '<h4 class="text-lg font-semibold mt-6 mb-2">Talimi & Shashmahi KKd Summary</h4>';
+                 let kkdEntries = [];
+                 filteredReports.forEach(r => (r.karkardagiReport?.data || []).forEach(entry => kkdEntries.push({ ...entry, userName: getUserName(r.userId), academicYear: r.academicYear })));
+                  if (kkdEntries.length > 0) {
+                     kkdHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100">
+                        <th class="!p-2">User</th><th class="!p-2">Year</th><th class="!p-2">Jamia</th><th class="!p-2">Teacher</th><th class="!p-2">Book</th>
+                        <th class="!p-2">Target</th><th class="!p-2">Taught</th><th class="!p-2">Achieved %</th>
+                        </tr></thead><tbody>`;
+                     kkdEntries.forEach(item => {
+                         kkdHtml += `<tr>
+                            <td class="urdu-font">${item.userName}</td>
+                            <td>${item.academicYear || 'N/A'}</td>
+                            <td class="urdu-font">${item.jamiaName}</td>
+                            <td class="urdu-font">${item.teacherName}</td>
+                            <td class="urdu-font">${item.bookName}</td>
+                            <td>${item.monthlyTarget}</td>
+                            <td>${item.pagesTaught}</td>
+                            <td>${item.achievement || '0'}%</td>
+                        </tr>`;
+                     });
+                     kkdHtml += '</tbody></table></div>';
+                     dataFound = true;
+                 } else { kkdHtml += '<p class="text-sm text-gray-500">No KKd data submitted for this filter.</p>'; }
+                 kkdSection.innerHTML = kkdHtml;
+                 kkdSection.style.display = 'block';
+             } else { kkdSection.style.display = 'none'; }
+             
+             if (!dataFound) {
+                 summaryLoadingMsg.textContent = "No data found for the selected section(s).";
+                 summaryLoadingMsg.classList.remove('hidden');
+                 summaryTablesContainer.classList.add('hidden');
+             }
          };
          
+         // === UPDATED EXCEL DOWNLOAD FUNCTION ===
          const handleExcelDownload = () => {
              if (typeof XLSX === 'undefined') {
-                 showNotification("Excel library load nahi hui.", true); return;
+                 showNotification("Excel library load nahi hui. Page refresh karein.", true); return;
              }
              if (fetchedAdminReports.length === 0) {
                  showNotification("Download karne ke liye koi data nahi hai.", true); return;
              }
              
+             const selectedUserId = summaryUserFilter.value;
+             const selectedSection = summarySectionFilter.value;
+
+             // Filter reports based on selected user
+             const filteredReports = (selectedUserId === 'all') 
+                 ? fetchedAdminReports 
+                 : fetchedAdminReports.filter(r => r.userId === selectedUserId);
+
+             if (filteredReports.length === 0) {
+                 showNotification("Selected filter ke liye koi data nahi hai.", true); return;
+             }
+
              showLoader(true);
              
              try {
                 const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
                 const selectedMonth = adminMonthSelect.value;
                 const selectedYear = adminYearSelect.value;
-                const filename = `ReportSummary_${selectedMonth}_${selectedYear}.xlsx`;
+                const filename = `ReportSummary_${selectedMonth}_${selectedYear}_${selectedUserId}_${selectedSection}.xlsx`;
                 
                 const wb = XLSX.utils.book_new();
-                const reports = fetchedAdminReports; // Use the globally fetched reports
-
+                
                 // 1. Jaiza Sheet
-                let jaizaEntries = [];
-                reports.forEach(r => (r.jaizaReport?.data || []).forEach(entry => jaizaEntries.push({
-                    "User": getUserName(r.userId),
-                    "Jamia": entry.name,
-                    "Date": entry.date || '-',
-                    "Type": entry.type,
-                    "Percentage": entry.percentage || '-'
-                })));
-                if (jaizaEntries.length > 0) {
-                    const ws_jaiza = XLSX.utils.json_to_sheet(jaizaEntries);
-                    XLSX.utils.book_append_sheet(wb, ws_jaiza, "Jaiza Summary");
+                if (selectedSection === 'all' || selectedSection === 'jaiza') {
+                    let jaizaEntries = [];
+                    filteredReports.forEach(r => (r.jaizaReport?.data || []).forEach(entry => jaizaEntries.push({
+                        "User": getUserName(r.userId), "Jamia": entry.name, "Date": entry.date || '-', "Type": entry.type, "Percentage": entry.percentage || '-'
+                    })));
+                    if (jaizaEntries.length > 0) {
+                        const ws_jaiza = XLSX.utils.json_to_sheet(jaizaEntries);
+                        XLSX.utils.book_append_sheet(wb, ws_jaiza, "Jaiza Summary");
+                    }
                 }
 
                 // 2. Tadris Sheet
-                let tadrisEntries = [];
-                reports.forEach(r => (r.tadrisRecording?.data || []).forEach(entry => tadrisEntries.push({
-                    "User": getUserName(r.userId),
-                    "Jamia": entry.jamiaName,
-                    "Teacher": entry.teacherName,
-                    "Class": entry.className,
-                    "Kitab": entry.kitabName,
-                    "Date": entry.date,
-                    "Tasurat": entry.tasurat || '-'
-                })));
-                if (tadrisEntries.length > 0) {
-                    const ws_tadris = XLSX.utils.json_to_sheet(tadrisEntries);
-                    XLSX.utils.book_append_sheet(wb, ws_tadris, "Tadris Summary");
+                if (selectedSection === 'all' || selectedSection === 'tadris') {
+                    let tadrisEntries = [];
+                    filteredReports.forEach(r => (r.tadrisRecording?.data || []).forEach(entry => tadrisEntries.push({
+                        "User": getUserName(r.userId), "Jamia": entry.jamiaName, "Teacher": entry.teacherName, "Class": entry.className, "Kitab": entry.kitabName, "Date": entry.date, "Tasurat": entry.tasurat || '-'
+                    })));
+                    if (tadrisEntries.length > 0) {
+                        const ws_tadris = XLSX.utils.json_to_sheet(tadrisEntries);
+                        XLSX.utils.book_append_sheet(wb, ws_tadris, "Tadris Summary");
+                    }
                 }
 
                 // 3. Test Sheet
-                let testEntries = [];
-                reports.forEach(r => (r.monthlyTest?.data || []).forEach(entry => testEntries.push({
-                    "User": getUserName(r.userId),
-                    "Jamia": entry.name,
-                    "Status": entry.status,
-                    "Month": entry.month || '-',
-                    "Percentage": entry.percentage || '-',
-                    "Wajah": entry.wajah || '-'
-                })));
-                if (testEntries.length > 0) {
-                    const ws_test = XLSX.utils.json_to_sheet(testEntries);
-                    XLSX.utils.book_append_sheet(wb, ws_test, "Monthly Test Summary");
+                if (selectedSection === 'all' || selectedSection === 'test') {
+                    let testEntries = [];
+                    filteredReports.forEach(r => (r.monthlyTest?.data || []).forEach(entry => testEntries.push({
+                        "User": getUserName(r.userId), "Jamia": entry.name, "Status": entry.status, "Month": entry.month || '-', "Percentage": entry.percentage || '-', "Wajah": entry.wajah || '-'
+                    })));
+                    if (testEntries.length > 0) {
+                        const ws_test = XLSX.utils.json_to_sheet(testEntries);
+                        XLSX.utils.book_append_sheet(wb, ws_test, "Monthly Test Summary");
+                    }
                 }
 
                 // 4. KKd Sheet
-                let kkdEntries = [];
-                reports.forEach(r => (r.karkardagiReport?.data || []).forEach(entry => kkdEntries.push({
-                    "User": getUserName(r.userId),
-                    "Academic Year": r.academicYear || 'N/A',
-                    "Jamia": entry.jamiaName,
-                    "Teacher": entry.teacherName,
-                    "Book": entry.bookName,
-                    "Monthly Target": entry.monthlyTarget,
-                    "Pages Taught": entry.pagesTaught,
-                    "Achievement %": entry.achievement || '0'
-                })));
-                if (kkdEntries.length > 0) {
-                    const ws_kkd = XLSX.utils.json_to_sheet(kkdEntries);
-                    XLSX.utils.book_append_sheet(wb, ws_kkd, "KKd Summary");
+                if (selectedSection === 'all' || selectedSection === 'kkd') {
+                    let kkdEntries = [];
+                    filteredReports.forEach(r => (r.karkardagiReport?.data || []).forEach(entry => kkdEntries.push({
+                        "User": getUserName(r.userId), "Academic Year": r.academicYear || 'N/A', "Jamia": entry.jamiaName, "Teacher": entry.teacherName, "Book": entry.bookName, "Monthly Target": entry.monthlyTarget, "Pages Taught": entry.pagesTaught, "Achievement %": entry.achievement || '0'
+                    })));
+                    if (kkdEntries.length > 0) {
+                        const ws_kkd = XLSX.utils.json_to_sheet(kkdEntries);
+                        XLSX.utils.book_append_sheet(wb, ws_kkd, "KKd Summary");
+                    }
                 }
                 
                 if (wb.SheetNames.length === 0) {
@@ -693,14 +776,16 @@
              }
          };
          
+         // === IMAGE DOWNLOAD FUNCTION (NO CHANGE NEEDED) ===
+         // Yeh function wahi download karega jo screen par filter ho kar dikh raha hai
          const handleImageDownload = () => {
              if (typeof html2canvas === 'undefined') {
-                 showNotification("Image library (html2canvas) load nahi hui.", true); return;
+                 showNotification("Image library (html2canvas) load nahi hui. Page refresh karein.", true); return;
              }
              
              const summaryContainer = document.getElementById('summary-tables-container');
-             if (!summaryContainer) {
-                 showNotification("Summary container nahi mila.", true); return;
+             if (!summaryContainer || summaryContainer.classList.contains('hidden')) {
+                 showNotification("Summary container nahi mila ya khali hai. Pehle filter apply karein.", true); return;
              }
              
              showLoader(true);
@@ -709,9 +794,9 @@
              const filename = `ReportSummary_${selectedMonth}_${selectedYear}.png`;
 
              html2canvas(summaryContainer, {
-                 scale: 2, // High quality
+                 scale: 2, 
                  useCORS: true,
-                 backgroundColor: '#ffffff' // Force white background
+                 backgroundColor: '#ffffff'
              }).then(canvas => {
                  const link = document.createElement('a');
                  link.href = canvas.toDataURL('image/png');
@@ -729,14 +814,19 @@
          };
          
          const fetchAndRenderAdminUsers = () => {
-              if(!adminUsersTbody) return; // Add check
+              if(!adminUsersTbody) return;
               adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading users...</td></tr>';
              const usersRef = collection(db, 'users');
              const q = query(usersRef); 
              if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
              unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
-                  allUsersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  allUsersData = snapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(user => user.id !== ADMIN_UID); // Filter out admin
+                    
                   renderAdminUsersTable(allUsersData);
+                  populateSummaryUserFilter(allUsersData); // Naya function call
+                  
                    const activeAdminTab = document.querySelector('.admin-tab-btn.active')?.dataset.adminTab;
                   if (activeAdminTab === 'reports' && !unsubscribeAdminReports) {
                        fetchAndRenderAdminReports(); 
@@ -747,6 +837,20 @@
                  adminReportsTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Error loading user data needed for reports.</td></tr>';
              });
          };
+         
+         // === NAYA FUNCTION ===
+         const populateSummaryUserFilter = (users) => {
+             if (!summaryUserFilter) return;
+             summaryUserFilter.innerHTML = '<option value="all">All Users</option>'; // Reset
+             users
+                 .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                 .forEach(user => {
+                     const option = document.createElement('option');
+                     option.value = user.id;
+                     option.textContent = user.name || user.email || 'N/A';
+                     summaryUserFilter.appendChild(option);
+                 });
+         };
 
          const renderAdminUsersTable = (users) => {
                if (!adminUsersTbody) return;
@@ -754,7 +858,6 @@
                  adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No users found.</td></tr>'; return;
              }
               adminUsersTbody.innerHTML = users
-                .filter(user => user.id !== ADMIN_UID) 
                 .map(user => {
                     let deadlineText = '';
                     if (user.gracePeriodOverrideUntil) {
@@ -780,7 +883,7 @@
              document.querySelectorAll('.admin-edit-user-btn').forEach(button => {
                  button.addEventListener('click', (e) => {
                      const userId = e.target.dataset.userId;
-                     const userToEdit = allUsersData.find(u => u.id === userId);
+                     const userToEdit = allUsersData.find(u => u.id === userId); // allUsersData ab admin ke baghair hai
                      if (userToEdit) { openEditUserModal(userToEdit); } 
                      else { showNotification("Could not find user details.", true); }
                  });
@@ -862,7 +965,6 @@
                     });
                     showNotification("Deadline updated successfully!");
                     deadlineModal.classList.add('hidden');
-                    // Data will refresh via onSnapshot
                } catch (error) {
                     console.error("Error updating deadline:", error);
                     deadlineError.textContent = "Failed to save deadline.";
@@ -870,7 +972,6 @@
                } finally { showLoader(false); }
            };
            
-        // +++ NAYA FUNCTION YAHAN ADD KIYA GAYA HAI +++
         const showReportModal = (report, isAdminView = false) => {
             if (!report) {
                 modalContent.innerHTML = '<p class="text-red-500">Report details not found.</p>';
@@ -886,7 +987,6 @@
 
             let html = '';
 
-            // Helper function to create table
             const createTableHtml = (title, headers, data, renderRow) => {
                 if (!data || data.length === 0) {
                     return `<h4 class="text-md font-semibold mt-4 mb-2 urdu-font">${title} - (Data Maujood Nahi)</h4>`;
@@ -903,73 +1003,29 @@
             };
 
             // 1. Jaiza Report
-            html += createTableHtml(
-                'Jaiza Report',
-                ['Jamia', 'Date', 'Type', '%'],
-                report.jaizaReport?.data,
-                item => `<tr>
-                            <td class="urdu-font">${item.name}</td>
-                            <td>${item.date || '-'}</td>
-                            <td>${item.type}</td>
-                            <td>${item.percentage || '-'}</td>
-                         </tr>`
+            html += createTableHtml( 'Jaiza Report', ['Jamia', 'Date', 'Type', '%'], report.jaizaReport?.data,
+                item => `<tr> <td class="urdu-font">${item.name}</td> <td>${item.date || '-'}</td> <td>${item.type}</td> <td>${item.percentage || '-'}</td> </tr>`
             );
-
             // 2. Tadris Recording
-            html += createTableHtml(
-                'Tadris Recording',
-                ['Jamia', 'Teacher', 'Class', 'Kitab', 'Date', 'Tasurat'],
-                report.tadrisRecording?.data,
-                item => `<tr>
-                            <td class="urdu-font">${item.jamiaName}</td>
-                            <td class="urdu-font">${item.teacherName}</td>
-                            <td class="urdu-font">${item.className}</td>
-                            <td class="urdu-font">${item.kitabName}</td>
-                            <td>${item.date}</td>
-                            <td class="urdu-font">${item.tasurat || '-'}</td>
-                         </tr>`
+            html += createTableHtml( 'Tadris Recording', ['Jamia', 'Teacher', 'Class', 'Kitab', 'Date', 'Tasurat'], report.tadrisRecording?.data,
+                item => `<tr> <td class="urdu-font">${item.jamiaName}</td> <td class="urdu-font">${item.teacherName}</td> <td class="urdu-font">${item.className}</td> <td class="urdu-font">${item.kitabName}</td> <td>${item.date}</td> <td class="urdu-font">${item.tasurat || '-'}</td> </tr>`
             );
-
             // 3. Monthly Test
-            html += createTableHtml(
-                'Monthly Test',
-                ['Jamia', 'Status', 'Month', '%', 'Wajah'],
-                report.monthlyTest?.data,
-                item => `<tr>
-                            <td class="urdu-font">${item.name}</td>
-                            <td>${item.status}</td>
-                            <td>${item.month || '-'}</td>
-                            <td>${item.percentage || '-'}</td>
-                            <td class="urdu-font">${item.wajah || '-'}</td>
-                         </tr>`
+            html += createTableHtml( 'Monthly Test', ['Jamia', 'Status', 'Month', '%', 'Wajah'], report.monthlyTest?.data,
+                item => `<tr> <td class="urdu-font">${item.name}</td> <td>${item.status}</td> <td>${item.month || '-'}</td> <td>${item.percentage || '-'}</td> <td class="urdu-font">${item.wajah || '-'}</td> </tr>`
             );
-            
             // 4. Karkardagi Report (KKd)
-            html += createTableHtml(
-                'Talimi & Shashmahi KKd',
-                ['Jamia', 'Teacher', 'Book', 'Target', 'Taught', 'Achieved %'],
-                report.karkardagiReport?.data,
-                item => `<tr>
-                            <td class="urdu-font">${item.jamiaName}</td>
-                            <td class="urdu-font">${item.teacherName}</td>
-                            <td class="urdu-font">${item.bookName}</td>
-                            <td>${item.monthlyTarget}</td>
-                            <td>${item.pagesTaught}</td>
-                            <td>${item.achievement || '0'}%</td>
-                         </tr>`
+            html += createTableHtml( 'Talimi & Shashmahi KKd', ['Jamia', 'Teacher', 'Book', 'Target', 'Taught', 'Achieved %'], report.karkardagiReport?.data,
+                item => `<tr> <td class="urdu-font">${item.jamiaName}</td> <td class="urdu-font">${item.teacherName}</td> <td class="urdu-font">${item.bookName}</td> <td>${item.monthlyTarget}</td> <td>${item.pagesTaught}</td> <td>${item.achievement || '0'}%</td> </tr>`
             );
-
             // 5. Admin Comment
             if (report.comment) {
                 html += `<h4 class="text-md font-semibold mt-4 mb-2">Admin Comment</h4>
                          <div class="comment-display urdu-font">${report.comment}</div>`;
             }
-
             modalContent.innerHTML = html;
             reportModal.classList.remove('hidden');
         };
-        // +++ NAYA FUNCTION YAHAN KHATAM HUA +++
-
 
         // --- NEW FEATURES LOGIC (Announcements, Reminders) ---
 
@@ -978,31 +1034,14 @@
              
              const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"));
              unsubscribeAnnouncements = onSnapshot(q, (snapshot) => {
-                 if (adminView && adminView.classList.contains('hidden')) { // Check if user view is active
-                     renderUserAnnouncements(snapshot.docs);
-                 } else if (adminView) { // Check if admin view exists
+                 if (adminView && adminView.classList.contains('hidden')) { 
+                     // renderUserAnnouncements(snapshot.docs); // User view nahi hai
+                 } else if (adminView) {
                      renderAdminAnnouncementsList(snapshot.docs);
                  }
              }, (error) => {
                  console.error("Error listening for announcements: ", error);
              });
-        };
-
-        const renderUserAnnouncements = (docs) => {
-            if (!userAnnouncementsDiv) return;
-            if (docs.length === 0) {
-                userAnnouncementsDiv.innerHTML = ''; return;
-            }
-            userAnnouncementsDiv.innerHTML = docs.map(doc => {
-                const data = doc.data();
-                const date = data.createdAt?.toDate().toLocaleDateString() || 'N/A';
-                return `
-                    <div class="announcement-box p-4 rounded-lg">
-                        <h4 class="font-bold text-yellow-800 urdu-font">${data.message}</h4>
-                        <p class="text-xs text-yellow-700 mt-1">Date: ${date}</p>
-                    </div>
-                `;
-            }).join('');
         };
         
         const renderAdminAnnouncementsList = (docs) => {
@@ -1072,39 +1111,8 @@
             }
         };
         
-        const checkLateReportReminder = (reports) => {
-             if (!userLateReminderDiv) return;
-             const now = new Date();
-             const currentDay = now.getDate();
-             
-             // Don't show reminder if we are in any grace period
-             if (reportingDateInfo.monthNum !== now.getMonth()) {
-                 userLateReminderDiv.classList.add('hidden');
-                 return;
-             }
-             
-             // Find last month's report
-             const lastMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
-             const prevMonthNum = lastMonthDate.getMonth();
-             const prevYearNum = lastMonthDate.getFullYear();
-             const prevAcademicYear = (prevMonthNum >= 3) ? `${prevYearNum}-${prevYearNum + 1}` : `${prevYearNum - 1}-${prevYearNum}`;
-             const prevReportIdSimple = `${currentUser.uid}_${prevYearNum}_${prevMonthNum}`;
-             const prevReportIdWithYear = `${currentUser.uid}_${prevAcademicYear}_${prevYearNum}_${prevMonthNum}`;
-             const lastMonthReport = reports.find(r => r.id === prevReportIdWithYear || r.id === prevReportIdSimple);
-             
-             const isComplete = lastMonthReport &&
-                                lastMonthReport.jaizaReport?.status === 'Done' &&
-                                lastMonthReport.tadrisRecording?.status === 'Done' &&
-                                lastMonthReport.monthlyTest?.status === 'Done' &&
-                                (lastMonthReport.karkardagiReport?.status === 'Done' || lastMonthReport.kkdReport?.status === 'Done');
-
-             if (currentDay > 5 && !isComplete) {
-                 userLateReminderDiv.classList.remove('hidden');
-             } else {
-                 userLateReminderDiv.classList.add('hidden');
-             }
-        };
-
         // --- Init ---
         initApp();
     </script>
+</body>
+</html>
