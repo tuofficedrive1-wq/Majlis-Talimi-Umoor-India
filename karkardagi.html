@@ -999,36 +999,70 @@
         const handleSaveMonthlyReport = async () => {
             if (!activeYear) return;
             console.log("Saving monthly report for year:", activeYear); 
-            showLoader(true);
-            const { month, year, monthNum, yearNum } = reportingDateInfo; 
-            
-            const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
-            reportRef = doc(db, 'monthly_reports', reportId); // Set global ref
+            showLoader(true); // <-- Loader ON
 
-            const newReportData = [];
-            reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
-                const pagesTaughtInput = row.querySelector('.pages-taught-input');
-                const pagesTaught = parseInt(pagesTaughtInput.value, 10) || 0;
+            try { // <-- TRY block yahan se shuru karein
+                const { month, year, monthNum, yearNum } = reportingDateInfo; 
                 
-                if (pagesTaught > 0) {
-                     const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10);
-                     let achievement = 0;
-                     if (pagesTaught > 0 && monthlyTarget > 0) {
-                         achievement = Math.round((pagesTaught / monthlyTarget) * 100);
-                     }
+                const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+                const reportRef = doc(db, 'monthly_reports', reportId); // Ref ko local banaya
+
+                const newReportData = [];
+                reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
+                    const pagesTaughtInput = row.querySelector('.pages-taught-input');
+                    const pagesTaught = parseInt(pagesTaughtInput.value, 10) || 0;
                     
-                    newReportData.push({
-                        periodId: row.dataset.periodId,
-                        jamiaName: row.dataset.jamiaName,
-                        teacherName: row.dataset.teacherName,
-                        bookName: row.dataset.bookName,
-                        monthlyTarget: monthlyTarget,
-                        pagesTaught: pagesTaught,
-                        achievement: achievement
-                    });
-                }
-            });
-             console.log("Data to save in monthly report:", newReportData); 
+                    if (pagesTaught > 0) {
+                         const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
+                         let achievement = 0;
+                         
+                         // === YEH HAI IMPORTANT FIX ===
+                         // Check karein ki monthlyTarget 0 se zyada ho
+                         if (pagesTaught > 0 && monthlyTarget > 0) { 
+                             achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                         }
+                         // Agar monthlyTarget 0 hai, toh achievement 0 hi rahega (Infinity nahi banega)
+                         
+                        newReportData.push({
+                            periodId: row.dataset.periodId,
+                            jamiaName: row.dataset.jamiaName,
+                            teacherName: row.dataset.teacherName,
+                            bookName: row.dataset.bookName,
+                            monthlyTarget: monthlyTarget,
+                            pagesTaught: pagesTaught,
+                            achievement: achievement // Ab yeh safe hai
+                        });
+                    }
+                });
+                 console.log("Data to save in monthly report:", newReportData); 
+
+                const dataToSave = {
+                    karkardagiReport: {
+                        status: newReportData.length > 0 ? 'Done' : 'Pending',
+                        data: newReportData
+                    },
+                    userId: currentUser.uid,
+                    userEmail: currentUser.email,
+                    month: month, 
+                    year: year,   
+                    academicYear: activeYear, 
+                    createdAt: serverTimestamp()
+                };
+
+                await setDoc(reportRef, dataToSave, { merge: true });
+                monthlyReportData = newReportData; 
+                showNotification(`Monthly Karkardagi report for ${month} ${year} saved!`);
+            
+            } catch (error) {
+                console.error("Error saving monthly report:", error);
+                // User ko error dikhayein
+                showNotification(`Report save karne me error: ${error.message}`, true);
+            
+            } finally {
+                showLoader(false); // <-- Loader OFF
+                // Yeh block ab hamesha chalega, chahe error aaye ya na aaye
+            }
+        };
 
             const dataToSave = {
                 karkardagiReport: {
@@ -1076,4 +1110,5 @@
     </script>
 </body>
 </html>
+
 
