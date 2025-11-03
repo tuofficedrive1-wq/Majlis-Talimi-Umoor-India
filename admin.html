@@ -42,6 +42,14 @@
         .admin-set-deadline-btn { color: #ea580c; /* orange-600 */ margin-left: 0.5rem; font-size: 0.875rem; font-weight: 500; }
         .admin-set-deadline-btn:hover { color: #c2410c; /* orange-800 */}
         .comment-display { background-color: #f3f4f6; border-left: 3px solid #14b8a6; padding: 8px 12px; margin-top: 8px; border-radius: 4px; }
+        /* NAYA DELETE BUTTON STYLE */
+        .delete-sub-entry-btn {
+            background-color: #fee2e2; color: #b91c1c; font-weight: bold;
+            border: 1px solid #fecaca; border-radius: 50%;
+            width: 24px; height: 24px; line-height: 22px; text-align: center;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .delete-sub-entry-btn:hover { background-color: #ef4444; color: white; border-color: #ef4444; }
     </style>
 </head>
 <body class="antialiased text-gray-800">
@@ -331,7 +339,7 @@
         const deadlineDateInput = document.getElementById('deadline-date-input');
         const deadlineError = document.getElementById('deadline-error');
         
-        // NAYE COMMENT MODAL ELEMENTS
+        // COMMENT MODAL ELEMENTS
         const commentModal = document.getElementById('comment-modal');
         const commentForm = document.getElementById('comment-form');
         const closeCommentModalBtn = document.getElementById('close-comment-modal-btn');
@@ -364,7 +372,7 @@
             setTimeout(() => { if (notification) notification.classList.remove('translate-x-full'); }, 10); 
             setTimeout(() => {
                 if (notification) notification.classList.add('translate-x-full');
-                setTimeout(() => { if (notification) notification.classList.add('hidden'); }, 300);
+                setTimeout(() => { if (notification) notification.classList.add('hidden'); }, 3000);
             }, 3000);
         };
         
@@ -455,7 +463,6 @@
              window.addEventListener('click', (event) => { if (event.target == deadlineModal) deadlineModal.classList.add('hidden'); });
              deadlineForm.addEventListener('submit', handleSaveDeadline); 
              
-             // NAYE LISTENERS
              closeCommentModalBtn.addEventListener('click', () => commentModal.classList.add('hidden'));
              window.addEventListener('click', (event) => { if (event.target == commentModal) commentModal.classList.add('hidden'); });
              commentForm.addEventListener('submit', handleSaveComment);
@@ -635,7 +642,6 @@
                  const submittedDate = report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString() : 'N/A';
                  const academicYearTag = report.academicYear ? `<span class="text-xs text-gray-500 ml-1">(${report.academicYear})</span>` : '';
                  
-                 // NAYA: Check if comment exists
                  const commentTag = report.comment ? `<span class="text-xs text-blue-600 ml-1">(Commented)</span>` : '';
 
                  return `
@@ -652,7 +658,6 @@
                  `;
              }).join('');
 
-             // NAYE LISTENERS
              document.querySelectorAll('.admin-view-details-btn').forEach(button => {
                  button.addEventListener('click', (e) => {
                      const reportId = e.target.dataset.reportId;
@@ -672,7 +677,7 @@
              document.querySelectorAll('.admin-delete-report-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const reportId = e.target.dataset.reportId;
-                    handleDeleteReport(reportId); // Naya function call
+                    handleDeleteReport(reportId);
                 });
              });
          };
@@ -1191,7 +1196,6 @@
                } finally { showLoader(false); }
            };
            
-           // NAYA: COMMENT MODAL FUNCTIONS
            const openCommentModal = (report) => { 
                 commentError.textContent = '';
                 commentReportIdInput.value = report.id;
@@ -1218,7 +1222,6 @@
                     });
                     showNotification("Comment saved successfully!");
                     commentModal.classList.add('hidden');
-                    // Data will refresh via onSnapshot
                 } catch (error) {
                     console.error("Error saving comment:", error);
                     commentError.textContent = "Failed to save comment.";
@@ -1228,7 +1231,6 @@
                 }
            };
 
-           // NAYA: DELETE REPORT FUNCTION
            const handleDeleteReport = async (reportId) => {
                 if (!reportId) {
                     showNotification("Report ID is missing.", true);
@@ -1236,7 +1238,7 @@
                 }
                 
                 if (!confirm("Kya aap waqai is poori report ko delete karna chahte hain? Yeh data wapas nahi aayega.")) {
-                    return; // User cancelled
+                    return;
                 }
                 
                 console.log("Deleting report:", reportId);
@@ -1245,7 +1247,6 @@
                 try {
                     await deleteDoc(reportDocRef);
                     showNotification("Report successfully deleted!");
-                    // Data will refresh automatically via onSnapshot
                 } catch (error) {
                     console.error("Error deleting report:", error);
                     showNotification("Failed to delete report.", true);
@@ -1254,7 +1255,70 @@
                 }
            };
 
+           // === NAYA FUNCTION: Individual Entry ko delete karna ===
+           const handleDeleteSubEntry = async (e) => {
+                const button = e.target.closest('.delete-sub-entry-btn');
+                const reportId = button.dataset.reportId;
+                const section = button.dataset.section; // e.g., 'jaizaReport'
+                const index = parseInt(button.dataset.index, 10);
+
+                if (!reportId || !section || isNaN(index)) {
+                    showNotification("Delete karne ke liye data poora nahi hai.", true);
+                    return;
+                }
+
+                if (!confirm("Kya aap waqai is entry ko delete karna chahte hain?")) {
+                    return;
+                }
+                
+                showLoader(true);
+
+                try {
+                    const report = fetchedAdminReports.find(r => r.id === reportId);
+                    if (!report || !report[section] || !report[section].data) {
+                        throw new Error("Report data nahi mila.");
+                    }
+
+                    // Naya array banayein
+                    const updatedArray = [...report[section].data];
+                    
+                    // Sahi item ko delete karein
+                    updatedArray.splice(index, 1);
+
+                    // Database update ke liye object banayein
+                    const updateData = {
+                        [`${section}.data`]: updatedArray
+                    };
+
+                    // Agar array khaali ho jaye to status bhi update karein
+                    if (updatedArray.length === 0) {
+                        updateData[`${section}.status`] = 'Not Started';
+                    }
+
+                    const reportDocRef = doc(db, 'monthly_reports', reportId);
+                    await updateDoc(reportDocRef, updateData);
+
+                    showNotification("Entry successfully deleted!");
+
+                    // Modal ko refresh karein
+                    // onSnapshot ab fetchedAdminReports ko update kar dega, to hum naya data le sakte hain
+                    const updatedReport = fetchedAdminReports.find(r => r.id === reportId);
+                    if (updatedReport) {
+                        showReportModal(updatedReport, true);
+                    } else {
+                        reportModal.classList.add('hidden');
+                    }
+
+                } catch (error) {
+                    console.error("Error deleting sub-entry:", error);
+                    showNotification("Entry delete karne mein error.", true);
+                } finally {
+                    showLoader(false);
+                }
+           };
+
            
+        // === VIEW REPORT MODAL (Updated) ===
         const showReportModal = (report, isAdminView = false) => {
             if (!report) {
                 modalContent.innerHTML = '<p class="text-red-500">Report details not found.</p>';
@@ -1270,7 +1334,8 @@
 
             let html = '';
 
-            const createTableHtml = (title, headers, data, renderRow) => {
+            // NAYA: Helper function mein 'sectionKey' add kiya
+            const createTableHtml = (title, headers, data, sectionKey, renderRow) => {
                 if (!data || data.length === 0) {
                     return `<h4 class="text-md font-semibold mt-4 mb-2 urdu-font">${title} - (Data Maujood Nahi)</h4>`;
                 }
@@ -1278,28 +1343,71 @@
                              <div class="overflow-x-auto border rounded-lg">
                                <table class="summary-table w-full text-sm">
                                  <thead class="bg-gray-100"><tr class="!text-left">`;
-                headers.forEach(h => table += `<th class="!p-2">${h}</th>`);
+                // NAYA: "Action" header add kiya
+                [...headers, 'Action'].forEach(h => table += `<th class="!p-2">${h}</th>`);
                 table += `</tr></thead><tbody>`;
-                data.forEach(item => table += renderRow(item));
+                // NAYA: renderRow mein 'index' aur 'sectionKey' pass kiya
+                data.forEach((item, index) => table += renderRow(item, index, sectionKey));
                 table += `</tbody></table></div>`;
                 return table;
             };
+            
+            // NAYA: Delete button ke liye helper
+            const deleteButtonHtml = (reportId, sectionKey, index) => {
+                return `<td class="!p-2 text-center">
+                            <button title="Delete this entry" class="delete-sub-entry-btn" 
+                                data-report-id="${reportId}" 
+                                data-section="${sectionKey}" 
+                                data-index="${index}">
+                                &times;
+                            </button>
+                        </td>`;
+            };
 
             // 1. Jaiza Report
-            html += createTableHtml( 'Jaiza Report', ['Jamia', 'Date', 'Type', '%'], report.jaizaReport?.data,
-                item => `<tr> <td class="urdu-font">${item.name}</td> <td>${item.date || '-'}</td> <td>${item.type}</td> <td>${item.percentage || '-'}</td> </tr>`
+            html += createTableHtml( 'Jaiza Report', ['Jamia', 'Date', 'Type', '%'], report.jaizaReport?.data, 'jaizaReport',
+                (item, index) => `<tr>
+                    <td class="urdu-font">${item.name}</td> 
+                    <td>${item.date || '-'}</td> 
+                    <td>${item.type}</td> 
+                    <td>${item.percentage || '-'}</td> 
+                    ${deleteButtonHtml(report.id, 'jaizaReport', index)}
+                 </tr>`
             );
             // 2. Tadris Recording
-            html += createTableHtml( 'Tadris Recording', ['Jamia', 'Teacher', 'Class', 'Kitab', 'Date', 'Tasurat'], report.tadrisRecording?.data,
-                item => `<tr> <td class="urdu-font">${item.jamiaName}</td> <td class="urdu-font">${item.teacherName}</td> <td class="urdu-font">${item.className}</td> <td class="urdu-font">${item.kitabName}</td> <td>${item.date}</td> <td class="urdu-font">${item.tasurat || '-'}</td> </tr>`
+            html += createTableHtml( 'Tadris Recording', ['Jamia', 'Teacher', 'Class', 'Kitab', 'Date', 'Tasurat'], report.tadrisRecording?.data, 'tadrisRecording',
+                (item, index) => `<tr> 
+                    <td class="urdu-font">${item.jamiaName}</td> 
+                    <td class="urdu-font">${item.teacherName}</td> 
+                    <td class="urdu-font">${item.className}</td> 
+                    <td class="urdu-font">${item.kitabName}</td> 
+                    <td>${item.date}</td> 
+                    <td class="urdu-font">${item.tasurat || '-'}</td> 
+                    ${deleteButtonHtml(report.id, 'tadrisRecording', index)}
+                </tr>`
             );
             // 3. Monthly Test
-            html += createTableHtml( 'Monthly Test', ['Jamia', 'Status', 'Month', '%', 'Wajah'], report.monthlyTest?.data,
-                item => `<tr> <td class="urdu-font">${item.name}</td> <td>${item.status}</td> <td>${item.month || '-'}</td> <td>${item.percentage || '-'}</td> <td class="urdu-font">${item.wajah || '-'}</td> </tr>`
+            html += createTableHtml( 'Monthly Test', ['Jamia', 'Status', 'Month', '%', 'Wajah'], report.monthlyTest?.data, 'monthlyTest',
+                (item, index) => `<tr> 
+                    <td class="urdu-font">${item.name}</td> 
+                    <td>${item.status}</td> 
+                    <td>${item.month || '-'}</td> 
+                    <td>${item.percentage || '-'}</td> 
+                    <td class="urdu-font">${item.wajah || '-'}</td> 
+                    ${deleteButtonHtml(report.id, 'monthlyTest', index)}
+                </tr>`
             );
             // 4. Karkardagi Report (KKd)
-            html += createTableHtml( 'Talimi & Shashmahi KKd', ['Jamia', 'Teacher', 'Book', 'Target', 'Taught', 'Achieved %'], report.karkardagiReport?.data,
-                item => `<tr> <td class="urdu-font">${item.jamiaName}</td> <td class="urdu-font">${item.teacherName}</td> <td class="urdu-font">${item.bookName}</td> <td>${item.monthlyTarget}</td> <td>${item.pagesTaught}</td> <td>${item.achievement || '0'}%</td> </tr>`
+            html += createTableHtml( 'Talimi & Shashmahi KKd', ['Jamia', 'Teacher', 'Book', 'Target', 'Taught', 'Achieved %'], report.karkardagiReport?.data, 'karkardagiReport',
+                (item, index) => `<tr> 
+                    <td class="urdu-font">${item.jamiaName}</td> 
+                    <td class="urdu-font">${item.teacherName}</td> 
+                    <td class="urdu-font">${item.bookName}</td> 
+                    <td>${item.monthlyTarget}</td> 
+                    <td>${item.pagesTaught}</td> 
+                    <td>${item.achievement || '0'}%</td> 
+                    ${deleteButtonHtml(report.id, 'karkardagiReport', index)}
+                </tr>`
             );
             // 5. Admin Comment
             if (report.comment) {
@@ -1307,6 +1415,12 @@
                          <div class="comment-display urdu-font">${report.comment}</div>`;
             }
             modalContent.innerHTML = html;
+            
+            // NAYA: Event listener ko modal khulne ke baad attach karein
+            modalContent.querySelectorAll('.delete-sub-entry-btn').forEach(button => {
+                button.addEventListener('click', handleDeleteSubEntry);
+            });
+            
             reportModal.classList.remove('hidden');
         };
 
@@ -1318,7 +1432,6 @@
              const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"));
              unsubscribeAnnouncements = onSnapshot(q, (snapshot) => {
                  if (adminView && adminView.classList.contains('hidden')) { 
-                     // renderUserAnnouncements(snapshot.docs); // User view nahi hai
                  } else if (adminView) {
                      renderAdminAnnouncementsList(snapshot.docs);
                  }
@@ -1399,4 +1512,3 @@
     </script>
 </body>
 </html>
-
