@@ -351,7 +351,6 @@
         };
 
 
-        // UPDATED: getInitialReportingPeriod to automatically set month/year/semester based on today's date/grace period
         const getInitialReportingPeriod = (overrideTimestamp = null) => {
             const now = new Date();
             const currentDay = now.getDate();
@@ -453,6 +452,7 @@
                 }
                 
                 if (targetDiv) {
+                    // Find the correct button type (accordion-button for setup, reporting-accordion-button for report)
                     const button = targetDiv.querySelector('.accordion-button, .teacher-accordion-button, .reporting-accordion-button');
                     const content = targetDiv.querySelector('.accordion-content');
                     if (button && content) {
@@ -511,15 +511,15 @@
                             // SET INITIAL PERIOD
                             const initialPeriod = getInitialReportingPeriod(overrideTimestamp);
                             
-                            // *** NEW LOGIC TO SET ACADEMIC YEAR AND PERIOD ***
-                            const { monthNum, yearNum, semester } = initialPeriod;
+                            // *** LOGIC TO SET ACADEMIC YEAR AND PERIOD ***
+                            const { monthNum, yearNum } = initialPeriod;
                             
                             // Determine activeYear based on initial period
                             let currentActiveYear = null;
                             const currentYear = yearNum;
                             if (monthNum >= 3) { // April (3) onwards
                                 currentActiveYear = `${currentYear}-${currentYear + 1}`;
-                            } else { // Jan (0)
+                            } else { // Jan (0), Feb (1), Mar (2)
                                 currentActiveYear = `${currentYear - 1}-${currentYear}`;
                             }
                             
@@ -1280,6 +1280,14 @@
             // Use the current period set by initApp/loadUserData
             const { monthNum, semester: currentSemester, month } = currentReportPeriod; 
             
+            // NEW VALIDATION: Check if current month is included in the set academic months
+             if (currentReportPeriod.monthNum === -1 || !academicMonths.hasOwnProperty(currentReportPeriod.monthNum)) {
+                 const currentMonthName = getMonthName(currentReportPeriod.monthNum !== -1 ? currentReportPeriod.monthNum : (currentReportPeriod.semester === '1' ? 3 : 8));
+                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${currentMonthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 saveMonthlyReportBtn.classList.add('hidden');
+                 return;
+             }
+
             const sem1TotalDays = yearData.sem1TotalDays || 0;
             const sem2TotalDays = yearData.sem2TotalDays || 0;
             const semesterTotalDays = currentSemester === '1' ? sem1TotalDays : sem2TotalDays;
@@ -1293,7 +1301,7 @@
             const academicMonths = yearData.academicMonths || {};
             const daysThisMonth = academicMonths[monthNum] || 0; 
             
-            if (daysThisMonth === 0 || monthNum === -1) {
+            if (daysThisMonth === 0) {
                  const monthName = currentReportPeriod.month || 'Selected Month';
                  reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${monthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
                  saveMonthlyReportBtn.classList.add('hidden');
@@ -1307,6 +1315,7 @@
                         .sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
 
                     sortedPeriods
+                        // Filter periods by the current report semester
                         ?.filter(p => p.semester === currentSemester) 
                         .forEach(period => {
                             if (!acc[jamia.jamiaName]) {
@@ -1317,7 +1326,8 @@
                 });
                 return acc;
             }, {});
-
+            
+            // Re-check: Did we find any periods for the current semester?
             if (Object.keys(periodsByJamia).length === 0) {
                 reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
                 saveMonthlyReportBtn.classList.add('hidden');
@@ -1366,8 +1376,11 @@
                         monthlyTarget = Math.round(perDayTarget * daysThisMonth);
                     }
 
+                    // *** FIX: Find the saved entry, if it exists ***
                     const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
                     const pagesTaught = savedEntry?.pagesTaught || '';
+                    // **********************************************
+                    
                     let achievement = 0;
                     if (pagesTaught > 0 && monthlyTarget > 0) {
                         achievement = Math.round((pagesTaught / monthlyTarget) * 100);
@@ -1411,6 +1424,7 @@
             finalHTML += '</div>';
             reportingContainer.innerHTML = finalHTML;
             
+            // Attach input event listener for dynamic calculation
             reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
                 input.addEventListener('input', (e) => {
                     const row = e.target.closest('.reporting-row');
