@@ -255,6 +255,9 @@
         let allAcademicYearsData = {}; 
         let monthlyReportData = []; // Saved data for the current month/year
         let reportingDateInfo = {}; 
+        
+        // NEW: Accordion State Management
+        let openAccordionIds = new Set(); // Stores data-jamia-name and data-teacher-id
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -372,6 +375,55 @@
             console.log(`Current Day: ${currentDay}, Override: ${overrideTimestamp?.toDate().toLocaleDateString()}, Grace Active: ${isGracePeriod}, Reporting for: ${month} ${yearNum}`); 
             return { month, year: yearNum, monthNum, yearNum };
         };
+
+        // NEW: Accordion State Capture Logic
+        const captureAccordionState = () => {
+            openAccordionIds.clear();
+            // Capture open Jamia accordions (using button.open)
+            setupAccordionContainer.querySelectorAll('.accordion-button.open').forEach(button => {
+                const jamiaDiv = button.closest('[data-jamia-name]');
+                if (jamiaDiv) openAccordionIds.add(jamiaDiv.dataset.jamiaName);
+            });
+            // Capture open Teacher accordions (using button.open)
+            setupAccordionContainer.querySelectorAll('.teacher-accordion-button.open').forEach(button => {
+                const teacherDiv = button.closest('[data-teacher-id]');
+                if (teacherDiv) openAccordionIds.add(teacherDiv.dataset.teacherId);
+            });
+            console.log("Captured open IDs:", openAccordionIds);
+        };
+
+        // NEW: Accordion State Restore Logic
+        const restoreAccordionState = () => {
+            if (openAccordionIds.size === 0) return;
+            
+            openAccordionIds.forEach(id => {
+                // Try to find the Jamia accordion
+                const jamiaDiv = setupAccordionContainer.querySelector(`[data-jamia-name="${id}"]`);
+                if (jamiaDiv) {
+                    const button = jamiaDiv.querySelector('.accordion-button');
+                    const content = jamiaDiv.querySelector('.accordion-content');
+                    if (button && content) {
+                        button.classList.add('open');
+                        content.classList.add('open');
+                    }
+                }
+                
+                // Try to find the Teacher accordion
+                const teacherDiv = setupAccordionContainer.querySelector(`[data-teacher-id="${id}"]`);
+                if (teacherDiv) {
+                    const button = teacherDiv.querySelector('.teacher-accordion-button');
+                    const content = teacherDiv.querySelector('.accordion-content');
+                    if (button && content) {
+                        button.classList.add('open');
+                        content.classList.add('open');
+                    }
+                }
+            });
+            console.log("Restored open IDs:", openAccordionIds);
+            // Clear the set after restoring to prevent restoring closed elements on next simple re-render
+            // Note: We keep it populated if another save/re-render is expected immediately.
+        };
+
 
         // --- AUTHENTICATION & SYNC ---
         
@@ -709,6 +761,7 @@
                 `;
             }).join('');
             
+            // Attach Jamia accordion click listeners
             setupAccordionContainer.querySelectorAll('.accordion-button').forEach(button => {
                  button.addEventListener('click', (e) => {
                     const content = e.currentTarget.nextElementSibling;
@@ -726,6 +779,9 @@
             
             setupAccordionContainer.removeEventListener('submit', handleSetupSubmitDelegation); 
             setupAccordionContainer.addEventListener('submit', handleSetupSubmitDelegation); 
+            
+            // Restore state after rendering
+            restoreAccordionState(); // <<< ADDED RESTORE CALL
         };
         
         function handleSetupClickDelegation(e) {
@@ -810,8 +866,9 @@
                     </thead>
                     <tbody>
             `;
-            periods.sort((a, b) => a.semester.localeCompare(b.semester) || a.className.localeCompare(b.className, 'ur'));
-            
+            // Sorting periods by ID (which acts as creation time: higher ID means newer, so sort ascending to show older first)
+            periods.sort((a, b) => a.id.localeCompare(b.id));
+
             periods.forEach(period => {
                 const periodId = period.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
                 if(!period.id) period.id = periodId; 
@@ -862,6 +919,10 @@
         const handleAddTeacher = (e) => {
             e.preventDefault();
             if (!activeYear) return;
+            
+            // NEW: Capture state before any data modification that leads to re-render
+            captureAccordionState();
+
             const form = e.currentTarget;
             const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
             const jamiaName = jamiaDiv?.dataset.jamiaName;
@@ -881,6 +942,9 @@
             const newTeacher = { id: `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, name: teacherName, periods: [] };
             jamiaData.teachers.push(newTeacher);
 
+            // Add the new teacher's ID to the set so it opens automatically
+            openAccordionIds.add(newTeacher.id); 
+            
             saveActiveYearStructure(() => { 
                 teacherNameInput.value = '';
                 // Since UI structure is complex, re-render the whole setup tab for simplicity and safety
@@ -890,6 +954,10 @@
         
         const handleDeleteTeacher = (e) => {
             if (!activeYear) return;
+            
+            // NEW: Capture state before any data modification that leads to re-render
+            captureAccordionState();
+            
             const button = e.target.closest('.delete-teacher-btn');
             const teacherDiv = button.closest('.border.rounded-lg[data-teacher-id]');
             const teacherId = teacherDiv?.dataset.teacherId; 
@@ -916,6 +984,9 @@
         const handleAddPeriod = (e) => {
             e.preventDefault();
             if (!activeYear) return;
+
+            // NEW: Capture state before any data modification that leads to re-render
+            captureAccordionState();
             
             const form = e.target; 
             const jamiaName = form.querySelector('.hidden-jamia-name')?.value;
@@ -944,9 +1015,13 @@
             
             if (teacherData) {
                 if (!teacherData.periods) teacherData.periods = []; 
-                teacherData.periods.push(newPeriod);
+                teacherData.periods.push(newPeriod); // NEW: Always push to the end (newest entry)
                 
                 saveActiveYearStructure(() => { 
+                    // Add the Jamia and Teacher ID to the set to ensure both remain open
+                    openAccordionIds.add(jamiaName);
+                    openAccordionIds.add(teacherId);
+                    
                     renderSetupTab(); // Re-render the whole setup to update the table
                     renderReportingTab(); 
                 });
@@ -955,6 +1030,10 @@
         
         const handleDeletePeriod = (e) => {
             if (!activeYear) return;
+
+            // NEW: Capture state before any data modification that leads to re-render
+            captureAccordionState();
+
             const button = e.target.closest('.delete-period-btn');
             const periodRow = button.closest('tr[data-period-id]');
             const periodId = periodRow?.dataset.periodId; 
@@ -998,6 +1077,9 @@
              modalBookInput.value = row.dataset.book;
              modalSemesterSelect.value = row.dataset.sem;
              modalTotalPagesInput.value = row.dataset.total;
+             
+             // Capture state *before* opening modal, because modal closing will trigger re-render
+             captureAccordionState(); 
              
              editPeriodModal.classList.remove('hidden');
         };
@@ -1047,6 +1129,16 @@
 
         // --- REPORTING TAB LOGIC ---
         
+        // Function to extract timestamp from period ID
+        const getTimestampFromId = (id) => {
+             const parts = id.split('-');
+             if (parts.length >= 2) {
+                 // ID format is typically 'period-<timestamp>-<random>'
+                 return parseInt(parts[1], 10);
+             }
+             return 0;
+        };
+
         const renderReportingTab = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
              console.log("Rendering reporting tab for year:", activeYear); 
@@ -1086,7 +1178,11 @@
             // Group periods by Jamia
             const periodsByJamia = karkardagiStructure.reduce((acc, jamia) => {
                 jamia.teachers?.forEach(teacher => { 
-                    teacher.periods
+                    // Sort periods by creation time (ascending timestamp from ID)
+                    const sortedPeriods = (teacher.periods || [])
+                        .sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
+
+                    sortedPeriods
                         ?.filter(p => p.semester === currentSemester) 
                         .forEach(period => {
                             if (!acc[jamia.jamiaName]) {
@@ -1110,7 +1206,7 @@
 
             for (const jamiaName in periodsByJamia) {
                 const items = periodsByJamia[jamiaName];
-                // Sort items within this Jamia by teacher name
+                // Sort items within this Jamia by teacher name (optional: keep teacher grouping stable)
                 items.sort((a, b) => a.teacher.name.localeCompare(b.teacher.name, 'ur')); 
 
                 finalHTML += `
