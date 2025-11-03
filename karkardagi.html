@@ -9,7 +9,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" xintegrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
     <style>
         /* Jameel Noori Nastaleeq font */
         @font-face {
@@ -30,8 +31,8 @@
         .tab-btn.active { border-color: #14b8a6; background-color: #14b8a6; color: white; }
         .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
         .accordion-content.open { max-height: 5000px; transition: max-height 0.5s ease-in; }
-        .accordion-button svg, .teacher-accordion-button svg { transition: transform 0.3s ease-out; }
-        .accordion-button.open svg, .teacher-accordion-button.open svg { transform: rotate(180deg); }
+        .accordion-button svg, .teacher-accordion-button svg, .reporting-accordion-button svg { transition: transform 0.3s ease-out; }
+        .accordion-button.open svg, .teacher-accordion-button.open svg, .reporting-accordion-button.open svg { transform: rotate(180deg); }
         th, td { padding: 0.5rem 0.75rem; border: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
         /* Style for Jamia header row */
         .jamia-header { background-color: #e0f2fe; /* light blue */ font-weight: 600; }
@@ -193,9 +194,6 @@
     </div>
 
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
-
     <script type="module">
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -203,7 +201,7 @@
         import { getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 
         // --- GLOBAL VARIABLES & CONFIG ---
-        // (Your existing firebaseConfig here)
+        // Assuming fixed config for self-contained example:
         const firebaseConfig = {
           apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
           authDomain: "data-f15ab.firebaseapp.com",
@@ -220,7 +218,6 @@
         const db = getFirestore(app);
 
         // --- DOM Elements ---
-        // ... (existing DOM element definitions) ...
         const loader = document.getElementById('loader');
         const loginView = document.getElementById('login-view');
         const karkardagiView = document.getElementById('karkardagi-view');
@@ -268,6 +265,7 @@
         let allAcademicYearsData = {}; 
         let monthlyReportData = []; // Saved data for the current month/year
         
+        // UPDATED: Current Period being viewed/edited
         let currentReportPeriod = { 
             month: '', // English month name
             year: 0, // Year (e.g., 2025)
@@ -276,7 +274,8 @@
             semester: '1' // '1' or '2'
         };
         
-        let openAccordionIds = new Set(); 
+        // Accordion State Management
+        let openAccordionIds = new Set(); // Stores data-jamia-name and data-teacher-id
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -285,6 +284,7 @@
             let logMessage = message;
             if (isError && errorDetail) {
                  logMessage = `${message} Details: ${errorDetail}`;
+                 // If the main message is generic, use the detail in the UI
                  if (message === "Data load karne me error." || message === "Monthly report data load karne me error.") {
                      message = `${message} (${errorDetail.substring(0, 50)})`;
                  }
@@ -303,6 +303,7 @@
             }, 5000); 
         };
         
+        // Helper function to map Month Index to Semester Month Number (1st, 2nd, 3rd, Last)
         const getSemesterMonthNumber = (monthNum, semester) => {
             const sem1Months = [3, 4, 5, 6, 7]; // April, May, June, July, August
             const sem2Months = [8, 9, 10, 11, 0]; // September, October, November, December, January
@@ -310,34 +311,42 @@
             const months = semester === "1" ? sem1Months : sem2Months;
             const index = months.indexOf(monthNum);
             
-            if (index === -1) return null; 
+            if (index === -1) return null; // Month is not in this semester
+            
+            // Month is at index 0 (1st month), 1 (2nd month), 2 (3rd month), 3 (4th month), 4 (Last month)
             return index + 1;
         };
 
+        // NEW: Calculate Kaifiyat (Status) and determine color class
         const calculateKaifiyatAndStyle = (achievement, monthNum, periodSemester) => {
-            let kaifiyat = "Munasib"; 
-            let colorClass = "color-munasib"; 
+            let kaifiyat = "Munasib"; // Default
+            let colorClass = "color-munasib"; // Default Red
             
             const monthNumber = getSemesterMonthNumber(monthNum, periodSemester);
             
-            if (monthNumber === 1) { 
+            // Determine base Kaifiyat based on month number
+            if (monthNumber === 1) { // Pehla Mahina (April/September)
                 if (achievement >= 70) kaifiyat = "Mumtaz";
                 else if (achievement >= 60) kaifiyat = "Behtar";
                 else kaifiyat = "Munasib";
-            } else if (monthNumber === 2) { 
+            } else if (monthNumber === 2) { // Doosra Mahina (May/October)
                 if (achievement >= 80) kaifiyat = "Mumtaz";
                 else if (achievement >= 70) kaifiyat = "Behtar";
                 else kaifiyat = "Munasib";
-            } else if (monthNumber >= 3 && monthNumber < 5) { 
+            } else if (monthNumber >= 3 && monthNumber < 5) { // Teesra aur Chautha Mahina
+                 // Teesre Month se takmeel-e-nisaab 100% mein Mumtaz, 90 se 99 tak Behtar, 90 se kam par Munasib
                  if (achievement >= 100) kaifiyat = "Mumtaz";
                  else if (achievement >= 90) kaifiyat = "Behtar";
                  else kaifiyat = "Munasib";
-            } else if (monthNumber === 5) { 
+            } else if (monthNumber === 5) { // Aakhri Mahina (Majmooi Kaifiyat) (August/January)
+                 // Aakhri Month mein "majmooi kaifiyat" ka aitbaar hoga jismein 90% mein Mumtaz, 80 se 89 tak Behtar, 80 se kam par Munasib
                  if (achievement >= 90) kaifiyat = "Mumtaz";
                  else if (achievement >= 80) kaifiyat = "Behtar";
                  else kaifiyat = "Munasib";
             }
 
+            // Karkardagi Adjustment for over-achievement (applies to all months)
+            // Agar Monthly reporting ki kaifiyat 121 se 150 hui to kaarkardagi Behtar ho jaayegi, aur agar 150 se zyada hui to Munasib ho jaayegi.
             if (kaifiyat === "Mumtaz") {
                 if (achievement > 150) {
                     kaifiyat = "Munasib";
@@ -346,12 +355,13 @@
                 }
             }
 
+            // Set Color based on final Kaifiyat
             if (kaifiyat === "Mumtaz") {
-                colorClass = "color-mumtaz"; 
+                colorClass = "color-mumtaz"; // Green
             } else if (kaifiyat === "Behtar") {
-                colorClass = "color-behtar"; 
-            } else { 
-                colorClass = "color-munasib"; 
+                colorClass = "color-behtar"; // Blue
+            } else { // Munasib
+                colorClass = "color-munasib"; // Red
             }
 
             return { kaifiyat, colorClass };
@@ -396,31 +406,49 @@
             return { month, year: yearNum, monthNum, yearNum, semester };
         };
 
+        // NEW: Function to get Month Name from Index
         const getMonthName = (monthNum) => {
+            // Month index 0 is Jan
             return new Date(2000, monthNum, 1).toLocaleString('default', { month: 'long' });
         };
 
+        // NEW: Function to extract timestamp from period ID
         const getTimestampFromId = (id) => {
              const parts = id.split('-');
              if (parts.length >= 2) {
+                 // ID format is typically 'period-<timestamp>-<random>'
                  return parseInt(parts[1], 10);
              }
              return 0;
         };
         
+        // UPDATED: Update currentReportPeriod function (Minor adjustment)
         const updateReportPeriod = (newPeriod) => {
             currentReportPeriod = { ...currentReportPeriod, ...newPeriod };
-            document.getElementById('current-month-year').textContent = `Report for ${currentReportPeriod.month} ${currentReportPeriod.year}`;
             
+            // Determine the month name for display, handling the -1 case if days are not set
+            const displayMonthNum = currentReportPeriod.monthNum === -1 ? 
+                                    (currentReportPeriod.semester === '1' ? 3 : 8) : 
+                                    currentReportPeriod.monthNum;
+            const displayMonth = getMonthName(displayMonthNum);
+            
+            document.getElementById('current-month-year').textContent = `Report for ${displayMonth} ${currentReportPeriod.yearNum || currentReportPeriod.year}`;
+            
+            // Only update filters if we have active year data
             if (activeYear) {
                 semesterFilter.value = currentReportPeriod.semester;
                 populateMonthFilter();
-                monthFilter.value = currentReportPeriod.monthNum;
+                // We set monthFilter value *after* populateMonthFilter runs, ensuring the value exists
+                if(monthFilter.querySelector(`option[value="${currentReportPeriod.monthNum}"]`)) {
+                    monthFilter.value = currentReportPeriod.monthNum;
+                }
             }
         };
 
+        // Accordion State Capture Logic
         const captureAccordionState = () => {
             openAccordionIds.clear();
+            // Capture Setup Accordions
             setupAccordionContainer.querySelectorAll('.accordion-button.open').forEach(button => {
                 const jamiaDiv = button.closest('[data-jamia-name]');
                 if (jamiaDiv) openAccordionIds.add(jamiaDiv.dataset.jamiaName);
@@ -429,7 +457,7 @@
                 const teacherDiv = button.closest('[data-teacher-id]');
                 if (teacherDiv) openAccordionIds.add(teacherDiv.dataset.teacherId);
             });
-            // NEW: Capture open Reporting Accordion IDs
+            // Capture Reporting Accordion IDs
             reportingContainer.querySelectorAll('.reporting-accordion-button.open').forEach(button => {
                  const jamiaDiv = button.closest('[data-jamia-name]');
                  if (jamiaDiv) openAccordionIds.add(`report-${jamiaDiv.dataset.jamiaName}`);
@@ -437,15 +465,18 @@
             console.log("Captured open IDs:", openAccordionIds);
         };
 
+        // Accordion State Restore Logic
         const restoreAccordionState = () => {
             if (openAccordionIds.size === 0) return;
             
             openAccordionIds.forEach(id => {
                 let targetDiv;
                 if(id.startsWith('report-')) {
+                     // For Reporting Accordion
                      const jamiaName = id.substring(7);
                      targetDiv = reportingContainer.querySelector(`[data-jamia-name="${jamiaName}"]`);
                 } else {
+                    // For Setup Accordions
                     targetDiv = setupAccordionContainer.querySelector(`[data-jamia-name="${id}"]`) || setupAccordionContainer.querySelector(`[data-teacher-id="${id}"]`);
                 }
                 
@@ -614,7 +645,7 @@
             }
         };
         
-        // UPDATED: loadMonthlyReportData for more precise checks on activeYear, yearNum, monthNum
+        // loadMonthlyReportData (Error logic is now very specific, failure points to Permissions)
         const loadMonthlyReportData = async () => {
             monthlyReportData = []; 
             currentMonthReport = {};
@@ -625,17 +656,9 @@
             }
             if (!activeYear || !allAcademicYearsData[activeYear]) {
                  console.log("loadMonthlyReportData: No active year selected or year data is empty."); 
-                 // If activeYear is not set, we don't proceed.
-                 if(!activeYear) {
-                    // This is handled by refreshFullUI later, no error notification needed here.
-                 } else {
-                    // Maybe we should clear filters if year is missing structure?
-                    // For now, let it proceed to renderReportingTab which handles missing structure.
-                 }
                  return; 
             }
             
-            // Check if reporting period is fully set (this should catch cases where monthFilter is empty)
             const { yearNum, monthNum } = currentReportPeriod; 
             if (monthNum === -1 || yearNum === 0 || !activeYear) {
                 console.log("loadMonthlyReportData: Invalid or incomplete reporting date info. Aborting Firestore fetch.");
@@ -662,66 +685,54 @@
             }
         };
         
-        // UPDATED: handlePeriodChange to ensure correct year is used for month calculation
+        // UPDATED: handlePeriodChange to correctly set the reporting year (yearNum) based on activeYear
         const handlePeriodChange = async () => {
             if (!activeYear) return;
-            
+
             const selectedMonthNum = parseInt(monthFilter.value, 10);
             const selectedSemester = semesterFilter.value;
             
-            const sem1Months = [3, 4, 5, 6, 7]; // April (3) to August (7)
-            const sem2Months = [8, 9, 10, 11, 0]; // September (8) to January (0)
-            
-            // Determine the actual year number for the selected month/semester combination
-            let actualYearNum = currentReportPeriod.yearNum;
-            if (selectedMonthNum >= 0 && selectedMonthNum <= 2 && currentReportPeriod.monthNum >= 3) {
-                // If switching from April-Dec (Year Y) to Jan-Mar (Year Y+1) 
-                // This logic is tricky with fixed academic year, but generally, Jan is Year+1
-                // For simplicity with fixed year logic: If current year is 2025, Jan will be 2026.
-                // If the selected month is Jan (0), Feb (1), Mar (2), the year should be the end year of the academic year string (e.g., 2026 for 2025-2026).
-                const academicYearEnd = parseInt(activeYear.split('-')[1], 10);
-                if (selectedMonthNum >= 0 && selectedMonthNum <= 2) { // Jan, Feb, Mar
-                     actualYearNum = academicYearEnd; 
-                } else {
-                     actualYearNum = parseInt(activeYear.split('-')[0], 10);
-                }
-            } else if (selectedMonthNum >= 3 && currentReportPeriod.monthNum <= 2) {
-                 // If switching from Jan-Mar (Year Y) to Apr-Dec (Year Y-1)
-                 // If the selected month is April or later, the year should be the start year (e.g., 2025 for 2025-2026)
-                 actualYearNum = parseInt(activeYear.split('-')[0], 10);
-            } else {
-                // Default to current year logic or try to derive from activeYear
-                 const academicYearStart = parseInt(activeYear.split('-')[0], 10);
-                 const academicYearEnd = parseInt(activeYear.split('-')[1], 10);
-                 if (selectedMonthNum >= 3 && selectedMonthNum <= 11) { // April to December
-                    actualYearNum = academicYearStart;
-                 } else if (selectedMonthNum >= 0 && selectedMonthNum <= 2) { // January to March
-                    actualYearNum = academicYearEnd;
-                 }
+            // If month filter is empty (i.e., days not set), handle it gracefully
+            if (!monthFilter.value) {
+                 // The updateReportPeriod has already run inside populateMonthFilter setting monthNum to -1
+                 renderReportingTab();
+                 return;
             }
+            
+            // --- Determine Reporting Year based on activeYear ---
+            const academicYearParts = activeYear.split('-');
+            const academicYearStart = parseInt(academicYearParts[0], 10);
+            const academicYearEnd = parseInt(academicYearParts[1], 10);
 
+            let actualYearNum;
+            
+            if (selectedMonthNum >= 3 && selectedMonthNum <= 11) { // April (3) to December (11)
+                actualYearNum = academicYearStart;
+            } else if (selectedMonthNum === 0) { // January (Month Index 0)
+                actualYearNum = academicYearEnd;
+            } else {
+                 // Should not happen with valid months, fallback to existing logic
+                 actualYearNum = currentReportPeriod.yearNum || academicYearStart;
+            }
+            // ---------------------------------------------------
 
+            const sem1Months = [3, 4, 5, 6, 7]; // April (3) to August (7)
+            
             const isMonthInSemester = (selectedSemester === '1' && sem1Months.includes(selectedMonthNum)) || 
-                                      (selectedSemester === '2' && sem2Months.includes(selectedMonthNum));
+                                      (selectedSemester === '2' && !sem1Months.includes(selectedMonthNum));
                                       
             let newSemester = selectedSemester;
-            if (!isMonthInSemester && monthFilter.value) {
+            if (!isMonthInSemester) {
                 // Correct semester if the selected month belongs to the other one
                 newSemester = sem1Months.includes(selectedMonthNum) ? '1' : '2';
                 semesterFilter.value = newSemester;
-            } else if (!monthFilter.value) {
-                // If month filter is empty (i.e., days not set), don't update period, just return and let renderReportingTab handle the error message.
-                 // We still update the semester filter value to keep UI consistent
-                 semesterFilter.value = selectedSemester;
-                 renderReportingTab(); // Rerender to show the "Days set nahi hain" error
-                 return;
             }
             
             updateReportPeriod({ 
                 monthNum: selectedMonthNum,
                 month: getMonthName(selectedMonthNum),
                 semester: newSemester,
-                yearNum: actualYearNum // Use the calculated year
+                yearNum: actualYearNum 
             });
             
             showLoader(true);
@@ -732,7 +743,6 @@
 
 
         // --- ACADEMIC YEAR MANAGEMENT ---
-        // (No changes)
 
         const populateYearSelector = () => {
             const yearNames = Object.keys(allAcademicYearsData);
@@ -805,7 +815,6 @@
         };
 
         // --- UI REFRESH LOGIC ---
-        // (No changes)
         
         const refreshFullUI = () => {
              console.log("Refreshing full UI for year:", activeYear); 
@@ -825,9 +834,8 @@
             }
         };
 
-        // --- SETUP TAB LOGIC (Partial inclusion, assuming no major changes here) ---
-        // (renderAcademicMonths, saveAcademicMonthsBtn, renderSetupTab, handleAddTeacher, handleDeleteTeacher, handleAddPeriod, handleDeletePeriod, handleEditPeriod, handleUpdatePeriod)
-
+        // --- SETUP TAB LOGIC ---
+        
         const renderAcademicMonths = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
              console.log("Rendering academic months for year:", activeYear); 
@@ -922,6 +930,7 @@
                 `;
             }).join('');
             
+            // Attach Jamia accordion click listeners
             setupAccordionContainer.querySelectorAll('.accordion-button').forEach(button => {
                  button.addEventListener('click', (e) => {
                     const content = e.currentTarget.nextElementSibling;
@@ -940,6 +949,7 @@
             setupAccordionContainer.removeEventListener('submit', handleSetupSubmitDelegation); 
             setupAccordionContainer.addEventListener('submit', handleSetupSubmitDelegation); 
             
+            // Restore state after rendering
             restoreAccordionState(); 
         };
         
@@ -954,6 +964,7 @@
                 }
             }
             if (e.target.closest('.delete-period-btn')) { handleDeletePeriod(e); }
+            // NEW: Handle Edit Period button click
             if (e.target.closest('.edit-period-btn')) { handleEditPeriod(e); }
         }
         
@@ -1024,6 +1035,7 @@
                     </thead>
                     <tbody>
             `;
+            // Sorting periods by ID (which acts as creation time: higher ID means newer, so sort ascending to show older first)
             periods.sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
 
             periods.forEach(period => {
@@ -1052,6 +1064,8 @@
             return table;
         };
         
+        // --- Setup Tab Event Handlers ---
+
         const saveActiveYearStructure = async (callback) => {
              if (!currentUser || !activeYear || !allAcademicYearsData[activeYear]) return; 
              console.log("Saving structure for year:", activeYear); 
@@ -1062,7 +1076,7 @@
                      academicYears: allAcademicYearsData 
                  });
                  showNotification("Structure saved successfully!");
-                 if (callback) callback(); 
+                 if (callback) callback(); // Call the callback after saving
              } catch (error) {
                  console.error("Error saving structure:", error);
                  showNotification("Structure save karne me error.", true, error.message);
@@ -1075,6 +1089,7 @@
             e.preventDefault();
             if (!activeYear) return;
             
+            // NEW: Capture state before any data modification that leads to re-render
             captureAccordionState();
 
             const form = e.currentTarget;
@@ -1083,7 +1098,7 @@
             const teacherNameInput = form.querySelector('.teacher-name-input');
             const teacherName = teacherNameInput.value.trim();
 
-            if (!jamiaName || !teacherName) { return; }
+            if (!jamiaName || !teacherName) { /* Validation */ return; }
             
             let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             if (!karkardagiStructure) karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure = [];
@@ -1096,10 +1111,12 @@
             const newTeacher = { id: `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, name: teacherName, periods: [] };
             jamiaData.teachers.push(newTeacher);
 
+            // Add the new teacher's ID to the set so it opens automatically
             openAccordionIds.add(newTeacher.id); 
             
             saveActiveYearStructure(() => { 
                 teacherNameInput.value = '';
+                // Since UI structure is complex, re-render the whole setup tab for simplicity and safety
                 renderSetupTab();
             });
         };
@@ -1107,6 +1124,7 @@
         const handleDeleteTeacher = (e) => {
             if (!activeYear) return;
             
+            // NEW: Capture state before any data modification that leads to re-render
             captureAccordionState();
             
             const button = e.target.closest('.delete-teacher-btn');
@@ -1117,6 +1135,7 @@
 
             if (!teacherId || !jamiaName) return; 
             
+            // Using confirm() for simplicity, though a custom modal is recommended for production.
             const isConfirmed = confirm("Kya aap waqai is teacher ko delete karna chahte hain? Inke saare periods bhi delete ho jayenge.");
             if (!isConfirmed) return;
             
@@ -1135,6 +1154,7 @@
             e.preventDefault();
             if (!activeYear) return;
 
+            // NEW: Capture state before any data modification that leads to re-render
             captureAccordionState();
             
             const form = e.target; 
@@ -1167,10 +1187,11 @@
                 teacherData.periods.push(newPeriod); 
                 
                 saveActiveYearStructure(() => { 
+                    // Add the Jamia and Teacher ID to the set to ensure both remain open
                     openAccordionIds.add(jamiaName);
                     openAccordionIds.add(teacherId);
                     
-                    renderSetupTab(); 
+                    renderSetupTab(); // Re-render the whole setup to update the table
                     renderReportingTab(); 
                 });
             }
@@ -1179,6 +1200,7 @@
         const handleDeletePeriod = (e) => {
             if (!activeYear) return;
 
+            // NEW: Capture state before any data modification that leads to re-render
             captureAccordionState();
 
             const button = e.target.closest('.delete-period-btn');
@@ -1215,6 +1237,7 @@
              
              if (!periodId || !teacherDiv || !jamiaDiv) return;
 
+             // Populate Modal fields
              modalJamiaName.value = jamiaDiv.dataset.jamiaName;
              modalTeacherId.value = teacherDiv.dataset.teacherId;
              modalPeriodId.value = periodId;
@@ -1223,11 +1246,13 @@
              modalSemesterSelect.value = row.dataset.sem;
              modalTotalPagesInput.value = row.dataset.total;
              
+             // Capture state *before* opening modal, because modal closing will trigger re-render
              captureAccordionState(); 
              
              editPeriodModal.classList.remove('hidden');
         };
 
+        // NEW: Handle Update Period submission
         const handleUpdatePeriod = async (e) => {
             e.preventDefault();
             if (!activeYear) return;
@@ -1269,6 +1294,7 @@
             }
         };
         
+        // NEW: Populate month filter based on selected semester
         const populateMonthFilter = () => {
             const selectedSemester = semesterFilter.value;
             const academicMonths = allAcademicYearsData[activeYear]?.academicMonths || {};
@@ -1282,6 +1308,7 @@
                 .filter(monthNum => academicMonths[monthNum] > 0)
                 .map(monthNum => {
                     const monthName = getMonthName(monthNum);
+                    // Select the current reported month if it matches
                     const isSelected = monthNum === currentReportPeriod.monthNum;
                     return `<option value="${monthNum}" ${isSelected ? 'selected' : ''}>${monthName}</option>`;
                 }).join('');
@@ -1318,8 +1345,10 @@
             const yearData = allAcademicYearsData[activeYear];
             const karkardagiStructure = yearData.karkardagiStructure || [];
             
+            // Step 1: Initialize Filters and currentReportPeriod
             populateMonthFilter();
             
+            // Step 2: Validation
             if (karkardagiStructure.length === 0) {
                  reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar Teachers aur Periods add karein.</p>';
                  saveMonthlyReportBtn.classList.add('hidden');
@@ -1342,11 +1371,14 @@
             const daysThisMonth = academicMonths[monthNum] || 0; 
             
             if (daysThisMonth === 0 || monthNum === -1) {
-                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${currentReportPeriod.month || 'Selected Month'}) ke academic days set nahi hain ya month valid nahi hai. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 // The -1 case is caught by populateMonthFilter when no days are set for *any* month in that semester
+                 const monthName = currentReportPeriod.month || 'Selected Month';
+                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${monthName}) ke academic days set nahi hain ya month valid nahi hai. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
                  saveMonthlyReportBtn.classList.add('hidden');
                  return;
             }
             
+            // Step 3: Data Aggregation and Grouping
             const periodsByJamia = karkardagiStructure.reduce((acc, jamia) => {
                 jamia.teachers?.forEach(teacher => { 
                     const sortedPeriods = (teacher.periods || [])
@@ -1482,16 +1514,79 @@
                 });
             });
             
+            // Restore state after rendering
             restoreAccordionState(); 
         };
         
-        // (downloadTeacherReportImage and remaining functions unchanged)
+        const handleSaveMonthlyReport = async () => {
+            if (!activeYear) return;
+            showLoader(true);
 
+            try {
+                const { month, yearNum, monthNum } = currentReportPeriod; 
+                const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+                const reportRef = doc(db, 'monthly_reports', reportId);
+
+                const newReportData = [];
+                reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
+                    const pagesTaughtInput = row.querySelector('.pages-taught-input');
+                    const pagesTaught = parseInt(pagesTaughtInput.value, 10) || 0;
+                    
+                    if (pagesTaught >= 0) { // Save even if 0 pages are taught
+                         const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
+                         let achievement = 0;
+                         
+                         if (pagesTaught > 0 && monthlyTarget > 0) { 
+                             achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                         }
+                         
+                         // Re-calculate kaifiyat for final save assurance
+                         const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
+                         
+                        newReportData.push({
+                            periodId: row.dataset.periodId,
+                            jamiaName: row.dataset.jamiaName,
+                            teacherName: row.dataset.teacherName, 
+                            bookName: row.dataset.bookName, 
+                            monthlyTarget: monthlyTarget,
+                            pagesTaught: pagesTaught,
+                            achievement: achievement,
+                            kaifiyat: kaifiyat // Save Kaifiyat to report
+                        });
+                    }
+                });
+
+                const dataToSave = {
+                    karkardagiReport: {
+                        status: newReportData.length > 0 ? 'Done' : 'Pending', 
+                        data: newReportData
+                    },
+                    userId: currentUser.uid, userEmail: currentUser.email,
+                    month: month, year: yearNum, academicYear: activeYear, 
+                    createdAt: serverTimestamp()
+                };
+
+                await setDoc(reportRef, dataToSave, { merge: true });
+                monthlyReportData = newReportData; // Update local state
+                showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
+                renderReportingTab(); // Re-render to show persistent Kaifiyat/Achievement
+            
+            } catch (error) {
+                console.error("Error saving monthly report:", error);
+                showNotification(`Report save karne me error: ${error.message}`, true, error.message);
+            } finally {
+                showLoader(false);
+            }
+        };
+        
+        saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
+        
+        // Function to download Image
         const downloadTeacherReportImage = async (row) => {
             showLoader(true);
             
             const monthName = currentReportPeriod.month;
-            const year = currentReportPeriod.year;
+            const year = currentReportPeriod.yearNum; // Use the correct reporting year
             const teacherName = row.dataset.teacherName;
             const className = row.dataset.className;
             const bookName = row.dataset.bookName;
@@ -1510,7 +1605,10 @@
             tempDiv.style.direction = 'rtl'; 
 
             // Determine Kaifiyat color for the table
-            const kaifiyatColor = row.querySelector('.kaifiyat-cell').style.color || '#000000'; 
+            const kaifiyatCell = row.querySelector('.kaifiyat-cell');
+            const kaifiyatColorClass = kaifiyatCell.classList.contains('color-mumtaz') ? '#059669' : 
+                                       kaifiyatCell.classList.contains('color-behtar') ? '#3b82f6' : 
+                                       '#ef4444'; 
 
             const htmlContent = `
                 <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6;">
@@ -1549,7 +1647,7 @@
                             <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
                             <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${pagesTaught}</td>
                             <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${achievement}</td>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColor};">${kaifiyat}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColorClass};">${kaifiyat}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -1560,8 +1658,10 @@
             document.body.appendChild(tempDiv);
             
             try {
+                // Step 2: Use html2canvas to render the temporary div as a canvas
                 const canvas = await html2canvas(tempDiv, { scale: 2 });
                 
+                // Step 3: Convert canvas to image and download
                 const image = canvas.toDataURL("image/png");
                 const link = document.createElement('a');
                 link.href = image;
@@ -1576,16 +1676,20 @@
                 console.error("Image generation failed:", error);
                 showNotification("Image download karne me error.", true, error.message);
             } finally {
+                // Step 4: Remove the temporary div
                 document.body.removeChild(tempDiv);
                 showLoader(false);
             }
         };
 
+
+        // Function to download CSV
         const downloadCSV = (jamiaName) => {
              console.log(`Downloading CSV for Jamia: ${jamiaName}`);
             if (!activeYear) return;
 
              const rowsToExport = [];
+             // Find all rows for the Jamia inside its specific accordion content
              reportingContainer.querySelector(`[data-jamia-name="${jamiaName}"]`).querySelectorAll('.reporting-row').forEach(row => {
                  const pagesTaughtInput = row.querySelector('.pages-taught-input');
                  const pagesTaught = pagesTaughtInput.value || '0';
@@ -1632,7 +1736,7 @@
             const link = document.createElement("a");
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            const fileName = `Karkardagi_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.year}.csv`;
+            const fileName = `Karkardagi_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
             link.setAttribute("download", fileName);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
@@ -1659,12 +1763,14 @@
                 tabContents.forEach(content => content.classList.add('hidden'));
                 document.getElementById(`${tabId}-tab-content`).classList.remove('hidden');
                 
+                // If switching to reporting tab, ensure it's rendered with current filters
                 if (tabId === 'reporting') {
                     renderReportingTab();
                 }
             });
         });
 
+        // Ensure initial active tab is styled correctly
         document.addEventListener('DOMContentLoaded', () => {
              const activeTab = document.querySelector('.tab-btn.active');
              if (activeTab) {
