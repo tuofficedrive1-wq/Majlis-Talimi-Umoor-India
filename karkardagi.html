@@ -183,7 +183,7 @@
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+        import { getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp, Timestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 
         // --- GLOBAL VARIABLES & CONFIG ---
         // Assuming fixed config for self-contained example:
@@ -644,18 +644,16 @@
             }
         };
         
-        // loadMonthlyReportData (Error logic is now very specific, failure points to Permissions)
+        // =======================================================
+        // UPDATED: loadMonthlyReportData (To include Teacher Submissions)
+        // =======================================================
         const loadMonthlyReportData = async () => {
             monthlyReportData = []; 
             currentMonthReport = {};
             
-            if (!currentUser || !currentUser.uid) {
-                console.log("loadMonthlyReportData: No current user UID."); 
+            if (!currentUser || !currentUser.uid || !activeYear) {
+                console.log("loadMonthlyReportData: No user or active year."); 
                 return;
-            }
-            if (!activeYear || !allAcademicYearsData[activeYear]) {
-                 console.log("loadMonthlyReportData: No active year selected or year data is empty."); 
-                 return; 
             }
             
             const { yearNum, monthNum } = currentReportPeriod; 
@@ -665,24 +663,79 @@
             }
 
             const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
-            console.log("Loading monthly report for ID:", reportId); 
-            
             const reportDocRef = doc(db, 'monthly_reports', reportId);
+            
             try {
                 const reportDocSnap = await getDoc(reportDocRef);
+                
                 if (reportDocSnap.exists()) {
+                    // Option 1: Agar report pehle se saved hai (manual ya auto), toh wohi load karein.
                     currentMonthReport = reportDocSnap.data();
                     monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
-                    console.log("Monthly report data loaded:", monthlyReportData); 
+                    console.log("Monthly report data loaded from saved report."); 
                 } else {
-                    console.log("No monthly report found for this period."); 
+                    // Option 2: Agar saved report nahi hai, toh TEACHER SUBMISSIONS se load karein.
+                    console.log("No saved report found. Checking for teacher submissions..."); 
+                    
+                    // Query for submissions for the current month and year
+                    const submissionsQuery = query(
+                        collection(db, 'teacher_submissions'),
+                        where('submissionYear', '==', yearNum),
+                        where('submissionMonth', '==', monthNum),
+                        // Agar aap 'teacher-form.html' mein userId nahi bhej rahe toh yahan filter karna mushkil hoga.
+                        // Lekin ideal tareeqa hai ki yahan aap sirf is admin user ke Jamiaat/Teachers ki reports dekhein.
+                        // Filhal, hum sirf month aur year se query kar rahe hain.
+                    );
+                    
+                    const submissionsSnapshot = await getDocs(submissionsQuery);
+                    const rawSubmissions = submissionsSnapshot.docs.map(doc => doc.data());
+                    
+                    if (rawSubmissions.length > 0) {
+                         // Submissions ko final report format mein badalna
+                         monthlyReportData = processRawSubmissions(rawSubmissions);
+                         console.log(`Loaded ${monthlyReportData.length} entries from teacher submissions.`);
+                    } else {
+                         console.log("No teacher submissions found for this period.");
+                    }
                 }
             } catch (error) {
-                 console.error("Error loading monthly report data:", error);
-                 // If the error is still permissions related, we log it with detail.
+                 console.error("Error loading monthly report/submissions data:", error);
                  showNotification("Monthly report data load karne me error.", true, error.message);
             }
         };
+
+        // NEW FUNCTION: processRawSubmissions
+        const processRawSubmissions = (submissions) => {
+            const latestSubmissions = submissions.reduce((acc, submission) => {
+                const periodId = submission.periodId;
+                
+                // Get the submission time (important for serverTimestamp fields)
+                let submittedTime = submission.submittedAt;
+                if (submittedTime && typeof submittedTime.toDate === 'function') {
+                    submittedTime = submittedTime.toDate();
+                } else {
+                    submittedTime = new Date(0); // Default to past date if timestamp is missing or malformed
+                }
+                
+                // Agar pehle se koi entry hai, toh check karein ki kya yeh zyada naya (latest) hai.
+                if (!acc[periodId] || submittedTime > acc[periodId].submittedAt) {
+                    acc[periodId] = { ...submission, submittedAt: submittedTime };
+                }
+                
+                return acc;
+            }, {});
+            
+            // Result ko wapas array format mein convert karein jo renderReportingTab use karta hai.
+            return Object.values(latestSubmissions).map(sub => ({
+                periodId: sub.periodId,
+                jamiaName: sub.jamiaId,         
+                teacherName: sub.teacherName,
+                bookName: sub.bookName,
+                pagesTaught: sub.pagesTaught,
+                // MonthlyTarget, Achievement, aur Kaifiyat ko renderReportingTab mein calculate kiya jayega.
+            }));
+        };
+        // =======================================================
         
         // REMOVED: handlePeriodChange function (Filters removed)
 
@@ -1087,9 +1140,9 @@
                      academicYears: allAcademicYearsData 
                  });
                  // NEW: Save the structure to a 'public' collection for the teacher form to read
-                 // This assumes your karkardagi structure can be publicly accessed (read-only) 
-                 // by the teacher form based on the year.
                  const publicStructureRef = doc(db, 'karkardagiStructure', activeYear);
+                 // Isko structure ke 'name' field ko use karna chahiye, agar aap multiple users/admins rakhte hain.
+                 // Filhal, hum simple rakhte hain.
                  await setDoc(publicStructureRef, { structure: allAcademicYearsData[activeYear].karkardagiStructure }, { merge: true });
 
                  showNotification("Structure saved successfully!");
@@ -1311,11 +1364,42 @@
             }
         };
         
-        // REMOVED: populateMonthFilter function (Filters removed)
-
-
         // --- REPORTING TAB LOGIC ---
         
+        // NEW FUNCTION: processRawSubmissions
+        const processRawSubmissions = (submissions) => {
+            const latestSubmissions = submissions.reduce((acc, submission) => {
+                const periodId = submission.periodId;
+                
+                // Get the submission time (important for serverTimestamp fields)
+                let submittedTime = submission.submittedAt;
+                if (submittedTime && typeof submittedTime.toDate === 'function') {
+                    submittedTime = submittedTime.toDate();
+                } else {
+                    submittedTime = new Date(0); // Default to past date if timestamp is missing or malformed
+                }
+                
+                // Agar pehle se koi entry hai, toh check karein ki kya yeh zyada naya (latest) hai.
+                if (!acc[periodId] || submittedTime > acc[periodId].submittedAt) {
+                    acc[periodId] = { ...submission, submittedAt: submittedTime };
+                }
+                
+                return acc;
+            }, {});
+            
+            // Result ko wapas array format mein convert karein jo renderReportingTab use karta hai.
+            return Object.values(latestSubmissions).map(sub => ({
+                periodId: sub.periodId,
+                jamiaName: sub.jamiaId,         
+                teacherName: sub.teacherName,
+                bookName: sub.bookName,
+                pagesTaught: sub.pagesTaught,
+                // MonthlyTarget, Achievement, aur Kaifiyat ko renderReportingTab mein calculate kiya jayega.
+            }));
+        };
+        // END NEW FUNCTION
+
+        // UPDATED FUNCTION: renderReportingTab
         const renderReportingTab = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
              console.log("Rendering reporting tab for year:", activeYear, "Period:", currentReportPeriod); 
@@ -1333,9 +1417,7 @@
             // Use the current period set by initApp/loadUserData
             const { monthNum, semester: currentSemester, month } = currentReportPeriod; 
             
-            // *** FIX FOR ReferenceError ***
             const academicMonths = yearData.academicMonths || {};
-            // ******************************
 
             // NEW VALIDATION: Check if current month is included in the set academic months
              if (currentReportPeriod.monthNum === -1 || !academicMonths.hasOwnProperty(currentReportPeriod.monthNum)) {
@@ -1414,10 +1496,6 @@
                         <tbody>
             `;
 
-            let previousJamiaName = null;
-            let previousTeacherName = null;
-
-            // Sort Jamiaat alphabetically for stable display
             const sortedJamiaNames = Object.keys(periodsByJamia).sort();
 
             for (const jamiaName of sortedJamiaNames) {
@@ -1445,8 +1523,6 @@
                     </tr>
                 `;
                 
-                let isFirstRowForTeacher = true;
-
                 // Iterate through teachers in this jamia
                 Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
                     const teacherPeriods = itemsByTeacher[teacherIdKey];
@@ -1461,8 +1537,14 @@
                             monthlyTarget = Math.round(perDayTarget * daysThisMonth);
                         }
 
+                        // *** UPDATED: Get pagesTaught from monthlyReportData ***
                         const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
                         const pagesTaught = savedEntry?.pagesTaught || '';
+                        
+                        const isSubmitted = !!savedEntry;
+                        const inputDisabled = isSubmitted ? 'disabled' : '';
+                        const inputClass = isSubmitted ? 'bg-gray-200 cursor-not-allowed' : '';
+                        // ****************************************************
                         
                         let achievement = 0;
                         if (pagesTaught > 0 && monthlyTarget > 0) {
@@ -1489,7 +1571,7 @@
                             <td class="urdu-font">${period.className}</td>
                             <td class="urdu-font">${period.bookName}</td>
                             <td class="font-medium">${monthlyTarget}</td>
-                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
+                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg ${inputClass}" value="${pagesTaught}" min="0" ${inputDisabled}></td>
                             <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
                             <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
                         `;
@@ -1517,28 +1599,31 @@
             
             // Attach input event listener for dynamic calculation
             reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
-                input.addEventListener('input', (e) => {
-                    const row = e.target.closest('.reporting-row');
-                    const target = parseInt(row.dataset.monthlyTarget, 10);
-                    const taught = parseInt(e.target.value, 10) || 0;
-                    const achievementCell = row.querySelector('.achievement-cell');
-                    const kaifiyatCell = row.querySelector('.kaifiyat-cell');
-                    
-                    let achievement = 0;
-                    if (taught > 0 && target > 0) {
-                        achievement = Math.round((taught / target) * 100);
-                    }
-                    
-                    const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
-                    
-                    achievementCell.textContent = `${achievement}%`;
-                    kaifiyatCell.textContent = kaifiyat;
-                    
-                    achievementCell.className = `achievement-cell font-medium ${colorClass}`;
-                    kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
-                    
-                    row.dataset.kaifiyat = kaifiyat;
-                });
+                // Ensure event listener only applies to fields that ARE NOT disabled (manual entry or fresh load)
+                if (!input.disabled) {
+                    input.addEventListener('input', (e) => {
+                        const row = e.target.closest('.reporting-row');
+                        const target = parseInt(row.dataset.monthlyTarget, 10);
+                        const taught = parseInt(e.target.value, 10) || 0;
+                        const achievementCell = row.querySelector('.achievement-cell');
+                        const kaifiyatCell = row.querySelector('.kaifiyat-cell');
+                        
+                        let achievement = 0;
+                        if (taught > 0 && target > 0) {
+                            achievement = Math.round((taught / target) * 100);
+                        }
+                        
+                        const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
+                        
+                        achievementCell.textContent = `${achievement}%`;
+                        kaifiyatCell.textContent = kaifiyat;
+                        
+                        achievementCell.className = `achievement-cell font-medium ${colorClass}`;
+                        kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
+                        
+                        row.dataset.kaifiyat = kaifiyat;
+                    });
+                }
             });
             
             // Restore state after rendering
