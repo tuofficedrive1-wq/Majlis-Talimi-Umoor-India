@@ -645,6 +645,42 @@
         };
         
         // =======================================================
+        // NEW FUNCTION: processRawSubmissions
+        // =======================================================
+        const processRawSubmissions = (submissions) => {
+            const latestSubmissions = submissions.reduce((acc, submission) => {
+                const periodId = submission.periodId;
+                
+                // Get the submission time (important for serverTimestamp fields)
+                let submittedTime = submission.submittedAt;
+                if (submittedTime && typeof submittedTime.toDate === 'function') {
+                    submittedTime = submittedTime.toDate();
+                } else {
+                    submittedTime = new Date(0); // Default to past date if timestamp is missing or malformed
+                }
+                
+                // Agar pehle se koi entry hai, toh check karein ki kya yeh zyada naya (latest) hai.
+                if (!acc[periodId] || submittedTime > acc[periodId].submittedAt) {
+                    acc[periodId] = { ...submission, submittedAt: submittedTime };
+                }
+                
+                return acc;
+            }, {});
+            
+            // Result ko wapas array format mein convert karein jo renderReportingTab use karta hai.
+            return Object.values(latestSubmissions).map(sub => ({
+                periodId: sub.periodId,
+                jamiaName: sub.jamiaId,         
+                teacherName: sub.teacherName,
+                bookName: sub.bookName,
+                pagesTaught: sub.pagesTaught,
+                // MonthlyTarget, Achievement, aur Kaifiyat ko renderReportingTab mein calculate kiya jayega.
+            }));
+        };
+        // END NEW FUNCTION
+
+
+        // =======================================================
         // UPDATED: loadMonthlyReportData (To include Teacher Submissions)
         // =======================================================
         const loadMonthlyReportData = async () => {
@@ -682,9 +718,8 @@
                         collection(db, 'teacher_submissions'),
                         where('submissionYear', '==', yearNum),
                         where('submissionMonth', '==', monthNum),
-                        // Agar aap 'teacher-form.html' mein userId nahi bhej rahe toh yahan filter karna mushkil hoga.
-                        // Lekin ideal tareeqa hai ki yahan aap sirf is admin user ke Jamiaat/Teachers ki reports dekhein.
-                        // Filhal, hum sirf month aur year se query kar rahe hain.
+                        // Note: Ideal tareeqa hai ki yahan aap 'adminUserId' ya 'JamiaId' se filter karein 
+                        // taki sirf is admin ke submissions dikhen. Filhal sirf month/year use ho raha hai.
                     );
                     
                     const submissionsSnapshot = await getDocs(submissionsQuery);
@@ -702,38 +737,6 @@
                  console.error("Error loading monthly report/submissions data:", error);
                  showNotification("Monthly report data load karne me error.", true, error.message);
             }
-        };
-
-        // NEW FUNCTION: processRawSubmissions
-        const processRawSubmissions = (submissions) => {
-            const latestSubmissions = submissions.reduce((acc, submission) => {
-                const periodId = submission.periodId;
-                
-                // Get the submission time (important for serverTimestamp fields)
-                let submittedTime = submission.submittedAt;
-                if (submittedTime && typeof submittedTime.toDate === 'function') {
-                    submittedTime = submittedTime.toDate();
-                } else {
-                    submittedTime = new Date(0); // Default to past date if timestamp is missing or malformed
-                }
-                
-                // Agar pehle se koi entry hai, toh check karein ki kya yeh zyada naya (latest) hai.
-                if (!acc[periodId] || submittedTime > acc[periodId].submittedAt) {
-                    acc[periodId] = { ...submission, submittedAt: submittedTime };
-                }
-                
-                return acc;
-            }, {});
-            
-            // Result ko wapas array format mein convert karein jo renderReportingTab use karta hai.
-            return Object.values(latestSubmissions).map(sub => ({
-                periodId: sub.periodId,
-                jamiaName: sub.jamiaId,         
-                teacherName: sub.teacherName,
-                bookName: sub.bookName,
-                pagesTaught: sub.pagesTaught,
-                // MonthlyTarget, Achievement, aur Kaifiyat ko renderReportingTab mein calculate kiya jayega.
-            }));
         };
         // =======================================================
         
@@ -1141,8 +1144,6 @@
                  });
                  // NEW: Save the structure to a 'public' collection for the teacher form to read
                  const publicStructureRef = doc(db, 'karkardagiStructure', activeYear);
-                 // Isko structure ke 'name' field ko use karna chahiye, agar aap multiple users/admins rakhte hain.
-                 // Filhal, hum simple rakhte hain.
                  await setDoc(publicStructureRef, { structure: allAcademicYearsData[activeYear].karkardagiStructure }, { merge: true });
 
                  showNotification("Structure saved successfully!");
@@ -1365,6 +1366,27 @@
         };
         
         // --- REPORTING TAB LOGIC ---
+        
+        // NEW FUNCTION: processRawSubmissions
+        const processRawSubmissions = (submissions) => {
+            const latestSubmissions = submissions.reduce((acc, submission) => {
+                const periodId = submission.periodId;
+                
+                // Get the submission time (important for serverTimestamp fields)
+                let submittedTime = submission.submittedAt;
+                if (submittedTime && typeof submittedTime.toDate === 'function') {
+                    submittedTime = submittedTime.toDate();
+                } else {
+                    submittedTime = new Date(0); // Default to past date if timestamp is missing or malformed
+                }
+                
+                // Agar pehle se koi entry hai, toh check karein ki kya yeh zyada naya (latest) hai.
+                if (!acc[periodId] || submittedTime > acc[periodId].submittedAt) {
+                    acc[periodId] = { ...submission, submittedAt: submittedTime };
+                }
+                
+                return acc;
+            }, {});
             
             // Result ko wapas array format mein convert karein jo renderReportingTab use karta hai.
             return Object.values(latestSubmissions).map(sub => ({
@@ -1896,4 +1918,3 @@
     </script>
 </body>
 </html>
-
