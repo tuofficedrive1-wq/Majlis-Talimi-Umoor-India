@@ -555,15 +555,15 @@
                 if (e.target.closest('.download-jamia-report-btn')) {
                     const jamiaName = e.target.closest('.download-jamia-report-btn').dataset.jamiaName;
                     if (jamiaName) {
-                        downloadJamiaReportCSV(jamiaName); // Switched to CSV
+                        downloadJamiaReportCSV(jamiaName); // CSV download
                     }
                 }
                 // 2. Download Teacher Report (Image)
                  if (e.target.closest('.download-teacher-image-btn')) {
                      const button = e.target.closest('.download-teacher-image-btn');
-                     const row = button.closest('.reporting-row');
+                     const row = button.closest('tr.reporting-row'); // Get the specific row to identify the teacher
                      if (row) {
-                         downloadTeacherReportImage(row);
+                         downloadTeacherConsolidatedImage(row.dataset.teacherId, row.dataset.teacherName, row.dataset.jamiaName);
                      }
                  }
                 // 3. REMOVED: Accordion Toggle Logic
@@ -1312,7 +1312,7 @@
             
             // Re-check: Did we find any periods for the current semester?
             if (Object.keys(periodsByJamia).length === 0) {
-                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
+                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye गए hain. Pehle "Setup Structure" me add karein.</p>`;
                 saveMonthlyReportBtn.classList.add('hidden');
                 return;
             }
@@ -1351,10 +1351,10 @@
                 const items = periodsByJamia[jamiaName];
                 // Group items by teacher name (for consolidated image button placement)
                 const itemsByTeacher = items.reduce((acc, item) => {
-                    if (!acc[item.teacher.name]) {
-                        acc[item.teacher.name] = [];
+                    if (!acc[item.teacher.id]) { // Use ID for stability
+                        acc[item.teacher.id] = [];
                     }
-                    acc[item.teacher.name].push(item);
+                    acc[item.teacher.id].push(item);
                     return acc;
                 }, {});
 
@@ -1372,12 +1372,12 @@
                     </tr>
                 `;
                 
-                let teacherRows = [];
                 let isFirstRowForTeacher = true;
 
                 // Iterate through teachers in this jamia
-                Object.keys(itemsByTeacher).sort().forEach(teacherNameKey => {
-                    const teacherPeriods = itemsByTeacher[teacherNameKey];
+                Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
+                    const teacherPeriods = itemsByTeacher[teacherIdKey];
+                    const teacherName = teacherPeriods[0].teacher.name;
                     
                     teacherPeriods.forEach((item, index) => {
                         const { teacher, period } = item;
@@ -1410,8 +1410,7 @@
                             data-monthly-target="${monthlyTarget}"
                             data-period-semester="${period.semester}"
                             data-month-num="${monthNum}"
-                            data-kaifiyat="${kaifiyat}"
-                            data-teacher-index="${teacher.id}">
+                            data-kaifiyat="${kaifiyat}">
                             <td class="urdu-font text-gray-500">${jamiaName}</td> 
                             <td class="urdu-font bg-gray-50">${teacher.name}</td>
                             <td class="urdu-font">${period.className}</td>
@@ -1422,7 +1421,7 @@
                             <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
                         `;
                         
-                        // Add Image button only on the first period row for that teacher
+                        // Add Image button only on the first period row for that teacher (using rowspan)
                         if (index === 0) {
                              rowHtml += `
                                  <td rowspan="${teacherPeriods.length}">
@@ -1586,7 +1585,7 @@
             const link = document.createElement("a");
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            const fileName = `Karkardagi_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
+            const fileName = `Karkardagi_Jamia_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
             link.setAttribute("download", fileName);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
@@ -1598,14 +1597,12 @@
 
 
         // UPDATED FUNCTION: Download Teacher Report (Consolidated Image for ALL periods of one teacher)
-        const downloadTeacherReportImage = async (firstRowOfTeacher) => {
+        const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaName) => {
             showLoader(true);
             
             const monthName = currentReportPeriod.month;
             const year = currentReportPeriod.yearNum; 
-            const teacherId = firstRowOfTeacher.dataset.teacherId;
-            const jamiaName = firstRowOfTeacher.dataset.jamiaName;
-            const teacherName = firstRowOfTeacher.dataset.teacherName;
+            const userName = currentUser.email; 
             
             // 1. Find ALL periods for this specific teacher in the current rendered report
             const periodsForTeacher = reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`);
@@ -1618,15 +1615,15 @@
 
             // 2. Synthesize HTML table (Teacher Report)
              let tableContent = `
-                 <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                 <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px;">
                     <thead style="background-color: #f0f0f0;">
                         <tr>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Class</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Book</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Target</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Taught</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Achiev. %</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Status</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Class</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Book</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Target</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">پڑھائے گئے صفحات</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Achiev. %</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1667,17 +1664,22 @@
             tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
             tempDiv.style.direction = 'rtl'; 
 
+            // **Applying Urdu Font to Teacher Name**
+            const urduTeacherName = `<span style="font-family: 'Jameel Noori Nastaleeq', serif; font-size: 30px; line-height: 1.2;">${teacherName}</span>`;
+
             const headerHtml = `
                 <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
                     ${monthName} ${year}
                 </h1>
-                <h2 style="text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 20px; color: #000000;">
-                    ${teacherName} | تعلیمی کارکردگی
+                <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #000000; direction: rtl;">
+                    ${urduTeacherName} | تعلیمی کارکردگی
                 </h2>
-                <p style="text-align: right; font-weight: 500; margin-bottom: 15px;">Jamia: ${jamiaName}</p>
+                <p style="text-align: center; font-weight: 500; margin-bottom: 15px; font-size: 16px;">Jamia: ${jamiaName}</p>
             `;
             
-            tempDiv.innerHTML = headerHtml + tableContent + `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by Karkardagi System</p>`;
+            const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
+
+            tempDiv.innerHTML = headerHtml + tableContent + footerHtml;
             document.body.appendChild(tempDiv);
             
             try {
