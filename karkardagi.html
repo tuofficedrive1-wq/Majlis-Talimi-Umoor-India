@@ -459,6 +459,21 @@
             console.log("Restored open IDs:", openAccordionIds);
         };
 
+        // Global function for copying text (for simplicity, outside module scope)
+        window.copyToClipboard = (elementId) => {
+            const copyText = document.getElementById(elementId);
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); 
+            
+            try {
+                navigator.clipboard.writeText(copyText.value);
+                showNotification("Link copied to clipboard!");
+            } catch (err) {
+                console.error('Copy failed:', err);
+                showNotification("Link copy nahi ho paya. Khud se copy karein.", true);
+            }
+        }
+
 
         // --- AUTHENTICATION & SYNC ---
         
@@ -861,6 +876,13 @@
                     </button>
                     <div class="accordion-content">
                         <div class="p-4 border-t">
+                             <div class="mb-4 flex justify-between items-center">
+                                <p class="text-sm font-medium text-gray-600">Report Form Link</p>
+                                <button type="button" class="generate-jamia-link-btn bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg text-sm" data-jamia-name="${jamiaName}">
+                                    <i class="fas fa-link fa-sm mr-1"></i> Generate Report Link
+                                </button>
+                            </div>
+                            <div class="link-display-area mb-4"></div>
                             <form class="add-teacher-form mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row gap-3">
                                 <input type="text" placeholder="Naye Teacher ka Naam" class="teacher-name-input w-full p-2 border rounded-lg urdu-font" required>
                                 <button type="submit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Add Teacher</button>
@@ -898,6 +920,14 @@
         };
         
         function handleSetupClickDelegation(e) {
+            // NEW: Handle Link Generation Button
+            if (e.target.closest('.generate-jamia-link-btn')) { 
+                e.stopPropagation(); 
+                handleGenerateJamiaLink(e);
+                return; 
+            }
+            // END NEW
+
             if (e.target.closest('.delete-teacher-btn')) { e.stopPropagation(); handleDeleteTeacher(e); return; }
             if (e.target.closest('.teacher-accordion-button')) {
                 const button = e.target.closest('.teacher-accordion-button');
@@ -915,6 +945,43 @@
         function handleSetupSubmitDelegation(e) {
              if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
         }
+        
+        // --- NEW: Link Generation Logic ---
+        const handleGenerateJamiaLink = (e) => {
+            const button = e.target.closest('.generate-jamia-link-btn');
+            const jamiaName = button.dataset.jamiaName;
+            
+            if (!jamiaName || !activeYear) {
+                showNotification("Error: Jamia ka naam ya Active Year nahi mila.", true);
+                return;
+            }
+
+            // teacher-form.html woh naya page hoga jo aapne banaya hai
+            const baseUrl = window.location.origin + '/teacher-form.html';
+            
+            // Link Generate Karna
+            const reportingLink = `${baseUrl}?jamiaId=${encodeURIComponent(jamiaName)}&activeYear=${activeYear}`;
+            
+            // Link Ko Display aur Copy Karna
+            const displayMessage = `
+                <div class="p-3 bg-green-50 border border-green-300 rounded-lg break-all">
+                    <p class="font-semibold text-green-800 mb-2">Jamia Report Link Ready:</p>
+                    <input type="text" value="${reportingLink}" id="jamia-report-link-${jamiaName.replace(/\s/g, '-')}" class="w-full p-2 border rounded-lg text-sm bg-white cursor-text" readonly>
+                    <button onclick="copyToClipboard('jamia-report-link-${jamiaName.replace(/\s/g, '-')}')" class="mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg text-xs">
+                        Copy Link
+                    </button>
+                </div>
+            `;
+
+            // Link ko display-area mein dikhana
+            const linkDisplayDiv = button.closest('.p-4').querySelector('.link-display-area');
+            if (linkDisplayDiv) {
+                linkDisplayDiv.innerHTML = displayMessage;
+            }
+            
+            showNotification(`Jamia "${jamiaName}" ka link ban gaya. Copy karein!`);
+        };
+        // --- END NEW ---
 
 
         const renderTeacherAccordion = (jamiaName, teacher) => {
@@ -1019,6 +1086,12 @@
                  await updateDoc(userDocRef, {
                      academicYears: allAcademicYearsData 
                  });
+                 // NEW: Save the structure to a 'public' collection for the teacher form to read
+                 // This assumes your karkardagi structure can be publicly accessed (read-only) 
+                 // by the teacher form based on the year.
+                 const publicStructureRef = doc(db, 'karkardagiStructure', activeYear);
+                 await setDoc(publicStructureRef, { structure: allAcademicYearsData[activeYear].karkardagiStructure }, { merge: true });
+
                  showNotification("Structure saved successfully!");
                  if (callback) callback(); // Call the callback after saving
              } catch (error) {
