@@ -257,7 +257,7 @@
             semester: '1' // '1' or '2'
         };
         
-        // Accordion State Management
+        // Accordion State Management (Only for Setup)
         let openAccordionIds = new Set(); // Stores data-jamia-name and data-teacher-id
 
         // --- HELPER FUNCTIONS ---
@@ -416,7 +416,7 @@
             document.getElementById('current-month-year').textContent = `Report for ${displayMonth} ${currentReportPeriod.yearNum || currentReportPeriod.year}`;
         };
 
-        // Accordion State Capture Logic
+        // Accordion State Capture Logic (Only for Setup)
         const captureAccordionState = () => {
             openAccordionIds.clear();
             // Capture Setup Accordions
@@ -432,7 +432,7 @@
             console.log("Captured open IDs:", openAccordionIds);
         };
 
-        // Accordion State Restore Logic
+        // Accordion State Restore Logic (Only for Setup)
         const restoreAccordionState = () => {
             if (openAccordionIds.size === 0) return;
             
@@ -551,12 +551,11 @@
             
             // Delegation for Reporting Tab Clicks (Simplified for flat display)
             reportingContainer.addEventListener('click', (e) => {
-                // 1. Download Jamia Report (Image)
+                // 1. Download Jamia Report (CSV)
                 if (e.target.closest('.download-jamia-report-btn')) {
                     const jamiaName = e.target.closest('.download-jamia-report-btn').dataset.jamiaName;
                     if (jamiaName) {
-                        // NOTE: This Jamia button will only download the CSV, since the table is complex.
-                        downloadJamiaReport(jamiaName); 
+                        downloadJamiaReportCSV(jamiaName); // Switched to CSV
                     }
                 }
                 // 2. Download Teacher Report (Image)
@@ -1350,75 +1349,94 @@
 
             for (const jamiaName of sortedJamiaNames) {
                 const items = periodsByJamia[jamiaName];
-                items.sort((a, b) => a.teacher.name.localeCompare(b.teacher.name, 'ur')); 
-                
+                // Group items by teacher name (for consolidated image button placement)
+                const itemsByTeacher = items.reduce((acc, item) => {
+                    if (!acc[item.teacher.name]) {
+                        acc[item.teacher.name] = [];
+                    }
+                    acc[item.teacher.name].push(item);
+                    return acc;
+                }, {});
+
                 // Add Jamia Header Row (for flat view)
                 finalHTML += `
-                    <tr class="jamia-header">
+                    <tr class="jamia-header" data-jamia-row="${jamiaName}">
                         <td colspan="9" class="p-3">
                             <div class="flex justify-between items-center w-full">
                                 <span class="urdu-font text-lg">${jamiaName}</span>
                                 <button type="button" class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
-                                    <i class="fas fa-image fa-sm pointer-events-none"></i> PNG Report
+                                    <i class="fas fa-file-csv fa-sm pointer-events-none"></i> Download CSV
                                 </button>
                             </div>
                         </td>
                     </tr>
                 `;
-
-                // Add periods for this Jamia
-                items.forEach(item => {
-                    const { teacher, period } = item;
-                    
-                    let monthlyTarget = 0;
-                    if (semesterTotalDays > 0 && daysThisMonth > 0 && period.totalPages > 0) {
-                        const perDayTarget = period.totalPages / semesterTotalDays;
-                        monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                    }
-
-                    const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
-                    const pagesTaught = savedEntry?.pagesTaught || '';
-                    
-                    let achievement = 0;
-                    if (pagesTaught > 0 && monthlyTarget > 0) {
-                        achievement = Math.round((pagesTaught / monthlyTarget) * 100);
-                    }
-                    
-                    const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, monthNum, period.semester);
-
-                    const teacherChanged = teacher.name !== previousTeacherName;
-                    const rowStyle = teacherChanged && previousTeacherName !== null ? 'border-t-2 border-gray-300' : '';
-                    
-                    finalHTML += `
-                    <tr class="reporting-row ${rowStyle}" 
-                        data-period-id="${period.id}" 
-                        data-jamia-name="${jamiaName}" 
-                        data-teacher-name="${teacher.name}" 
-                        data-class-name="${period.className}"
-                        data-book-name="${period.bookName}" 
-                        data-monthly-target="${monthlyTarget}"
-                        data-period-semester="${period.semester}"
-                        data-month-num="${monthNum}"
-                        data-kaifiyat="${kaifiyat}">
-                        <td class="urdu-font text-gray-500">${jamiaName}</td> 
-                        <td class="urdu-font bg-gray-50">${teacher.name}</td>
-                        <td class="urdu-font">${period.className}</td>
-                        <td class="urdu-font">${period.bookName}</td>
-                        <td class="font-medium">${monthlyTarget}</td>
-                        <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
-                        <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
-                        <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
-                        <td>
-                            <button type="button" class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
-                                <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
-                            </button>
-                        </td>
-                    </tr>`;
-                    previousTeacherName = teacher.name;
-                });
                 
-                previousJamiaName = jamiaName;
-                previousTeacherName = null; // Reset for next Jamia
+                let teacherRows = [];
+                let isFirstRowForTeacher = true;
+
+                // Iterate through teachers in this jamia
+                Object.keys(itemsByTeacher).sort().forEach(teacherNameKey => {
+                    const teacherPeriods = itemsByTeacher[teacherNameKey];
+                    
+                    teacherPeriods.forEach((item, index) => {
+                        const { teacher, period } = item;
+                        
+                        let monthlyTarget = 0;
+                        if (semesterTotalDays > 0 && daysThisMonth > 0 && period.totalPages > 0) {
+                            const perDayTarget = period.totalPages / semesterTotalDays;
+                            monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                        }
+
+                        const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
+                        const pagesTaught = savedEntry?.pagesTaught || '';
+                        
+                        let achievement = 0;
+                        if (pagesTaught > 0 && monthlyTarget > 0) {
+                            achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                        }
+                        
+                        const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, monthNum, period.semester);
+
+                        // Row structure
+                        let rowHtml = `
+                        <tr class="reporting-row"
+                            data-period-id="${period.id}" 
+                            data-jamia-name="${jamiaName}" 
+                            data-teacher-id="${teacher.id}"
+                            data-teacher-name="${teacher.name}" 
+                            data-class-name="${period.className}"
+                            data-book-name="${period.bookName}" 
+                            data-monthly-target="${monthlyTarget}"
+                            data-period-semester="${period.semester}"
+                            data-month-num="${monthNum}"
+                            data-kaifiyat="${kaifiyat}"
+                            data-teacher-index="${teacher.id}">
+                            <td class="urdu-font text-gray-500">${jamiaName}</td> 
+                            <td class="urdu-font bg-gray-50">${teacher.name}</td>
+                            <td class="urdu-font">${period.className}</td>
+                            <td class="urdu-font">${period.bookName}</td>
+                            <td class="font-medium">${monthlyTarget}</td>
+                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
+                            <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
+                            <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
+                        `;
+                        
+                        // Add Image button only on the first period row for that teacher
+                        if (index === 0) {
+                             rowHtml += `
+                                 <td rowspan="${teacherPeriods.length}">
+                                     <button type="button" class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
+                                         <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
+                                     </button>
+                                 </td>
+                             `;
+                        }
+                        
+                        rowHtml += `</tr>`;
+                        finalHTML += rowHtml;
+                    });
+                });
             }
             
             finalHTML += '</tbody></table></div>';
@@ -1451,7 +1469,7 @@
                 });
             });
             
-            // Restore state after rendering (Only Setup Accordions need restore now)
+            // Restore state after rendering
             restoreAccordionState(); 
         };
         
@@ -1518,33 +1536,95 @@
         
         saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
         
-        // NEW FUNCTION: Download Jamia Report (PNG/JPG) - Replaced old downloadCSV
-        const downloadJamiaReport = async (jamiaName) => {
-             console.log(`Downloading Image Report for Jamia: ${jamiaName}`);
-             showLoader(true);
-             
-             // 1. Find the Jamia container (We need to synthesize the table for this Jamia)
-             const jamiaRows = reportingContainer.querySelectorAll(`tr[data-jamia-name="${jamiaName}"]`);
-             
-             if (jamiaRows.length === 0) {
-                 showNotification(`Jamia ${jamiaName} ka data nahi mila.`, true);
+        // NEW FUNCTION: Download Jamia Report (CSV)
+        const downloadJamiaReportCSV = (jamiaName) => {
+             console.log(`Downloading CSV for Jamia: ${jamiaName}`);
+             if (!activeYear) return;
+
+             const rowsToExport = [];
+             // Find all rows for the Jamia
+             reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`).forEach(row => {
+                 const pagesTaught = row.querySelector('.pages-taught-input').value || '0';
+                 const achievement = row.querySelector('.achievement-cell').textContent;
+                 const kaifiyat = row.dataset.kaifiyat;
+
+                 rowsToExport.push({
+                     jamia: row.dataset.jamiaName,
+                     teacher: row.dataset.teacherName,
+                     class: row.dataset.className, 
+                     book: row.dataset.bookName,
+                     target: row.dataset.monthlyTarget,
+                     taught: pagesTaught,
+                     percent: achievement,
+                     kaifiyat: kaifiyat 
+                 });
+             });
+
+            if (rowsToExport.length === 0) {
+                showNotification("Is Jamia ke liye koi data nahi hai.", true);
+                return;
+            }
+
+            const header = ["Jamia", "Teacher", "Class", "Book", "Monthly Target", "Pages Taught", "Achievement %", "Kaifiyat"];
+            const csvRows = [
+                header.join(','), 
+                ...rowsToExport.map(row => [
+                    `"${row.jamia.replace(/"/g, '""')}"`, 
+                    `"${row.teacher.replace(/"/g, '""')}"`,
+                    `"${row.class.replace(/"/g, '""')}"`,
+                    `"${row.book.replace(/"/g, '""')}"`,
+                    row.target,
+                    row.taught,
+                    `"${row.percent}"`, 
+                    `"${row.kaifiyat.replace(/"/g, '""')}"` 
+                ].join(','))
+            ];
+            
+            const csvString = csvRows.join('\n');
+            
+            const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); 
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            const fileName = `Karkardagi_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+             showNotification(`${fileName} Downloaded!`);
+        };
+
+
+        // UPDATED FUNCTION: Download Teacher Report (Consolidated Image for ALL periods of one teacher)
+        const downloadTeacherReportImage = async (firstRowOfTeacher) => {
+            showLoader(true);
+            
+            const monthName = currentReportPeriod.month;
+            const year = currentReportPeriod.yearNum; 
+            const teacherId = firstRowOfTeacher.dataset.teacherId;
+            const jamiaName = firstRowOfTeacher.dataset.jamiaName;
+            const teacherName = firstRowOfTeacher.dataset.teacherName;
+            
+            // 1. Find ALL periods for this specific teacher in the current rendered report
+            const periodsForTeacher = reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`);
+            
+            if (periodsForTeacher.length === 0) {
+                 showNotification(`Teacher ${teacherName} ka data nahi mila.`, true);
                  showLoader(false);
                  return;
-             }
+            }
 
-             const monthName = currentReportPeriod.month;
-             const year = currentReportPeriod.yearNum;
-             
-             // 2. Synthesize HTML table for image generation
+            // 2. Synthesize HTML table (Teacher Report)
              let tableContent = `
-                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                 <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                     <thead style="background-color: #f0f0f0;">
                         <tr>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Teacher</th>
                             <th style="padding: 8px; border: 1px solid #ddd;">Class</th>
                             <th style="padding: 8px; border: 1px solid #ddd;">Book</th>
                             <th style="padding: 8px; border: 1px solid #ddd;">Target</th>
-                            <th style="padding: 8px; border: 1px solid #ddd;">Pages Taught</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">Taught</th>
                             <th style="padding: 8px; border: 1px solid #ddd;">Achiev. %</th>
                             <th style="padding: 8px; border: 1px solid #ddd;">Status</th>
                         </tr>
@@ -1552,8 +1632,7 @@
                     <tbody>
              `;
 
-             jamiaRows.forEach(row => {
-                 const teacherName = row.dataset.teacherName;
+            periodsForTeacher.forEach(row => {
                  const className = row.dataset.className;
                  const bookName = row.dataset.bookName;
                  const monthlyTarget = row.dataset.monthlyTarget;
@@ -1566,152 +1645,54 @@
                  
                  tableContent += `
                     <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;">${teacherName}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">${className}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">${bookName}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${className}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${bookName}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${pagesTaught}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${achievement}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColorClass};">${kaifiyat}</td>
                     </tr>
                  `;
-             });
+            });
              
-             tableContent += '</tbody></table>';
+            tableContent += '</tbody></table>';
 
-             const tempDiv = document.createElement('div');
-             tempDiv.style.width = '800px'; 
-             tempDiv.style.backgroundColor = '#ffffff';
-             tempDiv.style.padding = '30px';
-             tempDiv.style.border = '1px solid #ccc';
-             tempDiv.style.fontFamily = 'Jameel Noori Nastaleeq, Poppins, sans-serif'; 
-             tempDiv.style.direction = 'rtl'; 
-             
-             const headerHtml = `
-                 <h1 style="text-align: center; font-size: 28px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
-                     ${jamiaName}
-                 </h1>
-                 <h2 style="text-align: center; font-size: 24px; font-weight: 500; margin-bottom: 20px; color: #000000;">
-                     ${monthName} ${year} | تعلیمی کارکردگی (جمعی رپورٹ)
-                 </h2>
-             `;
-             
-             tempDiv.innerHTML = headerHtml + tableContent + `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by Karkardagi System</p>`;
-             document.body.appendChild(tempDiv);
-             
-             try {
-                 // 3. Generate Image
-                 const canvas = await html2canvas(tempDiv, { 
-                     scale: 2, 
-                     allowTaint: true,
-                     useCORS: true
-                 });
-                 
-                 // 4. Download
-                 const image = canvas.toDataURL("image/png");
-                 const link = document.createElement('a');
-                 link.href = image;
-                 const fileName = `Karkardagi_Jamia_${jamiaName.replace(/ /g, '_')}_${monthName}_${year}.png`;
-                 link.download = fileName;
-                 document.body.appendChild(link);
-                 link.click();
-                 document.body.removeChild(link);
-                 
-                 showNotification(`${fileName} Downloaded Successfully!`);
-             } catch (error) {
-                 console.error("Image generation failed:", error);
-                 showNotification("Jamia Report Image download karne me error.", true, error.message);
-             } finally {
-                 document.body.removeChild(tempDiv);
-                 showLoader(false);
-             }
-        };
 
-        // Function to download Image (Teacher Level)
-        const downloadTeacherReportImage = async (row) => {
-            showLoader(true);
-            
-            const monthName = currentReportPeriod.month;
-            const year = currentReportPeriod.yearNum; // Use the correct reporting year
-            const teacherName = row.dataset.teacherName;
-            const className = row.dataset.className;
-            const bookName = row.dataset.bookName;
-            const monthlyTarget = row.dataset.monthlyTarget;
-            const pagesTaught = row.querySelector('.pages-taught-input').value || '0';
-            const kaifiyat = row.dataset.kaifiyat;
-            const achievement = row.querySelector('.achievement-cell').textContent;
-            
-            // Step 1: Create the temporary HTML structure for the image
+            // 3. Create Container for Image Rendering
             const tempDiv = document.createElement('div');
-            tempDiv.style.width = '550px'; 
+            tempDiv.style.width = '700px'; 
             tempDiv.style.backgroundColor = '#ffffff';
-            tempDiv.style.padding = '20px';
+            tempDiv.style.padding = '25px';
             tempDiv.style.border = '1px solid #ccc';
-            tempDiv.style.fontFamily = 'Jameel Noori Nastaleeq, Poppins, sans-serif'; 
+            tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
             tempDiv.style.direction = 'rtl'; 
 
-            // Determine Kaifiyat color for the table
-            const kaifiyatCell = row.querySelector('.kaifiyat-cell');
-            const kaifiyatColorClass = kaifiyatCell.classList.contains('color-mumtaz') ? '#059669' : 
-                                       kaifiyatCell.classList.contains('color-behtar') ? '#3b82f6' : 
-                                       '#ef4444'; 
-
-            const htmlContent = `
-                <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6;">
+            const headerHtml = `
+                <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
                     ${monthName} ${year}
                 </h1>
                 <h2 style="text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 20px; color: #000000;">
-                    ${monthName} ${year} | تعلیمی کارکردگی
+                    ${teacherName} | تعلیمی کارکردگی
                 </h2>
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
-                    <thead>
-                        <tr style="background-color: #f0f0f0;">
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold;">استاذ کا نام</th>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${teacherName}</td>
-                        </tr>
-                        <tr style="background-color: #f0f0f0;">
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold;">کلاس</th>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${className}</td>
-                        </tr>
-                        <tr style="background-color: #f0f0f0;">
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold;">کتاب</th>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">${bookName}</td>
-                        </tr>
-                    </thead>
-                </table>
-                <table style="width: 100%; border-collapse: collapse; font-size: 16px;">
-                    <thead>
-                        <tr style="background-color: #e0f2fe;">
-                            <th style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">ماہانہ ہدف (Target)</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">پڑھے گئے صفحات</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">کارکردگی (Achievement)</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">کیفیت (Status)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${pagesTaught}</td>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">${achievement}</td>
-                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColorClass};">${kaifiyat}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777;">Report Generated by Karkardagi System</p>
+                <p style="text-align: right; font-weight: 500; margin-bottom: 15px;">Jamia: ${jamiaName}</p>
             `;
             
-            tempDiv.innerHTML = htmlContent;
+            tempDiv.innerHTML = headerHtml + tableContent + `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by Karkardagi System</p>`;
             document.body.appendChild(tempDiv);
             
             try {
-                // Step 2: Use html2canvas to render the temporary div as a canvas
-                const canvas = await html2canvas(tempDiv, { scale: 2 });
+                // 4. Generate Image
+                const canvas = await html2canvas(tempDiv, { 
+                    scale: 2, 
+                    allowTaint: true,
+                    useCORS: true
+                });
                 
-                // Step 3: Convert canvas to image and download
+                // 5. Download
                 const image = canvas.toDataURL("image/png");
                 const link = document.createElement('a');
                 link.href = image;
-                const fileName = `Karkardagi_Report_${teacherName.replace(/ /g, '_')}_${monthName}_${year}.png`;
+                const fileName = `Karkardagi_Teacher_${teacherName.replace(/ /g, '_')}_${monthName}_${year}.png`;
                 link.download = fileName;
                 document.body.appendChild(link);
                 link.click();
@@ -1720,9 +1701,9 @@
                 showNotification(`${fileName} Downloaded Successfully!`);
             } catch (error) {
                 console.error("Image generation failed:", error);
-                showNotification("Image download karne me error.", true, error.message);
+                showNotification("Teacher Report Image download karne me error.", true, error.message);
             } finally {
-                // Step 4: Remove the temporary div
+                // 6. Cleanup
                 document.body.removeChild(tempDiv);
                 showLoader(false);
             }
