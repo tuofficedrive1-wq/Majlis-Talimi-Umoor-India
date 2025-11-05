@@ -1012,45 +1012,34 @@
                 return;
             }
 
-            // karkardagi.html file ke andar, handleGenerateJamiaLink function mein badlav karein:
+            // teacher-form.html woh naya page hoga jo aapne banaya hai
+            const baseUrl = window.location.origin + '/teacher-form.html';
+            
+            // NEW: Ek naya timestamp (cache buster) generate karein
+            const cacheBuster = Date.now();
+            
+            // UPDATED: Link Generate Karte Waqt Cache Buster aur parameters dono shamil karein
+            const reportingLink = `${baseUrl}?jamiaId=${encodeURIComponent(jamiaName)}&activeYear=${activeYear}&v=${cacheBuster}`;
+            
+            // Link Ko Display aur Copy Karna
+            const displayMessage = `
+                <div class="p-3 bg-green-50 border border-green-300 rounded-lg break-all">
+                    <p class="font-semibold text-green-800 mb-2">Jamia Report Link Ready:</p>
+                    <input type="text" value="${reportingLink}" id="jamia-report-link-${jamiaName.replace(/\s/g, '-')}" class="w-full p-2 border rounded-lg text-sm bg-white cursor-text" readonly>
+                    <button onclick="copyToClipboard('jamia-report-link-${jamiaName.replace(/\s/g, '-')}')" class="mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg text-xs">
+                        Copy Link
+                    </button>
+                </div>
+            `;
 
-const handleGenerateJamiaLink = (e) => {
-    const button = e.target.closest('.generate-jamia-link-btn');
-    const jamiaName = button.dataset.jamiaName;
-    
-    if (!jamiaName || !activeYear) {
-        showNotification("Error: Jamia ka naam ya Active Year nahi mila.", true);
-        return;
-    }
-
-    // teacher-form.html woh naya page hoga jo aapne banaya hai
-    const baseUrl = window.location.origin + '/teacher-form.html';
-    
-    // NEW: Ek naya timestamp (cache buster) generate karein
-    const cacheBuster = Date.now();
-    
-    // UPDATED: Link Generate Karte Waqt Cache Buster aur parameters dono shamil karein
-    const reportingLink = `${baseUrl}?jamiaId=${encodeURIComponent(jamiaName)}&activeYear=${activeYear}&v=${cacheBuster}`;
-    
-    // Link Ko Display aur Copy Karna
-    const displayMessage = `
-        <div class="p-3 bg-green-50 border border-green-300 rounded-lg break-all">
-            <p class="font-semibold text-green-800 mb-2">Jamia Report Link Ready:</p>
-            <input type="text" value="${reportingLink}" id="jamia-report-link-${jamiaName.replace(/\s/g, '-')}" class="w-full p-2 border rounded-lg text-sm bg-white cursor-text" readonly>
-            <button onclick="copyToClipboard('jamia-report-link-${jamiaName.replace(/\s/g, '-')}')" class="mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg text-xs">
-                Copy Link
-            </button>
-        </div>
-    `;
-
-    // Link ko display-area mein dikhana
-    const linkDisplayDiv = button.closest('.p-4').querySelector('.link-display-area');
-    if (linkDisplayDiv) {
-        linkDisplayDiv.innerHTML = displayMessage;
-    }
-    
-    showNotification(`Jamia "${jamiaName}" ka link ban gaya. Copy karein!`);
-};
+            // Link ko display-area mein dikhana
+            const linkDisplayDiv = button.closest('.p-4').querySelector('.link-display-area');
+            if (linkDisplayDiv) {
+                linkDisplayDiv.innerHTML = displayMessage;
+            }
+            
+            showNotification(`Jamia "${jamiaName}" ka link ban gaya. Copy karein!`);
+        };
         // --- END NEW ---
 
 
@@ -1381,8 +1370,92 @@ const handleGenerateJamiaLink = (e) => {
         
         // --- REPORTING TAB LOGIC ---
         
+        // =======================================================
+        // NEW FUNCTION: processRawSubmissions (Only one definition kept)
+        // =======================================================
+        const processRawSubmissions = (submissions) => {
+            const latestSubmissions = submissions.reduce((acc, submission) => {
+                const periodId = submission.periodId;
+                
+                let submittedTime = submission.submittedAt;
+                if (submittedTime && typeof submittedTime.toDate === 'function') {
+                    submittedTime = submittedTime.toDate();
+                } else {
+                    submittedTime = new Date(0);
+                }
+                
+                if (!acc[periodId] || submittedTime > acc[periodId].submittedAt) {
+                    acc[periodId] = { ...submission, submittedAt: submittedTime };
+                }
+                
+                return acc;
+            }, {});
+            
+            return Object.values(latestSubmissions).map(sub => ({
+                periodId: sub.periodId,
+                jamiaName: sub.jamiaId,         
+                teacherName: sub.teacherName,
+                bookName: sub.bookName,
+                pagesTaught: sub.pagesTaught,
+            }));
+        };
         // END NEW FUNCTION
 
+
+        // =======================================================
+        // UPDATED: loadMonthlyReportData (To include Teacher Submissions)
+        // =======================================================
+        const loadMonthlyReportData = async () => {
+            monthlyReportData = []; 
+            currentMonthReport = {};
+            
+            if (!currentUser || !currentUser.uid || !activeYear) {
+                console.log("loadMonthlyReportData: No user or active year."); 
+                return;
+            }
+            
+            const { yearNum, monthNum } = currentReportPeriod; 
+            if (monthNum === -1 || yearNum === 0 || !activeYear) {
+                console.log("loadMonthlyReportData: Invalid or incomplete reporting date info. Aborting Firestore fetch.");
+                return;
+            }
+
+            const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+            const reportDocRef = doc(db, 'monthly_reports', reportId);
+            
+            try {
+                const reportDocSnap = await getDoc(reportDocRef);
+                
+                if (reportDocSnap.exists()) {
+                    currentMonthReport = reportDocSnap.data();
+                    monthlyReportData = currentMonthReport.karkardagiReport?.data || [];
+                    console.log("Monthly report data loaded from saved report."); 
+                } else {
+                    console.log("No saved report found. Checking for teacher submissions..."); 
+                    
+                    const submissionsQuery = query(
+                        collection(db, 'teacher_submissions'),
+                        where('submissionYear', '==', yearNum),
+                        where('submissionMonth', '==', monthNum),
+                    );
+                    
+                    const submissionsSnapshot = await getDocs(submissionsQuery);
+                    const rawSubmissions = submissionsSnapshot.docs.map(doc => doc.data());
+                    
+                    if (rawSubmissions.length > 0) {
+                         monthlyReportData = processRawSubmissions(rawSubmissions);
+                         console.log(`Loaded ${monthlyReportData.length} entries from teacher submissions.`);
+                    } else {
+                         console.log("No teacher submissions found for this period.");
+                    }
+                }
+            } catch (error) {
+                 console.error("Error loading monthly report/submissions data:", error);
+                 showNotification("Monthly report data load karne me error.", true, error.message);
+            }
+        };
+        // =======================================================
+        
         // UPDATED FUNCTION: renderReportingTab
         const renderReportingTab = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
@@ -1901,5 +1974,3 @@ const handleGenerateJamiaLink = (e) => {
     </script>
 </body>
 </html>
-
-
