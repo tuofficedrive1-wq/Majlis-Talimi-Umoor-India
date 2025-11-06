@@ -178,6 +178,26 @@
         </div>
     </div>
 
+    <div id="edit-teacher-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-[80] hidden flex justify-center items-center p-4">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4">Teacher Ka Naam Edit Karein</h3>
+            <form id="edit-teacher-form" class="space-y-4">
+                <input type="hidden" id="modal-edit-jamia-name">
+                <input type="hidden" id="modal-edit-teacher-id">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Naya Teacher Ka Naam</label>
+                    <input type="text" id="modal-new-teacher-name-input" class="w-full p-2 border rounded-lg urdu-font" required>
+                </div>
+                
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" id="cancel-teacher-edit-btn" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Update Name</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 
     <script type="module">
         // Firebase Imports
@@ -236,6 +256,14 @@
         const modalSemesterSelect = document.getElementById('modal-semester-select');
         const modalTotalPagesInput = document.getElementById('modal-total-pages-input');
         const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        
+        // NEW Teacher Modal Elements
+        const editTeacherModal = document.getElementById('edit-teacher-modal');
+        const editTeacherForm = document.getElementById('edit-teacher-form');
+        const modalEditJamiaName = document.getElementById('modal-edit-jamia-name');
+        const modalEditTeacherId = document.getElementById('modal-edit-teacher-id');
+        const modalNewTeacherNameInput = document.getElementById('modal-new-teacher-name-input');
+        const cancelTeacherEditBtn = document.getElementById('cancel-teacher-edit-btn');
         
         // REMOVED: Filter Elements (semesterFilter, monthFilter)
 
@@ -502,6 +530,7 @@
             console.log("Back button clicked"); 
             window.location.href = 'index.html'; // Confirmed: index.html is the Dashboard file
         });
+        
         // --- MAIN APP LOGIC ---
         const initApp = () => {
              console.log("Initializing App..."); 
@@ -594,9 +623,17 @@
             cancelEditBtn.addEventListener('click', () => editPeriodModal.classList.add('hidden'));
             editPeriodForm.addEventListener('submit', handleUpdatePeriod);
             
+            // NEW Teacher Modal Handlers
+            cancelTeacherEditBtn.addEventListener('click', () => editTeacherModal.classList.add('hidden'));
+            editTeacherForm.addEventListener('submit', handleUpdateTeacherName);
+
+            
             // Close modal on outside click (optional, but good practice)
             editPeriodModal.addEventListener('click', (e) => {
                 if(e.target === editPeriodModal) editPeriodModal.classList.add('hidden');
+            });
+            editTeacherModal.addEventListener('click', (e) => {
+                if(e.target === editTeacherModal) editTeacherModal.classList.add('hidden');
             });
             
             // REMOVED: Filter Event Listeners (semesterFilter.addEventListener, monthFilter.addEventListener)
@@ -946,9 +983,12 @@
             // Teacher Delete Button
             if (e.target.closest('.delete-teacher-btn')) { e.stopPropagation(); handleDeleteTeacher(e); return; }
             
+            // NEW: Edit Teacher Name Button
+            if (e.target.closest('.edit-teacher-name-btn')) { handleEditTeacherName(e); return; }
+            
             // Teacher Accordion Toggle 
             if (e.target.closest('.teacher-accordion-button')) {
-                 if (e.target.closest('.delete-teacher-btn')) return; // Ensure delete button doesn't toggle parent
+                 if (e.target.closest('.delete-teacher-btn') || e.target.closest('.edit-teacher-name-btn')) return; // Ensure delete/edit button doesn't toggle parent
                 
                 const button = e.target.closest('.teacher-accordion-button');
                 const content = button.nextElementSibling;
@@ -986,6 +1026,12 @@
                 <button type="button" class="teacher-accordion-button w-full flex justify-between items-center p-3 text-left font-medium text-gray-800 bg-gray-200 hover:bg-gray-300">
                     <span class="urdu-font">${teacher.name}</span>
                     <div class="flex items-center">
+                        
+                         <div role="button" class="edit-teacher-name-btn text-blue-500 hover:text-blue-700 p-2 mr-2 cursor-pointer" 
+                              data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-current-name="${teacher.name}">
+                             <i class="fas fa-edit fa-sm pointer-events-none"></i>
+                         </div>
+                        
                         <div role="button" class="delete-teacher-btn text-red-500 hover:text-red-700 p-2 mr-2 cursor-pointer">
                             <i class="fas fa-trash-alt fa-sm pointer-events-none"></i>
                         </div>
@@ -1079,7 +1125,7 @@
                      academicYears: allAcademicYearsData 
                  });
                  showNotification("Structure saved successfully!");
-                 if (callback) callback(); // Call the callback after saving
+                 if (callback) await callback(); // Await the callback if it's async (like handleUpdateTeacherName's callback)
              } catch (error) {
                  console.error("Error saving structure:", error);
                  showNotification("Structure save karne me error.", true, error.message);
@@ -1117,12 +1163,80 @@
             // Add the new teacher's ID to the set so it opens automatically
             openAccordionIds.add(newTeacher.id); 
             
-            saveActiveYearStructure(() => { 
+            saveActiveYearStructure(async () => { 
                 teacherNameInput.value = '';
                 // Since UI structure is complex, re-render the whole setup tab for simplicity and safety
                 renderSetupTab();
             });
         };
+        
+        // NEW: Function to open the Edit Teacher Modal
+        const handleEditTeacherName = (e) => {
+             const button = e.target.closest('.edit-teacher-name-btn');
+             const jamiaName = button.dataset.jamiaName;
+             const teacherId = button.dataset.teacherId;
+             const currentName = button.dataset.currentName;
+
+             if (!jamiaName || !teacherId) return;
+
+             // Populate Modal fields
+             modalEditJamiaName.value = jamiaName;
+             modalEditTeacherId.value = teacherId;
+             modalNewTeacherNameInput.value = currentName;
+
+             // Capture state *before* opening modal
+             captureAccordionState(); 
+             
+             editTeacherModal.classList.remove('hidden');
+        };
+
+        // NEW: Function to update the Teacher Name (and trigger UI/Report update)
+        const handleUpdateTeacherName = async (e) => {
+            e.preventDefault();
+            if (!activeYear) return;
+            
+            const jamiaName = modalEditJamiaName.value;
+            const teacherId = modalEditTeacherId.value;
+            const newTeacherName = modalNewTeacherNameInput.value.trim();
+
+            if (!newTeacherName) {
+                 showNotification("Naya naam khali nahi ho sakta.", true); 
+                 return;
+            }
+            
+            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
+            let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
+            let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+            
+            if (teacherData) {
+                // Update the name in the local structure
+                teacherData.name = newTeacherName;
+                
+                // Save the updated structure to Firestore
+                await saveActiveYearStructure(async () => {
+                    editTeacherModal.classList.add('hidden');
+                    
+                    // Update the teacherName in the current monthlyReportData (local state)
+                    // This ensures the next renderReportingTab uses the correct name immediately
+                    monthlyReportData.forEach(entry => {
+                         if (entry.teacherId === teacherId) { 
+                              entry.teacherName = newTeacherName;
+                         }
+                    });
+                    
+                    // Reload the full report data (just in case) and refresh UI
+                    await loadMonthlyReportData(); 
+                    
+                    // Re-render both setup and reporting tabs
+                    renderSetupTab(); 
+                    renderReportingTab(); 
+                    showNotification(`Teacher "${newTeacherName}" ka naam update ho gaya hai!`);
+                });
+            } else {
+                showNotification("Teacher data structure me nahi mila.", true);
+            }
+        };
+
         
         const handleDeleteTeacher = (e) => {
             if (!activeYear) return;
@@ -1146,7 +1260,7 @@
             let jamiaData = karkardagiStructure?.find(j => j.jamiaName === jamiaName);
             if (jamiaData && jamiaData.teachers) {
                  jamiaData.teachers = jamiaData.teachers.filter(t => t.id !== teacherId);
-                 saveActiveYearStructure(() => { 
+                 saveActiveYearStructure(async () => { 
                     renderSetupTab();
                     renderReportingTab(); 
                  });
@@ -1189,7 +1303,7 @@
                 if (!teacherData.periods) teacherData.periods = []; 
                 teacherData.periods.push(newPeriod); 
                 
-                saveActiveYearStructure(() => { 
+                saveActiveYearStructure(async () => { 
                     // Add the Jamia and Teacher ID to the set to ensure both remain open
                     openAccordionIds.add(jamiaName);
                     openAccordionIds.add(teacherId);
@@ -1225,7 +1339,7 @@
             
             if (teacherData && teacherData.periods) {
                  teacherData.periods = teacherData.periods.filter(p => p.id !== periodId);
-                 saveActiveYearStructure(() => { 
+                 saveActiveYearStructure(async () => { 
                     renderSetupTab();
                     renderReportingTab(); 
                  });
@@ -1286,7 +1400,7 @@
                 if (index !== -1) {
                     teacherData.periods[index] = updatedPeriod;
                     
-                    await saveActiveYearStructure(() => {
+                    await saveActiveYearStructure(async () => {
                         editPeriodModal.classList.add('hidden');
                         renderSetupTab(); 
                         renderReportingTab(); 
@@ -1345,7 +1459,7 @@
             
             if (daysThisMonth === 0) {
                  const monthName = currentReportPeriod.month || 'Selected Month';
-                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${monthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${monthName}) ke academic days set nahi hain. Pehle "Setup Structure" me set karein.</p>`;
                  saveMonthlyReportBtn.classList.add('hidden');
                  return;
             }
@@ -1559,6 +1673,7 @@
                         newReportData.push({
                             periodId: row.dataset.periodId,
                             jamiaName: row.dataset.jamiaName,
+                            teacherId: row.dataset.teacherId, // Added for potential future use, helps track which teacher reported
                             teacherName: row.dataset.teacherName, 
                             bookName: row.dataset.bookName, 
                             monthlyTarget: monthlyTarget,
@@ -1831,4 +1946,3 @@
     </script>
 </body>
 </html>
-
