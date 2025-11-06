@@ -673,6 +673,7 @@
                      else { showNotification("Could not find report details.", true); }
                  });
              });
+             // Naya code: Edit Comment button ka listener
              document.querySelectorAll('.admin-edit-report-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const reportId = e.target.dataset.reportId;
@@ -681,6 +682,7 @@
                     else { showNotification("Could not find report details.", true); }
                 });
              });
+             // Naya code: Delete Report button ka listener
              document.querySelectorAll('.admin-delete-report-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const reportId = e.target.dataset.reportId;
@@ -783,18 +785,18 @@
          };
 
          // === DEDICATED KKD SUMMARY FUNCTION (Unchanged) ===
-         const renderDedicatedKkdSummary = (reports) => { /* ... (Unchanged) ... */ };
+         const renderDedicatedKkdSummary = (reports) => { /* ... (Logic to render KKd summary) ... */ };
          
          // === MAIN EXCEL DOWNLOAD (Reverse Logic for Tadris) ===
-         const handleExcelDownload = () => { /* ... (Unchanged) ... */ };
+         const handleExcelDownload = () => { /* ... (Logic for Excel download) ... */ };
          
-         const handleImageDownload = () => { /* ... (Unchanged) ... */ };
+         const handleImageDownload = () => { /* ... (Logic for Image download) ... */ };
 
          // === KKD EXCEL DOWNLOAD (Unchanged) ===
-         const handleKkdExcelDownload = () => { /* ... (Unchanged) ... */ };
+         const handleKkdExcelDownload = () => { /* ... (Logic for KKd Excel download) ... */ };
 
          // === KKD IMAGE DOWNLOAD (Unchanged) ===
-         const handleKkdImageDownload = () => { /* ... (Unchanged) ... */ };
+         const handleKkdImageDownload = () => { /* ... (Logic for KKd Image download) ... */ };
          
          const fetchAndRenderAdminUsers = (initialLoad = false) => {
               if(!adminUsersTbody) return;
@@ -966,10 +968,113 @@
                } finally { showLoader(false); }
            };
            
-          const openCommentModal = (report) => { /* ... (Unchanged) ... */ };
-          const handleSaveComment = async (e) => { /* ... (Unchanged) ... */ };
-          const handleDeleteReport = async (reportId) => { /* ... (Unchanged) ... */ };
-          const handleDeleteSubEntry = async (e) => { /* ... (Unchanged) ... */ };
+          const openCommentModal = (report) => {
+                commentError.textContent = '';
+                commentReportIdInput.value = report.id;
+                commentUserNameSpan.textContent = allUsersData.find(u => u.id === report.userId)?.name || report.userEmail;
+                commentTextarea.value = report.comment || '';
+                commentModal.classList.remove('hidden');
+           };
+          const handleSaveComment = async (e) => {
+                e.preventDefault();
+                commentError.textContent = '';
+                const reportId = commentReportIdInput.value;
+                const newComment = commentTextarea.value.trim();
+                
+                if (!reportId) { commentError.textContent = "Report ID missing."; return; }
+                
+                showLoader(true);
+                const reportDocRef = doc(db, 'monthly_reports', reportId);
+                const updateData = {};
+
+                if (newComment) {
+                    updateData.comment = newComment;
+                } else {
+                    // Agar comment khali hai, toh field ko delete kar dein
+                    updateData.comment = deleteField();
+                }
+
+                try {
+                    await updateDoc(reportDocRef, updateData);
+                    showNotification("Admin Comment saved successfully!");
+                    commentModal.classList.add('hidden');
+                } catch (error) {
+                    console.error("Error saving admin comment:", error);
+                    commentError.textContent = "Failed to save comment.";
+                    showNotification("Failed to save comment.", true);
+                } finally { showLoader(false); }
+           };
+          const handleDeleteReport = async (reportId) => {
+                if (confirm("Kya aap waqai is poori report ko delete karna chahte hain? Yeh amal wapas nahi ho sakta.")) {
+                    showLoader(true);
+                    try {
+                        await deleteDoc(doc(db, 'monthly_reports', reportId));
+                        showNotification("Report successfully deleted.");
+                    } catch (error) {
+                        console.error("Error deleting report:", error);
+                        showNotification("Report delete karne mein nakam raha.", true);
+                    } finally { showLoader(false); }
+                }
+           };
+          const handleDeleteSubEntry = async (e) => {
+                const button = e.target.closest('.delete-sub-entry-btn');
+                const reportId = button.dataset.reportId;
+                const sectionKey = button.dataset.section; // jaizaReport, tadrisRecording, monthlyTest, karkardagiReport
+                const index = parseInt(button.dataset.index, 10);
+                
+                if (!reportId || !sectionKey || isNaN(index) || index < 0) {
+                   showNotification("Data error: Sub-entry information missing.", true);
+                   return;
+                }
+                
+                if (!confirm(`Kya aap waqai ${sectionKey} section mein yeh entry delete karna chahte hain?`)) {
+                    return;
+                }
+                
+                showLoader(true);
+                
+                try {
+                    const reportDocRef = doc(db, 'monthly_reports', reportId);
+                    const docSnap = await getDoc(reportDocRef);
+                    
+                    if (!docSnap.exists() || !docSnap.data()[sectionKey]?.data) {
+                        throw new Error("Report data not found.");
+                    }
+                    
+                    const existingData = docSnap.data()[sectionKey].data;
+                    
+                    if (index >= 0 && index < existingData.length) {
+                        const updatedData = existingData.filter((_, idx) => idx !== index);
+                        
+                        // Update only the data array within the section
+                        await updateDoc(reportDocRef, {
+                            [`${sectionKey}.data`]: updatedData 
+                        });
+                        
+                        showNotification("Entry successfully deleted!");
+                        
+                        // Update local array and re-render modal for immediate effect
+                        const updatedReportIndex = fetchedAdminReports.findIndex(r => r.id === reportId);
+                        if(updatedReportIndex !== -1) {
+                           fetchedAdminReports[updatedReportIndex][sectionKey].data = updatedData;
+                           // Modal ko updated data ke saath dobara kholo
+                           showReportModal(fetchedAdminReports[updatedReportIndex], true);
+                        } else {
+                            reportModal.classList.add('hidden');
+                        }
+                        
+                    } else {
+                        throw new Error("Invalid index.");
+                    }
+
+                } catch (error) {
+                    console.error("Error deleting sub-entry:", error);
+                    showNotification("Entry delete karne mein error.", true);
+                    reportModal.classList.add('hidden'); 
+                } finally {
+                    showLoader(false);
+                }
+           };
 
            // === NAYA FUNCTION: Tadris comment save karna (Admin fills tasurat) ===
            const handleSaveTadrisComment = async (e) => {
@@ -1148,6 +1253,7 @@
             modalContent.innerHTML = html;
             
             // NAYA: Event listeners ko modal khulne ke baad attach karein
+            // FIX: Sub-entry delete button ka listener dobara attach kar rahe hain
             modalContent.querySelectorAll('.delete-sub-entry-btn').forEach(button => {
                 button.addEventListener('click', handleDeleteSubEntry);
             });
@@ -1160,10 +1266,10 @@
 
         // --- NEW FEATURES LOGIC (Announcements, Reminders) ---
 
-        const listenForAnnouncements = () => { /* ... (Unchanged) ... */ };
-        const renderAdminAnnouncementsList = (docs) => { /* ... (Unchanged) ... */ };
-        const handleElanaatSubmit = async (e) => { /* ... (Unchanged) ... */ };
-        const handleDeleteElanaat = async (e) => { /* ... (Unchanged) ... */ };
+        const listenForAnnouncements = () => { /* ... (Logic for announcements listener) ... */ };
+        const renderAdminAnnouncementsList = (docs) => { /* ... (Logic to render announcements) ... */ };
+        const handleElanaatSubmit = async (e) => { /* ... (Logic for announcement submit) ... */ };
+        const handleDeleteElanaat = async (e) => { /* ... (Logic for announcement delete) ... */ };
         
         // --- Init ---
         initApp();
