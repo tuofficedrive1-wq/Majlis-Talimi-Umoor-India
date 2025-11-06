@@ -11,7 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         /* Load Jameel Noori Nastaleeq font */
         @font-face {
@@ -1088,7 +1089,7 @@
         };
         
         // ===================================
-        //  UPDATED: renderTadrisTab (Reverse Logic)
+        //  UPDATED: renderTadrisTab (Reverse Logic & PDF Button)
         // ===================================
         const renderTadrisTab = (currentReport) => { 
               const academicData = userProfileData.academicStructure || [];
@@ -1120,12 +1121,19 @@
                 content.className = 'accordion-content'; 
                 
                 // Saved Recordings List (User View - Reverse Logic)
-                let savedRecordingsHTML = jamiaSavedRecordings.length > 0 ? jamiaSavedRecordings.map(rec => {
+                let savedRecordingsHTML = jamiaSavedRecordings.length > 0 ? jamiaSavedRecordings.map((rec, index) => {
                     const adminComment = rec.tasurat || 'Abhi koi tasurat nahi hai.'; // Admin ka comment ab 'tasurat' field mein hai
                     const userComment = rec.adminTasurat || ''; // User ka comment ab 'adminTasurat' field mein hai
                     
                     return `
-                        <div class="p-3 bg-gray-100 rounded text-sm border-b">
+                        <div class="p-3 bg-gray-100 rounded text-sm border-b" id="tadris-record-${jamiaIndex}-${index}"
+                            data-jamia-name="${rec.jamiaName}" 
+                            data-date="${rec.date}" 
+                            data-teacher-name="${rec.teacherName}" 
+                            data-class-name="${rec.className}" 
+                            data-kitab-name="${rec.kitabName}"
+                            data-tasurat="${encodeURIComponent(rec.tasurat || '')}" 
+                            data-admin-tasurat="${encodeURIComponent(userComment)}">
                             <p class="urdu-font"><strong>${rec.className} - ${rec.kitabName}</strong> (${rec.teacherName}, ${rec.date})</p>
                             
                             <div class="mt-2">
@@ -1139,7 +1147,12 @@
                                     data-jamia-name="${rec.jamiaName}" data-date="${rec.date}" data-teacher-name="${rec.teacherName}">${userComment}</textarea>
                                 <button type="button" class="save-user-admin-tasurat-btn w-full mt-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-2 rounded-lg text-sm">Save Comment</button>
                             </div>
-                        </div>`;
+                            
+                            <button type="button" class="download-tadris-pdf-btn w-full mt-3 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-lg text-sm"
+                                    data-record-id="tadris-record-${jamiaIndex}-${index}">
+                                <i class="fas fa-file-pdf mr-2"></i> Report PDF Download Karein
+                            </button>
+                            </div>`;
                 }).join('') : '<p class="text-sm text-gray-500">Is Jamia ke liye abhi koi recording save nahi hui hai.</p>';
                 
                 content.innerHTML = `
@@ -1203,6 +1216,13 @@
                  content.querySelectorAll('.save-user-admin-tasurat-btn').forEach(button => {
                       button.addEventListener('click', handleUserEditAdminTasurat);
                  });
+                 
+                 // NAYA EVENT LISTENER YAHAN ADD HOGA
+                 content.querySelectorAll('.download-tadris-pdf-btn').forEach(button => {
+                      button.removeEventListener('click', handleDownloadTadrisPDF);
+                      button.addEventListener('click', handleDownloadTadrisPDF);
+                 });
+                 // ------------------------------------
             });
          };
          
@@ -1210,6 +1230,7 @@
          //  UPDATED: handleAddTadrisEntry (tasurat field is now the Admin's comment placeholder)
          // ===================================
          async function handleAddTadrisEntry(e) {
+             e.preventDefault();
              const button = e.target;
              const content = button.closest('.p-4.border-t');
              if (!content) return;
@@ -1247,6 +1268,7 @@
                  tasuratInput.value = ''; 
              } catch(error) {
                  console.error("Error adding Tadris entry:", error);
+                 showNotification("Error adding Tadris entry.", true);
              } finally { showLoader(false); }
          }
          
@@ -1294,6 +1316,110 @@
                  showNotification("Comment save karne mein error.", true);
              } finally { showLoader(false); }
          }
+        
+        // ==========================================================
+        // NAYA FUNCTION: Teacher Report PDF Download Karna
+        // ==========================================================
+        async function handleDownloadTadrisPDF(e) {
+            const button = e.target.closest('.download-tadris-pdf-btn');
+            const recordDiv = document.getElementById(button.dataset.recordId);
+            if (!recordDiv) { showNotification("Error: Report data not found.", true); return; }
+
+            const jamiaName = recordDiv.dataset.jamiaName;
+            const teacherName = recordDiv.dataset.teacherName;
+            const date = recordDiv.dataset.date;
+            const className = recordDiv.dataset.className;
+            const kitabName = recordDiv.dataset.kitabName;
+            
+            // Current comments from the DOM
+            const tasuratAdmin = decodeURIComponent(recordDiv.dataset.tasurat || 'Koi comment nahi diya gaya hai.');
+            const tasuratZimmedar = recordDiv.querySelector('.user-admin-tasurat-input').value.trim() || 'Koi comment darj nahi kiya gaya.';
+
+            showLoader(true);
+
+            try {
+                // PDF ka content create karna (Comment Box aur Signature Field ke saath)
+                // Note: The Jameel Noori Nastaleeq font is loaded via @font-face in the global style, 
+                // but its rendering in html2canvas might be inconsistent. Inline styles are for presentation in PDF.
+                const pdfContentHTML = `
+                    <div style="padding: 20px; font-family: 'Poppins', sans-serif; direction: rtl; text-align: right; border: 1px solid #ccc; max-width: 700px; margin: 0 auto; line-height: 1.5; color: #333;">
+                        <h2 style="text-align: center; color: #14b8a6; border-bottom: 2px solid #14b8a6; padding-bottom: 10px; margin-bottom: 20px; font-size: 1.5rem; font-weight: 700;">Majlis Talimi Umoor India - Tadris Recording Report</h2>
+                        
+                        <div style="margin-top: 15px; font-size: 1rem;">
+                            <p style="margin-bottom: 5px;"><strong>Jamia:</strong> <span style="font-family: 'Jameel Noori Nastaleeq', sans-serif;">${jamiaName}</span></p>
+                            <p style="margin-bottom: 5px;"><strong>Teacher ka Naam:</strong> <span style="font-family: 'Jameel Noori Nastaleeq', sans-serif;">${teacherName}</span></p>
+                            <p style="margin-bottom: 5px;"><strong>Class/Kitab:</strong> <span style="font-family: 'Jameel Noori Nastaleeq', sans-serif;">${className} - ${kitabName}</span></p>
+                            <p style="margin-bottom: 5px;"><strong>Date:</strong> <span>${date}</span></p>
+                        </div>
+
+                        <div style="margin-top: 20px; padding: 15px; border: 1px dashed #14b8a6; background-color: #f0fdfa;">
+                            <p style="font-weight: 600; color: #0f766e; margin-bottom: 5px;">Recording par Tasurat (Admin ka diya hua):</p>
+                            <p style="font-family: 'Jameel Noori Nastaleeq', sans-serif; font-size: 1.1rem; margin: 0;">${tasuratAdmin}</p>
+                        </div>
+
+                        <div style="margin-top: 20px; padding: 15px; border: 1px dashed #60a5fa; background-color: #eff6ff;">
+                            <p style="font-weight: 600; color: #2563eb; margin-bottom: 5px;">Talimi Zimmedar Ke Tasurat (Aapka Comment):</p>
+                            <p style="font-family: 'Jameel Noori Nastaleeq', sans-serif; font-size: 1.1rem; margin: 0;">${tasuratZimmedar}</p>
+                        </div>
+
+                        <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ccc;">
+                            <p style="font-weight: 600; color: #4b5563; margin-bottom: 10px;">Teacher Ke Comments (Print ke baad likhne ke liye):</p>
+                            <div style="height: 80px; border: 1px solid #9ca3af; background-color: #fff; padding: 5px;"></div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center;">
+                            <div style="width: 40%; border-top: 1px solid #000; padding-top: 5px;">
+                                <p style="font-weight: 600;">Teacher ke Dastakhat (Signature)</p>
+                            </div>
+                            <div style="width: 40%; border-top: 1px solid #000; padding-top: 5px;">
+                                <p style="font-weight: 600;">Talimi Zimmedar ke Dastakhat (Signature)</p>
+                            </div>
+                        </div>
+                        <p style="text-align: center; margin-top: 20px; font-size: 0.8rem; color: #6b7280;">*** Report generated on: ${new Date().toLocaleDateString()} ***</p>
+                    </div>
+                `;
+
+                // Temporary div mein content daalna
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = pdfContentHTML;
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.left = '-9999px';
+                document.body.appendChild(tempDiv);
+                
+                // HTML ko Canvas mein convert karna
+                const canvas = await window.html2canvas(tempDiv, { 
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true
+                });
+                const imgData = canvas.toDataURL('image/png');
+
+                // Canvas ko PDF mein convert karna
+                const { jsPDF } = window.jspdf; 
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+                
+                const imgProps = doc.getImageProperties(imgData);
+                const pdfWidth = doc.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                doc.save(`Tadris_Report_${teacherName.replace(/\s/g, '_')}_${date}.pdf`);
+
+                // Temporary div ko hata dena
+                document.body.removeChild(tempDiv);
+                showNotification("PDF successfully downloaded!");
+
+            } catch(error) {
+                console.error("Error generating PDF:", error);
+                showNotification("PDF generate karne mein error ho gaya. Check karein ki library sahi se load hui hai ya nahi.", true);
+            } finally {
+                showLoader(false);
+            }
+        }
         
         const renderTestTab = (currentReport) => {
             const submittedTestData = currentReport.monthlyTest?.data || [];
@@ -1477,6 +1603,7 @@
                  showNotification("Test report saved!"); 
              } catch (error) {
                  console.error("Error saving Test status:", error);
+                 showNotification("Error saving Test status.", true);
              } finally { 
                  showLoader(false); 
              }
@@ -1565,6 +1692,7 @@
                  showNotification("Jaiza report saved!"); 
             } catch(error) {
                 console.error("Error updating Jaiza report:", error);
+                showNotification("Error updating Jaiza report.", true);
             } finally { showLoader(false); }
          };
          
