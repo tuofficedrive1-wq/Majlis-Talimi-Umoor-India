@@ -963,8 +963,7 @@
                                     return value + '%'
                                 }
                             }
-                        },
-                        x: { ticks: { } }
+                        }
                     },
                     plugins: {
                         legend: { position: 'top', },
@@ -1296,15 +1295,315 @@
              } finally { showLoader(false); }
          }
         
-        const renderTestTab = (currentReport) => { /* ... (Unchanged) ... */ };
-        const handleTestFormSubmit = async (e) => { /* ... (Unchanged) ... */ };
+        const renderTestTab = (currentReport) => {
+            const submittedTestData = currentReport.monthlyTest?.data || [];
+            const allJamiaat = userProfileData.jamiaatList || [];
+            const testTabContent = document.getElementById('test-tab-content');
+            if (!testTabContent) return;
+
+            if (!Array.isArray(allJamiaat)) {
+                console.error("jamiaatList is not an array:", allJamiaat);
+                testTabContent.innerHTML = '<p class="text-center text-red-500">Jamiaat list format sahi nahi hai.</p>';
+                return;
+            }
+            
+            const submittedTestNames = submittedTestData.map(t => t.name);
+            const pendingTestJamiaat = allJamiaat.filter(name => !submittedTestNames.includes(name));
+
+            const testFormContainer = testTabContent.querySelector('#test-list-container');
+            const testPendingTitle = testTabContent.querySelector('#test-pending-title');
+            const testSaveBtn = testTabContent.querySelector('#test-save-btn');
+            const testDisplayContainer = testTabContent.querySelector('#test-display-table');
+            const testSubmittedTitle = testTabContent.querySelector('#test-submitted-title');
+            
+            if (!testFormContainer || !testPendingTitle || !testSaveBtn || !testDisplayContainer || !testSubmittedTitle) {
+                 console.error("One or more Test tab elements not found"); return;
+            }
+
+            const { monthInputFormat } = reportingDateInfo; 
+
+            if (pendingTestJamiaat.length > 0) {
+                testPendingTitle.classList.remove('hidden');
+                testSaveBtn.classList.remove('hidden');
+                testFormContainer.innerHTML = pendingTestJamiaat.map(name => `
+                    <div class="test-row p-4 border rounded-lg bg-white shadow-sm grid grid-cols-1 sm:grid-cols-5 gap-4 items-start">
+                        <div class="sm:col-span-1 font-semibold text-gray-700 urdu-font">${name}</div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                            <select class="test-status w-full p-2 border rounded-lg bg-white">
+                                <option value="">Select Status</option>
+                                <option value="Test Hua">Test Hua</option>
+                                <option value="Nahi Hua">Nahi Hua</option>
+                            </select>
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Month</label>
+                            <input type="month" class="test-month w-full p-2 border rounded-lg" value="${monthInputFormat}">
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Total %</label>
+                            <input type="text" placeholder="%" class="test-percentage w-full p-2 border rounded-lg">
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Wajah (Agar Nahi Hua)</label>
+                            <textarea rows="1" placeholder="Wajah" class="test-wajah w-full p-2 border rounded-lg urdu-font" disabled></textarea>
+                        </div>
+                    </div>`).join('');
+                 
+                 testFormContainer.querySelectorAll('.test-status').forEach(selectElement => {
+                    selectElement.addEventListener('change', (e) => {
+                        const row = e.target.closest('.test-row');
+                        const monthInput = row.querySelector('.test-month');
+                        const percentageInput = row.querySelector('.test-percentage');
+                        const wajahTextarea = row.querySelector('.test-wajah');
+                        const isNahiHua = (e.target.value === 'Nahi Hua');
+                        
+                        monthInput.disabled = isNahiHua;
+                        percentageInput.disabled = isNahiHua;
+                        wajahTextarea.disabled = !isNahiHua;
+                        
+                        if (isNahiHua) {
+                            monthInput.value = '';
+                            percentageInput.value = '';
+                        } else {
+                            monthInput.value = monthInputFormat;
+                            wajahTextarea.value = '';
+                        }
+                    });
+                    selectElement.dispatchEvent(new Event('change')); 
+                });
+
+            } else {
+                testPendingTitle.classList.add('hidden');
+                testSaveBtn.classList.add('hidden');
+                testFormContainer.innerHTML = '<p class="text-sm text-gray-500">Sabhi Jamiaat ki Monthly Test report submit ho chuki hai.</p>';
+            }
+            
+            if (submittedTestData.length > 0) {
+                testSubmittedTitle.classList.remove('hidden');
+                 let tableHTML = `<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jamia</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">%</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wajah</th>
+                    </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                 submittedTestData.forEach(item => { 
+                    tableHTML += `<tr>
+                        <td class="px-6 py-4 urdu-font">${item.name}</td>
+                        <td class="px-6 py-4">${item.status}</td>
+                        <td class="px-6 py-4">${item.month || '-'}</td>
+                        <td class="px-6 py-4">${item.percentage || '-'}</td>
+                        <td class="px-6 py-4 urdu-font">${item.wajah || '-'}</td>
+                    </tr>`; 
+                });
+                 tableHTML += `</tbody></table></div>`;
+                 const comment = currentReport.monthlyTest?.comment || '';
+                 tableHTML += `<div class="comment-display ${comment ? '' : 'hidden'} mt-4"><p class="text-xs font-semibold text-gray-600">Admin Comment:</p><p class="urdu-font">${comment}</p></div>`;
+                 testDisplayContainer.innerHTML = tableHTML;
+            } else {
+                 testSubmittedTitle.classList.add('hidden');
+                 testDisplayContainer.innerHTML = '';
+            }
+        };
         
-        const renderPastReports = (reports) => { /* ... (Unchanged) ... */ };
-        const saveReportData = async (dataToSave) => { /* ... (Unchanged) ... */ };
-        const handleJaizaSubmit = async (e) => { /* ... (Unchanged) ... */ };
-        const handlePastReportClick = (e) => { /* ... (Unchanged) ... */ };
-        const handleTabSwitch = (e) => { /* ... (Unchanged) ... */ };
-        const handleKkdLinkClick = (e) => { /* ... (Unchanged) ... */ };
+        // ===============================================
+        // =========  UPDATED HANDLE TEST SUBMIT  ========
+        // ===============================================
+        const handleTestFormSubmit = async (e) => {
+             e.preventDefault();
+             const filledTestData = [];
+             let validationFailed = false;
+             let validationMessage = "";
+
+             document.querySelectorAll('#test-list-container .test-row').forEach(row => {
+                 const name = row.querySelector('.font-semibold').textContent;
+                 const statusSelect = row.querySelector('.test-status');
+                 const monthInput = row.querySelector('.test-month');
+                 const percentageInput = row.querySelector('.test-percentage');
+                 const wajahTextarea = row.querySelector('.test-wajah');
+                 const selectedStatus = statusSelect.value;
+                 
+                 if (!selectedStatus) return; // Agar "Select Status" hai to ignore karein
+
+                 let newEntryData = { name: name, status: selectedStatus };
+
+                 if (selectedStatus === 'Nahi Hua') {
+                     if (wajahTextarea.value.trim()) { 
+                         newEntryData.wajah = wajahTextarea.value.trim(); 
+                         newEntryData.month = ''; 
+                         newEntryData.percentage = ''; 
+                         filledTestData.push(newEntryData);
+                     } 
+                     else { 
+                         validationFailed = true; 
+                         validationMessage = `Test 'Nahi Hua' ke liye Wajah likhna zaroori hai. (${name})`; 
+                     }
+                 } else { // Test Hua
+                     if (monthInput.value && percentageInput.value) { 
+                         newEntryData.month = monthInput.value; 
+                         newEntryData.percentage = percentageInput.value; 
+                         newEntryData.wajah = ''; 
+                         filledTestData.push(newEntryData);
+                     } 
+                     else { 
+                         validationFailed = true; 
+                         validationMessage = `Test 'Test Hua' ke liye Month aur Percentage dono fill karna zaroori hai. (${name})`; 
+                     }
+                 }
+             });
+
+             if (validationFailed) { 
+                 showNotification(validationMessage, true); 
+                 return; 
+             }
+             if (filledTestData.length === 0) { 
+                 showNotification("Kam se kam ek Jamia ki detail fill karke save karein. (Status select karna zaroori hai)", true); 
+                 return; 
+             }
+             
+             showLoader(true);
+             try {
+                 await saveReportData({}); 
+                 const docSnap = await getDoc(reportRef); 
+                 const existingReportData = docSnap.exists() ? docSnap.data().monthlyTest?.data || [] : [];
+                 
+                 const existingNames = filledTestData.map(f => f.name);
+                 const filteredExisting = existingReportData.filter(ex => !existingNames.includes(ex.name));
+                 
+                 const mergedData = [...filteredExisting, ...filledTestData];
+                 
+                 await updateDoc(reportRef, { monthlyTest: { status: 'Done', data: mergedData } }); 
+                 showNotification("Test report saved!"); 
+             } catch (error) {
+                 console.error("Error saving Test status:", error);
+             } finally { 
+                 showLoader(false); 
+             }
+        }
+        
+        const renderPastReports = (reports) => {
+             const { monthNum, yearNum } = reportingDateInfo;
+             const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+             const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; 
+             const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`;
+             const pastReportsList = document.getElementById('past-reports-list');
+             if (!pastReportsList) return;
+
+             const sortedPastReports = reports
+                .filter(r => r.id !== currentReportIdSimple && r.id !== currentReportIdWithYear) 
+                .sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            
+            if(sortedPastReports.length > 0) {
+                pastReportsList.innerHTML = sortedPastReports.map(report => `
+                     <div class="p-4 bg-gray-50 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center text-center sm:text-left space-y-2 sm:space-y-0">
+                        <div class="flex-grow"><p class="font-semibold text-lg">${report.month} ${report.year} ${report.academicYear ? `(${report.academicYear})` : ''}</p><p class="text-sm text-gray-500">Submitted: ${report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}</p></div>
+                        <button class="view-past-report-btn bg-teal-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-600 w-full sm:w-auto" data-report-id="${report.id}">View</button>
+                    </div>`).join('');
+            } else {
+                pastReportsList.innerHTML = `<p class="text-gray-500">Koyi pichli report nahi mili.</p>`;
+            }
+        };
+
+        const saveReportData = async (dataToSave) => {
+            showLoader(true);
+            const { month, year, monthNum, yearNum } = reportingDateInfo; 
+            const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+            const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
+
+            reportRef = doc(db, 'monthly_reports', reportId); 
+
+            const finalData = { 
+                ...dataToSave, userId: currentUser.uid, userEmail: currentUser.email, month, year, academicYear, createdAt: serverTimestamp() 
+            };
+             console.log("Saving report data with ID:", reportId, "Data:", finalData);
+
+            try {
+                await setDoc(reportRef, finalData, { merge: true }); 
+            } catch (error) {
+                console.error("Error saving report section: ", error);
+                showNotification(`Failed to save ${month} ${year} report. Please try again.`, true);
+                 throw error; 
+            } finally {
+                showLoader(false);
+            }
+        };
+        
+        // --- USER FORM SUBMIT HANDLERS ---
+        const handleJaizaSubmit = async (e) => { 
+            e.preventDefault();
+            const filledJaizaat = [];
+            let validationFailed = false;
+            let validationMessage = "";
+            document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
+                 const name = row.querySelector('.font-semibold').textContent;
+                 const typeSelect = row.querySelector('.jaiza-type');
+                 const dateInput = row.querySelector('.jaiza-date');
+                 const percentageInput = row.querySelector('.jaiza-percentage');
+                 const selectedType = typeSelect.value;
+                 if (selectedType === 'Nahi Hua') { filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' }); } 
+                 else if (selectedType === 'Visit') {
+                     if (dateInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' }); } 
+                     else if (typeSelect.selectedIndex > 0 && !dateInput.disabled) { validationFailed = true; validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`; }
+                 } else if (selectedType === 'Jaiza') {
+                     if (dateInput.value && percentageInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value }); } 
+                     else if ((dateInput.value || percentageInput.value) && !dateInput.disabled && !percentageInput.disabled) { validationFailed = true; validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`; }
+                 }
+             });
+            if (validationFailed) { showNotification(validationMessage, true); return; }
+            if (filledJaizaat.length === 0) { showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); return; }
+            
+            showLoader(true);
+            try {
+                 await saveReportData({}); 
+                 const docSnap = await getDoc(reportRef); 
+                 const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
+                 const existingNames = filledJaizaat.map(f => f.name);
+                 const filteredExisting = existingData.filter(ex => !existingNames.includes(ex.name));
+                 const mergedData = [...filteredExisting, ...filledJaizaat];
+                 await updateDoc(reportRef, { jaizaReport: { status: 'Done', data: mergedData } }); 
+                 showNotification("Jaiza report saved!"); 
+            } catch(error) {
+                console.error("Error updating Jaiza report:", error);
+            } finally { showLoader(false); }
+         };
+         
+        const handlePastReportClick = (e) => { 
+            if (e.target.classList.contains('view-past-report-btn')) {
+                const reportId = e.target.dataset.reportId;
+                const report = allUserReports.find(r => r.id === reportId);
+                 const isAdmin = false; 
+                if (report) showReportModal(report, isAdmin); 
+            }
+         };
+        
+        const handleTabSwitch = (e) => {
+            const tabId = e.target.dataset.tab;
+            if (!tabId || !userView) return; 
+            
+            // 1. Tab buttons ko update karein
+            userTabButtons.forEach(btn => {
+                btn.classList.remove('active');
+                // Ensure correct classes for inactive state
+                btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+            });
+            e.target.classList.add('active');
+            e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+            
+            // 2. Tab contents ko update karein
+            userTabContents.forEach(content => content.classList.add('hidden'));
+            const targetContent = userView.querySelector(`#${tabId}-tab-content`); 
+            if(targetContent) targetContent.classList.remove('hidden');
+            else console.error("Could not find user tab content for:", tabId);
+        };
+        
+        const handleKkdLinkClick = (e) => {
+             console.log("KKD link clicked");
+             const userTabButtons = userView.querySelectorAll('.tab-btn');
+             userTabButtons.forEach(btn => btn.classList.remove('active'));
+             e.currentTarget.classList.add('active');
+             window.open('karkardagi.html', '_blank');
+        };
 
         // --- Report Modal Logic (Updated for Tadris Tasurat change) ---
         const showReportModal = (report, isAdmin = false) => { 
