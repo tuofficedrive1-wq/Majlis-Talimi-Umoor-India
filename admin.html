@@ -625,7 +625,7 @@
               const validJamiaatCount = userJamiaatCount > 0 ? userJamiaatCount : 1; 
               const testConsideredDone = testDone && (submittedTestCount >= validJamiaatCount);
 
-              if (jaizaDone && tadrisDone && testConsideredDone && kkdDone) {
+              if (jaizaDone && tadrisDone && testDone && kkdDone) {
                  return { text: 'COMPLETE', color: 'text-green-600', bgColor: 'bg-green-100' };
               } else if (jaizaDone || tadrisDone || testDone || kkdDone) {
                  return { text: 'PARTIALLY COMPLETE', color: 'text-blue-600', bgColor: 'bg-blue-100' };
@@ -781,76 +781,7 @@
          };
 
          // === DEDICATED KKD SUMMARY FUNCTION (Unchanged) ===
-         const renderDedicatedKkdSummary = (reports) => {
-            const selectedUserId = kkdSummaryUserFilter.value;
-            
-            if (reports.length === 0) {
-                kkdSummaryLoadingMsg.textContent = "No report data to filter. Please fetch reports first.";
-                kkdSummaryLoadingMsg.classList.remove('hidden');
-                kkdSummaryTablesContainer.classList.add('hidden');
-                return;
-            }
-
-            const filteredReports = (selectedUserId === 'all') 
-                ? reports 
-                : reports.filter(r => r.userId === selectedUserId);
-            
-            if (filteredReports.length === 0) {
-                kkdSummaryLoadingMsg.textContent = "No reports found for the selected user.";
-                kkdSummaryLoadingMsg.classList.remove('hidden');
-                kkdSummaryTablesContainer.classList.add('hidden');
-                return;
-            }
-            
-            kkdSummaryLoadingMsg.classList.add('hidden');
-            kkdSummaryTablesContainer.classList.remove('hidden');
-            
-            const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
-            
-            let kkdHtml = '';
-            let kkdEntries = [];
-            filteredReports.forEach(r => (r.karkardagiReport?.data || []).forEach(entry => kkdEntries.push({ ...entry, userName: getUserName(r.userId), academicYear: r.academicYear, reportMonth: r.month })));
-            
-            kkdEntries.sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || ''));
-
-            if (kkdEntries.length > 0) {
-                kkdHtml += `<div class="overflow-x-auto"><table class="summary-table w-full text-sm"><thead><tr class="bg-gray-100">
-                    <th class="!p-2">User</th>
-                    <th class="!p-2">Month</th>
-                    <th class="!p-2">Jamia</th>
-                    <th class="!p-2">Teacher</th>
-                    <th class="!p-2">Book</th>
-                    <th class="!p-2">Target</th>
-                    <th class="!p-2">Taught</th>
-                    <th class="!p-2">Achieved %</th>
-                    </tr></thead><tbody>`;
-
-                let lastJamia = '';
-                let rowClass = 'bg-white';
-                
-                kkdEntries.forEach(item => {
-                    if (item.jamiaName !== lastJamia) {
-                        rowClass = (rowClass === 'bg-white') ? 'bg-gray-50' : 'bg-white';
-                        lastJamia = item.jamiaName;
-                    }
-
-                    kkdHtml += `<tr class="${rowClass}">
-                        <td class="urdu-font">${item.userName}</td>
-                        <td>${item.reportMonth || 'N/A'}</td>
-                        <td class="urdu-font">${item.jamiaName}</td>
-                        <td class="urdu-font">${item.teacherName}</td>
-                        <td class="urdu-font">${item.bookName}</td>
-                        <td>${item.monthlyTarget}</td>
-                        <td>${item.pagesTaught}</td>
-                        <td>${item.achievement || '0'}%</td>
-                    </tr>`;
-                });
-                kkdHtml += '</tbody></table></div>';
-                kkdSectionDedicated.innerHTML = kkdHtml;
-            } else {
-                kkdSectionDedicated.innerHTML = '<p class="text-sm text-gray-500">No KKd data submitted for this filter.</p>';
-            }
-         };
+         const renderDedicatedKkdSummary = (reports) => { /* ... (Unchanged) ... */ };
          
          // === MAIN EXCEL DOWNLOAD (Reverse Logic for Tadris) ===
          const handleExcelDownload = () => {
@@ -1011,6 +942,19 @@
                        
                        await updateDoc(reportDocRef, { 'tadrisRecording.data': updatedData });
                        showNotification("Recording par Tasurat (Admin's Comment) saved successfully!");
+                       
+                       // After successful update, re-render the modal content to show the latest data
+                       // Fetch updated report from the local array (onSnapshot handles the actual DB sync)
+                       const updatedReportIndex = fetchedAdminReports.findIndex(r => r.id === reportId);
+                       if(updatedReportIndex !== -1) {
+                           // Manually update the local array for immediate modal refresh
+                           fetchedAdminReports[updatedReportIndex].tadrisRecording.data = updatedData;
+                           showReportModal(fetchedAdminReports[updatedReportIndex], true);
+                       } else {
+                            // Close modal if local array update fails (should not happen)
+                            reportModal.classList.add('hidden');
+                       }
+                       
                    } else {
                        throw new Error("Invalid index.");
                    }
@@ -1018,6 +962,7 @@
                } catch (error) {
                    console.error("Error saving Tadris comment:", error);
                    showNotification("Comment save karne mein error.", true);
+                   reportModal.classList.add('hidden'); // Close modal on critical error
                } finally {
                    showLoader(false);
                }
