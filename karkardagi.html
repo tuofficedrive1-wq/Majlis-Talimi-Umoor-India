@@ -88,6 +88,11 @@
                     <div id="reporting-tab-content" class="tab-content space-y-4">
                         <div id="reporting-year-info" class="p-3 bg-blue-100 text-blue-800 rounded-lg text-center font-medium"></div>
                         
+                        <div class="flex items-center gap-4">
+                            <label for="report-month-select" class="text-gray-700 font-medium whitespace-nowrap">Select Month:</label>
+                            <select id="report-month-select" class="w-full md:w-auto p-2 border rounded-lg bg-white"></select>
+                         </div>
+                        
                         <p class="text-gray-600">Is mahine har kitab me padhaye gaye pages ki tadad enter karein.</p>
                         <div id="reporting-container"> 
                             </div>
@@ -245,6 +250,9 @@
         const sem1TotalDaysInput = document.getElementById('sem1-total-days-input');
         const sem2TotalDaysInput = document.getElementById('sem2-total-days-input');
         
+        // NEW: Reporting Month Selector
+        const reportMonthSelect = document.getElementById('report-month-select');
+        
         // Modal Elements
         const editPeriodModal = document.getElementById('edit-period-modal');
         const editPeriodForm = document.getElementById('edit-period-form');
@@ -265,8 +273,6 @@
         const modalNewTeacherNameInput = document.getElementById('modal-new-teacher-name-input');
         const cancelTeacherEditBtn = document.getElementById('cancel-teacher-edit-btn');
         
-        // REMOVED: Filter Elements (semesterFilter, monthFilter)
-
 
         // --- Application State ---
         let currentUser = null;
@@ -284,6 +290,9 @@
             yearNum: 0, // Year (e.g., 2025)
             semester: '1' // '1' or '2'
         };
+        
+        // Academic Month Array for easy iteration (0=Jan, 3=Apr, 7=Aug, 8=Sep)
+        const ACADEMIC_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0]; 
         
         // Accordion State Management (Only for Setup)
         let openAccordionIds = new Set(); // Stores data-jamia-name and data-teacher-id
@@ -442,6 +451,7 @@
         
         // UPDATED: updateReportPeriod (Filters removed, logic simplified)
         const updateReportPeriod = (newPeriod) => {
+            const oldPeriod = { ...currentReportPeriod };
             currentReportPeriod = { ...currentReportPeriod, ...newPeriod };
             
             // Determine the month name for display
@@ -449,6 +459,13 @@
             const displayMonth = getMonthName(displayMonthNum);
             
             document.getElementById('current-month-year').textContent = `Report for ${displayMonth} ${currentReportPeriod.yearNum || currentReportPeriod.year}`;
+            
+            // Agar month ya year badla hai toh report ko reload karna hoga
+            if (oldPeriod.monthNum !== currentReportPeriod.monthNum || oldPeriod.yearNum !== currentReportPeriod.yearNum) {
+                if (currentUser && activeYear) {
+                    loadMonthlyReportData().then(renderReportingTab);
+                }
+            }
         };
 
         // Accordion State Capture Logic (Only for Setup)
@@ -562,9 +579,10 @@
                             // Determine activeYear based on initial period
                             let currentActiveYear = null;
                             const currentYear = yearNum;
-                            if (monthNum >= 3) { // April (3) onwards
+                            // April (3) onwards means we are in the starting year of the academic year (e.g., 2025-2026)
+                            if (monthNum >= 3) { 
                                 currentActiveYear = `${currentYear}-${currentYear + 1}`;
-                            } else { // Jan (0), Feb (1), Mar (2)
+                            } else { // Jan (0), Feb (1), Mar (2) means we are in the ending year
                                 currentActiveYear = `${currentYear - 1}-${currentYear}`;
                             }
                             
@@ -572,6 +590,8 @@
                             activeYear = currentActiveYear;
                             
                             // Update report period state with calculated academic year
+                            // NOTE: loadMonthlyReportData and renderReportingTab will be called inside loadUserData, 
+                            // which is called below. We pass silent: true to prevent double fetch/render.
                             updateReportPeriod({ ...initialPeriod, yearNum: currentYear }); 
                             // **********************************************
 
@@ -598,6 +618,7 @@
             
             createYearForm.addEventListener('submit', handleCreateYear);
             activeYearSelect.addEventListener('change', handleYearChange);
+            reportMonthSelect.addEventListener('change', handleMonthChange); // NEW Listener
             
             // Delegation for Reporting Tab Clicks (Simplified for flat display)
             reportingContainer.addEventListener('click', (e) => {
@@ -616,7 +637,6 @@
                          downloadTeacherConsolidatedImage(row.dataset.teacherId, row.dataset.teacherName, row.dataset.jamiaName);
                      }
                  }
-                // 3. REMOVED: Accordion Toggle Logic
             });
             
             // Modal Handlers
@@ -635,8 +655,6 @@
             editTeacherModal.addEventListener('click', (e) => {
                 if(e.target === editTeacherModal) editTeacherModal.classList.add('hidden');
             });
-            
-            // REMOVED: Filter Event Listeners (semesterFilter.addEventListener, monthFilter.addEventListener)
         };
 
         const loadUserData = async (isInitialLoad = false) => {
@@ -676,6 +694,7 @@
                  currentReportPeriod.yearNum = reportingYearNum;
                  updateReportPeriod({}); // Refresh display with correct yearNum
                 
+                // We load the report data here, and then refresh the UI which includes populating the month selector
                 await loadMonthlyReportData(); 
                 refreshFullUI();
 
@@ -727,10 +746,120 @@
             }
         };
         
-        // REMOVED: handlePeriodChange function (Filters removed)
+        // --- MONTH SELECTOR LOGIC ---
+        
+        const populateMonthSelector = () => {
+             if (!activeYear) {
+                 reportMonthSelect.innerHTML = `<option value="">Select Year First</option>`;
+                 return;
+             }
+             
+             const academicYearParts = activeYear.split('-');
+             const academicYearStart = parseInt(academicYearParts[0], 10);
+             const academicYearEnd = parseInt(academicYearParts[1], 10);
+             
+             // Get the max month that can be reported (current month or grace period month)
+             const defaultDate = new Date();
+             const currentDay = defaultDate.getDate();
+             let maxMonthIndex = defaultDate.getMonth();
+             let maxYear = defaultDate.getFullYear();
+             
+             // If we are in the grace period (1-5th), the max reportable month is the previous month
+             if (currentDay >= 1 && currentDay <= 5) {
+                 maxDate = new Date(defaultDate.getFullYear(), defaultDate.getMonth(), 0); // Last day of previous month
+                 maxMonthIndex = maxDate.getMonth();
+                 maxYear = maxDate.getFullYear();
+             } else {
+                 // If not in grace period, max reportable month is the current month
+                 maxMonthIndex = defaultDate.getMonth();
+                 maxYear = defaultDate.getFullYear();
+             }
+
+             // Start from April (Month index 3) of the academic start year
+             let options = [];
+             for (let i = 0; i < ACADEMIC_MONTHS.length; i++) {
+                 const monthIndex = ACADEMIC_MONTHS[i];
+                 
+                 let reportingYear = academicYearStart;
+                 if (monthIndex >= 8 || monthIndex === 0) { // Sep to Jan
+                     reportingYear = monthIndex === 0 ? academicYearEnd : academicYearStart;
+                 }
+                 
+                 const monthName = getMonthName(monthIndex);
+                 const value = `${reportingYear}-${monthIndex}`; // e.g., "2025-8" for Sep 2025
+
+                 // Check if this month is within the reportable range (up to maxYear/maxMonthIndex)
+                 let isReportable = false;
+                 if (reportingYear < maxYear) {
+                     isReportable = true;
+                 } else if (reportingYear === maxYear && monthIndex <= maxMonthIndex) {
+                      isReportable = true;
+                 }
+                 
+                 if (isReportable) {
+                     options.push({ value, monthName, reportingYear });
+                 }
+             }
+
+             reportMonthSelect.innerHTML = options.map(option => {
+                 // Check if this option matches the currently loaded report period
+                 const isSelected = option.reportingYear === currentReportPeriod.yearNum && 
+                                    option.value.endsWith(`-${currentReportPeriod.monthNum}`);
+                 
+                 return `<option value="${option.value}" ${isSelected ? 'selected' : ''}>${option.monthName} ${option.reportingYear}</option>`;
+             }).join('');
+             
+             // Set the initial currentReportPeriod to the selected value, just in case the initial default was outside the visible range (rare but possible)
+             const selectedOption = reportMonthSelect.options[reportMonthSelect.selectedIndex];
+             if(selectedOption) {
+                 const [year, monthNum] = selectedOption.value.split('-').map(Number);
+                 const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
+                 updateReportPeriod({ yearNum: year, monthNum: monthNum, semester: semester, month: getMonthName(monthNum) });
+             }
+
+        };
+        
+        const handleMonthChange = async () => {
+             const selectedValue = reportMonthSelect.value;
+             if (!selectedValue) return;
+             
+             const [year, monthNum] = selectedValue.split('-').map(Number);
+             const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2"; // 3=April (Sem 1) to 7=Aug (Sem 1). 8=Sep (Sem 2) to 0=Jan (Sem 2)
+             
+             console.log(`Month changed to: ${getMonthName(monthNum)} ${year} (Sem ${semester})`);
+
+             // This will call loadMonthlyReportData and renderReportingTab via updateReportPeriod
+             updateReportPeriod({ 
+                 yearNum: year, 
+                 monthNum: monthNum, 
+                 semester: semester,
+                 month: getMonthName(monthNum) // update the month name
+             });
+        };
 
 
-        // --- ACADEMIC YEAR MANAGEMENT ---
+        // --- UI REFRESH LOGIC ---
+        
+        const refreshFullUI = () => {
+             console.log("Refreshing full UI for year:", activeYear); 
+            if (!activeYear) {
+                academicMonthsSetup.classList.add('hidden');
+                setupAccordionContainer.innerHTML = '<p class="text-red-500">Kaam shuru karne ke liye pehle "Create Year" karein ya ek "Active Year" select karein.</p>';
+                reportingContainer.innerHTML = '<p class="text-red-500">Reporting ke liye pehle ek "Active Year" select karein.</p>';
+                saveMonthlyReportBtn.classList.add('hidden');
+                reportingYearInfo.classList.add('hidden');
+            } else {
+                academicMonthsSetup.classList.remove('hidden');
+                reportingYearInfo.classList.remove('hidden');
+                reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
+                populateMonthSelector(); // NEW: Populate month selector based on the active year and current date
+                renderAcademicMonths();
+                renderSetupTab();
+                renderReportingTab(); // Renders the report for the current default period
+            }
+        };
+
+        // --- ACADEMIC YEAR MANAGEMENT --- (Functions for this section remain the same as previous update)
 
         const populateYearSelector = () => {
             const yearNames = Object.keys(allAcademicYearsData);
@@ -809,34 +938,16 @@
                 reportingYearNum = academicYearEnd;
             }
             
+            // NOTE: updateReportPeriod will call loadMonthlyReportData/renderReportingTab
             updateReportPeriod({ yearNum: reportingYearNum });
             
-            await loadMonthlyReportData(); 
-            refreshFullUI();
+            // Re-populate month selector and refresh UI to update structure and report
+            refreshFullUI(); 
             showLoader(false);
         };
 
-        // --- UI REFRESH LOGIC ---
-        
-        const refreshFullUI = () => {
-             console.log("Refreshing full UI for year:", activeYear); 
-            if (!activeYear) {
-                academicMonthsSetup.classList.add('hidden');
-                setupAccordionContainer.innerHTML = '<p class="text-red-500">Kaam shuru karne ke liye pehle "Create Year" karein ya ek "Active Year" select karein.</p>';
-                reportingContainer.innerHTML = '<p class="text-red-500">Reporting ke liye pehle ek "Active Year" select karein.</p>';
-                saveMonthlyReportBtn.classList.add('hidden');
-                reportingYearInfo.classList.add('hidden');
-            } else {
-                academicMonthsSetup.classList.remove('hidden');
-                reportingYearInfo.classList.remove('hidden');
-                reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
-                renderAcademicMonths();
-                renderSetupTab();
-                renderReportingTab(); // Renders the report for the current default period
-            }
-        };
 
-        // --- SETUP TAB LOGIC ---
+        // --- SETUP TAB LOGIC --- (Functions for this section remain the same as previous update)
         
         const renderAcademicMonths = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
@@ -1411,9 +1522,6 @@
             }
         };
         
-        // REMOVED: populateMonthFilter function (Filters removed)
-
-
         // --- REPORTING TAB LOGIC ---
         
         const renderReportingTab = () => {
@@ -1430,12 +1538,10 @@
                  return;
             }
             
-            // Use the current period set by initApp/loadUserData
+            // Use the current period set by initApp/loadUserData/handleMonthChange
             const { monthNum, semester: currentSemester, month } = currentReportPeriod; 
             
-            // *** FIX FOR ReferenceError ***
             const academicMonths = yearData.academicMonths || {};
-            // ******************************
 
             // NEW VALIDATION: Check if current month is included in the set academic months
              if (currentReportPeriod.monthNum === -1 || !academicMonths.hasOwnProperty(currentReportPeriod.monthNum)) {
@@ -1899,15 +2005,6 @@
         };
 
 
-        // Function to download CSV (Kept for completeness but now PNG is default)
-        const downloadCSV = (jamiaName) => {
-             console.log(`Downloading CSV for Jamia: ${jamiaName}`);
-             // This function is now replaced by downloadJamiaReport for the main button
-             // If this function is still called, it means there is an issue with the event delegation
-             showNotification("CSV download option abhi Jamia Report button se hata diya gaya hai.", true);
-        };
-
-
         // --- Tab Switching ---
         tabButtons.forEach(button => {
             button.addEventListener('click', (e) => {
@@ -1926,6 +2023,8 @@
                 
                 // If switching to reporting tab, ensure it's rendered with current default period
                 if (tabId === 'reporting') {
+                    // Because handleMonthChange/updateReportPeriod handles the logic, we just ensure UI is correct
+                    populateMonthSelector();
                     renderReportingTab();
                 }
             });
