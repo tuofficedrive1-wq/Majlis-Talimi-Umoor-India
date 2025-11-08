@@ -1050,7 +1050,7 @@
             // Attach Jamia accordion click listeners
             setupAccordionContainer.querySelectorAll('.accordion-button').forEach(button => {
                  button.addEventListener('click', (e) => {
-                     // Agar Link button par click hua hai (jo ab andar hai, lekin phir bhi safety check)
+                     // Agar Link button par click hua hai (jo abandar hai, lekin phir bhi safety check)
                     if (e.target.closest('.reporting-link-btn')) {
                          // Ye code ab sirf tabhi chalta hai jab Link button ke area par click ho.
                          // Accordion toggle nahi hoga, Link function chala kar return ho jayega.
@@ -1600,13 +1600,12 @@
 
             let finalHTML = '<div class="space-y-3">';
             
-            // Combined table structure
+            // Combined table structure (Updated Header)
             finalHTML += `
                 <div class="overflow-x-auto border rounded-lg shadow-md">
                     <table class="min-w-full text-sm bg-white">
                         <thead class="bg-gray-100">
                             <tr>
-                                <th>Jamia</th>
                                 <th>Teacher</th>
                                 <th>Class</th>
                                 <th>Book</th>
@@ -1614,6 +1613,8 @@
                                 <th>Pages Taught</th>
                                 <th>Achievement %</th>
                                 <th>Kaifiyat (Status)</th>
+                                <th>Total Target</th> 
+                                <th>Total Taught</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -1638,9 +1639,10 @@
                 }, {});
 
                 // Add Jamia Header Row (for flat view)
+                // Note: Colspan is now 10 (9 original columns + 1 removed - Jamia + 2 added - Totals)
                 finalHTML += `
                     <tr class="jamia-header" data-jamia-row="${jamiaName}">
-                        <td colspan="9" class="p-3">
+                        <td colspan="10" class="p-3"> 
                             <div class="flex justify-between items-center w-full">
                                 <span class="urdu-font text-lg">${jamiaName}</span>
                                 <button type="button" class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
@@ -1658,6 +1660,26 @@
                     const teacherPeriods = itemsByTeacher[teacherIdKey];
                     const teacherName = teacherPeriods[0].teacher.name;
                     
+                    // NEW: Calculate Teacher Totals for the new columns
+                    let teacherTotalTarget = 0;
+                    let teacherTotalTaught = 0;
+
+                    teacherPeriods.forEach(item => {
+                        const savedEntry = monthlyReportData.find(entry => entry.periodId === item.period.id);
+                        const pagesTaught = parseInt(savedEntry?.pagesTaught || 0);
+                        
+                        // Calculate Monthly Target for this period
+                        let monthlyTarget = 0;
+                        if (semesterTotalDays > 0 && daysThisMonth > 0 && item.period.totalPages > 0) {
+                            const perDayTarget = item.period.totalPages / semesterTotalDays;
+                            monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                        }
+                        
+                        teacherTotalTarget += monthlyTarget;
+                        teacherTotalTaught += pagesTaught;
+                    });
+
+
                     teacherPeriods.forEach((item, index) => {
                         const { teacher, period } = item;
                         
@@ -1690,28 +1712,32 @@
                             data-period-semester="${period.semester}"
                             data-month-num="${monthNum}"
                             data-kaifiyat="${kaifiyat}">
-                            <td class="urdu-font text-gray-500">${jamiaName}</td> 
-                            <td class="urdu-font bg-gray-50">${teacher.name}</td>
+                            
+                            ${index === 0 ? 
+                                `<td rowspan="${teacherPeriods.length}" class="urdu-font text-gray-800 font-semibold bg-blue-100/50">${teacher.name}</td>` : ''
+                            }
+                            
                             <td class="urdu-font">${period.className}</td>
                             <td class="urdu-font">${period.bookName}</td>
                             <td class="font-medium">${monthlyTarget}</td>
                             <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
                             <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
                             <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
-                        `;
+                            
+                            ${index === 0 ? 
+                                `<td rowspan="${teacherPeriods.length}" class="font-bold text-base text-center bg-gray-100">${teacherTotalTarget}</td>
+                                 <td rowspan="${teacherPeriods.length}" class="total-taught-cell font-bold text-base text-center bg-gray-100">${teacherTotalTaught}</td>` : ''
+                            }
                         
-                        // Add Image button only on the first period row for that teacher (using rowspan)
-                        if (index === 0) {
-                             rowHtml += `
+                            ${index === 0 ? `
                                  <td rowspan="${teacherPeriods.length}">
                                      <button type="button" class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
                                          <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
                                      </button>
                                  </td>
-                             `;
-                        }
-                        
-                        rowHtml += `</tr>`;
+                            ` : ''}
+                            
+                            </tr>`;
                         finalHTML += rowHtml;
                     });
                 });
@@ -1721,10 +1747,11 @@
             finalHTML += '</div>';
             reportingContainer.innerHTML = finalHTML;
             
-            // Attach input event listener for dynamic calculation
+            // Attach input event listener for dynamic calculation (Updated to handle totals)
             reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
                 input.addEventListener('input', (e) => {
                     const row = e.target.closest('.reporting-row');
+                    const teacherId = row.dataset.teacherId; 
                     const target = parseInt(row.dataset.monthlyTarget, 10);
                     const taught = parseInt(e.target.value, 10) || 0;
                     const achievementCell = row.querySelector('.achievement-cell');
@@ -1744,6 +1771,24 @@
                     kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
                     
                     row.dataset.kaifiyat = kaifiyat;
+
+                    // NEW LOGIC: Recalculate and Update Teacher Total Taught Pages
+                    let newTotalTaught = 0;
+                    reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`).forEach(tRow => {
+                        const inputElement = tRow.querySelector('.pages-taught-input');
+                        const taughtValue = parseInt(inputElement.value, 10) || 0;
+                        newTotalTaught += taughtValue;
+                    });
+
+                    // Update all Total Taught cells for this teacher
+                    // We target the cell using the class 'total-taught-cell' which has the rowspan
+                    reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`).forEach(tRow => {
+                        const totalTaughtCell = tRow.querySelector('.total-taught-cell'); 
+                        if (totalTaughtCell) {
+                             totalTaughtCell.textContent = newTotalTaught;
+                        }
+                    });
+                    // End NEW LOGIC
                 });
             });
             
