@@ -38,14 +38,6 @@
         .jamia-header { background-color: #e0f2fe; /* light blue */ font-weight: 600; }
         .jamia-header td { border-top-width: 2px; border-color: #9ca3af; /* gray-400 */ }
         
-        /* NEW: Teacher Separator Row */
-        .teacher-separator-row { background-color: #f3f4f6; font-weight: 600; border-top: 3px solid #14b8a6; }
-        .teacher-separator-row td { border-bottom: 1px solid #e5e7eb; border-top: none; padding-top: 0.75rem; padding-bottom: 0.25rem; }
-        
-        /* NEW: Teacher Summary Row */
-        .teacher-summary-row { background-color: #eff6ff; font-weight: 700; border-top: 2px solid #3b82f6; }
-        .teacher-summary-row td { border-top: 1px solid #d1d5db; }
-
         /* New Conditional Colors for Kefiyat */
         .color-mumtaz { color: #059669; /* green-600 */ }
         .color-behtar { color: #3b82f6; /* blue-500 */ }
@@ -457,7 +449,7 @@
              return 0;
         };
         
-        // UPDATED: updateReportPeriod 
+        // UPDATED: updateReportPeriod (Filters removed, logic simplified)
         const updateReportPeriod = (newPeriod) => {
             const oldPeriod = { ...currentReportPeriod };
             currentReportPeriod = { ...currentReportPeriod, ...newPeriod };
@@ -867,558 +859,95 @@
             }
         };
 
+        // --- ACADEMIC YEAR MANAGEMENT --- (Functions for this section remain the same as previous update)
 
-        // --- REPORTING TAB LOGIC ---
-        
-        const renderReportingTab = () => {
-             if (!activeYear || !allAcademicYearsData[activeYear]) return; 
-             console.log("Rendering reporting tab for year:", activeYear, "Period:", currentReportPeriod); 
-            
-            const yearData = allAcademicYearsData[activeYear];
-            const karkardagiStructure = yearData.karkardagiStructure || [];
-            
-            // Step 1: Validation
-            if (karkardagiStructure.length === 0) {
-                 reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar Teachers aur Periods add karein.</p>';
-                 saveMonthlyReportBtn.classList.add('hidden');
-                 return;
-            }
-            
-            // Use the current period set by initApp/loadUserData/handleMonthChange
-            const { monthNum, semester: currentSemester, month } = currentReportPeriod; 
-            
-            const academicMonths = yearData.academicMonths || {};
-
-            // NEW VALIDATION: Check if current month is included in the set academic months
-             if (currentReportPeriod.monthNum === -1 || !academicMonths.hasOwnProperty(currentReportPeriod.monthNum)) {
-                 const currentMonthName = getMonthName(currentReportPeriod.monthNum !== -1 ? currentReportPeriod.monthNum : (currentReportPeriod.semester === '1' ? 3 : 8));
-                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${currentMonthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
-                 saveMonthlyReportBtn.classList.add('hidden');
-                 return;
-             }
-
-            const sem1TotalDays = yearData.sem1TotalDays || 0;
-            const sem2TotalDays = yearData.sem2TotalDays || 0;
-            const semesterTotalDays = currentSemester === '1' ? sem1TotalDays : sem2TotalDays;
-
-             if (semesterTotalDays === 0) {
-                 reportingContainer.innerHTML = `<p class="text-red-500">Semester ${currentSemester} (${month} ke liye) ke total days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
-                 saveMonthlyReportBtn.classList.add('hidden');
-                 return;
-             }
-            
-            const daysThisMonth = academicMonths[monthNum] || 0; 
-            
-            if (daysThisMonth === 0) {
-                 const monthName = currentReportPeriod.month || 'Selected Month';
-                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${monthName}) ke academic days set nahi hain. Pehle "Setup Structure" me set karein.</p>`;
-                 saveMonthlyReportBtn.classList.add('hidden');
-                 return;
-            }
-            
-            // Step 3: Data Aggregation and Grouping
-            const periodsByJamia = karkardagiStructure.reduce((acc, jamia) => {
-                jamia.teachers?.forEach(teacher => { 
-                    const sortedPeriods = (teacher.periods || [])
-                        .sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
-
-                    sortedPeriods
-                        // Filter periods by the current report semester
-                        ?.filter(p => p.semester === currentSemester) 
-                        .forEach(period => {
-                            if (!acc[jamia.jamiaName]) {
-                                acc[jamia.jamiaName] = [];
-                            }
-                            acc[jamia.jamiaName].push({ jamia, teacher, period });
-                        });
-                });
-                return acc;
-            }, {});
-            
-            // Re-check: Did we find any periods for the current semester?
-            if (Object.keys(periodsByJamia).length === 0) {
-                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
-                saveMonthlyReportBtn.classList.add('hidden');
+        const populateYearSelector = () => {
+            const yearNames = Object.keys(allAcademicYearsData);
+            console.log("Populating year selector with:", yearNames); 
+            if (yearNames.length === 0) {
+                activeYearSelect.innerHTML = `<option value="">Pehle naya saal banayein</option>`;
+                activeYear = null;
                 return;
             }
-
-            saveMonthlyReportBtn.classList.remove('hidden');
-
-            let finalHTML = '<div class="space-y-3">';
             
-            // Combined table structure
-            finalHTML += `
-                <div class="overflow-x-auto border rounded-lg shadow-md">
-                    <table class="min-w-full text-sm bg-white">
-                        <thead class="bg-gray-100">
-                            <tr>
-                                <th>Teacher</th>
-                                <th>Class</th>
-                                <th>Book</th>
-                                <th>Monthly Target</th>
-                                <th>Pages Taught</th>
-                                <th>Achievement %</th>
-                                <th>Kaifiyat (Status)</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-
-            let currentTeacherId = null;
-            let currentTeacherTotalPagesTaught = 0;
-            let totalPeriodsForCurrentTeacher = 0;
-            let periodsInCurrentTeacherBlock = 0;
-
-            // Sort Jamiaat alphabetically for stable display
-            const sortedJamiaNames = Object.keys(periodsByJamia).sort();
-
-            for (const jamiaName of sortedJamiaNames) {
-                const items = periodsByJamia[jamiaName];
-                
-                // --- Jamia Header Row (Full Width) ---
-                finalHTML += `
-                    <tr class="jamia-header" data-jamia-row="${jamiaName}">
-                        <td colspan="8" class="p-3">
-                            <div class="flex justify-between items-center w-full">
-                                <span class="urdu-font text-lg">${jamiaName}</span>
-                                <button type="button" class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
-                                    <i class="fas fa-file-csv fa-sm pointer-events-none"></i> Download CSV
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                
-                // Group items by teacher ID (for consolidated image button placement and summary)
-                const itemsByTeacher = items.reduce((acc, item) => {
-                    if (!acc[item.teacher.id]) {
-                        acc[item.teacher.id] = [];
-                    }
-                    acc[item.teacher.id].push(item);
-                    return acc;
-                }, {});
-
-                // Iterate through teachers in this jamia (sorted by ID/creation time)
-                Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
-                    const teacherPeriods = itemsByTeacher[teacherIdKey];
-                    const teacherName = teacherPeriods[0].teacher.name;
-                    
-                    // --- Teacher Separator Row (Highlight) ---
-                    finalHTML += `
-                        <tr class="teacher-separator-row">
-                            <td colspan="8" class="urdu-font">
-                                Teacher: ${teacherName}
-                            </td>
-                        </tr>
-                    `;
-                    
-                    currentTeacherTotalPagesTaught = 0;
-                    totalPeriodsForCurrentTeacher = teacherPeriods.length;
-                    periodsInCurrentTeacherBlock = 0;
-
-                    teacherPeriods.forEach((item, index) => {
-                        const { teacher, period } = item;
-                        
-                        let monthlyTarget = 0;
-                        if (semesterTotalDays > 0 && daysThisMonth > 0 && period.totalPages > 0) {
-                            const perDayTarget = period.totalPages / semesterTotalDays;
-                            monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                        }
-
-                        const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
-                        const pagesTaught = savedEntry?.pagesTaught || '';
-                        
-                        // Update total for summary
-                        currentTeacherTotalPagesTaught += (parseInt(pagesTaught) || 0);
-
-                        let achievement = 0;
-                        if (pagesTaught > 0 && monthlyTarget > 0) {
-                            achievement = Math.round((pagesTaught / monthlyTarget) * 100);
-                        }
-                        
-                        const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, monthNum, period.semester);
-
-                        // Row structure
-                        let rowHtml = `
-                        <tr class="reporting-row"
-                            data-period-id="${period.id}" 
-                            data-jamia-name="${jamiaName}" 
-                            data-teacher-id="${teacher.id}"
-                            data-teacher-name="${teacher.name}" 
-                            data-class-name="${period.className}"
-                            data-book-name="${period.bookName}" 
-                            data-monthly-target="${monthlyTarget}"
-                            data-period-semester="${period.semester}"
-                            data-month-num="${monthNum}"
-                            data-kaifiyat="${kaifiyat}">
-                            <td class="urdu-font text-gray-700">${teacher.name}</td> <td class="urdu-font">${period.className}</td>
-                            <td class="urdu-font">${period.bookName}</td>
-                            <td class="font-medium">${monthlyTarget}</td>
-                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
-                            <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
-                            <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
-                        `;
-                        
-                        // Add Image button only on the first period row for that teacher (using rowspan)
-                        if (index === 0) {
-                             rowHtml += `
-                                 <td rowspan="${totalPeriodsForCurrentTeacher}">
-                                     <button type="button" class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
-                                         <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
-                                     </button>
-                                 </td>
-                             `;
-                        }
-                        
-                        rowHtml += `</tr>`;
-                        finalHTML += rowHtml;
-                    });
-                    
-                    // --- Teacher Summary Row ---
-                    // Pages Taught (Input) column ke neeche total pages padhaye gaye dikhao.
-                    finalHTML += `
-                        <tr class="teacher-summary-row">
-                            <td colspan="4" class="text-right pr-4">Total Pages Taught by ${teacherName}:</td>
-                            <td class="font-bold">${currentTeacherTotalPagesTaught}</td>
-                            <td colspan="3"></td> </tr>
-                    `;
-                });
+            yearNames.sort().reverse(); 
+            activeYearSelect.innerHTML = yearNames.map(name => `<option value="${name}">${name}</option>`).join('');
+            
+            const { yearNum, monthNum } = currentReportPeriod;
+            let suggestedYear = null;
+            if (monthNum >= 3) { // April (3) onwards
+                 suggestedYear = `${yearNum}-${yearNum + 1}`;
+            } else { // Jan (0), Feb (1), Mar (2)
+                 suggestedYear = `${yearNum - 1}-${yearNum}`;
             }
             
-            finalHTML += '</tbody></table></div>';
-            finalHTML += '</div>';
-            reportingContainer.innerHTML = finalHTML;
-            
-            // Attach input event listener for dynamic calculation AND dynamic summary update
-            reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
-                input.addEventListener('input', (e) => {
-                    const row = e.target.closest('.reporting-row');
-                    const teacherId = row.dataset.teacherId;
-
-                    const target = parseInt(row.dataset.monthlyTarget, 10);
-                    const taught = parseInt(e.target.value, 10) || 0;
-                    const achievementCell = row.querySelector('.achievement-cell');
-                    const kaifiyatCell = row.querySelector('.kaifiyat-cell');
-                    
-                    let achievement = 0;
-                    if (taught > 0 && target > 0) {
-                        achievement = Math.round((taught / target) * 100);
-                    }
-                    
-                    const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
-                    
-                    achievementCell.textContent = `${achievement}%`;
-                    kaifiyatCell.textContent = kaifiyat;
-                    
-                    achievementCell.className = `achievement-cell font-medium ${colorClass}`;
-                    kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
-                    
-                    row.dataset.kaifiyat = kaifiyat;
-                    
-                    // --- Dynamic Summary Update ---
-                    let newTotal = 0;
-                    reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"] .pages-taught-input`).forEach(input => {
-                        newTotal += (parseInt(input.value, 10) || 0);
-                    });
-                    
-                    // Find the corresponding summary row and update it
-                    let summaryRow = reportingContainer.querySelector(`tr.teacher-summary-row td:nth-child(2)`);
-                    if (summaryRow) {
-                        // Find the summary row *after* this teacher's periods
-                         const teacherRows = Array.from(reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`));
-                         if (teacherRows.length > 0) {
-                              const lastRow = teacherRows[teacherRows.length - 1];
-                              let nextSibling = lastRow.nextElementSibling;
-                              while(nextSibling) {
-                                  if (nextSibling.classList.contains('teacher-summary-row')) {
-                                      const totalCell = nextSibling.querySelector('td:nth-child(2)'); // 2nd TD is Total Pages
-                                      totalCell.textContent = newTotal;
-                                      break;
-                                  }
-                                  nextSibling = nextSibling.nextElementSibling;
-                              }
-                         }
-                    }
-                });
-            });
-            
-            // Restore state after rendering
-            restoreAccordionState(); 
+            if (yearNames.includes(suggestedYear)) { activeYearSelect.value = suggestedYear; } 
+            else { activeYearSelect.value = yearNames[0]; } 
+            activeYear = activeYearSelect.value; 
+            console.log("Selected active year:", activeYear); 
         };
 
-        // --- Rest of the unchanged functions (handleSaveMonthlyReport, downloadJamiaReportCSV, etc.) ---
-        
-        const handleSaveMonthlyReport = async () => {
-            if (!activeYear) return;
-            showLoader(true);
-
-            try {
-                const { month, yearNum, monthNum } = currentReportPeriod; 
-                const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
-                const reportRef = doc(db, 'monthly_reports', reportId);
-
-                const newReportData = [];
-                reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
-                    const pagesTaughtInput = row.querySelector('.pages-taught-input');
-                    const pagesTaught = parseInt(pagesTaughtInput.value, 10) || 0;
-                    
-                    if (pagesTaught >= 0) { // Save even if 0 pages are taught
-                         const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
-                         let achievement = 0;
-                         
-                         if (pagesTaught > 0 && monthlyTarget > 0) { 
-                             achievement = Math.round((pagesTaught / monthlyTarget) * 100);
-                         }
-                         
-                         // Re-calculate kaifiyat for final save assurance
-                         const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
-                         
-                        newReportData.push({
-                            periodId: row.dataset.periodId,
-                            jamiaName: row.dataset.jamiaName,
-                            teacherId: row.dataset.teacherId, // Added for potential future use, helps track which teacher reported
-                            teacherName: row.dataset.teacherName, 
-                            bookName: row.dataset.bookName, 
-                            monthlyTarget: monthlyTarget,
-                            pagesTaught: pagesTaught,
-                            achievement: achievement,
-                            kaifiyat: kaifiyat // Save Kaifiyat to report
-                        });
-                    }
-                });
-
-                const dataToSave = {
-                    karkardagiReport: {
-                        status: newReportData.length > 0 ? 'Done' : 'Pending', 
-                        data: newReportData
-                    },
-                    userId: currentUser.uid, userEmail: currentUser.email,
-                    month: month, year: yearNum, academicYear: activeYear, 
-                    createdAt: serverTimestamp()
-                };
-
-                await setDoc(reportRef, dataToSave, { merge: true });
-                monthlyReportData = newReportData; // Update local state
-                showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
-                renderReportingTab(); // Re-render to show persistent Kaifiyat/Achievement
+        const handleCreateYear = async (e) => {
+            e.preventDefault();
+            const newYearName = newYearNameInput.value.trim();
+            console.log("Attempting to create year:", newYearName); 
+            if (!newYearName.match(/^\d{4}-\d{4}$/)) {
+                showNotification("Saal ka format galat hai. (Sahi: 2025-2026)", true); return;
+            }
+            if (allAcademicYearsData[newYearName]) {
+                showNotification("Yeh saal pehle se maujood hai.", true); return;
+            }
             
+            allAcademicYearsData[newYearName] = { academicMonths: {}, sem1TotalDays: 0, sem2TotalDays: 0, karkardagiStructure: [] };
+            
+            showLoader(true);
+            try {
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                await updateDoc(userDocRef, { academicYears: allAcademicYearsData });
+                
+                newYearNameInput.value = '';
+                showNotification(`Naya saal "${newYearName}" ban gaya hai!`);
+                populateYearSelector(); 
+                activeYear = newYearName; 
+                activeYearSelect.value = newYearName;
+                await loadMonthlyReportData(); 
+                refreshFullUI(); 
             } catch (error) {
-                console.error("Error saving monthly report:", error);
-                showNotification(`Report save karne me error: ${error.message}`, true, error.message);
+                console.error("Error creating new year:", error);
+                showNotification("Naya saal banane me error.", true, error.message);
+                delete allAcademicYearsData[newYearName]; 
             } finally {
                 showLoader(false);
             }
         };
-        
-        saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
-        
-        // NEW FUNCTION: Download Jamia Report (CSV)
-        const downloadJamiaReportCSV = (jamiaName) => {
-             console.log(`Downloading CSV for Jamia: ${jamiaName}`);
-             if (!activeYear) return;
 
-             const rowsToExport = [];
-             // Find all rows for the Jamia
-             reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`).forEach(row => {
-                 const pagesTaught = row.querySelector('.pages-taught-input').value || '0';
-                 const achievement = row.querySelector('.achievement-cell').textContent;
-                 const kaifiyat = row.dataset.kaifiyat;
-
-                 rowsToExport.push({
-                     jamia: row.dataset.jamiaName,
-                     teacher: row.dataset.teacherName,
-                     class: row.dataset.className, 
-                     book: row.dataset.bookName,
-                     target: row.dataset.monthlyTarget,
-                     taught: pagesTaught,
-                     percent: achievement,
-                     kaifiyat: kaifiyat 
-                 });
-             });
-
-            if (rowsToExport.length === 0) {
-                showNotification("Is Jamia ke liye koi data nahi hai.", true);
-                return;
-            }
-
-            // NOTE: Since Jamia name is now only in heading, we still include it in CSV for context
-            const header = ["Jamia", "Teacher", "Class", "Book", "Monthly Target", "Pages Taught", "Achievement %", "Kaifiyat"];
-            const csvRows = [
-                header.join(','), 
-                ...rowsToExport.map(row => [
-                    `"${row.jamia.replace(/"/g, '""')}"`, 
-                    `"${row.teacher.replace(/"/g, '""')}"`,
-                    `"${row.class.replace(/"/g, '""')}"`,
-                    `"${row.book.replace(/"/g, '""')}"`,
-                    row.target,
-                    row.taught,
-                    `"${row.percent}"`, 
-                    `"${row.kaifiyat.replace(/"/g, '""')}"` 
-                ].join(','))
-            ];
-            
-            const csvString = csvRows.join('\n');
-            
-            const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); 
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            const fileName = `Karkardagi_Jamia_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
-            link.setAttribute("download", fileName);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-             showNotification(`${fileName} Downloaded!`);
-        };
-
-
-        // Function to check if a string contains Urdu script
-        const containsUrdu = (text) => {
-             // Basic check for common Arabic/Urdu unicode ranges
-             return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
-        };
-
-
-        // UPDATED FUNCTION: Download Teacher Report (Consolidated Image for ALL periods of one teacher)
-        const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaName) => {
+        const handleYearChange = async () => {
+            activeYear = activeYearSelect.value;
+            console.log("Active year changed to:", activeYear); 
             showLoader(true);
             
-            const monthName = currentReportPeriod.month;
-            const year = currentReportPeriod.yearNum; 
-            const userName = userProfileData.displayName || currentUser.email; 
+            // When year changes, recalculate reporting year based on the current month index
+            const academicYearParts = activeYear.split('-');
+            const academicYearStart = parseInt(academicYearParts[0], 10);
+            const academicYearEnd = parseInt(academicYearParts[1], 10);
             
-            // 1. Find ALL periods for this specific teacher in the current rendered report
-            const periodsForTeacher = reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`);
-            
-            if (periodsForTeacher.length === 0) {
-                 showNotification(`Teacher ${teacherName} ka data nahi mila.`, true);
-                 showLoader(false);
-                 return;
+            let reportingYearNum = currentReportPeriod.yearNum;
+            if (currentReportPeriod.monthNum >= 3 && currentReportPeriod.monthNum <= 11) {
+                reportingYearNum = academicYearStart;
+            } else if (currentReportPeriod.monthNum === 0) {
+                reportingYearNum = academicYearEnd;
             }
             
-             // Calculate Total Pages Taught for the summary in the image
-            let totalPagesTaught = 0;
-            periodsForTeacher.forEach(row => {
-                totalPagesTaught += (parseInt(row.querySelector('.pages-taught-input').value) || 0);
-            });
-
-            // 2. Synthesize HTML table (Teacher Report)
-             let tableContent = `
-                 <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px;">
-                    <thead style="background-color: #f0f0f0;">
-                        <tr>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Class</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Book</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Target</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Pages Taught</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Achiev. %</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-             `;
-
-            periodsForTeacher.forEach(row => {
-                 const className = row.dataset.className;
-                 const bookName = row.dataset.bookName;
-                 const monthlyTarget = row.dataset.monthlyTarget;
-                 const pagesTaught = row.querySelector('.pages-taught-input').value;
-                 const achievement = row.querySelector('.achievement-cell').textContent;
-                 const kaifiyat = row.dataset.kaifiyat;
-                 
-                 const kaifiyatColorClass = row.querySelector('.kaifiyat-cell').style.color || 
-                                            (kaifiyat === 'Mumtaz' ? '#059669' : kaifiyat === 'Behtar' ? '#3b82f6' : '#ef4444');
-                 
-                 tableContent += `
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${className}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${bookName}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${pagesTaught}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${achievement}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColorClass};">${kaifiyat}</td>
-                    </tr>
-                 `;
-            });
-             
-            // Add summary row for the image
-            tableContent += `
-                <tr style="background-color: #e0f2fe; font-weight: bold;">
-                    <td colspan="3" style="padding: 8px; border: 1px solid #ddd; text-align: right;">TOTAL PAGES TAUGHT:</td>
-                    <td colspan="3" style="padding: 8px; border: 1px solid #ddd; text-align: center;">${totalPagesTaught}</td>
-                </tr>
-            `;
-
-            tableContent += '</tbody></table>';
-
-
-            // 3. Create Container for Image Rendering
-            const tempDiv = document.createElement('div');
-            tempDiv.style.width = '700px'; 
-            tempDiv.style.backgroundColor = '#ffffff';
-            tempDiv.style.padding = '25px';
-            tempDiv.style.border = '1px solid #ccc';
-            tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
-            tempDiv.style.direction = 'rtl'; 
-
-            // **UPDATED HEADER HTML as requested - Start**
-            const isUrdu = containsUrdu(teacherName);
-            const teacherFontFamily = isUrdu ? "'Jameel Noori Nastaleeq', serif" : "'Poppins', sans-serif";
-            const teacherDirection = isUrdu ? "rtl" : "ltr";
+            // NOTE: updateReportPeriod will call loadMonthlyReportData/renderReportingTab
+            updateReportPeriod({ yearNum: reportingYearNum });
             
-            const headerHtml = `
-                <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
-                    ${monthName} ${year}
-                </h1>
-                <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 30px; line-height: 1.2; font-family: ${teacherFontFamily}; direction: ${teacherDirection};">
-                    ${teacherName}
-                </h2>
-                <h3 style="text-align: center; font-weight: 600; margin-bottom: 10px; font-size: 18px; color: #333;">
-                    Talimi Karkardagi
-                </h3>
-                <p style="text-align: center; font-weight: 500; margin-bottom: 15px; font-size: 16px;">Jamia-tul-Madina: ${jamiaName}</p>
-            `;
-            // **UPDATED HEADER HTML as requested - End**
-            
-            const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
-
-            tempDiv.innerHTML = headerHtml + tableContent + footerHtml;
-            document.body.appendChild(tempDiv);
-            
-            try {
-                // 4. Generate Image
-                const canvas = await html2canvas(tempDiv, { 
-                    scale: 2, 
-                    allowTaint: true,
-                    useCORS: true
-                });
-                
-                // 5. Download
-                const image = canvas.toDataURL("image/png");
-                const link = document.createElement('a');
-                link.href = image;
-                const fileName = `Karkardagi_Teacher_${teacherName.replace(/ /g, '_')}_${monthName}_${year}.png`;
-                link.download = fileName;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                showNotification(`${fileName} Downloaded Successfully!`);
-            } catch (error) {
-                console.error("Image generation failed:", error);
-                showNotification("Teacher Report Image download karne me error.", true, error.message);
-            } finally {
-                // 6. Cleanup
-                document.body.removeChild(tempDiv);
-                showLoader(false);
-            }
+            // Re-populate month selector and refresh UI to update structure and report
+            refreshFullUI(); 
+            showLoader(false);
         };
 
 
-        // --- Rest of the unchanged functions (renderAcademicMonths, handleAddTeacher, etc.) ---
+        // --- SETUP TAB LOGIC --- (Functions for this section remain the same as previous update)
         
         const renderAcademicMonths = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
@@ -1467,7 +996,7 @@
                 showNotification("Days setup saved!");
                 renderReportingTab(); 
             } catch (error) {
-                console.error("Error saving days setup.", true, error.message);
+                console.error("Error saving days setup:", error);
                 showNotification("Error saving days setup.", true, error.message);
             } finally {
                 showLoader(false);
@@ -1992,60 +1521,524 @@
                 }
             }
         };
-
-
-        // --- Rest of the unchanged functions (populateYearSelector, handleYearChange) ---
         
-        const populateYearSelector = () => {
-            const yearNames = Object.keys(allAcademicYearsData);
-            console.log("Populating year selector with:", yearNames); 
-            if (yearNames.length === 0) {
-                activeYearSelect.innerHTML = `<option value="">Pehle naya saal banayein</option>`;
-                activeYear = null;
+        // --- REPORTING TAB LOGIC ---
+        
+        const renderReportingTab = () => {
+             if (!activeYear || !allAcademicYearsData[activeYear]) return; 
+             console.log("Rendering reporting tab for year:", activeYear, "Period:", currentReportPeriod); 
+            
+            const yearData = allAcademicYearsData[activeYear];
+            const karkardagiStructure = yearData.karkardagiStructure || [];
+            
+            // Step 1: Validation
+            if (karkardagiStructure.length === 0) {
+                 reportingContainer.innerHTML = '<p class="text-yellow-700">Pehle "Setup Structure" tab me jaakar Teachers aur Periods add karein.</p>';
+                 saveMonthlyReportBtn.classList.add('hidden');
+                 return;
+            }
+            
+            // Use the current period set by initApp/loadUserData/handleMonthChange
+            const { monthNum, semester: currentSemester, month } = currentReportPeriod; 
+            
+            const academicMonths = yearData.academicMonths || {};
+
+            // NEW VALIDATION: Check if current month is included in the set academic months
+             if (currentReportPeriod.monthNum === -1 || !academicMonths.hasOwnProperty(currentReportPeriod.monthNum)) {
+                 const currentMonthName = getMonthName(currentReportPeriod.monthNum !== -1 ? currentReportPeriod.monthNum : (currentReportPeriod.semester === '1' ? 3 : 8));
+                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${currentMonthName}) ke academic days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 saveMonthlyReportBtn.classList.add('hidden');
+                 return;
+             }
+
+            const sem1TotalDays = yearData.sem1TotalDays || 0;
+            const sem2TotalDays = yearData.sem2TotalDays || 0;
+            const semesterTotalDays = currentSemester === '1' ? sem1TotalDays : sem2TotalDays;
+
+             if (semesterTotalDays === 0) {
+                 reportingContainer.innerHTML = `<p class="text-red-500">Semester ${currentSemester} (${month} ke liye) ke total days set nahi hain. Pehle "Setup Structure" tab me jaakar set karein.</p>`;
+                 saveMonthlyReportBtn.classList.add('hidden');
+                 return;
+             }
+            
+            const daysThisMonth = academicMonths[monthNum] || 0; 
+            
+            if (daysThisMonth === 0) {
+                 const monthName = currentReportPeriod.month || 'Selected Month';
+                 reportingContainer.innerHTML = `<p class="text-red-500">Reporting mahine (${monthName}) ke academic days set nahi hain. Pehle "Setup Structure" me set karein.</p>`;
+                 saveMonthlyReportBtn.classList.add('hidden');
+                 return;
+            }
+            
+            // Step 3: Data Aggregation and Grouping
+            const periodsByJamia = karkardagiStructure.reduce((acc, jamia) => {
+                jamia.teachers?.forEach(teacher => { 
+                    const sortedPeriods = (teacher.periods || [])
+                        .sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
+
+                    sortedPeriods
+                        // Filter periods by the current report semester
+                        ?.filter(p => p.semester === currentSemester) 
+                        .forEach(period => {
+                            if (!acc[jamia.jamiaName]) {
+                                acc[jamia.jamiaName] = [];
+                            }
+                            acc[jamia.jamiaName].push({ jamia, teacher, period });
+                        });
+                });
+                return acc;
+            }, {});
+            
+            // Re-check: Did we find any periods for the current semester?
+            if (Object.keys(periodsByJamia).length === 0) {
+                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye koi periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
+                saveMonthlyReportBtn.classList.add('hidden');
                 return;
             }
+
+            saveMonthlyReportBtn.classList.remove('hidden');
+
+            let finalHTML = '<div class="space-y-3">';
             
-            yearNames.sort().reverse(); 
-            activeYearSelect.innerHTML = yearNames.map(name => `<option value="${name}">${name}</option>`).join('');
-            
-            const { yearNum, monthNum } = currentReportPeriod;
-            let suggestedYear = null;
-            if (monthNum >= 3) { // April (3) onwards
-                 suggestedYear = `${yearNum}-${yearNum + 1}`;
-            } else { // Jan (0), Feb (1), Mar (2)
-                 suggestedYear = `${yearNum - 1}-${yearNum}`;
+            // Combined table structure
+            finalHTML += `
+                <div class="overflow-x-auto border rounded-lg shadow-md">
+                    <table class="min-w-full text-sm bg-white">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th>Jamia</th>
+                                <th>Teacher</th>
+                                <th>Class</th>
+                                <th>Book</th>
+                                <th>Monthly Target</th>
+                                <th>Pages Taught</th>
+                                <th>Achievement %</th>
+                                <th>Kaifiyat (Status)</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let previousJamiaName = null;
+            let previousTeacherName = null;
+
+            // Sort Jamiaat alphabetically for stable display
+            const sortedJamiaNames = Object.keys(periodsByJamia).sort();
+
+            for (const jamiaName of sortedJamiaNames) {
+                const items = periodsByJamia[jamiaName];
+                // Group items by teacher ID (for consolidated image button placement)
+                const itemsByTeacher = items.reduce((acc, item) => {
+                    if (!acc[item.teacher.id]) { // Use ID for stability
+                        acc[item.teacher.id] = [];
+                    }
+                    acc[item.teacher.id].push(item);
+                    return acc;
+                }, {});
+
+                // Add Jamia Header Row (for flat view)
+                finalHTML += `
+                    <tr class="jamia-header" data-jamia-row="${jamiaName}">
+                        <td colspan="9" class="p-3">
+                            <div class="flex justify-between items-center w-full">
+                                <span class="urdu-font text-lg">${jamiaName}</span>
+                                <button type="button" class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
+                                    <i class="fas fa-file-csv fa-sm pointer-events-none"></i> Download CSV
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                
+                let isFirstRowForTeacher = true;
+
+                // Iterate through teachers in this jamia
+                Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
+                    const teacherPeriods = itemsByTeacher[teacherIdKey];
+                    const teacherName = teacherPeriods[0].teacher.name;
+                    
+                    teacherPeriods.forEach((item, index) => {
+                        const { teacher, period } = item;
+                        
+                        let monthlyTarget = 0;
+                        if (semesterTotalDays > 0 && daysThisMonth > 0 && period.totalPages > 0) {
+                            const perDayTarget = period.totalPages / semesterTotalDays;
+                            monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                        }
+
+                        const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
+                        const pagesTaught = savedEntry?.pagesTaught || '';
+                        
+                        let achievement = 0;
+                        if (pagesTaught > 0 && monthlyTarget > 0) {
+                            achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                        }
+                        
+                        const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, monthNum, period.semester);
+
+                        // Row structure
+                        let rowHtml = `
+                        <tr class="reporting-row"
+                            data-period-id="${period.id}" 
+                            data-jamia-name="${jamiaName}" 
+                            data-teacher-id="${teacher.id}"
+                            data-teacher-name="${teacher.name}" 
+                            data-class-name="${period.className}"
+                            data-book-name="${period.bookName}" 
+                            data-monthly-target="${monthlyTarget}"
+                            data-period-semester="${period.semester}"
+                            data-month-num="${monthNum}"
+                            data-kaifiyat="${kaifiyat}">
+                            <td class="urdu-font text-gray-500">${jamiaName}</td> 
+                            <td class="urdu-font bg-gray-50">${teacher.name}</td>
+                            <td class="urdu-font">${period.className}</td>
+                            <td class="urdu-font">${period.bookName}</td>
+                            <td class="font-medium">${monthlyTarget}</td>
+                            <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
+                            <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
+                            <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
+                        `;
+                        
+                        // Add Image button only on the first period row for that teacher (using rowspan)
+                        if (index === 0) {
+                             rowHtml += `
+                                 <td rowspan="${teacherPeriods.length}">
+                                     <button type="button" class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
+                                         <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
+                                     </button>
+                                 </td>
+                             `;
+                        }
+                        
+                        rowHtml += `</tr>`;
+                        finalHTML += rowHtml;
+                    });
+                });
             }
             
-            if (yearNames.includes(suggestedYear)) { activeYearSelect.value = suggestedYear; } 
-            else { activeYearSelect.value = yearNames[0]; } 
-            activeYear = activeYearSelect.value; 
-            console.log("Selected active year:", activeYear); 
+            finalHTML += '</tbody></table></div>';
+            finalHTML += '</div>';
+            reportingContainer.innerHTML = finalHTML;
+            
+            // Attach input event listener for dynamic calculation
+            reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const row = e.target.closest('.reporting-row');
+                    const target = parseInt(row.dataset.monthlyTarget, 10);
+                    const taught = parseInt(e.target.value, 10) || 0;
+                    const achievementCell = row.querySelector('.achievement-cell');
+                    const kaifiyatCell = row.querySelector('.kaifiyat-cell');
+                    
+                    let achievement = 0;
+                    if (taught > 0 && target > 0) {
+                        achievement = Math.round((taught / target) * 100);
+                    }
+                    
+                    const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
+                    
+                    achievementCell.textContent = `${achievement}%`;
+                    kaifiyatCell.textContent = kaifiyat;
+                    
+                    achievementCell.className = `achievement-cell font-medium ${colorClass}`;
+                    kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
+                    
+                    row.dataset.kaifiyat = kaifiyat;
+                });
+            });
+            
+            // Restore state after rendering
+            restoreAccordionState(); 
+        };
+        
+        const handleSaveMonthlyReport = async () => {
+            if (!activeYear) return;
+            showLoader(true);
+
+            try {
+                const { month, yearNum, monthNum } = currentReportPeriod; 
+                const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
+                const reportRef = doc(db, 'monthly_reports', reportId);
+
+                const newReportData = [];
+                reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
+                    const pagesTaughtInput = row.querySelector('.pages-taught-input');
+                    const pagesTaught = parseInt(pagesTaughtInput.value, 10) || 0;
+                    
+                    if (pagesTaught >= 0) { // Save even if 0 pages are taught
+                         const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
+                         let achievement = 0;
+                         
+                         if (pagesTaught > 0 && monthlyTarget > 0) { 
+                             achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                         }
+                         
+                         // Re-calculate kaifiyat for final save assurance
+                         const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
+                         
+                        newReportData.push({
+                            periodId: row.dataset.periodId,
+                            jamiaName: row.dataset.jamiaName,
+                            teacherId: row.dataset.teacherId, // Added for potential future use, helps track which teacher reported
+                            teacherName: row.dataset.teacherName, 
+                            bookName: row.dataset.bookName, 
+                            monthlyTarget: monthlyTarget,
+                            pagesTaught: pagesTaught,
+                            achievement: achievement,
+                            kaifiyat: kaifiyat // Save Kaifiyat to report
+                        });
+                    }
+                });
+
+                const dataToSave = {
+                    karkardagiReport: {
+                        status: newReportData.length > 0 ? 'Done' : 'Pending', 
+                        data: newReportData
+                    },
+                    userId: currentUser.uid, userEmail: currentUser.email,
+                    month: month, year: yearNum, academicYear: activeYear, 
+                    createdAt: serverTimestamp()
+                };
+
+                await setDoc(reportRef, dataToSave, { merge: true });
+                monthlyReportData = newReportData; // Update local state
+                showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
+                renderReportingTab(); // Re-render to show persistent Kaifiyat/Achievement
+            
+            } catch (error) {
+                console.error("Error saving monthly report:", error);
+                showNotification(`Report save karne me error: ${error.message}`, true, error.message);
+            } finally {
+                showLoader(false);
+            }
+        };
+        
+        saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
+        
+        // NEW FUNCTION: Download Jamia Report (CSV)
+        const downloadJamiaReportCSV = (jamiaName) => {
+             console.log(`Downloading CSV for Jamia: ${jamiaName}`);
+             if (!activeYear) return;
+
+             const rowsToExport = [];
+             // Find all rows for the Jamia
+             reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`).forEach(row => {
+                 const pagesTaught = row.querySelector('.pages-taught-input').value || '0';
+                 const achievement = row.querySelector('.achievement-cell').textContent;
+                 const kaifiyat = row.dataset.kaifiyat;
+
+                 rowsToExport.push({
+                     jamia: row.dataset.jamiaName,
+                     teacher: row.dataset.teacherName,
+                     class: row.dataset.className, 
+                     book: row.dataset.bookName,
+                     target: row.dataset.monthlyTarget,
+                     taught: pagesTaught,
+                     percent: achievement,
+                     kaifiyat: kaifiyat 
+                 });
+             });
+
+            if (rowsToExport.length === 0) {
+                showNotification("Is Jamia ke liye koi data nahi hai.", true);
+                return;
+            }
+
+            const header = ["Jamia", "Teacher", "Class", "Book", "Monthly Target", "Pages Taught", "Achievement %", "Kaifiyat"];
+            const csvRows = [
+                header.join(','), 
+                ...rowsToExport.map(row => [
+                    `"${row.jamia.replace(/"/g, '""')}"`, 
+                    `"${row.teacher.replace(/"/g, '""')}"`,
+                    `"${row.class.replace(/"/g, '""')}"`,
+                    `"${row.book.replace(/"/g, '""')}"`,
+                    row.target,
+                    row.taught,
+                    `"${row.percent}"`, 
+                    `"${row.kaifiyat.replace(/"/g, '""')}"` 
+                ].join(','))
+            ];
+            
+            const csvString = csvRows.join('\n');
+            
+            const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); 
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            const fileName = `Karkardagi_Jamia_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+             showNotification(`${fileName} Downloaded!`);
         };
 
-        const handleYearChange = async () => {
-            activeYear = activeYearSelect.value;
-            console.log("Active year changed to:", activeYear); 
+
+        // Function to check if a string contains Urdu script
+        const containsUrdu = (text) => {
+             // Basic check for common Arabic/Urdu unicode ranges
+             return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+        };
+
+
+        // UPDATED FUNCTION: Download Teacher Report (Consolidated Image for ALL periods of one teacher)
+        const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaName) => {
             showLoader(true);
             
-            // When year changes, recalculate reporting year based on the current month index
-            const academicYearParts = activeYear.split('-');
-            const academicYearStart = parseInt(academicYearParts[0], 10);
-            const academicYearEnd = parseInt(academicYearParts[1], 10);
+            const monthName = currentReportPeriod.month;
+            const year = currentReportPeriod.yearNum; 
+            const userName = userProfileData.displayName || currentUser.email; 
             
-            let reportingYearNum = currentReportPeriod.yearNum;
-            if (currentReportPeriod.monthNum >= 3 && currentReportPeriod.monthNum <= 11) {
-                reportingYearNum = academicYearStart;
-            } else if (currentReportPeriod.monthNum === 0) {
-                reportingYearNum = academicYearEnd;
+            // 1. Find ALL periods for this specific teacher in the current rendered report
+            const periodsForTeacher = reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`);
+            
+            if (periodsForTeacher.length === 0) {
+                 showNotification(`Teacher ${teacherName} ka data nahi mila.`, true);
+                 showLoader(false);
+                 return;
             }
+
+            // 2. Synthesize HTML table (Teacher Report)
+             let tableContent = `
+                 <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px;">
+                    <thead style="background-color: #f0f0f0;">
+                        <tr>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Class</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Book</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Target</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Pages Taught</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Achiev. %</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+             `;
+
+            periodsForTeacher.forEach(row => {
+                 const className = row.dataset.className;
+                 const bookName = row.dataset.bookName;
+                 const monthlyTarget = row.dataset.monthlyTarget;
+                 const pagesTaught = row.querySelector('.pages-taught-input').value;
+                 const achievement = row.querySelector('.achievement-cell').textContent;
+                 const kaifiyat = row.dataset.kaifiyat;
+                 
+                 const kaifiyatColorClass = row.querySelector('.kaifiyat-cell').style.color || 
+                                            (kaifiyat === 'Mumtaz' ? '#059669' : kaifiyat === 'Behtar' ? '#3b82f6' : '#ef4444');
+                 
+                 tableContent += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${className}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${bookName}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${pagesTaught}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${achievement}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColorClass};">${kaifiyat}</td>
+                    </tr>
+                 `;
+            });
+             
+            tableContent += '</tbody></table>';
+
+
+            // 3. Create Container for Image Rendering
+            const tempDiv = document.createElement('div');
+            tempDiv.style.width = '700px'; 
+            tempDiv.style.backgroundColor = '#ffffff';
+            tempDiv.style.padding = '25px';
+            tempDiv.style.border = '1px solid #ccc';
+            tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
+            tempDiv.style.direction = 'rtl'; 
+
+            // **UPDATED HEADER HTML as requested - Start**
+            const isUrdu = containsUrdu(teacherName);
+            const teacherFontFamily = isUrdu ? "'Jameel Noori Nastaleeq', serif" : "'Poppins', sans-serif";
+            const teacherDirection = isUrdu ? "rtl" : "ltr";
             
-            // NOTE: updateReportPeriod will call loadMonthlyReportData/renderReportingTab
-            updateReportPeriod({ yearNum: reportingYearNum });
+            const headerHtml = `
+                <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
+                    ${monthName} ${year}
+                </h1>
+                <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 30px; line-height: 1.2; font-family: ${teacherFontFamily}; direction: ${teacherDirection};">
+                    ${teacherName}
+                </h2>
+                <h3 style="text-align: center; font-weight: 600; margin-bottom: 10px; font-size: 18px; color: #333;">
+                    Talimi Karkardagi
+                </h3>
+                <p style="text-align: center; font-weight: 500; margin-bottom: 15px; font-size: 16px;">Jamia-tul-Madina: ${jamiaName}</p>
+            `;
+            // **UPDATED HEADER HTML as requested - End**
             
-            // Re-populate month selector and refresh UI to update structure and report
-            refreshFullUI(); 
-            showLoader(false);
+            const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
+
+            tempDiv.innerHTML = headerHtml + tableContent + footerHtml;
+            document.body.appendChild(tempDiv);
+            
+            try {
+                // 4. Generate Image
+                const canvas = await html2canvas(tempDiv, { 
+                    scale: 2, 
+                    allowTaint: true,
+                    useCORS: true
+                });
+                
+                // 5. Download
+                const image = canvas.toDataURL("image/png");
+                const link = document.createElement('a');
+                link.href = image;
+                const fileName = `Karkardagi_Teacher_${teacherName.replace(/ /g, '_')}_${monthName}_${year}.png`;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                showNotification(`${fileName} Downloaded Successfully!`);
+            } catch (error) {
+                console.error("Image generation failed:", error);
+                showNotification("Teacher Report Image download karne me error.", true, error.message);
+            } finally {
+                // 6. Cleanup
+                document.body.removeChild(tempDiv);
+                showLoader(false);
+            }
         };
+
+
+        // --- Tab Switching ---
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                const tabId = e.target.dataset.tab;
+                
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('active', 'bg-emerald-600', 'text-white');
+                    btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+                });
+                
+                e.target.classList.add('active', 'bg-emerald-600', 'text-white');
+                e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+
+                tabContents.forEach(content => content.classList.add('hidden'));
+                document.getElementById(`${tabId}-tab-content`).classList.remove('hidden');
+                
+                // If switching to reporting tab, ensure it's rendered with current default period
+                if (tabId === 'reporting') {
+                    // Because handleMonthChange/updateReportPeriod handles the logic, we just ensure UI is correct
+                    populateMonthSelector();
+                    renderReportingTab();
+                }
+            });
+        });
+
+        // Ensure initial active tab is styled correctly
+        document.addEventListener('DOMContentLoaded', () => {
+             const activeTab = document.querySelector('.tab-btn.active');
+             if (activeTab) {
+                 activeTab.classList.add('bg-emerald-600', 'text-white');
+                 activeTab.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+             }
+        });
+
 
         // --- Init ---
         initApp();
