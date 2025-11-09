@@ -1600,7 +1600,7 @@
 
             let finalHTML = '<div class="space-y-3">';
             
-            // Combined table structure (Updated Header)
+            // Combined table structure (Updated Header: Total Pages (Sem) as the third period-level column)
             finalHTML += `
                 <div class="overflow-x-auto border rounded-lg shadow-md">
                     <table class="min-w-full text-sm bg-white">
@@ -1609,20 +1609,15 @@
                                 <th>Teacher</th>
                                 <th>Class</th>
                                 <th>Book</th>
-                                <th>Monthly Target</th>
+                                <th>Total Pages (Sem)</th> <th>Monthly Target</th>
                                 <th>Pages Taught</th>
                                 <th>Achievement %</th>
                                 <th>Kaifiyat (Status)</th>
-                                <th>Total Target</th> 
-                                <th>Total Taught</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
-
-            let previousJamiaName = null;
-            let previousTeacherName = null;
 
             // Sort Jamiaat alphabetically for stable display
             const sortedJamiaNames = Object.keys(periodsByJamia).sort();
@@ -1639,10 +1634,10 @@
                 }, {});
 
                 // Add Jamia Header Row (for flat view)
-                // Note: Colspan is now 10 (9 original columns + 1 removed - Jamia + 2 added - Totals)
+                // Colspan is now 9 (1 Teacher + 1 Class + 1 Book + 1 Total Pages (Sem) + 1 Monthly Target + 1 Pages Taught + 1 Achievement % + 1 Kaifiyat + 1 Action)
                 finalHTML += `
                     <tr class="jamia-header" data-jamia-row="${jamiaName}">
-                        <td colspan="10" class="p-3"> 
+                        <td colspan="9" class="p-3"> 
                             <div class="flex justify-between items-center w-full">
                                 <span class="urdu-font text-lg">${jamiaName}</span>
                                 <button type="button" class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
@@ -1653,32 +1648,12 @@
                     </tr>
                 `;
                 
-                let isFirstRowForTeacher = true;
-
                 // Iterate through teachers in this jamia
                 Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
                     const teacherPeriods = itemsByTeacher[teacherIdKey];
                     const teacherName = teacherPeriods[0].teacher.name;
                     
-                    // NEW: Calculate Teacher Totals for the new columns
-                    let teacherTotalTarget = 0;
-                    let teacherTotalTaught = 0;
-
-                    teacherPeriods.forEach(item => {
-                        const savedEntry = monthlyReportData.find(entry => entry.periodId === item.period.id);
-                        const pagesTaught = parseInt(savedEntry?.pagesTaught || 0);
-                        
-                        // Calculate Monthly Target for this period
-                        let monthlyTarget = 0;
-                        if (semesterTotalDays > 0 && daysThisMonth > 0 && item.period.totalPages > 0) {
-                            const perDayTarget = item.period.totalPages / semesterTotalDays;
-                            monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                        }
-                        
-                        teacherTotalTarget += monthlyTarget;
-                        teacherTotalTaught += pagesTaught;
-                    });
-
+                    // Note: Teacher level totals removed as per simplified interpretation. 
 
                     teacherPeriods.forEach((item, index) => {
                         const { teacher, period } = item;
@@ -1691,6 +1666,7 @@
 
                         const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
                         const pagesTaught = savedEntry?.pagesTaught || '';
+                        const totalPagesSem = period.totalPages; // Total Pages for the Semester
                         
                         let achievement = 0;
                         if (pagesTaught > 0 && monthlyTarget > 0) {
@@ -1699,7 +1675,7 @@
                         
                         const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement, monthNum, period.semester);
 
-                        // Row structure
+                        // Row structure (Updated to include totalPagesSem and data attribute)
                         let rowHtml = `
                         <tr class="reporting-row"
                             data-period-id="${period.id}" 
@@ -1709,6 +1685,8 @@
                             data-class-name="${period.className}"
                             data-book-name="${period.bookName}" 
                             data-monthly-target="${monthlyTarget}"
+                            data-total-pages-sem="${totalPagesSem}" 
+                            data-pages-taught="${pagesTaught}"
                             data-period-semester="${period.semester}"
                             data-month-num="${monthNum}"
                             data-kaifiyat="${kaifiyat}">
@@ -1719,16 +1697,11 @@
                             
                             <td class="urdu-font">${period.className}</td>
                             <td class="urdu-font">${period.bookName}</td>
-                            <td class="font-medium">${monthlyTarget}</td>
+                            <td class="font-medium">${totalPagesSem}</td> <td class="font-medium">${monthlyTarget}</td>
                             <td><input type="number" class="pages-taught-input w-24 p-2 border rounded-lg" value="${pagesTaught}" min="0"></td>
                             <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
                             <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
                             
-                            ${index === 0 ? 
-                                `<td rowspan="${teacherPeriods.length}" class="font-bold text-base text-center bg-gray-100">${teacherTotalTarget}</td>
-                                 <td rowspan="${teacherPeriods.length}" class="total-taught-cell font-bold text-base text-center bg-gray-100">${teacherTotalTaught}</td>` : ''
-                            }
-                        
                             ${index === 0 ? `
                                  <td rowspan="${teacherPeriods.length}">
                                      <button type="button" class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
@@ -1747,11 +1720,11 @@
             finalHTML += '</div>';
             reportingContainer.innerHTML = finalHTML;
             
-            // Attach input event listener for dynamic calculation (Updated to handle totals)
+            // Attach input event listener for dynamic calculation 
             reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
                 input.addEventListener('input', (e) => {
                     const row = e.target.closest('.reporting-row');
-                    const teacherId = row.dataset.teacherId; 
+                    // No need to recalculate teacher totals as those columns are removed/changed
                     const target = parseInt(row.dataset.monthlyTarget, 10);
                     const taught = parseInt(e.target.value, 10) || 0;
                     const achievementCell = row.querySelector('.achievement-cell');
@@ -1771,24 +1744,7 @@
                     kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
                     
                     row.dataset.kaifiyat = kaifiyat;
-
-                    // NEW LOGIC: Recalculate and Update Teacher Total Taught Pages
-                    let newTotalTaught = 0;
-                    reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`).forEach(tRow => {
-                        const inputElement = tRow.querySelector('.pages-taught-input');
-                        const taughtValue = parseInt(inputElement.value, 10) || 0;
-                        newTotalTaught += taughtValue;
-                    });
-
-                    // Update all Total Taught cells for this teacher
-                    // We target the cell using the class 'total-taught-cell' which has the rowspan
-                    reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`).forEach(tRow => {
-                        const totalTaughtCell = tRow.querySelector('.total-taught-cell'); 
-                        if (totalTaughtCell) {
-                             totalTaughtCell.textContent = newTotalTaught;
-                        }
-                    });
-                    // End NEW LOGIC
+                    row.dataset.pagesTaught = taught; // Update data attribute for CSV/Image update
                 });
             });
             
@@ -1860,7 +1816,7 @@
         
         saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
         
-        // NEW FUNCTION: Download Jamia Report (CSV)
+        // UPDATED FUNCTION: Download Jamia Report (CSV)
         const downloadJamiaReportCSV = (jamiaName) => {
              console.log(`Downloading CSV for Jamia: ${jamiaName}`);
              if (!activeYear) return;
@@ -1868,15 +1824,17 @@
              const rowsToExport = [];
              // Find all rows for the Jamia
              reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`).forEach(row => {
-                 const pagesTaught = row.querySelector('.pages-taught-input').value || '0';
+                 const pagesTaught = row.dataset.pagesTaught || '0'; // Use data attribute
                  const achievement = row.querySelector('.achievement-cell').textContent;
                  const kaifiyat = row.dataset.kaifiyat;
+                 const totalPagesSem = row.dataset.totalPagesSem; 
 
                  rowsToExport.push({
                      jamia: row.dataset.jamiaName,
                      teacher: row.dataset.teacherName,
                      class: row.dataset.className, 
                      book: row.dataset.bookName,
+                     totalPagesSem: totalPagesSem, 
                      target: row.dataset.monthlyTarget,
                      taught: pagesTaught,
                      percent: achievement,
@@ -1889,7 +1847,8 @@
                 return;
             }
 
-            const header = ["Jamia", "Teacher", "Class", "Book", "Monthly Target", "Pages Taught", "Achievement %", "Kaifiyat"];
+            // NEW: Updated Header
+            const header = ["Jamia", "Teacher", "Class", "Book", "Total Pages (Sem)", "Monthly Target", "Pages Taught", "Achievement %", "Kaifiyat"];
             const csvRows = [
                 header.join(','), 
                 ...rowsToExport.map(row => [
@@ -1897,6 +1856,7 @@
                     `"${row.teacher.replace(/"/g, '""')}"`,
                     `"${row.class.replace(/"/g, '""')}"`,
                     `"${row.book.replace(/"/g, '""')}"`,
+                    row.totalPagesSem, 
                     row.target,
                     row.taught,
                     `"${row.percent}"`, 
@@ -1945,14 +1905,14 @@
                  return;
             }
 
-            // 2. Synthesize HTML table (Teacher Report)
+            // 2. Synthesize HTML table (Teacher Report) (Updated Header for New Column)
              let tableContent = `
                  <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px;">
                     <thead style="background-color: #f0f0f0;">
                         <tr>
                             <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Class</th>
                             <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Book</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Target</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Total Pages (Sem)</th> <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Monthly Target</th>
                             <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Pages Taught</th>
                             <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Achiev. %</th>
                             <th style="padding: 8px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; font-weight: 500;">Status</th>
@@ -1964,8 +1924,9 @@
             periodsForTeacher.forEach(row => {
                  const className = row.dataset.className;
                  const bookName = row.dataset.bookName;
+                 const totalPagesSem = row.dataset.totalPagesSem; // NEW: Get Total Pages (Sem)
                  const monthlyTarget = row.dataset.monthlyTarget;
-                 const pagesTaught = row.querySelector('.pages-taught-input').value;
+                 const pagesTaught = row.dataset.pagesTaught; // Use data attribute
                  const achievement = row.querySelector('.achievement-cell').textContent;
                  const kaifiyat = row.dataset.kaifiyat;
                  
@@ -1976,7 +1937,7 @@
                     <tr>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${className}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-family: 'Jameel Noori Nastaleeq', sans-serif;">${bookName}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${totalPagesSem}</td> <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${monthlyTarget}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${pagesTaught}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${achievement}</td>
                         <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColorClass};">${kaifiyat}</td>
