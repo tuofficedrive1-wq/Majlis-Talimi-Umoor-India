@@ -107,12 +107,12 @@
                          
                          <h4 class="text-xl font-semibold border-b pb-2">Monthly 'Munasib' Reports (Filtered by Selected Month)</h4>
                          <div id="monthly-munasib-container" class="space-y-4">
-                              <p class="text-gray-500">Loading Munasib report...</p>
+                              <p class="text-gray-500">Please select a month.</p>
                          </div>
 
                          <h4 class="text-xl font-semibold border-b pb-2 mt-8">Semester Wise Teacher Performance (Cumulative)</h4>
                          <div id="semester-teacher-report-container" class="space-y-4">
-                              <p class="text-gray-500">Loading cumulative reports...</p>
+                              <p class="text-gray-500">Please select a month.</p>
                          </div>
                     </div>
 
@@ -569,6 +569,82 @@
         // --- MAIN APP LOGIC ---
         const initApp = () => {
              showLoader(true);
+
+            // Function Definition (Moved inside initApp)
+            const handleSaveMonthlyReport = async () => {
+                if (!activeYear) return;
+                showLoader(true);
+
+                try {
+                    const { month, yearNum, monthNum } = currentReportPeriod; 
+                    // CRITICAL DOC ID CONSTRUCTION: Using the full Firebase ID format
+                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
+                    const reportRef = doc(db, 'monthly_reports', reportId);
+
+                    const newReportData = [];
+                    reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
+                        // Use the input value for the current month's taught pages
+                        const pagesTaughtInput = row.querySelector('.pages-taught-input');
+                        const pagesTaught = parseInt(pagesTaughtInput.value, 10) || 0;
+                        
+                        if (pagesTaught >= 0) { // Save even if 0 pages are taught
+                             const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
+                             let achievement = 0;
+                             
+                             if (pagesTaught > 0 && monthlyTarget > 0) { 
+                                 achievement = Math.round((pagesTaught / monthlyTarget) * 100);
+                             }
+                             
+                             // Re-calculate kaifiyat for final save assurance
+                             const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
+                             
+                            newReportData.push({
+                                periodId: row.dataset.periodId,
+                                jamiaName: row.dataset.jamiaName,
+                                teacherId: row.dataset.teacherId, 
+                                teacherName: row.dataset.teacherName, 
+                                bookName: row.dataset.bookName, 
+                                monthlyTarget: monthlyTarget,
+                                pagesTaught: pagesTaught, // This is MONTHLY taught pages, stored in the DB
+                                achievement: achievement,
+                                kaifiyat: kaifiyat 
+                            });
+                        }
+                    });
+
+                    const dataToSave = {
+                        karkardagiReport: {
+                            status: newReportData.length > 0 ? 'Done' : 'Pending', 
+                            data: newReportData
+                        },
+                        // These fields must match the query/indexing in Firebase!
+                        userId: currentUser.uid, 
+                        academicYear: activeYear,
+                        month: month, 
+                        year: yearNum, 
+                        monthNum: monthNum, 
+                        createdAt: serverTimestamp()
+                    };
+
+                    // NOTE: We are using setDoc with the constructed reportId
+                    await setDoc(reportRef, dataToSave, { merge: true });
+                    
+                    // After saving, reload all data to update the cumulative view correctly
+                    await loadMonthlyReportData(); 
+                    showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
+                    renderReportingTab(); 
+                
+                } catch (error) {
+                    console.error("Error saving monthly report:", error);
+                    showNotification(`Report save karne me error: ${error.message}`, true, error.message);
+                } finally {
+                    showLoader(false);
+                }
+            };
+            
+            // Attach listener to button (Now using the function defined above)
+            saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
+            
              setPersistence(auth, browserLocalPersistence)
                 .then(() => {
                     onAuthStateChanged(auth, async user => { 
@@ -735,20 +811,16 @@
                 console.log(`CRITICAL CHECK: Fetching reports for UID: ${currentUser.uid} in Year: ${activeYear}`);
                 
                 // 1. Fetch ALL Monthly Reports for the activeYear 
-                // Since the previous query failed, we will try to fetch ALL documents by user ID only, 
-                // and then filter by year in the code. (This is necessary if the academicYear field is unreliable/missing in some documents)
+                // We fetch all reports where the 'academicYear' field matches the current active year AND the 'userId' matches
                 const reportsCollectionRef = collection(db, 'monthly_reports');
                 const q = query(reportsCollectionRef, 
-                    where('userId', '==', currentUser.uid)
+                    where('userId', '==', currentUser.uid),
+                    where('academicYear', '==', activeYear)
                 );
 
                 const querySnapshot = await getDocs(q);
                 querySnapshot.forEach(doc => {
-                     const data = doc.data();
-                     // Filter client-side by Academic Year (if not filtered by query)
-                     if (data.academicYear === activeYear) {
-                         allYearReportsData.push(data);
-                     }
+                    allYearReportsData.push(doc.data());
                 });
 
                 // 2. Extract current month's report from the fetched list
@@ -760,10 +832,12 @@
                 
                 if (currentReport) {
                     currentMonthReport = currentReport;
+                    // FIX Applied: monthlyReportData should contain current month's saved data (pagesTaught)
                     monthlyReportData = currentReport.karkardagiReport?.data || [];
-                    console.log(`DEBUG: Monthly report data loaded for ${monthNum}/${yearNum}. Records found: ${monthlyReportData.length}`);
+                    console.log(`DEBUG: Monthly report data loaded for ${monthNum}/${yearNum}. Records found: ${monthlyReportData.length}`); // DEBUG LINE ADDED
                 } else {
-                    console.log(`DEBUG: No report found in Firebase for the selected period ${monthNum}/${yearNum}.`);
+                    console.log(`DEBUG: No report found in Firebase for the selected period ${monthNum}/${yearNum}.`); // DEBUG LINE ADDED
+                    // No report found for this period. monthlyReportData remains []
                 }
 
             } catch (error) {
@@ -1854,7 +1928,7 @@
 
         // NEW FUNCTION: Render Monthly Munasib Report (Summary Tab)
         const renderMonthlyMunasibReport = () => {
-             const selectedValue = summaryMonthSelect.value;
+             const selectedValue = summaryMonthSelect.value || reportMonthSelect.value;
              if (!selectedValue) {
                  monthlyMunasibContainer.innerHTML = `<p class="text-gray-500">Please select a month and ensure a structure is set.</p>`;
                  return;
@@ -1924,10 +1998,16 @@
         // NEW FUNCTION: Render Semester Teacher Performance
         const renderSemesterTeacherReport = () => {
              const karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-             if (karkardagiStructure.length === 0) {
-                 semesterTeacherReportContainer.innerHTML = `<p class="text-yellow-700">Pehle "Setup Structure" tab mein Teachers aur Periods add karein.</p>`;
+             const selectedValue = summaryMonthSelect.value || reportMonthSelect.value;
+             
+             if (!selectedValue || karkardagiStructure.length === 0) {
+                 semesterTeacherReportContainer.innerHTML = `<p class="text-yellow-700">Please select a month and ensure a structure is set.</p>`;
                  return;
              }
+
+             const [year, monthNumStr] = selectedValue.split('-').map(String);
+             const currentMonthNum = parseInt(monthNumStr, 10);
+             const currentSemester = currentMonthNum >= 3 && currentMonthNum <= 7 ? "1" : "2";
 
              // Determine all unique teacher names and their periods grouped by teacherId
              const teachersMap = karkardagiStructure.reduce((acc, jamia) => {
@@ -1952,21 +2032,26 @@
              // 1. Get all relevant months in the active academic year up to the current period
              const academicMonthsList = ACADEMIC_MONTHS.map(monthIndex => {
                  let year = currentReportPeriod.yearNum;
-                 if (monthIndex < 3 && currentReportPeriod.monthNum >= 3) { 
+                 if (monthIndex < 3 && currentMonthNum >= 3) { 
                       year = parseInt(activeYear.split('-')[1], 10);
-                 } else if (monthIndex >= 8 && currentReportPeriod.monthNum < 8) {
+                 } else if (monthIndex >= 8 && currentMonthNum < 8) {
                       year = parseInt(activeYear.split('-')[0], 10);
                  }
                  return { monthNum: monthIndex, year };
              }).filter(m => {
-                 // Filter to only include months up to the currently selected report month
-                 if (m.year < currentReportPeriod.yearNum) return true;
-                 if (m.year === currentReportPeriod.yearNum && m.monthNum <= currentReportPeriod.monthNum) return true;
+                 // Filter to only include months in the current semester up to the currently selected report month
+                 const isMonthInCurrentSemester = currentSemester === '1' ? (m.monthNum >= 3 && m.monthNum <= 7) : (m.monthNum >= 8 || m.monthNum === 0);
+                 
+                 if (!isMonthInCurrentSemester) return false;
+                 
+                 if (m.year < parseInt(year, 10)) return true;
+                 if (m.year === parseInt(year, 10) && m.monthNum <= currentMonthNum) return true;
                  return false;
+                 
              }).sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
 
              if (academicMonthsList.length === 0) {
-                 semesterTeacherReportContainer.innerHTML = `<p class="text-yellow-700">Semester reports can only be generated after the first month (April/September).</p>`;
+                 semesterTeacherReportContainer.innerHTML = `<p class="text-yellow-700">Semester reports can only be generated for the current semester.</p>`;
                  return;
              }
              
@@ -1981,18 +2066,24 @@
              `;
 
              academicMonthsList.forEach(m => {
-                 html += `<th style="width: 100px;">${getMonthName(m.monthNum)} ${m.year % 100} (Taught)</th>`;
+                 html += `<th style="width: 100px;">${getMonthName(m.monthNum).substring(0,3)} ${m.year % 100} (Taught)</th>`;
              });
              
-             html += `</tr></thead><tbody>`;
+             html += `
+                                <th style="width: 120px;">Cumulative Taught</th>
+                            </tr>
+                         </thead>
+                         <tbody>`;
 
              // 3. Populate Rows
              teacherIds.forEach(teacherId => {
                  const teacher = teachersMap[teacherId];
-                 const periods = teacher.periods;
+                 
+                 // Periods filtered by current semester for correct Sem Pages count
+                 const periodsInSemester = teacher.periods.filter(p => p.semester === currentSemester);
+                 const totalSemPages = periodsInSemester.reduce((sum, p) => sum + (p.totalPages || 0), 0);
 
-                 // Calculate Total Semester Pages for this teacher
-                 const totalSemPages = periods.reduce((sum, p) => sum + (p.semester === currentReportPeriod.semester ? p.totalPages : 0), 0);
+                 let cumulativeTaughtTotal = 0;
 
                  html += `<tr class="reporting-row">
                              <td class="urdu-font font-semibold sticky left-0 bg-white">${teacher.name}</td>
@@ -2007,16 +2098,19 @@
                      const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
 
                      if (monthReport) {
-                         periods.forEach(period => {
-                             if (period.semester === currentReportPeriod.semester) {
-                                 const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
-                                 monthlyTaughtSum += (periodEntry?.pagesTaught || 0);
-                             }
+                         periodsInSemester.forEach(period => {
+                             const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
+                             monthlyTaughtSum += (periodEntry?.pagesTaught || 0);
                          });
                      }
+                     
+                     cumulativeTaughtTotal += monthlyTaughtSum; // Calculate cumulative total row-wise
 
                      html += `<td class="text-center">${monthlyTaughtSum}</td>`;
                  });
+                 
+                 // Final Cumulative Total Column
+                 html += `<td class="font-bold text-center bg-gray-50">${cumulativeTaughtTotal}</td>`;
 
                  html += `</tr>`;
              });
@@ -2024,6 +2118,7 @@
              html += `</tbody></table></div>`;
              semesterTeacherReportContainer.innerHTML = html;
         };
+
 
         // NEW Master Render function for Summary Tab
         const renderSummaryTab = () => {
@@ -2034,14 +2129,21 @@
                  const monthNum = parseInt(monthNumStr, 10);
                  const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
                  
-                 // Update currentReportPeriod state without triggering full data reload
+                 // Update currentReportPeriod state (this does NOT trigger loadMonthlyReportData again)
                  currentReportPeriod = { yearNum: parseInt(year, 10), monthNum: monthNum, semester: semester };
              }
              
-             // 2. Ensure all data is loaded before proceeding (rely on allYearReportsData)
-             if (!allYearReportsData || !activeYear) {
+             // 2. Check if all data is loaded (relies on allYearReportsData being populated by loadMonthlyReportData)
+             if (allYearReportsData.length === 0 || !activeYear) {
                  monthlyMunasibContainer.innerHTML = `<p class="text-gray-500">Please wait for the reports to load or select a valid academic year.</p>`;
                  semesterTeacherReportContainer.innerHTML = `<p class="text-gray-500">Please wait for the reports to load or select a valid academic year.</p>`;
+                 // Attempt to load data if structure is set but reports haven't been fetched
+                 if (currentUser && activeYear && allAcademicYearsData[activeYear].karkardagiStructure.length > 0) {
+                     loadMonthlyReportData().then(() => {
+                         renderMonthlyMunasibReport();
+                         renderSemesterTeacherReport();
+                     });
+                 }
                  return;
              }
 
@@ -2050,41 +2152,71 @@
         }
 
         
-        saveMonthlyReportBtn.addEventListener('click', handleSaveMonthlyReport);
-        
-        // --- Tab Switching ---
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const tabId = e.target.dataset.tab;
-                
-                tabButtons.forEach(btn => {
-                    btn.classList.remove('active', 'bg-emerald-600', 'text-white');
-                    btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-                });
-                
-                e.target.classList.add('active', 'bg-emerald-600', 'text-white');
-                e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+        // UPDATED FUNCTION: Download Jamia Report (CSV)
+        const downloadJamiaReportCSV = (jamiaName) => {
+             if (!activeYear) return;
 
-                tabContents.forEach(content => content.classList.add('hidden'));
-                document.getElementById(`${tabId}-tab-content`).classList.remove('hidden');
-                
-                // If switching to summary tab, ensure all summary views are updated
-                if (tabId === 'summary') {
-                    // Sync the reporting month selector value to the summary selector before rendering
-                    const currentReportMonthValue = reportMonthSelect.value;
-                    if (summaryMonthSelect.value !== currentReportMonthValue) {
-                         summaryMonthSelect.value = currentReportMonthValue;
-                    }
-                    renderSummaryTab();
-                }
-                
-                // If switching to reporting tab, ensure it's rendered with current default period
-                if (tabId === 'reporting') {
-                    populateMonthSelector();
-                    renderReportingTab();
-                }
-            });
-        });
+             const rowsToExport = [];
+             // Find all rows for the Jamia
+             reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`).forEach(row => {
+                 const pagesTaught = row.dataset.pagesTaught || '0'; // Current Month Pages
+                 const cumulativeTaught = row.dataset.cumulativeTaught || '0'; // Cumulative Taught Pages
+                 const achievement = row.querySelector('.achievement-cell').textContent;
+                 const kaifiyat = row.dataset.kaifiyat;
+                 const totalPagesSem = row.dataset.totalPagesSem; 
+
+                 rowsToExport.push({
+                     jamia: row.dataset.jamiaName,
+                     teacher: row.dataset.teacherName,
+                     class: row.dataset.className, 
+                     book: row.dataset.bookName,
+                     totalPagesSem: totalPagesSem, 
+                     target: row.dataset.monthlyTarget,
+                     taught: pagesTaught, // Monthly
+                     cumulativeTaught: cumulativeTaught, // Cumulative
+                     percent: achievement,
+                     kaifiyat: kaifiyat 
+                 });
+             });
+
+            if (rowsToExport.length === 0) {
+                showNotification("Is Jamia ke liye koi data nahi hai.", true);
+                return;
+            }
+
+            // NEW: Updated Header
+            const header = ["Jamia", "Teacher", "Class", "Book", "Total Pages (Sem)", "Total Taught (Cumulative)", "Monthly Target", "Pages Taught (Monthly)", "Achievement %", "Kaifiyat"];
+            const csvRows = [
+                header.join(','), 
+                ...rowsToExport.map(row => [
+                    `"${row.jamia.replace(/"/g, '""')}"`, 
+                    `"${row.teacher.replace(/"/g, '""')}"`,
+                    `"${row.class.replace(/"/g, '""')}"`,
+                    `"${row.book.replace(/"/g, '""')}"`,
+                    row.totalPagesSem, 
+                    row.cumulativeTaught, // Cumulative Total Taught (Position fixed)
+                    row.target,
+                    row.taught,
+                    `"${row.percent}"`, 
+                    `"${row.kaifiyat.replace(/"/g, '""')}"` 
+                ].join(','))
+            ];
+            
+            const csvString = csvRows.join('\n');
+            
+            const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); 
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            const fileName = `Karkardagi_Jamia_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.csv`;
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+             showNotification(`${fileName} Downloaded!`);
+        };
 
 
         // UPDATED: Function to check if a string contains Urdu script (FIXED Syntax Error)
