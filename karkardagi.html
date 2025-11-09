@@ -413,7 +413,7 @@
                  // aur override active hai, toh force karke pichhle mahine ki report kholo.
                  if (currentDay > 5) {
                      isGracePeriod = true;
-                     // Target date ko pichhle mahine ki aakhri tareekh pe set karo
+                     // Target date ko pichlle mahine ki aakhri tareekh pe set karo
                      targetDate = new Date(now.getFullYear(), now.getMonth(), 0); 
                  }
              }
@@ -725,19 +725,23 @@
 
                 // 2. Extract current month's report from the fetched list
                 const currentReport = allYearReportsData.find(report => 
+                    // CRITICAL CHECK: Ensure both year AND month number match
                     report.year === yearNum && 
                     report.monthNum === monthNum
                 );
                 
                 if (currentReport) {
                     currentMonthReport = currentReport;
-                    // FIX for Masla 1: monthlyReportData should contain current month's saved data (pagesTaught)
+                    // FIX Applied: monthlyReportData should contain current month's saved data (pagesTaught)
                     monthlyReportData = currentReport.karkardagiReport?.data || [];
+                    console.log(`DEBUG: Monthly report data loaded for ${monthNum}/${yearNum}. Records found: ${monthlyReportData.length}`); // DEBUG LINE ADDED
                 } else {
+                    console.log(`DEBUG: No report found in Firebase for the selected period ${monthNum}/${yearNum}.`); // DEBUG LINE ADDED
                     // No report found for this period. monthlyReportData remains []
                 }
 
             } catch (error) {
+                 console.error(`Error fetching all year reports for ${activeYear}:`, error);
                  showNotification("Monthly report data load karne me error.", true, error.message);
             }
         };
@@ -1681,8 +1685,10 @@
 
                         // Get saved Pages Taught for the CURRENT selected month.
                         const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
-                        // FIX Applied: Ensure empty string is used if not found for input field.
-                        const pagesTaught = savedEntry?.pagesTaught?.toString() || ''; 
+                        // FIX APPLIED HERE: If value exists, convert to string for input value, otherwise empty string.
+                        const pagesTaught = savedEntry?.pagesTaught !== undefined && savedEntry?.pagesTaught !== null 
+                                            ? savedEntry.pagesTaught.toString() 
+                                            : '';
                         
                         const totalPagesSem = period.totalPages; // Total Pages for the Semester
                         
@@ -1690,7 +1696,7 @@
                         const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, monthNum);
                         
                         let achievement = 0;
-                        // Use the current displayed/inputted value for calculation.
+                        // Use the current displayed/inputted value (which might be saved data) for calculation.
                         const currentMonthTaught = parseInt(pagesTaught || 0, 10); 
                         
                         if (currentMonthTaught > 0 && monthlyTarget > 0) {
@@ -1775,10 +1781,6 @@
                     row.dataset.pagesTaught = taught; // Update monthly pages data attribute
                     
                     // NEW CUMULATIVE LOGIC: Recalculate and update Cumulative Taught locally (for display only)
-                    // The simplest way to update the cumulative total is to assume the current month's taught pages 
-                    // in the input field are FINAL for this month, and subtract the old saved value if present.
-                    
-                    // This logic assumes `allYearReportsData` has the correct data saved for *previous* months.
                     
                     let previousCumulative = 0;
                     const semesterStartMonth = semester === '1' ? 3 : 8;
@@ -1789,22 +1791,23 @@
                          // Only sum up data for previous months in the same semester
                         const isReportInSemester = semester === '1' ? (reportMonthNum >= 3 && reportMonthNum <= 7) : (reportMonthNum >= 8 || reportMonthNum === 0);
                         
-                        if (isReportInSemester && reportMonthNum < currentMonthNum) {
-                            // Logic to correctly handle months before currentMonthNum, including Jan (0) wrap
-                             if (semester === '1' && reportMonthNum >= semesterStartMonth) {
-                                 const periodEntry = report.karkardagiReport?.data?.find(entry => entry.periodId === periodId);
-                                 if (periodEntry) {
-                                     previousCumulative += (periodEntry.pagesTaught || 0);
-                                 }
-                             } else if (semester === '2') {
-                                 // For Sep (8) onwards, before current month
-                                 if (reportMonthNum >= semesterStartMonth) {
-                                     const periodEntry = report.karkardagiReport?.data?.find(entry => entry.periodId === periodId);
-                                     if (periodEntry) {
-                                         previousCumulative += (periodEntry.pagesTaught || 0);
-                                     }
-                                 }
+                        // Check if report is for a month *before* the currently selected month
+                        if (isReportInSemester && reportMonthNum >= semesterStartMonth && reportMonthNum < currentMonthNum) {
+                             // Handle Sem 2 Jan (0) wrap around for previous months correctly (e.g., if current is Jan (0), Sep, Oct, Nov, Dec are previous)
+                             if (semester === '2' && currentMonthNum === 0 && reportMonthNum >= 8) {
+                                  // Pass: Include 8, 9, 10, 11
+                             } else if (semester === '2' && currentMonthNum !== 0 && reportMonthNum >= 8 && reportMonthNum < currentMonthNum) {
+                                 // Pass: Include 8 up to one less than current month (e.g., if current is 10 (Nov), include 8, 9 (Sep, Oct))
+                             } else if (semester === '1' && reportMonthNum >= 3 && reportMonthNum < currentMonthNum) {
+                                 // Pass: Include 3 up to one less than current month (e.g., if current is 5 (Jun), include 3, 4 (Apr, May))
+                             } else {
+                                 return; // Skip if month is outside valid previous range
                              }
+
+                            const periodEntry = report.karkardagiReport?.data?.find(entry => entry.periodId === periodId);
+                            if (periodEntry) {
+                                previousCumulative += (periodEntry.pagesTaught || 0);
+                            }
                         }
                     });
                     
