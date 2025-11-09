@@ -410,7 +410,7 @@
                  const currentDay = now.getDate();
                  
                  // Agar aaj 5 tareekh se zyada hai (normal deadline nikal chuki hai),
-                 // aur override active hai, toh force karke pichlle mahine ki report kholo.
+                 // aur override active hai, toh force karke pichhle mahine ki report kholo.
                  if (currentDay > 5) {
                      isGracePeriod = true;
                      // Target date ko pichlle mahine ki aakhri tareekh pe set karo
@@ -692,7 +692,7 @@
             }
         };
         
-        // UPDATED FUNCTION: Fetch ALL reports for the academic year for cumulative calculation (Changed to direct Doc Fetch)
+        // UPDATED FUNCTION: Fetch ALL reports for the academic year for cumulative calculation
         const loadMonthlyReportData = async () => {
             monthlyReportData = []; // Current month's data
             currentMonthReport = {};
@@ -706,32 +706,12 @@
             }
             
             const { yearNum, monthNum } = currentReportPeriod; 
-            
-            // --- FIX FOR DATA LOADING ISSUE ---
-            // Construct the exact document ID based on the structure shown in Firebase:
-            // Format: UID_AcademicYear_YearNum_MonthNum
-            const baseUidPart = currentUser.uid.substring(0, currentUser.uid.length - 8); // Assuming last 8 chars might be cut or customized
+            if (monthNum === -1 || yearNum === 0 || !activeYear) {
+                return;
+            }
 
-            // Based on your Firebase document ID (0qm4QQDgrwaD0EgZZyQzvu6ml4E2_2025-2026_2025_9), 
-            // the start of the document ID looks like a custom string derived from the UID.
-            // We cannot reliably guess the exact custom UID part.
-
-            // OPTION A: Use the UID exactly (Which failed in previous steps)
-            // const reportDocId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
-            
-            // OPTION B: Use the specific Document ID part shown in your screenshot for testing the core logic
-            // Since we know the document ID starts with a specific string and ends with the date parts, 
-            // the most robust approach is to query by the saved fields, but if that fails (as it did), 
-            // the saved fields themselves are likely corrupted/missing in Firebase. 
-            
-            // Reverting to the simplest doc ID match, but using a general query to fetch all reports for the year.
-            
-            
             try {
-                // CRITICAL DEBUG: Print the parameters being used for Firestore query
-                console.log(`CRITICAL CHECK: Fetching reports for UID: ${currentUser.uid} in Year: ${activeYear}`);
-                
-                // 1. Fetch ALL Monthly Reports for the activeYear (Query is correct, assuming UID and AcademicYear are fields inside the document)
+                // 1. Fetch ALL Monthly Reports for the activeYear
                 const reportsCollectionRef = collection(db, 'monthly_reports');
                 const q = query(reportsCollectionRef, 
                     where('userId', '==', currentUser.uid),
@@ -744,8 +724,8 @@
                 });
 
                 // 2. Extract current month's report from the fetched list
-                // This step relies on the fields saved *inside* the report document
                 const currentReport = allYearReportsData.find(report => 
+                    // CRITICAL CHECK: Ensure both year AND month number match
                     report.year === yearNum && 
                     report.monthNum === monthNum
                 );
@@ -1061,6 +1041,7 @@
                      // Agar Link button par click hua hai (jo abandar hai, lekin phir bhi safety check)
                     if (e.target.closest('.reporting-link-btn')) {
                          // Ye code ab sirf tabhi chalta hai jab Link button ke area par click ho.
+                         // Accordion toggle nahi hoga, Link function chala kar return ho jayega.
                          const jamiaName = e.target.closest('.reporting-link-btn').dataset.jamiaName;
                          if (jamiaName) handleCreateReportLink(jamiaName);
                          return; 
@@ -1355,7 +1336,6 @@
 
         
         const handleDeleteTeacher = (e) => {
-            e.preventDefault(); // Ensure the form doesn't submit
             if (!activeYear) return;
             
             // NEW: Capture state before any data modification that leads to re-render
@@ -1409,8 +1389,7 @@
             };
             
             if (!newPeriod.className || !newPeriod.bookName || newPeriod.totalPages <= 0) {
-                 showNotification("Sabhi fields sahi se bharein.", true); 
-                 return;
+                 showNotification("Sabhi fields sahi se bharein.", true); return;
             }
             
             let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
@@ -1848,8 +1827,7 @@
 
             try {
                 const { month, yearNum, monthNum } = currentReportPeriod; 
-                // CRITICAL DOC ID CONSTRUCTION: Using the full Firebase ID format
-                const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
+                const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`;
                 const reportRef = doc(db, 'monthly_reports', reportId);
 
                 const newReportData = [];
@@ -1888,18 +1866,12 @@
                         status: newReportData.length > 0 ? 'Done' : 'Pending', 
                         data: newReportData
                     },
-                    // These fields must match the query/indexing in Firebase!
-                    userId: currentUser.uid, 
-                    academicYear: activeYear,
-                    month: month, 
-                    year: yearNum, 
-                    monthNum: monthNum, 
+                    userId: currentUser.uid, userEmail: currentUser.email,
+                    month: month, year: yearNum, monthNum: monthNum, academicYear: activeYear, // Ensure monthNum is saved
                     createdAt: serverTimestamp()
                 };
 
-                // NOTE: We are using setDoc with the constructed reportId
                 await setDoc(reportRef, dataToSave, { merge: true });
-                
                 // After saving, reload all data to update the cumulative view correctly
                 await loadMonthlyReportData(); 
                 showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
@@ -1982,10 +1954,10 @@
         };
 
 
-        // UPDATED: Function to check if a string contains Urdu script (FIXED Syntax Error)
+        // Function to check if a string contains Urdu script
         const containsUrdu = (text) => {
-             // Added 'u' flag to handle Unicode ranges correctly, fixing the SyntaxError
-             return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/u.test(text);
+             // Basic check for common Arabic/Urdu unicode ranges
+             return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
         };
 
 
