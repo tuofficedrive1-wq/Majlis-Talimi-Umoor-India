@@ -122,6 +122,7 @@
                             <label for="report-month-select" class="text-gray-700 font-medium whitespace-nowrap">Select Month:</label>
                             <select id="report-month-select" class="w-full md:w-auto p-2 border rounded-lg bg-white"></select>
                             
+                            <!-- Jamia Filter Dropdown for Reporting Tab -->
                             <label for="jamia-filter-select" class="text-gray-700 font-medium whitespace-nowrap md:ml-4">Select Jamia:</label>
                             <select id="jamia-filter-select" class="w-full md:w-auto p-2 border rounded-lg bg-white">
                                 <option value="all">All Jamiaat</option>
@@ -136,6 +137,7 @@
                     
                     <div id="summary-tab-content" class="tab-content hidden space-y-6">
                         
+                         <!-- Summary Sub-Tabs -->
                          <div class="border-b border-gray-200">
                              <nav class="-mb-px flex space-x-4 md:space-x-8 overflow-x-auto" aria-label="Summary Tabs">
                                  <button type="button" class="sub-tab-btn active whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm" data-sub-tab="munasib">Monthly Munasib</button>
@@ -157,6 +159,7 @@
                         
                          <div id="teacher-profile-tab-content" class="sub-tab-content hidden space-y-4 pt-4">
                             <div class="flex flex-wrap items-end gap-4">
+                                 <!-- Hidden Month Filter (Context only) -->
                                  <input type="hidden" id="teacher-profile-month-select" value="0-0">
                                  
                                  <div>
@@ -227,6 +230,7 @@
         </main>
     </div>
     
+    <!-- Modals (Unchanged) -->
     <div id="edit-period-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-[80] hidden flex justify-center items-center p-4">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg">
             <h3 class="text-xl font-bold mb-4">Period Details Edit Karein</h3>
@@ -652,12 +656,20 @@
             // Function Definition (Moved inside initApp)
             const handleSaveMonthlyReport = async () => {
                 if (!activeYear) return;
+                
+                // 1. Zaroori check (already added)
+                if (!currentUser || !currentUser.uid) {
+                     showNotification("Report save karne me error: Aap logged in nahi hain ya user ID missing hai.", true);
+                     return; // Exit if no authenticated user
+                }
+                
                 showLoader(true);
 
                 try {
                     const { month, yearNum, monthNum } = currentReportPeriod; 
+                    const userId = currentUser.uid; // Current user ID ko pakka kar liya
                     // CRITICAL DOC ID CONSTRUCTION: Using the full Firebase ID format
-                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
+                    const reportId = `${userId}_${activeYear}_${yearNum}_${monthNum}`; 
                     const reportRef = doc(db, 'monthly_reports', reportId);
 
                     const newReportData = [];
@@ -700,21 +712,26 @@
                         }
                     });
 
-                    // --- CRITICAL MERGE LOGIC: Handle only updating the filtered Jamia's data ---
-                    // Since we are using setDoc({merge: true}), we need to read the existing data first, 
-                    // replace the updated/new data, and then save the full merged list.
+                    // 1. Existing data load karein
                     const existingReportSnap = await getDoc(reportRef);
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : [];
                     
-                    // Filter out existing entries for the Jamia(t) being reported (either single or all)
+                    // FIX 1: Purane entries ko filter karein. Sirf woh entries rakhein jo ya toh current user ki hon 
+                    //        ya unmein userId field hi na ho (agar pehle save hua tha aur rule apply nahi hua tha).
+                    //        NOTE: Since the document ID is user-specific, all data in this document should belong to this user.
+                    //        We keep this check minimal here, relying on the root userId.
+                    
+                    // 2. Filter out entries for the Jamia(t) being reported 
                     const jamiaNamesInReport = jamiaFilter === 'all' 
-                                                ? (userProfileData.jamiaatList || []) // All user's jamiaat
-                                                : [jamiaFilter]; // Only the selected jamia
-
-                    // Remove old entries for the reported jamia(t)
+                                                ? (userProfileData.jamiaatList || [])
+                                                : [jamiaFilter];
                     mergedReportData = mergedReportData.filter(entry => !jamiaNamesInReport.includes(entry.jamiaName));
                     
-                    // Add new/updated entries
+                    // 3. Add new/updated entries. CRITICAL: Har entry mein userId ko force set karein.
+                    newReportData.forEach(entry => {
+                         // Force-set userId for nested data (for rules like request.resource.data.karkardagiReport.data[x].userId)
+                         entry.userId = userId; 
+                    });
                     mergedReportData.push(...newReportData);
 
 
@@ -723,8 +740,8 @@
                             status: mergedReportData.length > 0 ? 'Done' : 'Pending', 
                             data: mergedReportData
                         },
-                        // These fields must match the query/indexing in Firebase!
-                        userId: currentUser.uid, 
+                        // CRITICAL: Document level userId field ko current user ID se set karein
+                        userId: userId, 
                         academicYear: activeYear,
                         month: month, 
                         year: yearNum, 
@@ -732,7 +749,7 @@
                         createdAt: serverTimestamp()
                     };
 
-                    // NOTE: We are using setDoc with the constructed reportId, merging with existing data
+                    // NOTE: setDoc({ merge: true }) is fine as long as userId is correctly set at the root.
                     await setDoc(reportRef, dataToSave, { merge: true });
                     
                     // After saving, reload all data to update the cumulative view correctly
@@ -742,7 +759,8 @@
                 
                 } catch (error) {
                     console.error("Error saving monthly report:", error);
-                    showNotification(`Report save karne me error: ${error.message}`, true, error.message);
+                    // FIXED: Notification for the specific user issue
+                    showNotification(`Report save karne me error: ${error.message}. Kripya confirm karein ki aapke paas is document ko likhne ki ijazat hai.`, true, error.message);
                 } finally {
                     showLoader(false);
                 }
@@ -1943,7 +1961,7 @@
             // Re-check: Did we find any periods for the current semester and filter?
             if (Object.keys(periodsByJamia).length === 0) {
                 const filterMessage = currentJamia === 'all' ? 'koi' : `Jamia ${currentJamia} mein koi`;
-                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye ${filterMessage} periods add nahi kiye گئے hain. Pehle "Setup Structure" me add karein.</p>`;
+                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye ${filterMessage} periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
                 saveMonthlyReportBtn.classList.add('hidden');
                 return;
             }
@@ -1994,6 +2012,7 @@
                             <div class="flex justify-between items-center w-full">
                                 <span class="urdu-font text-lg">${jamiaName}</span>
                                 <div class="flex gap-2">
+                                     <!-- Image Download Button for whole Jamia Report -->
                                      <button type="button" class="download-jamia-image-btn bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
                                          <i class="fas fa-file-image fa-sm pointer-events-none"></i> Image
                                      </button>
@@ -2629,7 +2648,7 @@
              showNotification(`${fileName} Downloaded!`);
         };
         
-        // NEW FUNCTION: Download Jamia Report (IMAGE - FIX APPLIED)
+        // NEW FUNCTION: Download Jamia Report (IMAGE - FIX APPLIED for styling, no blank column, no input box)
         const downloadJamiaReportImage = async (jamiaName) => {
              showLoader(true);
              const monthName = currentReportPeriod.month;
