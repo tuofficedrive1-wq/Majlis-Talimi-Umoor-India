@@ -122,7 +122,6 @@
                             <label for="report-month-select" class="text-gray-700 font-medium whitespace-nowrap">Select Month:</label>
                             <select id="report-month-select" class="w-full md:w-auto p-2 border rounded-lg bg-white"></select>
                             
-                            <!-- Jamia Filter Dropdown for Reporting Tab -->
                             <label for="jamia-filter-select" class="text-gray-700 font-medium whitespace-nowrap md:ml-4">Select Jamia:</label>
                             <select id="jamia-filter-select" class="w-full md:w-auto p-2 border rounded-lg bg-white">
                                 <option value="all">All Jamiaat</option>
@@ -137,7 +136,6 @@
                     
                     <div id="summary-tab-content" class="tab-content hidden space-y-6">
                         
-                         <!-- Summary Sub-Tabs -->
                          <div class="border-b border-gray-200">
                              <nav class="-mb-px flex space-x-4 md:space-x-8 overflow-x-auto" aria-label="Summary Tabs">
                                  <button type="button" class="sub-tab-btn active whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm" data-sub-tab="munasib">Monthly Munasib</button>
@@ -159,7 +157,6 @@
                         
                          <div id="teacher-profile-tab-content" class="sub-tab-content hidden space-y-4 pt-4">
                             <div class="flex flex-wrap items-end gap-4">
-                                 <!-- Hidden Month Filter (Context only) -->
                                  <input type="hidden" id="teacher-profile-month-select" value="0-0">
                                  
                                  <div>
@@ -230,7 +227,6 @@
         </main>
     </div>
     
-    <!-- Modals (Unchanged) -->
     <div id="edit-period-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-[80] hidden flex justify-center items-center p-4">
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg">
             <h3 class="text-xl font-bold mb-4">Period Details Edit Karein</h3>
@@ -657,16 +653,23 @@
             const handleSaveMonthlyReport = async () => {
                 if (!activeYear) return;
                 
-                // 1. Zaroori check (already added)
+                // 1. Zaroori check (existing check)
                 if (!currentUser || !currentUser.uid) {
                      showNotification("Report save karne me error: Aap logged in nahi hain ya user ID missing hai.", true);
-                     return; // Exit if no authenticated user
+                     return; 
+                }
+                
+                // CRITICAL FIX FOR UNDEFINED MONTH/YEAR: Ensure essential period data is defined
+                const { month, yearNum, monthNum } = currentReportPeriod;
+                
+                if (!month || !yearNum || monthNum === -1) {
+                     showNotification("Error: Please select a valid month from the dropdown before saving.", true);
+                     return; 
                 }
                 
                 showLoader(true);
 
                 try {
-                    const { month, yearNum, monthNum } = currentReportPeriod; 
                     const userId = currentUser.uid; // Current user ID ko pakka kar liya
                     // CRITICAL DOC ID CONSTRUCTION: Using the full Firebase ID format
                     const reportId = `${userId}_${activeYear}_${yearNum}_${monthNum}`; 
@@ -695,7 +698,7 @@
                                   }
                                   
                                   // Re-calculate kaifiyat for final save assurance
-                                  const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
+                                  const { kaifiyat } = calculateKaifiyatAndStyle(parseInt(row.dataset.achievement, 10) || 0, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
                                   
                                  newReportData.push({
                                      periodId: row.dataset.periodId,
@@ -715,11 +718,6 @@
                     // 1. Existing data load karein
                     const existingReportSnap = await getDoc(reportRef);
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : [];
-                    
-                    // FIX 1: Purane entries ko filter karein. Sirf woh entries rakhein jo ya toh current user ki hon 
-                    //        ya unmein userId field hi na ho (agar pehle save hua tha aur rule apply nahi hua tha).
-                    //        NOTE: Since the document ID is user-specific, all data in this document should belong to this user.
-                    //        We keep this check minimal here, relying on the root userId.
                     
                     // 2. Filter out entries for the Jamia(t) being reported 
                     const jamiaNamesInReport = jamiaFilter === 'all' 
@@ -2012,7 +2010,6 @@
                             <div class="flex justify-between items-center w-full">
                                 <span class="urdu-font text-lg">${jamiaName}</span>
                                 <div class="flex gap-2">
-                                     <!-- Image Download Button for whole Jamia Report -->
                                      <button type="button" class="download-jamia-image-btn bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
                                          <i class="fas fa-file-image fa-sm pointer-events-none"></i> Image
                                      </button>
@@ -2079,7 +2076,8 @@
                             data-period-semester="${period.semester}"
                             data-month-num="${monthNum}"
                             data-year-num="${currentYearNum}"
-                            data-kaifiyat="${kaifiyat}">
+                            data-kaifiyat="${kaifiyat}"
+                            data-achievement="${achievement}">
                             
                             ${index === 0 ? 
                                 `<td rowspan="${teacherPeriods.length}" class="urdu-font text-gray-800 font-semibold bg-blue-100/50">${teacher.name}</td>` : ''
@@ -2140,6 +2138,7 @@
                     
                     row.dataset.kaifiyat = kaifiyat;
                     row.dataset.pagesTaught = taught; // Update monthly pages data attribute
+                    row.dataset.achievement = achievement; // Update achievement data attribute for saving logic
                     
                     // NEW CUMULATIVE LOGIC: Recalculate and update Cumulative Taught locally (for display only)
                     updateCumulativeDataLocally(row.dataset.periodId, semester, currentMonthNum, currentYearNum, taught, row);
