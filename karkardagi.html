@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
+
     <style>
         /* Jameel Noori Nastaleeq font */
         @font-face {
@@ -59,6 +59,7 @@
         .teacher-profile-table th.sticky-col {
              position: sticky;
              left: 0;
+             top: 0; /* Important: Make sticky columns sticky to the top too */
              z-index: 11; /* Higher index for corner case */
              background-color: #f3f4f6;
              border-right: 2px solid #e5e7eb;
@@ -69,6 +70,7 @@
              background-color: #ffffff;
              border-right: 2px solid #e5e7eb;
              font-weight: 500;
+             z-index: 9; /* Ensure cells scroll below header but above normal cells */
         }
     </style>
 </head>
@@ -155,11 +157,7 @@
                         
                          <div id="teacher-profile-tab-content" class="sub-tab-content hidden space-y-4 pt-4">
                             <div class="flex flex-wrap items-end gap-4">
-                                 <div>
-                                     <label for="teacher-profile-month-select" class="block text-sm font-medium text-gray-700">Select Month:</label>
-                                     <select id="teacher-profile-month-select" class="w-full p-2 border rounded-lg bg-white"></select>
-                                 </div>
-                                 <div>
+                                 <input type="hidden" id="teacher-profile-month-select" value="0-0"> <div>
                                      <label for="teacher-profile-jamia-select" class="block text-sm font-medium text-gray-700">Select Jamia:</label>
                                      <select id="teacher-profile-jamia-select" class="w-full p-2 border rounded-lg bg-white">
                                          <option value="">Select Jamia</option>
@@ -176,7 +174,7 @@
                             
                              <h4 class="text-xl font-semibold border-b pb-2 mt-4">Teacher's Semester Performance Profile</h4>
                              <div id="teacher-profile-container" class="space-y-4">
-                                  <p class="text-gray-500">Please select a month, jamia and teacher.</p>
+                                  <p class="text-gray-500">Please select a jamia and teacher.</p>
                              </div>
                          </div>
                     </div>
@@ -292,10 +290,6 @@
         import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp, Timestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
         
-        // Since jspdf is removed, the global access is not needed
-        // const { jsPDF } = window.jspdf;
-
-
         // --- GLOBAL VARIABLES & CONFIG ---
         // Assuming fixed config for self-contained example:
         const firebaseConfig = {
@@ -343,7 +337,7 @@
         const jamiaFilterSelect = document.getElementById('jamia-filter-select');
         
         // Teacher Profile Elements
-        const teacherProfileMonthSelect = document.getElementById('teacher-profile-month-select');
+        const teacherProfileMonthSelect = document.getElementById('teacher-profile-month-select'); // Kept as hidden input for current month context
         const teacherProfileJamiaSelect = document.getElementById('teacher-profile-jamia-select');
         const teacherProfileTeacherSelect = document.getElementById('teacher-profile-teacher-select');
         const showTeacherProfileBtn = document.getElementById('show-teacher-profile-btn');
@@ -467,7 +461,7 @@
                  else if (achievement >= 90) kaifiyat = "Behtar";
                  else kaifiyat = "Munasib";
             } else if (monthNumber === 5) { // Aakhri Mahina (Majmooi Kaifiyat) (August/January)
-                 // Aakhri Month mein "majmooi kaifiyat" ka aitbaar hoga jismein 90% mein Mumtaz, 80 se 89 tak Behtar, 80 se kam par Munasib
+                 // Aakhri Month mein "majmooi kaifiyat" ka aitbaar ہوگا jismein 90% mein Mumtaz, 80 se 89 tak Behtar, 80 se kam par Munasib
                  if (achievement >= 90) kaifiyat = "Mumtaz";
                  else if (achievement >= 80) kaifiyat = "Behtar";
                  else kaifiyat = "Munasib";
@@ -575,7 +569,7 @@
                         // Also re-render summary tabs if they are visible
                         if (!document.getElementById('summary-tab-content').classList.contains('hidden')) {
                              renderSummaryTab();
-                             populateTeacherProfileFilters(); // Repopulate summary filters
+                             // populateTeacherProfileFilters(); // Removed due to month filter removal
                         }
                     });
                 }
@@ -827,20 +821,20 @@
             });
             
             // Teacher Profile Filter Listeners (FIXED)
-            teacherProfileMonthSelect.addEventListener('change', () => {
-                const selectedValue = teacherProfileMonthSelect.value;
-                 if (selectedValue) {
-                     const [year, monthNum] = selectedValue.split('-').map(Number);
-                     const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
-                     
-                     // Temporarily update currentReportPeriod to ensure correct month/year context for filtering
-                     currentReportPeriod = { yearNum: year, monthNum: monthNum, semester: semester };
+            // Month filter is removed, so we only need change listeners for Jamia and Show button
+            teacherProfileJamiaSelect.addEventListener('change', () => {
+                 // Update the current period's semester based on the selected month from the reporting tab for context
+                 const selectedReportMonthValue = reportMonthSelect.value;
+                 if (selectedReportMonthValue) {
+                      const [year, monthNum] = selectedReportMonthValue.split('-').map(Number);
+                      const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
+                      currentReportPeriod = { yearNum: year, monthNum: monthNum, semester: semester };
                  }
-                populateTeacherProfileJamiaFilter();
-                teacherProfileTeacherSelect.innerHTML = `<option value="">Select Teacher</option>`; // Reset teacher filter
-                teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia and teacher.</p>`;
+                populateTeacherProfileTeacherFilter(); // This now also handles logic and updates container
             });
-            teacherProfileJamiaSelect.addEventListener('change', populateTeacherProfileTeacherFilter);
+            teacherProfileTeacherSelect.addEventListener('change', () => {
+                 teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please click 'Show Profile' after selecting a teacher.</p>`;
+            });
             showTeacherProfileBtn.addEventListener('click', renderTeacherProfileReport);
             
             // Delegation for Reporting Tab Clicks (Updated for Image instead of PDF)
@@ -996,7 +990,7 @@
                  const noYearOption = `<option value="">Select Year First</option>`;
                  reportMonthSelect.innerHTML = noYearOption;
                  summaryMonthSelect.innerHTML = noYearOption;
-                 teacherProfileMonthSelect.innerHTML = noYearOption;
+                 teacherProfileMonthSelect.value = "0-0"; // Set placeholder value
                  return;
              }
              
@@ -1060,10 +1054,18 @@
              
              reportMonthSelect.innerHTML = monthOptionsHTML;
              summaryMonthSelect.innerHTML = monthOptionsHTML; 
-             teacherProfileMonthSelect.innerHTML = monthOptionsHTML; // NEW
+             
+             // Update the hidden month select for Teacher Profile (uses the current reporting month as default context)
+             const selectedOption = reportMonthSelect.options[reportMonthSelect.selectedIndex];
+             if(selectedOption) {
+                  teacherProfileMonthSelect.value = selectedOption.value; 
+             } else {
+                  // Fallback for empty options
+                  teacherProfileMonthSelect.value = `${currentReportPeriod.yearNum}-${currentReportPeriod.monthNum}`;
+             }
+
              
              // Set the initial currentReportPeriod to the selected value, just in case the initial default was outside the visible range (rare but possible)
-             const selectedOption = reportMonthSelect.options[reportMonthSelect.selectedIndex];
              if(selectedOption) {
                  const [year, monthNum] = selectedOption.value.split('-').map(Number);
                  const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
@@ -1122,12 +1124,12 @@
                 academicMonthsSetup.classList.remove('hidden');
                 reportingYearInfo.classList.remove('hidden');
                 reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
-                populateMonthSelector(); // This also populates summaryMonthSelect & teacherProfileMonthSelect
+                populateMonthSelector(); // This also populates summaryMonthSelect & hidden teacherProfileMonthSelect
                 populateReportingJamiaFilter(); // NEW
                 renderAcademicMonths();
                 renderSetupTab();
                 renderReportingTab(); // Renders the report for the current default period
-                populateTeacherProfileFilters(); // NEW: Populate filters for Teacher Profile tab
+                populateTeacherProfileFilters(); // NEW: Populate filters for Teacher Profile tab (without month filter now)
                 renderSummaryTab(); // Renders the default summary tab (Munasib)
             }
         };
@@ -2146,16 +2148,21 @@
             subTabContents.forEach(content => content.classList.add('hidden'));
             document.getElementById(`${tabId}-tab-content`).classList.remove('hidden');
             
+            // Sync the reporting month selector value for context
+            const currentReportMonthValue = reportMonthSelect.value;
+            if (currentReportMonthValue) {
+                 summaryMonthSelect.value = currentReportMonthValue;
+                 teacherProfileMonthSelect.value = currentReportMonthValue; // Update hidden input
+                 
+                 const [year, monthNum] = currentReportMonthValue.split('-').map(Number);
+                 const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
+                 currentReportPeriod = { yearNum: year, monthNum: monthNum, semester: semester };
+            }
+            
             if (tabId === 'munasib') {
                 renderMonthlyMunasibReport();
             } else if (tabId === 'teacher-profile') {
-                // Ensure currentPeriod is set correctly before rendering profile filters
-                const selectedValue = teacherProfileMonthSelect.value;
-                if(selectedValue) {
-                    const [year, monthNum] = selectedValue.split('-').map(Number);
-                    const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
-                    currentReportPeriod = { yearNum: year, monthNum: monthNum, semester: semester };
-                }
+                // Update filters based on current reporting month (context)
                 populateTeacherProfileFilters(); 
                 renderTeacherProfileReport(null, true);
             }
@@ -2284,9 +2291,15 @@
         
         // NEW FUNCTION: Populate Teacher Profile Filters (FIXED LOGIC)
         const populateTeacherProfileFilters = () => {
-             // 1. Month filter: Sync with main reporting month filter
-             teacherProfileMonthSelect.innerHTML = reportMonthSelect.innerHTML;
-             
+             // 1. Month filter: (HIDDEN) Just ensure its value is updated from main reporting month filter
+             const selectedReportMonthValue = reportMonthSelect.value;
+             if (selectedReportMonthValue) {
+                 teacherProfileMonthSelect.value = selectedReportMonthValue;
+             } else {
+                 // Fallback if reportMonthSelect is empty (e.g. fresh year with no data)
+                 teacherProfileMonthSelect.value = `${currentReportPeriod.yearNum}-${currentReportPeriod.monthNum}`;
+             }
+
              // 2. Jamia filter: Reset and populate based on user profile
              const jamiaat = userProfileData.jamiaatList || [];
              let jamiaOptions = `<option value="">Select Jamia</option>`;
@@ -2298,26 +2311,25 @@
              // 3. Teacher filter: Reset
              teacherProfileTeacherSelect.innerHTML = `<option value="">Select Teacher</option>`;
              
-             // Reset container unless a profile is already showing
-             if (!teacherProfileContainer.querySelector('.teacher-profile-table')) {
-                 teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a month, jamia and teacher.</p>`;
-             }
+             // Set default content
+             teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia and teacher.</p>`;
         };
         
         // NEW FUNCTION: Populate Teacher Filter based on selected Jamia (FIXED LOGIC)
-        const populateTeacherProfileJamiaFilter = () => {
+        const populateTeacherProfileTeacherFilter = () => {
              const selectedJamia = teacherProfileJamiaSelect.value;
-             const selectedMonthValue = teacherProfileMonthSelect.value;
+             const selectedMonthValue = teacherProfileMonthSelect.value; // Get month context from hidden input
              let teacherOptions = `<option value="">Select Teacher</option>`;
              
              if (!selectedJamia || !activeYear || !selectedMonthValue) {
                  teacherProfileTeacherSelect.innerHTML = teacherOptions;
-                 teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a month and jamia.</p>`;
+                 teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia.</p>`;
                  return;
              }
              
-             // Extract month/semester details from the selected month (using the current filter's selected value)
+             // Extract month/semester details from the selected month (context)
              const [year, monthNum] = selectedMonthValue.split('-').map(Number);
+             // Determine semester based on the selected month context from the reporting tab
              const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2"; 
              
              const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
@@ -2325,7 +2337,7 @@
              
              if (jamiaData && jamiaData.teachers) {
                   jamiaData.teachers.forEach(teacher => {
-                       // Only show teachers who have periods set for the selected semester
+                       // Only show teachers who have periods set for the determined semester
                        const hasPeriodsInSemester = (teacher.periods || []).some(p => p.semester === semester);
                        if (hasPeriodsInSemester) {
                             // FIX APPLIED: Use teacher.name for display and teacher.id for value
@@ -2338,22 +2350,23 @@
              teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a teacher and click 'Show Profile'.</p>`;
         };
         
-        // NEW FUNCTION: Placeholder for Teacher filter change
-        const populateTeacherProfileTeacherFilter = () => {
-             teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please click 'Show Profile' after selecting a teacher.</p>`;
-        };
         
         // NEW FUNCTION: Render Teacher Profile Report (Cumulative)
         const renderTeacherProfileReport = async (e, isInitial = false) => {
              if (e) e.preventDefault();
              
-             const selectedValue = teacherProfileMonthSelect.value;
+             const selectedValue = teacherProfileMonthSelect.value; // Get value from hidden input
              const selectedJamia = teacherProfileJamiaSelect.value;
              const selectedTeacherId = teacherProfileTeacherSelect.value;
              
              if (!selectedValue || !selectedJamia || !selectedTeacherId) {
-                  if(!isInitial) showNotification("Please select Month, Jamia and Teacher.", true);
-                  teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a month, jamia and teacher.</p>`;
+                  // Only show error if explicitly clicked or if it's the initial load but no teacher is selected
+                  if(!isInitial || (isInitial && selectedTeacherId)) showNotification("Please select Jamia and Teacher.", true);
+                  
+                  // Keep initial state if no filters are selected
+                  if(teacherProfileJamiaSelect.value === "" || teacherProfileTeacherSelect.value === "") {
+                      teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia and teacher.</p>`;
+                  }
                   return;
              }
              
@@ -2362,7 +2375,8 @@
              const [year, monthNumStr] = selectedValue.split('-').map(String);
              const currentMonthNum = parseInt(monthNumStr, 10);
              const currentYearNum = parseInt(year, 10);
-             const currentSemester = currentMonthNum >= 3 && currentMonthNum <= 7 ? "1" : "2"; // Sem 1: Apr-Aug (3-7), Sem 2: Sep-Jan (8-0)
+             // Determine semester based on the month context from the reporting tab
+             const currentSemester = currentMonthNum >= 3 && currentMonthNum <= 7 ? "1" : "2"; 
              
              const yearData = allAcademicYearsData[activeYear];
              const karkardagiStructure = yearData.karkardagiStructure || [];
@@ -2386,7 +2400,7 @@
                  return;
              }
              
-             // Get relevant months for the current semester up to the selected month
+             // Get relevant months for the current semester up to the selected month (context)
              const academicMonthsList = ACADEMIC_MONTHS
                  .filter(m => {
                       const isMonthInCurrentSemester = currentSemester === '1' ? (m >= 3 && m <= 7) : (m >= 8 || m === 0);
@@ -2395,7 +2409,6 @@
                  .map(monthNum => {
                      let reportYear = currentYearNum;
                      
-                     // Logic to determine the correct year for the month based on academic year start/end
                      const academicYearParts = activeYear.split('-');
                      const academicYearStart = parseInt(academicYearParts[0], 10);
                      const academicYearEnd = parseInt(academicYearParts[1], 10);
@@ -2523,6 +2536,7 @@
                  
                  // Update currentReportPeriod state (this does NOT trigger loadMonthlyReportData again)
                  currentReportPeriod = { yearNum: parseInt(year, 10), monthNum: monthNum, semester: semester };
+                 teacherProfileMonthSelect.value = selectedValue; // Update hidden input for Teacher Profile context
              }
              
              // 2. Check if all data is loaded (relies on allYearReportsData being populated by loadMonthlyReportData)
@@ -2542,12 +2556,13 @@
              if (activeSubTab === 'munasib') {
                  renderMonthlyMunasibReport();
              } else if (activeSubTab === 'teacher-profile') {
+                 populateTeacherProfileFilters(); // Ensure filters are populated with latest context
                  renderTeacherProfileReport(null, true);
              }
         }
 
         
-        // --- CSV & PDF & Image Download Functions (UPDATED) ---
+        // --- CSV & IMAGE Download Functions (UPDATED) ---
         
         // UPDATED FUNCTION: Download Jamia Report (CSV)
         const downloadJamiaReportCSV = (jamiaName) => {
@@ -2614,22 +2629,21 @@
              showNotification(`${fileName} Downloaded!`);
         };
         
-        // NEW FUNCTION: Download Jamia Report (IMAGE - Replaced PDF)
+        // NEW FUNCTION: Download Jamia Report (IMAGE - Replaced PDF) - FIX APPLIED
         const downloadJamiaReportImage = async (jamiaName) => {
              showLoader(true);
              const monthName = currentReportPeriod.month;
              const year = currentReportPeriod.yearNum;
              const userName = userProfileData.displayName || currentUser.email;
              
-             // 1. Find the table container element that holds the data for this Jamia
-             const jamiaReportTable = reportingContainer.querySelector('table');
-             if (!jamiaReportTable) {
+             const table = reportingContainer.querySelector('table');
+             if (!table) {
                  showNotification("Report table ka data nahi mila.", true);
                  showLoader(false);
                  return;
              }
              
-             // 2. Synthesize HTML for image rendering
+             // 1. Create a container for rendering
              const tempDiv = document.createElement('div');
              tempDiv.style.width = '1000px'; 
              tempDiv.style.backgroundColor = '#ffffff';
@@ -2650,41 +2664,94 @@
                  </h3>
              `;
 
-             // Create a table clone to safely manipulate styles for image capture
-             const tableClone = jamiaReportTable.cloneNode(true);
+             // 2. Clone and filter the table data for the specific Jamia
+             const tableClone = table.cloneNode(true);
              tableClone.style.width = '100%';
              tableClone.style.borderCollapse = 'collapse';
              tableClone.style.tableLayout = 'fixed';
              tableClone.style.fontSize = '14px';
              
-             // Remove the Action column header and all action cells
+             // Remove the Action column header and input cells for clean image
              const actionHeader = tableClone.querySelector('thead tr th:last-child');
              if (actionHeader) actionHeader.remove();
+             const pagesTaughtHeader = tableClone.querySelector('thead tr th:nth-last-child(3)'); // Pages Taught column
+             if (pagesTaughtHeader) pagesTaughtHeader.textContent = 'Pages Taught (Monthly)'; // Change header text
              
-             tableClone.querySelectorAll('tbody tr').forEach(row => {
-                 const lastCell = row.querySelector('td:last-child');
-                 if (lastCell && row.querySelector('.download-teacher-image-btn')) { 
-                     lastCell.remove(); 
-                 }
-                 // Remove Jamia header buttons/links for clean image
-                 if(row.classList.contains('jamia-header')) {
-                      row.querySelector('.flex')?.remove();
-                 }
-             });
-             
-             // Filter rows to only include the target Jamia
-             const jamiaRows = Array.from(tableClone.querySelectorAll('tbody tr')).filter(row => {
-                 if(row.classList.contains('jamia-header')) {
-                     return row.dataset.jamiaRow === jamiaName; // Include the header
-                 }
-                 return row.dataset.jamiaName === jamiaName;
-             });
-
-             // Rebuild tbody with only filtered rows
              const tbody = tableClone.querySelector('tbody');
-             tbody.innerHTML = '';
-             jamiaRows.forEach(row => tbody.appendChild(row));
+             const filteredTbody = document.createElement('tbody');
              
+             // Helper function to apply necessary styles for rendering
+             const applyImageStyles = (cell) => {
+                 cell.style.padding = '8px';
+                 cell.style.border = '1px solid #ddd';
+                 cell.style.verticalAlign = 'middle';
+                 
+                 if(cell.classList.contains('urdu-font')) {
+                      cell.style.fontFamily = "'Jameel Noori Nastaleeq', serif";
+                      cell.style.textAlign = 'right';
+                 } else {
+                      cell.style.textAlign = 'center';
+                 }
+                 if(cell.classList.contains('jamia-header')) {
+                      cell.style.backgroundColor = '#e0f2fe';
+                      cell.style.fontWeight = '600';
+                 }
+                 if(cell.classList.contains('color-mumtaz')) cell.style.color = '#059669';
+                 if(cell.classList.contains('color-behtar')) cell.style.color = '#3b82f6';
+                 if(cell.classList.contains('color-munasib')) cell.style.color = '#ef4444';
+             };
+             
+             // Filter rows and apply styles/remove inputs
+             let teacherRowspanCounter = 0;
+             let currentJamiaFound = false;
+
+             Array.from(tbody.rows).forEach(row => {
+                 if (row.classList.contains('jamia-header')) {
+                     currentJamiaFound = row.dataset.jamiaRow === jamiaName;
+                     if (currentJamiaFound) {
+                          const newRow = row.cloneNode(true);
+                          newRow.querySelector('.flex')?.remove(); // Remove CSV/Image buttons
+                          Array.from(newRow.cells).forEach(cell => applyImageStyles(cell));
+                          filteredTbody.appendChild(newRow);
+                     }
+                     return;
+                 }
+                 
+                 if (currentJamiaFound) {
+                     const newRow = row.cloneNode(false);
+                     
+                     Array.from(row.cells).forEach((cell, index) => {
+                         let newCell;
+                         
+                         if (index === 0 && cell.rowSpan > 1) { // Teacher Name (rowspan)
+                             teacherRowspanCounter = cell.rowSpan - 1;
+                             newCell = cell.cloneNode(true);
+                             applyImageStyles(newCell);
+                             newRow.appendChild(newCell);
+                         } else if (index === 0 && teacherRowspanCounter > 0) {
+                             // Skip hidden cell
+                             teacherRowspanCounter--;
+                             return; 
+                         } else if (index === 6) { // Pages Taught (Input Cell)
+                             const input = cell.querySelector('.pages-taught-input');
+                             newCell = document.createElement('td');
+                             newCell.textContent = input ? input.value : '0';
+                             applyImageStyles(newCell);
+                             newRow.appendChild(newCell);
+                         } else if (index === 9) { // Action Cell (Remove)
+                             return;
+                         } else { // All other cells
+                             newCell = cell.cloneNode(true);
+                             applyImageStyles(newCell);
+                             newRow.appendChild(newCell);
+                         }
+                     });
+                     filteredTbody.appendChild(newRow);
+                 }
+             });
+             
+             tableClone.removeChild(tbody);
+             tableClone.appendChild(filteredTbody);
              
              const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
 
@@ -2697,7 +2764,7 @@
                      scale: 2, 
                      allowTaint: true,
                      useCORS: true,
-                     windowWidth: 1000 // Ensure full width is captured
+                     windowWidth: 1000 
                  });
                  
                  // Download
@@ -3008,19 +3075,19 @@
             tableClone.style.tableLayout = 'fixed';
             tableClone.style.fontSize = '14px';
             
+            // Remove sticky styles from clone
             tableClone.querySelectorAll('.sticky-col').forEach(el => {
                  el.style.position = 'static';
                  el.style.left = 'auto';
                  el.style.zIndex = 'auto';
-                 el.style.minWidth = '150px'; // Ensure original width is preserved
+                 el.style.minWidth = '150px'; 
             });
             
-            // Apply Urdu font to specific table columns (Book/Class)
+            // Apply Urdu font and right alignment to Book/Class column
             tableClone.querySelectorAll('tbody tr').forEach(row => {
-                 // First cell is Book/Class
                  const firstCell = row.querySelector('td:first-child');
                  if(firstCell) {
-                     firstCell.style.fontFamily = "'Jameel Noori Nastaleeq', sans-serif";
+                     firstCell.style.fontFamily = "'Jameel Noori Nastaleeq', serif";
                      firstCell.style.textAlign = 'right';
                  }
             });
@@ -3082,11 +3149,9 @@
                 if (tabId === 'summary') {
                     // Sync the reporting month selector value to the summary selector before rendering
                     const currentReportMonthValue = reportMonthSelect.value;
-                    if (summaryMonthSelect.value !== currentReportMonthValue) {
+                    if (currentReportMonthValue) {
                          summaryMonthSelect.value = currentReportMonthValue;
-                    }
-                    if (teacherProfileMonthSelect.value !== currentReportMonthValue) {
-                         teacherProfileMonthSelect.value = currentReportMonthValue;
+                         teacherProfileMonthSelect.value = currentReportMonthValue; // Update hidden input
                     }
                     
                     // Trigger loadMonthlyReportData if necessary (it runs on month change too)
