@@ -62,10 +62,26 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
             border-left: 5px solid #14b8a6; /* Teal border for professional look */
         }
+        
+        /* Master Summary Card Styles */
         .summary-card.master-summary-card {
             border-left: 5px solid #3b82f6; /* Blue border for master summary */
-            grid-column: 1 / -1; /* Take full width */
+            grid-column: 1 / -1; /* Take full width on all screens */
+            padding: 2rem;
         }
+        .master-summary-stats {
+            margin-top: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        .master-summary-stats > div {
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        /* Individual User Card Stats */
         .summary-card-stats {
             margin-top: 1rem;
             padding-top: 1rem;
@@ -81,6 +97,27 @@
         .summary-card-stats p:last-child { border-bottom: none; }
         .summary-card-stats p strong { font-weight: 500; color: #4b5563; }
         .summary-card-stats p span { font-weight: 700; color: #14b8a6; /* Teal color for emphasis */ }
+        
+        /* Full Width Card for Single User Selection */
+        .admin-reports-summary-container.single-user-view {
+            grid-template-columns: 1fr !important; /* Force single column */
+        }
+        .admin-reports-summary-container.single-user-view .summary-card {
+            width: 100%;
+        }
+        .admin-reports-summary-container.single-user-view .summary-card-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            border-top: none;
+            padding-top: 0.5rem;
+        }
+        .admin-reports-summary-container.single-user-view .summary-card-stats p {
+            background-color: #f9fafb;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            border-bottom: none;
+        }
 
     </style>
 </head>
@@ -435,6 +472,7 @@
         
         const cleanupAdminView = () => {
             if(adminReportsSummaryContainer) adminReportsSummaryContainer.innerHTML = '<p id="reports-loading-msg" class="text-center text-gray-500 col-span-full">Please click \'Fetch Reports\' to load data.</p>'; 
+            if(adminReportsSummaryContainer) adminReportsSummaryContainer.classList.remove('single-user-view'); // Clean up single view
             if(adminUsersTbody) adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading users...</td></tr>'; 
             if(summaryTablesContainer) summaryTablesContainer.classList.add('hidden');
             if(summaryLoadingMsg) {
@@ -444,7 +482,7 @@
             if(elanaatListDiv) elanaatListDiv.innerHTML = '<p class="text-gray-500">Koi elaan nahi mila.</p>';
             if(summaryUserFilter) summaryUserFilter.innerHTML = '<option value="all">All Users</option>';
             if(adminUserFilterSelect) adminUserFilterSelect.innerHTML = '<option value="all">All Users</option>';
-            if(adminRegionFilterSelect) adminRegionFilterSelect.innerHTML = '<option value="all">All Regions</option>'; // NEW CLEANUP
+            if(adminRegionFilterSelect) adminRegionFilterSelect.innerHTML = '<option value="all">All Regions</option>'; 
             
             if(kkdSummaryUserFilter) kkdSummaryUserFilter.innerHTML = '<option value="all">All Users</option>';
             if(kkdSummaryLoadingMsg) {
@@ -556,7 +594,7 @@
             const updatedData = {
                 name: document.getElementById('edit-user-name').value,
                 email: document.getElementById('edit-user-email').value, 
-                region: document.getElementById('edit-user-region').value, // NEW: Region field
+                region: document.getElementById('edit-user-region').value, // Region field
                 zimmedari: document.getElementById('edit-user-zimmedari').value,
                 contact: document.getElementById('edit-user-contact').value,
                 ajeerCode: document.getElementById('edit-user-ajeer-code').value,
@@ -617,6 +655,7 @@
              adminReportsSummaryContainer.innerHTML = '';
              reportsLoadingMsg.textContent = 'Loading reports... Please wait.';
              reportsLoadingMsg.classList.remove('hidden');
+             adminReportsSummaryContainer.classList.remove('single-user-view'); // Clean up view
              // -----------------------------
              
              // Reset summary tabs
@@ -684,7 +723,7 @@
              if (!adminReportsSummaryContainer) return;
              
              const selectedUserId = adminUserFilterSelect.value;
-             const selectedRegion = adminRegionFilterSelect.value; // NEW Region Filter value
+             const selectedRegion = adminRegionFilterSelect.value; 
 
              // Group reports by user ID for easy lookup
              const reportsByUser = reports.reduce((acc, report) => {
@@ -696,20 +735,21 @@
              let filteredUsers = allUsersData
                  .filter(user => user.id !== ADMIN_UID)
                  .filter(user => selectedUserId === 'all' || user.id === selectedUserId)
-                 .filter(user => selectedRegion === 'all' || user.region === selectedRegion) // NEW Region Filter
+                 .filter(user => selectedRegion === 'all' || user.region === selectedRegion) 
                  .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
              reportsLoadingMsg.classList.add('hidden');
              adminReportsSummaryContainer.innerHTML = ''; 
-
+             adminReportsSummaryContainer.classList.remove('single-user-view'); // Reset view mode
+             
              if (filteredUsers.length === 0) {
                  adminReportsSummaryContainer.innerHTML = '<p class="text-center py-4 text-gray-500 col-span-full">No users or reports found matching the selected filters.</p>';
                  return;
              }
              
-             // --- LOGIC FOR MASTER SUMMARY CARD ---
-             if (selectedUserId === 'all' && selectedRegion === 'all') {
-                 // Calculate Master Summary for ALL users
+             // --- LOGIC FOR MASTER SUMMARY CARD (All Users AND/OR Region Selected) ---
+             if (selectedUserId === 'all') {
+                 // Calculate Master Summary for the filtered group (All Users or Specific Region)
                  let totalJamiaat = 0;
                  let totalJaizaDone = 0;
                  let totalMonthlyTests = 0;
@@ -735,40 +775,50 @@
                      }
                  });
                  
+                 const titleText = selectedRegion !== 'all' 
+                    ? `Region: ${selectedRegion}`
+                    : "All Regions Consolidated";
+
                  const masterCardHtml = `
                      <div class="summary-card master-summary-card">
-                         <h3 class="text-2xl font-bold text-blue-600 mb-2">Master Consolidated Summary</h3>
-                         <p class="text-sm text-gray-600 mb-4">Total data for all ${totalUsers} users who have Jamiaat data (${reportsSubmitted} reports submitted this month).</p>
+                         <h3 class="text-2xl font-bold text-blue-600 mb-2">${titleText} Master Summary</h3>
+                         <p class="text-sm text-gray-600 mb-4">Total data for ${totalUsers} users (${reportsSubmitted} reports submitted this month).</p>
                          
-                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 summary-card-stats border-0 pt-0">
-                             <div class="border p-3 rounded-lg bg-blue-50">
-                                 <p class="text-lg font-bold text-blue-800">${totalJamiaat}</p>
+                         <div class="master-summary-stats">
+                             <div class="bg-blue-50">
+                                 <p class="text-2xl font-bold text-blue-800">${totalJamiaat}</p>
                                  <p class="text-sm text-blue-600">Total Jamiaat</p>
                              </div>
-                             <div class="border p-3 rounded-lg bg-green-50">
-                                 <p class="text-lg font-bold text-green-800">${totalJaizaDone}</p>
+                             <div class="bg-green-50">
+                                 <p class="text-2xl font-bold text-green-800">${totalJaizaDone}</p>
                                  <p class="text-sm text-green-600">Total Jaiza Done</p>
                              </div>
-                             <div class="border p-3 rounded-lg bg-yellow-50">
-                                 <p class="text-lg font-bold text-yellow-800">${totalMonthlyTests}</p>
+                             <div class="bg-yellow-50">
+                                 <p class="text-2xl font-bold text-yellow-800">${totalMonthlyTests}</p>
                                  <p class="text-sm text-yellow-600">Total Monthly Tests</p>
                              </div>
-                             <div class="border p-3 rounded-lg bg-teal-50">
-                                 <p class="text-lg font-bold text-teal-800">${totalTadrisRecordings}</p>
+                             <div class="bg-teal-50">
+                                 <p class="text-2xl font-bold text-teal-800">${totalTadrisRecordings}</p>
                                  <p class="text-sm text-teal-600">Total Recordings</p>
                              </div>
-                             <div class="border p-3 rounded-lg bg-purple-50">
-                                 <p class="text-lg font-bold text-purple-800">${totalKkdEntries}</p>
+                             <div class="bg-purple-50">
+                                 <p class="text-2xl font-bold text-purple-800">${totalKkdEntries}</p>
                                  <p class="text-sm text-purple-600">Total KKd Entries</p>
                              </div>
                          </div>
+                         <p class="text-xs text-gray-500 mt-4">To view individual reports, select a specific user from the dropdown.</p>
                      </div>
                  `;
                  adminReportsSummaryContainer.innerHTML = masterCardHtml;
                  return; // Master card dikhaya, ab individual cards nahi dikhenge
              }
              
-             // --- LOGIC FOR INDIVIDUAL USER CARDS (when 'All Users' is NOT selected or a Region is selected) ---
+             // --- LOGIC FOR INDIVIDUAL USER CARD (when a specific User is selected) ---
+             
+             // Set the container to full width for a better single-user view
+             if (filteredUsers.length === 1 && selectedUserId !== 'all') {
+                adminReportsSummaryContainer.classList.add('single-user-view');
+             }
              
              const cardsHtml = filteredUsers
                  .map(user => {
@@ -1002,11 +1052,11 @@
                   // NEW: Collect unique regions
                   const regions = [...new Set(allUsersData.map(u => u.region).filter(r => r && r.trim() !== ''))];
 
-                  // FIX 2: Populate Summary Filters after fetching User Data
+                  // FIX 2: Populate Filters after fetching User Data
                   populateUserFilterDropdown(summaryUserFilter, allUsersData);
                   populateUserFilterDropdown(kkdSummaryUserFilter, allUsersData); 
                   populateUserFilterDropdown(adminUserFilterSelect, allUsersData); 
-                  populateRegionFilterDropdown(adminRegionFilterSelect, regions); // NEW: Populate Region Filter
+                  populateRegionFilterDropdown(adminRegionFilterSelect, regions); // Populate Region Filter
                   
                    // Initial Reports fetch user data aane ke baad hi karein
                   if (initialLoad) {
@@ -1072,7 +1122,7 @@
                              deadlineText = ` <span class="text-xs text-orange-600">(Ext: ${date.toLocaleDateString()})</span>`;
                         } catch (e) { console.error("Error formatting deadline date", e); } 
                     }
-                    // Added Region to the row (optional, can be skipped if space is tight)
+                    // Added Region to the row 
                     const regionText = user.region ? ` | ${user.region}` : ''; 
                     
                     return `
@@ -1114,7 +1164,7 @@
              document.getElementById('edit-user-uid').value = userData.id;
              document.getElementById('edit-user-name').value = userData.name || '';
              document.getElementById('edit-user-email').value = userData.email || ''; 
-             document.getElementById('edit-user-region').value = userData.region || ''; // NEW: Region field populate
+             document.getElementById('edit-user-region').value = userData.region || ''; // Region field populate
              document.getElementById('edit-user-zimmedari').value = userData.zimmedari || '';
              document.getElementById('edit-user-contact').value = userData.contact || '';
              document.getElementById('edit-user-ajeer-code').value = userData.ajeerCode || '';
