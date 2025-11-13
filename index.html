@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
@@ -172,23 +173,23 @@
                  
                  <div id="academic-structure-setup" class="hidden mb-8 p-4 md:p-6 bg-yellow-100 border border-yellow-300 rounded-lg">
                     <h3 class="text-lg font-semibold text-yellow-800 mb-3">Setup Academic Structure</h3>
-                    <p class="text-yellow-700 mb-4">Aapke profile me Jamia/Class/Kitab ka data nahi mila hai. Kripya neeche diye gaye box me JSON format me data paste karein aur save karein.</p>
+                    <p class="text-yellow-700 mb-4">Aapke profile me Jamia/Class/Kitab ka data nahi mila hai. Kripya neeche diye गए box me JSON format me data paste karein aur save karein.</p>
                     <textarea id="academic-structure-json" rows="10" class="w-full p-2 border border-yellow-400 rounded-lg mb-3 font-mono text-sm" placeholder="Yahan par academic structure ka JSON data paste karein..."></textarea>
                     <button id="save-academic-structure-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg">Save Academic Structure</button>
                     <p id="structure-error" class="text-red-500 text-sm mt-2"></p>
                  </div>
 
                 <div>
-                    <h3 class="text-xl font-semibold mb-4 border-b pb-2">Jamia-wise Summary (This Month vs Last Month)</h3>
+                    <h3 class="text-xl font-semibold mb-4 border-b pb-2">Jamia-wise Summary (Selected Month Performance)</h3>
 
                     <div class="p-4 bg-white rounded-lg shadow-inner mb-6 border border-gray-200">
-                        <h4 class="text-lg font-bold text-gray-700 mb-3">Jaiza Performance Comparison</h4>
+                        <h4 class="text-lg font-bold text-gray-700 mb-3" id="jaiza-chart-title">Jaiza Performance Comparison</h4>
                         <div style="height: 400px;"><canvas id="comparisonChart"></canvas></div>
                         <button id="download-jaiza-chart-btn" class="mt-4 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-download mr-2"></i> Jaiza Chart Download Karein</button>
                     </div>
 
                     <div class="p-4 bg-white rounded-lg shadow-inner mb-6 border border-gray-200">
-                        <h4 class="text-lg font-bold text-gray-700 mb-3">Monthly Test Performance Comparison</h4>
+                        <h4 class="text-lg font-bold text-gray-700 mb-3" id="test-chart-title">Monthly Test Performance Comparison</h4>
                         <div style="height: 400px;"><canvas id="testComparisonChart"></canvas></div>
                         <button id="download-test-chart-btn" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-download mr-2"></i> Monthly Test Chart Download Karein</button>
                     </div>
@@ -492,7 +493,7 @@
         let allUserReports = [];
         let reportRef; 
         let dashboardChart = null; 
-        let testDashboardChart = null; // NAYA: Test Chart ko store karne ke liye
+        let testDashboardChart = null; 
 
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
@@ -518,7 +519,6 @@
              return (match && match[1]) ? `https://drive.google.com/uc?export=view&id=${match[1]}` : url; 
         };
 
-        // MODIFIED: Deadline/Grace period logic removed. Hamesha current month ki info dega.
         const getReportingMonthYear = (targetDate = new Date()) => {
             const month = targetDate.toLocaleString('default', { month: 'long' });
             const year = targetDate.getFullYear();
@@ -582,20 +582,26 @@
              return getReportingMonthYear(date);
         };
         
-        // NAYA: Chart Download Helper
+        // UPDATED: Chart Download Helper (White background fix)
         const downloadChartImage = (chartId, filename) => {
-            const canvas = document.getElementById(chartId);
-            if (!canvas) {
-                showNotification("Chart not found.", true);
-                return;
+            // Get chart instance 
+            const chartInstance = chartId === 'comparisonChart' ? dashboardChart : testDashboardChart;
+
+            if (chartInstance) {
+                // Use Chart.js built-in method to get image with white background
+                const imgData = chartInstance.toBase64Image({
+                    backgroundColor: 'white' // Explicitly set background to white for download
+                });
+                const a = document.createElement('a');
+                a.href = imgData;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showNotification("Chart image downloaded.");
+            } else {
+                 showNotification("Chart not found or not initialized.", true);
             }
-            const a = document.createElement('a');
-            a.href = canvas.toDataURL('image/png');
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            showNotification("Chart image downloaded.");
         };
 
 
@@ -751,7 +757,7 @@
                 });
             });
 
-            // NAYA: Chart Download Buttons listener
+            // NAYA: Chart Download Buttons listener (DownloadChartImage function is updated)
             document.getElementById('download-jaiza-chart-btn').addEventListener('click', () => {
                 downloadChartImage('comparisonChart', `Jaiza_Performance_${reportingDateInfo.month}_${reportingDateInfo.year}.png`);
             });
@@ -907,6 +913,9 @@
             const lastMonthReportInfo = getReportingMonthYear(prevMonthDate);
 
             dashCurrentMonthYear.textContent = `Currently showing data for: ${currentReportInfo.month} ${currentReportInfo.year}`;
+            document.getElementById('jaiza-chart-title').textContent = `Jaiza Performance (${currentReportInfo.month} ${currentReportInfo.year})`;
+            document.getElementById('test-chart-title').textContent = `Monthly Test Performance (${currentReportInfo.month} ${currentReportInfo.year})`;
+
 
             const { monthNum, yearNum } = currentReportInfo; 
             const allJamiaat = userProfileData.jamiaatList || [];
@@ -927,13 +936,12 @@
 
             console.log(`Rendering Dashboard for ${currentReportInfo.month} ${currentReportInfo.year}. Last Month: ${lastMonthReportInfo.month} ${lastMonthReportInfo.year}`);
 
-            // --- 3. Update Overall Status Box & Section Status Tiles (NAYA) ---
+            // --- 3. Update Overall Status Box & Section Status Tiles ---
             const jaizaDone = currentReport.jaizaReport?.status === 'Done';
             const tadrisDone = currentReport.tadrisRecording?.status === 'Done';
             const testDone = currentReport.monthlyTest?.status === 'Done'; 
             const kkdDone = currentReport.karkardagiReport?.status === 'Done' || currentReport.kkdReport?.status === 'Done';
             
-            // Helper function for status update
             const updateStatusTile = (element, isDone, colorCode) => {
                 element.textContent = isDone ? 'Done' : 'Pending';
                 const button = element.closest('.section-status-btn');
@@ -974,12 +982,8 @@
             const lastJaizaData = lastMonthReport.jaizaReport?.data || [];
             const lastTestData = lastMonthReport.monthlyTest?.data || [];
 
-            // Jaiza Chart Data
             const jaizaChartData = [];
-            
-            // Test Chart Data (NAYA)
             const testChartData = [];
-
 
             allJamiaat.forEach(jamiaName => {
                 const thisMonthJaiza = currentJaizaData.find(j => j.name === jamiaName);
@@ -1016,56 +1020,38 @@
                 `;
                 summaryTableBody.innerHTML += row;
 
-                // --- Jaiza Chart Data Logic ---
+                // --- Chart Data Logic ---
                 let thisMonthJaizaPercent = 0;
                 if (thisMonthJaiza && thisMonthJaiza.type === 'Jaiza' && thisMonthJaiza.percentage) {
                     thisMonthJaizaPercent = parseFloat(thisMonthJaiza.percentage.replace('%', '')) || 0;
                 }
-                let lastMonthJaizaPercent = 0;
-                if (lastMonthJaiza && lastMonthJaiza.type === 'Jaiza' && lastMonthJaiza.percentage) {
-                    lastMonthJaizaPercent = parseFloat(lastMonthJaiza.percentage.replace('%', '')) || 0;
-                }
-                jaizaChartData.push({ 
-                    jamia: jamiaName, 
-                    thisMonth: thisMonthJaizaPercent, 
-                    lastMonth: lastMonthJaizaPercent 
-                });
-                
-                // --- Monthly Test Chart Data Logic (NAYA) ---
                 let thisMonthTestPercent = 0;
                 if (thisMonthTest && thisMonthTest.status === 'Test Hua' && thisMonthTest.percentage) {
                     thisMonthTestPercent = parseFloat(thisMonthTest.percentage.replace('%', '')) || 0;
                 }
-                let lastMonthTestPercent = 0;
-                if (lastMonthTest && lastMonthTest.status === 'Test Hua' && lastMonthTest.percentage) {
-                    lastMonthTestPercent = parseFloat(lastMonthTest.percentage.replace('%', '')) || 0;
-                }
-                testChartData.push({ 
-                    jamia: jamiaName, 
-                    thisMonth: thisMonthTestPercent, 
-                    lastMonth: lastMonthTestPercent 
-                });
+
+                // Push current month data only for single display
+                jaizaChartData.push({ jamia: jamiaName, thisMonth: thisMonthJaizaPercent });
+                testChartData.push({ jamia: jamiaName, thisMonth: thisMonthTestPercent });
 
             });
 
             summaryLoadingMsg.classList.add('hidden');
             summaryTable.classList.remove('hidden');
 
-            // --- SORTING (NAYA) ---
+            // --- SORTING (Descending by percentage) ---
             jaizaChartData.sort((a, b) => b.thisMonth - a.thisMonth); 
             testChartData.sort((a, b) => b.thisMonth - a.thisMonth);
 
             // Sorted data se arrays banana
             const jaizaChartLabels = jaizaChartData.map(d => d.jamia);
             const thisMonthJaizaPercentages = jaizaChartData.map(d => d.thisMonth);
-            const lastMonthJaizaPercentages = jaizaChartData.map(d => d.lastMonth);
             
             const testChartLabels = testChartData.map(d => d.jamia);
             const thisMonthTestPercentages = testChartData.map(d => d.thisMonth);
-            const lastMonthTestPercentages = testChartData.map(d => d.lastMonth);
 
 
-            // --- 5. Render the Jaiza Chart ---
+            // --- 5. Render the Jaiza Chart (Only Selected Month) ---
             const ctxJaiza = document.getElementById('comparisonChart').getContext('2d');
             
             if (dashboardChart) {
@@ -1078,13 +1064,6 @@
                     labels: jaizaChartLabels,
                     datasets: [
                         {
-                            label: `${lastMonthReportInfo.month} Jaiza %`,
-                            data: lastMonthJaizaPercentages,
-                            backgroundColor: 'rgba(156, 163, 175, 0.7)', // Gray
-                            borderColor: 'rgba(156, 163, 175, 1)',
-                            borderWidth: 1
-                        },
-                        {
                             label: `${currentReportInfo.month} Jaiza %`,
                             data: thisMonthJaizaPercentages,
                             backgroundColor: 'rgba(20, 184, 166, 0.9)', // Teal
@@ -1093,6 +1072,7 @@
                         }
                     ]
                 },
+                plugins: [ChartDataLabels], // Datalabels plugin use kiya
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -1101,22 +1081,25 @@
                         y: {
                             beginAtZero: true,
                             max: 100, 
-                            ticks: {
-                                callback: function(value) {
-                                    return value + '%'
-                                }
-                            }
+                            ticks: { callback: function(value) { return value + '%' } }
                         }
                     },
                     plugins: {
                         legend: { position: 'top', labels: { font: { size: 14 } } },
-                        title: { display: true, text: 'Jaiza Performance Comparison (Descending Order)' }
+                        title: { display: true, text: `Jaiza Performance (${currentReportInfo.month} ${currentReportInfo.year})` },
+                        datalabels: { // Datalabels configuration
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: (value) => value > 0 ? value + '%' : '',
+                            color: '#4b5563',
+                            font: { weight: 'bold' }
+                        }
                     }
                 }
             });
              document.getElementById('comparisonChart').style.height = '400px';
 
-            // --- 6. Render the Monthly Test Chart (NAYA) ---
+            // --- 6. Render the Monthly Test Chart (Only Selected Month) ---
             const ctxTest = document.getElementById('testComparisonChart').getContext('2d');
             
             if (testDashboardChart) { testDashboardChart.destroy(); }
@@ -1127,13 +1110,6 @@
                     labels: testChartLabels,
                     datasets: [
                         {
-                            label: `${lastMonthReportInfo.month} Test %`,
-                            data: lastMonthTestPercentages,
-                            backgroundColor: 'rgba(251, 191, 36, 0.7)', // Amber
-                            borderColor: 'rgba(251, 191, 36, 1)',
-                            borderWidth: 1
-                        },
-                        {
                             label: `${currentReportInfo.month} Test %`,
                             data: thisMonthTestPercentages,
                             backgroundColor: 'rgba(99, 102, 241, 0.9)', // Indigo
@@ -1142,6 +1118,7 @@
                         }
                     ]
                 },
+                plugins: [ChartDataLabels], // Datalabels plugin use kiya
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -1150,14 +1127,19 @@
                         y: {
                             beginAtZero: true,
                             max: 100, 
-                            ticks: {
-                                callback: function(value) { return value + '%' }
-                            }
+                            ticks: { callback: function(value) { return value + '%' } }
                         }
                     },
                     plugins: {
                         legend: { position: 'top', labels: { font: { size: 14 } } },
-                        title: { display: true, text: 'Monthly Test Performance Comparison (Descending Order)' }
+                        title: { display: true, text: `Monthly Test Performance (${currentReportInfo.month} ${currentReportInfo.year})` },
+                        datalabels: { // Datalabels configuration
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: (value) => value > 0 ? value + '%' : '',
+                            color: '#4b5563',
+                            font: { weight: 'bold' }
+                        }
                     }
                 }
             });
@@ -1165,7 +1147,7 @@
         };
 
         const renderUserDashboard = (reports, reportInfo) => {
-            reportingDateInfo = reportInfo; // Global reporting date info update karna
+            reportingDateInfo = reportInfo; 
             
             const { monthNum, yearNum } = reportInfo; 
             const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
@@ -1409,12 +1391,10 @@
                       button.addEventListener('click', handleUserEditAdminTasurat);
                  });
                  
-                 // NAYA EVENT LISTENER YAHAN ADD HOGA
                  content.querySelectorAll('.download-tadris-pdf-btn').forEach(button => {
                       button.removeEventListener('click', handleDownloadTadrisPDF);
                       button.addEventListener('click', handleDownloadTadrisPDF);
                  });
-                 // ------------------------------------
             });
          };
          
