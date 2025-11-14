@@ -652,27 +652,12 @@
             // Function Definition (Moved inside initApp)
             const handleSaveMonthlyReport = async () => {
                 if (!activeYear) return;
-                
-                // 1. Zaroori check (existing check)
-                if (!currentUser || !currentUser.uid) {
-                     showNotification("Report save karne me error: Aap logged in nahi hain ya user ID missing hai.", true);
-                     return; 
-                }
-                
-                // CRITICAL FIX FOR UNDEFINED MONTH/YEAR: Ensure essential period data is defined
-                const { month, yearNum, monthNum } = currentReportPeriod;
-                
-                if (!month || !yearNum || monthNum === -1) {
-                     showNotification("Error: Please select a valid month from the dropdown before saving.", true);
-                     return; 
-                }
-                
                 showLoader(true);
 
                 try {
-                    const userId = currentUser.uid; // Current user ID ko pakka kar liya
+                    const { month, yearNum, monthNum } = currentReportPeriod; 
                     // CRITICAL DOC ID CONSTRUCTION: Using the full Firebase ID format
-                    const reportId = `${userId}_${activeYear}_${yearNum}_${monthNum}`; 
+                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
                     const reportRef = doc(db, 'monthly_reports', reportId);
 
                     const newReportData = [];
@@ -687,23 +672,10 @@
                             
                              // Use the input value for the current month's taught pages
                              const pagesTaughtInput = row.querySelector('.pages-taught-input');
-                             // ** FIX 1: Safai se pagesTaught ki value lein, empty string ko 0 banayein.
                              const inputValue = pagesTaughtInput.value.trim();
-                             const pagesTaught = inputValue === '' ? 0 : parseInt(inputValue, 10) || 0;
+                             const pagesTaught = inputValue === '' ? 0 : parseInt(inputValue, 10) || 0; // Ensures 0 if empty or invalid
                              
-                             // ** FIX 2: pagesTaught >= 0 check ko hata dein.
-                             // Hamesha data push karein agar Jamia filter match karta hai.
-                             
-                             // Agar aap chahte hain ki sirf woh reports save hon jin mein pagesTaught > 0 ho, 
-                             // toh aapka purana logic pagesTaught >= 0 theek hai, lekin
-                             // agar aap input khali chhodte hain, toh pagesTaught 0 ho jaata hai, aur
-                             // 0 >= 0 (True) hota hai.
-
-                             // Agar yeh pehla masla hal nahi karta, toh yeh wala code use karein:
-                             // Hum "if (pagesTaught >= 0)" ko hata kar hamesha push karenge (kyunki pagesTaught hamesha >= 0 hi hoga):
-                             // Agar aap chahte hain ki sirf woh periods save hon jo setup mein hain:
-                             
-                             // ** Hum ise hamesha push karenge taaki document mein entry ban jaaye. **
+                             // Hum isey hamesha push karenge taaki document mein entry ban jaaye.
                              const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
                              let achievement = 0;
                              
@@ -713,39 +685,39 @@
                              
                              // Re-calculate kaifiyat for final save assurance
                              const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
-
+                             
                             newReportData.push({
-                               periodId: row.dataset.periodId,
-                               jamiaName: rowJamiaName,
-                               teacherId: row.dataset.teacherId, 
-                               teacherName: row.dataset.teacherName, 
-                               bookName: row.dataset.bookName, 
-                               monthlyTarget: monthlyTarget,
-                               pagesTaught: pagesTaught, // This is MONTHLY taught pages, stored in the DB
-                               achievement: achievement,
-                               kaifiyat: kaifiyat 
-                           }); // <-- FIX 1: Missing Semicolon (;) laga diya gaya hai, taaki Syntax Error na aaye.
-
-                          // --- CRITICAL MERGE LOGIC: Handle only updating the filtered Jamia's data ---
-                          // Since we are using setDoc({merge: true}), we need to read the existing data first, 
-                          // replace the updated/new data, and then save the full merged list.
-
-                         // 1. Existing data load karein
-                         const existingReportSnap = await getDoc(reportRef);
-                        // 2. FIX 2: mergedReportData ke initialization mein extra [] hata diya gaya hai.
-                        let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
-
-                        // Filter out existing entries for the Jamia(t) being reported (either single or all)
-                        const jamiaNamesInReport = jamiaFilter === 'all' 
-                            ? (userProfileData.jamiaatList || []) // All user's jamiaat
-                            : [jamiaFilter]; // Only the selected jamia
-                             mergedReportData = mergedReportData.filter(entry => !jamiaNamesInReport.includes(entry.jamiaName));
-                    
-                    // 3. Add new/updated entries. CRITICAL: Har entry mein userId ko force set karein.
-                    newReportData.forEach(entry => {
-                         // Force-set userId for nested data (for rules like request.resource.data.karkardagiReport.data[x].userId)
-                         entry.userId = userId; 
+                                periodId: row.dataset.periodId,
+                                jamiaName: rowJamiaName,
+                                teacherId: row.dataset.teacherId, 
+                                teacherName: row.dataset.teacherName, 
+                                bookName: row.dataset.bookName, 
+                                monthlyTarget: monthlyTarget,
+                                pagesTaught: pagesTaught, // This is MONTHLY taught pages, stored in the DB
+                                achievement: achievement,
+                                kaifiyat: kaifiyat 
+                            }); // <-- FIX 1: Missing Semicolon (;) laga diya gaya hai, taaki Syntax Error na aaye.
+                        }
                     });
+
+                    // --- CRITICAL MERGE LOGIC: Handle only updating the filtered Jamia's data ---
+                    // Since we are using setDoc({merge: true}), we need to read the existing data first, 
+                    // replace the updated/new data, and then save the full merged list.
+                    
+                    // 1. Existing data load karein
+                    const existingReportSnap = await getDoc(reportRef);
+                    // 2. FIX 2: mergedReportData ke initialization mein extra [] hata diya gaya hai.
+                    let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
+                    
+                    // Filter out existing entries for the Jamia(t) being reported (either single or all)
+                    const jamiaNamesInReport = jamiaFilter === 'all' 
+                                                ? (userProfileData.jamiaatList || []) // All user's jamiaat
+                                                : [jamiaFilter]; // Only the selected jamia
+
+                    // Remove old entries for the reported jamia(t)
+                    mergedReportData = mergedReportData.filter(entry => !jamiaNamesInReport.includes(entry.jamiaName));
+                    
+                    // Add new/updated entries
                     mergedReportData.push(...newReportData);
 
 
@@ -754,8 +726,8 @@
                             status: mergedReportData.length > 0 ? 'Done' : 'Pending', 
                             data: mergedReportData
                         },
-                        // CRITICAL: Document level userId field ko current user ID se set karein
-                        userId: userId, 
+                        // These fields must match the query/indexing in Firebase!
+                        userId: currentUser.uid, 
                         academicYear: activeYear,
                         month: month, 
                         year: yearNum, 
@@ -763,7 +735,7 @@
                         createdAt: serverTimestamp()
                     };
 
-                    // NOTE: setDoc({ merge: true }) is fine as long as userId is correctly set at the root.
+                    // NOTE: We are using setDoc with the constructed reportId, merging with existing data
                     await setDoc(reportRef, dataToSave, { merge: true });
                     
                     // After saving, reload all data to update the cumulative view correctly
@@ -773,8 +745,7 @@
                 
                 } catch (error) {
                     console.error("Error saving monthly report:", error);
-                    // FIXED: Notification for the specific user issue
-                    showNotification(`Report save karne me error: ${error.message}. Kripya confirm karein ki aapke paas is document ko likhne ki ijazat hai.`, true, error.message);
+                    showNotification(`Report save karne me error: ${error.message}`, true, error.message);
                 } finally {
                     showLoader(false);
                 }
@@ -1895,8 +1866,8 @@
              });
              
              const newCumulative = previousCumulative + taught; // Add current input
-             row.dataset.cumulativeTaught = newCumulative;
              row.querySelector('.cumulative-taught-cell').textContent = newCumulative;
+             row.dataset.cumulativeTaught = newCumulative;
              return newCumulative;
          };
 
@@ -1975,7 +1946,7 @@
             // Re-check: Did we find any periods for the current semester and filter?
             if (Object.keys(periodsByJamia).length === 0) {
                 const filterMessage = currentJamia === 'all' ? 'koi' : `Jamia ${currentJamia} mein koi`;
-                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye ${filterMessage} periods add nahi kiye gaye hain. Pehle "Setup Structure" me add karein.</p>`;
+                reportingContainer.innerHTML = `<p class="text-yellow-700">Is semester (${currentSemester === "1" ? "Sem 1" : "Sem 2"}) ke liye ${filterMessage} periods add nahi kiye گئے hain. Pehle "Setup Structure" me add karein.</p>`;
                 saveMonthlyReportBtn.classList.add('hidden');
                 return;
             }
@@ -2092,8 +2063,7 @@
                             data-period-semester="${period.semester}"
                             data-month-num="${monthNum}"
                             data-year-num="${currentYearNum}"
-                            data-kaifiyat="${kaifiyat}"
-                            data-achievement="${achievement}">
+                            data-kaifiyat="${kaifiyat}">
                             
                             ${index === 0 ? 
                                 `<td rowspan="${teacherPeriods.length}" class="urdu-font text-gray-800 font-semibold bg-blue-100/50">${teacher.name}</td>` : ''
@@ -2154,7 +2124,6 @@
                     
                     row.dataset.kaifiyat = kaifiyat;
                     row.dataset.pagesTaught = taught; // Update monthly pages data attribute
-                    row.dataset.achievement = achievement; // Update achievement data attribute for saving logic
                     
                     // NEW CUMULATIVE LOGIC: Recalculate and update Cumulative Taught locally (for display only)
                     updateCumulativeDataLocally(row.dataset.periodId, semester, currentMonthNum, currentYearNum, taught, row);
@@ -2663,7 +2632,7 @@
              showNotification(`${fileName} Downloaded!`);
         };
         
-        // NEW FUNCTION: Download Jamia Report (IMAGE - FIX APPLIED for styling, no blank column, no input box)
+        // NEW FUNCTION: Download Jamia Report (IMAGE - FIX APPLIED)
         const downloadJamiaReportImage = async (jamiaName) => {
              showLoader(true);
              const monthName = currentReportPeriod.month;
@@ -2684,7 +2653,7 @@
              tempDiv.style.backgroundColor = '#ffffff';
              tempDiv.style.padding = '25px';
              tempDiv.style.border = '1px solid #ccc';
-             tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
+             tempDiv.style.fontFamily = 'Poppins', sans-serif; 
              tempDiv.style.direction = 'rtl'; 
              
              const headerHtml = `
@@ -2915,7 +2884,7 @@
             tempDiv.style.backgroundColor = '#ffffff';
             tempDiv.style.padding = '25px';
             tempDiv.style.border = '1px solid #ccc';
-            tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
+            tempDiv.style.fontFamily = 'Poppins', sans-serif; 
             tempDiv.style.direction = 'rtl'; 
 
             // **UPDATED HEADER HTML**
@@ -2992,7 +2961,7 @@
              tempDiv.style.backgroundColor = '#ffffff';
              tempDiv.style.padding = '25px';
              tempDiv.style.border = '1px solid #ccc';
-             tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
+             tempDiv.style.fontFamily = 'Poppins', sans-serif; 
              tempDiv.style.direction = 'rtl'; 
 
              // **HEADER HTML**
@@ -3098,7 +3067,7 @@
             tempDiv.style.backgroundColor = '#ffffff';
             tempDiv.style.padding = '25px';
             tempDiv.style.border = '1px solid #ccc';
-            tempDiv.style.fontFamily = 'Poppins, sans-serif'; 
+            tempDiv.style.fontFamily = 'Poppins', sans-serif; 
             tempDiv.style.direction = 'rtl'; 
             
             const isUrdu = containsUrdu(teacherName);
@@ -3238,6 +3207,3 @@
     </script>
 </body>
 </html>
-
-
-
