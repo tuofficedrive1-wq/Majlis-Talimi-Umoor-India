@@ -401,7 +401,7 @@
         // Filter State
         let currentJamiaFilter = 'all'; // 'all' or specific jamia name for Reporting tab
 
-        // --- HELPER FUNCTIONS (Unchanged unless noted) ---
+        // --- HELPER FUNCTIONS (Critical changes in getInitialReportingPeriod) ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
         
         const showNotification = (message, isError = false, errorDetail = null) => {
@@ -491,39 +491,12 @@
             return { kaifiyat, colorClass };
         };
 
-
+        // 🎯 FIX 3: DEADLINE LOGIC HATA DIYA GAYA
         const getInitialReportingPeriod = (overrideTimestamp = null) => {
             const now = new Date();
-            const currentDay = now.getDate();
-            let targetDate = now;
-            let isGracePeriod = false;
-
-            if (currentDay >= 1 && currentDay <= 5) {
-                isGracePeriod = true;
-            } 
-            if (overrideTimestamp) {
-         try {
-             const overrideDate = overrideTimestamp.toDate(); 
-             overrideDate.setHours(23, 59, 59, 999); 
-             
-             // Agar aaj ki date deadline ke andar hai:
-             if (now <= overrideDate) { 
-                 const currentDay = now.getDate();
-                 
-                 // Agar aaj 5 tareekh se zyada hai (normal deadline nikal chuki hai),
-                 // aur override active hai, toh force karke pichlle mahine ki report kholo.
-                 if (currentDay > 5) {
-                     isGracePeriod = true;
-                     // Target date ko pichlle mahine ki aakhri tareekh pe set karo
-                     targetDate = new Date(now.getFullYear(), now.getMonth(), 0); 
-                 }
-             }
-                 } catch(e) { console.error("Error processing override timestamp:", e, overrideTimestamp)}
-            }
-
-            if (isGracePeriod) {
-                targetDate = new Date(now.getFullYear(), now.getMonth(), 0); 
-            }
+            const targetDate = now; // Hamesha current date use karen
+            
+            // Baki sara complicated grace period/override logic yahan se remove kar diya gaya hai.
 
             const month = targetDate.toLocaleString('default', { month: 'long' });
             const year = targetDate.getFullYear();
@@ -535,6 +508,7 @@
 
             return { month, year: yearNum, monthNum, yearNum, semester };
         };
+
 
         // Function to get Month Name from Index
         const getMonthName = (monthNum) => {
@@ -696,7 +670,7 @@
                                 pagesTaught: pagesTaught, // This is MONTHLY taught pages, stored in the DB
                                 achievement: achievement,
                                 kaifiyat: kaifiyat 
-                            }); // <-- FIX 1: Missing Semicolon (;) laga diya gaya hai, taaki Syntax Error na aaye.
+                            }); // 🎯 FIX 1: Missing Semicolon (;) laga diya gaya hai.
                         }
                     });
 
@@ -706,7 +680,7 @@
                     
                     // 1. Existing data load karein
                     const existingReportSnap = await getDoc(reportRef);
-                    // 2. FIX 2: mergedReportData ke initialization mein extra [] hata diya gaya hai.
+                    // 2. 🎯 FIX 2: mergedReportData ke initialization mein extra [] hata diya gaya hai.
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
                     
                     // Filter out existing entries for the Jamia(t) being reported (either single or all)
@@ -986,8 +960,9 @@
             }
         };
         
-        // --- MONTH & JAMIA FILTER LOGIC (Unchanged) ---
+        // --- MONTH & JAMIA FILTER LOGIC (Updated for No Deadline) ---
         
+        // 🎯 FIX 4: MAX MONTH FILTER LOGIC HATA DIYA GAYA
         const populateMonthSelector = () => {
              if (!activeYear) {
                  const noYearOption = `<option value="">Select Year First</option>`;
@@ -1001,24 +976,7 @@
              const academicYearStart = parseInt(academicYearParts[0], 10);
              const academicYearEnd = parseInt(academicYearParts[1], 10);
              
-             // Get the max month that can be reported (current month or grace period month)
-             const defaultDate = new Date();
-             const currentDay = defaultDate.getDate();
-             let maxMonthIndex = defaultDate.getMonth();
-             let maxYear = defaultDate.getFullYear();
-             
-             // If we are in the grace period (1-5th), the max reportable month is the previous month
-             if (currentDay >= 1 && currentDay <= 5) {
-                 const maxDate = new Date(defaultDate.getFullYear(), defaultDate.getMonth(), 0); // Last day of previous month
-                 maxMonthIndex = maxDate.getMonth();
-                 maxYear = maxDate.getFullYear();
-             } else {
-                 // If not in grace period, max reportable month is the current month
-                 maxMonthIndex = defaultDate.getMonth();
-                 maxYear = defaultDate.getFullYear();
-             }
-
-             // Start from April (Month index 3) of the academic start year
+             // Deadline logic removed. All months in the academic year are reportable.
              let options = [];
              for (let i = 0; i < ACADEMIC_MONTHS.length; i++) {
                  const monthIndex = ACADEMIC_MONTHS[i];
@@ -1034,13 +992,8 @@
                  const monthName = getMonthName(monthIndex);
                  const value = `${reportingYear}-${monthIndex}`; // e.g., "2025-8" for Sep 2025
 
-                 // Check if this month is within the reportable range (up to maxYear/maxMonthIndex)
-                 let isReportable = false;
-                 if (reportingYear < maxYear) {
-                     isReportable = true;
-                 } else if (reportingYear === maxYear && monthIndex <= maxMonthIndex) {
-                      isReportable = true;
-                 }
+                 // FIX: isReportable is always true (since we removed the logic to restrict to current/previous month)
+                 const isReportable = true;
                  
                  if (isReportable) {
                      options.push({ value, monthName, reportingYear });
@@ -2789,7 +2742,7 @@
                  const image = canvas.toDataURL("image/png");
                  const link = document.createElement('a');
                  link.href = image;
-                 const fileName = `Monthly_Report_Jamia_${jamiaName.replace(/ /g, '_')}_${monthName}_${year}.png`;
+                 const fileName = `Monthly_Report_Jamia_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.png`;
                  link.download = fileName;
                  document.body.appendChild(link);
                  link.click();
