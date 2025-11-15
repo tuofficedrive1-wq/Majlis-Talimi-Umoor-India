@@ -382,6 +382,8 @@
         
         // Global array to hold all reports for cumulative calculation
         let allYearReportsData = [];
+        // Teacher form se aane wali submissions yahan store hongi
+        let teacherSubmissionsMap = new Map();
 
         // Current Period being viewed/edited
         let currentReportPeriod = { 
@@ -949,52 +951,73 @@ const handleCreateReportLink = (jamiaName) => {
         };
         
         // Fetch ALL reports for the academic year for cumulative calculation
-        const loadMonthlyReportData = async () => {
-            monthlyReportData = []; // Current month's data
-            currentMonthReport = {};
-            allYearReportsData = []; // Reset cumulative data
-            
-            if (!currentUser || !currentUser.uid) {
-                return;
-            }
-            if (!activeYear || !allAcademicYearsData[activeYear]) {
-                 return; 
-            }
-            
-            const { yearNum, monthNum } = currentReportPeriod; 
-            
-            try {
-                // 1. Fetch ALL Monthly Reports for the activeYear 
-                const reportsCollectionRef = collection(db, 'monthly_reports');
-                const q = query(reportsCollectionRef, 
-                    where('userId', '==', currentUser.uid),
-                    where('academicYear', '==', activeYear)
-                );
+const loadMonthlyReportData = async () => {
+    monthlyReportData = []; // Current month's data
+    currentMonthReport = {};
+    allYearReportsData = []; // Reset cumulative data
+    teacherSubmissionsMap = new Map(); // reset
 
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach(doc => {
-                    allYearReportsData.push(doc.data());
-                });
+    if (!currentUser || !currentUser.uid) {
+        return;
+    }
+    if (!activeYear || !allAcademicYearsData[activeYear]) {
+        return;
+    }
 
-                // 2. Extract current month's report from the fetched list
-                const currentReport = allYearReportsData.find(report => 
-                    report.year === yearNum && 
-                    report.monthNum === monthNum
-                );
-                
-                if (currentReport) {
-                    currentMonthReport = currentReport;
-                    // monthlyReportData should contain current month's saved data (pagesTaught)
-                    monthlyReportData = currentReport.karkardagiReport?.data || [];
-                } else {
-                    // No report found for this period. monthlyReportData remains []
-                }
+    const { yearNum, monthNum } = currentReportPeriod;
 
-            } catch (error) {
-                 console.error(`Error fetching all year reports for ${activeYear}:`, error);
-                 showNotification("Monthly report data load karne me error.", true, error.message);
-            }
-        };
+    try {
+        // 1. Monthly_reports (jaise pehle se tha)
+        const reportsCollectionRef = collection(db, 'monthly_reports');
+        const q = query(
+            reportsCollectionRef,
+            where('userId', '==', currentUser.uid),
+            where('academicYear', '==', activeYear)
+        );
+
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach(docSnap => {
+            allYearReportsData.push(docSnap.data());
+        });
+
+        const currentReport = allYearReportsData.find(
+            report => report.year === yearNum && report.monthNum === monthNum
+        );
+
+        if (currentReport) {
+            currentMonthReport = currentReport;
+            monthlyReportData = currentReport.karkardagiReport?.data || [];
+        }
+
+        // 2. Teacher form ki submissions bhi lao (automatic integration yahin hai)
+        //  teacher-form.html jo collection use kar raha hai: "teacher_submissions"
+        const submissionsRef = collection(db, 'teacher_submissions');
+        const submissionsQuery = query(
+            submissionsRef,
+            where('submissionYear', '==', yearNum),
+            where('submissionMonth', '==', monthNum)
+        );
+
+        const submissionsSnap = await getDocs(submissionsQuery);
+
+        submissionsSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            // JamiaId, teacherId, periodId ke hisaab se key banayenge
+            const key = `${data.jamiaId}::${data.teacherId}::${data.periodId}`;
+            const pages = parseInt(data.pagesTaught, 10) || 0;
+
+            // agar same key ke multiple submissions hain to add kar denge
+            const existing = teacherSubmissionsMap.get(key) || 0;
+            teacherSubmissionsMap.set(key, existing + pages);
+        });
+
+        console.log('Teacher submissions map:', teacherSubmissionsMap);
+
+    } catch (error) {
+        console.error(`Error fetching monthly data for ${activeYear}:`, error);
+        showNotification("Monthly report data load karne me error.", true, error.message);
+    }
+};
         
         // --- MONTH & JAMIA FILTER LOGIC (Updated for No Deadline) ---
         
@@ -2021,11 +2044,36 @@ const handleCreateReportLink = (jamiaName) => {
                         }
 
                         // Get saved Pages Taught for the CURRENT selected month.
-                        const savedEntry = monthlyReportData.find(entry => entry.periodId === period.id);
-                        // If value exists, convert to string for input value, otherwise empty string.
-                        const pagesTaught = savedEntry?.pagesTaught !== undefined && savedEntry?.pagesTaught !== null 
-                                            ? savedEntry.pagesTaught.toString() 
-                                            : '';
+                        // 🔗 AUTO INTEGRATION: Teacher form ki submissions ko Monthly Report me lekar aana
+
+                        // Pehle teacher-submissions se check karein
+                        const submissionKey = `${jamiaName}::${teacher.id}::${period.id}`;
+                        let pagesFromSubmission = null;
+                        if (teacherSubmissionsMap && teacherSubmissionsMap.has(submissionKey)) {
+                            pagesFromSubmission = teacherSubmissionsMap.get(submissionKey);
+                        }
+
+                        // Phir monthly_reports me saved data check karein (agar teacher-submissions nahi mila)
+                        const savedEntry = monthlyReportData.find(
+                            entry =>
+                                entry.periodId === period.id &&
+                                entry.jamiaName === jamiaName &&
+                                entry.teacherId === teacher.id
+                        );
+
+                        let pagesTaughtValue = 0;
+
+                        // Priority 1: teacher form ka data
+                        if (pagesFromSubmission !== null && pagesFromSubmission !== undefined) {
+                            pagesTaughtValue = parseInt(pagesFromSubmission, 10) || 0;
+                        }
+                        // Priority 2: pehle se saved monthly report
+                        else if (savedEntry && typeof savedEntry.pagesTaught === 'number') {
+                         pagesTaughtValue = savedEntry.pagesTaught;
+                        }
+
+                        / Input me dikhane ke liye
+                        const pagesTaughtDisplay = pagesTaughtValue > 0 ? pagesTaughtValue : '';
                         
                         const totalPagesSem = period.totalPages; // Total Pages for the Semester
                         
@@ -3204,7 +3252,6 @@ const handleCreateReportLink = (jamiaName) => {
     </script>
 </body>
 </html>
-
 
 
 
