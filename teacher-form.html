@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Karkardagi Report Submission</title>
+    <title>Teacher Monthly Karkardagi Report</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    
-    <!-- Firebase v8 (teacher side ke liye simple SDK) -->
+
+    <!-- Firebase v8 (compat) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-    
+
     <script>
         // ***********************************************
-        //  APNA ASLI FIREBASE CONFIG YAHAN DAALEIN
+        //  YAHAN APNA ASLI FIREBASE CONFIG DALIYE
+        //  (jo aapne karkardagi.html me use kiya hai)
         // ***********************************************
         const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", // YEH AAPKI ASLI API KEY HAI
@@ -23,6 +24,7 @@
             messagingSenderId: "449137002393",
             appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
         };
+
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
     </script>
@@ -31,11 +33,13 @@
 
     <div id="loading-spinner" class="text-center">
         <i class="fas fa-spinner fa-spin text-emerald-600 text-3xl"></i>
-        <p class="mt-2 text-gray-600">Loading Data...</p>
+        <p class="mt-2 text-gray-600">Loading data...</p>
     </div>
 
     <div id="report-form-container" class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-4xl hidden">
-        <h1 class="text-3xl font-bold text-center text-emerald-700 mb-6">📚 Karkardagi Report Submission</h1>
+        <h1 class="text-3xl font-bold text-center text-emerald-700 mb-6">
+            📚 Teacher Monthly Karkardagi Report
+        </h1>
         
         <div class="mb-6 p-3 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 font-semibold">
             <p id="jamia-display">Jamia: Loading...</p>
@@ -44,6 +48,7 @@
 
         <form id="teacher-report-form">
             
+            <!-- TEACHER SELECT -->
             <div class="mb-6">
                 <label for="teacher-select" class="block text-gray-700 font-semibold mb-2">
                     1. Apna Naam Select Karein:
@@ -53,6 +58,7 @@
                 </select>
             </div>
 
+            <!-- PERIODS TABLE -->
             <div id="periods-table-container" class="mb-8 hidden">
                 <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">
                     2. Mahana Pages Taught (Har Class Ke Liye)
@@ -62,7 +68,7 @@
                         <thead class="bg-gray-100">
                             <tr>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Class/Book
+                                    Class / Kitab
                                 </th>
                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">
                                     Monthly Target
@@ -72,14 +78,15 @@
                                 </th>
                             </tr>
                         </thead>
-                        <tbody id="periods-table-body" class="bg-white divide-y divide-gray-200">
-                        </tbody>
+                        <tbody id="periods-table-body" class="bg-white divide-y divide-gray-200"></tbody>
                     </table>
                 </div>
             </div>
 
+            <!-- SUBMIT BUTTON -->
             <div id="submit-button-area" class="text-center hidden">
-                <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-lg transition duration-150 shadow-md">
+                <button type="submit" id="submit-btn"
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-lg transition duration-150 shadow-md">
                     <i class="fas fa-upload mr-2"></i> Submit Monthly Report
                 </button>
             </div>
@@ -89,193 +96,196 @@
     </div>
 
     <script>
-        let selectedTeacherData = null; // Submission ke liye data store karega
+        let selectedTeacherData = null; // Submission ke liye teacher data
 
         document.addEventListener('DOMContentLoaded', () => {
             const loadingSpinner = document.getElementById('loading-spinner');
             const formContainer = document.getElementById('report-form-container');
-            const teacherSelect = document.getElementById('teacher-select');
-            
+
             const urlParams = new URLSearchParams(window.location.search);
-            const jamiaId        = urlParams.get('jamiaId');
-            const activeYear     = urlParams.get('activeYear');
-            const monthIndexParam = urlParams.get('monthIndex');
-            const reportYearParam = urlParams.get('reportYear');
+            const jamiaId     = urlParams.get('jamiaId');   // Jamia ka naam (encoded)
+            const userId      = urlParams.get('userId');    // Dashboard user ka UID
+            const activeYear  = urlParams.get('activeYear');
+            const monthIndexQ = urlParams.get('monthIndex');
+            const reportYearQ = urlParams.get('reportYear');
 
-            // Ab 4 parameters required: Jamia, ActiveYear, MonthIndex, ReportYear
-            if (!jamiaId || !activeYear || monthIndexParam === null || reportYearParam === null) {
-                loadingSpinner.innerHTML = `
-                    <p class="text-red-600 font-bold">
-                        Error: Required parameters (Jamia, Year, Month) are missing in the link.
-                    </p>`;
+            if (!jamiaId || !userId || !activeYear) {
+                loadingSpinner.innerHTML = '<p class="text-red-600 font-bold">Error: Ghalat Reporting Link. (Jamia, User ya Saal missing hai)</p>';
                 return;
             }
 
-            const currentMonthIndex = parseInt(monthIndexParam, 10);
-            const currentYear       = parseInt(reportYearParam, 10);
+            // Month & Year decide karna:
+            let monthIndex;
+            let reportYear;
 
-            if (
-                isNaN(currentMonthIndex) ||
-                isNaN(currentYear) ||
-                currentMonthIndex < 0 ||
-                currentMonthIndex > 11
-            ) {
-                loadingSpinner.innerHTML = `
-                    <p class="text-red-600 font-bold">
-                        Error: Invalid Month/Year in the link.
-                    </p>`;
-                return;
+            if (monthIndexQ !== null && reportYearQ !== null) {
+                // URL se fixed month/year (0-11)
+                monthIndex = parseInt(monthIndexQ, 10);
+                reportYear = parseInt(reportYearQ, 10);
+            } else {
+                // Default: pichla mahina
+                const today = new Date();
+                monthIndex = today.getMonth() === 0 ? 11 : today.getMonth() - 1; 
+                reportYear = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
             }
 
-            const monthName = new Date(currentYear, currentMonthIndex)
-                .toLocaleString('en-US', { month: 'long' });
+            const monthName = new Date(reportYear, monthIndex).toLocaleString('en-US', { month: 'long' });
 
             document.getElementById('jamia-display').textContent =
                 `Jamia: ${decodeURIComponent(jamiaId)}`;
             document.getElementById('report-month-display').textContent =
-                `Report For: ${monthName} ${currentYear}`;
-            
-            // Ab selected month/year ke saath data load hoga
-            loadJamiaData(jamiaId, activeYear, currentMonthIndex, currentYear);
+                `Report For: ${monthName} ${reportYear}`;
 
-            // Submission handler
+            // Data load
+            loadJamiaData(jamiaId, userId, activeYear, monthIndex, reportYear);
+
+            // Submit handler
             document.getElementById('teacher-report-form').addEventListener('submit', (e) => {
                 e.preventDefault();
-                submitReport(jamiaId, activeYear, currentMonthIndex, currentYear);
+                submitReport(jamiaId, activeYear, monthIndex, reportYear);
             });
         });
 
         // =======================================================
-        //  DATA FETCHING LOGIC
+        //  DATA FETCHING: Users/{userId}.academicYears[activeYear]
         // =======================================================
-
-        async function loadJamiaData(jamia, year, monthIndex, currentYear) {
+        async function loadJamiaData(jamia, userId, year, monthIndex, currentYear) {
             const loadingSpinner = document.getElementById('loading-spinner');
             const formContainer = document.getElementById('report-form-container');
             const teacherSelect = document.getElementById('teacher-select');
 
             try {
-                // HUM MANN KAR CHAL RAHE HAIN KI 'karkardagiStructure' DATA:
-                // karkardagiStructure/[activeYear] par pada hai
-                const structureRef = db.collection('karkardagiStructure').doc(year); 
-                const doc = await structureRef.get();
-                
-                if (!doc.exists || !doc.data().structure) {
-                    loadingSpinner.innerHTML = '<p class="text-red-600 font-bold">Structure data is saal ke liye nahi mila.</p>';
-                    return;
-                }
-                
-                const structure = doc.data().structure; 
-                const jamiaData = structure.find(j => j.name === decodeURIComponent(jamia));
+                const userRef = db.collection('users').doc(userId);
+                const userSnap = await userRef.get();
 
-                if (!jamiaData || !jamiaData.teachers) {
-                    loadingSpinner.innerHTML = '<p class="text-red-600 font-bold">Is Jamia ka koi Teacher data nahi mila.</p>';
+                if (!userSnap.exists) {
+                    loadingSpinner.innerHTML = '<p class="text-red-600 font-bold">User ka data nahi mila (users collection).</p>';
                     return;
                 }
 
-                // Teachers Dropdown mein bharna
+                const userData = userSnap.data();
+                const academicYears = userData.academicYears || {};
+                const yearData = academicYears[year];
+
+                if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
+                    loadingSpinner.innerHTML = '<p class="text-red-600 font-bold">Is saal ke liye Karkardagi structure set nahi hai.</p>';
+                    return;
+                }
+
+                const structure = yearData.karkardagiStructure;
+                const jamiaNameDecoded = decodeURIComponent(jamia);
+
+                // Jamia match karein (jamiaName field se)
+                const jamiaData = structure.find(j => j.jamiaName === jamiaNameDecoded);
+
+                if (!jamiaData || !Array.isArray(jamiaData.teachers) || jamiaData.teachers.length === 0) {
+                    loadingSpinner.innerHTML =
+                        '<p class="text-red-600 font-bold">Is Jamia ke teachers structure me set nahi hain.</p>';
+                    return;
+                }
+
+                // Teachers dropdown
                 jamiaData.teachers.forEach(teacher => {
                     const option = document.createElement('option');
-                    option.value = teacher.id; // Teacher ki unique ID
+                    option.value = teacher.id;
                     option.textContent = teacher.name;
                     teacherSelect.appendChild(option);
                 });
-                
-                // Success: Form dikhana
+
                 loadingSpinner.classList.add('hidden');
                 formContainer.classList.remove('hidden');
 
-                // Dropdown change hone par periods load karna
+                // Teacher change par periods load
                 teacherSelect.addEventListener('change', (e) => {
                     loadTeacherPeriods(e.target.value, jamiaData.teachers);
                 });
 
             } catch (error) {
                 console.error("Error loading Jamia data:", error);
-                loadingSpinner.innerHTML = `
-                    <p class="text-red-600 font-bold">
-                        Data load karte waqt error: ${error.message}
-                    </p>`;
+                loadingSpinner.innerHTML =
+                    `<p class="text-red-600 font-bold">Data load karte waqt error: ${error.message}</p>`;
             }
         }
 
         // =======================================================
-        //  PERIODS DISPLAY LOGIC
+        //  PERIODS TABLE
         // =======================================================
-
-        const loadTeacherPeriods = (teacherId, allTeachers) => {
+        function loadTeacherPeriods(teacherId, allTeachers) {
             const periodsTableBody = document.getElementById('periods-table-body');
             const periodsTableContainer = document.getElementById('periods-table-container');
             const submitButtonArea = document.getElementById('submit-button-area');
+
             periodsTableBody.innerHTML = '';
-            
+
             const teacher = allTeachers.find(t => t.id === teacherId);
 
-            if (!teacher || !teacher.periods || teacher.periods.length === 0) {
-                periodsTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="3" class="text-center py-4 text-gray-500">
-                            Is teacher ke koi periods set nahi hain.
-                        </td>
-                    </tr>`;
+            if (!teacher || !Array.isArray(teacher.periods) || teacher.periods.length === 0) {
+                periodsTableBody.innerHTML =
+                    '<tr><td colspan="3" class="text-center py-4 text-gray-500">Is teacher ke koi periods set nahi hain.</td></tr>';
                 periodsTableContainer.classList.remove('hidden');
                 submitButtonArea.classList.add('hidden');
                 return;
             }
-            
+
             selectedTeacherData = teacher;
-            
+
             teacher.periods.forEach(period => {
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50';
+
+                const className = period.className || 'Class';
+                const bookName  = period.bookName  || 'Book';
+
                 row.innerHTML = `
                     <td class="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                        ${period.class} (${period.book})
+                        ${className} (${bookName})
                     </td>
                     <td class="px-3 py-3 whitespace-nowrap text-sm text-center text-gray-500">
-                        ${period.monthlyTarget || 'N/A'}
+                        ${period.monthlyTarget || '—'}
                     </td>
                     <td class="px-3 py-3 whitespace-nowrap">
-                        <input
-                            type="number"
-                            data-period-id="${period.id}"
-                            data-class-name="${period.class}"
-                            data-book-name="${period.book}"
-                            class="pages-taught-input w-full p-2 border border-gray-300 rounded-lg text-sm text-center focus:border-emerald-500"
-                            min="0"
-                            placeholder="Pages"
-                            required>
+                        <input type="number"
+                               data-period-id="${period.id}"
+                               data-class-name="${className}"
+                               data-book-name="${bookName}"
+                               class="pages-taught-input w-full p-2 border border-gray-300 rounded-lg text-sm text-center focus:border-emerald-500"
+                               min="0"
+                               placeholder="Pages"
+                               required>
                     </td>
                 `;
                 periodsTableBody.appendChild(row);
             });
-            
+
             periodsTableContainer.classList.remove('hidden');
             submitButtonArea.classList.remove('hidden');
-        };
+        }
 
         // =======================================================
-        //  SUBMISSION LOGIC
+        //  SUBMISSION
         // =======================================================
-
-        const submitReport = async (jamiaId, activeYear, monthIndex, year) => {
+        async function submitReport(jamiaId, activeYear, monthIndex, year) {
             const submitBtn = document.getElementById('submit-btn');
             const formMessage = document.getElementById('form-message');
-            
+
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Submitting...';
             formMessage.classList.add('hidden');
 
             try {
+                if (!selectedTeacherData) {
+                    throw new Error("Pehele apna naam select karein.");
+                }
+
                 const inputs = document.querySelectorAll('.pages-taught-input');
                 const submissionBatch = [];
-                
+
                 inputs.forEach(input => {
-                    const pagesTaught = parseInt(input.value);
+                    const pagesTaught = parseInt(input.value, 10);
                     if (isNaN(pagesTaught) || pagesTaught < 0) {
-                        throw new Error("Sahi Pages Taught value enter karein.");
+                        throw new Error("Har row me sahi Pages Taught value enter karein.");
                     }
-                    
+
                     submissionBatch.push({
                         jamiaId: decodeURIComponent(jamiaId),
                         teacherId: selectedTeacherData.id,
@@ -286,6 +296,7 @@
                         pagesTaught: pagesTaught,
                         submissionMonth: monthIndex,
                         submissionYear: year,
+                        activeYear: activeYear,
                         submittedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 });
@@ -293,23 +304,21 @@
                 if (submissionBatch.length === 0) {
                     throw new Error("Koi data submit nahi ho raha.");
                 }
-                
-                // Data Firebase ke 'teacher_submissions' collection mein save karna
+
                 const batch = db.batch();
                 const submissionsRef = db.collection('teacher_submissions');
 
                 submissionBatch.forEach(data => {
-                    const docRef = submissionsRef.doc(); 
+                    const docRef = submissionsRef.doc();
                     batch.set(docRef, data);
                 });
 
                 await batch.commit();
 
-                formMessage.textContent = '✅ Report kamyabi se submit ho gayi hai. Shukriya!';
+                formMessage.textContent = '✅ Report kamyabi se submit ho gayi. JazakAllah!';
                 formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-green-100 text-green-700';
                 formMessage.classList.remove('hidden');
-                
-                // Form ko lock kar dena
+
                 document.getElementById('periods-table-container').classList.add('hidden');
                 document.getElementById('submit-button-area').classList.add('hidden');
                 document.getElementById('teacher-select').disabled = true;
@@ -323,8 +332,7 @@
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fas fa-upload mr-2"></i> Submit Monthly Report';
             }
-        };
+        }
     </script>
 </body>
 </html>
-
