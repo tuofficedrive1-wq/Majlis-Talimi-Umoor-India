@@ -587,17 +587,40 @@
         };
 
         // Function to create and copy the Jamia Report Link
-        const handleCreateReportLink = (jamiaName) => {
-    const encodedJamiaName = encodeURIComponent(jamiaName);
+const handleCreateReportLink = (jamiaName) => {
+    if (!currentUser || !activeYear) {
+        showNotification("Login / Active Year set nahi hai.", true);
+        return;
+    }
 
-    // current folder ka URL, jaise .../Majlis-Talimi-Umoor-India/
-    const baseUrl = window.location.href.replace(/[^\/]+$/, '');
+    if (
+        !currentReportPeriod ||
+        typeof currentReportPeriod.monthNum !== 'number' ||
+        currentReportPeriod.monthNum < 0 ||
+        !currentReportPeriod.yearNum
+    ) {
+        showNotification("Pehle Monthly Reporting tab me month select karein.", true);
+        return;
+    }
 
-    // teacher-form.html same folder me hai
-    const link = `${baseUrl}teacher-form.html?jamiaId=${encodedJamiaName}&activeYear=${activeYear}`;
+    const monthIndex = currentReportPeriod.monthNum;   // 0–11
+    const yearNum    = currentReportPeriod.yearNum;    // e.g. 2025
+
+    const params = new URLSearchParams({
+        jamiaId:   jamiaName,
+        userId:    currentUser.uid,
+        activeYear: activeYear,
+        monthIndex: String(monthIndex),
+        reportYear: String(yearNum),
+    });
+
+    const link = `${window.location.origin}/teacher-form.html?${params.toString()}`;
 
     navigator.clipboard.writeText(link).then(() => {
-        showNotification(`Reporting link copied for Jamia: ${jamiaName}`);
+        const monthName = getMonthName(monthIndex);
+        showNotification(
+            `Reporting link copied for Jamia: ${jamiaName} (${monthName} ${yearNum})`
+        );
     }).catch(err => {
         console.error('Could not copy text: ', err);
         showNotification("Link copy karne mein error aayi, console dekhein.", true);
@@ -822,29 +845,45 @@
             
             // Delegation for Reporting Tab Clicks (Updated for Image instead of PDF)
             reportingContainer.addEventListener('click', (e) => {
-                // 1. Download Jamia Report (CSV)
-                if (e.target.closest('.download-jamia-report-btn')) {
-                    const jamiaName = e.target.closest('.download-jamia-report-btn').dataset.jamiaName;
-                    if (jamiaName) {
-                        downloadJamiaReportCSV(jamiaName); // CSV download
-                    }
-                }
-                // 2. Download Jamia Report (IMAGE - Replaced PDF) - NEW
-                if (e.target.closest('.download-jamia-image-btn')) {
-                     const jamiaName = e.target.closest('.download-jamia-image-btn').dataset.jamiaName;
-                     if (jamiaName) {
-                         downloadJamiaReportImage(jamiaName); // Image download
-                     }
-                 }
-                // 3. Download Teacher Report (Image)
-                 if (e.target.closest('.download-teacher-image-btn')) {
-                     const button = e.target.closest('.download-teacher-image-btn');
-                     const row = button.closest('tr.reporting-row'); // Get the specific row to identify the teacher
-                     if (row) {
-                         downloadTeacherConsolidatedImage(row.dataset.teacherId, row.dataset.teacherName, row.dataset.jamiaName);
-                     }
-                 }
-            });
+
+    // 0. Reporting Link (NEW)
+    if (e.target.closest('.reporting-link-btn')) {
+        const jamiaName = e.target.closest('.reporting-link-btn').dataset.jamiaName;
+        if (jamiaName) {
+            handleCreateReportLink(jamiaName);
+        }
+        return;
+    }
+
+    // 1. Download Jamia Report (CSV)
+    if (e.target.closest('.download-jamia-report-btn')) {
+        const jamiaName = e.target.closest('.download-jamia-report-btn').dataset.jamiaName;
+        if (jamiaName) {
+            downloadJamiaReportCSV(jamiaName);
+        }
+    }
+
+    // 2. Download Jamia Report (IMAGE)
+    if (e.target.closest('.download-jamia-image-btn')) {
+        const jamiaName = e.target.closest('.download-jamia-image-btn').dataset.jamiaName;
+        if (jamiaName) {
+            downloadJamiaReportImage(jamiaName);
+        }
+    }
+
+    // 3. Download Teacher Report (Image)
+    if (e.target.closest('.download-teacher-image-btn')) {
+        const button = e.target.closest('.download-teacher-image-btn');
+        const row = button.closest('tr.reporting-row');
+        if (row) {
+            downloadTeacherConsolidatedImage(
+                row.dataset.teacherId,
+                row.dataset.teacherName,
+                row.dataset.jamiaName
+            );
+        }
+    }
+});
             
             // Delegation for Monthly Munasib Image Download - NEW
             monthlyMunasibContainer.addEventListener('click', (e) => {
@@ -1956,17 +1995,22 @@
                             <div class="flex justify-between items-center w-full">
                                 <span class="urdu-font text-lg">${jamiaName}</span>
                                 <div class="flex gap-2">
-                                     <button type="button" class="download-jamia-image-btn bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
-                                         <i class="fas fa-file-image fa-sm pointer-events-none"></i> Image
-                                     </button>
-                                     <button type="button" class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
-                                         <i class="fas fa-file-csv fa-sm pointer-events-none"></i> CSV
-                                     </button>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                `;
+                     <button type="button"
+                             class="reporting-link-btn bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1"
+                             data-jamia-name="${jamiaName}">
+                         <i class="fas fa-link fa-sm pointer-events-none"></i> Link
+                     </button>
+                     <button type="button"
+                             class="download-jamia-image-btn bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1"
+                             data-jamia-name="${jamiaName}">
+                         <i class="fas fa-file-image fa-sm pointer-events-none"></i> Image
+                     </button>
+                     <button type="button"
+                             class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1"
+                             data-jamia-name="${jamiaName}">
+                         <i class="fas fa-file-csv fa-sm pointer-events-none"></i> CSV
+                     </button>
+                </div>
                 
                 // Iterate through teachers in this jamia
                 Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
@@ -3166,6 +3210,7 @@
     </script>
 </body>
 </html>
+
 
 
 
