@@ -689,9 +689,11 @@ const handleCreateReportLink = (jamiaName) => {
                                 teacherName: row.dataset.teacherName, 
                                 bookName: row.dataset.bookName, 
                                 monthlyTarget: monthlyTarget,
-                                pagesTaught: pagesTaught, // This is MONTHLY taught pages, stored in the DB
+                                pagesTaught: pagesTaught, // MONTHLY taught pages
                                 achievement: achievement,
-                                kaifiyat: kaifiyat 
+                                kaifiyat: kaifiyat,
+                                lastIbarat: row.dataset.lastIbarat || '',
+                                lastPageNo: row.dataset.lastPageNo || ''
                             }); // 🎯 FIX 1: Missing Semicolon (;) laga diya gaya hai.
                         }
                     });
@@ -864,7 +866,15 @@ const handleCreateReportLink = (jamiaName) => {
         }
     }
 
-    // 3. Download Teacher Report (Image)
+    // 3. Toggle Edit Mode for Pages Taught (per Jamia)
+    if (e.target.closest('.toggle-edit-pages-btn')) {
+        const jamiaName = e.target.closest('.toggle-edit-pages-btn').dataset.jamiaName;
+        if (jamiaName) {
+            toggleJamiaPagesEditing(jamiaName);
+        }
+    }
+
+    // 4. Download Teacher Report (Image)
     if (e.target.closest('.download-teacher-image-btn')) {
         const button = e.target.closest('.download-teacher-image-btn');
         const row = button.closest('tr.reporting-row');
@@ -1004,14 +1014,39 @@ const loadMonthlyReportData = async () => {
             const data = docSnap.data();
             // JamiaId, teacherId, periodId ke hisaab se key banayenge
             const key = `${data.jamiaId}::${data.teacherId}::${data.periodId}`;
-            const pages = parseInt(data.pagesTaught, 10) || 0;
 
-            // agar same key ke multiple submissions hain to add kar denge
-            const existing = teacherSubmissionsMap.get(key) || 0;
-            teacherSubmissionsMap.set(key, existing + pages);
+            const pages = parseInt(data.pagesTaught, 10) || 0;
+            const lastIbarat = data.lastIbarat || '';
+            const lastPageNo = (data.lastPageNo !== undefined && data.lastPageNo !== null)
+                ? data.lastPageNo
+                : '';
+
+            // Map ka value ab ek object hoga
+            let existing = teacherSubmissionsMap.get(key);
+            if (!existing) {
+                existing = {
+                    pagesTaught: 0,
+                    lastIbarat: '',
+                    lastPageNo: ''
+                };
+            }
+
+            // Pages ko add karte rahenge
+            existing.pagesTaught += pages;
+
+            // Agar latest submission me koi value hai to overwrite kar do
+            if (lastIbarat) {
+                existing.lastIbarat = lastIbarat;
+            }
+            if (lastPageNo !== '') {
+                existing.lastPageNo = lastPageNo;
+            }
+
+            teacherSubmissionsMap.set(key, existing);
         });
 
         console.log('Teacher submissions map:', teacherSubmissionsMap);
+
 
     } catch (error) {
         console.error(`Error fetching monthly data for ${activeYear}:`, error);
@@ -1976,8 +2011,11 @@ const loadMonthlyReportData = async () => {
                                 <th>Teacher</th>
                                 <th>Class</th>
                                 <th>Book</th>
+                                <th class="urdu-font">سبق کی آخری عبارت</th>
+                                <th>Page No.</th>
                                 <th>Total Pages (Sem)</th> 
-                                <th>Total Taught</th> <th>Monthly Target</th>
+                                <th>Total Taught</th>
+                                <th>Monthly Target</th>
                                 <th>Pages Taught</th>
                                 <th>Achievement %</th>
                                 <th>Kaifiyat (Status)</th>
@@ -2004,8 +2042,8 @@ const loadMonthlyReportData = async () => {
                 // Add Jamia Header Row (for flat view)
                 // Colspan is 10 (9 columns + 1 action)
                 finalHTML +=
-                    '<tr class="jamia-header" data-jamia-row="' + jamiaName + '">' +
-                    '  <td colspan="10" class="p-3">' +
+                    '<tr class="jamia-header" data-jamia-row="' + jamiaName + '" data-editing="false">' +
+                    '  <td colspan="12" class="p-3">' +
                     '    <div class="flex justify-between items-center w-full">' +
                     '      <span class="urdu-font text-lg">' + jamiaName + '</span>' +
                     '      <div class="flex gap-2">' +
@@ -2023,6 +2061,11 @@ const loadMonthlyReportData = async () => {
                     '                class="download-jamia-report-btn bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" ' +
                     '                data-jamia-name="' + jamiaName + '">' +
                     '          <i class="fas fa-file-csv fa-sm pointer-events-none"></i> CSV' +
+                    '        </button>' +
+                    '        <button type="button" ' +
+                    '                class="toggle-edit-pages-btn bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" ' +
+                    '                data-jamia-name="' + jamiaName + '">' +
+                    '          <i class="fas fa-pen fa-sm pointer-events-none"></i> Edit Pages' +
                     '        </button>' +
                     '      </div>' +
                     '    </div>' +
@@ -2048,12 +2091,12 @@ const loadMonthlyReportData = async () => {
 
                         // Pehle teacher-submissions se check karein
                         const submissionKey = `${jamiaName}::${teacher.id}::${period.id}`;
-                        let pagesFromSubmission = null;
+                        let submissionData = null;
                         if (teacherSubmissionsMap && teacherSubmissionsMap.has(submissionKey)) {
-                            pagesFromSubmission = teacherSubmissionsMap.get(submissionKey);
+                            submissionData = teacherSubmissionsMap.get(submissionKey);
                         }
 
-                        // Phir monthly_reports me saved data check karein (agar teacher-submissions nahi mila)
+                        // monthly_reports me saved data (fallback ke liye)
                         const savedEntry = monthlyReportData.find(
                             entry =>
                                 entry.periodId === period.id &&
@@ -2062,15 +2105,39 @@ const loadMonthlyReportData = async () => {
                         );
 
                         let pagesTaughtValue = 0;
+                        let lastIbarat = '';
+                        let lastPageNo = '';
 
-                        // Priority 1: teacher form ka data
-                        if (pagesFromSubmission !== null && pagesFromSubmission !== undefined) {
-                            pagesTaughtValue = parseInt(pagesFromSubmission, 10) || 0;
+                        // Priority 1: teacher-form ka data
+                        if (submissionData) {
+                            if (typeof submissionData.pagesTaught === 'number') {
+                                pagesTaughtValue = submissionData.pagesTaught;
                         }
-                        // Priority 2: saved monthly report se value lo
-else if (savedEntry && typeof savedEntry.pagesTaught === 'number') {
+    if (submissionData.lastIbarat) {
+        lastIbarat = submissionData.lastIbarat;
+    }
+    if (submissionData.lastPageNo !== undefined && submissionData.lastPageNo !== null && submissionData.lastPageNo !== '') {
+        lastPageNo = submissionData.lastPageNo;
+    }
+}
+
+// Priority 2: saved monthly report (agar teacher-form ka data nahi hai)
+if ((pagesTaughtValue === 0 || pagesTaughtValue === null || pagesTaughtValue === undefined)
+    && savedEntry && typeof savedEntry.pagesTaught === 'number') {
     pagesTaughtValue = savedEntry.pagesTaught;
 }
+
+if (!lastIbarat && savedEntry && savedEntry.lastIbarat) {
+    lastIbarat = savedEntry.lastIbarat;
+}
+if (!lastPageNo && savedEntry && savedEntry.lastPageNo !== undefined && savedEntry.lastPageNo !== null) {
+    lastPageNo = savedEntry.lastPageNo;
+}
+
+const safeLastIbarat = (lastIbarat || '').replace(/"/g, '&quot;');
+
+// Input me dikhane ke liye
+const pagesTaughtDisplay = pagesTaughtValue > 0 ? pagesTaughtValue : '';
 
 // Input me dikhane ke liye
 const pagesTaughtDisplay = pagesTaughtValue > 0 ? pagesTaughtValue : '';
@@ -2113,6 +2180,8 @@ let rowHtml = `
     data-teacher-name="${teacher.name}" 
     data-class-name="${period.className}"
     data-book-name="${period.bookName}" 
+    data-last-ibarat="${safeLastIbarat}"
+    data-last-page-no="${lastPageNo}"
     data-monthly-target="${monthlyTarget}"
     data-total-pages-sem="${totalPagesSem}" 
     data-pages-taught="${pagesTaughtDisplay}"
@@ -2123,11 +2192,13 @@ let rowHtml = `
     data-kaifiyat="${kaifiyat}">
     
     ${index === 0 ? 
-        `<td rowspan="${teacherPeriods.length}" class="urdu-font text-gray-800 font-semibold bg-blue-100/50">${teacher.name}</td>` : ''
+        `<td rowspan="${teacherPeriods.length}" class="urdu-font text-right text-gray-800 font-semibold bg-blue-100/50">${teacher.name}</td>` : ''
     }
     
     <td class="urdu-font">${period.className}</td>
     <td class="urdu-font">${period.bookName}</td>
+    <td class="urdu-font">${lastIbarat || '-'}</td>
+    <td>${lastPageNo || '-'}</td>
     <td class="font-medium">${totalPagesSem}</td>
     <td class="cumulative-taught-cell font-bold text-base text-center text-blue-700">
         ${initialCumulativeBeforeInput + currentMonthTaught}
@@ -2135,9 +2206,10 @@ let rowHtml = `
     <td class="font-medium">${monthlyTarget}</td>
     <td>
         <input type="number"
-               class="pages-taught-input w-24 p-2 border rounded-lg"
+               class="pages-taught-input w-24 p-2 border rounded-lg bg-gray-100"
                value="${pagesTaughtDisplay}"
-               min="0">
+               min="0"
+               disabled>
     </td>
     <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
     <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
@@ -2744,7 +2816,7 @@ let rowHtml = `
              const actionHeader = tableClone.querySelector('thead tr th:last-child');
              if (actionHeader) actionHeader.remove();
              
-             const pagesTaughtHeader = tableClone.querySelector('thead tr th:nth-last-child(2)'); 
+             const pagesTaughtHeader = tableClone.querySelector('thead tr th:nth-last-child(4)'); 
              if (pagesTaughtHeader) pagesTaughtHeader.textContent = 'Pages Taught (Monthly)'; 
              
              const tbody = tableClone.querySelector('tbody');
@@ -2809,13 +2881,13 @@ let rowHtml = `
                      Array.from(row.cells).forEach((cell, index) => {
                          let newCell;
                          
-                         if (index === 6) { // Pages Taught (Input Cell) - FIX APPLIED
+                         if (index === 8) { // Pages Taught (Input Cell)
                              const input = cell.querySelector('.pages-taught-input');
                              newCell = document.createElement('td');
                              newCell.textContent = input ? input.value : (row.dataset.pagesTaught || '0');
                              applyImageStyles(newCell);
                              newRow.appendChild(newCell);
-                         } else if (index === 9) { // Action Cell (Remove)
+                         } else if (index === 11) { // Action Cell (Remove)
                              return;
                          } else { // All other cells (including teacher name rowspan)
                              newCell = cell.cloneNode(true); // Clone contents
@@ -2871,6 +2943,30 @@ let rowHtml = `
              }
         };
 
+        // ⬇️ YAHAAN NAYA FUNCTION PASTE KARNA HAI
+        const toggleJamiaPagesEditing = (jamiaName) => {
+            const headerRow = reportingContainer.querySelector(`.jamia-header[data-jamia-row="${jamiaName}"]`);
+            if (!headerRow) return;
+
+            const currentlyEditing = headerRow.dataset.editing === 'true';
+            const newEditing = !currentlyEditing;
+            headerRow.dataset.editing = newEditing ? 'true' : 'false';
+
+            // Button text update
+            const editBtn = headerRow.querySelector('.toggle-edit-pages-btn');
+            if (editBtn) {
+                editBtn.textContent = newEditing ? 'Lock Pages' : 'Edit Pages';
+            }
+
+            // Is Jamia ke saare rows ke Pages Taught inputs enable / disable
+            reportingContainer
+                .querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"] .pages-taught-input`)
+                .forEach(input => {
+                    input.disabled = !newEditing;
+                    input.classList.toggle('bg-gray-100', !newEditing);
+                    input.classList.toggle('bg-white', newEditing);
+                });
+        };
 
         // Function to check if a string contains Urdu script
         const containsUrdu = (text) => {
@@ -3272,18 +3368,4 @@ let rowHtml = `
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
