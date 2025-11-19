@@ -1700,29 +1700,61 @@ if (!monthKeyForJaiza) {
       </div>
     `).join('');
 
-    // Type ke hisab se date / percentage enable/disable
-    jaizaFormContainer.querySelectorAll('.jaiza-type').forEach(selectElement => {
-      selectElement.addEventListener('change', (e) => {
-        const row = e.target.closest('.jaiza-row');
-        const dateInput = row.querySelector('.jaiza-date');
-        const percentageInput = row.querySelector('.jaiza-percentage');
-        const selectedValue = e.target.value;
+    const handleJaizaSubmit = async (e) => { 
+    e.preventDefault();
+    const filledJaizaat = [];
+    let validationFailed = false;
+    let validationMessage = "";
 
-        const isNahiHua = (selectedValue === 'Nahi Hua');
-        const isVisit   = (selectedValue === 'Visit');
+    document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
+         const name = row.querySelector('.font-semibold').textContent;
+         const typeSelect = row.querySelector('.jaiza-type');
+         const dateInput = row.querySelector('.jaiza-date');
+         const percentageInput = row.querySelector('.jaiza-percentage');
+         const selectedType = typeSelect.value;
 
-        dateInput.disabled       = isNahiHua;
-        percentageInput.disabled = isNahiHua || isVisit;
+         // Note: Maine yahan se woh galat "jaizaFormContainer..." wala code hata diya hai.
 
-        if (isNahiHua) {
-          dateInput.value = '';
-          percentageInput.value = '';
-        }
-        if (isVisit) {
-          percentageInput.value = '';
-        }
-      });
+         if (selectedType === 'Nahi Hua') { 
+             filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' }); 
+         } 
+         else if (selectedType === 'Visit') {
+             if (dateInput.value) { 
+                 filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' }); 
+             } 
+             else if (typeSelect.selectedIndex > 0 && !dateInput.disabled) { 
+                 validationFailed = true; 
+                 validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`; 
+             }
+         } else if (selectedType === 'Jaiza') {
+             if (dateInput.value && percentageInput.value) { 
+                 filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value }); 
+             } 
+             else if ((dateInput.value || percentageInput.value) && !dateInput.disabled && !percentageInput.disabled) { 
+                 validationFailed = true; 
+                 validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`; 
+             }
+         }
+     });
 
+    if (validationFailed) { showNotification(validationMessage, true); return; }
+    if (filledJaizaat.length === 0) { showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); return; }
+    
+    showLoader(true);
+    try {
+         await saveReportData({}); 
+         const docSnap = await getDoc(reportRef); 
+         const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
+         const existingNames = filledJaizaat.map(f => f.name);
+         const filteredExisting = existingData.filter(ex => !existingNames.includes(ex.name));
+         const mergedData = [...filteredExisting, ...filledJaizaat];
+         await updateDoc(reportRef, { jaizaReport: { status: 'Done', data: mergedData } }); 
+         showNotification("Jaiza report saved!"); 
+    } catch(error) {
+        console.error("Error updating Jaiza report:", error);
+        showNotification("Error updating Jaiza report.", true);
+    } finally { showLoader(false); }
+ };
       // initial trigger
       selectElement.dispatchEvent(new Event('change'));
     });
@@ -1995,165 +2027,6 @@ const getJaizaGrade = (p) => {
   if (p > 0)   return "کمزور";
   return "-";
 };
-
-async function loadJaizaSummaryForCurrentMonth() {
-  if (!summaryClassesEl || !summaryMsgEl) return;
-
-  const user = auth.currentUser;
-  if (!user) {
-    summaryMsgEl.textContent = "Summary dekhne ke liye login zaroori hai.";
-    summaryClassesEl.innerHTML = "";
-    return;
-  }
-
-  // ----- monthKey nikalna (2025-11 jaisa) -----
-  let monthKey = "";
-
-  const monthSelect = document.getElementById("monthSelect");
-  if (monthSelect && monthSelect.value) {
-    monthKey = monthSelect.value; // same jo upar Monthly Report ke liye use karte ho
-  }
-  if (!monthKey && window.selectedMonthKey) {
-    monthKey = window.selectedMonthKey;
-  }
-
-  if (!monthKey) {
-    summaryMsgEl.textContent = "Month select kiye bagair summary nahi dikh sakti.";
-    summaryClassesEl.innerHTML = "";
-    return;
-  }
-
-  summaryMsgEl.textContent = "Jaiza form ka data load ho raha hai...";
-  summaryClassesEl.innerHTML = "";
-
-  try {
-    const qRef = query(
-      collection(db, "jaiza_forms"),
-      where("createdBy", "==", user.uid),
-      where("monthKey", "==", monthKey)
-    );
-    const snap = await getDocs(qRef);
-
-    if (snap.empty) {
-      summaryMsgEl.textContent = "Is mahine ke liye koi Jaiza Form save nahi mila.";
-      summaryClassesEl.innerHTML = "";
-      return;
-    }
-
-    const docs = [];
-    snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
-
-    // ----- Jamia → Class wise grouping -----
-    const byJamia = {};
-    docs.forEach((d) => {
-      const jamia = d.jamiaId || "نامعلوم جامعہ";
-      if (!byJamia[jamia]) byJamia[jamia] = [];
-      byJamia[jamia].push(d);
-    });
-
-    let html = "";
-
-    Object.entries(byJamia).forEach(([jamiaName, classDocs]) => {
-      html += `
-        <div class="mb-4 border rounded-lg bg-white shadow-sm">
-          <div class="px-4 py-2 border-b font-semibold urdu-font">
-            ${jamiaName}
-          </div>
-          <div class="p-3 space-y-3">
-      `;
-
-      classDocs.sort((a,b) =>
-        (a.className || "").localeCompare(b.className || "", "ur")
-      );
-
-      classDocs.forEach((doc) => {
-        const classPerc = Number(doc.classPercentage ?? 0);
-        const classPercStr =
-          !isNaN(classPerc) && classPerc > 0 ? classPerc.toFixed(1) + "%" : "-";
-        const classGrade = !isNaN(classPerc) && classPerc > 0
-          ? getJaizaGrade(classPerc)
-          : "-";
-
-        const books = Array.isArray(doc.books) ? doc.books : [];
-
-        let rows = "";
-        books.forEach((b, idx) => {
-          const bp = Number(b.percentage ?? NaN);
-          const bpStr = !isNaN(bp) ? bp.toFixed(1) + "%" : "-";
-          rows += `
-            <tr class="border-b last:border-0">
-              <td class="px-2 py-1 text-xs urdu">${idx + 1}</td>
-              <td class="px-2 py-1 text-xs urdu">${b.teacherName || "-"}</td>
-              <td class="px-2 py-1 text-xs urdu">${b.bookName || "-"}</td>
-              <td class="px-2 py-1 text-xs text-center">${bpStr}</td>
-              <td class="px-2 py-1 text-xs urdu">${b.weakness || "-"}</td>
-            </tr>
-          `;
-        });
-
-        if (!rows) {
-          rows = `
-            <tr>
-              <td colspan="5" class="px-2 py-2 text-center text-xs text-gray-400 urdu">
-                Is class ke liye kitab ki detail nahi mili.
-              </td>
-            </tr>
-          `;
-        }
-
-        html += `
-          <div class="bg-slate-50 rounded-lg p-2 md:p-3">
-            <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
-              <div>
-                <div class="text-sm font-semibold urdu">
-                  Class: ${doc.className || "-"}
-                </div>
-                <div class="text-xs text-gray-500">
-                  Kul Talaba: ${doc.totalStudents || "-"},
-                  Haazir: ${doc.presentStudents || "-"}
-                </div>
-              </div>
-              <div class="text-right text-xs">
-                <div class="text-gray-500">Class %</div>
-                <div class="font-bold">
-                  ${classPercStr} ${classGrade !== "-" ? "(" + classGrade + ")" : ""}
-                </div>
-              </div>
-            </div>
-
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-right text-xs">
-                <thead class="bg-white">
-                  <tr>
-                    <th class="px-2 py-1 urdu">#</th>
-                    <th class="px-2 py-1 urdu">Ustad</th>
-                    <th class="px-2 py-1 urdu">Kitab</th>
-                    <th class="px-2 py-1 urdu">% (Kitab)</th>
-                    <th class="px-2 py-1 urdu">Kamzori</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rows}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        `;
-      });
-
-      html += `</div></div>`;
-    });
-
-    summaryClassesEl.innerHTML = html;
-    summaryMsgEl.textContent = ""; // upar ka message hata do
-
-  } catch (err) {
-    console.error("Jaiza Summary error:", err);
-    summaryMsgEl.textContent =
-      "Summary load karte waqt masla aaya, baad me dobara koshish karein.";
-    summaryClassesEl.innerHTML = "";
-  }
-}
       
         // ===================================
         //  UPDATED: renderTadrisTab (Reverse Logic & PDF Button)
@@ -3140,3 +3013,4 @@ jaizaFormContainer.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
     </script>
 </body>
 </html>
+
