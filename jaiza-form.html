@@ -185,26 +185,24 @@ const loadTeachingStructure = async (user) => {
   teachingMap = {};
   classList   = [];
 
-  if (!monthKey) return;
+  if (!monthKey || !user) return;
 
-  // monthKey se academic year nikal rahe hain (jaise 2025-10 → 2025-2026)
+  // monthKey se academic year (jaise 2025-11 → 2025-2026)
   const info = getMonthInfoFromKey(monthKey);
   if (!info) return;
-  const { academicYear } = info;   // example: "2025-2026"
+  const { academicYear } = info;
 
-  // helper: strings ko normalize karne ke liye
   const normalize = (val) =>
     (val || "")
       .toString()
       .trim()
       .toLowerCase()
-      .replace(/\s+/g, "")        // spaces hatao
-      .replace(/[_-]/g, "");      // _ aur - hatao
+      .replace(/\s+/g, "")
+      .replace(/[_-]/g, "");
 
   try {
-    // 👉 aapke screenshot ke mutabiq: karkardagiStructure / 2025-2026
-    const yearDocRef  = doc(db, "karkardagiStructure", academicYear);
-    const yearSnap    = await getDoc(yearDocRef);
+    const yearDocRef = doc(db, "karkardagiStructure", academicYear);
+    const yearSnap   = await getDoc(yearDocRef);
 
     if (!yearSnap.exists()) {
       console.warn("karkardagiStructure doc nahi mila:", academicYear);
@@ -218,33 +216,64 @@ const loadTeachingStructure = async (user) => {
       return;
     }
 
-    // 🔎 jamiaId param ko normalize karo
-    const normParam = normalize(jamiaId);
+    // 1️⃣ pehle USER ke hisaab se filter
+    const normUid = user.uid;
+    let userStructures = structures.filter((s) => {
+      const sUid =
+        s.userId ||
+        s.ownerUid ||
+        s.createdBy ||
+        s.uid;
+      return sUid === normUid;
+    });
 
-    // jis jamia ka jaiza chal raha hai uska structure dhoondhna
+    // agar kisi wajah se userId save nahi thi to fallback: sabhi structures
+    if (!userStructures.length) {
+      console.warn("is user ke naam se structure nahi mila, sabhi structures use kar rahe hain (fallback)");
+      userStructures = structures;
+    }
+
+    // 2️⃣ ab JAMIA ke hisaab se filter
+    const normParam = normalize(jamiaId);
     let targetJamia = null;
+
     if (normParam) {
-      targetJamia = structures.find((s) => {
-        const byId   = normalize(s.jamiaId);
-        const byName = normalize(s.jamiaName);
-        const byCode = normalize(s.code || s.shortName);
-        return (
-          (byId   && byId   === normParam) ||
-          (byName && byName === normParam) ||
-          (byCode && byCode === normParam)
-        );
+      targetJamia = userStructures.find((s) => {
+        const nId   = normalize(s.jamiaId);
+        const nName = normalize(s.jamiaName);
+        const nCode = normalize(s.code || s.shortName || s.centerName || s.jamia);
+
+        if (nId   && nId   === normParam) return true;
+        if (nName && nName === normParam) return true;
+        if (nCode && nCode === normParam) return true;
+
+        if (nName && (nName.includes(normParam) || normParam.includes(nName))) return true;
+        if (nId   && (nId.includes(normParam)   || normParam.includes(nId)))   return true;
+        if (nCode && (nCode.includes(normParam) || normParam.includes(nCode))) return true;
+
+        return false;
       });
     }
 
-    // agar exact match na mile to sirf warning dekar pehla record use karein
-    if (!targetJamia) {
-      console.warn("Exact jamia match nahi mila, pehla record use kar rahe hain");
-      targetJamia = structures[0];
+    // agar jamiaId se bhi exact nahi mil raha to pehla user-wala record le lo
+    if (!targetJamia && userStructures.length) {
+      console.warn("Exact jamia match nahi mila, is user ka pehla jamia use kar rahe hain");
+      targetJamia = userStructures[0];
     }
 
-    console.log("Selected Jamia for Jaiza:", targetJamia?.jamiaName || targetJamia?.jamiaId);
+    if (!targetJamia) {
+      console.warn("Koi bhi jamia structure nahi mila");
+      return;
+    }
 
-    const teachersArr = Array.isArray(targetJamia.teachers) ? targetJamia.teachers : [];
+    console.log(
+      "Selected Jamia for Jaiza (user filtered):",
+      targetJamia.jamiaName || targetJamia.jamiaId
+    );
+
+    const teachersArr = Array.isArray(targetJamia.teachers)
+      ? targetJamia.teachers
+      : [];
 
     teachersArr.forEach((t) => {
       const teacherName = t.name || t.teacherName || "";
@@ -266,8 +295,7 @@ const loadTeachingStructure = async (user) => {
 
     classList = Object.keys(teachingMap).sort();
 
-    // debug ke liye:
-    console.log("TeachingMap:", teachingMap);
+    console.log("TeachingMap (final):", teachingMap);
     console.log("ClassList:", classList);
   } catch (err) {
     console.error("loadTeachingStructure error:", err);
