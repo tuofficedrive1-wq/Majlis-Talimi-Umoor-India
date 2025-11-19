@@ -2594,33 +2594,59 @@ const getJaizaGrade = (p) => {
         
         // --- USER FORM SUBMIT HANDLERS ---
         const handleJaizaSubmit = async (e) => { 
-            e.preventDefault();
-            const filledJaizaat = [];
-            let validationFailed = false;
-            let validationMessage = "";
-            document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
-                 const name = row.querySelector('.font-semibold').textContent;
-                 const typeSelect = row.querySelector('.jaiza-type');
-                 const dateInput = row.querySelector('.jaiza-date');
-                 const percentageInput = row.querySelector('.jaiza-percentage');
-                 const selectedType = typeSelect.value;
-                const monthForUrl = monthKeyForJaiza || "";   // month key (jaise 2025-11)
+    e.preventDefault();
+    const filledJaizaat = [];
+    let validationFailed = false;
+    let validationMessage = "";
 
-jaizaFormContainer.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const jamiaName = btn.dataset.jamia || "";
-    if (!jamiaName) return;
+    // Har row ko check karke data collect karna
+    document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
+         const name = row.querySelector('.font-semibold').textContent;
+         const typeSelect = row.querySelector('.jaiza-type');
+         const dateInput = row.querySelector('.jaiza-date');
+         const percentageInput = row.querySelector('.jaiza-percentage');
+         const selectedType = typeSelect.value;
 
-    // yahan path adjust karo agar file kisi subfolder me hai
-    const url = `jaiza-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthForUrl)}`;
+         if (selectedType === 'Nahi Hua') { 
+             filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' }); 
+         } 
+         else if (selectedType === 'Visit') {
+             if (dateInput.value) { 
+                 filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' }); 
+             } 
+             else if (typeSelect.selectedIndex > 0 && !dateInput.disabled) { 
+                 validationFailed = true; 
+                 validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`; 
+             }
+         } else if (selectedType === 'Jaiza') {
+             if (dateInput.value && percentageInput.value) { 
+                 filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value }); 
+             } 
+             else if ((dateInput.value || percentageInput.value) && !dateInput.disabled && !percentageInput.disabled) { 
+                 validationFailed = true; 
+                 validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`; 
+             }
+         }
+     });
 
-    // new tab me kholna ho:
-    window.open(url, '_blank');
-
-    // agar isi tab me kholna ho to upar wali line hata kar ye use karo:
-    // window.location.href = url;
-  });
-});
+    if (validationFailed) { showNotification(validationMessage, true); return; }
+    if (filledJaizaat.length === 0) { showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); return; }
+    
+    showLoader(true);
+    try {
+         await saveReportData({}); 
+         const docSnap = await getDoc(reportRef); 
+         const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
+         const existingNames = filledJaizaat.map(f => f.name);
+         const filteredExisting = existingData.filter(ex => !existingNames.includes(ex.name));
+         const mergedData = [...filteredExisting, ...filledJaizaat];
+         await updateDoc(reportRef, { jaizaReport: { status: 'Done', data: mergedData } }); 
+         showNotification("Jaiza report saved!"); 
+    } catch(error) {
+        console.error("Error updating Jaiza report:", error);
+        showNotification("Error updating Jaiza report.", true);
+    } finally { showLoader(false); }
+ };
                  if (selectedType === 'Nahi Hua') { filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' }); } 
                  else if (selectedType === 'Visit') {
                      if (dateInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' }); } 
@@ -3013,4 +3039,5 @@ jaizaFormContainer.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
     </script>
 </body>
 </html>
+
 
