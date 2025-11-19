@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>تعلیمی جائزہ خلاصہ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @font-face {
+      font-family: 'Jameel Noori Nastaleeq';
+      src: url('https://cdn.jsdelivr.net/gh/font-to-width/jameel-noori-nastaleeq-regular@1.1/jameel-noori-nastaleeq-regular.woff2') format('woff2');
+      font-display: swap;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: #e5edf5;
+      font-size: 14px;
+    }
+    .urdu {
+      font-family: 'Jameel Noori Nastaleeq', system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-3 md:p-6">
+
+<!-- Loader -->
+<div id="loader" class="fixed inset-0 bg-gray-900/40 flex items-center justify-center hidden z-50">
+  <div class="w-10 h-10 border-4 border-gray-200 border-t-teal-500 rounded-full animate-spin"></div>
+</div>
+
+<div class="max-w-6xl mx-auto space-y-4">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold urdu">تعلیمی جائزہ خلاصہ</h1>
+      <p id="subtitle" class="text-sm md:text-base text-gray-600 mt-1"></p>
+    </div>
+    <div class="flex gap-2">
+      <a href="jaiza-form.html"
+         id="form-link"
+         class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm urdu">
+        ← جائزہ فارم
+      </a>
+      <a href="index.html"
+         class="px-3 py-1.5 rounded-lg bg-white shadow border border-gray-200 text-sm md:text-base">
+        ڈیش بورڈ
+      </a>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div id="error-box" class="hidden p-3 rounded-lg bg-red-100 text-red-700 text-sm urdu"></div>
+
+  <!-- Jamia overall summary -->
+  <div class="bg-sky-900 text-white rounded-xl shadow px-4 py-3 flex flex-wrap items-center gap-4 text-sm urdu">
+    <span class="font-semibold">جامعہ کا مجموعی فیصد:</span>
+    <span id="jamia-percent" class="font-bold text-2xl md:text-3xl bg-yellow-400 text-black px-3 py-1 rounded-lg">0</span>
+    <span class="font-semibold ml-4">درجہ کیفیت:</span>
+    <span id="jamia-grade" class="font-bold text-xl md:text-2xl px-3 py-1 rounded-lg bg-emerald-500">-</span>
+  </div>
+
+  <!-- Info -->
+  <div class="bg-white rounded-xl shadow p-3 md:p-4 text-sm text-gray-700 urdu leading-relaxed">
+    <p>
+      اس صفحہ پر اسی ماہ کے مکمل جائزہ فارم سے حاصل ہونے والے
+      <span class="font-semibold">کلاس وار، کتاب وار اور جامعہ کا مجموعی فیصد</span>
+      کا خلاصہ دکھایا جا رہا ہے، تاکہ کمزوریوں پر آسانی سے کام کیا جا سکے۔
+    </p>
+  </div>
+
+  <!-- Classes summary container -->
+  <div id="classes-container" class="space-y-4"></div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  getDocs
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+  authDomain: "data-f15ab.firebaseapp.com",
+  projectId: "data-f15ab",
+  storageBucket: "data-f15ab.appspot.com",
+  messagingSenderId: "449137002393",
+  appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+  measurementId: "G-1PHNJQWNPZ",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+const loader   = document.getElementById("loader");
+const subtitle = document.getElementById("subtitle");
+const errorBox = document.getElementById("error-box");
+const jamiaPercEl  = document.getElementById("jamia-percent");
+const jamiaGradeEl = document.getElementById("jamia-grade");
+const classesContainer = document.getElementById("classes-container");
+const formLink = document.getElementById("form-link");
+
+const showLoader = (v) => loader.classList.toggle("hidden", !v);
+const showError  = (msg) => { errorBox.textContent = msg; errorBox.classList.remove("hidden"); };
+
+const getGrade = (p) => {
+  if (p >= 80) return "ممتاز";
+  if (p >= 60) return "بہتر";
+  if (p >= 40) return "مناسب";
+  if (p > 0)   return "کمزور";
+  return "-";
+};
+
+// URL params
+const params   = new URLSearchParams(window.location.search);
+const jamiaId  = params.get("jamia") || "";
+const monthKey = params.get("month") || "";
+
+if (jamiaId && monthKey) {
+  subtitle.textContent = `جامعہ: ${decodeURIComponent(jamiaId)} • مہینہ: ${monthKey}`;
+  formLink.href = `jaiza-form.html?jamia=${encodeURIComponent(jamiaId)}&month=${encodeURIComponent(monthKey)}`;
+} else {
+  subtitle.textContent = "جامعہ اور مہینہ کی معلومات URL میں موجود نہیں۔";
+}
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    showError("لاگ اِن ضروری ہے، پہلے ڈیش بورڈ سے لاگ اِن کریں۔");
+    return;
+  }
+
+  if (!jamiaId || !monthKey) return;
+
+  showLoader(true);
+  try {
+    const qRef = query(
+      collection(db,"jaiza_forms"),
+      where("jamiaId","==",jamiaId),
+      where("monthKey","==",monthKey),
+      where("createdBy","==",user.uid)
+    );
+    const snap = await getDocs(qRef);
+
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+
+    if (!docs.length) {
+      showError("اس ماہ کے لئے کوئی جائزہ فارم محفوظ نہیں ملا۔");
+      showLoader(false);
+      return;
+    }
+
+    // Jamia overall % (classPercentage ka average)
+    const classPercs = docs
+      .map(d => Number((d.classPercentage ?? "").toString().replace("%","").trim()))
+      .filter(v => !isNaN(v));
+
+    if (classPercs.length) {
+      const sum = classPercs.reduce((a,b)=>a+b,0);
+      const avg = Math.round((sum / classPercs.length)*100)/100;
+      jamiaPercEl.textContent  = avg.toFixed(2);
+      jamiaGradeEl.textContent = getGrade(avg);
+    }
+
+    // Classes ko sort karke dikhana
+    docs.sort((a,b) => (a.className || "").localeCompare(b.className || "", "ur"));
+
+    docs.forEach(docData => {
+      const card = document.createElement("div");
+      card.className = "bg-white rounded-xl shadow p-3 md:p-4 space-y-3";
+
+      const classPerc = docData.classPercentage;
+      const classPercStr = classPerc != null ? `${classPerc.toFixed(1)}%` : "-";
+      const classGrade   = classPerc != null ? getGrade(classPerc) : "-";
+
+      card.innerHTML = `
+        <div class="flex flex-wrap justify-between items-center gap-2 border-b pb-2">
+          <div>
+            <h2 class="text-lg font-semibold urdu">${docData.className || "نامعلوم کلاس"}</h2>
+            <p class="text-xs text-gray-500 urdu">کل طلبہ: ${docData.totalStudents || "-"} | حاضر طلبہ: ${docData.presentStudents || "-"}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="text-center">
+              <div class="text-xs text-gray-600 urdu">کلاس کا فیصد</div>
+              <div class="font-bold text-lg bg-yellow-100 px-3 py-1 rounded-lg">${classPercStr}</div>
+            </div>
+            <div class="text-center">
+              <div class="text-xs text-gray-600 urdu">درجہ کیفیت</div>
+              <div class="font-bold text-base bg-emerald-100 px-3 py-1 rounded-lg urdu">${classGrade}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const books = Array.isArray(docData.books) ? docData.books : [];
+
+      const tableWrapper = document.createElement("div");
+      tableWrapper.className = "overflow-x-auto mt-2";
+
+      let rowsHtml = "";
+      books.forEach((b, idx) => {
+        const bPercStr = b.percentage != null ? `${b.percentage.toFixed(1)}%` : "-";
+        rowsHtml += `
+          <tr class="border-b last:border-0">
+            <td class="px-2 py-1 text-xs urdu">${idx+1}</td>
+            <td class="px-2 py-1 text-xs urdu">${b.teacherName || "-"}</td>
+            <td class="px-2 py-1 text-xs urdu">${b.bookName || "-"}</td>
+            <td class="px-2 py-1 text-xs text-center">${bPercStr}</td>
+            <td class="px-2 py-1 text-xs urdu">${b.weakness || "-"}</td>
+          </tr>
+        `;
+      });
+
+      if (!rowsHtml) {
+        rowsHtml = `
+          <tr><td colspan="5" class="px-2 py-2 text-center text-xs text-gray-400 urdu">
+            اس کلاس کے لئے کتابوں کی تفصیل محفوظ نہیں ملی۔
+          </td></tr>
+        `;
+      }
+
+      tableWrapper.innerHTML = `
+        <table class="min-w-full text-right text-xs md:text-sm">
+          <thead class="bg-slate-100">
+            <tr>
+              <th class="px-2 py-1 urdu">#</th>
+              <th class="px-2 py-1 urdu">استاذ</th>
+              <th class="px-2 py-1 urdu">کتاب</th>
+              <th class="px-2 py-1 urdu">% (کتاب)</th>
+              <th class="px-2 py-1 urdu">کمزور پہلو</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      `;
+
+      card.appendChild(tableWrapper);
+
+      // issues / suggestions
+      if (docData.issues || docData.suggestions) {
+        const notes = document.createElement("div");
+        notes.className = "grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-xs md:text-sm urdu";
+        notes.innerHTML = `
+          <div>
+            <div class="font-semibold mb-1">کمزوریاں اور مسائل:</div>
+            <div class="bg-red-50 border border-red-100 rounded-lg p-2 min-h-[40px]">
+              ${docData.issues || "—"}
+            </div>
+          </div>
+          <div>
+            <div class="font-semibold mb-1">حل اور تجاویز:</div>
+            <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-2 min-h-[40px]">
+              ${docData.suggestions || "—"}
+            </div>
+          </div>
+        `;
+        card.appendChild(notes);
+      }
+
+      classesContainer.appendChild(card);
+    });
+
+  } catch (err) {
+    console.error(err);
+    showError("خلاصہ لوڈ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
+  } finally {
+    showLoader(false);
+  }
+});
+</script>
+
+</body>
+</html>
