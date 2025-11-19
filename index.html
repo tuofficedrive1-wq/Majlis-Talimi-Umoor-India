@@ -1776,7 +1776,336 @@ if (!monthKeyForJaiza) {
     }
   }
 };
-        
+        / === Jaiza SUMMARY function ===
+const summaryMsgEl      = document.getElementById("jaiza-summary-msg");
+const summaryClassesEl  = document.getElementById("jaiza-summary-classes");
+
+const getJaizaGrade = (p) => {
+  if (p >= 80) return "ممتاز";
+  if (p >= 60) return "بہتر";
+  if (p >= 40) return "مناسب";
+  if (p > 0)   return "کمزور";
+  return "-";
+};
+
+async function loadJaizaSummaryForCurrentMonth() {
+  if (!summaryClassesEl || !summaryMsgEl) return;
+
+  const user = auth.currentUser;
+  if (!user) {
+    summaryMsgEl.textContent = "Summary dekhne ke liye login zaroori hai.";
+    summaryClassesEl.innerHTML = "";
+    return;
+  }
+
+  // ----- monthKey nikalna (2025-11 jaisa) -----
+  let monthKey = "";
+
+  const monthSelect = document.getElementById("monthSelect");
+  if (monthSelect && monthSelect.value) {
+    monthKey = monthSelect.value; // same jo upar Monthly Report ke liye use karte ho
+  }
+  if (!monthKey && window.selectedMonthKey) {
+    monthKey = window.selectedMonthKey;
+  }
+
+  if (!monthKey) {
+    summaryMsgEl.textContent = "Month select kiye bagair summary nahi dikh sakti.";
+    summaryClassesEl.innerHTML = "";
+    return;
+  }
+
+  summaryMsgEl.textContent = "Jaiza form ka data load ho raha hai...";
+  summaryClassesEl.innerHTML = "";
+
+  try {
+    const qRef = query(
+      collection(db, "jaiza_forms"),
+      where("createdBy", "==", user.uid),
+      where("monthKey", "==", monthKey)
+    );
+    const snap = await getDocs(qRef);
+
+    if (snap.empty) {
+      summaryMsgEl.textContent = "Is mahine ke liye koi Jaiza Form save nahi mila.";
+      summaryClassesEl.innerHTML = "";
+      return;
+    }
+
+    const docs = [];
+    snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
+
+    // ----- Jamia → Class wise grouping -----
+    const byJamia = {};
+    docs.forEach((d) => {
+      const jamia = d.jamiaId || "نامعلوم جامعہ";
+      if (!byJamia[jamia]) byJamia[jamia] = [];
+      byJamia[jamia].push(d);
+    });
+
+    let html = "";
+
+    Object.entries(byJamia).forEach(([jamiaName, classDocs]) => {
+      html += `
+        <div class="mb-4 border rounded-lg bg-white shadow-sm">
+          <div class="px-4 py-2 border-b font-semibold urdu-font">
+            ${jamiaName}
+          </div>
+          <div class="p-3 space-y-3">
+      `;
+
+      classDocs.sort((a,b) =>
+        (a.className || "").localeCompare(b.className || "", "ur")
+      );
+
+      classDocs.forEach((doc) => {
+        const classPerc = Number(doc.classPercentage ?? 0);
+        const classPercStr =
+          !isNaN(classPerc) && classPerc > 0 ? classPerc.toFixed(1) + "%" : "-";
+        const classGrade = !isNaN(classPerc) && classPerc > 0
+          ? getJaizaGrade(classPerc)
+          : "-";
+
+        const books = Array.isArray(doc.books) ? doc.books : [];
+
+        let rows = "";
+        books.forEach((b, idx) => {
+          const bp = Number(b.percentage ?? NaN);
+          const bpStr = !isNaN(bp) ? bp.toFixed(1) + "%" : "-";
+          rows += `
+            <tr class="border-b last:border-0">
+              <td class="px-2 py-1 text-xs urdu">${idx + 1}</td>
+              <td class="px-2 py-1 text-xs urdu">${b.teacherName || "-"}</td>
+              <td class="px-2 py-1 text-xs urdu">${b.bookName || "-"}</td>
+              <td class="px-2 py-1 text-xs text-center">${bpStr}</td>
+              <td class="px-2 py-1 text-xs urdu">${b.weakness || "-"}</td>
+            </tr>
+          `;
+        });
+
+        if (!rows) {
+          rows = `
+            <tr>
+              <td colspan="5" class="px-2 py-2 text-center text-xs text-gray-400 urdu">
+                Is class ke liye kitab ki detail nahi mili.
+              </td>
+            </tr>
+          `;
+        }
+
+        html += `
+          <div class="bg-slate-50 rounded-lg p-2 md:p-3">
+            <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+              <div>
+                <div class="text-sm font-semibold urdu">
+                  Class: ${doc.className || "-"}
+                </div>
+                <div class="text-xs text-gray-500">
+                  Kul Talaba: ${doc.totalStudents || "-"},
+                  Haazir: ${doc.presentStudents || "-"}
+                </div>
+              </div>
+              <div class="text-right text-xs">
+                <div class="text-gray-500">Class %</div>
+                <div class="font-bold">
+                  ${classPercStr} ${classGrade !== "-" ? "(" + classGrade + ")" : ""}
+                </div>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-right text-xs">
+                <thead class="bg-white">
+                  <tr>
+                    <th class="px-2 py-1 urdu">#</th>
+                    <th class="px-2 py-1 urdu">Ustad</th>
+                    <th class="px-2 py-1 urdu">Kitab</th>
+                    <th class="px-2 py-1 urdu">% (Kitab)</th>
+                    <th class="px-2 py-1 urdu">Kamzori</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `</div></div>`;
+    });
+      / === Jaiza SUMMARY function ===
+const summaryMsgEl      = document.getElementById("jaiza-summary-msg");
+const summaryClassesEl  = document.getElementById("jaiza-summary-classes");
+
+const getJaizaGrade = (p) => {
+  if (p >= 80) return "ممتاز";
+  if (p >= 60) return "بہتر";
+  if (p >= 40) return "مناسب";
+  if (p > 0)   return "کمزور";
+  return "-";
+};
+
+async function loadJaizaSummaryForCurrentMonth() {
+  if (!summaryClassesEl || !summaryMsgEl) return;
+
+  const user = auth.currentUser;
+  if (!user) {
+    summaryMsgEl.textContent = "Summary dekhne ke liye login zaroori hai.";
+    summaryClassesEl.innerHTML = "";
+    return;
+  }
+
+  // ----- monthKey nikalna (2025-11 jaisa) -----
+  let monthKey = "";
+
+  const monthSelect = document.getElementById("monthSelect");
+  if (monthSelect && monthSelect.value) {
+    monthKey = monthSelect.value; // same jo upar Monthly Report ke liye use karte ho
+  }
+  if (!monthKey && window.selectedMonthKey) {
+    monthKey = window.selectedMonthKey;
+  }
+
+  if (!monthKey) {
+    summaryMsgEl.textContent = "Month select kiye bagair summary nahi dikh sakti.";
+    summaryClassesEl.innerHTML = "";
+    return;
+  }
+
+  summaryMsgEl.textContent = "Jaiza form ka data load ho raha hai...";
+  summaryClassesEl.innerHTML = "";
+
+  try {
+    const qRef = query(
+      collection(db, "jaiza_forms"),
+      where("createdBy", "==", user.uid),
+      where("monthKey", "==", monthKey)
+    );
+    const snap = await getDocs(qRef);
+
+    if (snap.empty) {
+      summaryMsgEl.textContent = "Is mahine ke liye koi Jaiza Form save nahi mila.";
+      summaryClassesEl.innerHTML = "";
+      return;
+    }
+
+    const docs = [];
+    snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
+
+    // ----- Jamia → Class wise grouping -----
+    const byJamia = {};
+    docs.forEach((d) => {
+      const jamia = d.jamiaId || "نامعلوم جامعہ";
+      if (!byJamia[jamia]) byJamia[jamia] = [];
+      byJamia[jamia].push(d);
+    });
+
+    let html = "";
+
+    Object.entries(byJamia).forEach(([jamiaName, classDocs]) => {
+      html += `
+        <div class="mb-4 border rounded-lg bg-white shadow-sm">
+          <div class="px-4 py-2 border-b font-semibold urdu-font">
+            ${jamiaName}
+          </div>
+          <div class="p-3 space-y-3">
+      `;
+
+      classDocs.sort((a,b) =>
+        (a.className || "").localeCompare(b.className || "", "ur")
+      );
+
+      classDocs.forEach((doc) => {
+        const classPerc = Number(doc.classPercentage ?? 0);
+        const classPercStr =
+          !isNaN(classPerc) && classPerc > 0 ? classPerc.toFixed(1) + "%" : "-";
+        const classGrade = !isNaN(classPerc) && classPerc > 0
+          ? getJaizaGrade(classPerc)
+          : "-";
+
+        const books = Array.isArray(doc.books) ? doc.books : [];
+
+        let rows = "";
+        books.forEach((b, idx) => {
+          const bp = Number(b.percentage ?? NaN);
+          const bpStr = !isNaN(bp) ? bp.toFixed(1) + "%" : "-";
+          rows += `
+            <tr class="border-b last:border-0">
+              <td class="px-2 py-1 text-xs urdu">${idx + 1}</td>
+              <td class="px-2 py-1 text-xs urdu">${b.teacherName || "-"}</td>
+              <td class="px-2 py-1 text-xs urdu">${b.bookName || "-"}</td>
+              <td class="px-2 py-1 text-xs text-center">${bpStr}</td>
+              <td class="px-2 py-1 text-xs urdu">${b.weakness || "-"}</td>
+            </tr>
+          `;
+        });
+
+        if (!rows) {
+          rows = `
+            <tr>
+              <td colspan="5" class="px-2 py-2 text-center text-xs text-gray-400 urdu">
+                Is class ke liye kitab ki detail nahi mili.
+              </td>
+            </tr>
+          `;
+        }
+
+        html += `
+          <div class="bg-slate-50 rounded-lg p-2 md:p-3">
+            <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+              <div>
+                <div class="text-sm font-semibold urdu">
+                  Class: ${doc.className || "-"}
+                </div>
+                <div class="text-xs text-gray-500">
+                  Kul Talaba: ${doc.totalStudents || "-"},
+                  Haazir: ${doc.presentStudents || "-"}
+                </div>
+              </div>
+              <div class="text-right text-xs">
+                <div class="text-gray-500">Class %</div>
+                <div class="font-bold">
+                  ${classPercStr} ${classGrade !== "-" ? "(" + classGrade + ")" : ""}
+                </div>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-right text-xs">
+                <thead class="bg-white">
+                  <tr>
+                    <th class="px-2 py-1 urdu">#</th>
+                    <th class="px-2 py-1 urdu">Ustad</th>
+                    <th class="px-2 py-1 urdu">Kitab</th>
+                    <th class="px-2 py-1 urdu">% (Kitab)</th>
+                    <th class="px-2 py-1 urdu">Kamzori</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `</div></div>`;
+    });
+
+    summaryClassesEl.innerHTML = html;
+    summaryMsgEl.textContent = ""; // upar ka message hata do
+
+  } catch (err) {
+    console.error("Jaiza Summary error:", err);
+    summaryMsgEl.textContent =
+      "Summary load karte waqt masla aaya, baad me dobara koshish karein.";
+    summaryClassesEl.innerHTML = "";
+  }
+}
+      
         // ===================================
         //  UPDATED: renderTadrisTab (Reverse Logic & PDF Button)
         // ===================================
@@ -2762,6 +3091,7 @@ jaizaFormContainer.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
     </script>
 </body>
 </html>
+
 
 
 
