@@ -180,41 +180,81 @@ const getMonthInfoFromKey = (key) => {
 };
 
 /*************** Load teaching structure ***************/
+// Karkardagi structure se class–teacher–book ka data laane wala function
 const loadTeachingStructure = async (user) => {
   teachingMap = {};
   classList   = [];
 
-  // karkardagiStructure → 2025-2026 → structure
-  const yearDoc = doc(db, "karkardagiStructure", "2025-2026");
-  const yearSnap = await getDoc(yearDoc);
+  if (!monthKey) return;
 
-  if (!yearSnap.exists()) return;
+  // monthKey se academic year nikal rahe hain (jaise 2025-10 → 2025-2026)
+  const info = getMonthInfoFromKey(monthKey);
+  if (!info) return;
+  const { academicYear } = info;   // example: "2025-2026"
 
-  const data = yearSnap.data();
-  const teachers = data.structure?.teachers || [];
+  try {
+    // 👉 aapke screenshot ke mutabiq: karkardagiStructure / 2025-2026
+    const yearDocRef  = doc(db, "karkardagiStructure", academicYear);
+    const yearSnap    = await getDoc(yearDocRef);
 
-  teachers.forEach(t => {
-    const teacherName = t.name;
-    const periods = t.periods || [];
+    if (!yearSnap.exists()) {
+      console.warn("karkardagiStructure doc nahi mila:", academicYear);
+      return;
+    }
 
-    periods.forEach(p => {
-      const className = p.className;
-      const bookName  = p.bookName;
+    const data = yearSnap.data();
+    const structures = Array.isArray(data.structure) ? data.structure : [];
+    if (!structures.length) {
+      console.warn("structure array khaali hai");
+      return;
+    }
 
-      if (!className || !teacherName || !bookName) return;
+    // 👉 jis jamia ka jaiza chal raha hai uska structure dhoondhna
+    let targetJamia = null;
+    if (jamiaId) {
+      targetJamia = structures.find(s =>
+        (s.jamiaId && s.jamiaId === jamiaId) ||
+        (s.jamiaName &&
+          s.jamiaName.toString().toLowerCase() === jamiaId.toString().toLowerCase())
+      );
+    }
 
-      if (!teachingMap[className]) teachingMap[className] = [];
+    // agar exact match na mile to pehla element le lo (backup)
+    if (!targetJamia) {
+      console.warn("Jamia ka exact structure nahi mila, pehla record use kar rahe hain");
+      targetJamia = structures[0];
+    }
 
-      teachingMap[className].push({
-        teacherName,
-        bookName
+    const teachersArr = Array.isArray(targetJamia.teachers) ? targetJamia.teachers : [];
+
+    teachersArr.forEach(t => {
+      const teacherName = t.name || t.teacherName || "";
+      if (!teacherName) return;
+
+      const periods = Array.isArray(t.periods) ? t.periods : [];
+      periods.forEach(p => {
+        const className = p.className || p.darja || "";
+        const bookName  = p.bookName  || p.kitab || "";
+        if (!className || !bookName) return;
+
+        if (!teachingMap[className]) teachingMap[className] = [];
+        teachingMap[className].push({
+          teacherName,
+          bookName
+        });
       });
     });
-  });
 
-  classList = Object.keys(teachingMap);
+    classList = Object.keys(teachingMap).sort();
+
+    // debug ke liye:
+    console.log("TeachingMap:", teachingMap);
+    console.log("ClassList:", classList);
+  } catch (err) {
+    console.error("loadTeachingStructure error:", err);
+  }
 };
-
+  
 /*************** Book % from its 5 questions (uses حاضر طلبہ) ***************/
 const recalcSingleBookPercent = (bookCard, card) => {
   const presentStudents = Number(card.querySelector(".present-students")?.value || 0);
