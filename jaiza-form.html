@@ -192,6 +192,15 @@ const loadTeachingStructure = async (user) => {
   if (!info) return;
   const { academicYear } = info;   // example: "2025-2026"
 
+  // helper: strings ko normalize karne ke liye
+  const normalize = (val) =>
+    (val || "")
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "")        // spaces hatao
+      .replace(/[_-]/g, "");      // _ aur - hatao
+
   try {
     // 👉 aapke screenshot ke mutabiq: karkardagiStructure / 2025-2026
     const yearDocRef  = doc(db, "karkardagiStructure", academicYear);
@@ -209,30 +218,40 @@ const loadTeachingStructure = async (user) => {
       return;
     }
 
-    // 👉 jis jamia ka jaiza chal raha hai uska structure dhoondhna
+    // 🔎 jamiaId param ko normalize karo
+    const normParam = normalize(jamiaId);
+
+    // jis jamia ka jaiza chal raha hai uska structure dhoondhna
     let targetJamia = null;
-    if (jamiaId) {
-      targetJamia = structures.find(s =>
-        (s.jamiaId && s.jamiaId === jamiaId) ||
-        (s.jamiaName &&
-          s.jamiaName.toString().toLowerCase() === jamiaId.toString().toLowerCase())
-      );
+    if (normParam) {
+      targetJamia = structures.find((s) => {
+        const byId   = normalize(s.jamiaId);
+        const byName = normalize(s.jamiaName);
+        const byCode = normalize(s.code || s.shortName);
+        return (
+          (byId   && byId   === normParam) ||
+          (byName && byName === normParam) ||
+          (byCode && byCode === normParam)
+        );
+      });
     }
 
-    // agar exact match na mile to pehla element le lo (backup)
+    // agar exact match na mile to sirf warning dekar pehla record use karein
     if (!targetJamia) {
-      console.warn("Jamia ka exact structure nahi mila, pehla record use kar rahe hain");
+      console.warn("Exact jamia match nahi mila, pehla record use kar rahe hain");
       targetJamia = structures[0];
     }
 
+    console.log("Selected Jamia for Jaiza:", targetJamia?.jamiaName || targetJamia?.jamiaId);
+
     const teachersArr = Array.isArray(targetJamia.teachers) ? targetJamia.teachers : [];
 
-    teachersArr.forEach(t => {
+    teachersArr.forEach((t) => {
       const teacherName = t.name || t.teacherName || "";
       if (!teacherName) return;
 
       const periods = Array.isArray(t.periods) ? t.periods : [];
-      periods.forEach(p => {
+      periods.forEach((p) => {
         const className = p.className || p.darja || "";
         const bookName  = p.bookName  || p.kitab || "";
         if (!className || !bookName) return;
@@ -240,7 +259,7 @@ const loadTeachingStructure = async (user) => {
         if (!teachingMap[className]) teachingMap[className] = [];
         teachingMap[className].push({
           teacherName,
-          bookName
+          bookName,
         });
       });
     });
