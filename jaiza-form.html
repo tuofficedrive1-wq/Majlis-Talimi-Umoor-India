@@ -185,13 +185,15 @@ const loadTeachingStructure = async (user) => {
   teachingMap = {};
   classList   = [];
 
-  if (!monthKey || !user) return;
+  // user ya month na ho to kuch mat karo
+  if (!user || !monthKey) return;
 
   // monthKey se academic year (jaise 2025-11 → 2025-2026)
   const info = getMonthInfoFromKey(monthKey);
   if (!info) return;
   const { academicYear } = info;
 
+  // normalize helper (case, space, dash sab ignore)
   const normalize = (val) =>
     (val || "")
       .toString()
@@ -201,74 +203,61 @@ const loadTeachingStructure = async (user) => {
       .replace(/[_-]/g, "");
 
   try {
-    const yearDocRef = doc(db, "karkardagiStructure", academicYear);
-    const yearSnap   = await getDoc(yearDocRef);
+    // 👉 ab top-level karkardagiStructure nahi, users/{uid} se data read karenge
+    const userRef  = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
 
-    if (!yearSnap.exists()) {
-      console.warn("karkardagiStructure doc nahi mila:", academicYear);
+    if (!userSnap.exists()) {
+      console.warn("users doc nahi mila:", user.uid);
       return;
     }
 
-    const data = yearSnap.data();
-    const structures = Array.isArray(data.structure) ? data.structure : [];
+    const userData      = userSnap.data() || {};
+    const academicYears = userData.academicYears || {};
+    const yearData      = academicYears[academicYear];
+
+    if (!yearData) {
+      console.warn("is saal ka academicYear data nahi mila:", academicYear);
+      return;
+    }
+
+    const structures = Array.isArray(yearData.karkardagiStructure)
+      ? yearData.karkardagiStructure
+      : [];
+
     if (!structures.length) {
-      console.warn("structure array khaali hai");
+      console.warn("karkardagiStructure array khaali hai (is user ke liye)");
       return;
     }
 
-    // 1️⃣ pehle USER ke hisaab se filter
-    const normUid = user.uid;
-    let userStructures = structures.filter((s) => {
-      const sUid =
-        s.userId ||
-        s.ownerUid ||
-        s.createdBy ||
-        s.uid;
-      return sUid === normUid;
-    });
-
-    // agar kisi wajah se userId save nahi thi to fallback: sabhi structures
-    if (!userStructures.length) {
-      console.warn("is user ke naam se structure nahi mila, sabhi structures use kar rahe hain (fallback)");
-      userStructures = structures;
-    }
-
-    // 2️⃣ ab JAMIA ke hisaab se filter
     const normParam = normalize(jamiaId);
+
+    // jis jamia ka jaiza chal raha hai usko dhoondo
     let targetJamia = null;
 
     if (normParam) {
-      targetJamia = userStructures.find((s) => {
-        const nId   = normalize(s.jamiaId);
+      targetJamia = structures.find((s) => {
         const nName = normalize(s.jamiaName);
-        const nCode = normalize(s.code || s.shortName || s.centerName || s.jamia);
-
-        if (nId   && nId   === normParam) return true;
+        const nId   = normalize(s.jamiaId || s.code || s.shortName || "");
+        // exact
         if (nName && nName === normParam) return true;
-        if (nCode && nCode === normParam) return true;
-
+        if (nId   && nId   === normParam) return true;
+        // thoda loose (Bhandup vs BhandupMarkaz)
         if (nName && (nName.includes(normParam) || normParam.includes(nName))) return true;
         if (nId   && (nId.includes(normParam)   || normParam.includes(nId)))   return true;
-        if (nCode && (nCode.includes(normParam) || normParam.includes(nCode))) return true;
-
         return false;
       });
     }
 
-    // agar jamiaId se bhi exact nahi mil raha to pehla user-wala record le lo
-    if (!targetJamia && userStructures.length) {
-      console.warn("Exact jamia match nahi mila, is user ka pehla jamia use kar rahe hain");
-      targetJamia = userStructures[0];
-    }
-
+    // agar URL se exact jamia na mile to pehla jamia le lo (fallback)
     if (!targetJamia) {
-      console.warn("Koi bhi jamia structure nahi mila");
-      return;
+      console.warn("Exact jamia match nahi mila, is user ka pehla jamia use kar rahe hain");
+      targetJamia = structures[0];
     }
 
     console.log(
-      "Selected Jamia for Jaiza (user filtered):",
-      targetJamia.jamiaName || targetJamia.jamiaId
+      "Selected Jamia for Jaiza (user-based):",
+      targetJamia?.jamiaName || targetJamia?.jamiaId
     );
 
     const teachersArr = Array.isArray(targetJamia.teachers)
