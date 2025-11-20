@@ -456,602 +456,1250 @@
         </div>
     </div>
     
-    <script type="module">
-    // --- 1. IMPORTS & CONFIG ---
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
-    import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+   <script type="module">
+// ===============================
+// 1. IMPORTS & FIREBASE CONFIG
+// ===============================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import {
+  getAuth,
+  setPersistence,
+  browserSessionPersistence,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  query,
+  where,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+  getDocs,
+  orderBy,
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-      authDomain: "data-f15ab.firebaseapp.com",
-      projectId: "data-f15ab",
-      storageBucket: "data-f15ab.appspot.com", 
-      messagingSenderId: "449137002393",
-      appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
-      measurementId: "G-1PHNJQWNPZ"
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+  authDomain: "data-f15ab.firebaseapp.com",
+  projectId: "data-f15ab",
+  storageBucket: "data-f15ab.appspot.com",
+  messagingSenderId: "449137002393",
+  appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+  measurementId: "G-1PHNJQWNPZ",
+};
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2"; 
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-    // --- 2. GLOBAL VARIABLES ---
-    let currentUser = null;
-    let userProfileData = {};
-    let unsubscribeUserReports = null;
-    let allUserReports = [];
-    let dashboardChart = null; 
-    let testDashboardChart = null; 
-    let reportingDateInfo = {}; 
-    let selectedReportingDate = null; 
-    const authChannel = new BroadcastChannel('auth_channel');
+// Agar yeh UID mila to user ko admin.html bhejna hai
+const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
 
-    // --- 3. DOM ELEMENTS ---
-    const loader = document.getElementById('loader');
-    const loginView = document.getElementById('login-view');
-    const dashboardView = document.getElementById('dashboard-view'); 
-    const userView = document.getElementById('user-view');
-    const userInfo = document.getElementById('user-info');
-    const logoutBtn = document.getElementById('logout-btn');
-    
-    // Dashboard Elements
-    const dashUserName = document.getElementById('dash-user-name');
-    const dashUserZimmedari = document.getElementById('dash-user-zimmedari');
-    const dashTotalJamiaat = document.getElementById('dash-total-jamiaat');
-    const dashProfilePhoto = document.getElementById('dash-profile-photo');
-    const dashOverallStatusText = document.getElementById('dash-overall-status-text');
-    const dashReportStatusDiv = document.getElementById('dash-report-status');
-    const reportMonthSelector = document.getElementById('report-month-selector');
-    const dashCurrentMonthYear = document.getElementById('dash-current-month-year');
-    const summaryTable = document.getElementById('dashboard-summary-table');
-    const summaryTableBody = document.getElementById('dashboard-summary-table-body');
-    const summaryLoadingMsg = document.getElementById('summary-loading-msg');
+// ===============================
+// 2. GLOBAL STATE
+// ===============================
+let currentUser = null;
+let userProfileData = {};
+let reportingDateInfo = {};
+let selectedReportingDate = null;
+let reportRef = null;
 
-    const dashJaizaStatusText = document.getElementById('dash-jaiza-status-text');
-    const dashTadrisStatusText = document.getElementById('dash-tadris-status-text');
-    const dashTestStatusText = document.getElementById('dash-test-status-text');
-    const dashKkdStatusText = document.getElementById('dash-kkd-status-text');
+let allUserReports = [];
+let unsubscribeUserReports = null;
+let unsubscribeAnnouncements = null;
 
-    // User View Elements
-    const goToReportBtn = document.getElementById('go-to-report-btn');
-    const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
-    const userTabButtons = userView.querySelectorAll('.tab-btn');
-    
-    const jaizaFormJamiaSelect = document.getElementById('jaiza-form-jamia-select');
-    const openJaizaFormBtn = document.getElementById('open-jaiza-form-btn');
-    
-    // Academic Structure & Photo
-    const academicStructureSetup = document.getElementById('academic-structure-setup');
-    const academicStructureJson = document.getElementById('academic-structure-json');
-    const saveAcademicStructureBtn = document.getElementById('save-academic-structure-btn');
-    const photoModal = document.getElementById('photo-modal');
-    const photoUrlInput = document.getElementById('photo-url-input');
-    const savePhotoBtn = document.getElementById('save-photo-btn');
-    const closePhotoModalBtn = document.getElementById('close-photo-modal-btn');
-    const editPhotoBtn = document.getElementById('edit-photo-btn');
-    const dashEditPhotoBtn = document.getElementById('dash-edit-photo-btn');
-    const profilePhotoImg = document.getElementById('profile-details-photo');
+let dashboardChart = null;
+let testDashboardChart = null;
 
-    // --- 4. HELPER FUNCTIONS ---
-    const showLoader = (show) => loader.classList.toggle('hidden', !show);
-    
-    const showNotification = (message, isError = false) => {
-        const notification = document.getElementById('notification');
-        notification.textContent = message;
-        notification.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] transition-transform transform ${isError ? 'bg-red-500' : 'bg-emerald-600'}`;
-        notification.classList.remove('hidden', 'translate-x-full'); 
-        setTimeout(() => { notification.classList.add('translate-x-full'); }, 3000);
-    };
+// ===============================
+// 3. DOM ELEMENTS
+// ===============================
+const loader = document.getElementById("loader");
 
-    const convertGoogleDriveURL = (url) => {
-         if (!url || typeof url !== 'string' || (!url.startsWith('http') && !url.startsWith('/'))) { return 'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'; }
-         if (!url.includes('drive.google.com')) { return url; } 
-         const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-         return (match && match[1]) ? `https://drive.google.com/uc?export=view&id=${match[1]}` : url; 
-    };
+const loginView = document.getElementById("login-view");
+const dashboardView = document.getElementById("dashboard-view");
+const userView = document.getElementById("user-view");
+const userInfo = document.getElementById("user-info");
+const resetPasswordView = document.getElementById("reset-password-view");
 
-    const getReportingMonthYear = (targetDate = new Date()) => {
-        const month = targetDate.toLocaleString('default', { month: 'long' });
-        const year = targetDate.getFullYear();
-        const monthNum = targetDate.getMonth(); 
-        const yearNum = targetDate.getFullYear();
-        const monthInputFormat = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}`;
-        return { month, year: yearNum, monthNum, yearNum, monthInputFormat };
-    };
+const logoutBtn = document.getElementById("logout-btn");
 
-    const getReportingMonthYearFromInput = (input) => {
-         if (!input || typeof input !== 'string') return getReportingMonthYear();
-         const [yearStr, monthStr] = input.split('-');
-         const yearNum = parseInt(yearStr);
-         const monthNum = parseInt(monthStr) - 1; 
-         const date = new Date(yearNum, monthNum);
-         return getReportingMonthYear(date);
-    };
+// Login form
+const loginForm = document.getElementById("login-form");
+const loginEmailInput = document.getElementById("login-email");
+const loginPasswordInput = document.getElementById("login-password");
+const loginError = document.getElementById("login-error");
+const forgotPasswordLink = document.getElementById("forgot-password-link");
+const backToLoginLink = document.getElementById("back-to-login-link");
+const resetPasswordForm = document.getElementById("reset-password-form");
 
-    // --- 5. MISSING HANDLERS (Fixing the Errors) ---
+// Dashboard
+const dashUserName = document.getElementById("dash-user-name");
+const dashUserZimmedari = document.getElementById("dash-user-zimmedari");
+const dashTotalJamiaat = document.getElementById("dash-total-jamiaat");
+const dashProfilePhoto = document.getElementById("dash-profile-photo");
 
-    // Tab Switching Logic
-    const handleTabSwitch = (e) => {
-        const clickedBtn = e.target;
-        const targetTab = clickedBtn.dataset.tab;
+const dashJaizaStatusText = document.getElementById("dash-jaiza-status-text");
+const dashTadrisStatusText = document.getElementById("dash-tadris-status-text");
+const dashTestStatusText = document.getElementById("dash-test-status-text");
+const dashKkdStatusText = document.getElementById("dash-kkd-status-text");
+const dashOverallStatusText = document.getElementById("dash-overall-status-text");
+const dashReportStatusDiv = document.getElementById("dash-report-status");
 
-        if (!targetTab) return;
+const dashCurrentMonthYear = document.getElementById("dash-current-month-year");
+const reportMonthSelector = document.getElementById("report-month-selector");
 
-        // Deactivate all buttons
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.remove('active', 'border-emerald-600', 'text-emerald-600');
-            btn.classList.add('border-transparent', 'text-gray-500');
-        });
+const summaryTable = document.getElementById("dashboard-summary-table");
+const summaryTableBody = document.getElementById("dashboard-summary-table-body");
+const summaryLoadingMsg = document.getElementById("summary-loading-msg");
 
-        // Activate clicked button
-        clickedBtn.classList.add('active', 'border-emerald-600', 'text-emerald-600');
-        clickedBtn.classList.remove('border-transparent', 'text-gray-500');
+// User view navigation & tabs
+const goToReportBtn = document.getElementById("go-to-report-btn");
+const backToDashboardBtn = document.getElementById("back-to-dashboard-btn");
+const userTabButtons = userView
+  ? userView.querySelectorAll(".tab-btn")
+  : [];
+const userTabContents = userView
+  ? userView.querySelectorAll(".tab-content")
+  : [];
 
-        // Hide all content
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.add('hidden');
-        });
+// Jaiza / Test forms (user view)
+const jaizaForm = document.getElementById("jaiza-form");
+const jaizaPendingTitle = document.getElementById("jaiza-pending-title");
+const jaizaListContainer = document.getElementById("jaiza-list-container");
+const jaizaSaveBtn = document.getElementById("jaiza-save-btn");
 
-        // Show target content
-        const targetContent = document.getElementById(`${targetTab}-tab-content`);
-        if (targetContent) {
-            targetContent.classList.remove('hidden');
-        }
-    };
+const jaizaSummaryClasses = document.getElementById("jaiza-summary-classes");
+const jaizaSummaryMsg = document.getElementById("jaiza-summary-msg");
 
-    // KKD Link Logic
-    const handleKkdLinkClick = (e) => {
-        e.preventDefault();
-        // Open in new tab (replace with actual URL if needed)
-        window.open("kkd-report.html", "_blank"); 
-    };
+const testForm = document.getElementById("test-form");
+const testPendingTitle = document.getElementById("test-pending-title");
+const testListContainer = document.getElementById("test-list-container");
+const testSaveBtn = document.getElementById("test-save-btn");
+const testSubmittedTitle = document.getElementById("test-submitted-title");
+const testDisplayContainer = document.getElementById("test-display-table");
 
-    // Past Report Logic
-    const handlePastReportClick = (e) => {
-        if (e.target.classList.contains('view-past-report-btn')) {
-            const reportId = e.target.dataset.reportId;
-            const report = allUserReports.find(r => r.id === reportId);
-            if (report) {
-                // Logic to show modal (Simplified)
-                alert(`Report Date: ${report.month} ${report.year}\nData console mein dekhein.`);
-                console.log(report);
-            }
-        }
-    };
+// Jaiza inner tabs (form / summary)
+const jaizaInnerFormTab = document.getElementById("jaiza-inner-form-tab");
+const jaizaInnerSummaryTab = document.getElementById("jaiza-inner-summary-tab");
+const jaizaInnerFormPanel = document.getElementById("jaiza-inner-form-panel");
+const jaizaInnerSummaryPanel = document.getElementById(
+  "jaiza-inner-summary-panel"
+);
 
-    // Save Functions (Placeholders mainly, connected to Firebase logic)
-    const handleJaizaSubmit = async (e) => {
-        e.preventDefault();
-        showNotification("Jaiza form data is handled via the 'Jaiza Form' button.");
-    };
+// Academic structure & photo
+const academicStructureSetup = document.getElementById(
+  "academic-structure-setup"
+);
+const academicStructureJson = document.getElementById(
+  "academic-structure-json"
+);
+const saveAcademicStructureBtn = document.getElementById(
+  "save-academic-structure-btn"
+);
+const structureError = document.getElementById("structure-error");
 
-    const handleTestFormSubmit = async (e) => {
-        e.preventDefault();
-        showNotification("Test data saving...");
-        // Actual logic would go here
-        setTimeout(() => showNotification("Test data saved!"), 1000);
-    };
+const photoModal = document.getElementById("photo-modal");
+const photoUrlInput = document.getElementById("photo-url-input");
+const photoError = document.getElementById("photo-error");
+const savePhotoBtn = document.getElementById("save-photo-btn");
+const closePhotoModalBtn = document.getElementById("close-photo-modal-btn");
+const editPhotoBtn = document.getElementById("edit-photo-btn");
+const dashEditPhotoBtn = document.getElementById("dash-edit-photo-btn");
+const profilePhotoImg = document.getElementById("profile-details-photo");
 
-    // --- 6. JAIZA SUMMARY LOGIC ---
-    const getJaizaGrade = (p) => {
-        if (p >= 80) return "ممتاز";
-        if (p >= 60) return "بہتر";
-        if (p >= 40) return "مناسب";
-        if (p > 0)   return "کمزور";
-        return "-";
-    };
+// Past reports + filters + announcements
+const pastReportsList = document.getElementById("past-reports-list");
 
-    async function loadJaizaSummaryForCurrentMonth() {
-        const summaryClassesEl = document.getElementById("jaiza-summary-classes");
-        const summaryMsgEl = document.getElementById("jaiza-summary-msg");
-        
-        if (!summaryClassesEl || !summaryMsgEl) return;
+const filterMonthYearInput = document.getElementById("filter-month-year");
+const filterJamiaSelect = document.getElementById("filter-jamia");
+const filterSectionSelect = document.getElementById("filter-section");
+const filterSearchBtn = document.getElementById("filter-search-btn");
+const filterResultsContainer = document.getElementById(
+  "filter-results-container"
+);
+const filterResultsMsg = document.getElementById("filter-results-msg");
 
-        const user = auth.currentUser;
-        if (!user) {
-            summaryMsgEl.textContent = "Login required.";
-            return;
-        }
+const userAnnouncementsDiv = document.getElementById("user-announcements");
+const userLateReminderDiv = document.getElementById("user-late-reminder");
 
-        let monthKey = selectedReportingDate; 
-        if (!monthKey) {
-             summaryMsgEl.textContent = "Month not selected.";
-             return;
-        }
+// Jaiza external form open (setup tab)
+const jaizaFormJamiaSelect = document.getElementById(
+  "jaiza-form-jamia-select"
+);
+const openJaizaFormBtn = document.getElementById("open-jaiza-form-btn");
 
-        summaryMsgEl.textContent = "Loading...";
-        summaryClassesEl.innerHTML = "";
+// ===============================
+// 4. HELPER FUNCTIONS
+// ===============================
+const showLoader = (show) => {
+  if (!loader) return;
+  loader.classList.toggle("hidden", !show);
+};
 
-        try {
-            const qRef = query(
-                collection(db, "jaiza_forms"),
-                where("createdBy", "==", user.uid),
-                where("monthKey", "==", monthKey)
-            );
-            const snap = await getDocs(qRef);
+const showNotification = (message, isError = false) => {
+  const notification = document.getElementById("notification");
+  if (!notification) {
+    alert(message);
+    return;
+  }
+  notification.textContent = message;
+  notification.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] transition-transform transform ${
+    isError ? "bg-red-500" : "bg-emerald-600"
+  }`;
+  notification.classList.remove("hidden", "translate-x-full");
+  setTimeout(() => {
+    notification.classList.add("translate-x-full");
+  }, 3000);
+};
 
-            if (snap.empty) {
-                summaryMsgEl.textContent = "No Jaiza forms found for this month.";
-                return;
-            }
+// Google Drive image helper
+const convertGoogleDriveURL = (url) => {
+  if (
+    !url ||
+    typeof url !== "string" ||
+    (!url.startsWith("http") && !url.startsWith("/"))
+  ) {
+    return "https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo";
+  }
+  if (!url.includes("drive.google.com")) return url;
+  const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  return match && match[1]
+    ? `https://drive.google.com/uc?export=view&id=${match[1]}`
+    : url;
+};
 
-            const docs = [];
-            snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
+// Month helpers
+const getReportingMonthYear = (targetDate = new Date()) => {
+  const month = targetDate.toLocaleString("default", { month: "long" });
+  const yearNum = targetDate.getFullYear();
+  const monthNum = targetDate.getMonth(); // 0-based
+  const monthInputFormat = `${yearNum}-${String(monthNum + 1).padStart(
+    2,
+    "0"
+  )}`;
+  return { month, year: yearNum, monthNum, yearNum, monthInputFormat };
+};
 
-            // Group by Jamia
-            const byJamia = {};
-            docs.forEach((d) => {
-                const jamia = d.jamiaId || "Unknown";
-                if (!byJamia[jamia]) byJamia[jamia] = [];
-                byJamia[jamia].push(d);
-            });
+const getReportingMonthYearFromInput = (monthInputFormat) => {
+  if (!monthInputFormat) return getReportingMonthYear(new Date());
+  const [yearStr, monthStr] = monthInputFormat.split("-");
+  const yearNum = parseInt(yearStr, 10);
+  const monthNum = parseInt(monthStr, 10) - 1; // 0-based
+  const date = new Date(yearNum, monthNum, 1);
+  return getReportingMonthYear(date);
+};
 
-            let html = "";
-            Object.entries(byJamia).forEach(([jamiaName, classDocs]) => {
-                html += `<div class="mb-4 border rounded bg-white"><div class="p-2 font-bold bg-gray-100">${jamiaName}</div><div class="p-2 space-y-2">`;
-                
-                classDocs.forEach(doc => {
-                   html += `<div class="p-2 bg-slate-50 rounded border">
-                        <div class="flex justify-between">
-                            <span class="font-semibold">${doc.className || '-'}</span>
-                            <span class="font-bold text-emerald-600">${doc.classPercentage || 0}%</span>
-                        </div>
-                   </div>`; 
-                });
-                html += `</div></div>`;
-            });
+// Clean up when user logs out / changes
+const cleanupUserView = () => {
+  userProfileData = {};
+  allUserReports = [];
 
-            summaryMsgEl.textContent = "";
-            summaryClassesEl.innerHTML = html;
+  if (unsubscribeUserReports) {
+    unsubscribeUserReports();
+    unsubscribeUserReports = null;
+  }
+  if (unsubscribeAnnouncements) {
+    unsubscribeAnnouncements();
+    unsubscribeAnnouncements = null;
+  }
 
-        } catch (err) {
-            console.error(err);
-            summaryMsgEl.textContent = "Error loading summary.";
-        }
+  if (summaryTableBody) summaryTableBody.innerHTML = "";
+  if (summaryTable) summaryTable.classList.add("hidden");
+  if (summaryLoadingMsg) summaryLoadingMsg.classList.add("hidden");
+
+  if (pastReportsList) pastReportsList.innerHTML = "";
+  if (filterResultsContainer) filterResultsContainer.innerHTML = "";
+  if (userAnnouncementsDiv) userAnnouncementsDiv.innerHTML = "";
+  if (userLateReminderDiv) userLateReminderDiv.classList.add("hidden");
+};
+
+// ===============================
+// 5. AUTH HANDLERS
+// ===============================
+const handleLogin = async (email, password) => {
+  loginError.textContent = "";
+  showLoader(true);
+  try {
+    await setPersistence(auth, browserSessionPersistence);
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    console.error("Login error:", error);
+    loginError.textContent = "Login failed. Email/password check karein.";
+  } finally {
+    showLoader(false);
+  }
+};
+
+const handleLogout = async () => {
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.error("Logout error:", err);
+  }
+};
+
+// ===============================
+// 6. REPORT SAVE HELPER
+// ===============================
+const saveReportData = async (dataToSave) => {
+  if (!currentUser || !selectedReportingDate) {
+    throw new Error("User ya month select nahi hai");
+  }
+
+  const info = getReportingMonthYearFromInput(selectedReportingDate);
+  const { month, year, monthNum, yearNum } = info;
+  const academicYear =
+    monthNum >= 2 ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+  const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
+
+  reportRef = doc(db, "monthly_reports", reportId);
+
+  const finalData = {
+    ...dataToSave,
+    userId: currentUser.uid,
+    userEmail: currentUser.email,
+    month,
+    year,
+    academicYear,
+    createdAt: serverTimestamp(),
+  };
+
+  await setDoc(reportRef, finalData, { merge: true });
+};
+
+// ===============================
+// 7. JAIZA SUMMARY (INNER TAB)
+// ===============================
+const getJaizaGrade = (p) => {
+  if (p >= 80) return "ممتاز";
+  if (p >= 60) return "بہتر";
+  if (p >= 40) return "مناسب";
+  if (p > 0) return "کمزور";
+  return "-";
+};
+
+async function loadJaizaSummaryForCurrentMonth() {
+  if (!jaizaSummaryClasses || !jaizaSummaryMsg) return;
+
+  const user = auth.currentUser;
+  if (!user) {
+    jaizaSummaryMsg.textContent = "Login required.";
+    return;
+  }
+
+  let monthKey = selectedReportingDate;
+  if (!monthKey) {
+    jaizaSummaryMsg.textContent = "Month not selected.";
+    return;
+  }
+
+  jaizaSummaryMsg.textContent = "Loading...";
+  jaizaSummaryClasses.innerHTML = "";
+
+  try {
+    const qRef = query(
+      collection(db, "jaiza_forms"),
+      where("createdBy", "==", user.uid),
+      where("monthKey", "==", monthKey)
+    );
+    const snap = await getDocs(qRef);
+
+    if (snap.empty) {
+      jaizaSummaryMsg.textContent =
+        "Is mahine ke liye koi Jaiza form nahi mila.";
+      return;
     }
 
-    // --- 9. AUTH & INIT ---
-    const handleLogin = async (email, password) => {
-        showLoader(true);
-        try {
-            await setPersistence(auth, browserSessionPersistence);
-            await signInWithEmailAndPassword(auth, email, password);
-        } catch (error) {
-            document.getElementById('login-error').textContent = "Login Failed";
-        } finally {
-            showLoader(false);
-        }
-    };
+    const docs = [];
+    snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
 
-    const handleLogout = () => {
-         if (unsubscribeUserReports) unsubscribeUserReports();
-         signOut(auth);
-    }
-
-    document.getElementById('login-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        handleLogin(document.getElementById('login-email').value, document.getElementById('login-password').value);
+    const byJamia = {};
+    docs.forEach((d) => {
+      const jamia = d.jamiaId || "Unknown";
+      if (!byJamia[jamia]) byJamia[jamia] = [];
+      byJamia[jamia].push(d);
     });
-    if(logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
-    // Start App
-    onAuthStateChanged(auth, async user => {
-        showLoader(true);
-        currentUser = user;
-        if (user) {
-            const docSnap = await getDoc(doc(db, 'users', user.uid));
-            if (docSnap.exists()) userProfileData = docSnap.data();
-            
-            const now = new Date();
-            reportingDateInfo = getReportingMonthYear(now);
-            selectedReportingDate = reportingDateInfo.monthInputFormat;
-            if(reportMonthSelector) {
-                reportMonthSelector.value = selectedReportingDate;
-                reportMonthSelector.onchange = (e) => {
-                    selectedReportingDate = e.target.value;
-                    renderDashboard(allUserReports, selectedReportingDate);
-                };
-            }
+    let html = "";
+    Object.entries(byJamia).forEach(([jamiaName, classDocs]) => {
+      html += `<div class="mb-4 border rounded bg-white">
+        <div class="p-2 font-bold bg-gray-100">${jamiaName}</div>
+        <div class="p-2 space-y-2">`;
 
-            userInfo.classList.remove('hidden');
-            loginView.classList.add('hidden');
-            
-            if (user.uid === ADMIN_UID) {
-                window.location.href = 'admin.html';
-            } else {
-                dashboardView.classList.remove('hidden');
-                initUserView(user);
-            }
-        } else {
-            userInfo.classList.add('hidden');
-            loginView.classList.remove('hidden');
-            dashboardView.classList.add('hidden');
-        }
+      classDocs.forEach((doc) => {
+        html += `<div class="p-2 bg-slate-50 rounded border">
+          <div class="flex justify-between">
+            <span class="font-semibold">${doc.className || "-"}</span>
+            <span class="font-bold text-emerald-600">${
+              doc.classPercentage || 0
+            }% (${getJaizaGrade(Number(doc.classPercentage || 0))})</span>
+          </div>
+        </div>`;
+      });
+
+      html += `</div></div>`;
+    });
+
+    jaizaSummaryMsg.textContent = "";
+    jaizaSummaryClasses.innerHTML = html;
+  } catch (err) {
+    console.error("Jaiza summary error:", err);
+    jaizaSummaryMsg.textContent = "Error loading summary.";
+  }
+}
+
+// ===============================
+// 8. JAIZA INNER TABS (FORM / SUMMARY)
+// ===============================
+function setupJaizaInnerTabs() {
+  if (
+    !jaizaInnerFormTab ||
+    !jaizaInnerSummaryTab ||
+    !jaizaInnerFormPanel ||
+    !jaizaInnerSummaryPanel
+  )
+    return;
+
+  const activateTab = (target) => {
+    const isForm = target === "form";
+
+    if (isForm) {
+      jaizaInnerFormPanel.classList.remove("hidden");
+      jaizaInnerSummaryPanel.classList.add("hidden");
+
+      jaizaInnerFormTab.classList.add(
+        "border-emerald-600",
+        "text-emerald-700"
+      );
+      jaizaInnerFormTab.classList.remove(
+        "border-transparent",
+        "text-gray-500"
+      );
+
+      jaizaInnerSummaryTab.classList.remove(
+        "border-emerald-600",
+        "text-emerald-700"
+      );
+      jaizaInnerSummaryTab.classList.add(
+        "border-transparent",
+        "text-gray-500"
+      );
+    } else {
+      jaizaInnerFormPanel.classList.add("hidden");
+      jaizaInnerSummaryPanel.classList.remove("hidden");
+
+      jaizaInnerSummaryTab.classList.add(
+        "border-emerald-600",
+        "text-emerald-700"
+      );
+      jaizaInnerSummaryTab.classList.remove(
+        "border-transparent",
+        "text-gray-500"
+      );
+
+      jaizaInnerFormTab.classList.remove(
+        "border-emerald-600",
+        "text-emerald-700"
+      );
+      jaizaInnerFormTab.classList.add(
+        "border-transparent",
+        "text-gray-500"
+      );
+
+      loadJaizaSummaryForCurrentMonth();
+    }
+  };
+
+  jaizaInnerFormTab.addEventListener("click", () => activateTab("form"));
+  jaizaInnerSummaryTab.addEventListener("click", () => activateTab("summary"));
+
+  // Default state
+  activateTab("form");
+}
+
+// ===============================
+// 9. DASHBOARD RENDER
+// ===============================
+const renderDashboard = (reports, monthInputFormat) => {
+  const currentReportInfo = getReportingMonthYearFromInput(monthInputFormat);
+  const { month, year, monthNum, yearNum } = currentReportInfo;
+
+  if (dashCurrentMonthYear)
+    dashCurrentMonthYear.textContent = `${month} ${year}`;
+
+  const currentAcademicYear =
+    monthNum >= 2 ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+  const currentReportIdSimple = `${currentUser?.uid || ""}_${yearNum}_${monthNum}`;
+  const currentReportIdWithYear = `${currentUser?.uid || ""}_${currentAcademicYear}_${yearNum}_${monthNum}`;
+
+  const currentReport =
+    reports.find((r) => r.id === currentReportIdWithYear) ||
+    reports.find((r) => r.id === currentReportIdSimple) ||
+    {};
+
+  const jaizaDone = currentReport.jaizaReport?.status === "Done";
+  const tadrisDone = currentReport.tadrisRecording?.status === "Done";
+  const testDone = currentReport.monthlyTest?.status === "Done";
+  const kkdDone =
+    currentReport.karkardagiReport?.status === "Done" ||
+    currentReport.kkdReport?.status === "Done";
+
+  if (dashJaizaStatusText)
+    dashJaizaStatusText.textContent = jaizaDone ? "Done" : "Pending";
+  if (dashTadrisStatusText)
+    dashTadrisStatusText.textContent = tadrisDone ? "Done" : "Pending";
+  if (dashTestStatusText)
+    dashTestStatusText.textContent = testDone ? "Done" : "Pending";
+  if (dashKkdStatusText)
+    dashKkdStatusText.textContent = kkdDone ? "Done" : "Pending";
+
+  if (dashOverallStatusText && dashReportStatusDiv) {
+    if (jaizaDone && tadrisDone && testDone && kkdDone) {
+      dashOverallStatusText.textContent = "COMPLETE";
+      dashReportStatusDiv.className =
+        "p-4 rounded bg-green-100 text-green-800";
+    } else {
+      dashOverallStatusText.textContent = "PENDING";
+      dashReportStatusDiv.className =
+        "p-4 rounded bg-yellow-100 text-yellow-800";
+    }
+  }
+
+  // Simple summary table: sirf jamia list karein
+  if (summaryTableBody && summaryTable && summaryLoadingMsg) {
+    summaryTableBody.innerHTML = "";
+    const jamiaat = userProfileData.jamiaatList || [];
+
+    jamiaat.forEach((j) => {
+      summaryTableBody.innerHTML += `
+        <tr>
+          <td class="px-6 py-4 urdu-font">${j}</td>
+          <td class="px-6 py-4">-</td>
+          <td class="px-6 py-4">-</td>
+          <td class="px-6 py-4">-</td>
+          <td class="px-6 py-4">-</td>
+        </tr>`;
+    });
+
+    if (jamiaat.length > 0) {
+      summaryLoadingMsg.classList.add("hidden");
+      summaryTable.classList.remove("hidden");
+    } else {
+      summaryTable.classList.add("hidden");
+      summaryLoadingMsg.classList.remove("hidden");
+    }
+  }
+};
+
+// ===============================
+// 10. USER DASHBOARD (REPORT PAGE)
+// ===============================
+const renderUserDashboard = (reports, reportInfo) => {
+  const heading = document.getElementById("current-month-year");
+  if (heading) heading.textContent = `${reportInfo.month} ${reportInfo.year}`;
+
+  // Aage chal kar agar jaiza/test/tadris sections ke liye
+  // alag render functions hon to yahan call kar sakte ho.
+};
+
+// ===============================
+// 11. JAIZA & TEST SUBMIT HANDLERS
+// ===============================
+const handleJaizaSubmit = async (e) => {
+  e.preventDefault();
+  if (!jaizaListContainer) return;
+
+  const filledJaizaat = [];
+  let validationFailed = false;
+  let validationMessage = "";
+
+  jaizaListContainer.querySelectorAll(".jaiza-row").forEach((row) => {
+    const name = row.querySelector(".font-semibold")?.textContent || "";
+    const typeSelect = row.querySelector(".jaiza-type");
+    const dateInput = row.querySelector(".jaiza-date");
+    const percentageInput = row.querySelector(".jaiza-percentage");
+
+    if (!typeSelect || !dateInput || !percentageInput) return;
+
+    const selectedType = typeSelect.value;
+
+    if (selectedType === "Nahi Hua") {
+      filledJaizaat.push({
+        name,
+        date: "",
+        type: "Nahi Hua",
+        percentage: "",
+      });
+    } else if (selectedType === "Visit") {
+      if (dateInput.value) {
+        filledJaizaat.push({
+          name,
+          date: dateInput.value,
+          type: "Visit",
+          percentage: "",
+        });
+      } else if (typeSelect.selectedIndex > 0) {
+        validationFailed = true;
+        validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`;
+      }
+    } else if (selectedType === "Jaiza") {
+      if (dateInput.value && percentageInput.value) {
+        filledJaizaat.push({
+          name,
+          date: dateInput.value,
+          type: "Jaiza",
+          percentage: percentageInput.value,
+        });
+      } else if (dateInput.value || percentageInput.value) {
+        validationFailed = true;
+        validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`;
+      }
+    }
+  });
+
+  if (validationFailed) {
+    showNotification(validationMessage, true);
+    return;
+  }
+  if (filledJaizaat.length === 0) {
+    showNotification(
+      "Kam se kam ek Jamia ki detail fill karke save karein.",
+      true
+    );
+    return;
+  }
+
+  showLoader(true);
+  try {
+    await saveReportData({});
+    const snap = await getDoc(reportRef);
+    const existingData = snap.exists()
+      ? snap.data().jaizaReport?.data || []
+      : [];
+    const existingNames = filledJaizaat.map((f) => f.name);
+    const filteredExisting = existingData.filter(
+      (ex) => !existingNames.includes(ex.name)
+    );
+    const mergedData = [...filteredExisting, ...filledJaizaat];
+
+    await updateDoc(reportRef, { jaizaReport: { status: "Done", data: mergedData } });
+    showNotification("Jaiza report saved!");
+  } catch (err) {
+    console.error("Error saving Jaiza:", err);
+    showNotification("Error saving Jaiza report.", true);
+  } finally {
+    showLoader(false);
+  }
+};
+
+const handleTestFormSubmit = async (e) => {
+  e.preventDefault();
+  if (!testListContainer) return;
+
+  const filledTestData = [];
+  let validationFailed = false;
+  let validationMessage = "";
+
+  testListContainer.querySelectorAll(".test-row").forEach((row) => {
+    const name = row.querySelector(".font-semibold")?.textContent || "";
+    const statusSelect = row.querySelector(".test-status");
+    const monthInput = row.querySelector(".test-month");
+    const percentageInput = row.querySelector(".test-percentage");
+    const wajahTextarea = row.querySelector(".test-wajah");
+
+    if (!statusSelect || !monthInput || !percentageInput || !wajahTextarea)
+      return;
+
+    const selectedStatus = statusSelect.value;
+    if (!selectedStatus) return;
+
+    const newEntry = { name, status: selectedStatus };
+
+    if (selectedStatus === "Nahi Hua") {
+      if (wajahTextarea.value.trim()) {
+        newEntry.wajah = wajahTextarea.value.trim();
+        newEntry.month = "";
+        newEntry.percentage = "";
+        filledTestData.push(newEntry);
+      } else {
+        validationFailed = true;
+        validationMessage =
+          "Test 'Nahi Hua' ke liye Wajah likhna zaroori hai. (" + name + ")";
+      }
+    } else {
+      if (monthInput.value && percentageInput.value) {
+        newEntry.month = monthInput.value;
+        newEntry.percentage = percentageInput.value;
+        newEntry.wajah = "";
+        filledTestData.push(newEntry);
+      } else {
+        validationFailed = true;
+        validationMessage =
+          "Test 'Test Hua' ke liye Month aur Percentage dono zaroori hain. (" +
+          name +
+          ")";
+      }
+    }
+  });
+
+  if (validationFailed) {
+    showNotification(validationMessage, true);
+    return;
+  }
+  if (filledTestData.length === 0) {
+    showNotification(
+      "Kam se kam ek Jamia ki Test detail fill karein.",
+      true
+    );
+    return;
+  }
+
+  showLoader(true);
+  try {
+    await saveReportData({});
+    const snap = await getDoc(reportRef);
+    const existingReportData = snap.exists()
+      ? snap.data().monthlyTest?.data || []
+      : [];
+
+    const existingNames = filledTestData.map((f) => f.name);
+    const filteredExisting = existingReportData.filter(
+      (ex) => !existingNames.includes(ex.name)
+    );
+    const mergedData = [...filteredExisting, ...filledTestData];
+
+    await updateDoc(reportRef, {
+      monthlyTest: { status: "Done", data: mergedData },
+    });
+    showNotification("Test report saved!");
+  } catch (error) {
+    console.error("Error saving Test:", error);
+    showNotification("Error saving Test report.", true);
+  } finally {
+    showLoader(false);
+  }
+};
+
+// ===============================
+// 12. ANNOUNCEMENTS & LATE REMINDER
+// ===============================
+const renderUserAnnouncements = (docs) => {
+  if (!userAnnouncementsDiv) return;
+  if (!docs.length) {
+    userAnnouncementsDiv.innerHTML = "";
+    return;
+  }
+
+  userAnnouncementsDiv.innerHTML = docs
+    .map((d) => {
+      const data = d.data();
+      const date =
+        data.createdAt?.toDate().toLocaleDateString() || "Date N/A";
+      return `
+      <div class="announcement-box p-4 rounded-lg bg-yellow-50 border border-yellow-200 mb-2">
+        <h4 class="font-bold text-yellow-800 urdu-font">${data.message}</h4>
+        <p class="text-xs text-yellow-700 mt-1">Date: ${date}</p>
+      </div>`;
+    })
+    .join("");
+};
+
+const listenForAnnouncements = () => {
+  if (!userAnnouncementsDiv) return;
+  if (unsubscribeAnnouncements) unsubscribeAnnouncements();
+
+  const qRef = query(
+    collection(db, "announcements"),
+    orderBy("createdAt", "desc")
+  );
+  unsubscribeAnnouncements = onSnapshot(
+    qRef,
+    (snapshot) => {
+      renderUserAnnouncements(snapshot.docs);
+    },
+    (err) => console.error("Announcements error:", err)
+  );
+};
+
+const checkLateReportReminder = (reports) => {
+  if (!userLateReminderDiv || !currentUser) return;
+
+  const now = new Date();
+  const currentInfo = getReportingMonthYear(now);
+  const selectedInfo = getReportingMonthYearFromInput(
+    selectedReportingDate || currentInfo.monthInputFormat
+  );
+
+  // sirf tab reminder dikhao jab current month hi selected ho
+  if (
+    selectedInfo.yearNum !== currentInfo.yearNum ||
+    selectedInfo.monthNum !== currentInfo.monthNum
+  ) {
+    userLateReminderDiv.classList.add("hidden");
+    return;
+  }
+
+  const currentDay = now.getDate();
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
+  const prevMonthNum = lastMonthDate.getMonth();
+  const prevYearNum = lastMonthDate.getFullYear();
+  const prevAcademicYear =
+    prevMonthNum >= 2
+      ? `${prevYearNum}-${prevYearNum + 1}`
+      : `${prevYearNum - 1}-${prevYearNum}`;
+  const prevReportIdSimple = `${currentUser.uid}_${prevYearNum}_${prevMonthNum}`;
+  const prevReportIdWithYear = `${currentUser.uid}_${prevAcademicYear}_${prevYearNum}_${prevMonthNum}`;
+
+  const lastMonthReport = reports.find(
+    (r) => r.id === prevReportIdWithYear || r.id === prevReportIdSimple
+  );
+
+  const isComplete =
+    lastMonthReport &&
+    lastMonthReport.jaizaReport?.status === "Done" &&
+    lastMonthReport.tadrisRecording?.status === "Done" &&
+    lastMonthReport.monthlyTest?.status === "Done" &&
+    (lastMonthReport.karkardagiReport?.status === "Done" ||
+      lastMonthReport.kkdReport?.status === "Done");
+
+  if (currentDay > 5 && !isComplete) {
+    userLateReminderDiv.classList.remove("hidden");
+  } else {
+    userLateReminderDiv.classList.add("hidden");
+  }
+};
+
+// ===============================
+// 13. PAST REPORTS & FILTER
+// ===============================
+const renderPastReports = (reports) => {
+  if (!pastReportsList || !currentUser) return;
+
+  const { monthNum, yearNum } = getReportingMonthYearFromInput(
+    selectedReportingDate || getReportingMonthYear().monthInputFormat
+  );
+  const currentAcademicYear =
+    monthNum >= 2 ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+
+  const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`;
+  const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`;
+
+  const sorted = reports
+    .filter(
+      (r) => r.id !== currentReportIdSimple && r.id !== currentReportIdWithYear
+    )
+    .sort(
+      (a, b) =>
+        (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)
+    );
+
+  if (!sorted.length) {
+    pastReportsList.innerHTML =
+      '<p class="text-sm text-gray-500">Koi purani report nahi mili.</p>';
+    return;
+  }
+
+  pastReportsList.innerHTML = sorted
+    .map((r) => {
+      const created =
+        r.createdAt?.toDate().toLocaleDateString() || "Date N/A";
+      return `
+      <div class="p-4 bg-gray-50 rounded-lg border flex flex-col sm:flex-row justify-between sm:items-center text-center sm:text-left mb-2">
+        <div class="flex-grow">
+          <p class="font-semibold text-lg">${r.month} ${r.year}${
+        r.academicYear ? ` (${r.academicYear})` : ""
+      }</p>
+          <p class="text-sm text-gray-500">Submitted: ${created}</p>
+        </div>
+        <button class="mt-2 sm:mt-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm view-report-btn" data-report-id="${
+          r.id
+        }">
+          Details Dekhein
+        </button>
+      </div>`;
+    })
+    .join("");
+};
+
+const populateReportFilters = () => {
+  if (filterJamiaSelect && userProfileData.jamiaatList) {
+    filterJamiaSelect.innerHTML =
+      '<option value="All Jamiaat">All Jamiaat</option>';
+    userProfileData.jamiaatList.forEach((j) => {
+      filterJamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
+    });
+  }
+};
+
+const handleReportFilterSearch = () => {
+  if (!filterResultsContainer || !filterResultsMsg) return;
+  // Simple placeholder: sirf info text show
+  filterResultsMsg.textContent =
+    "Filter apply ho gaya hai. Detailed filtering logic abhi simple hai.";
+  filterResultsContainer.innerHTML = "";
+};
+
+// ===============================
+// 14. INIT USER VIEW (AFTER LOGIN)
+// ===============================
+const handleTabSwitch = (e) => {
+  const button = e.currentTarget;
+  const targetId = button.dataset.tab;
+
+  userTabButtons.forEach((b) => b.classList.remove("active-tab"));
+  userTabContents.forEach((sec) => sec.classList.add("hidden"));
+
+  button.classList.add("active-tab");
+  const target = document.getElementById(`${targetId}-tab-content`);
+  if (target) target.classList.remove("hidden");
+};
+
+const initUserView = (user) => {
+  currentUser = user;
+
+  // Dashboard <-> Report navigation
+  if (goToReportBtn) {
+    goToReportBtn.onclick = () => {
+      if (!selectedReportingDate) {
+        showNotification(
+          "Report fill karne ke liye pehle mahina select karein.",
+          true
+        );
+        return;
+      }
+      dashboardView.classList.add("hidden");
+      userView.classList.remove("hidden");
+      const info = getReportingMonthYearFromInput(selectedReportingDate);
+      renderUserDashboard(allUserReports, info);
+    };
+  }
+
+  if (backToDashboardBtn) {
+    backToDashboardBtn.onclick = () => {
+      userView.classList.add("hidden");
+      dashboardView.classList.remove("hidden");
+      renderDashboard(allUserReports, selectedReportingDate);
+    };
+  }
+
+  // Main tabs
+  userTabButtons.forEach((button) => {
+    if (button.dataset.tab) {
+      button.removeEventListener("click", handleTabSwitch);
+      button.addEventListener("click", handleTabSwitch);
+    }
+  });
+
+  // Jaiza inner tabs
+  setupJaizaInnerTabs();
+
+  // Photo modal logic (simple version)
+  const openPhotoModal = () => {
+    if (!photoModal) return;
+    photoUrlInput.value = userProfileData.photoURL || "";
+    photoError.textContent = "";
+    photoModal.classList.remove("hidden");
+  };
+  if (dashEditPhotoBtn) dashEditPhotoBtn.onclick = openPhotoModal;
+  if (editPhotoBtn) editPhotoBtn.onclick = openPhotoModal;
+  if (closePhotoModalBtn)
+    closePhotoModalBtn.onclick = () => photoModal.classList.add("hidden");
+  window.addEventListener("click", (event) => {
+    if (event.target === photoModal) photoModal.classList.add("hidden");
+  });
+
+  if (savePhotoBtn) {
+    savePhotoBtn.onclick = async () => {
+      const newUrl = photoUrlInput.value.trim();
+      photoError.textContent = "";
+      if (!newUrl) {
+        photoError.textContent = "URL empty nahi ho sakta.";
+        return;
+      }
+      if (!newUrl.startsWith("http") && !newUrl.startsWith("/")) {
+        photoError.textContent = "Valid URL daalein.";
+        return;
+      }
+      if (!currentUser) {
+        showNotification("User not logged in.", true);
+        return;
+      }
+      showLoader(true);
+      try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userDocRef, { photoURL: newUrl });
+        userProfileData.photoURL = newUrl;
+        const converted = convertGoogleDriveURL(newUrl);
+        if (profilePhotoImg) profilePhotoImg.src = converted;
+        if (dashProfilePhoto) dashProfilePhoto.src = converted;
+        photoModal.classList.add("hidden");
+        showNotification("Profile photo updated!");
+      } catch (err) {
+        console.error("Photo update error:", err);
+        photoError.textContent = "Error saving photo URL.";
+        showNotification("Failed to update photo.", true);
+      } finally {
         showLoader(false);
+      }
+    };
+  }
+
+  // Academic structure save
+  if (saveAcademicStructureBtn) {
+    saveAcademicStructureBtn.onclick = async () => {
+      const jsonInput = academicStructureJson.value.trim();
+      structureError.textContent = "";
+      if (!jsonInput) {
+        structureError.textContent = "JSON data empty nahi ho sakta.";
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonInput);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Data ko array hona chahiye.");
+        }
+      } catch (err) {
+        console.error("JSON error:", err);
+        structureError.textContent = `Invalid JSON: ${err.message}`;
+        return;
+      }
+      if (!currentUser) {
+        showNotification("User not logged in.", true);
+        return;
+      }
+      showLoader(true);
+      try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userDocRef, { academicStructure: parsed });
+        userProfileData.academicStructure = parsed;
+        if (academicStructureSetup)
+          academicStructureSetup.classList.add("hidden");
+        showNotification("Academic structure saved!");
+        renderDashboard(allUserReports, selectedReportingDate);
+      } catch (err) {
+        console.error("Structure save error:", err);
+        structureError.textContent = "Database error.";
+        showNotification("Failed to save structure.", true);
+      } finally {
+        showLoader(false);
+      }
+    };
+  }
+
+  // Load profile data into UI
+  if (userProfileData.name) {
+    if (dashUserName) dashUserName.textContent = userProfileData.name;
+    const converted = convertGoogleDriveURL(
+      userProfileData.photoURL ||
+        "https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo"
+    );
+    if (profilePhotoImg) profilePhotoImg.src = converted;
+    if (dashProfilePhoto) dashProfilePhoto.src = converted;
+  }
+
+  if (dashUserZimmedari) {
+    dashUserZimmedari.textContent = userProfileData.zimmedari || "-";
+  }
+  if (dashTotalJamiaat) {
+    dashTotalJamiaat.textContent = (userProfileData.jamiaatList || []).length;
+  }
+
+  // Jaiza Form external page open (setup tab)
+  if (jaizaFormJamiaSelect && openJaizaFormBtn) {
+    if (userProfileData.jamiaatList) {
+      jaizaFormJamiaSelect.innerHTML =
+        '<option value="">Jamia select karein</option>';
+      userProfileData.jamiaatList.forEach((name) => {
+        jaizaFormJamiaSelect.innerHTML += `<option value="${name}">${name}</option>`;
+      });
+    }
+
+    openJaizaFormBtn.onclick = () => {
+      const jamiaName = jaizaFormJamiaSelect.value;
+      if (!jamiaName) {
+        showNotification("Pehlay Jamia select karein.", true);
+        return;
+      }
+      if (!selectedReportingDate) {
+        showNotification("Report ka mahina select karein.", true);
+        return;
+      }
+      const url =
+        "jaiza-form.html?jamia=" +
+        encodeURIComponent(jamiaName) +
+        "&month=" +
+        encodeURIComponent(selectedReportingDate);
+      window.open(url, "_blank");
+    };
+  }
+
+  // Form submits
+  if (jaizaForm) {
+    jaizaForm.addEventListener("submit", handleJaizaSubmit);
+  }
+  if (testForm) {
+    testForm.addEventListener("submit", handleTestFormSubmit);
+  }
+
+  // Past reports click (details modal ki logic tumhari file me alag hogi,
+  // yahan sirf basic listener rakha hai)
+  if (pastReportsList) {
+    pastReportsList.addEventListener("click", (e) => {
+      const btn = e.target.closest(".view-report-btn");
+      if (!btn) return;
+      const reportId = btn.dataset.reportId;
+      console.log("View report details:", reportId);
+      showNotification(
+        "Report details modal ka code abhi simple rakha gaya hai.",
+        false
+      );
     });
+  }
 
-        const cleanupUserView = () => {
-            userProfileData = {};
-            if(academicStructureSetup) academicStructureSetup.classList.add('hidden'); 
-            if(dashUserName) dashUserName.textContent = 'Loading...';
-            if(dashOverallStatusText) dashOverallStatusText.textContent = 'Loading...';
-            if(summaryTableBody) summaryTableBody.innerHTML = '';
-            if(summaryTable) summaryTable.classList.add('hidden');
-            if(summaryLoadingMsg) summaryLoadingMsg.classList.remove('hidden');
-        };
+  // Filters
+  populateReportFilters();
+  if (filterSearchBtn) {
+    filterSearchBtn.addEventListener("click", handleReportFilterSearch);
+  }
 
-        // --- 9. USER VIEW INIT & EVENTS ---
-        const initUserView = (user) => { 
-            
-            // Navigation Buttons
-            goToReportBtn.addEventListener('click', () => {
-                if (!selectedReportingDate) {
-                    showNotification("Kripya report fill karne ke liye mahina select karein.", true);
-                    return;
-                }
-                dashboardView.classList.add('hidden');
-                userView.classList.remove('hidden');
-                const selectedInfo = getReportingMonthYearFromInput(selectedReportingDate);
-                renderUserDashboard(allUserReports, selectedInfo); 
-            });
-            
-            backToDashboardBtn.addEventListener('click', () => {
-                userView.classList.add('hidden');
-                dashboardView.classList.remove('hidden');
-                renderDashboard(allUserReports, selectedReportingDate); 
-            });
+  // Reports listener
+  const reportsRef = collection(db, "monthly_reports");
+  const qRef = query(reportsRef, where("userId", "==", user.uid));
 
-            // Event Listeners for Tabs (Fixed)
-            userTabButtons.forEach(button => {
-                if (button.dataset.tab) { 
-                    button.removeEventListener('click', handleTabSwitch); 
-                    button.addEventListener('click', handleTabSwitch);
-                } else if (button.id === 'kkd-tab-link') {
-                    button.removeEventListener('click', handleKkdLinkClick); 
-                    button.addEventListener('click', handleKkdLinkClick);
-                }
-            });
+  if (unsubscribeUserReports) {
+    unsubscribeUserReports();
+    unsubscribeUserReports = null;
+  }
 
-            // Past Report Click Listener
-             document.getElementById('past-reports-list').addEventListener('click', handlePastReportClick);
+  unsubscribeUserReports = onSnapshot(
+    qRef,
+    (snapshot) => {
+      allUserReports = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      renderDashboard(allUserReports, selectedReportingDate);
+      renderPastReports(allUserReports);
+      checkLateReportReminder(allUserReports);
+    },
+    (err) => {
+      console.error("User reports error:", err);
+      showNotification("Could not load reports.", true);
+      renderDashboard([], selectedReportingDate);
+    }
+  );
 
-            // Profile Photo & Academic Structure Listeners (Existed in original, keeping logic short for brevity but functional)
-            dashEditPhotoBtn.addEventListener('click', () => photoModal.classList.remove('hidden'));
-            editPhotoBtn.addEventListener('click', () => photoModal.classList.remove('hidden'));
-            closePhotoModalBtn.addEventListener('click', () => photoModal.classList.add('hidden'));
-            
-            savePhotoBtn.addEventListener('click', async () => {
-                 const newUrl = photoUrlInput.value.trim();
-                 if(newUrl && currentUser) {
-                     await updateDoc(doc(db, 'users', currentUser.uid), { photoURL: newUrl });
-                     userProfileData.photoURL = newUrl;
-                     dashProfilePhoto.src = convertGoogleDriveURL(newUrl);
-                     profilePhotoImg.src = convertGoogleDriveURL(newUrl);
-                     photoModal.classList.add('hidden');
-                 }
-            });
+  // Announcements
+  listenForAnnouncements();
+};
 
-            saveAcademicStructureBtn.addEventListener('click', async () => {
-                try {
-                    const parsed = JSON.parse(academicStructureJson.value);
-                    await updateDoc(doc(db, 'users', currentUser.uid), { academicStructure: parsed });
-                    userProfileData.academicStructure = parsed;
-                    academicStructureSetup.classList.add('hidden');
-                    showNotification("Saved!");
-                } catch(e) { structureError.textContent = "Invalid JSON"; }
-            });
+// ===============================
+// 15. MAIN APP INIT
+// ===============================
 
-            // Form Submits
-            document.getElementById('jaiza-form').addEventListener('submit', handleJaizaSubmit);
-            document.getElementById('test-form').addEventListener('submit', handleTestFormSubmit); 
-            
-            if (filterSearchBtn) {
-                 filterSearchBtn.addEventListener('click', handleReportFilterSearch);
-            }
+// Login form
+if (loginForm) {
+  loginForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    handleLogin(loginEmailInput.value, loginPasswordInput.value);
+  });
+}
+if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
 
-            // Load User Data
-            if (userProfileData.name) {
-                dashUserName.textContent = userProfileData.name;
-                profilePhotoImg.src = convertGoogleDriveURL(userProfileData.photoURL);
-                dashProfilePhoto.src = convertGoogleDriveURL(userProfileData.photoURL);
-                populateReportFilters();
-                
-                // Jaiza Select
-                if (jaizaFormJamiaSelect && userProfileData.jamiaatList) {
-                    jaizaFormJamiaSelect.innerHTML = '<option value="">Jamia select karein</option>';
-                    userProfileData.jamiaatList.forEach(name => {
-                        jaizaFormJamiaSelect.innerHTML += `<option value="${name}">${name}</option>`;
-                    });
-                }
-            }
+// (Password reset UI tumhari file me hai, yahan hum placeholder chhod rahe hain)
+if (forgotPasswordLink) {
+  forgotPasswordLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (loginView) loginView.classList.add("hidden");
+    if (resetPasswordView) resetPasswordView.classList.remove("hidden");
+  });
+}
+if (backToLoginLink) {
+  backToLoginLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (resetPasswordView) resetPasswordView.classList.add("hidden");
+    if (loginView) loginView.classList.remove("hidden");
+  });
+}
+if (resetPasswordForm) {
+  resetPasswordForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showNotification(
+      "Password reset ka pura flow abhi implement nahi kiya gaya.",
+      false
+    );
+  });
+}
 
-            // Setup Inner Tabs
-            setupJaizaInnerTabs();
+// Month selector change
+if (reportMonthSelector) {
+  reportMonthSelector.addEventListener("change", (e) => {
+    selectedReportingDate = e.target.value;
+    renderDashboard(allUserReports, selectedReportingDate);
+  });
+}
 
-            // Fetch Reports
-            const reportsRef = collection(db, 'monthly_reports');
-            const q = query(reportsRef, where("userId", "==", user.uid));
-            
-            if (unsubscribeUserReports) unsubscribeUserReports();
-            unsubscribeUserReports = onSnapshot(q, (snapshot) => {
-                allUserReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderDashboard(allUserReports, selectedReportingDate); 
-                checkLateReportReminder(allUserReports); 
-            });
-            listenForAnnouncements();
-        };
+// Auth state
+const initApp = () => {
+  showLoader(true);
+  onAuthStateChanged(auth, async (user) => {
+    cleanupUserView();
 
+    currentUser = user;
+    if (user) {
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        userProfileData = userDocSnap.exists() ? userDocSnap.data() : {};
+      } catch (err) {
+        console.error("Profile fetch error:", err);
+        userProfileData = {};
+      }
 
-        // --- 11. TAB RENDERERS ---
-        const renderJaizaTab = (currentReport) => {
-            const submittedJaizaat = currentReport.jaizaReport?.data || [];
-            const allJamiaat = userProfileData.jamiaatList || [];
-            const container = document.getElementById('jaiza-list-container');
-            const submittedContainer = document.getElementById('jaiza-display-table');
-            
-            // Pending List
-            const pending = allJamiaat.filter(name => !submittedJaizaat.some(s => s.name === name));
-            if(container) {
-                if(pending.length > 0) {
-                    document.getElementById('jaiza-save-btn').classList.remove('hidden');
-                    container.innerHTML = pending.map(name => `
-                        <div class="jaiza-row p-4 border rounded-lg bg-white shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
-                            <div class="font-semibold urdu-font">${name}</div>
-                            <input type="date" class="jaiza-date w-full p-2 border rounded">
-                            <select class="jaiza-type w-full p-2 border rounded"><option value="Jaiza">Jaiza</option><option value="Visit">Visit</option><option value="Nahi Hua">Nahi Hua</option></select>
-                            <button type="button" class="open-jaiza-form-btn bg-emerald-600 text-white px-3 py-2 rounded" data-jamia="${name}">Jaiza Form</button>
-                        </div>
-                    `).join('');
-                } else {
-                     document.getElementById('jaiza-save-btn').classList.add('hidden');
-                     container.innerHTML = '<p class="text-gray-500">All Done.</p>';
-                }
-            }
+      // Default: pichhla mahina select
+      const lastMonth = new Date();
+      lastMonth.setMonth(lastMonth.getMonth() - 1);
+      reportingDateInfo = getReportingMonthYear(lastMonth);
+      selectedReportingDate = reportingDateInfo.monthInputFormat;
 
-            // Attach Jaiza Form Button Listeners
-            document.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const jamia = e.target.dataset.jamia;
-                    const month = reportingDateInfo.monthInputFormat;
-                    window.open(`jaiza-form.html?jamia=${encodeURIComponent(jamia)}&month=${encodeURIComponent(month)}`, '_blank');
-                });
-            });
+      if (reportMonthSelector) {
+        reportMonthSelector.value = selectedReportingDate;
+      }
 
-            // Submitted Table
-            if(submittedContainer && submittedJaizaat.length > 0) {
-                let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr><th>Jamia</th><th>Type</th><th>%</th></tr></thead><tbody>`;
-                submittedJaizaat.forEach(j => { html += `<tr><td>${j.name}</td><td>${j.type}</td><td>${j.percentage||'-'}</td></tr>`; });
-                html += `</tbody></table>`;
-                submittedContainer.innerHTML = html;
-                document.getElementById('jaiza-submitted-title').classList.remove('hidden');
-            }
-        };
+      if (userInfo) userInfo.classList.remove("hidden");
+      if (loginView) loginView.classList.add("hidden");
+      if (resetPasswordView) resetPasswordView.classList.add("hidden");
 
-        const renderTadrisTab = (currentReport) => {
-            // Logic same as provided, ensuring IDs match
-            const container = document.getElementById('tadris-accordion-container');
-            if(container) container.innerHTML = ''; // Clear logic and re-render
-            // ... (Use your existing logic here, cleaned up)
-        };
+      if (user.uid === ADMIN_UID) {
+        showLoader(false);
+        window.location.href = "admin.html";
+        return;
+      }
 
-        const renderTestTab = (currentReport) => {
-             // Similar logic to Jaiza
-        };
+      if (dashboardView) dashboardView.classList.remove("hidden");
+      if (userView) userView.classList.add("hidden");
 
-        const renderPastReports = (reports) => {
-             const list = document.getElementById('past-reports-list');
-             if(!list) return;
-             list.innerHTML = reports.length ? reports.map(r => `
-                <div class="p-3 border rounded flex justify-between items-center">
-                    <span>${r.month} ${r.year}</span>
-                    <button class="view-past-report-btn bg-teal-500 text-white px-3 py-1 rounded" data-report-id="${r.id}">View</button>
-                </div>
-             `).join('') : 'No reports.';
-        };
+      initUserView(user);
+    } else {
+      reportingDateInfo = getReportingMonthYear(new Date());
+      if (userInfo) userInfo.classList.add("hidden");
+      if (loginView) loginView.classList.remove("hidden");
+      if (userView) userView.classList.add("hidden");
+      if (dashboardView) dashboardView.classList.add("hidden");
+      if (resetPasswordView) resetPasswordView.classList.add("hidden");
+    }
 
-
-        // --- 14. FILTER LOGIC ---
-        const populateReportFilters = () => {
-            if (filterJamiaSelect && userProfileData.jamiaatList) {
-                filterJamiaSelect.innerHTML = '<option value="All Jamiaat">All Jamiaat</option>';
-                userProfileData.jamiaatList.forEach(j => filterJamiaSelect.innerHTML += `<option value="${j}">${j}</option>`);
-            }
-        };
-
-        const handleReportFilterSearch = () => {
-            // Filter logic
-            showNotification("Filter Applied");
-        };
-
-        const listenForAnnouncements = () => {
-            // Announcement logic
-        };
-        
-        const checkLateReportReminder = (reports) => {
-            // Reminder logic
-        };
-
-        // --- 15. START ---
-        // Logins
-        document.getElementById('login-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleLogin(document.getElementById('login-email').value, document.getElementById('login-password').value);
-        });
-        if(logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-
-        // --- Password Reset ---
-        forgotPasswordLink.addEventListener('click', (e) => { /* ... */ });
-        backToLoginLink.addEventListener('click', (e) => { /* ... */ });
-        resetPasswordForm.addEventListener('submit', async (e) => { /* ... */ });
-
-
-        // --- MAIN APP LOGIC & ROUTING ---
-        const initApp = () => {
-             showLoader(true);
-             onAuthStateChanged(auth, async user => { 
-                if (unsubscribeUserReports) { unsubscribeUserReports(); unsubscribeUserReports = null; }
-                if (unsubscribeAnnouncements) { unsubscribeAnnouncements(); unsubscribeAnnouncements = null; }
-                cleanupUserView(); 
-
-                currentUser = user;
-                if (user) {
-                    try {
-                         const userDocRef = doc(db, 'users', user.uid);
-                         const userDocSnap = await getDoc(userDocRef);
-                         if (userDocSnap.exists()) {
-                             userProfileData = userDocSnap.data(); 
-                         } else { 
-                            console.error("User profile not found during auth check."); 
-                            userProfileData = {}; 
-                         }
-                     } catch (err) { 
-                        console.error("Error fetching user profile during auth:", err); 
-                        userProfileData = {}; 
-                    }
-                    
-                    // NAYA: Default reporting month pichhla mahina set karna (for convenience)
-                    const lastMonth = new Date();
-                    lastMonth.setMonth(lastMonth.getMonth() - 1);
-                    reportingDateInfo = getReportingMonthYear(lastMonth); 
-                    selectedReportingDate = reportingDateInfo.monthInputFormat;
-                    
-                    // Selector ko default value set karna
-                    if (reportMonthSelector) {
-                        reportMonthSelector.value = reportingDateInfo.monthInputFormat;
-                        reportMonthSelector.addEventListener('change', (e) => {
-                            selectedReportingDate = e.target.value;
-                            renderDashboard(allUserReports, selectedReportingDate); 
-                        });
-                    }
-
-                    userInfo.classList.remove('hidden');
-                    loginView.classList.add('hidden');
-                    resetPasswordView.classList.add('hidden'); 
-                                        
-                    if (user.uid === ADMIN_UID) {
-                        // Admin user: Redirect to admin.html
-                        showLoader(false);
-                        window.location.href = 'admin.html';
-                    } else {
-                        // Normal user: Initialize DASHBOARD view
-                        dashboardView.classList.remove('hidden'); 
-                        userView.classList.add('hidden'); 
-                        initUserView(user); 
-                        showLoader(false); 
-                    }
-                } else {
-                    reportingDateInfo = getReportingMonthYear(new Date()); 
-                    userInfo.classList.add('hidden');
-                    loginView.classList.remove('hidden');
-                    userView.classList.add('hidden');
-                    dashboardView.classList.add('hidden'); 
-                    resetPasswordView.classList.add('hidden'); 
-                    showLoader(false); 
-                }
-            });
-        };
+    showLoader(false);
+  });
+};
             
             // NAYA: Section Status Buttons listener
             document.querySelectorAll('.section-status-btn').forEach(button => {
@@ -3039,6 +3687,7 @@ if (_pastReportsBtnArea) {
     </script>
 </body>
 </html>
+
 
 
 
