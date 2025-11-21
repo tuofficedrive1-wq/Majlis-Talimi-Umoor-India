@@ -56,8 +56,16 @@
   <div class="bg-sky-900 text-white rounded-xl shadow px-4 py-3 flex flex-wrap items-center gap-4 text-sm urdu">
     <span class="font-semibold">جامعہ کا مجموعی فیصد:</span>
     <span id="jamia-percent" class="font-bold text-2xl md:text-3xl bg-yellow-400 text-black px-3 py-1 rounded-lg">0</span>
+
     <span class="font-semibold ml-4">درجہ کیفیت:</span>
     <span id="jamia-grade" class="font-bold text-xl md:text-2xl px-3 py-1 rounded-lg bg-emerald-500">-</span>
+
+    <!-- ✅ naya hissa: class aur kitab count -->
+    <span class="font-semibold ml-4">کل کلاسوں کا جائزہ:</span>
+    <span id="jamia-class-count" class="font-bold text-xl bg-indigo-500 px-3 py-1 rounded-lg">0</span>
+
+    <span class="font-semibold ml-4">کل کتابوں کا جائزہ:</span>
+    <span id="jamia-book-count" class="font-bold text-xl bg-fuchsia-500 px-3 py-1 rounded-lg">0</span>
   </div>
 
   <!-- Info -->
@@ -76,10 +84,19 @@
   <form id="jaiza-form" class="space-y-4">
     <div class="flex justify-between items-center">
       <h2 class="text-base md:text-lg font-semibold urdu">کلاس وار جائزہ</h2>
-      <button type="button" id="add-class-btn"
-              class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm urdu">
-        + نئی کلاس شامل کریں
-      </button>
+
+      <div class="flex items-center gap-2">
+        <!-- ✅ Update mode button (sirf jab purana data ho) -->
+        <button type="button" id="enable-edit-btn"
+                class="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm urdu hidden">
+          جائزہ اپ ڈیٹ کریں
+        </button>
+
+        <button type="button" id="add-class-btn"
+                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm urdu">
+          + نئی کلاس شامل کریں
+        </button>
+      </div>
     </div>
 
     <div id="classes-container" class="space-y-4"></div>
@@ -125,15 +142,18 @@ const auth = getAuth(app);
 const db   = getFirestore(app);
 
 /*************** DOM refs ***************/
-const loader           = document.getElementById("loader");
-const subtitle         = document.getElementById("subtitle");
-const errorBox         = document.getElementById("error-box");
-const successBox       = document.getElementById("success-box");
-const jamiaPercEl      = document.getElementById("jamia-percent");
-const jamiaGradeEl     = document.getElementById("jamia-grade");
-const classesContainer = document.getElementById("classes-container");
-const addClassBtn      = document.getElementById("add-class-btn");
-const formEl           = document.getElementById("jaiza-form");
+const loader             = document.getElementById("loader");
+const subtitle           = document.getElementById("subtitle");
+const errorBox           = document.getElementById("error-box");
+const successBox         = document.getElementById("success-box");
+const jamiaPercEl        = document.getElementById("jamia-percent");
+const jamiaGradeEl       = document.getElementById("jamia-grade");
+const jamiaClassCountEl  = document.getElementById("jamia-class-count");
+const jamiaBookCountEl   = document.getElementById("jamia-book-count");
+const classesContainer   = document.getElementById("classes-container");
+const addClassBtn        = document.getElementById("add-class-btn");
+const formEl             = document.getElementById("jaiza-form");
+const enableEditBtn      = document.getElementById("enable-edit-btn");
 
 const showLoader = (v) => loader.classList.toggle("hidden", !v);
 const showError  = (msg) => { errorBox.textContent = msg; errorBox.classList.remove("hidden"); };
@@ -158,6 +178,33 @@ let classCount  = 0;
 // className -> [{teacherName, bookName}, ...]
 let teachingMap = {};
 let classList   = [];
+let isEditMode  = true; // default: pehli dafa editable
+
+/*************** Form ko editable / read-only banane ka helper ***************/
+const setFormEditable = (isEditable) => {
+  const controls = formEl.querySelectorAll("input, select, textarea, button");
+
+  controls.forEach(el => {
+    // Update button ko kabhi disable na karein
+    if (el.id === "enable-edit-btn") return;
+
+    if (
+      el.tagName === "INPUT" ||
+      el.tagName === "SELECT" ||
+      el.tagName === "TEXTAREA" ||
+      el.type === "button" ||
+      el.type === "submit"
+    ) {
+      el.disabled = !isEditable;
+    }
+  });
+
+  if (!isEditable) {
+    formEl.classList.add("opacity-60");
+  } else {
+    formEl.classList.remove("opacity-60");
+  }
+};
 
 /*************** Helpers ***************/
 const getGrade = (p) => {
@@ -296,16 +343,26 @@ const recalcClassPercent = (card) => {
   classGradeInput.value = getGrade(avg);
 };
 
-/*************** Jamia overall % ***************/
+/*************** Jamia overall % + counts ***************/
 const recalcJamia = () => {
   const cards = classesContainer.querySelectorAll(".class-card");
   const percs = [];
+
+  let classCnt = cards.length;
+  let bookCnt  = 0;
+
   cards.forEach(card => {
+    const bCards = card.querySelectorAll(".book-card");
+    bookCnt += bCards.length;
+
     const pStr = card.querySelector(".class-percent")?.value;
     if (!pStr) return;
     const num = Number(pStr.replace("%","").trim());
     if (!isNaN(num)) percs.push(num);
   });
+
+  if (jamiaClassCountEl) jamiaClassCountEl.textContent = String(classCnt);
+  if (jamiaBookCountEl)  jamiaBookCountEl.textContent  = String(bookCnt);
 
   if (!percs.length) {
     jamiaPercEl.textContent  = "0";
@@ -474,7 +531,6 @@ const createBookCard = (card) => {
 
   if (totalStudentsInput) {
     totalStudentsInput.addEventListener("input", () => {
-      // total change doesn't affect formula, but recalc for safety
       const books = card.querySelectorAll(".book-card");
       books.forEach(b => recalcSingleBookPercent(b, card));
       recalcClassPercent(card);
@@ -582,6 +638,7 @@ const createClassCard = () => {
   const addBook = () => {
     const bCard = createBookCard(card);
     bookList.appendChild(bCard);
+    recalcJamia();
   };
   addBookBtn.addEventListener("click", addBook);
 
@@ -594,6 +651,7 @@ const createClassCard = () => {
 const addNewClassCard = () => {
   const card = createClassCard();
   classesContainer.appendChild(card);
+  recalcJamia();
 };
 
 /*************** Existing Jaiza load (prefill) ***************/
@@ -665,22 +723,22 @@ const loadExistingJaiza = async () => {
         const questionRows    = bCard.querySelectorAll(".question-row");
 
         // teacher ko set karein
-if (book.teacherName) {
-  teacherSelect.value = book.teacherName;
-  teacherSelect.dispatchEvent(new Event("change"));
-}
+        if (book.teacherName) {
+          teacherSelect.value = book.teacherName;
+          teacherSelect.dispatchEvent(new Event("change"));
+        }
 
-if (book.bookName) {
-  bookSelect.value = book.bookName;
-}
+        if (book.bookName) {
+          bookSelect.value = book.bookName;
+        }
 
-if (weaknessInput) {
-  weaknessInput.value = book.weakness || "";
-}
+        if (weaknessInput) {
+          weaknessInput.value = book.weakness || "";
+        }
 
-if (typeof book.percentage === "number") {
-  percInput.value = book.percentage.toFixed(1) + "%";
-}
+        if (typeof book.percentage === "number") {
+          percInput.value = book.percentage.toFixed(1) + "%";
+        }
 
         const qs = book.questions || [];
         questionRows.forEach((row, idx) => {
@@ -698,6 +756,13 @@ if (typeof book.percentage === "number") {
     }
 
     recalcJamia();
+
+    // ✅ existing data mila: form ko read-only rakho, Update button show karo
+    isEditMode = false;
+    setFormEditable(false);
+    if (enableEditBtn) {
+      enableEditBtn.classList.remove("hidden");
+    }
 
   } catch (err) {
     console.error(err);
@@ -736,6 +801,15 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 addClassBtn.addEventListener("click", () => addNewClassCard());
+
+/*************** Update button: editable mode on ***************/
+if (enableEditBtn) {
+  enableEditBtn.addEventListener("click", () => {
+    isEditMode = true;
+    setFormEditable(true);
+    enableEditBtn.classList.add("hidden");
+  });
+}
 
 /*************** Submit → save in Firestore ***************/
 formEl.addEventListener("submit", async (e) => {
@@ -872,6 +946,14 @@ formEl.addEventListener("submit", async (e) => {
     await Promise.all(addPromises);
 
     showSuccess("تعلیمی جائزہ کامیابی کے ساتھ محفوظ ہو گیا۔");
+
+    // ✅ save ke baad phir se view-only mode
+    isEditMode = false;
+    setFormEditable(false);
+    if (enableEditBtn) {
+      enableEditBtn.classList.remove("hidden");
+    }
+
   } catch(err) {
     console.error(err);
     showError("ڈیٹا محفوظ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
