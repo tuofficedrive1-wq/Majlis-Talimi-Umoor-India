@@ -185,38 +185,64 @@ const loadTeachingStructure = async (user) => {
   classList   = [];
 
   const info = getMonthInfoFromKey(monthKey);
-  if (!info) return;
-  const { yearNum, monthNum, academicYear } = info;
-
-  let reportId = `${user.uid}_${academicYear}_${yearNum}_${monthNum}`;
-  let ref      = doc(db, "monthly_reports", reportId);
-  let snap     = await getDoc(ref);
-
-  if (!snap.exists()) {
-    const simpleId = `${user.uid}_${yearNum}_${monthNum}`;
-    ref  = doc(db, "monthly_reports", simpleId);
-    snap = await getDoc(ref);
+  if (!info) {
+    showError("مہینے کا فارمیٹ درست نہیں (YYYY-MM).");
+    return;
   }
-  if (!snap.exists()) return;
+  const { academicYear } = info;
 
-  const data = snap.data();
-  let arr = [];
-  if (data.setupStructure && Array.isArray(data.setupStructure.data)) {
-    arr = data.setupStructure.data;
-  } else if (data.karkardgiReport && Array.isArray(data.karkardgiReport.data)) {
-    arr = data.karkardgiReport.data;
+  try {
+    // users collection se academicYears + karkardagiStructure lena
+    const userDocRef  = doc(db, "users", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+
+    if (!userDocSnap.exists()) {
+      showError("یوزر پروفائل نہیں ملا، پہلے کارکردگی والا سیٹ اپ مکمل کریں۔");
+      return;
+    }
+
+    const userData     = userDocSnap.data() || {};
+    const years        = userData.academicYears || {};
+    const yearData     = years[academicYear];
+
+    if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
+      showError("اس تعلیمی سال کے لیے کارکردگی کا سیٹ اپ نہیں ملا، پہلے Karkardagi Setup مکمل کریں۔");
+      return;
+    }
+
+    const jamiaName = decodeURIComponent(jamiaId || "");
+
+    // Sirf current jamia ka structure use karna
+    const jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
+
+    if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
+      showError("اس جامعہ کے لیے کارکردگی سیٹ اپ خالی ہے، اس لیے کلاس/استاذ/کتاب نہیں مل رہیں۔");
+      return;
+    }
+
+    // teacher + unke periods (class + book) ko map me daalna
+    (jamiaStruct.teachers || []).forEach(t => {
+      const teacherName = t.name || t.teacherName || t.ustad || "";
+      (t.periods || []).forEach(p => {
+        const className = p.className || p.class || p.darja || "";
+        const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
+        if (!className || !teacherName || !bookName) return;
+
+        if (!teachingMap[className]) teachingMap[className] = [];
+        teachingMap[className].push({ teacherName, bookName });
+      });
+    });
+
+    classList = Object.keys(teachingMap).sort();
+
+    if (!classList.length) {
+      showError("اس جامعہ کے لیے کسی بھی کلاس / کتاب کا پیریڈ سیٹ نہیں کیا گیا، اس لیے dropdown خالی ہیں۔");
+    }
+
+  } catch (err) {
+    console.error(err);
+    showError("کارکردگی سیٹ اپ لوڈ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
   }
-
-  arr.forEach(item => {
-    const className   = item.className   || item.class  || item.darja   || "";
-    const teacherName = item.teacherName || item.teacher|| item.ustad   || "";
-    const bookName    = item.bookName    || item.kitab  || item.subject || "";
-    if (!className || !teacherName || !bookName) return;
-    if (!teachingMap[className]) teachingMap[className] = [];
-    teachingMap[className].push({ teacherName, bookName });
-  });
-
-  classList = Object.keys(teachingMap).sort();
 };
 
 /*************** Book % from its 5 questions (uses حاضر طلبہ) ***************/
