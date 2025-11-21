@@ -184,6 +184,51 @@ const loadTeachingStructure = async (user) => {
   teachingMap = {};
   classList   = [];
 
+  // 1️⃣ Pehle users/{uid} se academicStructure lene ki koshish
+  try {
+    const userRef  = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const uData = userSnap.data();
+      const academicStructure = Array.isArray(uData.academicStructure)
+        ? uData.academicStructure
+        : [];
+
+      if (academicStructure.length > 0) {
+        // academicStructure ko walk karke class / teacher / kitab nikaalna
+        const walkNode = (node) => {
+          if (!node || typeof node !== "object") return;
+
+          const className   = node.className   || node.class  || node.darja   || "";
+          const teacherName = node.teacherName || node.teacher|| node.ustad   || "";
+          const bookName    = node.bookName    || node.kitab  || node.subject || "";
+
+          if (className && teacherName && bookName) {
+            if (!teachingMap[className]) teachingMap[className] = [];
+            teachingMap[className].push({ teacherName, bookName });
+          }
+
+          // nested arrays
+          if (Array.isArray(node.classes)) node.classes.forEach(walkNode);
+          if (Array.isArray(node.books))   node.books.forEach(walkNode);
+          if (Array.isArray(node.kitabs))  node.kitabs.forEach(walkNode);
+        };
+
+        academicStructure.forEach(walkNode);
+
+        classList = Object.keys(teachingMap).sort();
+        if (classList.length > 0) {
+          // academicStructure se data mil gaya, yahi use karein
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("academicStructure load karte waqt error:", e);
+  }
+
+  // 2️⃣ Agar academicStructure se kuch na mila to purana monthly_reports fallback
   const info = getMonthInfoFromKey(monthKey);
   if (!info) return;
   const { yearNum, monthNum, academicYear } = info;
@@ -218,6 +263,7 @@ const loadTeachingStructure = async (user) => {
 
   classList = Object.keys(teachingMap).sort();
 };
+
 
 /*************** Book % from its 5 questions (uses حاضر طلبہ) ***************/
 const recalcSingleBookPercent = (bookCard, card) => {
