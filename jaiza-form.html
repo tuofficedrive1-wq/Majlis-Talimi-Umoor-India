@@ -56,16 +56,8 @@
   <div class="bg-sky-900 text-white rounded-xl shadow px-4 py-3 flex flex-wrap items-center gap-4 text-sm urdu">
     <span class="font-semibold">جامعہ کا مجموعی فیصد:</span>
     <span id="jamia-percent" class="font-bold text-2xl md:text-3xl bg-yellow-400 text-black px-3 py-1 rounded-lg">0</span>
-
     <span class="font-semibold ml-4">درجہ کیفیت:</span>
     <span id="jamia-grade" class="font-bold text-xl md:text-2xl px-3 py-1 rounded-lg bg-emerald-500">-</span>
-
-    <!-- ✅ naya hissa: class aur kitab count -->
-    <span class="font-semibold ml-4">کل کلاسوں کا جائزہ:</span>
-    <span id="jamia-class-count" class="font-bold text-xl bg-indigo-500 px-3 py-1 rounded-lg">0</span>
-
-    <span class="font-semibold ml-4">کل کتابوں کا جائزہ:</span>
-    <span id="jamia-book-count" class="font-bold text-xl bg-fuchsia-500 px-3 py-1 rounded-lg">0</span>
   </div>
 
   <!-- Info -->
@@ -84,19 +76,10 @@
   <form id="jaiza-form" class="space-y-4">
     <div class="flex justify-between items-center">
       <h2 class="text-base md:text-lg font-semibold urdu">کلاس وار جائزہ</h2>
-
-      <div class="flex items-center gap-2">
-        <!-- ✅ Update mode button (sirf jab purana data ho) -->
-        <button type="button" id="enable-edit-btn"
-                class="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm urdu hidden">
-          جائزہ اپ ڈیٹ کریں
-        </button>
-
-        <button type="button" id="add-class-btn"
-                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm urdu">
-          + نئی کلاس شامل کریں
-        </button>
-      </div>
+      <button type="button" id="add-class-btn"
+              class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm urdu">
+        + نئی کلاس شامل کریں
+      </button>
     </div>
 
     <div id="classes-container" class="space-y-4"></div>
@@ -142,18 +125,15 @@ const auth = getAuth(app);
 const db   = getFirestore(app);
 
 /*************** DOM refs ***************/
-const loader             = document.getElementById("loader");
-const subtitle           = document.getElementById("subtitle");
-const errorBox           = document.getElementById("error-box");
-const successBox         = document.getElementById("success-box");
-const jamiaPercEl        = document.getElementById("jamia-percent");
-const jamiaGradeEl       = document.getElementById("jamia-grade");
-const jamiaClassCountEl  = document.getElementById("jamia-class-count");
-const jamiaBookCountEl   = document.getElementById("jamia-book-count");
-const classesContainer   = document.getElementById("classes-container");
-const addClassBtn        = document.getElementById("add-class-btn");
-const formEl             = document.getElementById("jaiza-form");
-const enableEditBtn      = document.getElementById("enable-edit-btn");
+const loader           = document.getElementById("loader");
+const subtitle         = document.getElementById("subtitle");
+const errorBox         = document.getElementById("error-box");
+const successBox       = document.getElementById("success-box");
+const jamiaPercEl      = document.getElementById("jamia-percent");
+const jamiaGradeEl     = document.getElementById("jamia-grade");
+const classesContainer = document.getElementById("classes-container");
+const addClassBtn      = document.getElementById("add-class-btn");
+const formEl           = document.getElementById("jaiza-form");
 
 const showLoader = (v) => loader.classList.toggle("hidden", !v);
 const showError  = (msg) => { errorBox.textContent = msg; errorBox.classList.remove("hidden"); };
@@ -178,33 +158,6 @@ let classCount  = 0;
 // className -> [{teacherName, bookName}, ...]
 let teachingMap = {};
 let classList   = [];
-let isEditMode  = true; // default: pehli dafa editable
-
-/*************** Form ko editable / read-only banane ka helper ***************/
-const setFormEditable = (isEditable) => {
-  const controls = formEl.querySelectorAll("input, select, textarea, button");
-
-  controls.forEach(el => {
-    // Update button ko kabhi disable na karein
-    if (el.id === "enable-edit-btn") return;
-
-    if (
-      el.tagName === "INPUT" ||
-      el.tagName === "SELECT" ||
-      el.tagName === "TEXTAREA" ||
-      el.type === "button" ||
-      el.type === "submit"
-    ) {
-      el.disabled = !isEditable;
-    }
-  });
-
-  if (!isEditable) {
-    formEl.classList.add("opacity-60");
-  } else {
-    formEl.classList.remove("opacity-60");
-  }
-};
 
 /*************** Helpers ***************/
 const getGrade = (p) => {
@@ -232,64 +185,38 @@ const loadTeachingStructure = async (user) => {
   classList   = [];
 
   const info = getMonthInfoFromKey(monthKey);
-  if (!info) {
-    showError("مہینے کا فارمیٹ درست نہیں (YYYY-MM).");
-    return;
+  if (!info) return;
+  const { yearNum, monthNum, academicYear } = info;
+
+  let reportId = `${user.uid}_${academicYear}_${yearNum}_${monthNum}`;
+  let ref      = doc(db, "monthly_reports", reportId);
+  let snap     = await getDoc(ref);
+
+  if (!snap.exists()) {
+    const simpleId = `${user.uid}_${yearNum}_${monthNum}`;
+    ref  = doc(db, "monthly_reports", simpleId);
+    snap = await getDoc(ref);
   }
-  const { academicYear } = info;
+  if (!snap.exists()) return;
 
-  try {
-    // users collection se academicYears + karkardagiStructure lena
-    const userDocRef  = doc(db, "users", user.uid);
-    const userDocSnap = await getDoc(userDocRef);
-
-    if (!userDocSnap.exists()) {
-      showError("یوزر پروفائل نہیں ملا، پہلے کارکردگی والا سیٹ اپ مکمل کریں۔");
-      return;
-    }
-
-    const userData     = userDocSnap.data() || {};
-    const years        = userData.academicYears || {};
-    const yearData     = years[academicYear];
-
-    if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
-      showError("اس تعلیمی سال کے لیے کارکردگی کا سیٹ اپ نہیں ملا، پہلے Karkardagi Setup مکمل کریں۔");
-      return;
-    }
-
-    const jamiaName = decodeURIComponent(jamiaId || "");
-
-    // Sirf current jamia ka structure use karna
-    const jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
-
-    if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
-      showError("اس جامعہ کے لیے کارکردگی سیٹ اپ خالی ہے، اس لیے کلاس/استاذ/کتاب نہیں مل رہیں۔");
-      return;
-    }
-
-    // teacher + unke periods (class + book) ko map me daalna
-    (jamiaStruct.teachers || []).forEach(t => {
-      const teacherName = t.name || t.teacherName || t.ustad || "";
-      (t.periods || []).forEach(p => {
-        const className = p.className || p.class || p.darja || "";
-        const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
-        if (!className || !teacherName || !bookName) return;
-
-        if (!teachingMap[className]) teachingMap[className] = [];
-        teachingMap[className].push({ teacherName, bookName });
-      });
-    });
-
-    classList = Object.keys(teachingMap).sort();
-
-    if (!classList.length) {
-      showError("اس جامعہ کے لیے کسی بھی کلاس / کتاب کا پیریڈ سیٹ نہیں کیا گیا، اس لیے dropdown خالی ہیں۔");
-    }
-
-  } catch (err) {
-    console.error(err);
-    showError("کارکردگی سیٹ اپ لوڈ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
+  const data = snap.data();
+  let arr = [];
+  if (data.setupStructure && Array.isArray(data.setupStructure.data)) {
+    arr = data.setupStructure.data;
+  } else if (data.karkardgiReport && Array.isArray(data.karkardgiReport.data)) {
+    arr = data.karkardgiReport.data;
   }
+
+  arr.forEach(item => {
+    const className   = item.className   || item.class  || item.darja   || "";
+    const teacherName = item.teacherName || item.teacher|| item.ustad   || "";
+    const bookName    = item.bookName    || item.kitab  || item.subject || "";
+    if (!className || !teacherName || !bookName) return;
+    if (!teachingMap[className]) teachingMap[className] = [];
+    teachingMap[className].push({ teacherName, bookName });
+  });
+
+  classList = Object.keys(teachingMap).sort();
 };
 
 /*************** Book % from its 5 questions (uses حاضر طلبہ) ***************/
@@ -343,26 +270,16 @@ const recalcClassPercent = (card) => {
   classGradeInput.value = getGrade(avg);
 };
 
-/*************** Jamia overall % + counts ***************/
+/*************** Jamia overall % ***************/
 const recalcJamia = () => {
   const cards = classesContainer.querySelectorAll(".class-card");
   const percs = [];
-
-  let classCnt = cards.length;
-  let bookCnt  = 0;
-
   cards.forEach(card => {
-    const bCards = card.querySelectorAll(".book-card");
-    bookCnt += bCards.length;
-
     const pStr = card.querySelector(".class-percent")?.value;
     if (!pStr) return;
     const num = Number(pStr.replace("%","").trim());
     if (!isNaN(num)) percs.push(num);
   });
-
-  if (jamiaClassCountEl) jamiaClassCountEl.textContent = String(classCnt);
-  if (jamiaBookCountEl)  jamiaBookCountEl.textContent  = String(bookCnt);
 
   if (!percs.length) {
     jamiaPercEl.textContent  = "0";
@@ -544,6 +461,7 @@ const createBookCard = (card) => {
     recalcJamia();
   });
 
+  // pehle se class select ki value ho to uske hisaab se teachers fill karein
   fillTeachersForClass();
   return bookCard;
 };
@@ -638,7 +556,6 @@ const createClassCard = () => {
   const addBook = () => {
     const bCard = createBookCard(card);
     bookList.appendChild(bCard);
-    recalcJamia();
   };
   addBookBtn.addEventListener("click", addBook);
 
@@ -651,168 +568,180 @@ const createClassCard = () => {
 const addNewClassCard = () => {
   const card = createClassCard();
   classesContainer.appendChild(card);
-  recalcJamia();
 };
 
-/*************** Existing Jaiza load (prefill) ***************/
-const loadExistingJaiza = async () => {
-  // agar user ya URL params missing hon to skip
-  if (!currentUser || !jamiaId || !monthKey) {
+/*************** NAYA: pehle se saved Jaiza ko load karke pre-fill kare ***************/
+const loadExistingJaizaForms = async (user) => {
+  if (!jamiaId || !monthKey) return;
+
+  const qRef = query(
+    collection(db,"jaiza_forms"),
+    where("jamiaId","==",jamiaId),
+    where("monthKey","==",monthKey),
+    where("createdBy","==",user.uid)
+  );
+  const snap = await getDocs(qRef);
+
+  // Agar koi data nahi mila to blank form
+  if (snap.empty) {
+    classesContainer.innerHTML = "";
+    classCount = 0;
     addNewClassCard();
+    recalcJamia();
     return;
   }
 
-  try {
-    // ✅ yahan se OLD data nikal rahe hain (user + jamia + month)
-    const qRef = query(
-      collection(db, "jaiza_forms"),
-      where("jamiaId", "==", jamiaId),
-      where("monthKey", "==", monthKey),
-      where("createdBy", "==", currentUser.uid)   // rules ke mutabiq
-    );
-    const snap = await getDocs(qRef);             // ❗ ye line zaroori hai
+  // Pura container clear, phir docs ke hisaab se cards create
+  classesContainer.innerHTML = "";
+  classCount = 0;
 
-    if (snap.empty) {
-      // koi purana data nahi -> naya khali form
-      addNewClassCard();
-      return;
+  const docs = [];
+  snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+
+  docs.forEach(d => {
+    const card = createClassCard();
+    classesContainer.appendChild(card);
+
+    const classSelect         = card.querySelector(".class-select");
+    const totalStudentsInput  = card.querySelector(".total-students");
+    const presentStudentsInput= card.querySelector(".present-students");
+    const issuesInput         = card.querySelector(".issues");
+    const suggestionsInput    = card.querySelector(".suggestions");
+    const classPercentInput   = card.querySelector(".class-percent");
+    const classGradeInput     = card.querySelector(".class-grade");
+    const bookListDiv         = card.querySelector(".book-list");
+
+    // ensure class option exists
+    const cName = d.className || "";
+    if (cName) {
+      let exists = false;
+      Array.from(classSelect.options).forEach(o => {
+        if (o.value === cName) exists = true;
+      });
+      if (!exists) {
+        const opt = document.createElement("option");
+        opt.value = cName;
+        opt.textContent = cName;
+        classSelect.appendChild(opt);
+      }
+      classSelect.value = cName;
+      classSelect.dispatchEvent(new Event("change"));
     }
 
-    const records = [];
-    snap.forEach(d => records.push(d.data()));
+    totalStudentsInput.value   = d.totalStudents ?? "";
+    presentStudentsInput.value = d.presentStudents ?? "";
+    issuesInput.value          = d.issues || "";
+    suggestionsInput.value     = d.suggestions || "";
 
-    // className ke hisaab se thoda sort
-    records.sort((a, b) =>
-      (a.className || "").localeCompare(b.className || "", undefined, { numeric: true })
-    );
+    // purani default book card hatao, phir saved books ke hisaab se banao
+    bookListDiv.innerHTML = "";
 
-    classesContainer.innerHTML = "";
-    classCount = 0;
+    const books = Array.isArray(d.books) ? d.books : [];
+    books.forEach(b => {
+      const bookCard = createBookCard(card);
+      bookListDiv.appendChild(bookCard);
 
-    for (const rec of records) {
-      const card = createClassCard();
+      const teacherSelect = bookCard.querySelector(".book-teacher");
+      const bookSelect    = bookCard.querySelector(".book-name");
+      const weaknessTa    = bookCard.querySelector(".weakness");
+      const bookPercInput = bookCard.querySelector(".book-percent");
 
-      const classSelect       = card.querySelector(".class-select");
-      const totalStudentsIn   = card.querySelector(".total-students");
-      const presentStudentsIn = card.querySelector(".present-students");
-      const issuesIn          = card.querySelector(".issues");
-      const suggestionsIn     = card.querySelector(".suggestions");
-      const bookList          = card.querySelector(".book-list");
-
-      // pehle default book card hata do
-      bookList.innerHTML = "";
-
-      // class select
-      if (rec.className) {
-        classSelect.value = rec.className;
-        // class change event se teacher list refresh ho jaye
-        classSelect.dispatchEvent(new Event("change"));
+      // teacherOptions ensure
+      if (cName) {
+        const teacherSet = teachingMap[cName] ? new Set(teachingMap[cName].map(r=>r.teacherName)) : new Set();
+        if (b.teacherName && !teacherSet.has(b.teacherName)) {
+          const opt = document.createElement("option");
+          opt.value = b.teacherName;
+          opt.textContent = b.teacherName;
+          teacherSelect.appendChild(opt);
+        }
       }
 
-      totalStudentsIn.value   = rec.totalStudents   ?? "";
-      presentStudentsIn.value = rec.presentStudents ?? "";
-      issuesIn.value          = rec.issues      || "";
-      suggestionsIn.value     = rec.suggestions || "";
+      teacherSelect.value = b.teacherName || "";
+      teacherSelect.dispatchEvent(new Event("change"));
 
-      // books
-      (rec.books || []).forEach(book => {
-        const bCard = createBookCard(card);
-        bookList.appendChild(bCard);
-
-        const teacherSelect   = bCard.querySelector(".book-teacher");
-        const bookSelect      = bCard.querySelector(".book-name");
-        const weaknessInput   = bCard.querySelector(".weakness");
-        const percInput       = bCard.querySelector(".book-percent");
-        const questionRows    = bCard.querySelectorAll(".question-row");
-
-        // teacher ko set karein
-        if (book.teacherName) {
-          teacherSelect.value = book.teacherName;
-          teacherSelect.dispatchEvent(new Event("change"));
-        }
-
-        if (book.bookName) {
-          bookSelect.value = book.bookName;
-        }
-
-        if (weaknessInput) {
-          weaknessInput.value = book.weakness || "";
-        }
-
-        if (typeof book.percentage === "number") {
-          percInput.value = book.percentage.toFixed(1) + "%";
-        }
-
-        const qs = book.questions || [];
-        questionRows.forEach((row, idx) => {
-          const qData = qs[idx];
-          if (!qData) return;
-          row.querySelector(".q-text").value    = qData.text || "";
-          row.querySelector(".q-correct").value = qData.correctStudents ?? "";
+      if (b.bookName) {
+        let existsBook = false;
+        Array.from(bookSelect.options).forEach(o => {
+          if (o.value === b.bookName) existsBook = true;
         });
+        if (!existsBook) {
+          const opt = document.createElement("option");
+          opt.value = b.bookName;
+          opt.textContent = b.bookName;
+          bookSelect.appendChild(opt);
+        }
+        bookSelect.value = b.bookName;
+      }
 
-        // ensure percentage recalc just in case
-        recalcSingleBookPercent(bCard, card);
+      weaknessTa.value = b.weakness || "";
+
+      // questions fill
+      const qRows = bookCard.querySelectorAll(".question-row");
+      const questions = Array.isArray(b.questions) ? b.questions : [];
+      questions.forEach(q => {
+        const idx = (q.index || 1) - 1;
+        if (!qRows[idx]) return;
+        const row = qRows[idx];
+        row.querySelector(".q-text").value    = q.text || "";
+        row.querySelector(".q-correct").value = q.correctStudents ?? "";
       });
 
+      // checks
+      const checks = b.checks || {};
+      bookCard.querySelector(".chk-sabaq-sunana").checked  = !!checks.sabaqSunana;
+      bookCard.querySelector(".chk-sabaq-parhana").checked = !!checks.sabaqParhana;
+      bookCard.querySelector(".chk-waqt-istemal").checked  = !!checks.waqtIstemal;
+      bookCard.querySelector(".chk-tiyari").checked        = !!checks.tiyari;
+      bookCard.querySelector(".chk-takrar").checked        = !!checks.takrar;
+      bookCard.querySelector(".chk-nizam").checked         = !!checks.nizam;
+
+      // stored percentage (agar hai) else recalc
+      if (typeof b.percentage === "number") {
+        bookPercInput.value = b.percentage.toFixed(1) + "%";
+      } else {
+        recalcSingleBookPercent(bookCard, card);
+      }
+    });
+
+    // class % / grade
+    if (typeof d.classPercentage === "number") {
+      classPercentInput.value = d.classPercentage.toFixed(1) + "%";
+      classGradeInput.value   = d.grade || getGrade(d.classPercentage);
+    } else {
       recalcClassPercent(card);
     }
+  });
 
-    recalcJamia();
-
-    // ✅ yahan se: existing data mil gaya, to form ko read-only kar do
-    isEditMode = false;
-    setFormEditable(false);
-    if (enableEditBtn) {
-      enableEditBtn.classList.remove("hidden"); // "Jaiza update karein" button show
-    }
-
-  } catch (err) {
-    console.error(err);
-    // agar koi problem aa jaye to kam se kam khali form de dein
-    if (!classesContainer.querySelector(".class-card")) {
-      addNewClassCard();
-    }
-  }
+  // jamia ka overall
+  recalcJamia();
 };
-
 
 /*************** Auth & initial load ***************/
-const initForUser = async (user) => {
-  showLoader(true);
-  try {
-    await loadTeachingStructure(user); // karkardagi setup se classes/teachers/books
-    await loadExistingJaiza();         // agar pehle se jaiza filled hai to prefill
-  } catch (err) {
-    console.error(err);
-    // fallback: kam se kam ek khali class card
-    if (!classesContainer.querySelector(".class-card")) {
-      addNewClassCard();
-    }
-  } finally {
-    showLoader(false);
-  }
-};
-
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     showError("لاگ اِن ضروری ہے، پہلے ڈیش بورڈ سے لاگ اِن کریں۔");
     return;
   }
   currentUser = user;
-  await initForUser(user);
+
+  showLoader(true);
+  try {
+    // pehle teaching structure, phir saved jaiza
+    await loadTeachingStructure(user);
+    await loadExistingJaizaForms(user);
+  } catch(err) {
+    console.error(err);
+    // fallback: at least ek blank class
+    classesContainer.innerHTML = "";
+    classCount = 0;
+    addNewClassCard();
+  } finally {
+    showLoader(false);
+  }
 });
 
 addClassBtn.addEventListener("click", () => addNewClassCard());
-
-/*************** Update button: editable mode on ***************/
-if (enableEditBtn) {
-  enableEditBtn.addEventListener("click", () => {
-    isEditMode = true;
-    setFormEditable(true);
-    enableEditBtn.classList.add("hidden");
-  });
-}
 
 /*************** Submit → save in Firestore ***************/
 formEl.addEventListener("submit", async (e) => {
@@ -934,29 +863,23 @@ formEl.addEventListener("submit", async (e) => {
 
   showLoader(true);
   try {
+    // pehle purane is mahine ke jaiza forms delete
     const qRef = query(
-  collection(db,"jaiza_forms"),
-  where("jamiaId","==",jamiaId),
-  where("monthKey","==",monthKey),
-  where("createdBy","==",currentUser.uid)   // ✅ zaroori
-);
-const oldSnap = await getDocs(qRef);
+      collection(db,"jaiza_forms"),
+      where("jamiaId","==",jamiaId),
+      where("monthKey","==",monthKey),
+      where("createdBy","==",currentUser.uid)
+    );
+    const oldSnap = await getDocs(qRef);
     const delPromises = [];
     oldSnap.forEach(d => delPromises.push(deleteDoc(d.ref)));
     await Promise.all(delPromises);
 
+    // phir naya data add
     const addPromises = payloads.map(p => addDoc(collection(db,"jaiza_forms"), p));
     await Promise.all(addPromises);
 
     showSuccess("تعلیمی جائزہ کامیابی کے ساتھ محفوظ ہو گیا۔");
-
-    // ✅ save ke baad phir se view-only mode
-    isEditMode = false;
-    setFormEditable(false);
-    if (enableEditBtn) {
-      enableEditBtn.classList.remove("hidden");
-    }
-
   } catch(err) {
     console.error(err);
     showError("ڈیٹا محفوظ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
