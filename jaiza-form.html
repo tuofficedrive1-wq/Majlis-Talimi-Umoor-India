@@ -179,89 +179,148 @@ const getMonthInfoFromKey = (key) => {
   return { yearNum, monthNum, academicYear };
 };
 
-/*************** Load teaching structure ***************/
+/*************** Load teaching structure (Academic Structure se) ***************/
 const loadTeachingStructure = async (user) => {
   teachingMap = {};
   classList   = [];
 
-  // 1️⃣ Pehle users/{uid} se academicStructure lene ki koshish
   try {
+    // 1) users/{uid} se academicStructure lo
     const userRef  = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists()) {
-      const uData = userSnap.data();
-      const academicStructure = Array.isArray(uData.academicStructure)
-        ? uData.academicStructure
+      const profile = userSnap.data() || {};
+      const academicStructure = Array.isArray(profile.academicStructure)
+        ? profile.academicStructure
         : [];
 
-      if (academicStructure.length > 0) {
-        // academicStructure ko walk karke class / teacher / kitab nikaalna
-        const walkNode = (node) => {
-          if (!node || typeof node !== "object") return;
+      if (academicStructure.length) {
+        // pehle current jamia ka node dhoondo
+        let selectedJamia = null;
 
-          const className   = node.className   || node.class  || node.darja   || "";
-          const teacherName = node.teacherName || node.teacher|| node.ustad   || "";
-          const bookName    = node.bookName    || node.kitab  || node.subject || "";
+        const findJamia = (node) => {
+          if (!node || typeof node !== "object" || selectedJamia) return;
 
-          if (className && teacherName && bookName) {
-            if (!teachingMap[className]) teachingMap[className] = [];
-            teachingMap[className].push({ teacherName, bookName });
+          if (
+            typeof node.jamiaName === "string" &&
+            node.jamiaName.trim() === jamiaId
+          ) {
+            selectedJamia = node;
+            return;
           }
 
-          // nested arrays
-          if (Array.isArray(node.classes)) node.classes.forEach(walkNode);
-          if (Array.isArray(node.books))   node.books.forEach(walkNode);
-          if (Array.isArray(node.kitabs))  node.kitabs.forEach(walkNode);
+          if (Array.isArray(node.classes)) node.classes.forEach(findJamia);
+          else if (node.classes && typeof node.classes === "object") {
+            Object.values(node.classes).forEach(findJamia);
+          }
         };
 
-        academicStructure.forEach(walkNode);
+        academicStructure.forEach(findJamia);
 
-        classList = Object.keys(teachingMap).sort();
-        if (classList.length > 0) {
-          // academicStructure se data mil gaya, yahi use karein
-          return;
+        if (
+          selectedJamia &&
+          selectedJamia.classes &&
+          typeof selectedJamia.classes === "object"
+        ) {
+          const normTeacher = (t) => {
+            if (!t) return "";
+            if (typeof t === "string") return t.trim();
+            return String(t.name || t.teacherName || "").trim();
+          };
+          const normBook = (b) => {
+            if (!b) return "";
+            if (typeof b === "string") return b.trim();
+            return String(b.bookName || b.name || b.kitab || "").trim();
+          };
+
+          Object.entries(selectedJamia.classes).forEach(([clsName, clsVal]) => {
+            if (!clsName) return;
+            if (!teachingMap[clsName]) teachingMap[clsName] = [];
+
+            const teachersArr =
+              Array.isArray(clsVal.teachers) ? clsVal.teachers : [];
+            const booksArr = Array.isArray(clsVal.kitabs)
+              ? clsVal.kitabs
+              : Array.isArray(clsVal.books)
+              ? clsVal.books
+              : [];
+
+            if (booksArr.length) {
+              booksArr.forEach((b, idx) => {
+                const bookName = normBook(b);
+                if (!bookName) return;
+
+                let tName = "";
+                if (teachersArr.length === booksArr.length) {
+                  tName = normTeacher(teachersArr[idx]);
+                } else if (teachersArr.length === 1) {
+                  tName = normTeacher(teachersArr[0]);
+                } else if (teachersArr.length > 1) {
+                  tName = normTeacher(teachersArr[idx] || teachersArr[0]);
+                }
+
+                teachingMap[clsName].push({
+                  teacherName: tName,
+                  bookName,
+                });
+              });
+            } else if (teachersArr.length) {
+              teachersArr.forEach((t) => {
+                const tName = normTeacher(t);
+                if (!tName) return;
+                teachingMap[clsName].push({
+                  teacherName: tName,
+                  bookName: "",
+                });
+              });
+            }
+          });
+
+          classList = Object.keys(teachingMap).sort();
         }
       }
     }
-  } catch (e) {
-    console.warn("academicStructure load karte waqt error:", e);
+  } catch (err) {
+    console.error("Error loading from academicStructure:", err);
   }
 
-  // 2️⃣ Agar academicStructure se kuch na mila to purana monthly_reports fallback
-  const info = getMonthInfoFromKey(monthKey);
-  if (!info) return;
-  const { yearNum, monthNum, academicYear } = info;
+  // 2) agar academicStructure se kuch na mila to purane monthly_reports se try karo (fallback)
+  if (!classList.length) {
+    const info = getMonthInfoFromKey(monthKey);
+    if (!info) return;
+    const { yearNum, monthNum, academicYear } = info;
 
-  let reportId = `${user.uid}_${academicYear}_${yearNum}_${monthNum}`;
-  let ref      = doc(db, "monthly_reports", reportId);
-  let snap     = await getDoc(ref);
+    let reportId = `${user.uid}_${academicYear}_${yearNum}_${monthNum}`;
+    let ref      = doc(db, "monthly_reports", reportId);
+    let snap     = await getDoc(ref);
 
-  if (!snap.exists()) {
-    const simpleId = `${user.uid}_${yearNum}_${monthNum}`;
-    ref  = doc(db, "monthly_reports", simpleId);
-    snap = await getDoc(ref);
+    if (!snap.exists()) {
+      const simpleId = `${user.uid}_${yearNum}_${monthNum}`;
+      ref  = doc(db, "monthly_reports", simpleId);
+      snap = await getDoc(ref);
+    }
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    let arr = [];
+    if (data.setupStructure && Array.isArray(data.setupStructure.data)) {
+      arr = data.setupStructure.data;
+    } else if (data.karkardgiReport && Array.isArray(data.karkardgiReport.data)) {
+      arr = data.karkardgiReport.data;
+    }
+
+    arr.forEach((item) => {
+      const className   = item.className   || item.class  || item.darja   || "";
+      const teacherName = item.teacherName || item.teacher|| item.ustad   || "";
+      const bookName    = item.bookName    || item.kitab  || item.subject || "";
+      if (!className || !teacherName || !bookName) return;
+      if (!teachingMap[className]) teachingMap[className] = [];
+      teachingMap[className].push({ teacherName, bookName });
+    });
+
+    classList = Object.keys(teachingMap).sort();
   }
-  if (!snap.exists()) return;
-
-  const data = snap.data();
-  let arr = [];
-  if (data.setupStructure && Array.isArray(data.setupStructure.data)) {
-    arr = data.setupStructure.data;
-  } else if (data.karkardgiReport && Array.isArray(data.karkardgiReport.data)) {
-    arr = data.karkardgiReport.data;
-  }
-
-  arr.forEach(item => {
-    const className   = item.className   || item.class  || item.darja   || "";
-    const teacherName = item.teacherName || item.teacher|| item.ustad   || "";
-    const bookName    = item.bookName    || item.kitab  || item.subject || "";
-    if (!className || !teacherName || !bookName) return;
-    if (!teachingMap[className]) teachingMap[className] = [];
-    teachingMap[className].push({ teacherName, bookName });
-  });
-
-  classList = Object.keys(teachingMap).sort();
 };
 
 
