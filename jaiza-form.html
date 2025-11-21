@@ -15,13 +15,13 @@
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background-color: #e5edf5;
-      font-size: 14px;
+      font-size: 14px; /* overall text bigger */
     }
     .urdu {
       font-family: 'Jameel Noori Nastaleeq', system-ui, sans-serif;
     }
     input, select, textarea, button {
-      font-size: 13px !important;
+      font-size: 13px !important;  /* form text bigger on mobile + desktop */
     }
     ::placeholder {
       font-size: 12px;
@@ -142,20 +142,18 @@ const showSuccess= (msg) => { successBox.textContent = msg; successBox.classList
 const clearSuccess = () => successBox.classList.add("hidden");
 
 /*************** URL params ***************/
-const params      = new URLSearchParams(window.location.search);
-const jamiaParam  = params.get("jamia");
-const jamiaId     = jamiaParam ? decodeURIComponent(jamiaParam) : null;
-const monthKey    = params.get("month");
+const params   = new URLSearchParams(window.location.search);
+const jamiaId  = params.get("jamia");
+const monthKey = params.get("month");
 
 if (!jamiaId || !monthKey) {
   showError("URL میں جامعہ اور مہینہ دونوں کا ہونا ضروری ہے، مثلاً ?jamia=Latoor&month=2025-11");
 } else {
-  subtitle.textContent = `جامعہ: ${jamiaId} • مہینہ: ${monthKey}`;
+  subtitle.textContent = `جامعہ: ${decodeURIComponent(jamiaId)} • مہینہ: ${monthKey}`;
 }
 
-let currentUser      = null;
-let userProfileData  = {};
-let classCount       = 0;
+let currentUser = null;
+let classCount  = 0;
 
 // className -> [{teacherName, bookName}, ...]
 let teachingMap = {};
@@ -170,80 +168,84 @@ const getGrade = (p) => {
   return "-";
 };
 
-/*************** Academic Structure → teachingMap ***************/
+const getMonthInfoFromKey = (key) => {
+  if (!key) return null;
+  const [yStr, mStr] = key.split("-");
+  const yearNum  = parseInt(yStr);
+  const monthNum = parseInt(mStr) - 1;
+  if (isNaN(yearNum) || isNaN(monthNum)) return null;
+
+  const academicYear = monthNum >= 3 ? `${yearNum}-${yearNum+1}` : `${yearNum-1}-${yearNum}`;
+  return { yearNum, monthNum, academicYear };
+};
+
+/*************** Load teaching structure ***************/
 const loadTeachingStructure = async (user) => {
   teachingMap = {};
   classList   = [];
 
-  if (!jamiaId) return;
+  const info = getMonthInfoFromKey(monthKey);
+  if (!info) {
+    showError("مہینے کا فارمیٹ درست نہیں (YYYY-MM).");
+    return;
+  }
+  const { academicYear } = info;
 
-  const userRef = doc(db, "users", user.uid);
-  const snap    = await getDoc(userRef);
-  if (!snap.exists()) return;
+  try {
+    // users collection se academicYears + karkardagiStructure lena
+    const userDocRef  = doc(db, "users", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
 
-  userProfileData = snap.data() || {};
-  const academicData = Array.isArray(userProfileData.academicStructure)
-    ? userProfileData.academicStructure
-    : [];
+    if (!userDocSnap.exists()) {
+      showError("یوزر پروفائل نہیں ملا، پہلے کارکردگی والا سیٹ اپ مکمل کریں۔");
+      return;
+    }
 
-  const norm = (s) => (typeof s === "string" ? s.trim() : "");
+    const userData     = userDocSnap.data() || {};
+    const years        = userData.academicYears || {};
+    const yearData     = years[academicYear];
 
-  academicData.forEach(jamia => {
-    if (!jamia || typeof jamia !== "object") return;
-    const jName = norm(jamia.jamiaName || jamia.name);
-    if (!jName || jName !== jamiaId) return;
+    if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
+      showError("اس تعلیمی سال کے لیے کارکردگی کا سیٹ اپ نہیں ملا، پہلے Karkardagi Setup مکمل کریں۔");
+      return;
+    }
 
-    // 1) Classes object (naya structure)
-    const classes = jamia.classes && typeof jamia.classes === "object"
-      ? jamia.classes
-      : null;
+    const jamiaName = decodeURIComponent(jamiaId || "");
 
-    if (classes) {
-      Object.keys(classes).forEach(key => {
-        const clsNode = classes[key] || {};
-        const className = norm(clsNode.className || key);
-        if (!className) return;
+    // Sirf current jamia ka structure use karna
+    const jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
+
+    if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
+      showError("اس جامعہ کے لیے کارکردگی سیٹ اپ خالی ہے، اس لیے کلاس/استاذ/کتاب نہیں مل رہیں۔");
+      return;
+    }
+
+    // teacher + unke periods (class + book) ko map me daalna
+    (jamiaStruct.teachers || []).forEach(t => {
+      const teacherName = t.name || t.teacherName || t.ustad || "";
+      (t.periods || []).forEach(p => {
+        const className = p.className || p.class || p.darja || "";
+        const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
+        if (!className || !teacherName || !bookName) return;
+
         if (!teachingMap[className]) teachingMap[className] = [];
-
-        const kitabsArr =
-          Array.isArray(clsNode.kitabs) ? clsNode.kitabs :
-          Array.isArray(clsNode.books)  ? clsNode.books  : [];
-
-        kitabsArr.forEach(k => {
-          let bookName = "";
-          let teacherName = "";
-          if (typeof k === "string") {
-            bookName = norm(k);
-          } else if (k && typeof k === "object") {
-            bookName   = norm(k.bookName || k.name || k.kitabName);
-            teacherName= norm(k.teacherName || k.ustad || k.teacher);
-          }
-          if (!bookName) return;
-          teachingMap[className].push({ teacherName, bookName });
-        });
+        teachingMap[className].push({ teacherName, bookName });
       });
+    });
+
+    classList = Object.keys(teachingMap).sort();
+
+    if (!classList.length) {
+      showError("اس جامعہ کے لیے کسی بھی کلاس / کتاب کا پیریڈ سیٹ نہیں کیا گیا، اس لیے dropdown خالی ہیں۔");
     }
 
-    // 2) Purana structure: teachers → periods
-    if (Array.isArray(jamia.teachers)) {
-      jamia.teachers.forEach(t => {
-        const tName = norm(t.teacherName || t.name);
-        const periods = Array.isArray(t.periods) ? t.periods : [];
-        periods.forEach(p => {
-          const className = norm(p.className || p.class || p.darja);
-          const bookName  = norm(p.bookName || p.book || p.kitab);
-          if (!className || !bookName) return;
-          if (!teachingMap[className]) teachingMap[className] = [];
-          teachingMap[className].push({ teacherName: tName, bookName });
-        });
-      });
-    }
-  });
-
-  classList = Object.keys(teachingMap).sort((a,b)=>a.localeCompare(b,"ur"));
+  } catch (err) {
+    console.error(err);
+    showError("کارکردگی سیٹ اپ لوڈ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
+  }
 };
 
-/*************** Book % from its 5 questions ***************/
+/*************** Book % from its 5 questions (uses حاضر طلبہ) ***************/
 const recalcSingleBookPercent = (bookCard, card) => {
   const presentStudents = Number(card.querySelector(".present-students")?.value || 0);
   const qRows = bookCard.querySelectorAll(".question-row");
@@ -423,19 +425,7 @@ const createBookCard = (card) => {
     teacherSelect.innerHTML = '<option value="">استاذ منتخب کریں</option>';
     bookSelect.innerHTML    = '<option value="">کتاب منتخب کریں</option>';
     if (!cls || !teachingMap[cls]) return;
-    const teacherSet = new Set(
-      teachingMap[cls]
-        .map(r => r.teacherName || "")
-        .filter(Boolean)
-    );
-    // agar teacherName na mile to bhi ek dummy option daal dein
-    if (teacherSet.size === 0) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "استاذ کا نام دستی درج کریں";
-      teacherSelect.appendChild(opt);
-      return;
-    }
+    const teacherSet = new Set(teachingMap[cls].map(r=>r.teacherName));
     teacherSet.forEach(t => {
       const opt = document.createElement("option");
       opt.value = t;
@@ -448,13 +438,9 @@ const createBookCard = (card) => {
     const cls   = classSelect.value;
     const tName = teacherSelect.value;
     bookSelect.innerHTML = '<option value="">کتاب منتخب کریں</option>';
-    if (!cls || !teachingMap[cls]) return;
-
-    let recs = teachingMap[cls];
-    if (tName) {
-      recs = recs.filter(r => r.teacherName === tName || !r.teacherName);
-    }
-    const bookSet = new Set(recs.map(r=>r.bookName).filter(Boolean));
+    if (!cls || !teachingMap[cls] || !tName) return;
+    const recs    = teachingMap[cls].filter(r=>r.teacherName===tName);
+    const bookSet = new Set(recs.map(r=>r.bookName));
     bookSet.forEach(b => {
       const opt = document.createElement("option");
       opt.value = b;
@@ -488,6 +474,7 @@ const createBookCard = (card) => {
 
   if (totalStudentsInput) {
     totalStudentsInput.addEventListener("input", () => {
+      // total change doesn't affect formula, but recalc for safety
       const books = card.querySelectorAll(".book-card");
       books.forEach(b => recalcSingleBookPercent(b, card));
       recalcClassPercent(card);
@@ -501,7 +488,6 @@ const createBookCard = (card) => {
     recalcJamia();
   });
 
-  // initial fill for selected class (agar koi value already set ho)
   fillTeachersForClass();
   return bookCard;
 };
@@ -610,145 +596,142 @@ const addNewClassCard = () => {
   classesContainer.appendChild(card);
 };
 
-/*************** Saved Jaiza load ***************/
-const loadSavedJaiza = async (user) => {
-  if (!jamiaId || !monthKey) return;
-
-  const qRef = query(
-    collection(db,"jaiza_forms"),
-    where("jamiaId","==",jamiaId),
-    where("monthKey","==",monthKey),
-    where("createdBy","==",user.uid)
-  );
-  const snap = await getDocs(qRef);
-
-  const docs = [];
-  snap.forEach(d => docs.push({ id:d.id, ...d.data() }));
-
-  classesContainer.innerHTML = "";
-
-  if (!docs.length) {
+/*************** Existing Jaiza load (prefill) ***************/
+const loadExistingJaiza = async () => {
+  // agar user ya URL params missing hon to skip
+  if (!currentUser || !jamiaId || !monthKey) {
     addNewClassCard();
     return;
   }
 
-  // sort by className
-  docs.sort((a,b)=>(a.className || "").localeCompare(b.className || "","ur"));
+  try {
+    const qRef = query(
+      collection(db,"jaiza_forms"),
+      where("jamiaId","==",jamiaId),
+      where("monthKey","==",monthKey),
+      where("createdBy","==",currentUser.uid)
+    );
+    const snap = await getDocs(qRef);
 
-  docs.forEach(docData => {
-    const card = createClassCard();
-    classesContainer.appendChild(card);
+    if (snap.empty) {
+      // koi purana data nahi -> naya khali form
+      addNewClassCard();
+      return;
+    }
 
-    const classSelect   = card.querySelector(".class-select");
-    const totalInput    = card.querySelector(".total-students");
-    const presentInput  = card.querySelector(".present-students");
-    const issuesInput   = card.querySelector(".issues");
-    const suggInput     = card.querySelector(".suggestions");
-    const classPercIn   = card.querySelector(".class-percent");
-    const classGradeIn  = card.querySelector(".class-grade");
-    const bookList      = card.querySelector(".book-list");
+    const records = [];
+    snap.forEach(d => records.push(d.data()));
 
-    classSelect.value   = docData.className || "";
-    totalInput.value    = docData.totalStudents ?? "";
-    presentInput.value  = docData.presentStudents ?? "";
-    issuesInput.value   = docData.issues || "";
-    suggInput.value     = docData.suggestions || "";
+    // className ke hisaab se thoda sort
+    records.sort((a,b) => (a.className || "").localeCompare(b.className || "", undefined, {numeric:true}));
 
-    bookList.innerHTML = "";
-    const books = Array.isArray(docData.books) ? docData.books : [];
-    books.forEach(b => {
-      const bCard = createBookCard(card);
-      bookList.appendChild(bCard);
+    classesContainer.innerHTML = "";
+    classCount = 0;
 
-      const teacherSelect = bCard.querySelector(".book-teacher");
-      const bookSelect    = bCard.querySelector(".book-name");
+    for (const rec of records) {
+      const card = createClassCard();
 
-      // ensure teacher + kitabein options ready
-      const clsVal = classSelect.value;
-      if (clsVal && teachingMap[clsVal]) {
-        // dubara teachers/books fill
-        const evt = new Event("change");
-        classSelect.dispatchEvent(evt);
+      const classSelect       = card.querySelector(".class-select");
+      const totalStudentsIn   = card.querySelector(".total-students");
+      const presentStudentsIn = card.querySelector(".present-students");
+      const issuesIn          = card.querySelector(".issues");
+      const suggestionsIn     = card.querySelector(".suggestions");
+      const bookList          = card.querySelector(".book-list");
+
+      // pehle default book card hata do
+      bookList.innerHTML = "";
+
+      // class select
+      if (rec.className) {
+        classSelect.value = rec.className;
+        // class change event se teacher list refresh ho jaye
+        classSelect.dispatchEvent(new Event("change"));
       }
 
-      if (b.teacherName) {
-        // agar option missing ho to add
-        if (!Array.from(teacherSelect.options).some(o=>o.value===b.teacherName)) {
-          const opt = document.createElement("option");
-          opt.value = b.teacherName;
-          opt.textContent = b.teacherName;
-          teacherSelect.appendChild(opt);
+      totalStudentsIn.value   = rec.totalStudents   ?? "";
+      presentStudentsIn.value = rec.presentStudents ?? "";
+      issuesIn.value          = rec.issues      || "";
+      suggestionsIn.value     = rec.suggestions || "";
+
+      // books
+      (rec.books || []).forEach(book => {
+        const bCard = createBookCard(card);
+        bookList.appendChild(bCard);
+
+        const teacherSelect   = bCard.querySelector(".book-teacher");
+        const bookSelect      = bCard.querySelector(".book-name");
+        const weaknessInput   = bCard.querySelector(".book-weakness");
+        const percInput       = bCard.querySelector(".book-percent");
+        const questionRows    = bCard.querySelectorAll(".question-row");
+
+        // teacher ko set karein
+        if (book.teacherName) {
+          teacherSelect.value = book.teacherName;
+          // is se kitab ka dropdown fill ho jayega
+          teacherSelect.dispatchEvent(new Event("change"));
         }
-        teacherSelect.value = b.teacherName;
-      }
 
-      // teacher ke mutabiq kitab options
-      const evtT = new Event("change");
-      teacherSelect.dispatchEvent(evtT);
-
-      if (b.bookName) {
-        if (!Array.from(bookSelect.options).some(o=>o.value===b.bookName)) {
-          const opt = document.createElement("option");
-          opt.value = b.bookName;
-          opt.textContent = b.bookName;
-          bookSelect.appendChild(opt);
+        if (book.bookName) {
+          bookSelect.value = book.bookName;
         }
-        bookSelect.value = b.bookName;
-      }
 
-      bCard.querySelector(".weakness").value = b.weakness || "";
-      const checks = b.checks || {};
-      bCard.querySelector(".chk-sabaq-sunana").checked  = !!checks.sabaqSunana;
-      bCard.querySelector(".chk-sabaq-parhana").checked = !!checks.sabaqParhana;
-      bCard.querySelector(".chk-waqt-istemal").checked  = !!checks.waqtIstemal;
-      bCard.querySelector(".chk-tiyari").checked        = !!checks.tiyari;
-      bCard.querySelector(".chk-takrar").checked        = !!checks.takrar;
-      bCard.querySelector(".chk-nizam").checked         = !!checks.nizam;
+        weaknessInput.value = book.weakness || "";
 
-      const qRows = bCard.querySelectorAll(".question-row");
-      (b.questions || []).forEach(q => {
-        const idx = (q.index || 1) - 1;
-        const row = qRows[idx];
-        if (!row) return;
-        row.querySelector(".q-text").value     = q.text || "";
-        row.querySelector(".q-correct").value  = q.correctStudents ?? "";
+        if (typeof book.percentage === "number") {
+          percInput.value = book.percentage.toFixed(1) + "%";
+        }
+
+        const qs = book.questions || [];
+        questionRows.forEach((row, idx) => {
+          const qData = qs[idx];
+          if (!qData) return;
+          row.querySelector(".q-text").value     = qData.text || "";
+          row.querySelector(".q-correct").value  = qData.correctStudents ?? "";
+        });
+
+        // ensure percentage recalc just in case
+        recalcSingleBookPercent(bCard, card);
       });
 
-      if (typeof b.percentage === "number") {
-        bCard.querySelector(".book-percent").value = b.percentage.toFixed(1) + "%";
-      }
-    });
-
-    if (typeof docData.classPercentage === "number") {
-      classPercIn.value = docData.classPercentage.toFixed(1) + "%";
-      classGradeIn.value= docData.grade || getGrade(docData.classPercentage);
-    } else {
       recalcClassPercent(card);
     }
-  });
 
-  recalcJamia();
+    recalcJamia();
+
+  } catch (err) {
+    console.error(err);
+    // agar koi problem aa jaye to kam se kam khali form de dein
+    if (!classesContainer.querySelector(".class-card")) {
+      addNewClassCard();
+    }
+  }
 };
 
+
 /*************** Auth & initial load ***************/
+const initForUser = async (user) => {
+  showLoader(true);
+  try {
+    await loadTeachingStructure(user); // karkardagi setup se classes/teachers/books
+    await loadExistingJaiza();         // agar pehle se jaiza filled hai to prefill
+  } catch (err) {
+    console.error(err);
+    // fallback: kam se kam ek khali class card
+    if (!classesContainer.querySelector(".class-card")) {
+      addNewClassCard();
+    }
+  } finally {
+    showLoader(false);
+  }
+};
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     showError("لاگ اِن ضروری ہے، پہلے ڈیش بورڈ سے لاگ اِن کریں۔");
     return;
   }
   currentUser = user;
-
-  showLoader(true);
-  try {
-    await loadTeachingStructure(user);
-    await loadSavedJaiza(user);
-  } catch(err) {
-    console.error(err);
-    classesContainer.innerHTML = "";
-    addNewClassCard();
-  } finally {
-    showLoader(false);
-  }
+  await initForUser(user);
 });
 
 addClassBtn.addEventListener("click", () => addNewClassCard());
@@ -873,7 +856,6 @@ formEl.addEventListener("submit", async (e) => {
 
   showLoader(true);
   try {
-    // Pehle se is jamia + month + user ke jitne jaiza_forms hain sab delete
     const qRef = query(
       collection(db,"jaiza_forms"),
       where("jamiaId","==",jamiaId),
@@ -885,7 +867,6 @@ formEl.addEventListener("submit", async (e) => {
     oldSnap.forEach(d => delPromises.push(deleteDoc(d.ref)));
     await Promise.all(delPromises);
 
-    // Ab naya data save
     const addPromises = payloads.map(p => addDoc(collection(db,"jaiza_forms"), p));
     await Promise.all(addPromises);
 
