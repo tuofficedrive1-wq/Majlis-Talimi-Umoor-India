@@ -58,6 +58,12 @@
     <span id="jamia-percent" class="font-bold text-2xl md:text-3xl bg-yellow-400 text-black px-3 py-1 rounded-lg">0</span>
     <span class="font-semibold ml-4">درجہ کیفیت:</span>
     <span id="jamia-grade" class="font-bold text-xl md:text-2xl px-3 py-1 rounded-lg bg-emerald-500">-</span>
+
+    <!-- NEW: total classes & books -->
+    <span class="font-semibold ml-4">کل کلاسیں:</span>
+    <span id="total-classes" class="font-bold text-lg bg-white/10 px-2 py-0.5 rounded">0</span>
+    <span class="font-semibold ml-2">کل کتابیں:</span>
+    <span id="total-books" class="font-bold text-lg bg-white/10 px-2 py-0.5 rounded">0</span>
   </div>
 
   <!-- Info -->
@@ -84,7 +90,14 @@
 
     <div id="classes-container" class="space-y-4"></div>
 
-    <div class="bg-white rounded-xl shadow px-3 md:px-4 py-3 flex justify-end">
+    <div class="bg-white rounded-xl shadow px-3 md:px-4 py-3 flex justify-end gap-2">
+      <!-- NEW: Update / Edit button -->
+      <button type="button"
+              id="enable-edit-btn"
+              class="px-4 md:px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm urdu font-semibold">
+        اپ ڈیٹ / تدوین
+      </button>
+
       <button type="submit"
               class="px-4 md:px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm urdu font-semibold">
         جائزہ محفوظ کریں
@@ -131,9 +144,12 @@ const errorBox         = document.getElementById("error-box");
 const successBox       = document.getElementById("success-box");
 const jamiaPercEl      = document.getElementById("jamia-percent");
 const jamiaGradeEl     = document.getElementById("jamia-grade");
+const totalClassesEl   = document.getElementById("total-classes");
+const totalBooksEl     = document.getElementById("total-books");
 const classesContainer = document.getElementById("classes-container");
 const addClassBtn      = document.getElementById("add-class-btn");
 const formEl           = document.getElementById("jaiza-form");
+const enableEditBtn    = document.getElementById("enable-edit-btn");
 
 const showLoader = (v) => loader.classList.toggle("hidden", !v);
 const showError  = (msg) => { errorBox.textContent = msg; errorBox.classList.remove("hidden"); };
@@ -158,6 +174,31 @@ let classCount  = 0;
 // className -> [{teacherName, bookName}, ...]
 let teachingMap = {};
 let classList   = [];
+
+// NEW: edit mode state (default editable; existing data pe read-only)
+let isEditMode = true;
+
+/*************** Edit mode toggle helper ***************/
+const toggleEditMode = (editable) => {
+  isEditMode = editable;
+
+  // saare input/select/textarea disable/enable
+  const fields = classesContainer.querySelectorAll("input, select, textarea");
+  fields.forEach(el => {
+    el.disabled = !editable;
+  });
+
+  // book/class add/remove buttons
+  const actionBtns = classesContainer.querySelectorAll(".add-book-btn, .remove-book-btn, .remove-class-btn");
+  actionBtns.forEach(btn => {
+    btn.disabled = !editable;
+  });
+
+  if (addClassBtn) addClassBtn.disabled = !editable;
+
+  const submitBtn = formEl.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = !editable;
+};
 
 /*************** Helpers ***************/
 const getGrade = (p) => {
@@ -296,16 +337,39 @@ const recalcClassPercent = (card) => {
   classGradeInput.value = getGrade(avg);
 };
 
-/*************** Jamia overall % ***************/
+/*************** Jamia overall % + total classes/books ***************/
 const recalcJamia = () => {
   const cards = classesContainer.querySelectorAll(".class-card");
   const percs = [];
+  let totalClasses = 0;
+  let totalBooks   = 0;
+
   cards.forEach(card => {
-    const pStr = card.querySelector(".class-percent")?.value;
-    if (!pStr) return;
-    const num = Number(pStr.replace("%","").trim());
-    if (!isNaN(num)) percs.push(num);
+    const bookCards = card.querySelectorAll(".book-card");
+    let anyBookHasData = false;
+
+    bookCards.forEach(b => {
+      const teacherVal = (b.querySelector(".book-teacher")?.value || "").trim();
+      const bookVal    = (b.querySelector(".book-name")?.value || "").trim();
+      const percVal    = (b.querySelector(".book-percent")?.value || "").trim();
+      if (teacherVal || bookVal || percVal) {
+        anyBookHasData = true;
+        totalBooks++;
+      }
+    });
+
+    if (anyBookHasData) {
+      totalClasses++;
+      const pStr = card.querySelector(".class-percent")?.value;
+      if (pStr) {
+        const num = Number(pStr.replace("%","").trim());
+        if (!isNaN(num)) percs.push(num);
+      }
+    }
   });
+
+  if (totalClassesEl) totalClassesEl.textContent = String(totalClasses);
+  if (totalBooksEl)   totalBooksEl.textContent   = String(totalBooks);
 
   if (!percs.length) {
     jamiaPercEl.textContent  = "0";
@@ -608,12 +672,14 @@ const loadExistingJaizaForms = async (user) => {
   );
   const snap = await getDocs(qRef);
 
-  // Agar koi data nahi mila to blank form
+  // Agar koi data nahi mila to blank form (editable)
   if (snap.empty) {
     classesContainer.innerHTML = "";
     classCount = 0;
     addNewClassCard();
     recalcJamia();
+    // naya form already editable, isliye update button ki zarurat nahi
+    if (enableEditBtn) enableEditBtn.disabled = true;
     return;
   }
 
@@ -741,6 +807,12 @@ const loadExistingJaizaForms = async (user) => {
 
   // jamia ka overall
   recalcJamia();
+
+  // existing data: start in read-only mode, update button enabled
+  if (docs.length && enableEditBtn) {
+    toggleEditMode(false);
+    enableEditBtn.disabled = false;
+  }
 };
 
 /*************** Auth & initial load ***************/
@@ -768,6 +840,15 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 addClassBtn.addEventListener("click", () => addNewClassCard());
+
+/*************** Update button → enable editing ***************/
+if (enableEditBtn) {
+  enableEditBtn.addEventListener("click", () => {
+    toggleEditMode(true);
+    // ek baar edit on karne ke baad is button ko disable kar dete hain
+    enableEditBtn.disabled = true;
+  });
+}
 
 /*************** Submit → save in Firestore ***************/
 formEl.addEventListener("submit", async (e) => {
