@@ -1542,8 +1542,63 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
             }
             if (document.getElementById('past-reports-list')) renderPastReports(reports);
          };
-         
-        const renderJaizaTab = (currentReport) => {
+
+// 🔸 Jaiza Form (jaiza_forms) se Majmui % + Date auto-fill karne wala helper
+async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
+    try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        // jaiza_forms collection se data uthayenge
+        const qRef = query(
+            collection(db, "jaiza_forms"),
+            where("jamiaId", "==", jamiaName),   // yahan same value use ho jo jaiza-form.html me save ho rahi hai
+            where("monthKey", "==", monthKey),
+            where("createdBy", "==", user.uid)
+        );
+
+        const snap = await getDocs(qRef);
+        if (snap.empty) return;
+
+        const docs = [];
+        snap.forEach(d => docs.push(d.data()));
+
+        // 🔹 Overall % nikalna (classPercentage ka average)
+        const percList = docs
+            .map(d => Number(String(d.classPercentage ?? "").replace("%", "").trim()))
+            .filter(v => !isNaN(v));
+
+        if (!percList.length) return;
+
+        const sum = percList.reduce((a, b) => a + b, 0);
+        const avg = Math.round((sum / percList.length) * 10) / 10; // 1 decimal
+
+        const percentageInput = rowEl.querySelector(".jaiza-percentage");
+        if (percentageInput && !percentageInput.value) {
+            percentageInput.value = `${avg}`;   // yahan aap chahein to "%” bhi add kar sakte hain
+        }
+
+        // 🔹 Date nikalna (sabse latest createdAt ya aaj ki date)
+        let latestDate = null;
+        docs.forEach(d => {
+            if (d.createdAt && d.createdAt.seconds) {
+                const dt = new Date(d.createdAt.seconds * 1000);
+                if (!latestDate || dt > latestDate) latestDate = dt;
+            }
+        });
+
+        const dateInput = rowEl.querySelector(".jaiza-date");
+        if (dateInput && !dateInput.value) {
+            const d = latestDate || new Date();
+            dateInput.value = d.toISOString().slice(0, 10); // YYYY-MM-DD
+        }
+
+    } catch (err) {
+        console.error("autoFillJaizaRowFromForm error:", jamiaName, monthKey, err);
+    }
+}
+        
+       const renderJaizaTab = (currentReport) => {
   const submittedJaizaat = currentReport.jaizaReport?.data || [];
   const allJamiaat = userProfileData.jamiaatList || [];
   const jaizaTabContent = document.getElementById('jaiza-tab-content');
@@ -1564,39 +1619,31 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
   const jaizaDisplayContainer = jaizaTabContent.querySelector('#jaiza-display-table');
   const jaizaSubmittedTitle   = jaizaTabContent.querySelector('#jaiza-submitted-title');
 
-  const jaizaSummaryBody      = jaizaTabContent.querySelector('#jaiza-summary-body');
-  const jaizaSummaryMsg       = jaizaTabContent.querySelector('#jaiza-summary-msg');
-
   if (!jaizaFormContainer || !jaizaPendingTitle || !jaizaSaveBtn || !jaizaDisplayContainer || !jaizaSubmittedTitle) {
     console.error("One or more Jaiza tab elements not found");
     return;
   }
 
+  // 🔹 Month key tayyar karein (jaiza-form ke URL aur auto-fill ke liye)
   let monthKeyForJaiza = "";
 
-// 1️⃣ Index.html me selected month dropdown ka value
-const monthSelect = document.getElementById("monthSelect");
-if (monthSelect && monthSelect.value) {
-  monthKeyForJaiza = monthSelect.value;   // eg: 2025-11
-}
+  const monthSelect = document.getElementById("report-month-selector");
+  if (monthSelect && monthSelect.value) {
+    monthKeyForJaiza = monthSelect.value;   // eg: 2025-11
+  }
 
-// 2️⃣ Agar upar se na mile to global variable check
-if (!monthKeyForJaiza && window.selectedMonthKey) {
-  monthKeyForJaiza = window.selectedMonthKey;
-}
+  if (!monthKeyForJaiza && window.selectedMonthKey) {
+    monthKeyForJaiza = window.selectedMonthKey;
+  }
 
-// 3️⃣ Agar fir bhi na mile to currentReport me check karo
-if (!monthKeyForJaiza && currentReport?.monthKey) {
-  monthKeyForJaiza = currentReport.monthKey;
-}
+  if (!monthKeyForJaiza && currentReport?.monthKey) {
+    monthKeyForJaiza = currentReport.monthKey;
+  }
 
-// 4️⃣ Last fallback (NEVER empty now)
-if (!monthKeyForJaiza) {
-  const now = new Date();
-  monthKeyForJaiza = `${now.getFullYear()}-${String(
-    now.getMonth() + 1
-  ).padStart(2, "0")}`;
-}
+  if (!monthKeyForJaiza) {
+    const now = new Date();
+    monthKeyForJaiza = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
 
   /* ---------------- PENDING JAIZAAT (FORM TAB) ---------------- */
 
@@ -1604,8 +1651,7 @@ if (!monthKeyForJaiza) {
     jaizaPendingTitle.classList.remove('hidden');
     jaizaSaveBtn.classList.remove('hidden');
 
-    // yahan layout aisa banaya hai:
-    // [ Jamia ka naam ] [ Date ] [ Type ] [ Majmui% + Jaiza Form button ]
+    // [ Jamia ] [ Date ] [ Type ] [ Majmui% + Jaiza Form button ]
     jaizaFormContainer.innerHTML = pendingJaizaat.map(name => `
       <div class="jaiza-row p-4 border rounded-lg bg-white shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
         <!-- Jamia ka naam -->
@@ -1627,7 +1673,7 @@ if (!monthKeyForJaiza) {
           </select>
         </div>
 
-        <!-- Majmui % + Jaiza Form button (yeh wahi jagah hai jo aap chahte thay) -->
+        <!-- Majmui % + Jaiza Form button -->
         <div class="sm:col-span-1">
           <div class="flex flex-col sm:flex-row gap-2">
             <input
@@ -1639,6 +1685,7 @@ if (!monthKeyForJaiza) {
               type="button"
               class="open-jaiza-form-btn px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm"
               data-jamia="${name}"
+              data-month="${monthKeyForJaiza}"
             >
               Jaiza Form
             </button>
@@ -1674,25 +1721,29 @@ if (!monthKeyForJaiza) {
       selectElement.dispatchEvent(new Event('change'));
     });
 
-    // ✅ ek hi central click handler – yehi Jaiza Form button ko handle karega
+    // ✅ Pending rows me Jaiza Form se auto-fill lagana
+    pendingJaizaat.forEach(name => {
+      const row = Array.from(jaizaFormContainer.querySelectorAll('.jaiza-row'))
+        .find(r => r.querySelector('.font-semibold')?.textContent.trim() === name);
+      if (row) {
+        autoFillJaizaRowFromForm(row, name, monthKeyForJaiza);
+      }
+    });
+
+    // ✅ Central click handler – "Jaiza Form" (pending wali row) open kare
     if (!jaizaFormContainer.dataset.jaizaFormHandlerAttached) {
       jaizaFormContainer.addEventListener('click', (e) => {
         const btn = e.target.closest('.open-jaiza-form-btn');
         if (!btn) return;
 
         const jamiaName = btn.dataset.jamia || "";
+        const monthParam = btn.dataset.month || monthKeyForJaiza || "";
         if (!jamiaName) return;
 
-        const monthParam = monthKeyForJaiza || "";
         const url = `jaiza-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthParam)}`;
-
-        // new tab me kholne ke liye:
         window.open(url, '_blank');
-        // agar isi tab me kholna ho to upar wali line ki jagah:
-        // window.location.href = url;
       });
 
-      // flag taake multiple listeners na lagen
       jaizaFormContainer.dataset.jaizaFormHandlerAttached = "true";
     }
 
@@ -1716,6 +1767,7 @@ if (!monthKeyForJaiza) {
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Percentage</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jaiza Form</th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
@@ -1728,6 +1780,16 @@ if (!monthKeyForJaiza) {
           <td class="px-6 py-4">${item.date || '-'}</td>
           <td class="px-6 py-4">${item.type}</td>
           <td class="px-6 py-4">${item.percentage || '-'}</td>
+          <td class="px-6 py-4">
+            <button
+              type="button"
+              class="open-filled-jaiza-btn px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+              data-jamia="${item.name}"
+              data-month="${monthKeyForJaiza}"
+            >
+              Jaiza Form
+            </button>
+          </td>
         </tr>
       `;
     });
@@ -1745,14 +1807,32 @@ if (!monthKeyForJaiza) {
         <p class="urdu-font">${comment}</p>
       </div>
     `;
+
     jaizaDisplayContainer.innerHTML = tableHTML;
+
+    // ✅ Niche wali submitted table ke buttons ke liye central handler
+    if (!jaizaDisplayContainer.dataset.jaizaFilledHandlerAttached) {
+      jaizaDisplayContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.open-filled-jaiza-btn');
+        if (!btn) return;
+
+        const jamiaName = btn.dataset.jamia || "";
+        const monthParam = btn.dataset.month || monthKeyForJaiza || "";
+        if (!jamiaName) return;
+
+        const url = `jaiza-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthParam)}`;
+        window.open(url, '_blank');
+      });
+
+      jaizaDisplayContainer.dataset.jaizaFilledHandlerAttached = "true";
+    }
 
   } else {
     jaizaSubmittedTitle.classList.add('hidden');
     jaizaDisplayContainer.innerHTML = '';
   }
-      
 };
+
       
         // ===================================
         //  UPDATED: renderTadrisTab (Reverse Logic & PDF Button)
@@ -2320,60 +2400,67 @@ if (!monthKeyForJaiza) {
         
         // --- USER FORM SUBMIT HANDLERS ---
         const handleJaizaSubmit = async (e) => { 
-            e.preventDefault();
-            const filledJaizaat = [];
-            let validationFailed = false;
-            let validationMessage = "";
-            document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
-                 const name = row.querySelector('.font-semibold').textContent;
-                 const typeSelect = row.querySelector('.jaiza-type');
-                 const dateInput = row.querySelector('.jaiza-date');
-                 const percentageInput = row.querySelector('.jaiza-percentage');
-                 const selectedType = typeSelect.value;
-                const monthForUrl = monthKeyForJaiza || "";   // month key (jaise 2025-11)
+    e.preventDefault();
+    const filledJaizaat = [];
+    let validationFailed = false;
+    let validationMessage = "";
 
-jaizaFormContainer.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const jamiaName = btn.dataset.jamia || "";
-    if (!jamiaName) return;
+    document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
+        const name = row.querySelector('.font-semibold').textContent;
+        const typeSelect = row.querySelector('.jaiza-type');
+        const dateInput = row.querySelector('.jaiza-date');
+        const percentageInput = row.querySelector('.jaiza-percentage');
+        const selectedType = typeSelect.value;
 
-    // yahan path adjust karo agar file kisi subfolder me hai
-    const url = `jaiza-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthForUrl)}`;
+        if (selectedType === 'Nahi Hua') {
+            filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' });
+        } 
+        else if (selectedType === 'Visit') {
+            if (dateInput.value) {
+                filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' });
+            } else if (typeSelect.selectedIndex > 0 && !dateInput.disabled) {
+                validationFailed = true;
+                validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`;
+            }
+        } 
+        else if (selectedType === 'Jaiza') {
+            if (dateInput.value && percentageInput.value) {
+                filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value });
+            } else if ((dateInput.value || percentageInput.value) && !dateInput.disabled && !percentageInput.disabled) {
+                validationFailed = true;
+                validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`;
+            }
+        }
+    });
 
-    // new tab me kholna ho:
-    window.open(url, '_blank');
+    if (validationFailed) { 
+        showNotification(validationMessage, true); 
+        return; 
+    }
+    if (filledJaizaat.length === 0) { 
+        showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); 
+        return; 
+    }
 
-    // agar isi tab me kholna ho to upar wali line hata kar ye use karo:
-    // window.location.href = url;
-  });
-});
-                 if (selectedType === 'Nahi Hua') { filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' }); } 
-                 else if (selectedType === 'Visit') {
-                     if (dateInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' }); } 
-                     else if (typeSelect.selectedIndex > 0 && !dateInput.disabled) { validationFailed = true; validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`; }
-                 } else if (selectedType === 'Jaiza') {
-                     if (dateInput.value && percentageInput.value) { filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value }); } 
-                     else if ((dateInput.value || percentageInput.value) && !dateInput.disabled && !percentageInput.disabled) { validationFailed = true; validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`; }
-                 }
-             });
-            if (validationFailed) { showNotification(validationMessage, true); return; }
-            if (filledJaizaat.length === 0) { showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true); return; }
-            
-            showLoader(true);
-            try {
-                 await saveReportData({}); 
-                 const docSnap = await getDoc(reportRef); 
-                 const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
-                 const existingNames = filledJaizaat.map(f => f.name);
-                 const filteredExisting = existingData.filter(ex => !existingNames.includes(ex.name));
-                 const mergedData = [...filteredExisting, ...filledJaizaat];
-                 await updateDoc(reportRef, { jaizaReport: { status: 'Done', data: mergedData } }); 
-                 showNotification("Jaiza report saved!"); 
-            } catch(error) {
-                console.error("Error updating Jaiza report:", error);
-                showNotification("Error updating Jaiza report.", true);
-            } finally { showLoader(false); }
-         };
+    showLoader(true);
+    try {
+        await saveReportData({});  // reportRef set ho jayega
+
+        const docSnap = await getDoc(reportRef); 
+        const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
+        const existingNames = filledJaizaat.map(f => f.name);
+        const filteredExisting = existingData.filter(ex => !existingNames.includes(ex.name));
+        const mergedData = [...filteredExisting, ...filledJaizaat];
+
+        await updateDoc(reportRef, { jaizaReport: { status: 'Done', data: mergedData } }); 
+        showNotification("Jaiza report saved!"); 
+    } catch(error) {
+        console.error("Error updating Jaiza report:", error);
+        showNotification("Error updating Jaiza report.", true);
+    } finally { 
+        showLoader(false); 
+    }
+};
          
         const handlePastReportClick = (e) => { 
             if (e.target.classList.contains('view-past-report-btn')) {
@@ -2739,6 +2826,7 @@ jaizaFormContainer.querySelectorAll('.open-jaiza-form-btn').forEach(btn => {
     </script>
 </body>
 </html>
+
 
 
 
