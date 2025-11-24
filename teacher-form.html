@@ -72,18 +72,44 @@
     </div>
 
     <form id="teacher-report-form" class="text-right">
-        <!-- TEACHER SELECT -->
-        <div class="mb-4 sm:mb-6">
-            <label for="teacher-select" class="block text-gray-700 font-semibold mb-2 text-sm sm:text-base">
-                ۱۔ اپنا نام منتخب کریں:
-            </label>
-            <select id="teacher-select"
-                    class="w-full p-2.5 sm:p-3 border border-gray-300 rounded-lg
-                           focus:ring-emerald-500 focus:border-emerald-500 bg-white text-right text-sm sm:text-base"
-                    required>
-                <option value="" disabled selected>۔۔۔ نام منتخب کریں ۔۔۔</option>
-            </select>
+        <!-- TEACHER LOGIN BY UNIQUE CODE -->
+<div class="mb-4 sm:mb-6 space-y-2">
+    <label for="teacher-code-input"
+           class="block text-gray-700 font-semibold mb-1 text-sm sm:text-base">
+        ۱۔ اپنا یونیک ٹیچر کوڈ درج کریں:
+    </label>
+
+    <div class="flex gap-2">
+        <input id="teacher-code-input"
+               type="text"
+               class="flex-1 p-2.5 sm:p-3 border border-gray-300 rounded-lg
+                      focus:ring-emerald-500 focus:border-emerald-500 bg-white text-right text-sm sm:text-base"
+               placeholder="مثلاً: 12345">
+        <button type="button"
+                id="verify-code-btn"
+                class="whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white font-bold
+                       px-4 sm:px-6 py-2 rounded-lg text-sm sm:text-base">
+            تصدیق
+        </button>
+    </div>
+
+    <p id="teacher-code-error"
+       class="hidden text-red-600 text-xs sm:text-sm mt-1"></p>
+
+    <!-- Sirf display ke liye, teacher apna naam change nahi kar sakta -->
+    <div id="teacher-name-display-wrapper" class="hidden mt-3">
+        <span class="block text-gray-700 font-semibold text-sm sm:text-base mb-1">
+            آپ کا نام:
+        </span>
+        <div id="teacher-name-display"
+             class="inline-block bg-gray-100 border border-gray-300 rounded-lg
+                    px-3 py-1 text-sm sm:text-base urdu-font">
         </div>
+    </div>
+
+    <!-- hidden select – sirf internal use ke liye -->
+    <select id="teacher-select" class="hidden"></select>
+</div>
 
         <!-- PERIODS SECTION (NO HORIZONTAL SCROLL) -->
         <div id="periods-section" class="mb-6 sm:mb-8 hidden">
@@ -108,7 +134,13 @@
 </div>
 
 <script>
-    let selectedTeacherData = null;
+   let selectedTeacherData = null;   // jo teacher login hua
+let formLocked = false;           // agar pehle se report hai to true
+let currentJamiaName = null;      // jamia ka naam (decoded)
+let currentMonthIndex = null;     // month index (0–11)
+let currentReportYear = null;     // year (e.g. 2025)
+let currentJamiaData = null;      // jamiaData (teachers waghera)
+
 
     document.addEventListener('DOMContentLoaded', () => {
         const loadingSpinner = document.getElementById('loading-spinner');
@@ -147,6 +179,187 @@
 
         // Data load
         loadJamiaData(jamiaId, userId, activeYear, monthIndex, reportYear);
+
+        // ===== TEACHER CODE VERIFY LOGIC =====
+const codeInput                 = document.getElementById('teacher-code-input');
+const verifyBtn                 = document.getElementById('verify-code-btn');
+const codeError                 = document.getElementById('teacher-code-error');
+const teacherNameDisplayWrapper = document.getElementById('teacher-name-display-wrapper');
+const teacherNameDisplay        = document.getElementById('teacher-name-display');
+
+function verifyTeacherByCode() {
+    if (!currentJamiaData || !Array.isArray(currentJamiaData.teachers)) {
+        alert('جامعہ کا ڈیٹا ابھی لوڈ نہیں ہوا، تھوڑی دیر بعد دوبارہ کوشش کریں۔');
+        return;
+    }
+
+    codeError.classList.add('hidden');
+    codeError.textContent = '';
+
+    const code = (codeInput.value || '').trim();
+
+    if (!code) {
+        codeError.textContent = 'براہ کرم اپنا ٹیچر کوڈ درج کریں۔';
+        codeError.classList.remove('hidden');
+        return;
+    }
+
+    if (code.length !== 5) {
+        codeError.textContent = 'براہ کرم ۵ اعداد پر مشتمل درست ٹیچر کوڈ درج کریں۔';
+        codeError.classList.remove('hidden');
+        return;
+    }
+
+    const teachers = currentJamiaData.teachers || [];
+
+    // 🔴 Yahan loginCode se match karein (jo karkardagi.html me save hua)
+    const teacher = teachers.find(t => String(t.loginCode) === code);
+
+    if (!teacher) {
+        codeError.textContent = 'کوڈ درست نہیں ہے، دوبارہ چیک کریں۔';
+        codeError.classList.remove('hidden');
+        return;
+    }
+
+    // ✅ Teacher mil gaya
+    selectedTeacherData = teacher;
+
+    const teacherSelect = document.getElementById('teacher-select');
+    if (teacherSelect) {
+        teacherSelect.value = teacher.id;
+        teacherSelect.disabled = true;
+    }
+
+    codeInput.disabled = true;
+    verifyBtn.disabled = true;
+
+    teacherNameDisplay.textContent = teacher.name || '';
+    teacherNameDisplayWrapper.classList.remove('hidden');
+
+    // Ab sirf isi teacher ke periods load honge
+    loadTeacherPeriods(
+        teacher.id,
+        teachers,
+        currentJamiaName,
+        currentMonthIndex,
+        currentReportYear
+    );
+}
+
+if (verifyBtn) {
+    verifyBtn.addEventListener('click', verifyTeacherByCode);
+}
+
+if (codeInput) {
+    codeInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            verifyTeacherByCode();
+        }
+    });
+}
+
+        async function checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year) {
+    const formMessage = document.getElementById('form-message');
+    const submitBtn   = document.getElementById('submit-btn');
+
+    try {
+        const submissionsRef = db.collection('teacher_submissions');
+        const q = submissionsRef
+            .where('jamiaId', '==', jamiaName)
+            .where('teacherId', '==', teacherId)
+            .where('submissionMonth', '==', monthIndex)
+            .where('submissionYear', '==', year);
+
+        const snap = await q.get();
+
+        if (snap.empty) {
+            // koi purani report nahi
+            formLocked = false;
+            if (submitBtn) submitBtn.disabled = false;
+            return;
+        }
+
+        // Pehle se report hai → lock
+        formLocked = true;
+        if (submitBtn) submitBtn.disabled = true;
+
+        const dataByPeriod = {};
+
+        snap.forEach(doc => {
+            const d = doc.data();
+            const pId = d.periodId;
+            if (!pId) return;
+
+            if (!dataByPeriod[pId]) {
+                dataByPeriod[pId] = {
+                    pagesTaught: 0,
+                    lastIbarat: '',
+                    lastPageNo: ''
+                };
+            }
+
+            dataByPeriod[pId].pagesTaught += parseInt(d.pagesTaught || 0, 10);
+
+            if (d.lastIbarat) {
+                dataByPeriod[pId].lastIbarat = d.lastIbarat;
+            }
+            if (d.lastPageNo !== undefined && d.lastPageNo !== null && d.lastPageNo !== '') {
+                dataByPeriod[pId].lastPageNo = d.lastPageNo;
+            }
+        });
+
+        // Inputs me value daal + read-only + popup
+        const pagesInputs = document.querySelectorAll('.pages-taught-input');
+        pagesInputs.forEach(input => {
+            const periodId = input.dataset.periodId;
+            const info = dataByPeriod[periodId];
+            if (!info) return;
+
+            input.value = info.pagesTaught;
+            input.readOnly = true;
+            input.addEventListener('focus', showLockedPopup);
+        });
+
+        const lastInputs = document.querySelectorAll('.last-lesson-input');
+        lastInputs.forEach(input => {
+            const rowId = input.dataset.rowId;
+            const info = dataByPeriod[rowId];
+            if (!info) return;
+
+            input.value = info.lastIbarat || '';
+            input.readOnly = true;
+            input.addEventListener('focus', showLockedPopup);
+        });
+
+        const pageNoInputs = document.querySelectorAll('.page-number-input');
+        pageNoInputs.forEach(input => {
+            const rowId = input.dataset.rowId;
+            const info = dataByPeriod[rowId];
+            if (!info) return;
+
+            input.value = info.lastPageNo || '';
+            input.readOnly = true;
+            input.addEventListener('focus', showLockedPopup);
+        });
+
+        if (formMessage) {
+            formMessage.textContent =
+                'آپ کی اس مہینے کی رپورٹ پہلے ہی جمع ہو چکی ہے۔ اگر کسی قسم کی ترمیم درکار ہو تو اپنے تعلیمی ذمہ دار سے رابطہ فرمائیں۔';
+            formMessage.className =
+                'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
+            formMessage.classList.remove('hidden');
+        }
+    } catch (err) {
+        console.error('Error checking existing submission:', err);
+        formLocked = false;
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Popup function
+function showLockedPopup() {
+    alert('آپ کی اس مہینے کی رپورٹ پہلے ہی جمع ہو چکی ہے۔ کوئی تبدیلی درکار ہو تو اپنے تعلیمی ذمہ دار سے رابطہ فرمائیں۔');
+}
 
         // Submit handler
         document.getElementById('teacher-report-form').addEventListener('submit', (e) => {
@@ -192,104 +405,127 @@
                 return;
             }
 
-            // Teachers dropdown
-            jamiaData.teachers.forEach(teacher => {
-                const option = document.createElement('option');
-                option.value = teacher.id;
-                option.textContent = teacher.name;
-                teacherSelect.appendChild(option);
-            });
+                    // Teachers dropdown (ab hidden hai, code ke zariye use hoga)
+        teacherSelect.innerHTML = '';
+        const teachers = Array.isArray(jamiaData.teachers) ? jamiaData.teachers : [];
+        teachers.forEach(teacher => {
+            const option = document.createElement('option');
+            option.value = teacher.id;
+            option.textContent = teacher.name;
+            teacherSelect.appendChild(option);
+        });
 
-            loadingSpinner.classList.add('hidden');
-            formContainer.classList.remove('hidden');
+        // Global state – baad me code verify ke liye
+        currentJamiaName  = decodeURIComponent(jamia);
+        currentMonthIndex = monthIndex;
+        currentReportYear = currentYear;
+        currentJamiaData  = { ...jamiaData, teachers };
 
-            // Teacher change par periods load
-            teacherSelect.addEventListener('change', (e) => {
-                loadTeacherPeriods(e.target.value, jamiaData.teachers);
-            });
+        loadingSpinner.classList.add('hidden');
+        formContainer.classList.remove('hidden');
 
-        } catch (error) {
+        // Ab teacherSelect par change-listener ki zaroorat nahi
+        // kyun ke teacher apna code se login karega
+
+    } catch (error) {
             console.error("Error loading Jamia data:", error);
             loadingSpinner.innerHTML =
                 `<p class="text-red-600 font-bold">ڈیٹا لوڈ کرتے وقت خرابی: ${error.message}</p>`;
         }
     }
 
-    // ===== PERIODS (MOBILE-FRIENDLY CARDS) =====
-    function loadTeacherPeriods(teacherId, allTeachers) {
-        const periodsList     = document.getElementById('periods-list');
-        const periodsSection  = document.getElementById('periods-section');
-        const submitButtonArea = document.getElementById('submit-button-area');
+    // ===== PERIODS (cards) + existing submission check =====
+function loadTeacherPeriods(teacherId, allTeachers, jamiaName, monthIndex, year) {
+    const periodsList      = document.getElementById('periods-list');
+    const periodsSection   = document.getElementById('periods-section');
+    const submitButtonArea = document.getElementById('submit-button-area');
+    const formMessage      = document.getElementById('form-message');
 
-        periodsList.innerHTML = '';
-
-        const teacher = allTeachers.find(t => t.id === teacherId);
-
-        if (!teacher || !Array.isArray(teacher.periods) || teacher.periods.length === 0) {
-            periodsList.innerHTML =
-                '<p class="text-center py-4 text-gray-500 text-sm sm:text-base">اس استاد کے لیے کوئی پیریڈ سیٹ نہیں ہے۔</p>';
-            periodsSection.classList.remove('hidden');
-            submitButtonArea.classList.add('hidden');
-            return;
-        }
-
-        selectedTeacherData = teacher;
-
-        teacher.periods.forEach(period => {
-            const className = period.className || 'کلاس';
-            const bookName  = period.bookName  || 'کتاب';
-
-            const card = document.createElement('div');
-            card.className = 'bg-gray-50 border border-gray-200 rounded-xl p-3 sm:p-4 shadow-sm';
-
-            card.innerHTML = `
-                <div class="mb-2 text-sm sm:text-base font-semibold text-emerald-700">
-                    کلاس / کتاب: ${className} (${bookName})
-                </div>
-                <div class="grid grid-cols-1 gap-3">
-                    <div>
-                        <label class="block text-xs sm:text-sm mb-1">صفحہ پڑھایا</label>
-                        <input type="number"
-                               data-row-id="${period.id}"
-                               data-period-id="${period.id}"
-                               data-class-name="${className}"
-                               data-book-name="${bookName}"
-                               class="pages-taught-input w-full p-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-center focus:border-emerald-500"
-                               min="0"
-                               placeholder="صفحہ"
-                               required>
-                    </div>
-                    <div>
-                        <label class="block text-xs sm:text-sm mb-1">سبق کی آخری عبارت</label>
-                        <input type="text"
-                               data-row-id="${period.id}"
-                               class="last-lesson-input w-full p-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-emerald-500"
-                               placeholder="آخری عبارت"
-                               required>
-                    </div>
-                    <div>
-                        <label class="block text-xs sm:text-sm mb-1">صفحہ نمبر</label>
-                        <input type="number"
-                               data-row-id="${period.id}"
-                               class="page-number-input w-full p-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-center focus:border-emerald-500"
-                               min="0"
-                               placeholder="صفحہ نمبر"
-                               required>
-                    </div>
-                </div>
-            `;
-
-            periodsList.appendChild(card);
-        });
-
-        periodsSection.classList.remove('hidden');
-        submitButtonArea.classList.remove('hidden');
+    // Reset
+    formLocked = false;
+    if (formMessage) {
+        formMessage.classList.add('hidden');
+        formMessage.textContent = '';
     }
+
+    periodsList.innerHTML = '';
+
+    const teacher = allTeachers.find(t => t.id === teacherId);
+
+    if (!teacher || !Array.isArray(teacher.periods) || teacher.periods.length === 0) {
+        periodsList.innerHTML =
+            '<p class="text-center py-4 text-gray-500 text-sm sm:text-base">اس استاد کے لیے کوئی پیریڈ سیٹ نہیں ہے۔</p>';
+        periodsSection.classList.remove('hidden');
+        submitButtonArea.classList.add('hidden');
+        return;
+    }
+
+    selectedTeacherData = teacher;
+
+    teacher.periods.forEach(period => {
+        const className = period.className || 'کلاس';
+        const bookName  = period.bookName  || 'کتاب';
+
+        const card = document.createElement('div');
+        card.className = 'bg-gray-50 border border-gray-200 rounded-xl p-3 sm:p-4 shadow-sm';
+
+        card.innerHTML = `
+            <div class="mb-2 text-sm sm:text-base font-semibold text-emerald-700">
+                کلاس / کتاب: ${className} (${bookName})
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <div>
+                    <label class="block text-xs sm:text-sm mb-1">صفحہ پڑھایا</label>
+                    <input type="number"
+                           data-row-id="${period.id}"
+                           data-period-id="${period.id}"
+                           data-class-name="${className}"
+                           data-book-name="${bookName}"
+                           class="pages-taught-input w-full p-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-center focus:border-emerald-500"
+                           min="0"
+                           placeholder="صفحہ"
+                           required>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm mb-1">سبق کی آخری عبارت</label>
+                    <input type="text"
+                           data-row-id="${period.id}"
+                           class="last-lesson-input w-full p-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-emerald-500"
+                           placeholder="آخری عبارت"
+                           required>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm mb-1">صفحہ نمبر</label>
+                    <input type="number"
+                           data-row-id="${period.id}"
+                           class="page-number-input w-full p-2 border border-gray-300 rounded-lg text-xs sm:text-sm text-center focus:border-emerald-500"
+                           min="0"
+                           placeholder="صفحہ نمبر"
+                           required>
+                </div>
+            </div>
+        `;
+
+        periodsList.appendChild(card);
+    });
+
+    periodsSection.classList.remove('hidden');
+    submitButtonArea.classList.remove('hidden');
+
+    // 🔒 Ab check karein ki is teacher ki is mahine ki report pehle se hai ya nahi
+    checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year);
+}
 
     // ===== SUBMISSION =====
     async function submitReport(jamiaId, activeYear, monthIndex, year) {
-        const submitBtn   = document.getElementById('submit-btn');
-        const formMessage = document.getElementById('form-message');
+    const submitBtn   = document.getElementById('submit-btn');
+    const formMessage = document.getElementById('form-message');
+
+    // Agar pehle se lock hai to dobara submit na ho
+    if (formLocked) {
+        showLockedPopup();
+        return;
+    }
 
         submitBtn.disabled = true;
         submitBtn.innerHTML =
@@ -381,4 +617,5 @@
 </script>
 </body>
 </html>
+
 
