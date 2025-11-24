@@ -1687,83 +1687,111 @@ function generateTeacherLoginCode(existingTeachers = []) {
         };
 
         // Function to update the Teacher Name (and trigger UI/Report update)
-        const handleUpdateTeacherName = async (e) => {
+const handleUpdateTeacherName = async (e) => {
     e.preventDefault();
     if (!activeYear) return;
-    
+
     const jamiaName = modalEditJamiaName.value;
     const teacherId = modalEditTeacherId.value;
     const newTeacherName = modalNewTeacherNameInput.value.trim();
-    const newTeacherCodeRaw = (modalTeacherCodeInput?.value || '').trim();   // 🔹 NEW
+    const newTeacherCodeRaw = (modalTeacherCodeInput?.value || '').trim();   // code input se
 
     if (!newTeacherName) {
         showNotification("Naya naam khali nahi ho sakta.", true);
         return;
     }
 
-    let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
-    let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
-    let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+    // Structure fetch
+    let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    const jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
 
-    if (teacherData) {
-        // 🔹 Code validate / set
-        if (newTeacherCodeRaw) {
-            if (!/^\d{5}$/.test(newTeacherCodeRaw)) {
-                showNotification("Teacher code sirf 5 digits ka hona chahiye.", true);
-                return;
-            }
-            if (jamiaData.teachers.some(t => t.id !== teacherId && String(t.loginCode) === newTeacherCodeRaw)) {
-                showNotification("Ye code kisi aur teacher ke paas hai.", true);
-                return;
-            }
-            teacherData.loginCode = newTeacherCodeRaw;
-        } else {
-            // agar koi code nahi diya aur pehle bhi nahi tha to auto-generate
-            if (!teacherData.loginCode) {
-                teacherData.loginCode = generateTeacherLoginCode(jamiaData.teachers || []);
-            }
-        }
-
-        const oldTeacherName = teacherData.name;
-        teacherData.name = newTeacherName;
-
-        await saveActiveYearStructure(async () => {
-            editTeacherModal.classList.add('hidden');
-        });
-    } else {
+    if (!jamiaData || !Array.isArray(jamiaData.teachers)) {
         showNotification("Teacher data structure me nahi mila.", true);
+        return;
+    }
+
+    const teacherData = jamiaData.teachers.find(t => t.id === teacherId);
+    if (!teacherData) {
+        showNotification("Teacher data structure me nahi mila.", true);
+        return;
+    }
+
+    // --- Code validate / set ---
+    if (newTeacherCodeRaw) {
+        // 5 digit check
+        if (!/^\d{5}$/.test(newTeacherCodeRaw)) {
+            showNotification("Teacher code sirf 5 digits ka hona chahiye.", true);
+            return;
+        }
+        // Duplicate check (same Jamia ke andar)
+        const codeTaken = jamiaData.teachers.some(
+            t => t.id !== teacherId && String(t.loginCode) === newTeacherCodeRaw
+        );
+        if (codeTaken) {
+            showNotification("Ye code kisi aur teacher ko diya ja chuka hai.", true);
+            return;
+        }
+        teacherData.loginCode = newTeacherCodeRaw;
+    } else {
+        // Agar koi code nahi diya aur pehle bhi nahi tha to auto-generate
+        if (!teacherData.loginCode) {
+            teacherData.loginCode = generateTeacherLoginCode(jamiaData.teachers || []);
+        }
+    }
+
+    // --- Naam update ---
+    const oldTeacherName = teacherData.name;
+    teacherData.name = newTeacherName;
+
+    try {
+        await saveActiveYearStructure(async () => {
+            // ✅ Local monthlyReportData me naam update
+            if (Array.isArray(monthlyReportData)) {
+                monthlyReportData.forEach(entry => {
+                    if (entry.teacherId === teacherId) {
+                        entry.teacherName = newTeacherName;
+                    }
+                });
+            }
+
+            // ✅ Saare purane reports me bhi naam sync
+            if (Array.isArray(allYearReportsData)) {
+                allYearReportsData.forEach(report => {
+                    report?.karkardagiReport?.data?.forEach(entry => {
+                        if (entry.teacherId === teacherId && entry.teacherName === oldTeacherName) {
+                            entry.teacherName = newTeacherName;
+                        }
+                    });
+                });
+            }
+
+            // ✅ Data reload (agar function defined hai)
+            if (typeof loadMonthlyReportData === 'function') {
+                await loadMonthlyReportData();
+            }
+
+            // Modal band + UI refresh
+            editTeacherModal.classList.add('hidden');
+
+            renderSetupTab();
+            renderReportingTab();
+            if (typeof populateTeacherProfileFilters === 'function') {
+                populateTeacherProfileFilters();
+            }
+            if (typeof renderTeacherProfileTab === 'function') {
+                renderTeacherProfileTab();
+            }
+            if (typeof renderTeacherPerformanceTab === 'function') {
+                renderTeacherPerformanceTab();
+            }
+
+            showNotification(`Teacher "${newTeacherName}" ka naam update ho gaya hai!`);
+        });
+    } catch (err) {
+        console.error("Teacher update failed:", err);
+        showNotification("Teacher update karne me error aayi.", true);
     }
 };
-                    
-                    // Update the teacherName in the current monthlyReportData (local state)
-                    // This ensures the next renderReportingTab uses the correct name immediately
-                    monthlyReportData.forEach(entry => {
-                         if (entry.teacherId === teacherId) { 
-                              entry.teacherName = newTeacherName;
-                         }
-                    });
-                    
-                    // Update all previous reports in local state (allYearReportsData)
-                    allYearReportsData.forEach(report => {
-                        report.karkardagiReport?.data?.forEach(entry => {
-                            if (entry.teacherId === teacherId && entry.teacherName === oldTeacherName) {
-                                entry.teacherName = newTeacherName;
-                            }
-                        });
-                    });
-                    
-                    // Reload the full report data (just in case) and refresh UI
-                    await loadMonthlyReportData(); 
-                    
-                    // Re-render both setup and reporting tabs
-                    renderSetupTab(); 
-                    renderReportingTab(); 
-                    populateTeacherProfileFilters(); // Update Teacher Profile filter list
-                    showNotification(`Teacher "${newTeacherName}" ka naam update ho gaya hai!`);
-            } else {
-                showNotification("Teacher data structure me nahi mila.", true);
-            }
-        };
 
         
         const handleDeleteTeacher = (e) => {
@@ -3457,6 +3485,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
