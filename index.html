@@ -1116,72 +1116,81 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
         userProfileData.photoURL || 'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'
     );
 
-    // ---------- Academic Structure se Jamia + Asatiza count ----------
-const academicStructure =
-    (Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0)
-        ? userProfileData.academicStructure
-        : (Array.isArray(userProfileData.structure) ? userProfileData.structure : []);
+       // ---------- Academic Structure se Jamia + Asatiza count ----------
+    // Pehle academicStructure dekhen, warna purane "structure" se data lein
+    const academicStructure =
+        (Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0)
+            ? userProfileData.academicStructure
+            : (Array.isArray(userProfileData.structure) ? userProfileData.structure : []);
 
-// taake baaki jagah bhi same field use ho
-userProfileData.academicStructure = academicStructure;
+    // Normalize: aage sab jagah academicStructure hi use hoga
+    userProfileData.academicStructure = academicStructure;
 
+    const jamiaSet = new Set();
+    const teacherSet = new Set();
 
-const jamiaSet = new Set();
-const teacherSet = new Set();
+    const walkNode = (node) => {
+        if (!node || typeof node !== "object") return;
 
-const walkNode = (node) => {
-    if (!node || typeof node !== "object") return;
+        // Jamia name
+        if (typeof node.jamiaName === "string" && node.jamiaName.trim()) {
+            jamiaSet.add(node.jamiaName.trim());
+        }
 
-    // Jamia name
-    if (typeof node.jamiaName === "string" && node.jamiaName.trim()) {
-        jamiaSet.add(node.jamiaName.trim());
-    }
+        // Teacher name
+        if (typeof node.teacherName === "string" && node.teacherName.trim()) {
+            teacherSet.add(node.teacherName.trim());
+        }
 
-    // Teacher name
-    if (typeof node.teacherName === "string" && node.teacherName.trim()) {
-        teacherSet.add(node.teacherName.trim());
-    }
-
-    // teachers array
-    if (Array.isArray(node.teachers)) {
-        node.teachers.forEach(t => {
-            if (typeof t === "string" && t.trim()) {
-                teacherSet.add(t.trim());
-            } else if (t && typeof t === "object") {
-                const n = t.name || t.teacherName;
-                if (n && String(n).trim()) {
-                    teacherSet.add(String(n).trim());
+        // teachers array
+        if (Array.isArray(node.teachers)) {
+            node.teachers.forEach(t => {
+                if (typeof t === "string" && t.trim()) {
+                    teacherSet.add(t.trim());
+                } else if (t && typeof t === "object") {
+                    const n = t.name || t.teacherName;
+                    if (n && String(n).trim()) {
+                        teacherSet.add(String(n).trim());
+                    }
                 }
+            });
+        }
+
+        // Nested structures: classes / books / kitabs
+        if (Array.isArray(node.classes)) node.classes.forEach(walkNode);
+        else if (node.classes && typeof node.classes === "object") {
+            Object.values(node.classes).forEach(walkNode);
+        }
+
+        if (Array.isArray(node.books)) node.books.forEach(walkNode);
+        if (Array.isArray(node.kitabs)) node.kitabs.forEach(walkNode);
+    };
+
+    academicStructure.forEach(walkNode);
+
+    // Jamiaat list ko bhi sync kar lein
+    let jamiaatList = Array.isArray(userProfileData.jamiaatList)
+        ? userProfileData.jamiaatList
+        : [];
+
+    // Agar pehle se jamiaatList hai to use bhi set me daal do
+    if (jamiaSet.size === 0 && jamiaatList.length > 0) {
+        jamiaatList.forEach(name => {
+            if (typeof name === "string" && name.trim()) {
+                jamiaSet.add(name.trim());
             }
         });
     }
 
-    // Nested structures
-    if (Array.isArray(node.classes)) node.classes.forEach(walkNode);
-    else if (node.classes && typeof node.classes === "object") {
-        Object.values(node.classes).forEach(walkNode);
+    // Agar jamiaatList khali hai lekin structure se Jamia mil gaye,
+    // to jamiaatList bhi auto fill kar do
+    if (jamiaatList.length === 0 && jamiaSet.size > 0) {
+        jamiaatList = Array.from(jamiaSet);
+        userProfileData.jamiaatList = jamiaatList;
     }
 
-    if (Array.isArray(node.books)) node.books.forEach(walkNode);
-    if (Array.isArray(node.kitabs)) node.kitabs.forEach(walkNode);
-};
-
-academicStructure.forEach(walkNode);
-
-const jamiaatList = Array.isArray(userProfileData.jamiaatList)
-    ? userProfileData.jamiaatList
-    : [];
-
-if (jamiaSet.size === 0 && jamiaatList.length > 0) {
-    jamiaatList.forEach(name => {
-        if (typeof name === "string" && name.trim()) {
-            jamiaSet.add(name.trim());
-        }
-    });
-}
-
-const totalJamiaat = jamiaSet.size;
-const totalAsatiza = teacherSet.size;
+    const totalJamiaat = jamiaSet.size;
+    const totalAsatiza = teacherSet.size;
 
     // ---------- Dashboard Profile ----------
     if (dashUserName) dashUserName.textContent = userProfileData.name || "N/A";
@@ -1218,16 +1227,16 @@ const totalAsatiza = teacherSet.size;
 
     if (profilePhotoImg) profilePhotoImg.src = convertedUrl;
 
-    // ---------- Academic Structure Setup box show/hide ----------
-const hasAcademicStructure =
-    (Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0) ||
-    (Array.isArray(userProfileData.structure) && userProfileData.structure.length > 0);
+        // ---------- Academic Structure Setup box show/hide ----------
+    const hasAcademicStructure =
+        (Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0) ||
+        (Array.isArray(userProfileData.structure) && userProfileData.structure.length > 0);
 
-if (!hasAcademicStructure) {
-    academicStructureSetup.classList.remove("hidden");
-} else {
-    academicStructureSetup.classList.add("hidden");
-}
+    if (!hasAcademicStructure) {
+        academicStructureSetup.classList.remove("hidden");
+    } else {
+        academicStructureSetup.classList.add("hidden");
+    }
 
     // ✅ Jaiza Form Jamia dropdown ko fill karein
     if (jaizaFormJamiaSelect) {
@@ -2998,6 +3007,7 @@ const handleJaizaSubmit = async (e) => {
     </script>
 </body>
 </html>
+
 
 
 
