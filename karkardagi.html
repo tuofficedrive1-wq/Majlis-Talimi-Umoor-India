@@ -95,10 +95,6 @@
     <!-- User info + logout: mobile par hidden, md se visible -->
     <div id="user-info" class="hidden md:flex items-center">
         <span id="user-email-display" class="font-medium text-gray-600 mr-3"></span>
-        <button id="logout-btn"
-            class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-300">
-            Logout
-        </button>
     </div>
 </header>
 
@@ -372,6 +368,7 @@
         const newYearNameInput = document.getElementById('new-year-name-input');
         const activeYearSelect = document.getElementById('active-year-select');
         const reportingYearInfo = document.getElementById('reporting-year-info');
+        const academicYearManagement = document.getElementById('academic-year-management');
         // Summary Month Selector
         const summaryMonthSelect = document.getElementById('summary-month-select'); 
         const monthlyMunasibContainer = document.getElementById('monthly-munasib-container');
@@ -418,7 +415,8 @@
 
         // --- Application State ---
         let currentUser = null;
-        let userProfileData = {}; 
+        let userProfileData = {};
+        let isAdmin = false;   // 👈 NEW
         let currentMonthReport = {}; 
         let activeYear = null; 
         let allAcademicYearsData = {}; 
@@ -809,6 +807,7 @@ const handleCreateReportLink = (jamiaName) => {
                                      userProfileData = userDocSnap.data(); 
                                      overrideTimestamp = userProfileData.gracePeriodOverrideUntil || null;
                                  } else { userProfileData = {}; }
+                                 isAdmin = !!userProfileData.isAdmin;  // Firestore me isAdmin: true/false rakho
                              } catch (err) { userProfileData = {}; }
 
                             // SET INITIAL PERIOD
@@ -835,8 +834,17 @@ const handleCreateReportLink = (jamiaName) => {
                             // **********************************************
 
                             userInfo.classList.remove('hidden');
-                            backToDashboardBtn.classList.remove('hidden');
-                            userEmailDisplay.textContent = user.email;
+backToDashboardBtn.classList.remove('hidden');
+
+// Display name choose karo – fullName / name / displayName / username / last fallback: email
+const displayName =
+    userProfileData.fullName ||
+    userProfileData.name ||
+    user.displayName ||
+    userProfileData.username ||
+    user.email;
+
+userEmailDisplay.textContent = displayName;
                             loginView.classList.add('hidden');
                             karkardagiView.classList.remove('hidden');
                             await loadUserData(true); 
@@ -972,15 +980,30 @@ if (editTeacherForm) {
             
             try {
                 if (!isInitialLoad) {
-                    const userDocRef = doc(db, 'users', currentUser.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists()) {
-                        userProfileData = userDocSnap.data(); 
-                        allAcademicYearsData = userDocSnap.data().academicYears || {};
-                    } else { showNotification("User profile not found.", true); return; }
-                } else {
-                    allAcademicYearsData = userProfileData.academicYears || {};
-                }
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+        userProfileData = userDocSnap.data(); 
+    } else { 
+        showNotification("User profile not found.", true); 
+        return; 
+    }
+}
+
+// yahan role set karo
+isAdmin = !!userProfileData.isAdmin;
+
+// Agar admin hai to uske apne doc se lo
+if (isAdmin) {
+    allAcademicYearsData = userProfileData.academicYears || {};
+} else {
+    // Normal user ke liye global config se academic years lo
+    const configRef = doc(db, 'admin_config', 'karkardagi_academic');
+    const configSnap = await getDoc(configRef);
+    allAcademicYearsData = configSnap.exists()
+        ? (configSnap.data().academicYears || {})
+        : {};
+}
                 
                 populateYearSelector(); 
                 
@@ -1215,25 +1238,43 @@ const loadMonthlyReportData = async () => {
         // --- UI REFRESH LOGIC (Unchanged) ---
         
         const refreshFullUI = () => {
-            if (!activeYear) {
-                academicMonthsSetup.classList.add('hidden');
-                setupAccordionContainer.innerHTML = '<p class="text-red-500">Kaam shuru karne ke liye pehle "Create Year" karein ya ek "Active Year" select karein.</p>';
-                reportingContainer.innerHTML = '<p class="text-red-500">Reporting ke liye pehle ek "Active Year" select karein.</p>';
-                saveMonthlyReportBtn.classList.add('hidden');
-                reportingYearInfo.classList.add('hidden');
-            } else {
-                academicMonthsSetup.classList.remove('hidden');
-                reportingYearInfo.classList.remove('hidden');
-                reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
-                populateMonthSelector(); // This also populates summaryMonthSelect & hidden teacherProfileMonthSelect
-                populateReportingJamiaFilter(); // NEW
-                renderAcademicMonths();
-                renderSetupTab();
-                renderReportingTab(); // Renders the report for the current default period
-                populateTeacherProfileFilters(); // NEW: Populate filters for Teacher Profile tab (without month filter now)
-                renderSummaryTab(); // Renders the default summary tab (Munasib)
-            }
-        };
+    if (!activeYear) {
+        setupAccordionContainer.innerHTML = '<p class="text-red-500">Kaam shuru karne ke liye pehle "Create Year" karein ya ek "Active Year" select karein.</p>';
+        reportingContainer.innerHTML = '<p class="text-red-500">Reporting ke liye pehle ek "Active Year" select karein.</p>';
+        saveMonthlyReportBtn.classList.add('hidden');
+        reportingYearInfo.classList.add('hidden');
+
+        // Admin ko year banane ka box dikhe, days ka nahi
+        if (isAdmin) {
+            academicYearManagement.classList.remove('hidden');
+        } else {
+            academicYearManagement.classList.add('hidden');
+        }
+        academicMonthsSetup.classList.add('hidden');
+        return;
+    }
+
+    // Active year hai:
+    reportingYearInfo.classList.remove('hidden');
+    reportingYearInfo.textContent = `Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.`;
+
+    populateMonthSelector();           // reporting + summary
+    populateReportingJamiaFilter();
+    renderReportingTab();
+    populateTeacherProfileFilters();
+    renderSummaryTab();
+    renderSetupTab();                  // Jamia / Teachers sab ke liye
+
+    // Academic year / days sirf admin ko
+    if (isAdmin) {
+        academicYearManagement.classList.remove('hidden');
+        academicMonthsSetup.classList.remove('hidden');
+        renderAcademicMonths();
+    } else {
+        academicYearManagement.classList.add('hidden');
+        academicMonthsSetup.classList.add('hidden');
+    }
+};
 
         // --- ACADEMIC YEAR MANAGEMENT (Unchanged) --- 
 
@@ -1258,11 +1299,19 @@ const loadMonthlyReportData = async () => {
             
             if (yearNames.includes(suggestedYear)) { activeYearSelect.value = suggestedYear; } 
             else { activeYearSelect.value = yearNames[0]; } 
-            activeYear = activeYearSelect.value; 
+            activeYear = activeYearSelect.value;
+            // 👇 YAHAN ADD KIYA
+    activeYearSelect.disabled = !isAdmin;
         };
 
         const handleCreateYear = async (e) => {
             e.preventDefault();
+            if (!isAdmin) {
+        showNotification("Academic year sirf admin set kar sakta hai.", true);
+        return;
+    }
+            
+    const newYearName = newYearNameInput.value.trim();
             const newYearName = newYearNameInput.value.trim();
             if (!newYearName.match(/^\d{4}-\d{4}$/)) {
                 showNotification("Saal ka format galat hai. (Sahi: 2025-2026)", true); return;
@@ -1277,6 +1326,9 @@ const loadMonthlyReportData = async () => {
             try {
                 const userDocRef = doc(db, 'users', currentUser.uid);
                 await updateDoc(userDocRef, { academicYears: allAcademicYearsData });
+                // Global academic config update
+const configRef = doc(db, 'admin_config', 'karkardagi_academic');
+await setDoc(configRef, { academicYears: allAcademicYearsData }, { merge: true });
                 
                 newYearNameInput.value = '';
                 showNotification(`Naya saal "${newYearName}" ban gaya hai!`);
@@ -1343,6 +1395,10 @@ const loadMonthlyReportData = async () => {
         };
         
         saveAcademicMonthsBtn.addEventListener('click', async () => {
+            if (!isAdmin) {
+        showNotification("Academic days sirf admin set kar sakta hai.", true);
+        return;
+    }
             if (!activeYear || !allAcademicYearsData[activeYear]) return; 
             const newAcademicMonths = {};
             document.querySelectorAll('.academic-month-input').forEach(input => {
@@ -1363,7 +1419,10 @@ const loadMonthlyReportData = async () => {
                 const userDocRef = doc(db, 'users', currentUser.uid);
                 await updateDoc(userDocRef, { academicYears: allAcademicYearsData });
                 showNotification("Days setup saved!");
-                renderReportingTab(); 
+                renderReportingTab();
+                // Global academic config bhi update karo
+const configRef = doc(db, 'admin_config', 'karkardagi_academic');
+await setDoc(configRef, { academicYears: allAcademicYearsData }, { merge: true });
             } catch (error) {
                 showNotification("Error saving days setup.", true, error.message);
             } finally {
@@ -3503,6 +3562,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
