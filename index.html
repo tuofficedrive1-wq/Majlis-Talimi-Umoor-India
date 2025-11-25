@@ -605,6 +605,10 @@ async function loadJaizaSummary(jamiaId, monthKey) {
         const userView = document.getElementById('user-view');
         const userInfo = document.getElementById('user-info');
         const logoutBtn = document.getElementById('logout-btn');
+
+        // --- TAB HISTORY (step by step back ke liye) ---
+let tabHistory = [];
+let currentActiveTabId = null;
         
         // Dashboard and Navigation Elements
         const goToReportBtn = document.getElementById('go-to-report-btn');
@@ -949,19 +953,38 @@ async function loadJaizaSummary(jamiaId, monthKey) {
                     showNotification("Kripya report fill karne ke liye mahina select karein.", true);
                     return;
                 }
-                dashboardView.classList.add('hidden');
-                userView.classList.remove('hidden');
-                // NAYA: Report data selected month ke liye load karna
-                const selectedInfo = getReportingMonthYearFromInput(selectedReportingDate);
-                renderUserDashboard(allUserReports, selectedInfo); 
+                
+                // 🔹 naya: fresh entry, is liye history reset
+        tabHistory = [];
+        currentActiveTabId = targetTab;
+
+    dashboardView.classList.add('hidden');
+    userView.classList.remove('hidden');
+    const selectedInfo = getReportingMonthYearFromInput(selectedReportingDate);
+    renderUserDashboard(allUserReports, selectedInfo); 
             });
             
             backToDashboardBtn.addEventListener('click', () => {
-                userView.classList.add('hidden');
-                dashboardView.classList.remove('hidden');
-                // Dashboard ko current selected month ke hisaab se render karna
-                renderDashboard(allUserReports, selectedReportingDate); 
-            });
+    // 🔹 Agar tab history me kuch hai to pehle tabs me step-by-step back kare
+    if (tabHistory.length > 0) {
+        const previousTabId = tabHistory.pop();
+        const prevBtn = userView.querySelector(`.tab-btn[data-tab="${previousTabId}"]`);
+
+        if (prevBtn) {
+            // ye click karne se handleTabSwitch chalega
+            prevBtn.click();
+            return; // yahin ruk jao, dashboard par mat jao
+        }
+    }
+
+    // 🔹 Agar history khali ho gayi, to purana behaviour: dashboard par wapas
+    tabHistory = [];
+    currentActiveTabId = null;
+
+    userView.classList.add('hidden');
+    dashboardView.classList.remove('hidden');
+    renderDashboard(allUserReports, selectedReportingDate);
+});
             
             // NAYA: Section Status Buttons listener
             document.querySelectorAll('.section-status-btn').forEach(button => {
@@ -2612,24 +2635,33 @@ const handleJaizaSubmit = async (e) => {
          };
         
         const handleTabSwitch = (e) => {
-            const tabId = e.target.dataset.tab;
-            if (!tabId || !userView) return; 
-            
-            // 1. Tab buttons ko update karein
-            userTabButtons.forEach(btn => {
-                btn.classList.remove('active');
-                // Ensure correct classes for inactive state
-                btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-            });
-            e.target.classList.add('active');
-            e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-            
-            // 2. Tab contents ko update karein
-            userTabContents.forEach(content => content.classList.add('hidden'));
-            const targetContent = userView.querySelector(`#${tabId}-tab-content`); 
-            if(targetContent) targetContent.classList.remove('hidden');
-            else console.error("Could not find user tab content for:", tabId);
-        };
+    const tabId = e.target.dataset.tab;
+    if (!tabId || !userView) return;
+
+    // 🔹 Purana active tab history me daal do
+    if (currentActiveTabId && currentActiveTabId !== tabId) {
+        tabHistory.push(currentActiveTabId);
+    }
+    currentActiveTabId = tabId;
+
+    // 1. Tab buttons ko update karein
+    userTabButtons.forEach(btn => {
+        btn.classList.remove('active');
+        btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+    });
+
+    e.target.classList.add('active');
+    e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+
+    // 2. Tab contents ko update karein
+    userTabContents.forEach(content => content.classList.add('hidden'));
+    const targetContent = userView.querySelector(`#${tabId}-tab-content`);
+    if (targetContent) {
+        targetContent.classList.remove('hidden');
+    } else {
+        console.error("Could not find user tab content for:", tabId);
+    }
+};
         
         const handleKkdLinkClick = (e) => {
      console.log("KKD link clicked");
@@ -2966,6 +2998,7 @@ const handleJaizaSubmit = async (e) => {
     </script>
 </body>
 </html>
+
 
 
 
