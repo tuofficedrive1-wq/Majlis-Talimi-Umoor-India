@@ -776,41 +776,187 @@
           accordionItem.appendChild(content);
           tadrisAccordionContainer.appendChild(accordionItem);
 
-          // fill class select
-          const classSelect = content.querySelector(".tadris-class-select");
-          const kitabSelect = content.querySelector(".tadris-kitab-select");
+          // --- NEW: Teacher -> Class -> Kitab dependent selects ---
+// select elements inside the content block
+const teacherSelectContainerHTML = `
+  <div>
+    <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher</label>
+    <select class="tadris-teacher-select w-full p-2 border rounded-lg bg-white text-xs urdu-font">
+      <option value="">Select Teacher</option>
+    </select>
+  </div>
+`;
 
-          if (jamia.classes && typeof jamia.classes === "object") {
-            Object.keys(jamia.classes).forEach((className) => {
-              classSelect.innerHTML += `<option value="${className}">${className}</option>`;
-            });
-          }
+const classSelectHTML = `
+  <div>
+    <label class="block text-[11px] font-medium text-gray-600 mb-1">Class</label>
+    <select class="tadris-class-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" disabled>
+      <option value="">Select Teacher First</option>
+    </select>
+  </div>
+`;
 
-          header.addEventListener("click", () => {
-            header.classList.toggle("open");
-            content.classList.toggle("open");
-          });
+const kitabSelectHTML = `
+  <div>
+    <label class="block text-[11px] font-medium text-gray-600 mb-1">Kitab</label>
+    <select class="tadris-kitab-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" disabled>
+      <option value="">Select Class First</option>
+    </select>
+  </div>
+`;
 
-          classSelect.addEventListener("change", (e) => {
-            const selectedClass = e.target.value;
-            kitabSelect.innerHTML =
-              '<option value="">Select Kitab</option>';
-            kitabSelect.disabled = true;
-            if (
-              selectedClass &&
-              jamia.classes &&
-              jamia.classes[selectedClass]
-            ) {
-              const kitabs =
-                jamia.classes[selectedClass].kitabs || [];
-              if (Array.isArray(kitabs)) {
-                kitabs.forEach((kName) => {
-                  kitabSelect.innerHTML += `<option value="${kName}">${kName}</option>`;
-                });
-                kitabSelect.disabled = false;
-              }
-            }
-          });
+// Replace the first row of inputs (which previously had Class, Kitab, Teacher inputs)
+// find the grid container (it is the first .grid in this content)
+const grid = content.querySelector('.grid.grid-cols-1') || content.querySelector('.grid');
+if (grid) {
+  // clear existing children in grid and insert new order: Teacher, Class, Kitab, Date
+  // keep Date field as-is (4th column)
+  const dateDiv = grid.children[3] ? grid.children[3].outerHTML : '';
+  grid.innerHTML = `
+    ${teacherSelectContainerHTML}
+    ${classSelectHTML}
+    ${kitabSelectHTML}
+    ${dateDiv}
+  `;
+}
+
+// now get the new selects/inputs
+const teacherSelect = content.querySelector('.tadris-teacher-select');
+const classSelect = content.querySelector('.tadris-class-select');
+const kitabSelect = content.querySelector('.tadris-kitab-select');
+const teacherTextInputFallback = content.querySelector('.tadris-teacher-name'); // may still exist as fallback
+// ensure teacher text input exists as fallback (hidden)
+if (!teacherTextInputFallback) {
+  const fallback = document.createElement('input');
+  fallback.type = 'hidden';
+  fallback.className = 'tadris-teacher-name';
+  content.querySelector('.p-4').appendChild(fallback);
+}
+
+// Build teacher list robustly from jamia data
+// Possible shapes handled:
+// 1) jamia.teachers -> [{ name: "...", classes: ["Class A"] }, ...]
+// 2) jamia.classes[className].teachers -> ["T1","T2"]
+// 3) if none found, fallback: no teachers (we'll show classes but keep teacher input text)
+let teacherNames = [];
+let teacherMap = {}; // teacherName -> { classes: Set(...) }
+
+if (Array.isArray(jamia.teachers) && jamia.teachers.length) {
+  jamia.teachers.forEach(t => {
+    const tName = typeof t === 'string' ? t : (t.name || t.teacherName || '');
+    if (!tName) return;
+    teacherNames.push(tName);
+    const tClasses = Array.isArray(t.classes) ? t.classes : (Array.isArray(t.assignedClasses) ? t.assignedClasses : []);
+    teacherMap[tName] = { classes: new Set(tClasses) };
+  });
+}
+
+// if teacher list still empty, scan jamia.classes for teacher lists
+if (!teacherNames.length && jamia.classes && typeof jamia.classes === 'object') {
+  Object.keys(jamia.classes).forEach(clsName => {
+    const clsObj = jamia.classes[clsName] || {};
+    const clsTeachers = Array.isArray(clsObj.teachers) ? clsObj.teachers : [];
+    clsTeachers.forEach(tn => {
+      if (!tn) return;
+      if (!teacherMap[tn]) teacherMap[tn] = { classes: new Set() };
+      teacherMap[tn].classes.add(clsName);
+    });
+  });
+  teacherNames = Object.keys(teacherMap);
+}
+
+// if still no teacherNames, leave teacherNames empty (we'll fallback to manual teacher input)
+teacherNames = Array.from(new Set(teacherNames)); // unique
+
+// populate teacher select
+if (teacherSelect) {
+  teacherSelect.innerHTML = '<option value="">Select Teacher</option>';
+  if (teacherNames.length) {
+    teacherNames.forEach(tn => {
+      teacherSelect.innerHTML += `<option value="${tn}">${tn}</option>`;
+    });
+    teacherSelect.disabled = false;
+  } else {
+    // disable teacher select and show placeholder so user uses text input
+    teacherSelect.innerHTML = '<option value="">No teacher list available (use text input)</option>';
+    teacherSelect.disabled = true;
+    // show a visible text input for teacher if needed
+    let visibleFallback = content.querySelector('.tadris-teacher-name');
+    if (visibleFallback) {
+      visibleFallback.type = 'text';
+      visibleFallback.placeholder = 'Teacher ka naam (manually type karein)';
+      visibleFallback.parentElement.querySelector('label')?.remove?.(); // optional
+    }
+  }
+}
+
+// Helper: populate classSelect for a chosen teacher (or all classes)
+function populateClassesForTeacher(tName) {
+  classSelect.innerHTML = '<option value="">Select Class</option>';
+  classSelect.disabled = true;
+  kitabSelect.innerHTML = '<option value="">Select Class First</option>';
+  kitabSelect.disabled = true;
+
+  let classesToShow = [];
+
+  if (tName && teacherMap[tName] && teacherMap[tName].classes.size) {
+    classesToShow = Array.from(teacherMap[tName].classes);
+  } else {
+    // fallback: show all classes of jamia
+    if (jamia.classes && typeof jamia.classes === 'object') {
+      classesToShow = Object.keys(jamia.classes);
+    }
+  }
+
+  if (classesToShow.length) {
+    classesToShow.forEach(cn => {
+      classSelect.innerHTML += `<option value="${cn}">${cn}</option>`;
+    });
+    classSelect.disabled = false;
+  }
+}
+
+// Helper: populate kitabs for chosen class
+function populateKitabsForClass(cName) {
+  kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
+  kitabSelect.disabled = true;
+  if (!cName) return;
+  const clsObj = jamia.classes && jamia.classes[cName] ? jamia.classes[cName] : null;
+  const kitabs = (clsObj && Array.isArray(clsObj.kitabs)) ? clsObj.kitabs : (Array.isArray(clsObj) ? clsObj : []);
+  if (Array.isArray(kitabs) && kitabs.length) {
+    kitabs.forEach(k => (kitabSelect.innerHTML += `<option value="${k}">${k}</option>`));
+    kitabSelect.disabled = false;
+  } else {
+    // try alternative field names
+    if (clsObj && Array.isArray(clsObj.books)) {
+      clsObj.books.forEach(k => (kitabSelect.innerHTML += `<option value="${k}">${k}</option>`));
+      kitabSelect.disabled = false;
+    }
+  }
+}
+
+// Events
+if (teacherSelect) {
+  teacherSelect.addEventListener('change', (ev) => {
+    const selectedTeacher = ev.target.value;
+    // set fallback text input value too (keeps existing save logic working)
+    const fallbackInput = content.querySelector('.tadris-teacher-name');
+    if (fallbackInput) fallbackInput.value = selectedTeacher;
+    populateClassesForTeacher(selectedTeacher);
+  });
+}
+
+if (classSelect) {
+  classSelect.addEventListener('change', (ev) => {
+    const selectedClass = ev.target.value;
+    populateKitabsForClass(selectedClass);
+  });
+}
+
+// initialize: if teacherSelect already has a value, trigger population
+if (teacherSelect && teacherSelect.value) {
+  populateClassesForTeacher(teacherSelect.value);
+}
 
           const addBtn = content.querySelector(".add-tadris-entry-btn");
           addBtn.addEventListener("click", handleAddTadrisEntry);
@@ -1102,3 +1248,4 @@
   </script>
 </body>
 </html>
+
