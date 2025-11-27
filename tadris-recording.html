@@ -250,45 +250,38 @@
   <!-- Firebase + Logic -->
   <script type="module">
     // ============================
-    // Firebase Imports
-    // ============================
-    import {
-      initializeApp
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import {
-      getAuth,
-      onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import {
-      getFirestore,
-      doc,
-      getDoc,
-      updateDoc,
-      setDoc,
-      collection,
-      query,
-      where,
-      onSnapshot,
-      serverTimestamp,
-      getDocs
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    /*************** Firebase setup (merged) ***************/
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  getDoc,
+  doc,
+  serverTimestamp,
+  updateDoc,
+  setDoc,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // ============================
-    // Firebase Config (same as index)
-    // ============================
-    const firebaseConfig = {
-      apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-      authDomain: "data-f15ab.firebaseapp.com",
-      projectId: "data-f15ab",
-      storageBucket: "data-f15ab.appspot.com",
-      messagingSenderId: "449137002393",
-      appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
-      measurementId: "G-1PHNJQWNPZ",
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+  authDomain: "data-f15ab.firebaseapp.com",
+  projectId: "data-f15ab",
+  storageBucket: "data-f15ab.appspot.com",
+  messagingSenderId: "449137002393",
+  appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+  measurementId: "G-1PHNJQWNPZ",
+};
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
 
     // ============================
     // DOM Helpers
@@ -538,6 +531,64 @@
         }
       }
     }
+// -----------------------------
+// New: fetchAcademicStructure()
+// -----------------------------
+async function fetchAcademicStructure() {
+  try {
+    // 1) try karkardgi/<uid>
+    if (currentUser) {
+      const karkardgiUserRef = doc(db, "karkardgi", currentUser.uid);
+      const kSnap = await getDoc(karkardgiUserRef);
+      if (kSnap.exists()) {
+        const data = kSnap.data();
+        if (Array.isArray(data.academicStructure) && data.academicStructure.length) {
+          console.log("Academic structure loaded from karkardgi/<uid>");
+          return data.academicStructure;
+        }
+        if (Array.isArray(data.setupStructure) && data.setupStructure.length) {
+          console.log("Academic structure loaded from karkardgi/<uid>.setupStructure");
+          return data.setupStructure;
+        }
+      }
+    }
+
+    // 2) try karkardgi/setup (global admin setup)
+    const karkardgiGlobalRef = doc(db, "karkardgi", "setup");
+    const gSnap = await getDoc(karkardgiGlobalRef);
+    if (gSnap.exists()) {
+      const gData = gSnap.data();
+      if (Array.isArray(gData.academicStructure) && gData.academicStructure.length) {
+        console.log("Academic structure loaded from karkardgi/setup (global)");
+        return gData.academicStructure;
+      }
+      if (Array.isArray(gData.setupStructure) && gData.setupStructure.length) {
+        console.log("Academic structure loaded from karkardgi/setup.setupStructure (global)");
+        return gData.setupStructure;
+      }
+    }
+
+    // 3) fallback to users/<uid>/academicStructure (original)
+    if (currentUser) {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const uSnap = await getDoc(userDocRef);
+      if (uSnap.exists()) {
+        const uData = uSnap.data();
+        if (Array.isArray(uData.academicStructure) && uData.academicStructure.length) {
+          console.log("Academic structure loaded from users/<uid>/academicStructure (fallback)");
+          return uData.academicStructure;
+        }
+      }
+    }
+
+    // nothing found -> return empty array
+    console.warn("Academic structure not found in karkardgi or user profile.");
+    return [];
+  } catch (err) {
+    console.error("fetchAcademicStructure error:", err);
+    return [];
+  }
+}
 
     // ============================
     // Render Tadris layout for month
@@ -554,11 +605,7 @@
         reportRef = ref;
         currentReport = report;
 
-        const academicData = Array.isArray(
-          userProfileData.academicStructure
-        )
-          ? userProfileData.academicStructure
-          : [];
+        const academicData = await fetchAcademicStructure();
 
         if (!academicData.length) {
           tadrisLoadingMsg.classList.add("hidden");
@@ -1102,3 +1149,4 @@
   </script>
 </body>
 </html>
+
