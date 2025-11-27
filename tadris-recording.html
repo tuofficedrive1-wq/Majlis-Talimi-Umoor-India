@@ -532,57 +532,90 @@ const db   = getFirestore(app);
       }
     }
 // -----------------------------
-// New: fetchAcademicStructure()
+// New: fetchAcademicStructure(academicYear)
+// Try locations (in order):
+// 1) users/<uid>.academicYears[academicYear].karkardagiStructure
+// 2) collection 'karkardgi' (per-user doc or 'setup' global)
+// 3) fallback: users/<uid>/academicStructure (old)
 // -----------------------------
-async function fetchAcademicStructure() {
+async function fetchAcademicStructure(academicYear = null) {
   try {
-    // 1) try karkardgi/<uid>
-    if (currentUser) {
-      const karkardgiUserRef = doc(db, "karkardgi", currentUser.uid);
-      const kSnap = await getDoc(karkardgiUserRef);
-      if (kSnap.exists()) {
-        const data = kSnap.data();
-        if (Array.isArray(data.academicStructure) && data.academicStructure.length) {
+    // 0) quick guard
+    if (!currentUser) return [];
+
+    // 1) Try users/<uid>.academicYears[academicYear].karkardagiStructure
+    if (academicYear) {
+      try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const uSnap = await getDoc(userDocRef);
+        if (uSnap.exists()) {
+          const uData = uSnap.data() || {};
+          const years = uData.academicYears || {};
+          const yearObj = years[academicYear];
+          if (yearObj) {
+            // common field name used in karkardagi file: karkardagiStructure
+            const kStruct = yearObj.karkardagiStructure || yearObj.karkardagi || yearObj.karkardagi_structure;
+            if (Array.isArray(kStruct) && kStruct.length) {
+              console.log("Academic structure loaded from users/<uid>.academicYears[academicYear].karkardagiStructure");
+              return kStruct;
+            }
+            // fallback: maybe entire yearObj itself is an array/object representing structure
+            if (Array.isArray(yearObj)) {
+              console.log("Academic structure loaded from users/<uid>.academicYears[academicYear] (array)");
+              return yearObj;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("fetchAcademicStructure: users/<uid>.academicYears check failed:", e && e.message);
+      }
+    }
+
+    // 2) Try karkardgi collection: first per-user doc then global 'setup'
+    try {
+      const perUserRef = doc(db, "karkardgi", currentUser.uid);
+      const pSnap = await getDoc(perUserRef);
+      if (pSnap.exists()) {
+        const pData = pSnap.data() || {};
+        const arr = pData.academicStructure || pData.setupStructure || pData.karkardagiStructure;
+        if (Array.isArray(arr) && arr.length) {
           console.log("Academic structure loaded from karkardgi/<uid>");
-          return data.academicStructure;
-        }
-        if (Array.isArray(data.setupStructure) && data.setupStructure.length) {
-          console.log("Academic structure loaded from karkardgi/<uid>.setupStructure");
-          return data.setupStructure;
+          return arr;
         }
       }
+
+      const globalRef = doc(db, "karkardgi", "setup");
+      const gSnap = await getDoc(globalRef);
+      if (gSnap.exists()) {
+        const gData = gSnap.data() || {};
+        const arr2 = gData.academicStructure || gData.setupStructure || gData.karkardagiStructure;
+        if (Array.isArray(arr2) && arr2.length) {
+          console.log("Academic structure loaded from karkardgi/setup (global)");
+          return arr2;
+        }
+      }
+    } catch (e) {
+      console.warn("fetchAcademicStructure: karkardgi collection check failed:", e && e.message);
     }
 
-    // 2) try karkardgi/setup (global admin setup)
-    const karkardgiGlobalRef = doc(db, "karkardgi", "setup");
-    const gSnap = await getDoc(karkardgiGlobalRef);
-    if (gSnap.exists()) {
-      const gData = gSnap.data();
-      if (Array.isArray(gData.academicStructure) && gData.academicStructure.length) {
-        console.log("Academic structure loaded from karkardgi/setup (global)");
-        return gData.academicStructure;
-      }
-      if (Array.isArray(gData.setupStructure) && gData.setupStructure.length) {
-        console.log("Academic structure loaded from karkardgi/setup.setupStructure (global)");
-        return gData.setupStructure;
-      }
-    }
-
-    // 3) fallback to users/<uid>/academicStructure (original)
-    if (currentUser) {
-      const userDocRef = doc(db, "users", currentUser.uid);
-      const uSnap = await getDoc(userDocRef);
-      if (uSnap.exists()) {
-        const uData = uSnap.data();
-        if (Array.isArray(uData.academicStructure) && uData.academicStructure.length) {
+    // 3) Fallback: users/<uid>/academicStructure (legacy)
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      const uSnap2 = await getDoc(userRef);
+      if (uSnap2.exists()) {
+        const uData2 = uSnap2.data() || {};
+        const legacy = uData2.academicStructure || uData2.setupStructure;
+        if (Array.isArray(legacy) && legacy.length) {
           console.log("Academic structure loaded from users/<uid>/academicStructure (fallback)");
-          return uData.academicStructure;
+          return legacy;
         }
       }
+    } catch (e) {
+      console.warn("fetchAcademicStructure: fallback users/<uid> check failed:", e && e.message);
     }
 
-    // nothing found -> return empty array
-    console.warn("Academic structure not found in karkardgi or user profile.");
+    // Nothing found
+    console.warn("Academic structure not found in users.academicYears, karkardgi, or user profile.");
     return [];
   } catch (err) {
     console.error("fetchAcademicStructure error:", err);
@@ -605,7 +638,15 @@ async function fetchAcademicStructure() {
         reportRef = ref;
         currentReport = report;
 
-        const academicData = await fetchAcademicStructure();
+        // fetch academic structure from karkardgi/users' academicYears (use meta.academicYear)
+const { meta } = getCurrentReportForSelectedMonth(); // make sure meta is available
+const academicYearForFetch = (meta && meta.academicYear) ? meta.academicYear : null;
+const academicData = await fetchAcademicStructure(academicYearForFetch);
+
+// ensure rest of code that uses userProfileData.academicStructure sees this data
+if (Array.isArray(academicData)) {
+  userProfileData.academicStructure = academicData;
+}
 
         if (!academicData.length) {
           tadrisLoadingMsg.classList.add("hidden");
@@ -1149,4 +1190,5 @@ async function fetchAcademicStructure() {
   </script>
 </body>
 </html>
+
 
