@@ -879,68 +879,103 @@ const clearOptions = (sel, keepFirst = true) => {
   sel.innerHTML = keepFirst ? '<option value="">Select</option>' : '';
 };
 
-// prepare master lists from jamia object
-const jamiaClassesObj = (jamia.classes && typeof jamia.classes === "object") ? jamia.classes : {};
+// helper: normalize teacher object to an object with key 'teacherName'
+const normalizeTeacherObj = (t) => {
+  if (!t && t !== 0) return null;
+  if (typeof t === "string") return { teacherName: t };
+  if (typeof t === "object") {
+    // prefer common keys
+    return {
+      teacherName: t.teacherName || t.name || t.fullName || t.label || (t.id ? String(t.id) : undefined),
+      __raw: t
+    };
+  }
+  return { teacherName: String(t) };
+};
+
+// helper: compare teacher entries (entry can be string or object) with filter name
+const teacherEntryMatchesName = (entry, filterName) => {
+  if (!filterName) return false;
+  if (!entry && entry !== 0) return false;
+  if (typeof entry === "string") return entry === filterName;
+  if (typeof entry === "object") {
+    const n = entry.teacherName || entry.name || entry.fullName || entry.label;
+    return n === filterName;
+  }
+  return false;
+};
 
 // build mapping: className -> { kitabs: [...], teachers: [...] }
+const jamiaClassesObj = (jamia.classes && typeof jamia.classes === "object") ? jamia.classes : {};
 const classMap = {};
 Object.keys(jamiaClassesObj).forEach((cName) => {
   const cObj = jamiaClassesObj[cName] || {};
-  // support multiple possible keys: kitabs, kitabsList, books
   const kitabs = Array.isArray(cObj.kitabs) ? cObj.kitabs : (Array.isArray(cObj.kitabsList) ? cObj.kitabsList : (Array.isArray(cObj.books) ? cObj.books : []));
-  // teachers may be at class level or jamia level
   const teachers = Array.isArray(cObj.teachers) ? cObj.teachers : [];
   classMap[cName] = { kitabs, teachers };
 });
 
-// also collect teachers at jamia level if present (jamia.teachers)
+// collect teachers at jamia level if present (jamia.teachers)
 const jamiaLevelTeachers = Array.isArray(jamia.teachers) ? jamia.teachers : [];
 
-// build unique teacher list (from classMap and jamiaLevelTeachers)
-const teacherSet = new Set();
-Object.values(classMap).forEach(v => {
-  (v.teachers || []).forEach(t => teacherSet.add(t));
+// build flattened teacher objects array (keep unique on teacherName)
+const teacherMapByName = {};
+// from class-level teachers
+Object.keys(classMap).forEach((cName) => {
+  (classMap[cName].teachers || []).forEach((t) => {
+    const norm = normalizeTeacherObj(t);
+    if (norm && norm.teacherName) teacherMapByName[norm.teacherName] = norm;
+  });
 });
-jamiaLevelTeachers.forEach(t => teacherSet.add(t));
+// from jamia-level teachers
+(jamiaLevelTeachers || []).forEach((t) => {
+  const norm = normalizeTeacherObj(t);
+  if (norm && norm.teacherName) teacherMapByName[norm.teacherName] = norm;
+});
 
-// populate teacherSelect
+// populate teacherSelect with label and encoded JSON value
 clearOptions(teacherSelect);
 teacherSelect.innerHTML = '<option value="">Select Teacher</option>';
-[...teacherSet].forEach((tName) => {
-  // skip falsy
-  if (!tName) return;
-  teacherSelect.innerHTML += `<option value="${tName}">${tName}</option>`;
+Object.keys(teacherMapByName).forEach((tName) => {
+  const tObj = teacherMapByName[tName];
+  // store the raw object in option value as encoded JSON
+  const value = encodeURIComponent(JSON.stringify(tObj.__raw ? tObj.__raw : { teacherName: tObj.teacherName }));
+  const label = tObj.teacherName || "Unknown";
+  teacherSelect.innerHTML += `<option value="${value}">${label}</option>`;
 });
 
-// helper: populate classSelect (optionally filtered by teacher)
-function populateClassSelect(filterTeacher = "") {
+// helper: populate classSelect (optionally filtered by teacherName)
+function populateClassSelect(filterTeacherName = "") {
   clearOptions(classSelect);
   classSelect.innerHTML = '<option value="">Select Class</option>';
+  let added = 0;
   Object.keys(classMap).forEach((cName) => {
     const cTeachers = classMap[cName].teachers || [];
-    // if filterTeacher provided, only include classes where teacher exists
-    if (filterTeacher) {
-      if (cTeachers.includes(filterTeacher)) {
+    if (filterTeacherName) {
+      // include class if any teacher entry matches the filter
+      const matched = cTeachers.some((te) => teacherEntryMatchesName(te, filterTeacherName));
+      if (matched) {
         classSelect.innerHTML += `<option value="${cName}">${cName}</option>`;
+        added++;
       }
     } else {
       classSelect.innerHTML += `<option value="${cName}">${cName}</option>`;
+      added++;
     }
   });
-  // if no classes were added, show default message option
-  if (classSelect.options.length === 1) {
+  if (added === 0) {
     classSelect.innerHTML += `<option value="" disabled>Koee class nahi mili</option>`;
     classSelect.disabled = true;
   } else {
     classSelect.disabled = false;
   }
-  // clear kitabSelect
+  // reset kitabSelect
   clearOptions(kitabSelect);
   kitabSelect.innerHTML = '<option value="">Select Class First</option>';
   kitabSelect.disabled = true;
 }
 
-// helper: populate kitabSelect based on selected class
+// helper: populate kitabSelect based on className
 function populateKitabSelect(className) {
   clearOptions(kitabSelect);
   kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
@@ -962,19 +997,24 @@ populateClassSelect("");
 // Events:
 // 1) when teacher selected -> filter classes to those taught by that teacher
 teacherSelect.addEventListener("change", (e) => {
-  const selectedTeacher = e.target.value;
-  if (selectedTeacher) {
-    populateClassSelect(selectedTeacher);
-    // auto-select first class if only one
-    if (classSelect.options.length === 2) { // one default + one actual
-      classSelect.selectedIndex = 1;
-      // trigger kitab populate
-      const ev = new Event('change');
-      classSelect.dispatchEvent(ev);
-    }
-  } else {
-    // cleared teacher -> show all classes again
+  const val = e.target.value;
+  if (!val) {
     populateClassSelect("");
+    return;
+  }
+  // parse teacher object
+  let parsed = null;
+  try {
+    parsed = JSON.parse(decodeURIComponent(val));
+  } catch (err) {
+    parsed = { teacherName: decodeURIComponent(val) };
+  }
+  const filterName = parsed.teacherName || parsed.name || parsed.fullName || parsed.label || null;
+  populateClassSelect(filterName || "");
+  // auto-select first class if only one real option
+  if (classSelect.options.length === 2) {
+    classSelect.selectedIndex = 1;
+    classSelect.dispatchEvent(new Event('change'));
   }
 });
 
@@ -1061,7 +1101,20 @@ classSelect.addEventListener("change", (e) => {
       const jamiaName = button.dataset.jamiaName || "";
       const className = classSelect.value;
       const kitabName = kitabSelect.value;
-      const teacherName = (teacherNameInput.value || "").trim();
+      // teacher select value parsing
+const teacherSelectElm = container.querySelector(".tadris-teacher-select");
+let teacherName = "";
+if (teacherSelectElm) {
+  const selVal = teacherSelectElm.value;
+  if (selVal) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(selVal));
+      teacherName = parsed.teacherName || parsed.name || parsed.fullName || "";
+    } catch (err) {
+      teacherName = decodeURIComponent(selVal || "");
+    }
+  }
+}
       const date = dateInput.value;
       const tasurat = (tasuratInput.value || "").trim();
 
@@ -1301,6 +1354,7 @@ classSelect.addEventListener("change", (e) => {
   </script>
 </body>
 </html>
+
 
 
 
