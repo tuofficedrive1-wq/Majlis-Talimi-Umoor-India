@@ -870,7 +870,7 @@ header.addEventListener("click", () => {
   content.classList.toggle("open");
 });
 
-          // ---------- Ensure these helpers & maps exist BEFORE populateClassSelect is used ----------
+          // ---------- Build classMap + jamiaLevelTeachers (support multiple formats) ----------
 
 // helper: compare names case-insensitive
 const sameName = (a, b) => {
@@ -883,6 +883,7 @@ const normalizeTeacher = (t) => {
   if (t === null || t === undefined) return null;
   if (typeof t === 'string') return { teacherName: t.trim(), raw: t };
   if (typeof t === 'object') {
+    // **Important**: your karkardagi teachers use `name` property
     const name = (t.teacherName || t.name || t.fullName || t.displayName || t.label || t.full_name || t.display_name);
     if (name) return { teacherName: String(name).trim(), raw: t };
     if (t.id) return { teacherName: String(t.id), raw: t };
@@ -892,23 +893,69 @@ const normalizeTeacher = (t) => {
 };
 
 // Build classMap with normalized teachers and kitabs
-const jamiaClassesObj = (jamia.classes && typeof jamia.classes === "object") ? jamia.classes : {};
-const classMap = {}; // { className: { kitabs: [...], teachers: [normalizedTeacherObj,...] } }
+// Support 2 formats:
+// A) old: jamia.classes = { "Class 1": { kitabs: [...], teachers: [...] } }
+// B) new: jamia.periods = [ { className, bookName, ... }, ... ]  (teachers live in jamia.teachers)
+const classMap = {}; // { className: { kitabs: [...], teachers: [normalizedTeacherObj,...] } };
 
-Object.keys(jamiaClassesObj).forEach(cName => {
-  const cObj = jamiaClassesObj[cName] || {};
-  const kitabs = Array.isArray(cObj.kitabs) ? cObj.kitabs : (Array.isArray(cObj.kitabsList) ? cObj.kitabsList : (Array.isArray(cObj.books) ? cObj.books : []));
-  const rawTeachers = Array.isArray(cObj.teachers) ? cObj.teachers : [];
-  const normalizedTeachers = rawTeachers.map(normalizeTeacher).filter(Boolean);
-  classMap[cName] = { kitabs, teachers: normalizedTeachers };
-});
+// Format A: existing classes object
+if (jamia.classes && typeof jamia.classes === "object") {
+  Object.keys(jamia.classes).forEach(cName => {
+    const cObj = jamia.classes[cName] || {};
+    const kitabs = Array.isArray(cObj.kitabs) ? cObj.kitabs : (Array.isArray(cObj.kitabsList) ? cObj.kitabsList : (Array.isArray(cObj.books) ? cObj.books : []));
+    const rawTeachers = Array.isArray(cObj.teachers) ? cObj.teachers : [];
+    const normalizedTeachers = rawTeachers.map(normalizeTeacher).filter(Boolean);
+    classMap[cName] = { kitabs, teachers: normalizedTeachers };
+  });
+}
 
-// jamia-level teachers (if any)
-const jamiaLevelTeachersRaw = Array.isArray(jamia.teachers) ? jamia.teachers : [];
+// Format B: periods array (common in karkardagi file)
+if (Array.isArray(jamia.periods) && jamia.periods.length) {
+  jamia.periods.forEach(p => {
+    const cls = p.className || p.class || p.class_name || p.periodClass || (p.semester && p.semester.className) || "";
+    const book = p.bookName || p.book || p.title || p.book_name || p.kitabName || "";
+    if (!cls) return;
+    if (!classMap[cls]) classMap[cls] = { kitabs: [], teachers: [] };
+    if (book && !classMap[cls].kitabs.includes(book)) classMap[cls].kitabs.push(book);
+    // do not add teachers here — jamia.teachers will be attached below
+  });
+}
+
+// Another possible nesting: some files store data under karkardagiStructure -> inside jamia object
+// If jamia.karkardagiStructure exists and is an array of periods, handle similarly
+if (Array.isArray(jamia.karkardagiStructure) && jamia.karkardagiStructure.length) {
+  jamia.karkardagiStructure.forEach(p => {
+    // if each p is a period-like object
+    const cls = p.className || p.class || p.class_name || p.periodClass || "";
+    const book = p.bookName || p.book || p.title || p.book_name || p.kitabName || "";
+    if (!cls) return;
+    if (!classMap[cls]) classMap[cls] = { kitabs: [], teachers: [] };
+    if (book && !classMap[cls].kitabs.includes(book)) classMap[cls].kitabs.push(book);
+  });
+}
+
+// jamia-level teachers (common in karkardagi): teachers is array of objects with 'name'
+const jamiaLevelTeachersRaw = Array.isArray(jamia.teachers) ? jamia.teachers : (Array.isArray(jamia.teacherList) ? jamia.teacherList : []);
 const jamiaLevelTeachers = jamiaLevelTeachersRaw.map(normalizeTeacher).filter(Boolean);
 
-// (optional) quick debug
-console.log("DEBUG classMap keys:", Object.keys(classMap));
+// Attach jamia-level teachers to every class if classMap built from periods
+if (jamiaLevelTeachers.length) {
+  Object.keys(classMap).forEach(cn => {
+    // merge unique teacher objects (by name)
+    const existing = classMap[cn].teachers || [];
+    const mapNames = new Set(existing.map(t=>t.teacherName && t.teacherName.toLowerCase()));
+    jamiaLevelTeachers.forEach(tn => {
+      if (tn && tn.teacherName && !mapNames.has(tn.teacherName.toLowerCase())) {
+        existing.push(tn);
+        mapNames.add(tn.teacherName.toLowerCase());
+      }
+    });
+    classMap[cn].teachers = existing;
+  });
+}
+
+// DEBUG logs so you can verify in console
+console.log("DEBUG classMap keys:", Object.keys(classMap), classMap);
 console.log("DEBUG jamiaLevelTeachers:", jamiaLevelTeachers.map(t=>t && t.teacherName));
 
           
@@ -1408,6 +1455,7 @@ if (teacherSelectElm) {
   </script>
 </body>
 </html>
+
 
 
 
