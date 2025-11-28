@@ -230,7 +230,9 @@
       <div id="saved-filters" class="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label class="block text-xs text-gray-600 mb-1 urdu-font">Jamia</label>
-          <input id="filter-jamia" type="text" placeholder="Jamia ka naam likhein..." class="w-full p-2 border rounded-lg text-sm urdu-font" />
+          <select id="filter-jamia" class="w-full p-2 border rounded-lg text-sm urdu-font">
+            <option value="">-- Sab Jamiaat --</option>
+          </select>
         </div>
 
         <div>
@@ -1395,6 +1397,74 @@
     tabAdd.addEventListener("click", () => setActiveTab(true));
     tabSaved.addEventListener("click", () => setActiveTab(false));
     setActiveTab(true);
+
+
+    // Populate Jamia dropdown in Saved Filters (called after render)
+    function populateJamiaFilterOptions() {
+      const sel = document.getElementById("filter-jamia");
+      if (!sel) return;
+      // clear but keep first default option
+      sel.innerHTML = '<option value="">-- Sab Jamiaat --</option>';
+      const academicData = Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : [];
+      academicData.forEach(j => {
+        const name = j.jamiaName || "";
+        if (name) sel.innerHTML += `<option value="${name}">${name}</option>`;
+      });
+    }
+
+    // call populateJamiaFilterOptions after renderForCurrentMonth completes
+    const originalRender = renderForCurrentMonth;
+    renderForCurrentMonth = async function() {
+      await originalRender();
+      populateJamiaFilterOptions();
+    };
+
+    // adjust applySavedFilters to support select value (jamia)
+    const oldApply = applySavedFilters;
+    applySavedFilters = function() {
+      // if jamia select exists its value used, otherwise fallback to input search
+      const jamiaSel = document.getElementById("filter-jamia");
+      const jamiaQ = jamiaSel ? (jamiaSel.value || "").trim().toLowerCase() : "";
+      const teacherQ = (document.getElementById("filter-teacher")?.value || "").trim().toLowerCase();
+      const dateFrom = document.getElementById("filter-date-from")?.value || "";
+      const dateTo = document.getElementById("filter-date-to")?.value || "";
+
+      document.querySelectorAll("#saved-table-body tr.saved-data-row").forEach((tr) => {
+        const jamia = (tr.children[0]?.textContent || "").trim().toLowerCase();
+        const teacher = (tr.children[3]?.textContent || "").trim().toLowerCase();
+        const dateStr = (tr.children[4]?.textContent || "").trim();
+
+        let visible = true;
+
+        if (jamiaQ) visible = visible && jamia === jamiaQ; // exact match for select
+        if (teacherQ) visible = visible && teacher.includes(teacherQ);
+        if (dateFrom) {
+          const d = new Date(dateStr);
+          const from = new Date(dateFrom);
+          if (isNaN(d.getTime())) visible = false;
+          else visible = visible && (d >= from);
+        }
+        if (dateTo) {
+          const d = new Date(dateStr);
+          const to = new Date(dateTo);
+          to.setHours(23,59,59,999);
+          if (isNaN(d.getTime())) visible = false;
+          else visible = visible && (d <= to);
+        }
+
+        tr.style.display = visible ? "" : "none";
+      });
+    };
+
+    // attach change listener to new select
+    document.addEventListener("DOMContentLoaded", () => {
+      const sel = document.getElementById("filter-jamia");
+      if (sel && !sel._attached) {
+        sel.addEventListener("change", applySavedFilters);
+        sel._attached = true;
+      }
+    });
+
 
     // expose render for debugging
     window.renderForCurrentMonth = renderForCurrentMonth;
