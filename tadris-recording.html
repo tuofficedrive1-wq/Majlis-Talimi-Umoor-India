@@ -857,25 +857,25 @@
           accordionItem.appendChild(content);
           tadrisAccordionContainer.appendChild(accordionItem);
 
-          // ---------- Replace existing teacher population block with this ----------
+          // --------- Robust teacher population & handlers (paste in renderForCurrentMonth) ----------
 const teacherSelect = content.querySelector(".tadris-teacher-select");
 const classSelect = content.querySelector(".tadris-class-select");
 const kitabSelect = content.querySelector(".tadris-kitab-select");
 
-// reset safely
+// reset selects
 teacherSelect.innerHTML = `<option value="">Select Teacher</option>`;
 classSelect.innerHTML = `<option value="">Select Teacher First</option>`;
 classSelect.disabled = true;
 kitabSelect.innerHTML = `<option value="">Select Class First</option>`;
 kitabSelect.disabled = true;
 
-// get raw source (could be object or array)
-const jamiaTeachersRaw = JAMIA_TEACHER_MAP[jamiaName] || JAMIA_CLASS_MAP[jamiaName] || {};
+// raw source (could be object or array or missing)
+let jamiaTeachersRaw = JAMIA_TEACHER_MAP[jamiaName] || JAMIA_CLASS_MAP[jamiaName] || null;
 
-// build normalized teacherLookup (teacherName -> [{className, bookName}, ...])
+// normalized lookup: teacherName -> [{className, bookName}, ...]
 const teacherLookup = {};
 
-// if jamiaTeachersRaw is object keyed by teacherName
+// 1) If it's object keyed by teacherName
 if (jamiaTeachersRaw && typeof jamiaTeachersRaw === "object" && !Array.isArray(jamiaTeachersRaw)) {
   Object.keys(jamiaTeachersRaw).forEach((tn) => {
     const pairs = Array.isArray(jamiaTeachersRaw[tn]) ? jamiaTeachersRaw[tn] : [];
@@ -884,12 +884,14 @@ if (jamiaTeachersRaw && typeof jamiaTeachersRaw === "object" && !Array.isArray(j
       bookName: p.bookName || p.book || p.kitab || p.subject || ""
     })).filter(x => x.className && x.bookName);
   });
-} else if (Array.isArray(jamiaTeachersRaw)) {
-  // jamiaTeachersRaw is array — try to normalize
+}
+
+// 2) If it's an array — try common shapes
+if (Array.isArray(jamiaTeachersRaw)) {
   jamiaTeachersRaw.forEach(item => {
     if (!item) return;
+    // shape: { name: "...", periods: [...] }
     if (typeof item === "object" && !Array.isArray(item)) {
-      // shape: { name: "...", periods: [...] }
       const tname = (item.name || item.teacherName || item.ustad || item.fullName || "").toString();
       const periods = Array.isArray(item.periods) ? item.periods : (Array.isArray(item.classes) ? item.classes : []);
       if (tname) {
@@ -900,20 +902,23 @@ if (jamiaTeachersRaw && typeof jamiaTeachersRaw === "object" && !Array.isArray(j
           if (cn && bn) teacherLookup[tname].push({ className: cn, bookName: bn });
         });
       } else {
-        // fallback: array of pairs — try to extract teacherName in subitems
-        if (Array.isArray(item)) {
-          item.forEach(sub => {
-            if (!sub) return;
-            const t2 = (sub.teacherName || sub.name || "").toString();
-            if (!t2) return;
+        // maybe array of class objects (no teacher grouping) -> try to use teacherName field inside items
+        if (item.className && item.bookName) {
+          // attempt to find teacherName property on the item
+          const t2 = (item.teacherName || item.teacher || "").toString();
+          if (t2) {
             teacherLookup[t2] = teacherLookup[t2] || [];
-            const cn = sub.className || sub.class || "";
-            const bn = sub.bookName || sub.book || "";
-            if (cn && bn) teacherLookup[t2].push({ className: cn, bookName: bn });
-          });
+            teacherLookup[t2].push({ className: item.className, bookName: item.bookName });
+          } else {
+            // keep as class-only info by marking under special key (ClassOnly::<classname>)
+            const fakeKey = `ClassOnly::${item.className}`;
+            teacherLookup[fakeKey] = teacherLookup[fakeKey] || [];
+            teacherLookup[fakeKey].push({ className: item.className, bookName: item.bookName });
+          }
         }
       }
     } else if (Array.isArray(item)) {
+      // nested arrays: try extract objects inside
       item.forEach(sub => {
         if (!sub || typeof sub !== "object") return;
         const t2 = (sub.teacherName || sub.name || "").toString();
@@ -927,12 +932,12 @@ if (jamiaTeachersRaw && typeof jamiaTeachersRaw === "object" && !Array.isArray(j
   });
 }
 
-// fallback: infer teachers from JAMIA_CLASS_MAP[class]->pairs
+// 3) Fallback: use JAMIA_CLASS_MAP pairs (if present)
 if (Object.keys(teacherLookup).length === 0 && JAMIA_CLASS_MAP[jamiaName]) {
-  const clsMap = JAMIA_CLASS_MAP[jamiaName];
+  const clsMap = JAMIA_CLASS_MAP[jamiaName]; // { className: [ {teacherName, bookName}, ... ] }
   Object.keys(clsMap).forEach(cls => {
     clsMap[cls].forEach(pair => {
-      const tn = pair.teacherName || pair.name || "";
+      const tn = pair.teacherName || pair.name || pair.teacher || "";
       if (!tn) return;
       teacherLookup[tn] = teacherLookup[tn] || [];
       teacherLookup[tn].push({ className: cls, bookName: pair.bookName || pair.book || pair.kitab || "" });
@@ -940,33 +945,59 @@ if (Object.keys(teacherLookup).length === 0 && JAMIA_CLASS_MAP[jamiaName]) {
   });
 }
 
-// debug: show what we found (open console)
+// 4) Final fallback: try scanning userProfileData.karkardagiStructure for jamia's teachers
+if (Object.keys(teacherLookup).length === 0 && window.userProfileData) {
+  const allStruct = Array.isArray(userProfileData.karkardagiStructure) ? userProfileData.karkardagiStructure :
+                    (Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : []);
+  const jamiaStruct = (allStruct || []).find(j => (j.jamiaName || j.name || "").toString() === jamiaName);
+  if (jamiaStruct && Array.isArray(jamiaStruct.teachers)) {
+    jamiaStruct.teachers.forEach(t => {
+      const tname = t.name || t.teacherName || t.ustad || "";
+      const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
+      if (!tname) return;
+      teacherLookup[tname] = teacherLookup[tname] || [];
+      periods.forEach(p => {
+        const cn = p.className || p.class || "";
+        const bn = p.bookName || p.book || "";
+        if (cn && bn) teacherLookup[tname].push({ className: cn, bookName: bn });
+      });
+    });
+  }
+}
+
+// debug logs (helpful)
 console.log("teachersList for jamia:", jamiaName);
 console.log("teacherLookup keys:", Object.keys(teacherLookup));
 console.log("sample teacherLookup entry:", Object.values(teacherLookup)[0]);
 
-// populate teacherSelect
+// Populate teacher select
 const teachersList = Object.keys(teacherLookup).sort((a,b)=> a.localeCompare(b, undefined, {sensitivity:'base'}));
 if (teachersList.length === 0) {
-  // helpful message so you see fallback
   teacherSelect.innerHTML += `<option value="" disabled>No teachers found</option>`;
 } else {
   teachersList.forEach(tn => {
     const opt = document.createElement("option");
     opt.value = tn;
-    opt.textContent = tn;
+    // beautify: if fake ClassOnly keys, show the class name instead
+    if (tn.startsWith("ClassOnly::")) {
+      opt.value = "";
+      opt.textContent = tn.replace("ClassOnly::", "Class: ");
+      opt.disabled = true;
+    } else {
+      opt.textContent = tn;
+    }
     teacherSelect.appendChild(opt);
   });
 }
 
-// store lookup on select element so handlers can access without closure issues
+// store lookup on select element to avoid closure issues
 teacherSelect._teacherLookup = teacherLookup;
 
-// remove any previous handlers then attach new ones (idempotent)
+// attach handlers idempotently
 teacherSelect.onchange = function(e) {
   const tName = e.target.value;
   classSelect.innerHTML = '<option value="">Select Class</option>';
-  kitabSelect.innerHTML = '<option value="">Select Class First</option>';
+  kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
   kitabSelect.disabled = true;
   if (!tName || !this._teacherLookup || !this._teacherLookup[tName]) {
     classSelect.disabled = true;
@@ -1616,6 +1647,7 @@ classSelect.onchange = function(e) {
   </script>
 </body>
 </html>
+
 
 
 
