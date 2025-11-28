@@ -936,7 +936,7 @@
           accordionItem.appendChild(content);
           tadrisAccordionContainer.appendChild(accordionItem);
 
-          // ---------- robust teacher population & handlers (paste here) ----------
+          // ---------- robust teacher population & handlers (replace existing block) ----------
 const teacherSelect = content.querySelector(".tadris-teacher-select");
 const classSelect = content.querySelector(".tadris-class-select");
 const kitabSelect = content.querySelector(".tadris-kitab-select");
@@ -948,98 +948,110 @@ classSelect.disabled = true;
 kitabSelect.innerHTML = `<option value="">Select Class First</option>`;
 kitabSelect.disabled = true;
 
-// raw source (could be object or array or missing)
-let jamiaTeachersRaw = JAMIA_TEACHER_MAP[jamiaName] || JAMIA_CLASS_MAP[jamiaName] || null;
+// raw source (try several places)
+const jamiaRaw = JAMIA_TEACHER_MAP[jamiaName] || JAMIA_CLASS_MAP[jamiaName] || null;
+console.log("DEBUG: jamiaRaw for", jamiaName, jamiaRaw);
 
-// normalized lookup: teacherName -> [{className, bookName}, ...]
+// normalize into teacherLookup: teacherName -> [{className, bookName}, ...]
 const teacherLookup = {};
 
-// 1) If it's object keyed by teacherName
-if (jamiaTeachersRaw && typeof jamiaTeachersRaw === "object" && !Array.isArray(jamiaTeachersRaw)) {
-  Object.keys(jamiaTeachersRaw).forEach((tn) => {
-    const pairs = Array.isArray(jamiaTeachersRaw[tn]) ? jamiaTeachersRaw[tn] : [];
-    teacherLookup[tn] = pairs.map(p => ({
-      className: p.className || p.class || p.darja || "",
-      bookName: p.bookName || p.book || p.kitab || p.subject || ""
-    })).filter(x => x.className && x.bookName);
-  });
+function pushPair(tname, cn, bn) {
+  if (!tname) return;
+  teacherLookup[tname] = teacherLookup[tname] || [];
+  teacherLookup[tname].push({ className: cn, bookName: bn });
 }
 
-// 2) If it's an array — try common shapes
-if (Array.isArray(jamiaTeachersRaw)) {
-  jamiaTeachersRaw.forEach(item => {
-    if (!item) return;
-    if (typeof item === "object" && !Array.isArray(item)) {
-      const tname = (item.name || item.teacherName || item.ustad || item.fullName || "").toString();
-      const periods = Array.isArray(item.periods) ? item.periods : (Array.isArray(item.classes) ? item.classes : []);
-      if (tname) {
-        teacherLookup[tname] = teacherLookup[tname] || [];
-        (periods || []).forEach(p => {
-          const cn = p.className || p.class || p.darja || "";
-          const bn = p.bookName || p.book || p.kitab || p.subject || "";
-          if (cn && bn) teacherLookup[tname].push({ className: cn, bookName: bn });
-        });
-      } else {
-        if (item.className && item.bookName) {
-          const t2 = (item.teacherName || item.teacher || "").toString();
-          if (t2) {
-            teacherLookup[t2] = teacherLookup[t2] || [];
-            teacherLookup[t2].push({ className: item.className, bookName: item.bookName });
-          } else {
-            const fakeKey = `ClassOnly::${item.className}`;
-            teacherLookup[fakeKey] = teacherLookup[fakeKey] || [];
-            teacherLookup[fakeKey].push({ className: item.className, bookName: item.bookName });
-          }
+// Case 1: jamiaRaw is object keyed by teacherName
+if (jamiaRaw && typeof jamiaRaw === 'object' && !Array.isArray(jamiaRaw)) {
+  Object.keys(jamiaRaw).forEach(k => {
+    const val = jamiaRaw[k];
+    if (Array.isArray(val)) {
+      val.forEach(p => {
+        const cn = p.className || p.class || p.darja || '';
+        const bn = p.bookName || p.book || p.kitab || p.subject || '';
+        if (cn && bn) pushPair(k, cn, bn);
+      });
+    } else if (val && typeof val === 'object') {
+      const arr = Array.isArray(val.periods) ? val.periods : (Array.isArray(val.classes) ? val.classes : []);
+      (arr || []).forEach(p => {
+        const cn = p.className || p.class || p.darja || '';
+        const bn = p.bookName || p.book || p.kitab || p.subject || '';
+        if (cn && bn) pushPair(k, cn, bn);
+      });
+      // numeric-keyed fallback
+      Object.keys(val || {}).forEach(sk => {
+        if (!isNaN(sk)) {
+          const p = val[sk];
+          const cn = p.className || p.class || p.darja || '';
+          const bn = p.bookName || p.book || p.kitab || p.subject || '';
+          if (cn && bn) pushPair(k, cn, bn);
         }
-      }
-    } else if (Array.isArray(item)) {
-      item.forEach(sub => {
-        if (!sub || typeof sub !== "object") return;
-        const t2 = (sub.teacherName || sub.name || "").toString();
-        if (!t2) return;
-        teacherLookup[t2] = teacherLookup[t2] || [];
-        const cn = sub.className || sub.class || "";
-        const bn = sub.bookName || sub.book || "";
-        if (cn && bn) teacherLookup[t2].push({ className: cn, bookName: bn });
       });
     }
   });
 }
 
-// 3) Fallback: use JAMIA_CLASS_MAP pairs (if present)
+// Case 2: jamiaRaw is an array (teacher objects, mapping objects, or period entries)
+if (Array.isArray(jamiaRaw)) {
+  jamiaRaw.forEach(item => {
+    if (!item) return;
+    if (typeof item === 'object' && !Array.isArray(item)) {
+      // looks like teacher object?
+      const tname = (item.name || item.teacherName || item.ustad || '').toString();
+      if (tname) {
+        const arr = Array.isArray(item.periods) ? item.periods : (Array.isArray(item.classes) ? item.classes : []);
+        (arr || []).forEach(p => {
+          const cn = p.className || p.class || p.darja || '';
+          const bn = p.bookName || p.book || p.kitab || p.subject || '';
+          if (cn && bn) pushPair(tname, cn, bn);
+        });
+        return;
+      }
+
+      // else: item might be a map where keys are teacher names
+      Object.keys(item).forEach(k => {
+        const val = item[k];
+        if (!val) return;
+        if (Array.isArray(val)) {
+          val.forEach(p => {
+            const cn = p.className || p.class || p.darja || '';
+            const bn = p.bookName || p.book || p.kitab || p.subject || '';
+            if (cn && bn) pushPair(k, cn, bn);
+          });
+        } else if (val && typeof val === 'object') {
+          const arr = Array.isArray(val.periods) ? val.periods : (Array.isArray(val.classes) ? val.classes : []);
+          (arr || []).forEach(p => {
+            const cn = p.className || p.class || p.darja || '';
+            const bn = p.bookName || p.book || p.kitab || p.subject || '';
+            if (cn && bn) pushPair(k, cn, bn);
+          });
+        }
+      });
+
+      // also handle if item itself is a period entry
+      const className = item.className || item.class || item.darja || '';
+      const bookName = item.bookName || item.book || item.kitab || item.subject || '';
+      const teacherName = (item.teacherName || item.teacher || item.ustad || '').toString() || '';
+      if (className && bookName) {
+        if (teacherName) pushPair(teacherName, className, bookName);
+        else pushPair(`ClassOnly::${className}`, className, bookName);
+      }
+    }
+  });
+}
+
+// Case 3: fallback scanning JAMIA_CLASS_MAP entries
 if (Object.keys(teacherLookup).length === 0 && JAMIA_CLASS_MAP[jamiaName]) {
-  const clsMap = JAMIA_CLASS_MAP[jamiaName];
-  Object.keys(clsMap).forEach(cls => {
-    clsMap[cls].forEach(pair => {
-      const tn = pair.teacherName || pair.name || pair.teacher || "";
-      if (!tn) return;
-      teacherLookup[tn] = teacherLookup[tn] || [];
-      teacherLookup[tn].push({ className: cls, bookName: pair.bookName || pair.book || pair.kitab || "" });
+  Object.keys(JAMIA_CLASS_MAP[jamiaName]).forEach(cls => {
+    (JAMIA_CLASS_MAP[jamiaName][cls] || []).forEach(pair => {
+      const tn = pair.teacherName || pair.name || pair.teacher || '';
+      const bn = pair.bookName || pair.book || pair.kitab || '';
+      if (tn && cls && bn) pushPair(tn, cls, bn);
+      else if (cls && bn) pushPair(`ClassOnly::${cls}`, cls, bn);
     });
   });
 }
 
-// 4) Final fallback: scan userProfileData.karkardagiStructure for jamia's teachers
-if (Object.keys(teacherLookup).length === 0 && window.userProfileData) {
-  const allStruct = Array.isArray(userProfileData.karkardagiStructure) ? userProfileData.karkardagiStructure :
-                    (Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : []);
-  const jamiaStruct = (allStruct || []).find(j => (j.jamiaName || j.name || "").toString() === jamiaName);
-  if (jamiaStruct && Array.isArray(jamiaStruct.teachers)) {
-    jamiaStruct.teachers.forEach(t => {
-      const tname = t.name || t.teacherName || t.ustad || "";
-      const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
-      if (!tname) return;
-      teacherLookup[tname] = teacherLookup[tname] || [];
-      periods.forEach(p => {
-        const cn = p.className || p.class || "";
-        const bn = p.bookName || p.book || "";
-        if (cn && bn) teacherLookup[tname].push({ className: cn, bookName: bn });
-      });
-    });
-  }
-}
-
-// debug logs
 console.log("teachersList for jamia:", jamiaName);
 console.log("teacherLookup keys:", Object.keys(teacherLookup));
 console.log("sample teacherLookup entry:", Object.values(teacherLookup)[0]);
@@ -1063,9 +1075,9 @@ if (teachersList.length === 0) {
   });
 }
 
+// store lookup and attach handlers
 teacherSelect._teacherLookup = teacherLookup;
 
-// attach handlers idempotently
 teacherSelect.onchange = function(e) {
   const tName = e.target.value;
   classSelect.innerHTML = '<option value="">Select Class</option>';
@@ -1719,6 +1731,7 @@ classSelect.onchange = function(e) {
   </script>
 </body>
 </html>
+
 
 
 
