@@ -259,15 +259,31 @@
 
 <section id="saved-section" class="bg-white rounded-2xl shadow-md p-4 md:p-6 hidden">
   <h2 class="text-lg font-semibold urdu-font mb-4">
-    Saari Jamiaat ki Saved Recordings
+    Jamiaat ki Saved Recordings
   </h2>
 
-  <input
-    id="search-input"
-    type="text"
-    placeholder="Search by Jamia / Teacher / Class"
-    class="border p-2 mb-3 w-full rounded-lg"
-  />
+  <div id="saved-filters" class="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+  <div>
+    <label class="block text-xs text-gray-600 mb-1 urdu-font">Jamia</label>
+    <input id="filter-jamia" type="text" placeholder="Jamia ka naam likhein..." class="w-full p-2 border rounded-lg text-sm urdu-font" />
+  </div>
+
+  <div>
+    <label class="block text-xs text-gray-600 mb-1 urdu-font">Teacher</label>
+    <input id="filter-teacher" type="text" placeholder="Teacher ka naam..." class="w-full p-2 border rounded-lg text-sm urdu-font" />
+  </div>
+
+  <div class="grid grid-cols-2 gap-2">
+    <div>
+      <label class="block text-xs text-gray-600 mb-1 urdu-font">Date (From)</label>
+      <input id="filter-date-from" type="date" class="w-full p-2 border rounded-lg text-sm" />
+    </div>
+    <div>
+      <label class="block text-xs text-gray-600 mb-1 urdu-font">Date (To)</label>
+      <input id="filter-date-to" type="date" class="w-full p-2 border rounded-lg text-sm" />
+    </div>
+  </div>
+</div>
 
   <div class="overflow-x-auto">
     <table class="min-w-full text-sm border">
@@ -535,12 +551,21 @@ tabAdd.addEventListener("click", () => {
       currentMonthLabel.textContent = `Report for: ${info.monthName} ${info.yearNum}`;
     }
 
-    function fillSavedTable() {
+    // global store for currently rendered data (flat array)
+let __savedCurrentData = [];
+
+/**
+ * fillSavedTable: flat table (sorted by date desc, jamia A->Z for ties)
+ * Each <tr> for data will have class "saved-data-row" and data-attributes used by filters/PDF.
+ */
+function fillSavedTable() {
   const table = document.getElementById("saved-table-body");
   table.innerHTML = "";
 
   const { report } = getCurrentReportForSelectedMonth();
-  const data = Array.isArray(report?.tadrisRecording?.data) ? report.tadrisRecording.data : [];
+  const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
+
+  __savedCurrentData = data; // keep a copy for filtering
 
   if (!data.length) {
     table.innerHTML = `
@@ -556,7 +581,7 @@ tabAdd.addEventListener("click", () => {
   data.sort((a, b) => {
     const da = new Date(a.date).getTime() || 0;
     const db = new Date(b.date).getTime() || 0;
-    if (db !== da) return db - da; // newer first
+    if (db !== da) return db - da;
     const ja = (a.jamiaName || "").toLowerCase();
     const jb = (b.jamiaName || "").toLowerCase();
     if (ja < jb) return -1;
@@ -567,7 +592,7 @@ tabAdd.addEventListener("click", () => {
   data.forEach((rec, idx) => {
     const rowId = `saved-row-${idx}`;
     table.insertAdjacentHTML("beforeend", `
-      <tr id="${rowId}">
+      <tr id="${rowId}" class="saved-data-row">
         <td class="border px-2 py-1 urdu-font">${rec.jamiaName || ""}</td>
         <td class="border px-2 py-1 urdu-font">${rec.className || ""}</td>
         <td class="border px-2 py-1 urdu-font">${rec.kitabName || ""}</td>
@@ -590,8 +615,89 @@ tabAdd.addEventListener("click", () => {
     `);
   });
 
-  // Attach PDF click handlers
+  attachSavedDownloadHandlers(); // reattach PDF handlers
+  attachSavedFiltersListeners();  // ensure filters are wired
+}
+
+/**
+ * Apply filters on currently rendered table rows using __savedCurrentData
+ * Filters: jamia contains, teacher contains, date between from/to (inclusive)
+ */
+function applySavedFilters() {
+  const jamiaQ = (document.getElementById("filter-jamia")?.value || "").trim().toLowerCase();
+  const teacherQ = (document.getElementById("filter-teacher")?.value || "").trim().toLowerCase();
+  const dateFrom = document.getElementById("filter-date-from")?.value || "";
+  const dateTo = document.getElementById("filter-date-to")?.value || "";
+
+  // iterate rows
+  document.querySelectorAll("#saved-table-body tr.saved-data-row").forEach((tr) => {
+    const jamia = (tr.children[0]?.textContent || "").trim().toLowerCase();
+    const teacher = (tr.children[3]?.textContent || "").trim().toLowerCase();
+    const dateStr = (tr.children[4]?.textContent || "").trim();
+
+    let visible = true;
+
+    if (jamiaQ) {
+      visible = visible && jamia.includes(jamiaQ);
+    }
+    if (teacherQ) {
+      visible = visible && teacher.includes(teacherQ);
+    }
+    if (dateFrom) {
+      const d = new Date(dateStr);
+      const from = new Date(dateFrom);
+      if (isNaN(d.getTime())) visible = false;
+      else visible = visible && (d >= from);
+    }
+    if (dateTo) {
+      const d = new Date(dateStr);
+      const to = new Date(dateTo);
+      // include the whole day -> set to end of day
+      to.setHours(23,59,59,999);
+      if (isNaN(d.getTime())) visible = false;
+      else visible = visible && (d <= to);
+    }
+
+    tr.style.display = visible ? "" : "none";
+  });
+}
+
+/**
+ * Attach listeners once (idempotent-ish)
+ */
+function attachSavedFiltersListeners() {
+  const j = document.getElementById("filter-jamia");
+  const t = document.getElementById("filter-teacher");
+  const f = document.getElementById("filter-date-from");
+  const to = document.getElementById("filter-date-to");
+
+  if (j && !j._savedFilterAttached) {
+    j.addEventListener("input", applySavedFilters);
+    j._savedFilterAttached = true;
+  }
+  if (t && !t._savedFilterAttached) {
+    t.addEventListener("input", applySavedFilters);
+    t._savedFilterAttached = true;
+  }
+  if (f && !f._savedFilterAttached) {
+    f.addEventListener("change", applySavedFilters);
+    f._savedFilterAttached = true;
+  }
+  if (to && !to._savedFilterAttached) {
+    to.addEventListener("change", applySavedFilters);
+    to._savedFilterAttached = true;
+  }
+}
+
+/**
+ * Reattach PDF buttons (from previous code but separated)
+ */
+function attachSavedDownloadHandlers() {
   document.querySelectorAll(".saved-download-btn").forEach(btn => {
+    // avoid duplicate handlers
+    if (btn._savedDownloadAttached) return;
+    btn._savedDownloadAttached = true;
+
     btn.addEventListener("click", (ev) => {
       const b = ev.currentTarget;
       const temp = document.createElement("div");
@@ -603,10 +709,9 @@ tabAdd.addEventListener("click", () => {
       temp.dataset.className = decodeURIComponent(b.dataset.className || "");
       temp.dataset.kitabName = decodeURIComponent(b.dataset.kitabName || "");
       temp.dataset.tasurat = decodeURIComponent(b.dataset.tasurat || "");
-      // add a textarea for zimmedar comment (so PDF shows something)
       const ta = document.createElement("textarea");
       ta.className = "user-admin-tasurat-input";
-      ta.value = ""; // you could look up real adminTasurat if you want
+      ta.value = "";
       temp.appendChild(ta);
       temp.style.display = "none";
       document.body.appendChild(temp);
@@ -669,19 +774,6 @@ tabAdd.addEventListener("click", () => {
       })();
     });
   });
-
-  // Search/filter (simple)
-  const searchInput = document.getElementById("search-input");
-  if (searchInput) {
-    searchInput.oninput = () => {
-      const q = searchInput.value.trim().toLowerCase();
-      document.querySelectorAll("#saved-table-body tr").forEach(tr => {
-        // keep header-like helper rows (if any) visible; here all rows are data rows so simple check:
-        const text = tr.textContent.toLowerCase();
-        tr.style.display = q ? (text.includes(q) ? "" : "none") : "";
-      });
-    };
-  }
 }
 
     // ============================
@@ -1314,6 +1406,7 @@ tabAdd.addEventListener("click", () => {
   </script>
 </body>
 </html>
+
 
 
 
