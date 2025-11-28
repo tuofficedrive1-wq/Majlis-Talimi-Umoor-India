@@ -384,52 +384,76 @@
     const JAMIA_TEACHER_MAP = {};
 
     async function loadTeachingStructureFromUserDoc(user) {
-      // clear
-      Object.keys(JAMIA_CLASS_MAP).forEach(k=>delete JAMIA_CLASS_MAP[k]);
-      Object.keys(JAMIA_TEACHER_MAP).forEach(k=>delete JAMIA_TEACHER_MAP[k]);
+  // clear existing maps
+  Object.keys(JAMIA_CLASS_MAP).forEach(k => delete JAMIA_CLASS_MAP[k]);
+  Object.keys(JAMIA_TEACHER_MAP).forEach(k => delete JAMIA_TEACHER_MAP[k]);
 
-      const info = getReportingInfoFromMonthInput(monthInput.value);
-      if (!info) return;
-      const academicYear = info.monthNum >= 3 ? `${info.yearNum}-${info.yearNum+1}` : `${info.yearNum-1}-${info.yearNum}`;
+  const info = getReportingInfoFromMonthInput(monthInput.value);
+  if (!info) return;
+  const academicYear = info.monthNum >= 3 ? `${info.yearNum}-${info.yearNum+1}` : `${info.yearNum-1}-${info.yearNum}`;
 
-      try {
-        const userDocRef = doc(db, "users", user.uid);
-        const snap = await getDoc(userDocRef);
-        if (!snap.exists()) return;
-
-        const userData = snap.data() || {};
-        const years = userData.academicYears || {};
-        const yearData = years[academicYear];
-        if (!yearData || !Array.isArray(yearData.karkardagiStructure)) return;
-
-        // iterate jamia structs
-        yearData.karkardagiStructure.forEach(jamiaStruct => {
-          const jamiaName = jamiaStruct.jamiaName || "";
-          if (!jamiaName) return;
-          JAMIA_CLASS_MAP[jamiaName] = JAMIA_CLASS_MAP[jamiaName] || {};
-          JAMIA_TEACHER_MAP[jamiaName] = JAMIA_TEACHER_MAP[jamiaName] || {};
-
-          (jamiaStruct.teachers || []).forEach(t => {
-            const teacherName = t.name || t.teacherName || t.ustad || "";
-            (t.periods || []).forEach(p => {
-              const className = p.className || p.class || p.darja || "";
-              const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
-              if (!className || !teacherName || !bookName) return;
-
-              // class map
-              if (!JAMIA_CLASS_MAP[jamiaName][className]) JAMIA_CLASS_MAP[jamiaName][className] = [];
-              JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
-
-              // teacher map
-              if (!JAMIA_TEACHER_MAP[jamiaName][teacherName]) JAMIA_TEACHER_MAP[jamiaName][teacherName] = [];
-              JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
-            });
-          });
-        });
-      } catch (err) {
-        console.error("loadTeachingStructureFromUserDoc error:", err);
-      }
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userDocRef);
+    if (!snap.exists()) {
+      console.warn("User doc not found for teaching structure.");
+      return;
     }
+    const userData = snap.data() || {};
+
+    // Try multiple possible locations for karkardagiStructure
+    let karkardagi = null;
+    if (userData.academicYears && userData.academicYears[academicYear] && Array.isArray(userData.academicYears[academicYear].karkardagiStructure)) {
+      karkardagi = userData.academicYears[academicYear].karkardagiStructure;
+      console.log("Teaching structure loaded from userData.academicYears[academicYear].karkardagiStructure");
+    } else if (Array.isArray(userData.karkardagiStructure)) {
+      karkardagi = userData.karkardagiStructure;
+      console.log("Teaching structure loaded from userData.karkardagiStructure (root)");
+    } else if (Array.isArray(userData.academicStructure)) {
+      // fallback (older naming)
+      karkardagi = userData.academicStructure;
+      console.log("Teaching structure loaded from userData.academicStructure (fallback)");
+    } else {
+      console.warn("No karkardagiStructure found in user doc. userData keys:", Object.keys(userData));
+      return;
+    }
+
+    // iterate jamia structs
+    karkardagi.forEach(jamiaStruct => {
+      const jamiaName = jamiaStruct.jamiaName || jamiaStruct.name || jamiaStruct.jamia || "";
+      if (!jamiaName) return;
+      JAMIA_CLASS_MAP[jamiaName] = JAMIA_CLASS_MAP[jamiaName] || {};
+      JAMIA_TEACHER_MAP[jamiaName] = JAMIA_TEACHER_MAP[jamiaName] || {};
+
+      const teachersArr = Array.isArray(jamiaStruct.teachers) ? jamiaStruct.teachers : (Array.isArray(jamiaStruct.ustads) ? jamiaStruct.ustads : []);
+      (teachersArr || []).forEach(t => {
+        const teacherName = t.name || t.teacherName || t.ustad || t.fullName || "";
+        if (!teacherName) return;
+
+        const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
+        (periods || []).forEach(p => {
+          const className = p.className || p.class || p.darja || "";
+          const bookName  = p.bookName || p.book || p.kitab || p.subject || "";
+          if (!className || !bookName) return;
+
+          // class map -> push teacher/book pair
+          if (!JAMIA_CLASS_MAP[jamiaName][className]) JAMIA_CLASS_MAP[jamiaName][className] = [];
+          JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
+
+          // teacher map -> push class/book pair
+          if (!JAMIA_TEACHER_MAP[jamiaName][teacherName]) JAMIA_TEACHER_MAP[jamiaName][teacherName] = [];
+          JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
+        });
+      });
+    });
+
+    console.log("JAMIA_TEACHER_MAP keys:", Object.keys(JAMIA_TEACHER_MAP));
+    console.log("Sample JAMIA_TEACHER_MAP (first jamia):", JAMIA_TEACHER_MAP[Object.keys(JAMIA_TEACHER_MAP)[0]] || null);
+
+  } catch (err) {
+    console.error("loadTeachingStructureFromUserDoc error:", err);
+  }
+}
 
     // ============================
     // Global State
@@ -1493,3 +1517,4 @@
   </script>
 </body>
 </html>
+
