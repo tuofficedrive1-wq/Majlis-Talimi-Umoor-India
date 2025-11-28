@@ -857,52 +857,135 @@
           accordionItem.appendChild(content);
           tadrisAccordionContainer.appendChild(accordionItem);
 
-          // fill teacher select from JAMIA_TEACHER_MAP for this jamia
-          const teacherSelect = content.querySelector(".tadris-teacher-select");
-          const classSelect = content.querySelector(".tadris-class-select");
-          const kitabSelect = content.querySelector(".tadris-kitab-select");
+          // ----------------- robust teacher population (replace the old block) -----------------
+const teacherSelect = content.querySelector(".tadris-teacher-select");
+const classSelect = content.querySelector(".tadris-class-select");
+const kitabSelect = content.querySelector(".tadris-kitab-select");
 
-          const jamiaTeachers = JAMIA_TEACHER_MAP[jamiaName] || {};
-          const teacherNames = Object.keys(jamiaTeachers).sort();
-          teacherNames.forEach(tn => {
-            teacherSelect.innerHTML += `<option value="${tn}">${tn}</option>`;
-          });
+// clear existing
+teacherSelect.innerHTML = `<option value="">Select Teacher</option>`;
+classSelect.innerHTML = `<option value="">Select Teacher First</option>`;
+classSelect.disabled = true;
+kitabSelect.innerHTML = `<option value="">Select Class First</option>`;
+kitabSelect.disabled = true;
 
-          // teacher -> populate class list
-          teacherSelect.addEventListener("change", (e) => {
-            const tName = e.target.value;
-            classSelect.innerHTML = '<option value="">Select Class</option>';
-            kitabSelect.innerHTML = '<option value="">Select Class First</option>';
-            kitabSelect.disabled = true;
-            if (!tName) {
-              classSelect.disabled = true;
-              return;
+// get raw source (could be object or array)
+const jamiaTeachersRaw = JAMIA_TEACHER_MAP[jamiaName] || JAMIA_CLASS_MAP[jamiaName] || {};
+
+// build a normalized map: teacherName -> [{className, bookName}, ...]
+const teacherLookup = {};
+
+// If it's an object keyed by teacherName
+if (jamiaTeachersRaw && typeof jamiaTeachersRaw === "object" && !Array.isArray(jamiaTeachersRaw)) {
+  Object.keys(jamiaTeachersRaw).forEach((tn) => {
+    // value expected to be array of pairs
+    const pairs = Array.isArray(jamiaTeachersRaw[tn]) ? jamiaTeachersRaw[tn] : [];
+    teacherLookup[tn] = pairs.map(p => ({
+      className: p.className || p.class || p.darja || "",
+      bookName: p.bookName || p.book || p.kitab || p.subject || ""
+    })).filter(x => x.className && x.bookName);
+  });
+} else if (Array.isArray(jamiaTeachersRaw)) {
+  // If it's an array, entries might be:
+  //  - objects like { name: "...", periods: [ {className, bookName}, ... ] }
+  //  - or nested arrays of pairs
+  jamiaTeachersRaw.forEach(item => {
+    if (!item) return;
+    if (typeof item === "object" && !Array.isArray(item)) {
+      const tname = (item.name || item.teacherName || item.ustad || item.fullName || "").toString();
+      const periods = Array.isArray(item.periods) ? item.periods : (Array.isArray(item.classes) ? item.classes : []);
+      if (tname) {
+        teacherLookup[tname] = teacherLookup[tname] || [];
+        (periods || []).forEach(p => {
+          const cn = p.className || p.class || p.darja || "";
+          const bn = p.bookName || p.book || p.kitab || p.subject || "";
+          if (cn && bn) teacherLookup[tname].push({ className: cn, bookName: bn });
+        });
+      } else {
+        // maybe item itself is a pair array: [ {className, bookName}, ... ] attached to some teacher key
+        if (Array.isArray(item)) {
+          item.forEach(sub => {
+            const t2 = (sub.teacherName || sub.name || "").toString();
+            if (t2) {
+              teacherLookup[t2] = teacherLookup[t2] || [];
+              const cn = sub.className || sub.class || "";
+              const bn = sub.bookName || sub.book || "";
+              if (cn && bn) teacherLookup[t2].push({ className: cn, bookName: bn });
             }
-            const pairs = JAMIA_TEACHER_MAP[jamiaName][tName] || [];
-            const classSet = new Set(pairs.map(p => p.className));
-            classSet.forEach(cn => {
-              classSelect.innerHTML += `<option value="${cn}">${cn}</option>`;
-            });
-            classSelect.disabled = false;
           });
+        }
+      }
+    } else if (Array.isArray(item)) {
+      // nested arrays: try to extract teacherName inside subitems
+      item.forEach(sub => {
+        if (sub && typeof sub === "object") {
+          const t2 = (sub.teacherName || sub.name || "").toString();
+          if (t2) {
+            teacherLookup[t2] = teacherLookup[t2] || [];
+            const cn = sub.className || sub.class || "";
+            const bn = sub.bookName || sub.book || "";
+            if (cn && bn) teacherLookup[t2].push({ className: cn, bookName: bn });
+          }
+        }
+      });
+    }
+  });
+}
 
-          // class -> populate kitab based on selected teacher & class
-          classSelect.addEventListener("change", (e) => {
-            const cName = e.target.value;
-            const tName = teacherSelect.value;
-            kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
-            if (!cName || !tName) {
-              kitabSelect.disabled = true;
-              return;
-            }
-            const pairs = JAMIA_TEACHER_MAP[jamiaName][tName] || [];
-            const books = pairs.filter(p => p.className === cName).map(p => p.bookName);
-            const uniqueBooks = Array.from(new Set(books));
-            uniqueBooks.forEach(b => {
-              kitabSelect.innerHTML += `<option value="${b}">${b}</option>`;
-            });
-            kitabSelect.disabled = uniqueBooks.length === 0;
-          });
+// if nothing found and JAMIA_CLASS_MAP has structured pairs, try to infer teachers from that
+if (Object.keys(teacherLookup).length === 0 && JAMIA_CLASS_MAP[jamiaName]) {
+  const clsMap = JAMIA_CLASS_MAP[jamiaName]; // { className: [ {teacherName, bookName}, ... ] }
+  Object.keys(clsMap).forEach(cls => {
+    clsMap[cls].forEach(pair => {
+      const tn = pair.teacherName || pair.name || "";
+      if (!tn) return;
+      teacherLookup[tn] = teacherLookup[tn] || [];
+      teacherLookup[tn].push({ className: cls, bookName: pair.bookName || pair.book || pair.kitab || "" });
+    });
+  });
+}
+
+// now populate teacherSelect from teacherLookup keys
+const teachersList = Object.keys(teacherLookup).sort((a,b)=> a.localeCompare(b, undefined, {sensitivity: 'base'}));
+teachersList.forEach(tn => {
+  teacherSelect.innerHTML += `<option value="${tn}">${tn}</option>`;
+});
+
+// ----------------- teacher -> class handler (uses teacherLookup) -----------------
+teacherSelect.addEventListener("change", (e) => {
+  const tName = e.target.value;
+  classSelect.innerHTML = '<option value="">Select Class</option>';
+  kitabSelect.innerHTML = '<option value="">Select Class First</option>';
+  kitabSelect.disabled = true;
+  if (!tName || !teacherLookup[tName]) {
+    classSelect.disabled = true;
+    return;
+  }
+  const pairs = teacherLookup[tName] || [];
+  const classSet = new Set(pairs.map(p => p.className));
+  Array.from(classSet).forEach(cn => {
+    classSelect.innerHTML += `<option value="${cn}">${cn}</option>`;
+  });
+  classSelect.disabled = false;
+});
+
+// ----------------- class -> kitab handler (uses teacherLookup) -----------------
+classSelect.addEventListener("change", (e) => {
+  const cName = e.target.value;
+  const tName = teacherSelect.value;
+  kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
+  if (!cName || !tName || !teacherLookup[tName]) {
+    kitabSelect.disabled = true;
+    return;
+  }
+  const pairs = teacherLookup[tName] || [];
+  const books = pairs.filter(p => p.className === cName).map(p => p.bookName);
+  const uniqueBooks = Array.from(new Set(books));
+  uniqueBooks.forEach(b => {
+    kitabSelect.innerHTML += `<option value="${b}">${b}</option>`;
+  });
+  kitabSelect.disabled = uniqueBooks.length === 0;
+});
 
           const addBtn = content.querySelector(".add-tadris-entry-btn");
           addBtn.addEventListener("click", handleAddTadrisEntry);
@@ -1517,4 +1600,5 @@
   </script>
 </body>
 </html>
+
 
