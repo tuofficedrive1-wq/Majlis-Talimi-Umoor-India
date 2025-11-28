@@ -384,11 +384,16 @@
     const JAMIA_TEACHER_MAP = {};
 
     async function loadTeachingStructureFromUserDoc(user) {
-  // Clear previous maps
-  Object.keys(JAMIA_CLASS_MAP).forEach((k) => delete JAMIA_CLASS_MAP[k]);
-  Object.keys(JAMIA_TEACHER_MAP).forEach((k) => delete JAMIA_TEACHER_MAP[k]);
+
+  // clear previous maps
+  try {
+    Object.keys(JAMIA_CLASS_MAP).forEach((k) => delete JAMIA_CLASS_MAP[k]);
+    Object.keys(JAMIA_TEACHER_MAP).forEach((k) => delete JAMIA_TEACHER_MAP[k]);
+  } catch(e){ /* ignore if not defined yet */ }
 
   try {
+    // Attempt to load karkardagiStructure similar to jaiza-form
+    // First try academicYears -> karkardagiStructure, then root karkardagiStructure, then academicStructure
     const userDocRef = doc(db, "users", user.uid);
     const snap = await getDoc(userDocRef);
     if (!snap.exists()) {
@@ -397,7 +402,7 @@
     }
     const userData = snap.data() || {};
 
-    const info = getReportingInfoFromMonthInput(monthInput.value);
+    const info = (typeof getReportingInfoFromMonthInput === 'function') ? getReportingInfoFromMonthInput(monthInput.value) : null;
     const academicYear = info ? (info.monthNum >= 3 ? `${info.yearNum}-${info.yearNum+1}` : `${info.yearNum-1}-${info.yearNum}`) : null;
 
     let karkardagi = null;
@@ -411,7 +416,7 @@
       karkardagi = userData.academicStructure;
       console.log("Teaching structure loaded from userData.academicStructure (fallback)");
     } else {
-      // if none, try to find any array-like property
+      // try another common path (some projects store under 'structure' document)
       const possible = Object.keys(userData).find(k => Array.isArray(userData[k]));
       if (possible) {
         karkardagi = userData[possible];
@@ -422,113 +427,70 @@
       }
     }
 
-    // iterate jamia entries
-    karkardagi.forEach((jamiaStruct, idx) => {
-      const jamiaName = (jamiaStruct.jamiaName || jamiaStruct.name || jamiaStruct.jamia || "").toString();
-      if (!jamiaName) {
-        console.warn("Skipping jamiaStruct without name at index", idx, jamiaStruct);
-        return;
+    // Build maps for all jamia entries
+    if (!window.JAMIA_TEACHER_MAP) window.JAMIA_TEACHER_MAP = {};
+    if (!window.JAMIA_CLASS_MAP) window.JAMIA_CLASS_MAP = {};
+    const JAMIA_TEACHER_MAP_LOCAL = window.JAMIA_TEACHER_MAP;
+    const JAMIA_CLASS_MAP_LOCAL = window.JAMIA_CLASS_MAP;
+
+    (karkardagi || []).forEach(jamiaObj => {
+      const jamiaName = (jamiaObj.jamiaName || jamiaObj.name || jamiaObj.jamia || "").toString();
+      if (!jamiaName) return;
+
+      JAMIA_TEACHER_MAP_LOCAL[jamiaName] = JAMIA_TEACHER_MAP_LOCAL[jamiaName] || {};
+      JAMIA_CLASS_MAP_LOCAL[jamiaName] = JAMIA_CLASS_MAP_LOCAL[jamiaName] || {};
+
+      const teachers = Array.isArray(jamiaObj.teachers) ? jamiaObj.teachers : (Array.isArray(jamiaObj.ustads) ? jamiaObj.ustads : []);
+
+      // If teachers is an object keyed by teacher name, convert it to array
+      if (teachers && typeof teachers === 'object' && !Array.isArray(teachers)) {
+        Object.keys(teachers).forEach(k => teachers.push(teachers[k]));
       }
 
-      JAMIA_CLASS_MAP[jamiaName] = JAMIA_CLASS_MAP[jamiaName] || {};
-      JAMIA_TEACHER_MAP[jamiaName] = JAMIA_TEACHER_MAP[jamiaName] || {};
+      (teachers || []).forEach(t => {
+        if (!t) return;
+        const teacherName = (t.name || t.teacherName || t.ustad || t.fullName || "").toString();
+        const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
+        if (!teacherName) return;
 
-      // Identify teachers source: could be array, or object keyed by teacher name, or missing
-      let teachersSource = null;
-      if (Array.isArray(jamiaStruct.teachers) && jamiaStruct.teachers.length) {
-        teachersSource = jamiaStruct.teachers;
-      } else if (Array.isArray(jamiaStruct.ustads) && jamiaStruct.ustads.length) {
-        teachersSource = jamiaStruct.ustads;
-      } else if (jamiaStruct.teachers && typeof jamiaStruct.teachers === "object" && !Array.isArray(jamiaStruct.teachers)) {
-        teachersSource = jamiaStruct.teachers; // object keyed by teacher name
-      } else if (jamiaStruct.teacherMap && typeof jamiaStruct.teacherMap === "object") {
-        teachersSource = jamiaStruct.teacherMap;
-      } else if (Array.isArray(jamiaStruct.periods) && jamiaStruct.periods.length) {
-        teachersSource = jamiaStruct.periods; // class-level entries
-      } else if (Array.isArray(jamiaStruct.classes) && jamiaStruct.classes.length) {
-        teachersSource = jamiaStruct.classes;
-      } else {
-        teachersSource = null;
-      }
+        JAMIA_TEACHER_MAP_LOCAL[jamiaName][teacherName] = JAMIA_TEACHER_MAP_LOCAL[jamiaName][teacherName] || [];
 
-      console.log("Jamia:", jamiaName, "teachersSourceType:", Array.isArray(teachersSource) ? "array" : (teachersSource && typeof teachersSource === 'object' ? "object" : "none"));
+        (periods || []).forEach(p => {
+          const className = p.className || p.class || p.darja || "";
+          const bookName = p.bookName || p.book || p.kitab || p.subject || "";
+          if (!className || !bookName) return;
 
-      // Case A: teachersSource is an object keyed by teacherName -> { "Ustad X": [ {className, bookName}, ... ], ... }
-      if (teachersSource && typeof teachersSource === "object" && !Array.isArray(teachersSource)) {
-        Object.keys(teachersSource).forEach((tn) => {
-          const val = teachersSource[tn];
-          // val may be array of periods or object containing periods
-          let periods = [];
-          if (Array.isArray(val)) {
-            periods = val;
-          } else if (val && Array.isArray(val.periods)) {
-            periods = val.periods;
-          } else if (val && Array.isArray(val.classes)) {
-            periods = val.classes;
-          } else {
-            // try if val itself is an object with numeric keys
-            const arr = Object.keys(val || {}).filter(k => !isNaN(k)).map(k => val[k]);
-            if (arr.length) periods = arr;
-          }
+          JAMIA_TEACHER_MAP_LOCAL[jamiaName][teacherName].push({ className, bookName });
 
-          const teacherName = tn.toString();
-          if (!teacherName) return;
-          JAMIA_TEACHER_MAP[jamiaName][teacherName] = JAMIA_TEACHER_MAP[jamiaName][teacherName] || [];
-
-          (periods || []).forEach(p => {
-            const className = p.className || p.class || p.darja || "";
-            const bookName = p.bookName || p.book || p.kitab || p.subject || "";
-            if (!className || !bookName) return;
-            JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
-            JAMIA_CLASS_MAP[jamiaName][className] = JAMIA_CLASS_MAP[jamiaName][className] || [];
-            JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
-          });
+          JAMIA_CLASS_MAP_LOCAL[jamiaName][className] = JAMIA_CLASS_MAP_LOCAL[jamiaName][className] || [];
+          JAMIA_CLASS_MAP_LOCAL[jamiaName][className].push({ teacherName, bookName });
         });
-        return; // done for this jamia
-      }
+      });
 
-      // Case B: teachersSource is array of teacher objects or period objects
-      if (Array.isArray(teachersSource)) {
-        teachersSource.forEach(t => {
-          if (!t) return;
-          if (typeof t === "object" && !Array.isArray(t) && (t.name || t.teacherName || t.ustad)) {
-            const teacherName = (t.name || t.teacherName || t.ustad || "").toString();
-            const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
-            if (!teacherName) return;
-            JAMIA_TEACHER_MAP[jamiaName][teacherName] = JAMIA_TEACHER_MAP[jamiaName][teacherName] || [];
-            (periods || []).forEach(p => {
-              const className = p.className || p.class || p.darja || "";
-              const bookName = p.bookName || p.book || p.kitab || p.subject || "";
-              if (!className || !bookName) return;
-              JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
-              JAMIA_CLASS_MAP[jamiaName][className] = JAMIA_CLASS_MAP[jamiaName][className] || [];
-              JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
-            });
-          } else if (typeof t === "object" && (t.className || t.bookName || t.teacherName)) {
-            const className = t.className || t.class || t.darja || "";
-            const bookName = t.bookName || t.book || t.kitab || t.subject || "";
-            const teacherName = (t.teacherName || t.teacher || t.ustad || "").toString() || "";
-            if (!className || !bookName) return;
-            if (teacherName) {
-              JAMIA_TEACHER_MAP[jamiaName][teacherName] = JAMIA_TEACHER_MAP[jamiaName][teacherName] || [];
-              JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
-            } else {
-              const fakeKey = `ClassOnly::${className}`;
-              JAMIA_TEACHER_MAP[jamiaName][fakeKey] = JAMIA_TEACHER_MAP[jamiaName][fakeKey] || [];
-              JAMIA_TEACHER_MAP[jamiaName][fakeKey].push({ className, bookName });
-            }
-            JAMIA_CLASS_MAP[jamiaName][className] = JAMIA_CLASS_MAP[jamiaName][className] || [];
-            JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
-          }
-        });
-        return;
-      }
+      // also check if jamiaObj has periods/classes at root level
+      const periodsRoot = Array.isArray(jamiaObj.periods) ? jamiaObj.periods : (Array.isArray(jamiaObj.classes) ? jamiaObj.classes : []);
+      (periodsRoot || []).forEach(p => {
+        const className = p.className || p.class || p.darja || "";
+        const bookName = p.bookName || p.book || p.kitab || p.subject || "";
+        const teacherName = (p.teacherName || p.teacher || p.ustad || "").toString() || "";
+        if (!className || !bookName) return;
+        if (teacherName) {
+          JAMIA_TEACHER_MAP_LOCAL[jamiaName][teacherName] = JAMIA_TEACHER_MAP_LOCAL[jamiaName][teacherName] || [];
+          JAMIA_TEACHER_MAP_LOCAL[jamiaName][teacherName].push({ className, bookName });
+        } else {
+          const fakeKey = `ClassOnly::${className}`;
+          JAMIA_TEACHER_MAP_LOCAL[jamiaName][fakeKey] = JAMIA_TEACHER_MAP_LOCAL[jamiaName][fakeKey] || [];
+          JAMIA_TEACHER_MAP_LOCAL[jamiaName][fakeKey].push({ className, bookName });
+        }
+        JAMIA_CLASS_MAP_LOCAL[jamiaName][className] = JAMIA_CLASS_MAP_LOCAL[jamiaName][className] || [];
+        JAMIA_CLASS_MAP_LOCAL[jamiaName][className].push({ teacherName, bookName });
+      });
 
-      // If we reach here, no teachers detected for this jamia
-      console.warn("No teachers detected for jamia:", jamiaName, "jamiaStruct:", jamiaStruct);
     });
 
-    console.log("JAMIA_TEACHER_MAP built, keys:", Object.keys(JAMIA_TEACHER_MAP));
+    console.log("JAMIA_TEACHER_MAP built, keys:", Object.keys(window.JAMIA_TEACHER_MAP || {}));
+    console.log("JAMIA_CLASS_MAP built, keys:", Object.keys(window.JAMIA_CLASS_MAP || {}));
+
   } catch (err) {
     console.error("loadTeachingStructureFromUserDoc error:", err);
   }
@@ -937,196 +899,86 @@
           tadrisAccordionContainer.appendChild(accordionItem);
 
           // ---------- robust teacher population & handlers (replace existing block) ----------
+
+// ---------- teacher/class/kitab population (robust) ----------
 const teacherSelect = content.querySelector(".tadris-teacher-select");
 const classSelect = content.querySelector(".tadris-class-select");
 const kitabSelect = content.querySelector(".tadris-kitab-select");
 
-// reset selects
-teacherSelect.innerHTML = `<option value="">Select Teacher</option>`;
-classSelect.innerHTML = `<option value="">Select Teacher First</option>`;
-classSelect.disabled = true;
-kitabSelect.innerHTML = `<option value="">Select Class First</option>`;
-kitabSelect.disabled = true;
-
-// raw source (try several places)
-const jamiaRaw = JAMIA_TEACHER_MAP[jamiaName] || JAMIA_CLASS_MAP[jamiaName] || null;
-console.log("DEBUG: jamiaRaw for", jamiaName, jamiaRaw);
-
-// normalize into teacherLookup: teacherName -> [{className, bookName}, ...]
-const teacherLookup = {};
-
-function pushPair(tname, cn, bn) {
-  if (!tname) return;
-  teacherLookup[tname] = teacherLookup[tname] || [];
-  teacherLookup[tname].push({ className: cn, bookName: bn });
+// reset
+if (teacherSelect) {
+  teacherSelect.innerHTML = `<option value="">Select Teacher</option>`;
+}
+if (classSelect) {
+  classSelect.innerHTML = `<option value="">Select Teacher First</option>`;
+  classSelect.disabled = true;
+}
+if (kitabSelect) {
+  kitabSelect.innerHTML = `<option value="">Select Class First</option>`;
+  kitabSelect.disabled = true;
 }
 
-// Case 1: jamiaRaw is object keyed by teacherName
-if (jamiaRaw && typeof jamiaRaw === 'object' && !Array.isArray(jamiaRaw)) {
-  Object.keys(jamiaRaw).forEach(k => {
-    const val = jamiaRaw[k];
-    if (Array.isArray(val)) {
-      val.forEach(p => {
-        const cn = p.className || p.class || p.darja || '';
-        const bn = p.bookName || p.book || p.kitab || p.subject || '';
-        if (cn && bn) pushPair(k, cn, bn);
-      });
-    } else if (val && typeof val === 'object') {
-      const arr = Array.isArray(val.periods) ? val.periods : (Array.isArray(val.classes) ? val.classes : []);
-      (arr || []).forEach(p => {
-        const cn = p.className || p.class || p.darja || '';
-        const bn = p.bookName || p.book || p.kitab || p.subject || '';
-        if (cn && bn) pushPair(k, cn, bn);
-      });
-      // numeric-keyed fallback
-      Object.keys(val || {}).forEach(sk => {
-        if (!isNaN(sk)) {
-          const p = val[sk];
-          const cn = p.className || p.class || p.darja || '';
-          const bn = p.bookName || p.book || p.kitab || p.subject || '';
-          if (cn && bn) pushPair(k, cn, bn);
-        }
-      });
-    }
-  });
-}
-
-// Case 2: jamiaRaw is an array (teacher objects, mapping objects, or period entries)
-if (Array.isArray(jamiaRaw)) {
-  jamiaRaw.forEach(item => {
-    if (!item) return;
-    if (typeof item === 'object' && !Array.isArray(item)) {
-      // looks like teacher object?
-      const tname = (item.name || item.teacherName || item.ustad || '').toString();
-      if (tname) {
-        const arr = Array.isArray(item.periods) ? item.periods : (Array.isArray(item.classes) ? item.classes : []);
-        (arr || []).forEach(p => {
-          const cn = p.className || p.class || p.darja || '';
-          const bn = p.bookName || p.book || p.kitab || p.subject || '';
-          if (cn && bn) pushPair(tname, cn, bn);
-        });
-        return;
-      }
-
-      // else: item might be a map where keys are teacher names
-      Object.keys(item).forEach(k => {
-        const val = item[k];
-        if (!val) return;
-        if (Array.isArray(val)) {
-          val.forEach(p => {
-            const cn = p.className || p.class || p.darja || '';
-            const bn = p.bookName || p.book || p.kitab || p.subject || '';
-            if (cn && bn) pushPair(k, cn, bn);
-          });
-        } else if (val && typeof val === 'object') {
-          const arr = Array.isArray(val.periods) ? val.periods : (Array.isArray(val.classes) ? val.classes : []);
-          (arr || []).forEach(p => {
-            const cn = p.className || p.class || p.darja || '';
-            const bn = p.bookName || p.book || p.kitab || p.subject || '';
-            if (cn && bn) pushPair(k, cn, bn);
-          });
-        }
-      });
-
-      // also handle if item itself is a period entry
-      const className = item.className || item.class || item.darja || '';
-      const bookName = item.bookName || item.book || item.kitab || item.subject || '';
-      const teacherName = (item.teacherName || item.teacher || item.ustad || '').toString() || '';
-      if (className && bookName) {
-        if (teacherName) pushPair(teacherName, className, bookName);
-        else pushPair(`ClassOnly::${className}`, className, bookName);
-      }
-    }
-  });
-}
-
-// Case 3: fallback scanning JAMIA_CLASS_MAP entries
-if (Object.keys(teacherLookup).length === 0 && JAMIA_CLASS_MAP[jamiaName]) {
-  Object.keys(JAMIA_CLASS_MAP[jamiaName]).forEach(cls => {
-    (JAMIA_CLASS_MAP[jamiaName][cls] || []).forEach(pair => {
-      const tn = pair.teacherName || pair.name || pair.teacher || '';
-      const bn = pair.bookName || pair.book || pair.kitab || '';
-      if (tn && cls && bn) pushPair(tn, cls, bn);
-      else if (cls && bn) pushPair(`ClassOnly::${cls}`, cls, bn);
-    });
-  });
-}
+const jamiaTeachers = (window.JAMIA_TEACHER_MAP && window.JAMIA_TEACHER_MAP[jamiaName]) ? window.JAMIA_TEACHER_MAP[jamiaName] : {};
+const teacherList = Object.keys(jamiaTeachers || {});
 
 console.log("teachersList for jamia:", jamiaName);
-console.log("teacherLookup keys:", Object.keys(teacherLookup));
-console.log("sample teacherLookup entry:", Object.values(teacherLookup)[0]);
+console.log("teacherList keys:", teacherList);
 
-// populate teacherSelect
-const teachersList = Object.keys(teacherLookup).sort((a,b)=> a.localeCompare(b, undefined, {sensitivity:'base'}));
-if (teachersList.length === 0) {
-  teacherSelect.innerHTML += `<option value="" disabled>No teachers found</option>`;
-} else {
-  teachersList.forEach(tn => {
+if (teacherSelect) {
+  teacherList.forEach(t => {
     const opt = document.createElement("option");
-    opt.value = tn;
-    if (tn.startsWith("ClassOnly::")) {
-      opt.value = "";
-      opt.textContent = tn.replace("ClassOnly::", "Class: ");
-      opt.disabled = true;
-    } else {
-      opt.textContent = tn;
-    }
+    opt.value = t;
+    opt.textContent = t;
     teacherSelect.appendChild(opt);
   });
+
+  // attach handlers idempotently
+  teacherSelect.onchange = function () {
+    const selectedT = this.value;
+    if (!classSelect) return;
+    classSelect.innerHTML = `<option value="">Select Class</option>`;
+    kitabSelect.innerHTML = `<option value="">Select Kitab</option>`;
+    kitabSelect.disabled = true;
+
+    if (!selectedT || !jamiaTeachers[selectedT]) {
+      classSelect.disabled = true;
+      return;
+    }
+
+    const classes = (jamiaTeachers[selectedT] || []).map(p => p.className).filter(Boolean);
+    const uniqueClasses = Array.from(new Set(classes));
+    uniqueClasses.forEach(cls => {
+      const o = document.createElement("option");
+      o.value = cls;
+      o.textContent = cls;
+      classSelect.appendChild(o);
+    });
+    classSelect.disabled = false;
+  };
 }
 
-// store lookup and attach handlers
-teacherSelect._teacherLookup = teacherLookup;
-
-teacherSelect.onchange = function(e) {
-  const tName = e.target.value;
-  classSelect.innerHTML = '<option value="">Select Class</option>';
-  kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
-  kitabSelect.disabled = true;
-  if (!tName || !this._teacherLookup || !this._teacherLookup[tName]) {
-    classSelect.disabled = true;
-    return;
-  }
-  const pairs = this._teacherLookup[tName] || [];
-  const classSet = new Set(pairs.map(p => p.className));
-  Array.from(classSet).forEach(cn => {
-    const o = document.createElement("option");
-    o.value = cn;
-    o.textContent = cn;
-    classSelect.appendChild(o);
-  });
-  classSelect.disabled = false;
-};
-
-classSelect.onchange = function(e) {
-  const cName = e.target.value;
-  const tName = teacherSelect.value;
-  kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
-  if (!cName || !tName || !teacherSelect._teacherLookup) {
-    kitabSelect.disabled = true;
-    return;
-  }
-  const pairs = teacherSelect._teacherLookup[tName] || [];
-  const books = pairs.filter(p => p.className === cName).map(p => p.bookName);
-  const uniqueBooks = Array.from(new Set(books));
-  uniqueBooks.forEach(b => {
-    const o = document.createElement("option");
-    o.value = b;
-    o.textContent = b;
-    kitabSelect.appendChild(o);
-  });
-  kitabSelect.disabled = uniqueBooks.length === 0;
-};
-
-          const addBtn = content.querySelector(".add-tadris-entry-btn");
-          addBtn.addEventListener("click", handleAddTadrisEntry);
-
-          content
-            .querySelectorAll(".save-user-admin-tasurat-btn")
-            .forEach((btn) =>
-              btn.addEventListener(
-                "click",
-                handleUserEditAdminTasurat
+if (classSelect) {
+  classSelect.onchange = function () {
+    const selectedT = teacherSelect ? teacherSelect.value : "";
+    const selectedC = this.value;
+    if (!kitabSelect) return;
+    kitabSelect.innerHTML = `<option value="">Select Kitab</option>`;
+    if (!selectedT || !selectedC || !jamiaTeachers[selectedT]) {
+      kitabSelect.disabled = true;
+      return;
+    }
+    const books = (jamiaTeachers[selectedT] || []).filter(p => p.className === selectedC).map(p => p.bookName).filter(Boolean);
+    const uniqueBooks = Array.from(new Set(books));
+    uniqueBooks.forEach(b => {
+      const o = document.createElement("option");
+      o.value = b;
+      o.textContent = b;
+      kitabSelect.appendChild(o);
+    });
+    kitabSelect.disabled = uniqueBooks.length === 0;
+  };
+}
+urat
               )
             );
           content
@@ -1159,157 +1011,86 @@ classSelect.onchange = function(e) {
       const container = button.closest(".p-4");
       if (!container) return;
 
-      const teacherSelect = container.querySelector(".tadris-teacher-select");
-      const classSelect = container.querySelector(".tadris-class-select");
-      const kitabSelect = container.querySelector(".tadris-kitab-select");
-      const dateInput = container.querySelector(".tadris-date");
-      const tasuratInput = container.querySelector(".tadris-tasurat");
+      
+// ---------- teacher/class/kitab population (robust) ----------
+const teacherSelect = content.querySelector(".tadris-teacher-select");
+const classSelect = content.querySelector(".tadris-class-select");
+const kitabSelect = content.querySelector(".tadris-kitab-select");
 
-      const jamiaName = button.dataset.jamiaName || "";
-      const className = (classSelect.value || "").trim();
-      const kitabName = (kitabSelect.value || "").trim();
-      const teacherName = (teacherSelect.value || "").trim();
-      const date = dateInput.value;
-      const tasurat = (tasuratInput.value || "").trim();
+// reset
+if (teacherSelect) {
+  teacherSelect.innerHTML = `<option value="">Select Teacher</option>`;
+}
+if (classSelect) {
+  classSelect.innerHTML = `<option value="">Select Teacher First</option>`;
+  classSelect.disabled = true;
+}
+if (kitabSelect) {
+  kitabSelect.innerHTML = `<option value="">Select Class First</option>`;
+  kitabSelect.disabled = true;
+}
 
-      if (!jamiaName || !className || !kitabName || !teacherName || !date) {
-        showNotification(
-          "Jamia, Teacher, Class, Kitab, aur Date bharna zaroori hai.",
-          true
-        );
-        return;
-      }
+const jamiaTeachers = (window.JAMIA_TEACHER_MAP && window.JAMIA_TEACHER_MAP[jamiaName]) ? window.JAMIA_TEACHER_MAP[jamiaName] : {};
+const teacherList = Object.keys(jamiaTeachers || {});
 
-      const newEntry = {
-        jamiaName,
-        className,
-        kitabName,
-        teacherName,
-        date,
-        tasurat,
-        adminTasurat: "",
-      };
+console.log("teachersList for jamia:", jamiaName);
+console.log("teacherList keys:", teacherList);
 
-      showLoader(true);
-      try {
-        const snap = await getDoc(reportRef);
-        const existing = snap.exists()
-          ? snap.data().tadrisRecording?.data || []
-          : [];
-        const merged = [...existing, newEntry];
+if (teacherSelect) {
+  teacherList.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t;
+    teacherSelect.appendChild(opt);
+  });
 
-        await updateDoc(reportRef, {
-          tadrisRecording: { status: "Done", data: merged },
-          updatedAt: serverTimestamp(),
-        });
+  // attach handlers idempotently
+  teacherSelect.onchange = function () {
+    const selectedT = this.value;
+    if (!classSelect) return;
+    classSelect.innerHTML = `<option value="">Select Class</option>`;
+    kitabSelect.innerHTML = `<option value="">Select Kitab</option>`;
+    kitabSelect.disabled = true;
 
-        showNotification("Tadris entry saved!");
-        // Clear fields
-        teacherSelect.value = "";
-        classSelect.innerHTML = '<option value="">Select Teacher First</option>';
-        classSelect.disabled = true;
-        kitabSelect.innerHTML = '<option value="">Select Class First</option>';
-        kitabSelect.disabled = true;
-        dateInput.value = "";
-        tasuratInput.value = "";
-
-        // UI ko refresh karein
-        renderForCurrentMonth();
-      } catch (err) {
-        console.error("Error adding tadris entry:", err);
-        showNotification("Error adding Tadris entry.", true);
-      } finally {
-        showLoader(false);
-      }
+    if (!selectedT || !jamiaTeachers[selectedT]) {
+      classSelect.disabled = true;
+      return;
     }
 
-    // ============================
-    // Save Talimi Zimmedar Comment
-    // ============================
-    async function handleUserEditAdminTasurat(e) {
-      if (!reportRef) {
-        showNotification("Report reference missing.", true);
-        return;
-      }
-      const btn = e.currentTarget;
-      const parentDiv = btn.closest(".comment-display");
-      if (!parentDiv) return;
+    const classes = (jamiaTeachers[selectedT] || []).map(p => p.className).filter(Boolean);
+    const uniqueClasses = Array.from(new Set(classes));
+    uniqueClasses.forEach(cls => {
+      const o = document.createElement("option");
+      o.value = cls;
+      o.textContent = cls;
+      classSelect.appendChild(o);
+    });
+    classSelect.disabled = false;
+  };
+}
 
-      const textarea = parentDiv.querySelector(".user-admin-tasurat-input");
-      const newComment = (textarea.value || "").trim();
-
-      const jamiaName = textarea.dataset.jamiaName;
-      const date = textarea.dataset.date;
-      const teacherName = textarea.dataset.teacherName;
-
-      if (!jamiaName || !date || !teacherName) {
-        showNotification("Entry ki details missing hain.", true);
-        return;
-      }
-
-      showLoader(true);
-      try {
-        const snap = await getDoc(reportRef);
-        const existing = snap.exists()
-          ? snap.data().tadrisRecording?.data || []
-          : [];
-        let found = false;
-        const updatedData = existing.map((item) => {
-          if (
-            item.jamiaName === jamiaName &&
-            item.date === date &&
-            item.teacherName === teacherName
-          ) {
-            found = true;
-            return { ...item, adminTasurat: newComment };
-          }
-          return item;
-        });
-
-        if (!found) {
-          showNotification("Woh entry report me nahi mili.", true);
-          return;
-        }
-
-        await updateDoc(reportRef, {
-          tadrisRecording: { status: "Done", data: updatedData },
-          updatedAt: serverTimestamp(),
-        });
-
-        showNotification("Aapka comment save ho gaya!");
-      } catch (err) {
-        console.error("Error saving zimmedar comment:", err);
-        showNotification("Comment save karne me error.", true);
-      } finally {
-        showLoader(false);
-      }
+if (classSelect) {
+  classSelect.onchange = function () {
+    const selectedT = teacherSelect ? teacherSelect.value : "";
+    const selectedC = this.value;
+    if (!kitabSelect) return;
+    kitabSelect.innerHTML = `<option value="">Select Kitab</option>`;
+    if (!selectedT || !selectedC || !jamiaTeachers[selectedT]) {
+      kitabSelect.disabled = true;
+      return;
     }
-
-    // ============================
-    // PDF Download
-    // ============================
-    async function handleDownloadTadrisPDF(e) {
-      const btn = e.currentTarget.closest(".download-tadris-pdf-btn") || e.currentTarget;
-      if (!btn) {
-        showNotification("Report data nahi mila.", true);
-        return;
-      }
-      const recordDivId = btn.dataset.recordId;
-      const recordDiv = document.getElementById(recordDivId);
-      if (!recordDiv) {
-        showNotification("Report data nahi mila.", true);
-        return;
-      }
-
-      const jamiaName = recordDiv.dataset.jamiaName;
-      const teacherName = recordDiv.dataset.teacherName;
-      const date = recordDiv.dataset.date;
-      const className = recordDiv.dataset.className;
-      const kitabName = recordDiv.dataset.kitabName;
-
-      const tasuratAdmin = decodeURIComponent(recordDiv.dataset.tasurat || "Koi comment nahi diya gaya.");
-      const tasuratZimmedar =
-        recordDiv.querySelector(".user-admin-tasurat-input").value.trim() || "Koi comment darj nahi kiya gaya.";
+    const books = (jamiaTeachers[selectedT] || []).filter(p => p.className === selectedC).map(p => p.bookName).filter(Boolean);
+    const uniqueBooks = Array.from(new Set(books));
+    uniqueBooks.forEach(b => {
+      const o = document.createElement("option");
+      o.value = b;
+      o.textContent = b;
+      kitabSelect.appendChild(o);
+    });
+    kitabSelect.disabled = uniqueBooks.length === 0;
+  };
+}
+dDiv.querySelector(".user-admin-tasurat-input").value.trim() || "Koi comment darj nahi kiya gaya.";
 
       showLoader(true);
 
