@@ -418,7 +418,7 @@
 const tabAdd = document.getElementById("tab-add");
 const tabSaved = document.getElementById("tab-saved");
 const savedSection = document.getElementById("saved-section");
-const mainSection = document.querySelector("section.bg-white.rounded-2xl.shadow-md");
+const mainSection = document.getElementById("tadris-accordion-container").closest("section");
 
 tabSaved.addEventListener("click", () => {
   mainSection.classList.add("hidden");
@@ -542,9 +542,12 @@ tabAdd.addEventListener("click", () => {
   const { report } = getCurrentReportForSelectedMonth();
   const data = report?.tadrisRecording?.data || [];
 
-  data.forEach((rec) => {
-    table.innerHTML += `
-      <tr>
+  // Build rows
+  data.forEach((rec, idx) => {
+    // create a unique id (same style as existing)
+    const recId = `saved-row-${idx}`;
+    table.insertAdjacentHTML("beforeend", `
+      <tr id="${recId}">
         <td class="border px-2 py-1 urdu-font">${rec.jamiaName}</td>
         <td class="border px-2 py-1 urdu-font">${rec.className}</td>
         <td class="border px-2 py-1 urdu-font">${rec.kitabName}</td>
@@ -553,13 +556,119 @@ tabAdd.addEventListener("click", () => {
         <td class="border px-2 py-1 urdu-font">${rec.tasurat || "-"}</td>
         <td class="border px-2 py-1 urdu-font">${rec.adminTasurat || "-"}</td>
         <td class="border px-2 py-1">
-          <button class="text-red-600 underline text-xs">
-            PDF
-          </button>
+          <button class="saved-download-btn text-red-600 underline text-xs"
+            data-record-id="${recId}"
+            data-jamia-name="${encodeURIComponent(rec.jamiaName||'')}"
+            data-teacher-name="${encodeURIComponent(rec.teacherName||'')}"
+            data-date="${rec.date||''}"
+            data-class-name="${encodeURIComponent(rec.className||'')}"
+            data-kitab-name="${encodeURIComponent(rec.kitabName||'')}"
+            data-tasurat="${encodeURIComponent(rec.tasurat||'')}"
+          >PDF</button>
         </td>
       </tr>
-    `;
+    `);
   });
+
+  // attach click handlers to PDF buttons (delegation would also work)
+  document.querySelectorAll(".saved-download-btn").forEach(btn => {
+    btn.addEventListener("click", (ev) => {
+      const b = ev.currentTarget;
+      // create a fake div similar to earlier download flow so existing handleDownloadTadrisPDF can be reused,
+      // but easiest is to call the same PDF generation code inline here if you prefer.
+      // For now, we will reuse the existing handleDownloadTadrisPDF flow by creating a temporary div with needed dataset.
+      const recId = b.dataset.recordId;
+      // create minimal element with dataset expected by handleDownloadTadrisPDF
+      const temp = document.createElement("div");
+      temp.id = recId;
+      temp.dataset.jamiaName = decodeURIComponent(b.dataset.jamiaName || "");
+      temp.dataset.teacherName = decodeURIComponent(b.dataset.teacherName || "");
+      temp.dataset.date = b.dataset.date || "";
+      temp.dataset.className = decodeURIComponent(b.dataset.className || "");
+      temp.dataset.kitabName = decodeURIComponent(b.dataset.kitabName || "");
+      temp.dataset.tasurat = b.dataset.tasurat || "";
+      // append a default textarea for zimmedar comment to avoid errors
+      const ta = document.createElement("textarea");
+      ta.className = "user-admin-tasurat-input";
+      ta.value = ""; // or fetch adminTasurat from data if you stored it
+      temp.appendChild(ta);
+      temp.style.display = "none";
+      document.body.appendChild(temp);
+
+      // call existing generator (simulate button inside that flow)
+      // We will call handleDownloadTadrisPDF but it expects event from .download-tadris-pdf-btn;
+      // So directly call the PDF generation logic here to keep it simple:
+
+      (async function generatePDFFromTemp() {
+        try {
+          const jamiaName = temp.dataset.jamiaName;
+          const teacherName = temp.dataset.teacherName;
+          const date = temp.dataset.date;
+          const className = temp.dataset.className;
+          const kitabName = temp.dataset.kitabName;
+          const tasuratAdmin = decodeURIComponent(temp.dataset.tasurat || "Koi comment nahi diya gaya.");
+          const tasuratZimmedar = ta.value.trim() || "Koi comment darj nahi kiya gaya.";
+          // use same html -> canvas -> jsPDF flow as in handleDownloadTadrisPDF
+          const pdfContentHTML = `
+            <div style="padding:20px;font-family:Poppins,sans-serif;direction:rtl;text-align:right;border:1px solid #ccc;max-width:700px;margin:0 auto;line-height:1.5;color:#333;">
+              <h2 style="text-align:center;color:#14b8a6;border-bottom:2px solid #14b8a6;padding-bottom:10px;margin-bottom:20px;font-size:1.5rem;font-weight:700;">
+                Majlis Talimi Umoor India - Tadris Recording Report
+              </h2>
+              <div style="margin-top:15px;font-size:1rem;text-align:center;">
+                <p style="margin-bottom:5px;"><strong>Jamia:</strong> <span style="font-family:'Jameel Noori Nastaleeq',sans-serif;">${jamiaName}</span></p>
+                <p style="margin-bottom:5px;"><strong>Teacher ka Naam:</strong> <span style="font-family:'Jameel Noori Nastaleeq',sans-serif;">${teacherName}</span></p>
+                <p style="margin-bottom:5px;"><strong>Class/Kitab:</strong> <span style="font-family:'Jameel Noori Nastaleeq',sans-serif;">${className} - ${kitabName}</span></p>
+                <p style="margin-bottom:5px;"><strong>Date:</strong> <span>${date}</span></p>
+              </div>
+              <div style="margin-top:20px;padding:15px;border:1px dashed #14b8a6;background-color:#f0fdfa;">
+                <p style="font-weight:600;color:#0f766e;margin-bottom:5px;">Recording par Tasurat (Admin ka diya hua):</p>
+                <p style="font-family:'Jameel Noori Nastaleeq',sans-serif;font-size:1.1rem;margin:0;">${tasuratAdmin}</p>
+              </div>
+              <div style="margin-top:20px;padding:15px;border:1px dashed #60a5fa;background-color:#eff6ff;">
+                <p style="font-weight:600;color:#2563eb;margin-bottom:5px;">Talimi Zimmedar Ke Tasurat (Aapka Comment):</p>
+                <p style="font-family:'Jameel Noori Nastaleeq',sans-serif;font-size:1.1rem;margin:0;">${tasuratZimmedar}</p>
+              </div>
+              <p style="text-align:center;margin-top:20px;font-size:0.8rem;color:#6b7280;">*** Report generated on: ${new Date().toLocaleDateString()} ***</p>
+            </div>
+          `;
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = pdfContentHTML;
+          tempDiv.style.position = "absolute";
+          tempDiv.style.left = "-9999px";
+          document.body.appendChild(tempDiv);
+
+          const canvas = await window.html2canvas(tempDiv, { scale: 2, useCORS: true, allowTaint: true });
+          const imgData = canvas.toDataURL("image/png");
+          const { jsPDF } = window.jspdf;
+          const docPdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const imgProps = docPdf.getImageProperties(imgData);
+          const pdfWidth = docPdf.internal.pageSize.getWidth();
+          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+          docPdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+          docPdf.save(`Tadris_Report_${teacherName.replace(/\s/g, "_")}_${date}.pdf`);
+          document.body.removeChild(tempDiv);
+        } catch (err) {
+          console.error("Saved table PDF error:", err);
+          showNotification("PDF generate karne me error.", true);
+        } finally {
+          // cleanup
+          document.body.removeChild(temp);
+        }
+      })();
+    });
+  });
+
+  // simple search filter:
+  const search = document.getElementById("search-input");
+  if (search) {
+    search.oninput = () => {
+      const q = search.value.trim().toLowerCase();
+      document.querySelectorAll("#saved-table-body tr").forEach(tr => {
+        const text = tr.textContent.toLowerCase();
+        tr.style.display = q ? (text.includes(q) ? "" : "none") : "";
+      });
+    };
+  }
 }
 
     // ============================
@@ -1192,4 +1301,5 @@ tabAdd.addEventListener("click", () => {
   </script>
 </body>
 </html>
+
 
