@@ -542,33 +542,87 @@ tabAdd.addEventListener("click", () => {
   const { report } = getCurrentReportForSelectedMonth();
   const data = report?.tadrisRecording?.data || [];
 
-  // Build rows
-  data.forEach((rec, idx) => {
-    // create a unique id (same style as existing)
-    const recId = `saved-row-${idx}`;
-    table.insertAdjacentHTML("beforeend", `
-      <tr id="${recId}">
-        <td class="border px-2 py-1 urdu-font">${rec.jamiaName}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.className}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.kitabName}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.teacherName}</td>
-        <td class="border px-2 py-1">${rec.date}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.tasurat || "-"}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.adminTasurat || "-"}</td>
-        <td class="border px-2 py-1">
-          <button class="saved-download-btn text-red-600 underline text-xs"
-            data-record-id="${recId}"
-            data-jamia-name="${encodeURIComponent(rec.jamiaName||'')}"
-            data-teacher-name="${encodeURIComponent(rec.teacherName||'')}"
-            data-date="${rec.date||''}"
-            data-class-name="${encodeURIComponent(rec.className||'')}"
-            data-kitab-name="${encodeURIComponent(rec.kitabName||'')}"
-            data-tasurat="${encodeURIComponent(rec.tasurat||'')}"
-          >PDF</button>
+  if (!data.length) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center p-3 text-gray-500">
+          Is month ki koi recording save nahi hai.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  // 1️⃣ DATE SORT (Newest to Oldest)
+  data.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // 2️⃣ GROUP by DATE → then by JAMIA
+  const grouped = {};
+
+  data.forEach((rec) => {
+    if (!grouped[rec.date]) grouped[rec.date] = {};
+    if (!grouped[rec.date][rec.jamiaName]) grouped[rec.date][rec.jamiaName] = [];
+    grouped[rec.date][rec.jamiaName].push(rec);
+  });
+
+  // 3️⃣ Build Table Rows
+  Object.keys(grouped).forEach(date => {
+    const jamiaGroups = grouped[date];
+
+    // ————— Date Row —————
+    table.innerHTML += `
+      <tr class="bg-gray-100">
+        <td colspan="8" class="px-3 py-2 font-semibold text-gray-700">
+          📅 ${date}
         </td>
       </tr>
-    `);
+    `;
+
+    // Loop Jamia → Records
+    Object.keys(jamiaGroups).forEach(jamia => {
+      const records = jamiaGroups[jamia];
+
+      // ————— Jamia Row —————
+      table.innerHTML += `
+        <tr class="bg-emerald-50">
+          <td colspan="8" class="px-3 py-2 font-semibold text-emerald-700 urdu-font">
+            🏫 ${jamia}
+          </td>
+        </tr>
+      `;
+
+      // ————— Actual Data Rows —————
+      records.forEach((rec, idx) => {
+        const rowId = `saved-${date}-${jamia}-${idx}`;
+
+        table.innerHTML += `
+          <tr>
+            <td class="border px-2 py-1 urdu-font">${rec.jamiaName}</td>
+            <td class="border px-2 py-1 urdu-font">${rec.className}</td>
+            <td class="border px-2 py-1 urdu-font">${rec.kitabName}</td>
+            <td class="border px-2 py-1 urdu-font">${rec.teacherName}</td>
+            <td class="border px-2 py-1">${rec.date}</td>
+            <td class="border px-2 py-1 urdu-font">${rec.tasurat || "-"}</td>
+            <td class="border px-2 py-1 urdu-font">${rec.adminTasurat || "-"}</td>
+            <td class="border px-2 py-1">
+              <button class="saved-download-btn text-red-600 underline text-xs"
+                data-record-id="${rowId}"
+                data-jamia-name="${encodeURIComponent(rec.jamiaName)}"
+                data-teacher-name="${encodeURIComponent(rec.teacherName)}"
+                data-date="${rec.date}"
+                data-class-name="${encodeURIComponent(rec.className)}"
+                data-kitab-name="${encodeURIComponent(rec.kitabName)}"
+                data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
+              >
+                PDF
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+
+    });
   });
+
 
   // attach click handlers to PDF buttons (delegation would also work)
   document.querySelectorAll(".saved-download-btn").forEach(btn => {
@@ -658,14 +712,14 @@ tabAdd.addEventListener("click", () => {
     });
   });
 
-  // simple search filter:
-  const search = document.getElementById("search-input");
-  if (search) {
-    search.oninput = () => {
-      const q = search.value.trim().toLowerCase();
+  // Simple search
+  const searchInput = document.getElementById("search-input");
+  if (searchInput) {
+    searchInput.oninput = () => {
+      const q = searchInput.value.trim().toLowerCase();
       document.querySelectorAll("#saved-table-body tr").forEach(tr => {
         const text = tr.textContent.toLowerCase();
-        tr.style.display = q ? (text.includes(q) ? "" : "none") : "";
+        tr.style.display = text.includes(q) ? "" : "none";
       });
     };
   }
@@ -1301,5 +1355,6 @@ tabAdd.addEventListener("click", () => {
   </script>
 </body>
 </html>
+
 
 
