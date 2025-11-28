@@ -397,7 +397,6 @@
     }
     const userData = snap.data() || {};
 
-    // Try multiple possible locations for karkardagiStructure:
     const info = getReportingInfoFromMonthInput(monthInput.value);
     const academicYear = info ? (info.monthNum >= 3 ? `${info.yearNum}-${info.yearNum+1}` : `${info.yearNum-1}-${info.yearNum}`) : null;
 
@@ -412,71 +411,123 @@
       karkardagi = userData.academicStructure;
       console.log("Teaching structure loaded from userData.academicStructure (fallback)");
     } else {
-      console.warn("No karkardagiStructure found in user doc; keys:", Object.keys(userData));
-      karkardagi = [];
+      // if none, try to find any array-like property
+      const possible = Object.keys(userData).find(k => Array.isArray(userData[k]));
+      if (possible) {
+        karkardagi = userData[possible];
+        console.log("Teaching structure loaded from userData.%s (best-effort)", possible);
+      } else {
+        console.warn("No karkardagiStructure found in user doc; keys:", Object.keys(userData));
+        karkardagi = [];
+      }
     }
 
-    // karkardagi is an array of jamiaStructs. Build maps for all jamia entries.
-    karkardagi.forEach((jamiaStruct) => {
+    // iterate jamia entries
+    karkardagi.forEach((jamiaStruct, idx) => {
       const jamiaName = (jamiaStruct.jamiaName || jamiaStruct.name || jamiaStruct.jamia || "").toString();
-      if (!jamiaName) return;
+      if (!jamiaName) {
+        console.warn("Skipping jamiaStruct without name at index", idx, jamiaStruct);
+        return;
+      }
 
-      // Ensure maps exist
       JAMIA_CLASS_MAP[jamiaName] = JAMIA_CLASS_MAP[jamiaName] || {};
       JAMIA_TEACHER_MAP[jamiaName] = JAMIA_TEACHER_MAP[jamiaName] || {};
 
-      // teachers array may be in jamiaStruct.teachers or jamiaStruct.ustads
-      const teachersArr = Array.isArray(jamiaStruct.teachers) ? jamiaStruct.teachers : (Array.isArray(jamiaStruct.ustads) ? jamiaStruct.ustads : []);
+      // Identify teachers source: could be array, or object keyed by teacher name, or missing
+      let teachersSource = null;
+      if (Array.isArray(jamiaStruct.teachers) && jamiaStruct.teachers.length) {
+        teachersSource = jamiaStruct.teachers;
+      } else if (Array.isArray(jamiaStruct.ustads) && jamiaStruct.ustads.length) {
+        teachersSource = jamiaStruct.ustads;
+      } else if (jamiaStruct.teachers && typeof jamiaStruct.teachers === "object" && !Array.isArray(jamiaStruct.teachers)) {
+        teachersSource = jamiaStruct.teachers; // object keyed by teacher name
+      } else if (jamiaStruct.teacherMap && typeof jamiaStruct.teacherMap === "object") {
+        teachersSource = jamiaStruct.teacherMap;
+      } else if (Array.isArray(jamiaStruct.periods) && jamiaStruct.periods.length) {
+        teachersSource = jamiaStruct.periods; // class-level entries
+      } else if (Array.isArray(jamiaStruct.classes) && jamiaStruct.classes.length) {
+        teachersSource = jamiaStruct.classes;
+      } else {
+        teachersSource = null;
+      }
 
-      if (Array.isArray(teachersArr) && teachersArr.length) {
-        // Preferred structure: teachers array present — iterate each teacher and periods
-        teachersArr.forEach((t) => {
-          const teacherName = (t.name || t.teacherName || t.ustad || t.fullName || "").toString();
-          const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
+      console.log("Jamia:", jamiaName, "teachersSourceType:", Array.isArray(teachersSource) ? "array" : (teachersSource && typeof teachersSource === 'object' ? "object" : "none"));
+
+      // Case A: teachersSource is an object keyed by teacherName -> { "Ustad X": [ {className, bookName}, ... ], ... }
+      if (teachersSource && typeof teachersSource === "object" && !Array.isArray(teachersSource)) {
+        Object.keys(teachersSource).forEach((tn) => {
+          const val = teachersSource[tn];
+          // val may be array of periods or object containing periods
+          let periods = [];
+          if (Array.isArray(val)) {
+            periods = val;
+          } else if (val && Array.isArray(val.periods)) {
+            periods = val.periods;
+          } else if (val && Array.isArray(val.classes)) {
+            periods = val.classes;
+          } else {
+            // try if val itself is an object with numeric keys
+            const arr = Object.keys(val || {}).filter(k => !isNaN(k)).map(k => val[k]);
+            if (arr.length) periods = arr;
+          }
+
+          const teacherName = tn.toString();
           if (!teacherName) return;
           JAMIA_TEACHER_MAP[jamiaName][teacherName] = JAMIA_TEACHER_MAP[jamiaName][teacherName] || [];
 
-          (periods || []).forEach((p) => {
+          (periods || []).forEach(p => {
             const className = p.className || p.class || p.darja || "";
             const bookName = p.bookName || p.book || p.kitab || p.subject || "";
             if (!className || !bookName) return;
-
-            // push into teacher map
             JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
-
-            // also push into class map for reverse lookup
             JAMIA_CLASS_MAP[jamiaName][className] = JAMIA_CLASS_MAP[jamiaName][className] || [];
             JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
           });
         });
-      } else {
-        // If no teachers array but there is a classes/periods array directly under jamiaStruct
-        const periodsRoot = Array.isArray(jamiaStruct.periods) ? jamiaStruct.periods : (Array.isArray(jamiaStruct.classes) ? jamiaStruct.classes : []);
-        if (Array.isArray(periodsRoot) && periodsRoot.length) {
-          periodsRoot.forEach((p) => {
-            const className = p.className || p.class || p.darja || "";
-            const bookName = p.bookName || p.book || p.kitab || p.subject || "";
-            const teacherName = (p.teacherName || p.teacher || p.ustad || "").toString() || "";
-            if (!className || !bookName) return;
+        return; // done for this jamia
+      }
 
+      // Case B: teachersSource is array of teacher objects or period objects
+      if (Array.isArray(teachersSource)) {
+        teachersSource.forEach(t => {
+          if (!t) return;
+          if (typeof t === "object" && !Array.isArray(t) && (t.name || t.teacherName || t.ustad)) {
+            const teacherName = (t.name || t.teacherName || t.ustad || "").toString();
+            const periods = Array.isArray(t.periods) ? t.periods : (Array.isArray(t.classes) ? t.classes : []);
+            if (!teacherName) return;
+            JAMIA_TEACHER_MAP[jamiaName][teacherName] = JAMIA_TEACHER_MAP[jamiaName][teacherName] || [];
+            (periods || []).forEach(p => {
+              const className = p.className || p.class || p.darja || "";
+              const bookName = p.bookName || p.book || p.kitab || p.subject || "";
+              if (!className || !bookName) return;
+              JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
+              JAMIA_CLASS_MAP[jamiaName][className] = JAMIA_CLASS_MAP[jamiaName][className] || [];
+              JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
+            });
+          } else if (typeof t === "object" && (t.className || t.bookName || t.teacherName)) {
+            const className = t.className || t.class || t.darja || "";
+            const bookName = t.bookName || t.book || t.kitab || t.subject || "";
+            const teacherName = (t.teacherName || t.teacher || t.ustad || "").toString() || "";
+            if (!className || !bookName) return;
             if (teacherName) {
               JAMIA_TEACHER_MAP[jamiaName][teacherName] = JAMIA_TEACHER_MAP[jamiaName][teacherName] || [];
               JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
             } else {
-              // store under special class-only key so user still sees available classes/books
               const fakeKey = `ClassOnly::${className}`;
               JAMIA_TEACHER_MAP[jamiaName][fakeKey] = JAMIA_TEACHER_MAP[jamiaName][fakeKey] || [];
               JAMIA_TEACHER_MAP[jamiaName][fakeKey].push({ className, bookName });
             }
-
             JAMIA_CLASS_MAP[jamiaName][className] = JAMIA_CLASS_MAP[jamiaName][className] || [];
             JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
-          });
-        }
+          }
+        });
+        return;
       }
+
+      // If we reach here, no teachers detected for this jamia
+      console.warn("No teachers detected for jamia:", jamiaName, "jamiaStruct:", jamiaStruct);
     });
 
-    // Log summary
     console.log("JAMIA_TEACHER_MAP built, keys:", Object.keys(JAMIA_TEACHER_MAP));
   } catch (err) {
     console.error("loadTeachingStructureFromUserDoc error:", err);
@@ -1668,6 +1719,7 @@ classSelect.onchange = function(e) {
   </script>
 </body>
 </html>
+
 
 
 
