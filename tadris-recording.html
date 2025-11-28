@@ -250,38 +250,45 @@
   <!-- Firebase + Logic -->
   <script type="module">
     // ============================
-    /*************** Firebase setup (merged) ***************/
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import {
-  getFirestore,
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  getDoc,
-  doc,
-  serverTimestamp,
-  updateDoc,
-  setDoc,
-  onSnapshot
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    // Firebase Imports
+    // ============================
+    import {
+      initializeApp
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+      getAuth,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      getDoc,
+      updateDoc,
+      setDoc,
+      collection,
+      query,
+      where,
+      onSnapshot,
+      serverTimestamp,
+      getDocs
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-  authDomain: "data-f15ab.firebaseapp.com",
-  projectId: "data-f15ab",
-  storageBucket: "data-f15ab.appspot.com",
-  messagingSenderId: "449137002393",
-  appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
-  measurementId: "G-1PHNJQWNPZ",
-};
+    // ============================
+    // Firebase Config (same as index)
+    // ============================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+      authDomain: "data-f15ab.firebaseapp.com",
+      projectId: "data-f15ab",
+      storageBucket: "data-f15ab.appspot.com",
+      messagingSenderId: "449137002393",
+      appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+      measurementId: "G-1PHNJQWNPZ",
+    };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db   = getFirestore(app);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
     // ============================
     // DOM Helpers
@@ -531,97 +538,6 @@ const db   = getFirestore(app);
         }
       }
     }
-// -----------------------------
-// New: fetchAcademicStructure(academicYear)
-// Try locations (in order):
-// 1) users/<uid>.academicYears[academicYear].karkardagiStructure
-// 2) collection 'karkardgi' (per-user doc or 'setup' global)
-// 3) fallback: users/<uid>/academicStructure (old)
-// -----------------------------
-async function fetchAcademicStructure(academicYear = null) {
-  try {
-    // 0) quick guard
-    if (!currentUser) return [];
-
-    // 1) Try users/<uid>.academicYears[academicYear].karkardagiStructure
-    if (academicYear) {
-      try {
-        const userDocRef = doc(db, "users", currentUser.uid);
-        const uSnap = await getDoc(userDocRef);
-        if (uSnap.exists()) {
-          const uData = uSnap.data() || {};
-          const years = uData.academicYears || {};
-          const yearObj = years[academicYear];
-          if (yearObj) {
-            // common field name used in karkardagi file: karkardagiStructure
-            const kStruct = yearObj.karkardagiStructure || yearObj.karkardagi || yearObj.karkardagi_structure;
-            if (Array.isArray(kStruct) && kStruct.length) {
-              console.log("Academic structure loaded from users/<uid>.academicYears[academicYear].karkardagiStructure");
-              return kStruct;
-            }
-            // fallback: maybe entire yearObj itself is an array/object representing structure
-            if (Array.isArray(yearObj)) {
-              console.log("Academic structure loaded from users/<uid>.academicYears[academicYear] (array)");
-              return yearObj;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("fetchAcademicStructure: users/<uid>.academicYears check failed:", e && e.message);
-      }
-    }
-
-    // 2) Try karkardgi collection: first per-user doc then global 'setup'
-    try {
-      const perUserRef = doc(db, "karkardgi", currentUser.uid);
-      const pSnap = await getDoc(perUserRef);
-      if (pSnap.exists()) {
-        const pData = pSnap.data() || {};
-        const arr = pData.academicStructure || pData.setupStructure || pData.karkardagiStructure;
-        if (Array.isArray(arr) && arr.length) {
-          console.log("Academic structure loaded from karkardgi/<uid>");
-          return arr;
-        }
-      }
-
-      const globalRef = doc(db, "karkardgi", "setup");
-      const gSnap = await getDoc(globalRef);
-      if (gSnap.exists()) {
-        const gData = gSnap.data() || {};
-        const arr2 = gData.academicStructure || gData.setupStructure || gData.karkardagiStructure;
-        if (Array.isArray(arr2) && arr2.length) {
-          console.log("Academic structure loaded from karkardgi/setup (global)");
-          return arr2;
-        }
-      }
-    } catch (e) {
-      console.warn("fetchAcademicStructure: karkardgi collection check failed:", e && e.message);
-    }
-
-    // 3) Fallback: users/<uid>/academicStructure (legacy)
-    try {
-      const userRef = doc(db, "users", currentUser.uid);
-      const uSnap2 = await getDoc(userRef);
-      if (uSnap2.exists()) {
-        const uData2 = uSnap2.data() || {};
-        const legacy = uData2.academicStructure || uData2.setupStructure;
-        if (Array.isArray(legacy) && legacy.length) {
-          console.log("Academic structure loaded from users/<uid>/academicStructure (fallback)");
-          return legacy;
-        }
-      }
-    } catch (e) {
-      console.warn("fetchAcademicStructure: fallback users/<uid> check failed:", e && e.message);
-    }
-
-    // Nothing found
-    console.warn("Academic structure not found in users.academicYears, karkardgi, or user profile.");
-    return [];
-  } catch (err) {
-    console.error("fetchAcademicStructure error:", err);
-    return [];
-  }
-}
 
     // ============================
     // Render Tadris layout for month
@@ -638,14 +554,11 @@ async function fetchAcademicStructure(academicYear = null) {
         reportRef = ref;
         currentReport = report;
 
-        // fetch academic structure from karkardgi/users' academicYears (use meta.academicYear)
-const academicYearForFetch = (meta && meta.academicYear) ? meta.academicYear : null;
-const academicData = await fetchAcademicStructure(academicYearForFetch);
-
-// ensure rest of code that uses userProfileData.academicStructure sees this data
-if (Array.isArray(academicData)) {
-  userProfileData.academicStructure = academicData;
-}
+        const academicData = Array.isArray(
+          userProfileData.academicStructure
+        )
+          ? userProfileData.academicStructure
+          : [];
 
         if (!academicData.length) {
           tadrisLoadingMsg.classList.add("hidden");
@@ -811,14 +724,13 @@ if (Array.isArray(academicData)) {
                     </select>
                   </div>
                   <div>
-                    <div>
-  <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher ka Naam</label>
-  <select
-    class="tadris-teacher-select w-full p-2 border rounded-lg bg-white text-xs urdu-font"
-  >
-    <option value="">Select Teacher</option>
-  </select>
-</div>
+                    <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher ka Naam</label>
+                    <input
+                      type="text"
+                      class="tadris-teacher-name w-full p-2 border rounded-lg text-xs urdu-font"
+                      placeholder="Teacher ka naam"
+                    />
+                  </div>
                   <div>
                     <label class="block text-[11px] font-medium text-gray-600 mb-1">Date</label>
                     <input
@@ -861,300 +773,23 @@ if (Array.isArray(academicData)) {
           `;
 
           accordionItem.appendChild(header);
-accordionItem.appendChild(content);
-tadrisAccordionContainer.appendChild(accordionItem);
+          accordionItem.appendChild(content);
+          tadrisAccordionContainer.appendChild(accordionItem);
 
-// add this if missing:
-header.addEventListener("click", () => {
-  header.classList.toggle("open");
-  content.classList.toggle("open");
-});
+          // fill class select
+          const classSelect = content.querySelector(".tadris-class-select");
+          const kitabSelect = content.querySelector(".tadris-kitab-select");
 
-          // ---------- Robust classMap builder (supports many formats) ----------
-const sameName = (a, b) => {
-  if (!a || !b) return false;
-  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
-};
-const normalizeTeacher = (t) => {
-  if (t === null || t === undefined) return null;
-  if (typeof t === 'string') return { teacherName: t.trim(), raw: t };
-  if (typeof t === 'object') {
-    const name = (t.teacherName || t.name || t.fullName || t.displayName || t.label || t.full_name || t.display_name || t.loginCode);
-    if (name) return { teacherName: String(name).trim(), raw: t };
-    if (t.id) return { teacherName: String(t.id), raw: t };
-    return { teacherName: JSON.stringify(t).slice(0,40), raw: t };
-  }
-  return { teacherName: String(t), raw: t };
-};
+          if (jamia.classes && typeof jamia.classes === "object") {
+            Object.keys(jamia.classes).forEach((className) => {
+              classSelect.innerHTML += `<option value="${className}">${className}</option>`;
+            });
+          }
 
-// start empty
-const classMap = {}; // { className: { kitabs: [], teachers: [] } };
-
-// helper to ingest a period-like object
-function addPeriodObject(p) {
-  if (!p) return;
-  const cls = p.className || p.class || p.class_name || p.periodClass || p.semesterClass || p['Class'] || p['className'];
-  const book = p.bookName || p.book || p.title || p.book_name || p.kitabName || p.kitab || p['Book'];
-  if (!cls) return;
-  if (!classMap[cls]) classMap[cls] = { kitabs: [], teachers: [] };
-  if (book && !classMap[cls].kitabs.includes(book)) classMap[cls].kitabs.push(book);
-}
-
-// 1) If jamia.classes (old format)
-if (jamia.classes && typeof jamia.classes === "object" && Object.keys(jamia.classes).length) {
-  Object.keys(jamia.classes).forEach(cName => {
-    const cObj = jamia.classes[cName] || {};
-    const kitabs = Array.isArray(cObj.kitabs) ? cObj.kitabs : (Array.isArray(cObj.kitabsList) ? cObj.kitabsList : (Array.isArray(cObj.books) ? cObj.books : []));
-    const rawTeachers = Array.isArray(cObj.teachers) ? cObj.teachers : [];
-    const normalizedTeachers = rawTeachers.map(normalizeTeacher).filter(Boolean);
-    classMap[cName] = { kitabs, teachers: normalizedTeachers };
-  });
-  console.log("Found format: jamia.classes");
-}
-
-// 2) If jamia.periods (array of period objects)
-else if (Array.isArray(jamia.periods) && jamia.periods.length) {
-  jamia.periods.forEach(addPeriodObject);
-  console.log("Found format: jamia.periods");
-}
-
-// 3) If jamia.karkardagiStructure is itself an array (either periods or jamia-like)
-else if (Array.isArray(jamia.karkardagiStructure) && jamia.karkardagiStructure.length) {
-  // sometimes karkardagiStructure is array of period objects OR array with a nested object that has periods
-  const arr = jamia.karkardagiStructure;
-  // if first item has className/bookName -> treat whole array as periods
-  if (arr[0] && (arr[0].className || arr[0].bookName || arr[0].book)) {
-    arr.forEach(addPeriodObject);
-    console.log("Found format: jamia.karkardagiStructure (array of periods)");
-  } else if (arr[0] && Array.isArray(arr[0].periods) && arr[0].periods.length) {
-    // maybe karkardagiStructure is array of jamia-like objects where each has periods
-    arr.forEach(item => {
-      if (Array.isArray(item.periods)) item.periods.forEach(addPeriodObject);
-    });
-    console.log("Found format: jamia.karkardagiStructure -> items with periods");
-  } else {
-    // fallback iterate all items and try to extract period-like fields
-    arr.forEach(item => addPeriodObject(item));
-    console.log("Found format: jamia.karkardagiStructure (fallback iterate)");
-  }
-}
-
-// 4) If jamia.setup or jamia.data arrays might contain periods
-else if (Array.isArray(jamia.setup) && jamia.setup.length) {
-  jamia.setup.forEach(addPeriodObject);
-  console.log("Found format: jamia.setup");
-} else if (Array.isArray(jamia.data) && jamia.data.length) {
-  jamia.data.forEach(addPeriodObject);
-  console.log("Found format: jamia.data");
-}
-
-// 5) If nothing found above, try deep-search inside object for arrays named 'periods'/'karkardagiStructure'
-else {
-  // shallow deep-search
-  Object.keys(jamia).forEach(k => {
-    const v = jamia[k];
-    if (Array.isArray(v) && v.length && (v[0].className || v[0].bookName || v[0].book)) {
-      v.forEach(addPeriodObject);
-      console.log("Found format via deep-search key:", k);
-    }
-  });
-}
-
-// jamia-level teachers (common): jamia.teachers or jamia.teacherList
-const jamiaLevelTeachersRaw = Array.isArray(jamia.teachers) ? jamia.teachers : (Array.isArray(jamia.teacherList) ? jamia.teacherList : []);
-const jamiaLevelTeachers = jamiaLevelTeachersRaw.map(normalizeTeacher).filter(Boolean);
-
-// attach jamia-level teachers to classes (if classes found)
-if (jamiaLevelTeachers.length && Object.keys(classMap).length) {
-  Object.keys(classMap).forEach(cn => {
-    const existing = classMap[cn].teachers || [];
-    const mapNames = new Set(existing.map(t=>t.teacherName && t.teacherName.toLowerCase()));
-    jamiaLevelTeachers.forEach(tn => {
-      if (tn && tn.teacherName && !mapNames.has(tn.teacherName.toLowerCase())) {
-        existing.push(tn);
-        mapNames.add(tn.teacherName.toLowerCase());
-      }
-    });
-    classMap[cn].teachers = existing;
-  });
-}
-
-// Final DEBUG
-console.log("DEBUG classMap keys:", Object.keys(classMap), classMap);
-console.log("DEBUG jamiaLevelTeachers:", jamiaLevelTeachers.map(t=>t && t.teacherName));
-
-          
-          // --- elements ---
-const classSelect = content.querySelector(".tadris-class-select");
-const kitabSelect = content.querySelector(".tadris-kitab-select");
-const teacherSelect = content.querySelector(".tadris-teacher-select");
-
-// helper: clear options
-const clearOptions = (sel, keepFirst = true, firstLabel = 'Select') => {
-  if (!sel) return;
-  sel.innerHTML = keepFirst ? `<option value="">${firstLabel}</option>` : '';
-};
-
-// populate kitab based on class
-function populateKitabSelect(className) {
-  clearOptions(kitabSelect, true, 'Select Kitab');
-  if (!className || !classMap[className]) {
-    kitabSelect.disabled = true;
-    return;
-  }
-  const klist = Array.isArray(classMap[className].kitabs) ? classMap[className].kitabs : [];
-  if (klist.length) {
-    klist.forEach(k => kitabSelect.innerHTML += `<option value="${k}">${k}</option>`);
-    kitabSelect.disabled = false;
-  } else {
-    kitabSelect.innerHTML = `<option value="">Koi kitab nahi mili</option>`;
-    kitabSelect.disabled = true;
-  }
-}
-
-// improved populateClassSelect: ensures disabled state correctly set
-function populateClassSelect(filterTeacherNameNormalized = "") {
-  clearOptions(classSelect, true, 'Select Class');
-
-  // count of *real* options (excluding the default)
-  let realCount = 0;
-
-  Object.keys(classMap).forEach(cName => {
-    const item = classMap[cName];
-    if (!filterTeacherNameNormalized) {
-      classSelect.innerHTML += `<option value="${cName}">${cName}</option>`;
-      realCount++;
-    } else {
-      const has = (item.teachers || []).some(t => sameName(t.teacherName, filterTeacherNameNormalized));
-      const jamiaHas = jamiaLevelTeachers.some(t => sameName(t.teacherName, filterTeacherNameNormalized));
-      if (has || jamiaHas) {
-        classSelect.innerHTML += `<option value="${cName}">${cName}</option>`;
-        realCount++;
-      }
-    }
-  });
-
-  // if no real options, show disabled message and set disabled true
-  if (realCount === 0) {
-    classSelect.innerHTML += `<option value="" disabled>Koee class nahi mili</option>`;
-    classSelect.disabled = true;
-  } else {
-    // ensure select is enabled
-    classSelect.disabled = false;
-  }
-
-  // reset kitabSelect to disabled until class chosen
-  clearOptions(kitabSelect, true, 'Select Kitab');
-  kitabSelect.disabled = true;
-}
-
-// EVENTS (rewritten to be explicit about enabling)
-teacherSelect.addEventListener('change', (e) => {
-  const v = e.target.value;
-  if (!v) {
-    // no teacher selected -> show all classes and enable select
-    populateClassSelect("");
-    classSelect.disabled = false;
-    // clear kitab
-    clearOptions(kitabSelect, true, 'Select Kitab');
-    kitabSelect.disabled = true;
-    return;
-  }
-  // parse teacher object/value
-  let parsed = null;
-  try {
-    parsed = JSON.parse(decodeURIComponent(v));
-  } catch (err) {
-    parsed = { teacherName: decodeURIComponent(v) };
-  }
-  const normName = (parsed.teacherName || parsed.name || parsed.fullName || parsed.displayName || parsed.label || "").trim();
-  const normLower = normName.toLowerCase();
-  populateClassSelect(normLower);
-
-  // ensure class select enabled if any real options exist
-  // check options count (exclude default)
-  const realOpts = Array.from(classSelect.options).slice(1).filter(o => !o.disabled);
-  if (realOpts.length > 0) {
-    classSelect.disabled = false;
-    // auto-select first real option and trigger kitab populate
-    classSelect.selectedIndex = Array.from(classSelect.options).indexOf(realOpts[0]);
-    classSelect.dispatchEvent(new Event('change'));
-  } else {
-    classSelect.disabled = true;
-    // clear kitab if none
-    clearOptions(kitabSelect, true, 'Select Kitab');
-    kitabSelect.disabled = true;
-  }
-});
-
-classSelect.addEventListener('change', (e) => {
-  const cls = e.target.value;
-  if (cls) {
-    populateKitabSelect(cls);
-    // ensure kitab enabled state set by populateKitabSelect
-  } else {
-    clearOptions(kitabSelect, true, 'Select Kitab');
-    kitabSelect.disabled = true;
-  }
-});
-
-// populate kitab based on class
-function populateKitabSelect(className) {
-  clearOptions(kitabSelect, true, 'Select Kitab');
-  if (!className || !classMap[className]) {
-    kitabSelect.disabled = true;
-    return;
-  }
-  const klist = Array.isArray(classMap[className].kitabs) ? classMap[className].kitabs : [];
-  if (klist.length) {
-    klist.forEach(k => kitabSelect.innerHTML += `<option value="${k}">${k}</option>`);
-    kitabSelect.disabled = false;
-  } else {
-    kitabSelect.innerHTML = `<option value="">Koi kitab nahi mili</option>`;
-    kitabSelect.disabled = true;
-  }
-}
-
-// initial: show all classes
-populateClassSelect("");
-
-// EVENTS
-teacherSelect.addEventListener('change', (e) => {
-  const v = e.target.value;
-  if (!v) {
-    populateClassSelect("");
-    return;
-  }
-  let parsed = null;
-  try {
-    parsed = JSON.parse(decodeURIComponent(v));
-  } catch (err) {
-    parsed = { teacherName: decodeURIComponent(v) };
-  }
-  const normName = (parsed.teacherName || parsed.name || parsed.fullName || parsed.displayName || parsed.label || "").trim();
-  const normLower = normName.toLowerCase();
-  populateClassSelect(normLower);
-  // auto-select first real class if exists
-  if (classSelect.options.length > 1) {
-    // find first enabled option (skip default)
-    for (let i=1; i<classSelect.options.length; i++) {
-      if (!classSelect.options[i].disabled) {
-        classSelect.selectedIndex = i;
-        classSelect.dispatchEvent(new Event('change'));
-        break;
-      }
-    }
-  }
-});
-
-classSelect.addEventListener('change', (e) => {
-  const cls = e.target.value;
-  if (cls) populateKitabSelect(cls);
-  else {
-    clearOptions(kitabSelect, true, 'Select Kitab');
-    kitabSelect.disabled = true;
-  }
-});
+          header.addEventListener("click", () => {
+            header.classList.toggle("open");
+            content.classList.toggle("open");
+          });
 
           classSelect.addEventListener("change", (e) => {
             const selectedClass = e.target.value;
@@ -1227,20 +862,7 @@ classSelect.addEventListener('change', (e) => {
       const jamiaName = button.dataset.jamiaName || "";
       const className = classSelect.value;
       const kitabName = kitabSelect.value;
-      // teacher select value parsing
-const teacherSelectElm = container.querySelector(".tadris-teacher-select");
-let teacherName = "";
-if (teacherSelectElm) {
-  const selVal = teacherSelectElm.value;
-  if (selVal) {
-    try {
-      const parsed = JSON.parse(decodeURIComponent(selVal));
-      teacherName = parsed.teacherName || parsed.name || parsed.fullName || "";
-    } catch (err) {
-      teacherName = decodeURIComponent(selVal || "");
-    }
-  }
-}
+      const teacherName = (teacherNameInput.value || "").trim();
       const date = dateInput.value;
       const tasurat = (tasuratInput.value || "").trim();
 
@@ -1480,14 +1102,3 @@ if (teacherSelectElm) {
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
