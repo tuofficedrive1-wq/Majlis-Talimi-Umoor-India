@@ -20,7 +20,6 @@
   <link
     rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-    integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
     crossorigin="anonymous"
     referrerpolicy="no-referrer"
   />
@@ -184,7 +183,7 @@
         <h2 class="text-sm font-semibold text-emerald-800 mb-2">Kaam ka Tarz</h2>
         <ul class="text-xs text-emerald-800 space-y-1 urdu-font">
           <li>• Har Jamia ke liye accordion open karein.</li>
-          <li>• Class select karein, phir Kitab, phir Teacher ka naam & Date.</li>
+          <li>• Teacher select karein, phir Class, phir Kitab select karein.</li>
           <li>• “Recording par Tasurat” me apna brief comment likhein.</li>
           <li>• “Add Recording” dabayen, entry save ho jayegi.</li>
         </ul>
@@ -279,7 +278,7 @@
     // ============================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // ============================
     // Firebase Config
@@ -371,20 +370,62 @@
       };
     };
 
-    const convertGoogleDriveURL = (url) => {
-      if (
-        !url ||
-        typeof url !== "string" ||
-        (!url.startsWith("http") && !url.startsWith("/"))
-      ) {
-        return "https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo";
+    // ============================
+    // New: Load teaching structure same as jaiza-form's source
+    // We'll build two maps per jamia:
+    //  - JAMIA_CLASS_MAP[jamiaName] = { className: [{teacherName, bookName}, ...], ... }
+    //  - JAMIA_TEACHER_MAP[jamiaName] = { teacherName: [{className, bookName}, ...], ... }
+    // ============================
+    const JAMIA_CLASS_MAP = {};
+    const JAMIA_TEACHER_MAP = {};
+
+    async function loadTeachingStructureFromUserDoc(user) {
+      // clear
+      Object.keys(JAMIA_CLASS_MAP).forEach(k=>delete JAMIA_CLASS_MAP[k]);
+      Object.keys(JAMIA_TEACHER_MAP).forEach(k=>delete JAMIA_TEACHER_MAP[k]);
+
+      const info = getReportingInfoFromMonthInput(monthInput.value);
+      if (!info) return;
+      const academicYear = info.monthNum >= 3 ? `${info.yearNum}-${info.yearNum+1}` : `${info.yearNum-1}-${info.yearNum}`;
+
+      try {
+        const userDocRef = doc(db, "users", user.uid);
+        const snap = await getDoc(userDocRef);
+        if (!snap.exists()) return;
+
+        const userData = snap.data() || {};
+        const years = userData.academicYears || {};
+        const yearData = years[academicYear];
+        if (!yearData || !Array.isArray(yearData.karkardagiStructure)) return;
+
+        // iterate jamia structs
+        yearData.karkardagiStructure.forEach(jamiaStruct => {
+          const jamiaName = jamiaStruct.jamiaName || "";
+          if (!jamiaName) return;
+          JAMIA_CLASS_MAP[jamiaName] = JAMIA_CLASS_MAP[jamiaName] || {};
+          JAMIA_TEACHER_MAP[jamiaName] = JAMIA_TEACHER_MAP[jamiaName] || {};
+
+          (jamiaStruct.teachers || []).forEach(t => {
+            const teacherName = t.name || t.teacherName || t.ustad || "";
+            (t.periods || []).forEach(p => {
+              const className = p.className || p.class || p.darja || "";
+              const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
+              if (!className || !teacherName || !bookName) return;
+
+              // class map
+              if (!JAMIA_CLASS_MAP[jamiaName][className]) JAMIA_CLASS_MAP[jamiaName][className] = [];
+              JAMIA_CLASS_MAP[jamiaName][className].push({ teacherName, bookName });
+
+              // teacher map
+              if (!JAMIA_TEACHER_MAP[jamiaName][teacherName]) JAMIA_TEACHER_MAP[jamiaName][teacherName] = [];
+              JAMIA_TEACHER_MAP[jamiaName][teacherName].push({ className, bookName });
+            });
+          });
+        });
+      } catch (err) {
+        console.error("loadTeachingStructureFromUserDoc error:", err);
       }
-      if (!url.includes("drive.google.com")) return url;
-      const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-      return match && match[1]
-        ? `https://drive.google.com/uc?export=view&id=${match[1]}`
-        : url;
-    };
+    }
 
     // ============================
     // Global State
@@ -419,6 +460,7 @@
       currentUser = user;
 
       try {
+        // --- User Profile ---
         const userDocRef = doc(db, "users", user.uid);
         const snap = await getDoc(userDocRef);
         if (snap.exists()) {
@@ -426,7 +468,9 @@
 
           userNameDisplay.textContent = userProfileData.name || "N/A";
           userZimmedariDisplay.textContent =
-            userProfileData.zimmedari || userProfileData.role || "N/A";
+            userProfileData.zimmedari ||
+            userProfileData.role ||
+            "N/A";
         } else {
           showNotification("User profile nahi mila.", true);
         }
@@ -435,18 +479,26 @@
         const lastMonth = new Date();
         lastMonth.setMonth(lastMonth.getMonth() - 1);
         const prevMonthInput =
-          lastMonth.getFullYear() + "-" + String(lastMonth.getMonth() + 1).padStart(2, "0");
+          lastMonth.getFullYear() +
+          "-" +
+          String(lastMonth.getMonth() + 1).padStart(2, "0");
         monthInput.value = prevMonthInput;
         updateMonthLabel();
 
         // Reports listener
         const reportsRef = collection(db, "monthly_reports");
-        const qReports = query(reportsRef, where("userId", "==", user.uid));
+        const qReports = query(
+          reportsRef,
+          where("userId", "==", user.uid)
+        );
 
         onSnapshot(
           qReports,
           (snapshot) => {
-            allReports = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            allReports = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
             renderForCurrentMonth();
           },
           (err) => {
@@ -462,8 +514,10 @@
       }
     });
 
-    monthInput.addEventListener("change", () => {
+    monthInput.addEventListener("change", async () => {
       updateMonthLabel();
+      // reload teaching structure for new month
+      if (currentUser) await loadTeachingStructureFromUserDoc(currentUser);
       renderForCurrentMonth();
     });
 
@@ -528,7 +582,9 @@
       } else {
         const data = snap.data() || {};
         if (!data.monthKey) {
-          await updateDoc(ref, { monthKey: meta.monthInputFormat });
+          await updateDoc(ref, {
+            monthKey: meta.monthInputFormat,
+          });
         }
       }
     }
@@ -544,11 +600,16 @@
       tadrisNoDataMsg.classList.add("hidden");
 
       try {
+        // load teaching structure from user doc (same source as jaiza-form)
+        if (currentUser) await loadTeachingStructureFromUserDoc(currentUser);
+
         const { report, ref, meta } = getCurrentReportForSelectedMonth();
         reportRef = ref;
         currentReport = report;
 
-        const academicData = Array.isArray(userProfileData.academicStructure)
+        const academicData = Array.isArray(
+          userProfileData.academicStructure
+        )
           ? userProfileData.academicStructure
           : [];
 
@@ -564,7 +625,9 @@
         await ensureReportBaseFields(reportRef, meta);
 
         const existingSnap = await getDoc(reportRef);
-        const existingData = existingSnap.exists() ? existingSnap.data() : {};
+        const existingData = existingSnap.exists()
+          ? existingSnap.data()
+          : {};
         const tadrisData = existingData.tadrisRecording?.data || [];
         const tadrisStatus =
           existingData.tadrisRecording?.status || "Pending";
@@ -588,7 +651,9 @@
 
         academicData.forEach((jamia, index) => {
           const jamiaName = jamia.jamiaName || `Jamia #${index + 1}`;
-          const jamiaSaved = tadrisData.filter((r) => r.jamiaName === jamiaName);
+          const jamiaSaved = tadrisData.filter(
+            (r) => r.jamiaName === jamiaName
+          );
 
           const accordionItem = document.createElement("div");
           accordionItem.className =
@@ -695,32 +760,56 @@
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div>
+                    <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher ka Naam</label>
+                    <select
+                      class="tadris-teacher-select w-full p-2 border rounded-lg bg-white text-xs urdu-font"
+                      data-jamia-name="${jamiaName}"
+                    >
+                      <option value="">Select Teacher</option>
+                    </select>
+                  </div>
+                  <div>
                     <label class="block text-[11px] font-medium text-gray-600 mb-1">Class</label>
-                    <select class="tadris-class-select w-full p-2 border rounded-lg bg-white text-xs urdu-font">
-                      <option value="">Select Class</option>
+                    <select
+                      class="tadris-class-select w-full p-2 border rounded-lg bg-white text-xs urdu-font"
+                      disabled
+                    >
+                      <option value="">Select Teacher First</option>
                     </select>
                   </div>
                   <div>
                     <label class="block text-[11px] font-medium text-gray-600 mb-1">Kitab</label>
-                    <select class="tadris-kitab-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" disabled>
+                    <select
+                      class="tadris-kitab-select w-full p-2 border rounded-lg bg-white text-xs urdu-font"
+                      disabled
+                    >
                       <option value="">Select Class First</option>
                     </select>
                   </div>
                   <div>
-                    <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher ka Naam</label>
-                    <input type="text" class="tadris-teacher-name w-full p-2 border rounded-lg text-xs urdu-font" placeholder="Teacher ka naam" />
-                  </div>
-                  <div>
                     <label class="block text-[11px] font-medium text-gray-600 mb-1">Date</label>
-                    <input type="date" class="tadris-date w-full p-2 border rounded-lg text-xs" />
+                    <input
+                      type="date"
+                      class="tadris-date w-full p-2 border rounded-lg text-xs"
+                    />
                   </div>
                 </div>
                 <div>
-                  <label class="block text-[11px] font-medium text-gray-600 mb-1 urdu-font">Recording par Tasurat (Admin ka comment)</label>
-                  <textarea rows="3" class="tadris-tasurat w-full p-2 border rounded-lg text-xs urdu-font" placeholder="Yahan recording par apna comment likhein..."></textarea>
+                  <label class="block text-[11px] font-medium text-gray-600 mb-1 urdu-font">
+                    Recording par Tasurat (Admin ka comment)
+                  </label>
+                  <textarea
+                    rows="3"
+                    class="tadris-tasurat w-full p-2 border rounded-lg text-xs urdu-font"
+                    placeholder="Yahan recording par apna comment likhein..."
+                  ></textarea>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                  <button type="button" class="add-tadris-entry-btn px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white" data-jamia-name="${jamiaName}">
+                  <button
+                    type="button"
+                    class="add-tadris-entry-btn px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                    data-jamia-name="${jamiaName}"
+                  >
                     <i class="fas fa-plus mr-1"></i>
                     Add Recording
                   </button>
@@ -740,44 +829,72 @@
           accordionItem.appendChild(content);
           tadrisAccordionContainer.appendChild(accordionItem);
 
+          // fill teacher select from JAMIA_TEACHER_MAP for this jamia
+          const teacherSelect = content.querySelector(".tadris-teacher-select");
           const classSelect = content.querySelector(".tadris-class-select");
           const kitabSelect = content.querySelector(".tadris-kitab-select");
 
-          if (jamia.classes && typeof jamia.classes === "object") {
-            Object.keys(jamia.classes).forEach((className) => {
-              classSelect.innerHTML += `<option value="${className}">${className}</option>`;
-            });
-          }
-
-          header.addEventListener("click", () => {
-            header.classList.toggle("open");
-            content.classList.toggle("open");
+          const jamiaTeachers = JAMIA_TEACHER_MAP[jamiaName] || {};
+          const teacherNames = Object.keys(jamiaTeachers).sort();
+          teacherNames.forEach(tn => {
+            teacherSelect.innerHTML += `<option value="${tn}">${tn}</option>`;
           });
 
-          classSelect.addEventListener("change", (e) => {
-            const selectedClass = e.target.value;
-            kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
+          // teacher -> populate class list
+          teacherSelect.addEventListener("change", (e) => {
+            const tName = e.target.value;
+            classSelect.innerHTML = '<option value="">Select Class</option>';
+            kitabSelect.innerHTML = '<option value="">Select Class First</option>';
             kitabSelect.disabled = true;
-            if (selectedClass && jamia.classes && jamia.classes[selectedClass]) {
-              const kitabs = jamia.classes[selectedClass].kitabs || [];
-              if (Array.isArray(kitabs)) {
-                kitabs.forEach((kName) => {
-                  kitabSelect.innerHTML += `<option value="${kName}">${kName}</option>`;
-                });
-                kitabSelect.disabled = false;
-              }
+            if (!tName) {
+              classSelect.disabled = true;
+              return;
             }
+            const pairs = JAMIA_TEACHER_MAP[jamiaName][tName] || [];
+            const classSet = new Set(pairs.map(p => p.className));
+            classSet.forEach(cn => {
+              classSelect.innerHTML += `<option value="${cn}">${cn}</option>`;
+            });
+            classSelect.disabled = false;
+          });
+
+          // class -> populate kitab based on selected teacher & class
+          classSelect.addEventListener("change", (e) => {
+            const cName = e.target.value;
+            const tName = teacherSelect.value;
+            kitabSelect.innerHTML = '<option value="">Select Kitab</option>';
+            if (!cName || !tName) {
+              kitabSelect.disabled = true;
+              return;
+            }
+            const pairs = JAMIA_TEACHER_MAP[jamiaName][tName] || [];
+            const books = pairs.filter(p => p.className === cName).map(p => p.bookName);
+            const uniqueBooks = Array.from(new Set(books));
+            uniqueBooks.forEach(b => {
+              kitabSelect.innerHTML += `<option value="${b}">${b}</option>`;
+            });
+            kitabSelect.disabled = uniqueBooks.length === 0;
           });
 
           const addBtn = content.querySelector(".add-tadris-entry-btn");
           addBtn.addEventListener("click", handleAddTadrisEntry);
 
-          content.querySelectorAll(".save-user-admin-tasurat-btn").forEach((btn) =>
-            btn.addEventListener("click", handleUserEditAdminTasurat)
-          );
-          content.querySelectorAll(".download-tadris-pdf-btn").forEach((btn) =>
-            btn.addEventListener("click", handleDownloadTadrisPDF)
-          );
+          content
+            .querySelectorAll(".save-user-admin-tasurat-btn")
+            .forEach((btn) =>
+              btn.addEventListener(
+                "click",
+                handleUserEditAdminTasurat
+              )
+            );
+          content
+            .querySelectorAll(".download-tadris-pdf-btn")
+            .forEach((btn) =>
+              btn.addEventListener(
+                "click",
+                handleDownloadTadrisPDF
+              )
+            );
         });
       } catch (err) {
         console.error("renderForCurrentMonth Tadris error:", err);
@@ -788,7 +905,7 @@
     }
 
     // ============================
-    // Add Entry
+    // Add Entry (teacher -> class -> kitab flow)
     // ============================
     async function handleAddTadrisEntry(e) {
       e.preventDefault();
@@ -800,22 +917,22 @@
       const container = button.closest(".p-4");
       if (!container) return;
 
+      const teacherSelect = container.querySelector(".tadris-teacher-select");
       const classSelect = container.querySelector(".tadris-class-select");
       const kitabSelect = container.querySelector(".tadris-kitab-select");
-      const teacherNameInput = container.querySelector(".tadris-teacher-name");
       const dateInput = container.querySelector(".tadris-date");
       const tasuratInput = container.querySelector(".tadris-tasurat");
 
       const jamiaName = button.dataset.jamiaName || "";
-      const className = classSelect.value;
-      const kitabName = kitabSelect.value;
-      const teacherName = (teacherNameInput.value || "").trim();
+      const className = (classSelect.value || "").trim();
+      const kitabName = (kitabSelect.value || "").trim();
+      const teacherName = (teacherSelect.value || "").trim();
       const date = dateInput.value;
       const tasurat = (tasuratInput.value || "").trim();
 
       if (!jamiaName || !className || !kitabName || !teacherName || !date) {
         showNotification(
-          "Jamia, Class, Kitab, Teacher ka naam aur Date bharna zaroori hai.",
+          "Jamia, Teacher, Class, Kitab, aur Date bharna zaroori hai.",
           true
         );
         return;
@@ -845,13 +962,16 @@
         });
 
         showNotification("Tadris entry saved!");
-        classSelect.value = "";
+        // Clear fields
+        teacherSelect.value = "";
+        classSelect.innerHTML = '<option value="">Select Teacher First</option>';
+        classSelect.disabled = true;
         kitabSelect.innerHTML = '<option value="">Select Class First</option>';
         kitabSelect.disabled = true;
-        teacherNameInput.value = "";
         dateInput.value = "";
         tasuratInput.value = "";
 
+        // UI ko refresh karein
         renderForCurrentMonth();
       } catch (err) {
         console.error("Error adding tadris entry:", err);
@@ -924,7 +1044,7 @@
     }
 
     // ============================
-    // PDF Download (accordion items)
+    // PDF Download
     // ============================
     async function handleDownloadTadrisPDF(e) {
       const btn = e.currentTarget.closest(".download-tadris-pdf-btn") || e.currentTarget;
@@ -1045,7 +1165,7 @@
     }
 
     // ============================
-    // Saved Table + Filters Logic
+    // Saved Table + Filters Logic (unchanged)
     // ============================
     let __savedCurrentData = [];
 
@@ -1253,25 +1373,18 @@
     // ============================
     // Tabs behavior
     // ============================
-    // default: Add tab active
     function setActiveTab(isAdd) {
       if (isAdd) {
-        // show main and hide saved section
         mainSection.classList.remove("hidden");
         savedSection.classList.add("hidden");
-        // hide saved items inside accordion
         tadrisAccordionContainer.classList.add("hide-saved");
-        // ensure top controls and info cards visible
         document.body.classList.remove("hide-top-controls");
         tabAdd.classList.add("bg-teal-600", "text-white");
         tabSaved.classList.remove("bg-teal-600", "text-white");
       } else {
-        // show saved, hide main section
         mainSection.classList.add("hidden");
         savedSection.classList.remove("hidden");
-        // show saved items inside accordion (in case opened later)
         tadrisAccordionContainer.classList.remove("hide-saved");
-        // hide top controls + info cards to give clean saved view
         document.body.classList.add("hide-top-controls");
         tabSaved.classList.add("bg-teal-600", "text-white");
         tabAdd.classList.remove("bg-teal-600", "text-white");
@@ -1281,15 +1394,9 @@
 
     tabAdd.addEventListener("click", () => setActiveTab(true));
     tabSaved.addEventListener("click", () => setActiveTab(false));
-
-    // initialize to Add tab
     setActiveTab(true);
 
-    // ============================
-    // Attach PDF + Filters for accordion saved items already done in renderForCurrentMonth
-    // ============================
-
-    // helper: expose renderForCurrentMonth for manual refresh if needed
+    // expose render for debugging
     window.renderForCurrentMonth = renderForCurrentMonth;
 
   </script>
