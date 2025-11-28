@@ -870,21 +870,16 @@ header.addEventListener("click", () => {
   content.classList.toggle("open");
 });
 
-          // ---------- Build classMap + jamiaLevelTeachers (support multiple formats) ----------
-
-// helper: compare names case-insensitive
+          // ---------- Robust classMap builder (supports many formats) ----------
 const sameName = (a, b) => {
   if (!a || !b) return false;
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 };
-
-// normalize teacher entry (string or object) => { teacherName, raw }
 const normalizeTeacher = (t) => {
   if (t === null || t === undefined) return null;
   if (typeof t === 'string') return { teacherName: t.trim(), raw: t };
   if (typeof t === 'object') {
-    // **Important**: your karkardagi teachers use `name` property
-    const name = (t.teacherName || t.name || t.fullName || t.displayName || t.label || t.full_name || t.display_name);
+    const name = (t.teacherName || t.name || t.fullName || t.displayName || t.label || t.full_name || t.display_name || t.loginCode);
     if (name) return { teacherName: String(name).trim(), raw: t };
     if (t.id) return { teacherName: String(t.id), raw: t };
     return { teacherName: JSON.stringify(t).slice(0,40), raw: t };
@@ -892,14 +887,21 @@ const normalizeTeacher = (t) => {
   return { teacherName: String(t), raw: t };
 };
 
-// Build classMap with normalized teachers and kitabs
-// Support 2 formats:
-// A) old: jamia.classes = { "Class 1": { kitabs: [...], teachers: [...] } }
-// B) new: jamia.periods = [ { className, bookName, ... }, ... ]  (teachers live in jamia.teachers)
-const classMap = {}; // { className: { kitabs: [...], teachers: [normalizedTeacherObj,...] } };
+// start empty
+const classMap = {}; // { className: { kitabs: [], teachers: [] } };
 
-// Format A: existing classes object
-if (jamia.classes && typeof jamia.classes === "object") {
+// helper to ingest a period-like object
+function addPeriodObject(p) {
+  if (!p) return;
+  const cls = p.className || p.class || p.class_name || p.periodClass || p.semesterClass || p['Class'] || p['className'];
+  const book = p.bookName || p.book || p.title || p.book_name || p.kitabName || p.kitab || p['Book'];
+  if (!cls) return;
+  if (!classMap[cls]) classMap[cls] = { kitabs: [], teachers: [] };
+  if (book && !classMap[cls].kitabs.includes(book)) classMap[cls].kitabs.push(book);
+}
+
+// 1) If jamia.classes (old format)
+if (jamia.classes && typeof jamia.classes === "object" && Object.keys(jamia.classes).length) {
   Object.keys(jamia.classes).forEach(cName => {
     const cObj = jamia.classes[cName] || {};
     const kitabs = Array.isArray(cObj.kitabs) ? cObj.kitabs : (Array.isArray(cObj.kitabsList) ? cObj.kitabsList : (Array.isArray(cObj.books) ? cObj.books : []));
@@ -907,41 +909,64 @@ if (jamia.classes && typeof jamia.classes === "object") {
     const normalizedTeachers = rawTeachers.map(normalizeTeacher).filter(Boolean);
     classMap[cName] = { kitabs, teachers: normalizedTeachers };
   });
+  console.log("Found format: jamia.classes");
 }
 
-// Format B: periods array (common in karkardagi file)
-if (Array.isArray(jamia.periods) && jamia.periods.length) {
-  jamia.periods.forEach(p => {
-    const cls = p.className || p.class || p.class_name || p.periodClass || (p.semester && p.semester.className) || "";
-    const book = p.bookName || p.book || p.title || p.book_name || p.kitabName || "";
-    if (!cls) return;
-    if (!classMap[cls]) classMap[cls] = { kitabs: [], teachers: [] };
-    if (book && !classMap[cls].kitabs.includes(book)) classMap[cls].kitabs.push(book);
-    // do not add teachers here — jamia.teachers will be attached below
+// 2) If jamia.periods (array of period objects)
+else if (Array.isArray(jamia.periods) && jamia.periods.length) {
+  jamia.periods.forEach(addPeriodObject);
+  console.log("Found format: jamia.periods");
+}
+
+// 3) If jamia.karkardagiStructure is itself an array (either periods or jamia-like)
+else if (Array.isArray(jamia.karkardagiStructure) && jamia.karkardagiStructure.length) {
+  // sometimes karkardagiStructure is array of period objects OR array with a nested object that has periods
+  const arr = jamia.karkardagiStructure;
+  // if first item has className/bookName -> treat whole array as periods
+  if (arr[0] && (arr[0].className || arr[0].bookName || arr[0].book)) {
+    arr.forEach(addPeriodObject);
+    console.log("Found format: jamia.karkardagiStructure (array of periods)");
+  } else if (arr[0] && Array.isArray(arr[0].periods) && arr[0].periods.length) {
+    // maybe karkardagiStructure is array of jamia-like objects where each has periods
+    arr.forEach(item => {
+      if (Array.isArray(item.periods)) item.periods.forEach(addPeriodObject);
+    });
+    console.log("Found format: jamia.karkardagiStructure -> items with periods");
+  } else {
+    // fallback iterate all items and try to extract period-like fields
+    arr.forEach(item => addPeriodObject(item));
+    console.log("Found format: jamia.karkardagiStructure (fallback iterate)");
+  }
+}
+
+// 4) If jamia.setup or jamia.data arrays might contain periods
+else if (Array.isArray(jamia.setup) && jamia.setup.length) {
+  jamia.setup.forEach(addPeriodObject);
+  console.log("Found format: jamia.setup");
+} else if (Array.isArray(jamia.data) && jamia.data.length) {
+  jamia.data.forEach(addPeriodObject);
+  console.log("Found format: jamia.data");
+}
+
+// 5) If nothing found above, try deep-search inside object for arrays named 'periods'/'karkardagiStructure'
+else {
+  // shallow deep-search
+  Object.keys(jamia).forEach(k => {
+    const v = jamia[k];
+    if (Array.isArray(v) && v.length && (v[0].className || v[0].bookName || v[0].book)) {
+      v.forEach(addPeriodObject);
+      console.log("Found format via deep-search key:", k);
+    }
   });
 }
 
-// Another possible nesting: some files store data under karkardagiStructure -> inside jamia object
-// If jamia.karkardagiStructure exists and is an array of periods, handle similarly
-if (Array.isArray(jamia.karkardagiStructure) && jamia.karkardagiStructure.length) {
-  jamia.karkardagiStructure.forEach(p => {
-    // if each p is a period-like object
-    const cls = p.className || p.class || p.class_name || p.periodClass || "";
-    const book = p.bookName || p.book || p.title || p.book_name || p.kitabName || "";
-    if (!cls) return;
-    if (!classMap[cls]) classMap[cls] = { kitabs: [], teachers: [] };
-    if (book && !classMap[cls].kitabs.includes(book)) classMap[cls].kitabs.push(book);
-  });
-}
-
-// jamia-level teachers (common in karkardagi): teachers is array of objects with 'name'
+// jamia-level teachers (common): jamia.teachers or jamia.teacherList
 const jamiaLevelTeachersRaw = Array.isArray(jamia.teachers) ? jamia.teachers : (Array.isArray(jamia.teacherList) ? jamia.teacherList : []);
 const jamiaLevelTeachers = jamiaLevelTeachersRaw.map(normalizeTeacher).filter(Boolean);
 
-// Attach jamia-level teachers to every class if classMap built from periods
-if (jamiaLevelTeachers.length) {
+// attach jamia-level teachers to classes (if classes found)
+if (jamiaLevelTeachers.length && Object.keys(classMap).length) {
   Object.keys(classMap).forEach(cn => {
-    // merge unique teacher objects (by name)
     const existing = classMap[cn].teachers || [];
     const mapNames = new Set(existing.map(t=>t.teacherName && t.teacherName.toLowerCase()));
     jamiaLevelTeachers.forEach(tn => {
@@ -954,7 +979,7 @@ if (jamiaLevelTeachers.length) {
   });
 }
 
-// DEBUG logs so you can verify in console
+// Final DEBUG
 console.log("DEBUG classMap keys:", Object.keys(classMap), classMap);
 console.log("DEBUG jamiaLevelTeachers:", jamiaLevelTeachers.map(t=>t && t.teacherName));
 
@@ -1455,6 +1480,7 @@ if (teacherSelectElm) {
   </script>
 </body>
 </html>
+
 
 
 
