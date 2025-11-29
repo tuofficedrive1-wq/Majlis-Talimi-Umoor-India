@@ -861,6 +861,51 @@ const dataToSave = {
 
                     // NOTE: We are using setDoc with the constructed reportId, merging with existing data
                     await setDoc(reportRef, dataToSave, { merge: true });
+
+                    // AFTER await setDoc(reportRef, dataToSave, { merge: true });
+// --- Create user_update docs in teacher_submissions so teacher-form shows updates ---
+try {
+    // Group mergedReportData by teacherId so one user_update doc per teacher per month
+    const updatesByTeacher = {};
+    mergedReportData.forEach(entry => {
+        const tid = entry.teacherId || 'unknown';
+        if (!updatesByTeacher[tid]) updatesByTeacher[tid] = [];
+        updatesByTeacher[tid].push({
+            periodId: entry.periodId,
+            pagesTaught: entry.pagesTaught,
+            lastIbarat: entry.lastIbarat || '',
+            lastPageNo: entry.lastPageNo || ''
+        });
+    });
+
+    const submissionsColl = collection(db, 'teacher_submissions');
+
+    // currentUser is available; use as updatedBy
+    for (const teacherId of Object.keys(updatesByTeacher)) {
+        const changedValuesArray = updatesByTeacher[teacherId];
+
+        // Build doc data
+        const userUpdateDoc = {
+            role: 'user_update',
+            jamiaId: jamiaFilter === 'all' ? null : jamiaFilter, // ya agar specific jamia ho to woh
+            teacherId: teacherId,
+            submissionMonth: monthNum,         // currentReportPeriod.monthNum
+            submissionYear: yearNum || currentReportPeriod.yearNum,
+            changedValues: changedValuesArray,
+            changedPeriods: changedValuesArray.map(c => c.periodId),
+            updatedByUserId: currentUser.uid,
+            updatedByUserName: userProfileData.displayName || currentUser.email || '',
+            updatedAt: serverTimestamp()
+        };
+
+        const newDocRef = doc(submissionsColl); // auto id
+        await setDoc(newDocRef, userUpdateDoc);
+    }
+
+    console.log('User updates written to teacher_submissions for teacher updates.');
+} catch (err) {
+    console.error('Error writing user_update docs for teacher_submissions:', err);
+}
                     
                     // After saving, reload all data to update the cumulative view correctly
                     await loadMonthlyReportData(); 
@@ -1144,15 +1189,36 @@ const loadMonthlyReportData = async () => {
         const submissionsSnap = await getDocs(submissionsQuery);
 
         submissionsSnap.forEach(docSnap => {
-            const data = docSnap.data();
-            // JamiaId, teacherId, periodId ke hisaab se key banayenge
-            const key = `${data.jamiaId}::${data.teacherId}::${data.periodId}`;
+            // original variables already defined above in the loop
+const data = docSnap.data();
+const key = `${data.jamiaId}::${data.teacherId}::${data.periodId}`;
 
-            const pages = parseInt(data.pagesTaught, 10) || 0;
-            const lastIbarat = data.lastIbarat || '';
-            const lastPageNo = (data.lastPageNo !== undefined && data.lastPageNo !== null)
-                ? data.lastPageNo
-                : '';
+// if this submission is a user_update, always include it so teacher-form can overlay it
+if (data.role === 'user_update') {
+    teacherSubmissionsMap.set(key, {
+        pagesTaught: parseInt(data.changedValues?.reduce((s,c)=>s + (c.pagesTaught||0),0), 10) || 0,
+        lastIbarat: (data.changedValues && data.changedValues[0]?.lastIbarat) || '',
+        lastPageNo: (data.changedValues && data.changedValues[0]?.lastPageNo) || ''
+    });
+    return; // continue to next docSnap
+}
+
+// For non-user_update submissions, skip only if monthly saved entry exists
+const hasMonthlySavedEntry = monthlyReportData.some(entry =>
+    entry.periodId === data.periodId && entry.teacherId === data.teacherId
+);
+if (hasMonthlySavedEntry) return;
+
+// Existing accumulation logic for teacher submissions (keeps older behavior)
+let existing = teacherSubmissionsMap.get(key);
+if (!existing) {
+    existing = { pagesTaught: 0, lastIbarat: '', lastPageNo: '' };
+}
+const pages = parseInt(data.pagesTaught, 10) || 0;
+existing.pagesTaught += pages;
+if (data.lastIbarat) existing.lastIbarat = data.lastIbarat;
+if (data.lastPageNo !== undefined && data.lastPageNo !== null) existing.lastPageNo = data.lastPageNo;
+teacherSubmissionsMap.set(key, existing);
 
             // Map ka value ab ek object hoga
             // Map ka value ab ek object hoga
@@ -3609,6 +3675,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
