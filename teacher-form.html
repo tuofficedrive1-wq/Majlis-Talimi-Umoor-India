@@ -277,105 +277,151 @@ loadTeacherUserUpdates(
 );
 
 
-            // Sirf isi teacher ke periods + purana data
-            // Call this after loadTeacherPeriods(...) finishes populating inputs
+            // ----------------- REPLACE existing loadTeacherUserUpdates WITH THIS -----------------
 async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
     try {
         const submissionsRef = db.collection('teacher_submissions');
+        // fetch all matching user_update docs (no orderBy to avoid index error)
         const q = submissionsRef
             .where('jamiaId', '==', jamiaId)
             .where('teacherId', '==', teacherId)
             .where('submissionMonth', '==', monthIndex)
             .where('submissionYear', '==', year)
-            .where('role', '==', 'user_update')
-            .orderBy('updatedAt', 'desc');
+            .where('role', '==', 'user_update');
 
         const snap = await q.get();
         if (snap.empty) return;
 
-        // take latest user_update (first doc)
-        const docSnap = snap.docs[0];
-        const ud = docSnap.data();
+        // pick latest manually
+        let latestDoc = null;
+        snap.forEach(d => {
+            const data = d.data();
+            if (!latestDoc) latestDoc = { id: d.id, data };
+            else {
+                const prevT = latestDoc.data.updatedAt ? latestDoc.data.updatedAt.toMillis() : 0;
+                const curT  = data.updatedAt ? data.updatedAt.toMillis() : 0;
+                if (curT > prevT) latestDoc = { id: d.id, data };
+            }
+        });
+        if (!latestDoc) return;
+        const ud = latestDoc.data;
 
-        // apply changedValues array
+        // --- ensure we have an array to collect per-period changes ---
+        const changesSummary = [];
+
         if (Array.isArray(ud.changedValues)) {
             ud.changedValues.forEach(cv => {
-                const inp = document.querySelector(`.pages-taught-input[data-period-id="${cv.periodId}"]`);
-                const lastInp = document.querySelector(`.last-lesson-input[data-period-id="${cv.periodId}"]`);
-                const pnoInp = document.querySelector(`.page-number-input[data-period-id="${cv.periodId}"]`);
+                const pid = cv.periodId;
 
-                if (inp) {
-                    inp.value = (cv.pagesTaught !== undefined ? cv.pagesTaught : inp.value);
-                    // mark highlight
-                    const card = inp.closest('.period-card') || inp.closest('.reporting-row');
-                    if (card) card.classList.add('updated-highlight');
-                    // add badge if not present
-                    if (card && !card.querySelector('.user-badge')) {
+                // find inputs for this period
+                const pagesInp = document.querySelector(`.pages-taught-input[data-period-id="${pid}"]`);
+                const lastInp  = document.querySelector(`.last-lesson-input[data-period-id="${pid}"]`);
+                const pnoInp   = document.querySelector(`.page-number-input[data-period-id="${pid}"]`);
+
+                // previous values (before overwrite) — fallback to '-' if not present
+                const prevPages = pagesInp && pagesInp.value !== undefined && pagesInp.value !== '' ? pagesInp.value : '-';
+                const prevLast  = lastInp  && lastInp.value  !== undefined && lastInp.value !== ''  ? lastInp.value  : '-';
+                const prevPno   = pnoInp   && pnoInp.value   !== undefined && pnoInp.value !== ''   ? pnoInp.value   : '-';
+
+                // new values from user update (or fallback to existing)
+                const newPages = (cv.pagesTaught !== undefined && cv.pagesTaught !== null) ? String(cv.pagesTaught) : (pagesInp && pagesInp.value ? pagesInp.value : '-');
+                const newLast  = (cv.lastIbarat !== undefined && cv.lastIbarat !== null) ? String(cv.lastIbarat) : (lastInp && lastInp.value ? lastInp.value : '-');
+                const newPno   = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? String(cv.lastPageNo) : (pnoInp && pnoInp.value ? pnoInp.value : '-');
+
+                // apply the new values into the form (so teacher sees updated numbers)
+                if (pagesInp) pagesInp.value = newPages;
+                if (lastInp)  lastInp.value  = newLast;
+                if (pnoInp)   pnoInp.value   = newPno;
+
+                // add highlight & badge
+                const card = pagesInp?.closest('.period-card') || pagesInp?.closest('.reporting-row') || pagesInp?.parentElement;
+                if (card) {
+                    card.classList.add('updated-highlight');
+                    if (!card.querySelector('.user-badge')) {
                         const badge = document.createElement('span');
                         badge.className = 'user-badge';
-                        badge.textContent = 'Updated by User';
-                        const header = card.querySelector('.card-header') || card;
-                        header.insertBefore(badge, header.firstChild);
+                        badge.textContent = 'تعلیمی ذمہ دار نے اپ ڈیٹ کیا';
+                        // try to insert at top of card
+                        const header = card.querySelector('.mb-2, .font-semibold, .card-header') || card.firstChild;
+                        header && header.insertBefore(badge, header);
                     }
                 }
-                if (lastInp) lastInp.value = cv.lastIbarat || lastInp.value;
-                if (pnoInp) pnoInp.value = (cv.lastPageNo !== undefined ? cv.lastPageNo : pnoInp.value);
+
+                // find readable period label if possible
+                let periodLabel = pid;
+                if (card) {
+                    const labelEl = card.querySelector('.font-semibold, .text-sm, .mb-2, h3') || null;
+                    if (labelEl && labelEl.textContent) periodLabel = labelEl.textContent.trim();
+                }
+
+                // store summary
+                changesSummary.push({
+                    periodLabel,
+                    prev: { pages: prevPages, last: prevLast, pno: prevPno },
+                    now:  { pages: newPages,  last: newLast,  pno: newPno }
+                });
             });
         }
 
-        // Keep form locked for teacher (readonly)
-        document.querySelectorAll('.pages-taught-input, .last-lesson-input, .page-number-input').forEach(el => el.readOnly = true);
-
-        // Build Urdu message describing changes per period
-const formMessage = document.getElementById('form-message');
-if (formMessage) {
-    const when = ud.updatedAt && typeof ud.updatedAt.toDate === 'function'
-        ? ud.updatedAt.toDate().toLocaleString()
-        : (ud.updatedAt && ud.updatedAt.toMillis ? new Date(ud.updatedAt.toMillis()).toLocaleString() : '');
-
-    let html = `<div class="text-right"><strong>اس رپورٹ میں تعلیمی ذمہ دار نے کچھ تبدیلیاں کی ہیں${
-        when ? ` (${when})` : ''
-    }:</strong></div>`;
-
-    html += `<ul class="mt-2 text-right" style="list-style:none; padding-right:0; line-height:1.8;">`;
-
-    if (changesSummary.length === 0) {
-        html += `<li>تفصیلی تبدیلیاں دستیاب نہیں ہیں۔</li>`;
-    } else {
-        changesSummary.forEach(ch => {
-            html += `<li class="mb-2">`;
-            html += `<strong>${escapeHtml(ch.periodLabel)}</strong><br>`;
-
-            // Pages
-            if (ch.prev.pages !== ch.now.pages) {
-                html += `صفحے: پہلے <u>${escapeHtml(ch.prev.pages)}</u> تھے، اب <u>${escapeHtml(ch.now.pages)}</u> کر دیے گئے ہیں۔<br>`;
-            }
-
-            // Last Ibarat
-            if (ch.prev.last !== ch.now.last) {
-                html += `آخری عبارت: پہلے "<u>${escapeHtml(ch.prev.last)}</u>" تھی، اب "<u>${escapeHtml(ch.now.last)}</u>" کر دی گئی ہے۔<br>`;
-            }
-
-            // Page No
-            if (ch.prev.pno !== ch.now.pno) {
-                html += `صفحہ نمبر: پہلے <u>${escapeHtml(ch.prev.pno)}</u> تھا، اب <u>${escapeHtml(ch.now.pno)}</u> کر دیا گیا ہے۔<br>`;
-            }
-
-            html += `</li>`;
+        // keep form readonly for teacher
+        document.querySelectorAll('.pages-taught-input, .last-lesson-input, .page-number-input').forEach(el => {
+            el.readOnly = true;
         });
-    }
 
-    html += `</ul>`;
-    html += `<div class="mt-2"><small>یہ تبدیلیاں فارم میں نمایاں (highlight) کر دی گئی ہیں۔</small></div>`;
+        // Build Urdu message showing per-period changes
+        const formMessage = document.getElementById('form-message');
+        if (formMessage) {
+            const when = ud.updatedAt && typeof ud.updatedAt.toDate === 'function'
+                ? ud.updatedAt.toDate().toLocaleString()
+                : (ud.updatedAt && ud.updatedAt.toMillis ? new Date(ud.updatedAt.toMillis()).toLocaleString() : '');
 
-    formMessage.innerHTML = html;
-    formMessage.className =
-        'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
-    formMessage.style.display = 'block';
-}
+            let html = `<div class="text-right"><strong>اس رپورٹ میں تعلیمی ذمہ دار نے کچھ تبدیلیاں کی ہیں${ when ? ' (' + escapeHtml(when) + ')' : '' } :</strong></div>`;
+
+            html += `<ul class="mt-2 text-right" style="list-style:none; padding-right:0; line-height:1.8;">`;
+
+            if (changesSummary.length === 0) {
+                html += `<li>تفصیلی تبدیلیاں دستیاب نہیں ہیں۔</li>`;
+            } else {
+                changesSummary.forEach(ch => {
+                    html += `<li class="mb-2">`;
+                    html += `<strong>${escapeHtml(ch.periodLabel)}</strong><br>`;
+                    if (ch.prev.pages !== ch.now.pages) {
+                        html += `صفحے: پہلے <u>${escapeHtml(ch.prev.pages)}</u> تھے، اب <u>${escapeHtml(ch.now.pages)}</u> کر دیے گئے ہیں۔<br>`;
+                    } else {
+                        html += `صفحے: <u>${escapeHtml(ch.now.pages)}</u>۔<br>`;
+                    }
+                    if (ch.prev.last !== ch.now.last) {
+                        html += `آخری عبارت: پہلے "<u>${escapeHtml(ch.prev.last)}</u>" تھی، اب "<u>${escapeHtml(ch.now.last)}</u>" کر دی گئی ہے۔<br>`;
+                    }
+                    if (ch.prev.pno !== ch.now.pno) {
+                        html += `صفحہ نمبر: پہلے <u>${escapeHtml(ch.prev.pno)}</u> تھا، اب <u>${escapeHtml(ch.now.pno)}</u> کر دیا گیا ہے۔<br>`;
+                    }
+                    html += `</li>`;
+                });
+            }
+
+            html += `</ul>`;
+            html += `<div class="mt-2"><small>یہ تبدیلیاں فارم میں نمایاں کر دی گئی ہیں۔</small></div>`;
+
+            formMessage.innerHTML = html;
+            formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
+            formMessage.style.display = 'block';
+        }
+
     } catch (err) {
         console.error('Error loading user updates for teacher:', err);
     }
+}
+
+// basic HTML-escape helper (keep only one copy in file)
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
         }
 
@@ -743,6 +789,7 @@ if (formMessage) {
 </script>
 </body>
 </html>
+
 
 
 
