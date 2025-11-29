@@ -244,13 +244,66 @@
             teacherNameDisplayWrapper.classList.remove('hidden');
 
             // Sirf isi teacher ke periods + purana data
-            loadTeacherPeriods(
-                teacher.id,
-                teachers,
-                currentJamiaName,
-                currentMonthIndex,
-                currentReportYear
-            );
+            // Call this after loadTeacherPeriods(...) finishes populating inputs
+async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
+    try {
+        const submissionsRef = db.collection('teacher_submissions');
+        const q = submissionsRef
+            .where('jamiaId', '==', jamiaId)
+            .where('teacherId', '==', teacherId)
+            .where('submissionMonth', '==', monthIndex)
+            .where('submissionYear', '==', year)
+            .where('role', '==', 'user_update')
+            .orderBy('updatedAt', 'desc');
+
+        const snap = await q.get();
+        if (snap.empty) return;
+
+        // take latest user_update (first doc)
+        const docSnap = snap.docs[0];
+        const ud = docSnap.data();
+
+        // apply changedValues array
+        if (Array.isArray(ud.changedValues)) {
+            ud.changedValues.forEach(cv => {
+                const inp = document.querySelector(`.pages-taught-input[data-period-id="${cv.periodId}"]`);
+                const lastInp = document.querySelector(`.last-lesson-input[data-period-id="${cv.periodId}"]`);
+                const pnoInp = document.querySelector(`.page-number-input[data-period-id="${cv.periodId}"]`);
+
+                if (inp) {
+                    inp.value = (cv.pagesTaught !== undefined ? cv.pagesTaught : inp.value);
+                    // mark highlight
+                    const card = inp.closest('.period-card') || inp.closest('.reporting-row');
+                    if (card) card.classList.add('updated-highlight');
+                    // add badge if not present
+                    if (card && !card.querySelector('.user-badge')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'user-badge';
+                        badge.textContent = 'Updated by User';
+                        const header = card.querySelector('.card-header') || card;
+                        header.insertBefore(badge, header.firstChild);
+                    }
+                }
+                if (lastInp) lastInp.value = cv.lastIbarat || lastInp.value;
+                if (pnoInp) pnoInp.value = (cv.lastPageNo !== undefined ? cv.lastPageNo : pnoInp.value);
+            });
+        }
+
+        // Keep form locked for teacher (readonly)
+        document.querySelectorAll('.pages-taught-input, .last-lesson-input, .page-number-input').forEach(el => el.readOnly = true);
+
+        // show message
+        const formMessage = document.getElementById('form-message');
+        if (formMessage) {
+            formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
+            const when = ud.updatedAt && ud.updatedAt.toDate ? ud.updatedAt.toDate().toLocaleString() : '';
+            formMessage.innerHTML = `Aapki report me user ne kuch changes kiye hain (${ud.updatedByUserName || 'User'}) ${when ? 'on ' + when : ''}. Yeh changes highlighted hain.`;
+            formMessage.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Error loading user updates for teacher:', err);
+    }
+}
         }
 
         if (verifyBtn) {
@@ -617,6 +670,7 @@
 </script>
 </body>
 </html>
+
 
 
 
