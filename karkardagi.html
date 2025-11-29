@@ -1211,31 +1211,41 @@ const loadMonthlyReportData = async () => {
 
         const submissionsSnap = await getDocs(submissionsQuery);
 
-        submissionsSnap.forEach(docSnap => {
+        // --- START: Robust submissions processing (replace existing submissionsSnap.forEach block) ---
+submissionsSnap.forEach(docSnap => {
     const data = docSnap.data();
-    // Normalize jamia key (safety)
-    const jamiaKey = data.jamiaId || data.jamiaName || data.jamia || '';
-    const teacherId = data.teacherId || '';
-    const periodId = data.periodId || '';
-    const key = `${jamiaKey}::${teacherId}::${periodId}`;
+    // Normalize jamia name/id and teacher/period ids
+    const jamiaKey = (data.jamiaId || data.jamiaName || data.jamia || '').toString();
+    const teacherId_local = (data.teacherId || '').toString();
+    const topLevelPeriodId = (data.periodId || '').toString();
 
-    // ----- REPLACEMENT START -----
-// If this submission is a user_update, expand changedValues so each periodId gets its own map entry
-if (data.role === 'user_update') {
-    const jamiaKey = data.jamiaId || data.jamiaName || data.jamia || '';
-    const teacherId_local = data.teacherId || '';
+    // 1) Handle user_update specially: expand changedValues into per-period entries
+    if (data.role === 'user_update') {
+        if (Array.isArray(data.changedValues) && data.changedValues.length > 0) {
+            data.changedValues.forEach(cv => {
+                const perPeriodId = (cv.periodId || topLevelPeriodId || '').toString();
+                const perKey = `${jamiaKey}::${teacherId_local}::${perPeriodId}`;
 
-    // If changedValues is an array, create per-period entries
-    if (Array.isArray(data.changedValues) && data.changedValues.length > 0) {
-        data.changedValues.forEach(cv => {
-            const perPeriodId = cv.periodId || '';
+                const pages = parseInt(cv.pagesTaught || 0, 10) || 0;
+                const li = cv.lastIbarat || '';
+                const lp = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? cv.lastPageNo : '';
+
+                teacherSubmissionsMap.set(perKey, {
+                    pagesTaught: pages,
+                    lastIbarat: li,
+                    lastPageNo: lp,
+                    isUserUpdate: true,
+                    raw: data
+                });
+            });
+        } else {
+            // fallback if changedValues missing: use top-level fields
+            const perPeriodId = topLevelPeriodId || '';
             const perKey = `${jamiaKey}::${teacherId_local}::${perPeriodId}`;
+            const pages = parseInt(data.pagesTaught || 0, 10) || 0;
+            const li = data.lastIbarat || '';
+            const lp = (data.lastPageNo !== undefined && data.lastPageNo !== null) ? data.lastPageNo : '';
 
-            const pages = parseInt(cv.pagesTaught || 0, 10) || 0;
-            const li = cv.lastIbarat || '';
-            const lp = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? cv.lastPageNo : '';
-
-            // mark as user update so renderer gives it precedence
             teacherSubmissionsMap.set(perKey, {
                 pagesTaught: pages,
                 lastIbarat: li,
@@ -1243,26 +1253,119 @@ if (data.role === 'user_update') {
                 isUserUpdate: true,
                 raw: data
             });
-        });
-    } else {
-        // fallback: if no changedValues array, try to use top-level fields (compatibility)
-        const perPeriodId = data.periodId || '';
-        const perKey = `${jamiaKey}::${teacherId_local}::${perPeriodId}`;
-        const pages = parseInt(data.pagesTaught || 0, 10) || 0;
-        const li = data.lastIbarat || '';
-        const lp = (data.lastPageNo !== undefined && data.lastPageNo !== null) ? data.lastPageNo : '';
-
-        teacherSubmissionsMap.set(perKey, {
-            pagesTaught: pages,
-            lastIbarat: li,
-            lastPageNo: lp,
-            isUserUpdate: true,
-            raw: data
-        });
+        }
+        return; // next docSnap
     }
-    return; // continue to next docSnap
+
+    // 2) Non-user_update submissions: try to aggregate, but do NOT override user_update
+    // Build a key using periodId if present; if not, use blank to handle fallback later
+    const subPeriodId = topLevelPeriodId || (data.periodId || '') ;
+    const baseKey = `${jamiaKey}::${teacherId_local}::${subPeriodId}`;
+
+    // If an exact user_update already exists for this key, skip aggregation to avoid overwriting override
+    const existingUserUpdate = teacherSubmissionsMap.get(baseKey);
+    if (existingUserUpdate && existingUserUpdate.isUserUpdate) {
+        // keep the user update as higher priority
+        return;
+    }
+
+    // Aggregate pages for this key
+    let existing = teacherSubmissionsMap.get(baseKey);
+    if (!existing) {
+        existing = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+    }
+    const pages = parseInt(data.pagesTaught || 0, 10) || 0;
+    existing.pagesTaught = (existing.pagesTaught || 0) + pages;
+    if (data.lastIbarat) existing.lastIbarat = data.lastIbarat;
+    if (data.lastPageNo !== undefined && data.lastPageNo !== null) existing.lastPageNo = data.lastPageNo;
+    teacherSubmissionsMap.set(baseKey, existing);
+});
+
+// --- AFTER processing all submissions: try fallback matching for entries with empty periodId ---
+// (This handles teacher-form submissions that did not include periodId — we match by teacherId + bookName)
+const unmatchedKeys = [];
+const keysToFix = Array.from(teacherSubmissionsMap.keys());
+
+keysToFix.forEach(k => {
+    // split Jamia::Teacher::Period
+    const parts = k.split('::');
+    const jamiaPart = parts[0] || '';
+    const teacherPart = parts[1] || '';
+    const periodPart = parts[2] || '';
+
+    if (periodPart && periodPart.trim().length > 0) {
+        // already has periodId — fine
+        return;
+    }
+
+    // Try to find a matching period in monthlyReportData (or in the structure you use to render rows)
+    // Strategy: match by teacherId + jamiaName + bookName (if bookName found in current monthlyReportData)
+    let matched = false;
+    for (let i = 0; i < monthlyReportData.length; i++) {
+        const entry = monthlyReportData[i];
+        if (!entry) continue;
+        // normalize strings for comparison
+        const jm = (entry.jamiaName || '').toString();
+        const tid = (entry.teacherId || '').toString();
+        const bk = (entry.bookName || entry.book || '').toString();
+
+        // get submission record for original key
+        const record = teacherSubmissionsMap.get(k);
+        // If record has raw info with lastIbarat or book info, try to match on book too
+        const raw = record && record.raw ? record.raw : null;
+        const rawBook = raw ? (raw.bookName || raw.book || '') : '';
+
+        if (jm === jamiaPart && tid === teacherPart) {
+            // If book names exist, prefer exact book match
+            if (bk && (bk === rawBook || rawBook === '' || bk.includes(rawBook) || rawBook.includes(bk))) {
+                // build new key with this periodId
+                const newKey = `${jm}::${tid}::${entry.periodId || ''}`;
+                // merge values into newKey (prefer existing isUserUpdate)
+                const toMove = teacherSubmissionsMap.get(k);
+                const existingNew = teacherSubmissionsMap.get(newKey) || { pagesTaught:0, lastIbarat:'', lastPageNo:'', isUserUpdate:false };
+                // if either is user_update, preserve isUserUpdate true
+                existingNew.pagesTaught = (existingNew.pagesTaught || 0) + (toMove.pagesTaught || 0);
+                existingNew.lastIbarat = toMove.lastIbarat || existingNew.lastIbarat;
+                existingNew.lastPageNo = toMove.lastPageNo || existingNew.lastPageNo;
+                existingNew.isUserUpdate = existingNew.isUserUpdate || toMove.isUserUpdate || false;
+                existingNew.raw = existingNew.raw || toMove.raw;
+                teacherSubmissionsMap.set(newKey, existingNew);
+                // remove old key
+                teacherSubmissionsMap.delete(k);
+                matched = true;
+                break;
+            } else if (!rawBook && !bk) {
+                // both have no book info — accept match
+                const newKey = `${jm}::${tid}::${entry.periodId || ''}`;
+                const toMove = teacherSubmissionsMap.get(k);
+                const existingNew = teacherSubmissionsMap.get(newKey) || { pagesTaught:0, lastIbarat:'', lastPageNo:'', isUserUpdate:false };
+                existingNew.pagesTaught = (existingNew.pagesTaught || 0) + (toMove.pagesTaught || 0);
+                existingNew.lastIbarat = toMove.lastIbarat || existingNew.lastIbarat;
+                existingNew.lastPageNo = toMove.lastPageNo || existingNew.lastPageNo;
+                existingNew.isUserUpdate = existingNew.isUserUpdate || toMove.isUserUpdate || false;
+                existingNew.raw = existingNew.raw || toMove.raw;
+                teacherSubmissionsMap.set(newKey, existingNew);
+                teacherSubmissionsMap.delete(k);
+                matched = true;
+                break;
+            }
+        }
+    }
+
+    if (!matched) {
+        unmatchedKeys.push(k);
+    }
+});
+
+// Debug logs — check console to see which submissions didn't match any period
+if (unmatchedKeys.length > 0) {
+    console.warn('Unmatched teacher_submissions keys (no periodId and no fallback match):', unmatchedKeys);
+    // Also print small preview of their data
+    unmatchedKeys.forEach(uk => {
+        console.warn('unmatched ->', uk, teacherSubmissionsMap.get(uk));
+    });
 }
-// ----- REPLACEMENT END -----
+// --- END: Robust submissions processing ---
 
     // For non-user_update: aggregate only if there is no monthly saved entry AND no user_update override
     const hasMonthlySavedEntry = monthlyReportData.some(entry =>
@@ -3706,6 +3809,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
