@@ -276,155 +276,6 @@ loadTeacherUserUpdates(
     currentReportYear
 );
 
-
-            // ----------------- REPLACE existing loadTeacherUserUpdates WITH THIS -----------------
-async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
-    try {
-        const submissionsRef = db.collection('teacher_submissions');
-        // fetch all matching user_update docs (no orderBy to avoid index error)
-        const q = submissionsRef
-            .where('jamiaId', '==', jamiaId)
-            .where('teacherId', '==', teacherId)
-            .where('submissionMonth', '==', monthIndex)
-            .where('submissionYear', '==', year)
-            .where('role', '==', 'user_update');
-
-        const snap = await q.get();
-        if (snap.empty) return;
-
-        // pick latest manually
-        let latestDoc = null;
-        snap.forEach(d => {
-            const data = d.data();
-            if (!latestDoc) latestDoc = { id: d.id, data };
-            else {
-                const prevT = latestDoc.data.updatedAt ? latestDoc.data.updatedAt.toMillis() : 0;
-                const curT  = data.updatedAt ? data.updatedAt.toMillis() : 0;
-                if (curT > prevT) latestDoc = { id: d.id, data };
-            }
-        });
-        if (!latestDoc) return;
-        const ud = latestDoc.data;
-
-        // --- ensure we have an array to collect per-period changes ---
-        const changesSummary = [];
-
-        if (Array.isArray(ud.changedValues)) {
-            ud.changedValues.forEach(cv => {
-                const pid = cv.periodId;
-
-                // find inputs for this period
-                const pagesInp = document.querySelector(`.pages-taught-input[data-period-id="${pid}"]`);
-                const lastInp  = document.querySelector(`.last-lesson-input[data-period-id="${pid}"]`);
-                const pnoInp   = document.querySelector(`.page-number-input[data-period-id="${pid}"]`);
-
-                // previous values (before overwrite) — fallback to '-' if not present
-                const prevPages = pagesInp && pagesInp.value !== undefined && pagesInp.value !== '' ? pagesInp.value : '-';
-                const prevLast  = lastInp  && lastInp.value  !== undefined && lastInp.value !== ''  ? lastInp.value  : '-';
-                const prevPno   = pnoInp   && pnoInp.value   !== undefined && pnoInp.value !== ''   ? pnoInp.value   : '-';
-
-                // new values from user update (or fallback to existing)
-                const newPages = (cv.pagesTaught !== undefined && cv.pagesTaught !== null) ? String(cv.pagesTaught) : (pagesInp && pagesInp.value ? pagesInp.value : '-');
-                const newLast  = (cv.lastIbarat !== undefined && cv.lastIbarat !== null) ? String(cv.lastIbarat) : (lastInp && lastInp.value ? lastInp.value : '-');
-                const newPno   = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? String(cv.lastPageNo) : (pnoInp && pnoInp.value ? pnoInp.value : '-');
-
-                // apply the new values into the form (so teacher sees updated numbers)
-                if (pagesInp) pagesInp.value = newPages;
-                if (lastInp)  lastInp.value  = newLast;
-                if (pnoInp)   pnoInp.value   = newPno;
-
-                // add highlight & badge
-                const card = pagesInp?.closest('.period-card') || pagesInp?.closest('.reporting-row') || pagesInp?.parentElement;
-                if (card) {
-                    card.classList.add('updated-highlight');
-                    // --- Replace existing badge-insert logic with this robust version ---
-if (card && !card.querySelector('.user-badge')) {
-    const badge = document.createElement('span');
-    badge.className = 'user-badge';
-    badge.textContent = 'تعلیمی ذمہ دار نے اپ ڈیٹ کیا';
-
-    // Try to find a meaningful header/container to attach the badge
-    let header = card.querySelector('.mb-2, .font-semibold, .card-header, .text-sm, .card-title') || card.firstElementChild;
-    if (header && header.nodeType === Node.ELEMENT_NODE) {
-        // safest: use prepend if available
-        if (typeof header.prepend === 'function') {
-            header.prepend(badge);
-        } else {
-            // fallback to insertBefore on header's parent
-            header.parentNode.insertBefore(badge, header);
-        }
-    } else {
-        // header might be a text node or null — insert badge at top of card
-        card.insertBefore(badge, card.firstChild);
-    }
-}
-
-                // find readable period label if possible
-                let periodLabel = pid;
-                if (card) {
-                    const labelEl = card.querySelector('.font-semibold, .text-sm, .mb-2, h3') || null;
-                    if (labelEl && labelEl.textContent) periodLabel = labelEl.textContent.trim();
-                }
-
-                // store summary
-                changesSummary.push({
-                    periodLabel,
-                    prev: { pages: prevPages, last: prevLast, pno: prevPno },
-                    now:  { pages: newPages,  last: newLast,  pno: newPno }
-                });
-            });
-        }
-
-        // keep form readonly for teacher
-        document.querySelectorAll('.pages-taught-input, .last-lesson-input, .page-number-input').forEach(el => {
-            el.readOnly = true;
-        });
-
-        // Build Urdu message showing per-period changes
-        const formMessage = document.getElementById('form-message');
-        if (formMessage) {
-            const when = ud.updatedAt && typeof ud.updatedAt.toDate === 'function'
-                ? ud.updatedAt.toDate().toLocaleString()
-                : (ud.updatedAt && ud.updatedAt.toMillis ? new Date(ud.updatedAt.toMillis()).toLocaleString() : '');
-
-            let html = `<div class="text-right"><strong>اس رپورٹ میں تعلیمی ذمہ دار نے کچھ تبدیلیاں کی ہیں${ when ? ' (' + escapeHtml(when) + ')' : '' } :</strong></div>`;
-
-            html += `<ul class="mt-2 text-right" style="list-style:none; padding-right:0; line-height:1.8;">`;
-
-            if (changesSummary.length === 0) {
-                html += `<li>تفصیلی تبدیلیاں دستیاب نہیں ہیں۔</li>`;
-            } else {
-                changesSummary.forEach(ch => {
-                    html += `<li class="mb-2">`;
-                    html += `<strong>${escapeHtml(ch.periodLabel)}</strong><br>`;
-                    if (ch.prev.pages !== ch.now.pages) {
-                        html += `صفحے: پہلے <u>${escapeHtml(ch.prev.pages)}</u> تھے، اب <u>${escapeHtml(ch.now.pages)}</u> کر دیے گئے ہیں۔<br>`;
-                    } else {
-                        html += `صفحے: <u>${escapeHtml(ch.now.pages)}</u>۔<br>`;
-                    }
-                    if (ch.prev.last !== ch.now.last) {
-                        html += `آخری عبارت: پہلے "<u>${escapeHtml(ch.prev.last)}</u>" تھی، اب "<u>${escapeHtml(ch.now.last)}</u>" کر دی گئی ہے۔<br>`;
-                    }
-                    if (ch.prev.pno !== ch.now.pno) {
-                        html += `صفحہ نمبر: پہلے <u>${escapeHtml(ch.prev.pno)}</u> تھا، اب <u>${escapeHtml(ch.now.pno)}</u> کر دیا گیا ہے۔<br>`;
-                    }
-                    html += `</li>`;
-                });
-            }
-
-            html += `</ul>`;
-            html += `<div class="mt-2"><small>یہ تبدیلیاں فارم میں نمایاں کر دی گئی ہیں۔</small></div>`;
-
-            formMessage.innerHTML = html;
-            formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
-            formMessage.style.display = 'block';
-        }
-
-    } catch (err) {
-        console.error('Error loading user updates for teacher:', err);
-    }
-}
-
 // basic HTML-escape helper (keep only one copy in file)
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
@@ -595,6 +446,154 @@ function escapeHtml(str) {
         checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year);
     }
 
+    // ----------------- REPLACE existing loadTeacherUserUpdates WITH THIS -----------------
+async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
+    try {
+        const submissionsRef = db.collection('teacher_submissions');
+        // fetch all matching user_update docs (no orderBy to avoid index error)
+        const q = submissionsRef
+            .where('jamiaId', '==', jamiaId)
+            .where('teacherId', '==', teacherId)
+            .where('submissionMonth', '==', monthIndex)
+            .where('submissionYear', '==', year)
+            .where('role', '==', 'user_update');
+
+        const snap = await q.get();
+        if (snap.empty) return;
+
+        // pick latest manually
+        let latestDoc = null;
+        snap.forEach(d => {
+            const data = d.data();
+            if (!latestDoc) latestDoc = { id: d.id, data };
+            else {
+                const prevT = latestDoc.data.updatedAt ? latestDoc.data.updatedAt.toMillis() : 0;
+                const curT  = data.updatedAt ? data.updatedAt.toMillis() : 0;
+                if (curT > prevT) latestDoc = { id: d.id, data };
+            }
+        });
+        if (!latestDoc) return;
+        const ud = latestDoc.data;
+
+        // --- ensure we have an array to collect per-period changes ---
+        const changesSummary = [];
+
+        if (Array.isArray(ud.changedValues)) {
+            ud.changedValues.forEach(cv => {
+                const pid = cv.periodId;
+
+                // find inputs for this period
+                const pagesInp = document.querySelector(`.pages-taught-input[data-period-id="${pid}"]`);
+                const lastInp  = document.querySelector(`.last-lesson-input[data-period-id="${pid}"]`);
+                const pnoInp   = document.querySelector(`.page-number-input[data-period-id="${pid}"]`);
+
+                // previous values (before overwrite) — fallback to '-' if not present
+                const prevPages = pagesInp && pagesInp.value !== undefined && pagesInp.value !== '' ? pagesInp.value : '-';
+                const prevLast  = lastInp  && lastInp.value  !== undefined && lastInp.value !== ''  ? lastInp.value  : '-';
+                const prevPno   = pnoInp   && pnoInp.value   !== undefined && pnoInp.value !== ''   ? pnoInp.value   : '-';
+
+                // new values from user update (or fallback to existing)
+                const newPages = (cv.pagesTaught !== undefined && cv.pagesTaught !== null) ? String(cv.pagesTaught) : (pagesInp && pagesInp.value ? pagesInp.value : '-');
+                const newLast  = (cv.lastIbarat !== undefined && cv.lastIbarat !== null) ? String(cv.lastIbarat) : (lastInp && lastInp.value ? lastInp.value : '-');
+                const newPno   = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? String(cv.lastPageNo) : (pnoInp && pnoInp.value ? pnoInp.value : '-');
+
+                // apply the new values into the form (so teacher sees updated numbers)
+                if (pagesInp) pagesInp.value = newPages;
+                if (lastInp)  lastInp.value  = newLast;
+                if (pnoInp)   pnoInp.value   = newPno;
+
+                // add highlight & badge
+                const card = pagesInp?.closest('.period-card') || pagesInp?.closest('.reporting-row') || pagesInp?.parentElement;
+                if (card) {
+                    card.classList.add('updated-highlight');
+                    // --- Replace existing badge-insert logic with this robust version ---
+if (card && !card.querySelector('.user-badge')) {
+    const badge = document.createElement('span');
+    badge.className = 'user-badge';
+    badge.textContent = 'تعلیمی ذمہ دار نے اپ ڈیٹ کیا';
+
+    // Try to find a meaningful header/container to attach the badge
+    let header = card.querySelector('.mb-2, .font-semibold, .card-header, .text-sm, .card-title') || card.firstElementChild;
+    if (header && header.nodeType === Node.ELEMENT_NODE) {
+        // safest: use prepend if available
+        if (typeof header.prepend === 'function') {
+            header.prepend(badge);
+        } else {
+            // fallback to insertBefore on header's parent
+            header.parentNode.insertBefore(badge, header);
+        }
+    } else {
+        // header might be a text node or null — insert badge at top of card
+        card.insertBefore(badge, card.firstChild);
+    }
+}
+
+                // find readable period label if possible
+                let periodLabel = pid;
+                if (card) {
+                    const labelEl = card.querySelector('.font-semibold, .text-sm, .mb-2, h3') || null;
+                    if (labelEl && labelEl.textContent) periodLabel = labelEl.textContent.trim();
+                }
+
+                // store summary
+                changesSummary.push({
+                    periodLabel,
+                    prev: { pages: prevPages, last: prevLast, pno: prevPno },
+                    now:  { pages: newPages,  last: newLast,  pno: newPno }
+                });
+            });
+        }
+
+        // keep form readonly for teacher
+        document.querySelectorAll('.pages-taught-input, .last-lesson-input, .page-number-input').forEach(el => {
+            el.readOnly = true;
+        });
+
+        // Build Urdu message showing per-period changes
+        const formMessage = document.getElementById('form-message');
+        if (formMessage) {
+            const when = ud.updatedAt && typeof ud.updatedAt.toDate === 'function'
+                ? ud.updatedAt.toDate().toLocaleString()
+                : (ud.updatedAt && ud.updatedAt.toMillis ? new Date(ud.updatedAt.toMillis()).toLocaleString() : '');
+
+            let html = `<div class="text-right"><strong>اس رپورٹ میں تعلیمی ذمہ دار نے کچھ تبدیلیاں کی ہیں${ when ? ' (' + escapeHtml(when) + ')' : '' } :</strong></div>`;
+
+            html += `<ul class="mt-2 text-right" style="list-style:none; padding-right:0; line-height:1.8;">`;
+
+            if (changesSummary.length === 0) {
+                html += `<li>تفصیلی تبدیلیاں دستیاب نہیں ہیں۔</li>`;
+            } else {
+                changesSummary.forEach(ch => {
+                    html += `<li class="mb-2">`;
+                    html += `<strong>${escapeHtml(ch.periodLabel)}</strong><br>`;
+                    if (ch.prev.pages !== ch.now.pages) {
+                        html += `صفحے: پہلے <u>${escapeHtml(ch.prev.pages)}</u> تھے، اب <u>${escapeHtml(ch.now.pages)}</u> کر دیے گئے ہیں۔<br>`;
+                    } else {
+                        html += `صفحے: <u>${escapeHtml(ch.now.pages)}</u>۔<br>`;
+                    }
+                    if (ch.prev.last !== ch.now.last) {
+                        html += `آخری عبارت: پہلے "<u>${escapeHtml(ch.prev.last)}</u>" تھی، اب "<u>${escapeHtml(ch.now.last)}</u>" کر دی گئی ہے۔<br>`;
+                    }
+                    if (ch.prev.pno !== ch.now.pno) {
+                        html += `صفحہ نمبر: پہلے <u>${escapeHtml(ch.prev.pno)}</u> تھا، اب <u>${escapeHtml(ch.now.pno)}</u> کر دیا گیا ہے۔<br>`;
+                    }
+                    html += `</li>`;
+                });
+            }
+
+            html += `</ul>`;
+            html += `<div class="mt-2"><small>یہ تبدیلیاں فارم میں نمایاں کر دی گئی ہیں۔</small></div>`;
+
+            formMessage.innerHTML = html;
+            formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
+            formMessage.style.display = 'block';
+        }
+
+    } catch (err) {
+        console.error('Error loading user updates for teacher:', err);
+    }
+}
+    
     // 🔒 Existing submission check (GLOBAL)
     async function checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year) {
         const formMessage = document.getElementById('form-message');
@@ -801,6 +800,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
