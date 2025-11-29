@@ -8,8 +8,6 @@
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  
-
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -279,31 +277,6 @@
 
   <!-- Firebase + Logic -->
   <script type="module">
-
-    // --- Safe fallback for handleDownloadTadrisPDF to avoid ReferenceError stopping rendering ---
-if (typeof window.handleDownloadTadrisPDF !== 'function') {
-  window.handleDownloadTadrisPDF = function(e) {
-    console.warn("Fallback handleDownloadTadrisPDF used");
-    try {
-      const btn = e && e.currentTarget ? e.currentTarget : (e && e.target ? e.target : null);
-      if (btn && btn.dataset && btn.dataset.tadrisHtml) {
-        const h = btn.dataset.tadrisHtml;
-        const w = window.open("", "_blank");
-        w.document.write(h); w.document.close(); w.focus(); return;
-      }
-      const active = document.querySelector(".accordion-content") || document.querySelector(".tadris-active");
-      if (active) {
-        const w = window.open("", "_blank");
-        w.document.write("<html><head><title>Tadris</title></head><body>" + active.outerHTML + "</body></html>");
-        w.document.close(); w.focus(); return;
-      }
-      alert("Download temporarily unavailable. Console dekhain.");
-    } catch (err) {
-      console.error("Fallback download error:", err);
-      alert("Download failed. Console dekhain.");
-    }
-  };
-}
     // ============================
     // Firebase Imports
     // ============================
@@ -401,6 +374,35 @@ if (typeof window.handleDownloadTadrisPDF !== 'function') {
       };
     };
 
+
+    // ======= SAFETY FALLBACK: handleDownloadTadrisPDF =======
+    // Prevent ReferenceError when download handler is missing.
+    if (typeof window.handleDownloadTadrisPDF !== 'function') {
+      window.handleDownloadTadrisPDF = async function(e) {
+        console.warn("Fallback handleDownloadTadrisPDF called");
+        try {
+          const btn = e && e.currentTarget ? e.currentTarget : (e && e.target ? e.target : null);
+          // If button provides HTML content via data attribute, open it
+          if (btn && btn.dataset && btn.dataset.tadrisHtml) {
+            const w = window.open('', '_blank');
+            w.document.write(btn.dataset.tadrisHtml);
+            w.document.close();
+            return;
+          }
+          // Fallback: open active accordion content
+          const active = document.querySelector('.accordion-content.open') || document.querySelector('.accordion-content') || document.querySelector('#tadris-accordion-container');
+          if (active) {
+            const w = window.open('', '_blank');
+            w.document.write('<html><head><title>Tadris Report</title></head><body>' + active.outerHTML + '</body></html>');
+            w.document.close();
+            return;
+          }
+          alert('Download temporarily unavailable.');
+        } catch (err) {
+          console.error('Fallback handleDownloadTadrisPDF error:', err);
+        }
+      };
+    }
     // ============================
     // New: Load teaching structure same as jaiza-form's source
     // We'll build two maps per jamia:
@@ -721,20 +723,9 @@ if (typeof window.handleDownloadTadrisPDF !== 'function') {
         reportRef = ref;
         currentReport = report;
 
-        // Always prefer full KARKARDAGI_STRUCTURE if loaded
-let academicData = [];
-
-if (Array.isArray(window.KARKARDAGI_STRUCTURE) && window.KARKARDAGI_STRUCTURE.length > 0) {
-    academicData = window.KARKARDAGI_STRUCTURE;
-} 
-// fallback only if nothing loaded
-else if (Array.isArray(userProfileData.academicStructure)) {
-    academicData = userProfileData.academicStructure;
-} 
-// final fallback
-else {
-    academicData = [];
-}
+        const academicData = (Array.isArray(window.KARKARDAGI_STRUCTURE) && window.KARKARDAGI_STRUCTURE.length)
+  ? window.KARKARDAGI_STRUCTURE
+  : (Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : []);
 
         if (!academicData.length) {
           tadrisLoadingMsg.classList.add("hidden");
@@ -773,20 +764,11 @@ else {
         tadrisAccordionContainer.innerHTML = "";
 
         academicData.forEach((jamia, index) => {
-    try {
-        // ... existing code (paste as-is inside try block) ...
-        // create accordion, populate selects, etc.
-    } catch (err) {
-        console.error("Error rendering jamia item (continuing):", err, "jamiaName:", (jamia && (jamia.jamiaName || jamia.name || jamia)));
-        // optionally: append a placeholder accordion so UI count remains same
-        try {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'jamia-placeholder';
-          placeholder.innerHTML = `<div class="jamia-header">${(jamia && (jamia.jamiaName||jamia.name||jamia))} — Rendering error, check console</div>`;
-          tadrisAccordionContainer.appendChild(placeholder);
-        } catch(e){/* ignore */ }
-    }
-});
+      try {
+          const jamiaName = jamia.jamiaName || `Jamia #${index + 1}`;
+          const jamiaSaved = tadrisData.filter(
+            (r) => r.jamiaName === jamiaName
+          );
 
           const accordionItem = document.createElement("div");
           accordionItem.className =
@@ -983,7 +965,18 @@ if (kitabSelect) {
 }
 
 const jamiaTeachers = (window.JAMIA_TEACHER_MAP && window.JAMIA_TEACHER_MAP[jamiaName]) ? window.JAMIA_TEACHER_MAP[jamiaName] : {};
-const teacherList = Object.keys(jamiaTeachers || {});
+const teacherList = Object.keys(jamiaTeachers || {
+      } catch (err) {
+        console.error("render jamia error for:", jamia && (jamia.jamiaName || jamia.name), err);
+        try {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'jamia-placeholder p-4 border rounded';
+          placeholder.innerHTML = `<strong>${jamia && (jamia.jamiaName || jamia.name || 'Unknown Jamia')}</strong>
+            <div class="text-muted">Rendering error occurred — check console.</div>`;
+          tadrisAccordionContainer.appendChild(placeholder);
+        } catch(e){}
+      }
+});
 
 console.log("teachersList for jamia:", jamiaName);
 console.log("teacherList keys:", teacherList);
@@ -1044,12 +1037,10 @@ if (classSelect) {
 }
           content
             .querySelectorAll(".download-tadris-pdf-btn")
-            .forEach((btn) =>
-              btn.addEventListener(
-                "click",
-                handleDownloadTadrisPDF
-              )
-            );
+            .forEach((btn) => {
+              const fn = (typeof window.handleDownloadTadrisPDF === 'function') ? window.handleDownloadTadrisPDF : function(e){ console.warn('Download handler missing'); };
+              btn.addEventListener('click', fn);
+            });
         });
       } catch (err) {
         console.error("renderForCurrentMonth Tadris error:", err);
@@ -1454,6 +1445,62 @@ dDiv.querySelector(".user-admin-tasurat-input").value.trim() || "Koi comment dar
       });
     }
 
+
+    // Delegation for Add Recording buttons (works for dynamically created items)
+    document.addEventListener("click", function(e) {
+      const btn = e.target.closest && e.target.closest('.add-tadris-entry-btn');
+      if (!btn) return;
+      e.preventDefault();
+      // find container (closest .space-y-3 or the p-4 wrapper)
+      const card = btn.closest('.space-y-3') || btn.closest('.p-4') || btn.closest('div');
+      if (!card) return;
+      // collect values
+      const jamiaName = btn.dataset.jamiaName || (card.querySelector('.tadris-teacher-select')?.dataset?.jamiaName) || '';
+      const teacherName = (card.querySelector('.tadris-teacher-select')?.value || '').trim();
+      const className = (card.querySelector('.tadris-class-select')?.value || '').trim();
+      const kitabName = (card.querySelector('.tadris-kitab-select')?.value || '').trim();
+      const date = (card.querySelector('.tadris-date')?.value || '');
+      const tasurat = (card.querySelector('.tadris-tasurat')?.value || '').trim();
+
+      // minimal validation
+      if (!jamiaName || !teacherName || !className || !kitabName || !date) {
+        showNotification('Please select Jamia, Teacher, Class, Kitab and Date before adding.', true);
+        return;
+      }
+
+      // prepare record object
+      const newRec = {
+        jamiaName,
+        teacherName,
+        className,
+        kitabName,
+        date,
+        tasurat: tasurat || '',
+        adminTasurat: '',
+      };
+
+      // push to monthly_reports doc (reportRef)
+      (async function(){
+        try {
+          if (!reportRef) {
+            showNotification('Report reference missing.', true);
+            return;
+          }
+          // get existing
+          const snap = await getDoc(reportRef);
+          const data = snap.exists() ? (snap.data() || {}) : {};
+          const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
+          arr.push(newRec);
+          await setDoc(reportRef, { tadrisRecording: { data: arr, status: 'Pending' } }, { merge: true });
+          showNotification('Recording saved successfully.');
+          // re-render
+          await renderForCurrentMonth();
+        } catch(err) {
+          console.error('Error saving tadris entry:', err);
+          showNotification('Record save failed.', true);
+        }
+      })();
+    }, false);
     // ============================
     // Tabs behavior
     // ============================
@@ -1506,7 +1553,7 @@ dDiv.querySelector(".user-admin-tasurat-input").value.trim() || "Koi comment dar
       if (!sel) return;
       // clear but keep first default option
       sel.innerHTML = '<option value="">-- Sab Jamiaat --</option>';
-      const academicData = Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : [];
+      const academicData = (Array.isArray(window.KARKARDAGI_STRUCTURE) && window.KARKARDAGI_STRUCTURE.length) ? window.KARKARDAGI_STRUCTURE : (Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : []);
       academicData.forEach(j => {
         const name = j.jamiaName || "";
         if (name) sel.innerHTML += `<option value="${name}">${name}</option>`;
@@ -1573,8 +1620,6 @@ dDiv.querySelector(".user-admin-tasurat-input").value.trim() || "Koi comment dar
   </script>
 </body>
 </html>
-
-
 
 
 
