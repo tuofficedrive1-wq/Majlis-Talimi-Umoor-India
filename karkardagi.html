@@ -829,20 +829,35 @@ const handleCreateReportLink = (jamiaName) => {
                     // Add new/updated entries
                     mergedReportData.push(...newReportData);
 
+// --- BEFORE SAVING: ensure month value is defined (fallback to computed month name)
+const monthNameSafe = (typeof month === 'string' && month.trim().length > 0)
+    ? month
+    : getMonthName(typeof monthNum === 'number' ? monthNum : currentReportPeriod.monthNum);
 
-                    const dataToSave = {
-                        karkardagiReport: {
-                            status: mergedReportData.length > 0 ? 'Done' : 'Pending', 
-                            data: mergedReportData
-                        },
-                        // These fields must match the query/indexing in Firebase!
-                        userId: currentUser.uid, 
-                        academicYear: activeYear,
-                        month: month, 
-                        year: yearNum, 
-                        monthNum: monthNum, 
-                        createdAt: serverTimestamp()
-                    };
+// safety: agar phir bhi undefined ho (kuch bohat ajeeb case) to abort karo with message
+if (!monthNameSafe || monthNameSafe === 'Invalid Date') {
+    console.error('Abort save: month name undefined. currentReportPeriod:', currentReportPeriod);
+    showNotification('Report save nahi hua: selected month undefined hai. Console dekhein.', true, JSON.stringify(currentReportPeriod));
+    showLoader(false);
+    return;
+}
+                    
+                    // debug log (apeel karne se pehle hata sakte hain)
+console.debug('Saving monthly report with:', { month: monthNameSafe, yearNum, monthNum, activeYear, mergedReportDataLength: mergedReportData.length });
+
+const dataToSave = {
+    karkardagiReport: {
+        status: mergedReportData.length > 0 ? 'Done' : 'Pending',
+        data: mergedReportData
+    },
+    // Required top-level fields — ensure month is a proper string (no undefined)
+    userId: currentUser.uid,
+    academicYear: activeYear,
+    month: monthNameSafe,
+    year: yearNum,
+    monthNum: monthNum,
+    createdAt: serverTimestamp()
+};
 
                     // NOTE: We are using setDoc with the constructed reportId, merging with existing data
                     await setDoc(reportRef, dataToSave, { merge: true });
@@ -3582,6 +3597,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
