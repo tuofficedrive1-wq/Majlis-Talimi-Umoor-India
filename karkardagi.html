@@ -1219,36 +1219,50 @@ const loadMonthlyReportData = async () => {
     const periodId = data.periodId || '';
     const key = `${jamiaKey}::${teacherId}::${periodId}`;
 
-    // If this is a user_update, store it as an OVERRIDE entry
-    if (data.role === 'user_update') {
-        // Build an override record (pagesTaught may be aggregated inside changedValues)
-        let totalPages = 0;
-        let lastIbarat = '';
-        let lastPageNo = '';
+    // ----- REPLACEMENT START -----
+// If this submission is a user_update, expand changedValues so each periodId gets its own map entry
+if (data.role === 'user_update') {
+    const jamiaKey = data.jamiaId || data.jamiaName || data.jamia || '';
+    const teacherId_local = data.teacherId || '';
 
-        if (Array.isArray(data.changedValues) && data.changedValues.length > 0) {
-            data.changedValues.forEach(cv => {
-                totalPages += parseInt(cv.pagesTaught || 0, 10);
-                if (cv.lastIbarat) lastIbarat = cv.lastIbarat;
-                if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) lastPageNo = cv.lastPageNo;
+    // If changedValues is an array, create per-period entries
+    if (Array.isArray(data.changedValues) && data.changedValues.length > 0) {
+        data.changedValues.forEach(cv => {
+            const perPeriodId = cv.periodId || '';
+            const perKey = `${jamiaKey}::${teacherId_local}::${perPeriodId}`;
+
+            const pages = parseInt(cv.pagesTaught || 0, 10) || 0;
+            const li = cv.lastIbarat || '';
+            const lp = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? cv.lastPageNo : '';
+
+            // mark as user update so renderer gives it precedence
+            teacherSubmissionsMap.set(perKey, {
+                pagesTaught: pages,
+                lastIbarat: li,
+                lastPageNo: lp,
+                isUserUpdate: true,
+                raw: data
             });
-        } else {
-            // Fallback to direct fields if present
-            totalPages = parseInt(data.pagesTaught || 0, 10) || 0;
-            lastIbarat = data.lastIbarat || '';
-            lastPageNo = data.lastPageNo || '';
-        }
+        });
+    } else {
+        // fallback: if no changedValues array, try to use top-level fields (compatibility)
+        const perPeriodId = data.periodId || '';
+        const perKey = `${jamiaKey}::${teacherId_local}::${perPeriodId}`;
+        const pages = parseInt(data.pagesTaught || 0, 10) || 0;
+        const li = data.lastIbarat || '';
+        const lp = (data.lastPageNo !== undefined && data.lastPageNo !== null) ? data.lastPageNo : '';
 
-        // Mark as override so renderer gives it precedence
-        teacherSubmissionsMap.set(key, {
-            pagesTaught: totalPages,
-            lastIbarat,
-            lastPageNo,
+        teacherSubmissionsMap.set(perKey, {
+            pagesTaught: pages,
+            lastIbarat: li,
+            lastPageNo: lp,
             isUserUpdate: true,
             raw: data
         });
-        return; // continue to next docSnap
     }
+    return; // continue to next docSnap
+}
+// ----- REPLACEMENT END -----
 
     // For non-user_update: aggregate only if there is no monthly saved entry AND no user_update override
     const hasMonthlySavedEntry = monthlyReportData.some(entry =>
@@ -3692,6 +3706,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
