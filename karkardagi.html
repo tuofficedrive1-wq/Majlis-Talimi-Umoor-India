@@ -877,46 +877,55 @@ const dataToSave = {
                     await setDoc(reportRef, dataToSave, { merge: true });
 
                     // AFTER await setDoc(reportRef, dataToSave, { merge: true });
-// --- Create user_update docs in teacher_submissions so teacher-form shows updates ---
+// --- WRITE user_update docs to teacher_submissions (one per teacher+jamia) ---
 try {
-    // Group mergedReportData by teacherId so one user_update doc per teacher per month
-    const updatesByTeacher = {};
+    // Group mergedReportData by teacherId + jamiaName (so jamiaId is always present)
+    const updatesMap = {}; // key: `${teacherId}::${jamiaName}` -> { changedValues: [], changedPeriods: Set() }
+
     mergedReportData.forEach(entry => {
         const tid = entry.teacherId || 'unknown';
-        if (!updatesByTeacher[tid]) updatesByTeacher[tid] = [];
-        updatesByTeacher[tid].push({
+        const jamiaName = entry.jamiaName || 'unknown';
+        const mapKey = `${tid}::${jamiaName}`;
+
+        if (!updatesMap[mapKey]) {
+            updatesMap[mapKey] = { teacherId: tid, jamiaName, changedValues: [], changedPeriods: new Set() };
+        }
+
+        updatesMap[mapKey].changedValues.push({
             periodId: entry.periodId,
-            pagesTaught: entry.pagesTaught,
+            pagesTaught: entry.pagesTaught || 0,
             lastIbarat: entry.lastIbarat || '',
             lastPageNo: entry.lastPageNo || ''
         });
+        updatesMap[mapKey].changedPeriods.add(entry.periodId);
     });
 
     const submissionsColl = collection(db, 'teacher_submissions');
 
-    // currentUser is available; use as updatedBy
-    for (const teacherId of Object.keys(updatesByTeacher)) {
-        const changedValuesArray = updatesByTeacher[teacherId];
+    for (const mapKey of Object.keys(updatesMap)) {
+        const rec = updatesMap[mapKey];
 
-        // Build doc data
+        // Build doc data (explicit jamiaName used as jamiaId to ensure matching in loader)
         const userUpdateDoc = {
             role: 'user_update',
-            jamiaId: jamiaFilter === 'all' ? null : jamiaFilter, // ya agar specific jamia ho to woh
-            teacherId: teacherId,
-            submissionMonth: monthNum,         // currentReportPeriod.monthNum
+            jamiaId: rec.jamiaName,             // IMPORTANT: set jamiaId to jamiaName so loader key matches
+            jamiaName: rec.jamiaName,           // also save jamiaName for redundancy
+            teacherId: rec.teacherId,
+            submissionMonth: monthNum,          // currentReportPeriod.monthNum
             submissionYear: yearNum || currentReportPeriod.yearNum,
-            changedValues: changedValuesArray,
-            changedPeriods: changedValuesArray.map(c => c.periodId),
+            changedValues: rec.changedValues,
+            changedPeriods: Array.from(rec.changedPeriods),
             updatedByUserId: currentUser.uid,
             updatedByUserName: userProfileData.displayName || currentUser.email || '',
             updatedAt: serverTimestamp()
         };
 
+        // Create a new document for this teacher+jamia update
         const newDocRef = doc(submissionsColl); // auto id
         await setDoc(newDocRef, userUpdateDoc);
     }
 
-    console.log('User updates written to teacher_submissions for teacher updates.');
+    console.log('User updates written to teacher_submissions for teacher updates (grouped by teacher+jamia).');
 } catch (err) {
     console.error('Error writing user_update docs for teacher_submissions:', err);
 }
@@ -1203,37 +1212,66 @@ const loadMonthlyReportData = async () => {
         const submissionsSnap = await getDocs(submissionsQuery);
 
         submissionsSnap.forEach(docSnap => {
-            // original variables already defined above in the loop
-const data = docSnap.data();
-const jamia = data.jamiaId || data.jamiaName || data.jamia || "unknown";
-const key = `${jamia}::${data.teacherId}::${data.periodId}`;
+    const data = docSnap.data();
+    // Normalize jamia key (safety)
+    const jamiaKey = data.jamiaId || data.jamiaName || data.jamia || '';
+    const teacherId = data.teacherId || '';
+    const periodId = data.periodId || '';
+    const key = `${jamiaKey}::${teacherId}::${periodId}`;
 
-// if this submission is a user_update, always include it so teacher-form can overlay it
-if (data.role === 'user_update') {
-    teacherSubmissionsMap.set(key, {
-        pagesTaught: parseInt(data.changedValues?.reduce((s,c)=>s + (c.pagesTaught||0),0), 10) || 0,
-        lastIbarat: (data.changedValues && data.changedValues[0]?.lastIbarat) || '',
-        lastPageNo: (data.changedValues && data.changedValues[0]?.lastPageNo) || ''
-    });
-    return; // continue to next docSnap
-}
+    // If this is a user_update, store it as an OVERRIDE entry
+    if (data.role === 'user_update') {
+        // Build an override record (pagesTaught may be aggregated inside changedValues)
+        let totalPages = 0;
+        let lastIbarat = '';
+        let lastPageNo = '';
 
-// For non-user_update submissions, skip only if monthly saved entry exists
-const hasMonthlySavedEntry = monthlyReportData.some(entry =>
-    entry.periodId === data.periodId && entry.teacherId === data.teacherId
-);
+        if (Array.isArray(data.changedValues) && data.changedValues.length > 0) {
+            data.changedValues.forEach(cv => {
+                totalPages += parseInt(cv.pagesTaught || 0, 10);
+                if (cv.lastIbarat) lastIbarat = cv.lastIbarat;
+                if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) lastPageNo = cv.lastPageNo;
+            });
+        } else {
+            // Fallback to direct fields if present
+            totalPages = parseInt(data.pagesTaught || 0, 10) || 0;
+            lastIbarat = data.lastIbarat || '';
+            lastPageNo = data.lastPageNo || '';
+        }
 
-// Existing accumulation logic for teacher submissions (keeps older behavior)
-let existing = teacherSubmissionsMap.get(key);
-if (!existing) {
-    existing = { pagesTaught: 0, lastIbarat: '', lastPageNo: '' };
-}
-const pages = parseInt(data.pagesTaught, 10) || 0;
-existing.pagesTaught += pages;
-if (data.lastIbarat) existing.lastIbarat = data.lastIbarat;
-if (data.lastPageNo !== undefined && data.lastPageNo !== null) existing.lastPageNo = data.lastPageNo;
-teacherSubmissionsMap.set(key, existing);
+        // Mark as override so renderer gives it precedence
+        teacherSubmissionsMap.set(key, {
+            pagesTaught: totalPages,
+            lastIbarat,
+            lastPageNo,
+            isUserUpdate: true,
+            raw: data
         });
+        return; // continue to next docSnap
+    }
+
+    // For non-user_update: aggregate only if there is no monthly saved entry AND no user_update override
+    const hasMonthlySavedEntry = monthlyReportData.some(entry =>
+        entry.periodId === periodId && entry.teacherId === teacherId
+    );
+
+    // If monthly saved entry exists AND there is no user_update override already, skip adding aggregated submission
+    if (hasMonthlySavedEntry) {
+        // But still do not overwrite an existing user_update in the map
+        if (!teacherSubmissionsMap.has(key)) return;
+    }
+
+    // Aggregate older teacher-form submissions (sum pages)
+    let existing = teacherSubmissionsMap.get(key);
+    if (!existing) {
+        existing = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+    }
+    const pages = parseInt(data.pagesTaught, 10) || 0;
+    existing.pagesTaught = (existing.pagesTaught || 0) + pages;
+    if (data.lastIbarat) existing.lastIbarat = data.lastIbarat;
+    if (data.lastPageNo !== undefined && data.lastPageNo !== null) existing.lastPageNo = data.lastPageNo;
+    teacherSubmissionsMap.set(key, existing);
+});
 
         console.log('Teacher submissions map:', teacherSubmissionsMap);
 
@@ -3654,6 +3692,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
