@@ -839,7 +839,7 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (Dynamic Month Range: Start to Current) ---
+    // --- SHOW PROFILE (With Admin Priority Fix) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
@@ -849,28 +849,24 @@ function escapeHtml(str) {
 
         try {
             // 1. Semester & Months Determine Karein
-            const mIndex = currentMonthIndex; // Ye wo mahina hai jiski report khuli hai
+            const mIndex = currentMonthIndex;
             let semMonths = [];
             let semTotalDays = 0;
             const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
 
             if (isSem1) {
-                semMonths = [3, 4, 5, 6, 7]; // Apr, May, Jun, Jul, Aug
+                semMonths = [3, 4, 5, 6, 7]; 
                 semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
             } else {
-                semMonths = [8, 9, 10, 11, 0]; // Sep, Oct, Nov, Dec, Jan
+                semMonths = [8, 9, 10, 11, 0]; 
                 semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
             }
 
-            // --- 🛑 LOGIC UPDATE: Sirf Current Month tak dikhana hai ---
-            // Hum check karenge ke current month list mein kahan hai, aur wahan tak kaat lenge.
+            // Current Month tak slice karein
             const cutoffIndex = semMonths.indexOf(mIndex);
             if (cutoffIndex !== -1) {
-                // Agar current month Sep (8) hai, to slice(0, 1) -> sirf Sep dikhayega
-                // Agar current month Nov (10) hai, to slice(0, 3) -> Sep, Oct, Nov dikhayega
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
             }
-            // --------------------------------------------------------
 
             // 2. Database se Data Layen
             const submissionsRef = db.collection('teacher_submissions');
@@ -879,22 +875,48 @@ function escapeHtml(str) {
                 .where('teacherId', '==', teacherId);
                 
             const snap = await q.get();
-            const dataMap = {}; 
+            
+            // --- 🛑 PRIORITY LOGIC START ---
+            // Data Map structure: { periodId: { monthIndex: { pages: 0, isAdmin: false } } }
+            const smartMap = {}; 
 
             snap.forEach(doc => {
                 const d = doc.data();
+                // Filter Ghost Data (0 pages with no text)
                 if (d.role === 'user_update' && parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || !d.lastIbarat.trim())) return;
                 
-                if (!dataMap[d.periodId]) dataMap[d.periodId] = {};
-                if (!dataMap[d.periodId][d.submissionMonth]) dataMap[d.periodId][d.submissionMonth] = 0;
-                dataMap[d.periodId][d.submissionMonth] += parseInt(d.pagesTaught || 0, 10);
+                const pid = d.periodId;
+                const mid = d.submissionMonth;
+                const pages = parseInt(d.pagesTaught || 0, 10);
+                const isUpdate = (d.role === 'user_update');
+
+                if (!smartMap[pid]) smartMap[pid] = {};
+
+                // Agar is mahine ka record pehle se hai
+                const currentSlot = smartMap[pid][mid];
+
+                if (isUpdate) {
+                    // Rule 1: Admin Update hamesha purane data ko OVERWRITE karega
+                    smartMap[pid][mid] = { pages: pages, isAdmin: true };
+                } else {
+                    // Rule 2: Teacher ka data tabhi lo agar wahan pehle se Admin Update NA ho
+                    if (!currentSlot || !currentSlot.isAdmin) {
+                        if (!currentSlot) {
+                            smartMap[pid][mid] = { pages: pages, isAdmin: false };
+                        } else {
+                            // Agar teacher ne tukdon me bheja hai to jama karo (lekin Admin update nahi hai)
+                            smartMap[pid][mid].pages += pages;
+                        }
+                    }
+                }
             });
+            // --- PRIORITY LOGIC END ---
 
             // 3. Teacher Structure
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
             if (!teacherStruct) return;
 
-            // 4. Table HTML Construct Karein
+            // 4. Table HTML Construction
             let tableHtml = `
                 <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
                     <thead class="bg-emerald-100 text-emerald-900">
@@ -902,7 +924,6 @@ function escapeHtml(str) {
                             <th class="p-2 border border-emerald-300" rowspan="2" style="position:sticky; right:0; background:#d1fae5; z-index:10;">کتاب / کلاس</th>
             `;
 
-            // Dynamic Headers (Sirf filtered mahine)
             semMonths.forEach(m => {
                 const mName = getMonthNameUrdu(m);
                 tableHtml += `<th class="p-2 border border-emerald-300" colspan="2">${mName}</th>`;
@@ -928,7 +949,7 @@ function escapeHtml(str) {
                     <tbody class="bg-white">
             `;
 
-            // 5. Rows
+            // 5. Rows Generation
             let hasRows = false;
             teacherStruct.periods.forEach(p => {
                 const pSem = p.semester || "1";
@@ -937,19 +958,13 @@ function escapeHtml(str) {
                 if (isCurrentSemPeriod) {
                     hasRows = true;
                     const totalBookPages = parseInt(p.totalPages || 0, 10);
-                    let rowCumulativeTaught = 0; // Sirf dikhaye gaye mahino ka total
-
-                    // Note: "Ab tak padhaya" column ke liye humein database ke SAARE available data ka total chahiye ya sirf displayed months ka?
-                    // Logic ke hisaab se "Cumulative" ka matlab start se ab tak hota hai.
-                    // Kyunki humne 'semMonths' ko current month par kaat diya hai, to ye loop wese bhi wahin tak chalega.
-                    // Iska matlab 'rowCumulativeTaught' bilkul sahi calculation dega (Start se Current Month tak).
+                    let rowCumulativeTaught = 0;
 
                     tableHtml += `<tr class="hover:bg-gray-50">
                         <td class="p-2 border urdu-font text-right font-medium" style="position:sticky; right:0; background:white; z-index:5;">
                             ${p.bookName} <br><span class="text-xs text-gray-500">(${p.className})</span>
                         </td>`;
 
-                    // Loop through filtered months
                     semMonths.forEach(m => {
                         const academicMonths = currentYearData.academicMonths || {};
                         const workingDays = academicMonths[m] || 0;
@@ -960,7 +975,12 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        const taught = (dataMap[p.id] && dataMap[p.id][m]) ? dataMap[p.id][m] : 0;
+                        // Data map se value uthayen (Smart Logic applied)
+                        let taught = 0;
+                        if (smartMap[p.id] && smartMap[p.id][m]) {
+                            taught = smartMap[p.id][m].pages;
+                        }
+                        
                         rowCumulativeTaught += taught;
 
                         let taughtColor = "text-gray-400";
@@ -1011,6 +1031,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
