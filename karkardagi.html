@@ -770,14 +770,13 @@ const handleCreateReportLink = (jamiaName) => {
         const initApp = () => {
              showLoader(true);
 
-            // Function Definition (Moved inside initApp)
             const handleSaveMonthlyReport = async () => {
                 if (!activeYear) return;
                 showLoader(true);
 
                 try {
                     const { month, yearNum, monthNum } = currentReportPeriod; 
-                    // CRITICAL DOC ID CONSTRUCTION: Using the full Firebase ID format
+                    // CRITICAL DOC ID CONSTRUCTION
                     const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
                     const reportRef = doc(db, 'monthly_reports', reportId);
 
@@ -785,18 +784,19 @@ const handleCreateReportLink = (jamiaName) => {
                     // Only save data for the currently filtered Jamia or ALL if filter is 'all'
                     const jamiaFilter = jamiaFilterSelect.value;
                     
+                    // Arrays to track what specifically changed for Teacher Forms
+                    const modifiedUpdatesMap = {}; 
+
                     reportingContainer.querySelectorAll('.reporting-row').forEach(row => {
                         const rowJamiaName = row.dataset.jamiaName;
                         
                         // Check if row belongs to the selected jamia or if 'all' is selected
                         if (jamiaFilter === 'all' || rowJamiaName === jamiaFilter) {
                             
-                             // Use the input value for the current month's taught pages
                              const pagesTaughtInput = row.querySelector('.pages-taught-input');
                              const inputValue = pagesTaughtInput.value.trim();
-                             const pagesTaught = inputValue === '' ? 0 : parseInt(inputValue, 10) || 0; // Ensures 0 if empty or invalid
+                             const pagesTaught = inputValue === '' ? 0 : parseInt(inputValue, 10) || 0; 
                              
-                             // Hum isey hamesha push karenge taaki document mein entry ban jaaye.
                              const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
                              let achievement = 0;
                              
@@ -804,9 +804,9 @@ const handleCreateReportLink = (jamiaName) => {
                                  achievement = Math.round((pagesTaught / monthlyTarget) * 100);
                              }
                              
-                             // Re-calculate kaifiyat for final save assurance
                              const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
                              
+                             // 1. Prepare data for Monthly Reports (Admin Record - Always Save All)
                             newReportData.push({
                                 periodId: row.dataset.periodId,
                                 jamiaName: rowJamiaName,
@@ -814,28 +814,46 @@ const handleCreateReportLink = (jamiaName) => {
                                 teacherName: row.dataset.teacherName, 
                                 bookName: row.dataset.bookName, 
                                 monthlyTarget: monthlyTarget,
-                                pagesTaught: pagesTaught, // MONTHLY taught pages
+                                pagesTaught: pagesTaught, 
                                 achievement: achievement,
                                 kaifiyat: kaifiyat,
                                 lastIbarat: row.dataset.lastIbarat || '',
                                 lastPageNo: row.dataset.lastPageNo || ''
-                            }); // 🎯 FIX 1: Missing Semicolon (;) laga diya gaya hai.
+                            });
+
+                            // 2. Prepare data for Teacher Submissions (ONLY IF MODIFIED)
+                            // Sirf tab add karein agar Admin ne is row ko chhera hai (modified flag from Step 1)
+                            if (row.dataset.isModified === "true") {
+                                const tid = row.dataset.teacherId;
+                                const mapKey = `${tid}::${rowJamiaName}`;
+
+                                if (!modifiedUpdatesMap[mapKey]) {
+                                    modifiedUpdatesMap[mapKey] = { 
+                                        teacherId: tid, 
+                                        jamiaName: rowJamiaName, 
+                                        changedValues: [], 
+                                        changedPeriods: new Set() 
+                                    };
+                                }
+
+                                modifiedUpdatesMap[mapKey].changedValues.push({
+                                    periodId: row.dataset.periodId,
+                                    pagesTaught: pagesTaught,
+                                    lastIbarat: row.dataset.lastIbarat || '',
+                                    lastPageNo: row.dataset.lastPageNo || ''
+                                });
+                                modifiedUpdatesMap[mapKey].changedPeriods.add(row.dataset.periodId);
+                            }
                         }
                     });
 
-                    // --- CRITICAL MERGE LOGIC: Handle only updating the filtered Jamia's data ---
-                    // Since we are using setDoc({merge: true}), we need to read the existing data first, 
-                    // replace the updated/new data, and then save the full merged list.
-                    
-                    // 1. Existing data load karein
+                    // --- PART A: SAVE TO MONTHLY REPORTS (Main Admin Record) ---
                     const existingReportSnap = await getDoc(reportRef);
-                    // 2. 🎯 FIX 2: mergedReportData ke initialization mein extra [] hata diya gaya hai.
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
                     
-                    // Filter out existing entries for the Jamia(t) being reported (either single or all)
                     const jamiaNamesInReport = jamiaFilter === 'all' 
-                                                ? (userProfileData.jamiaatList || []) // All user's jamiaat
-                                                : [jamiaFilter]; // Only the selected jamia
+                                                ? (userProfileData.jamiaatList || []) 
+                                                : [jamiaFilter]; 
 
                     // Remove old entries for the reported jamia(t)
                     mergedReportData = mergedReportData.filter(entry => !jamiaNamesInReport.includes(entry.jamiaName));
@@ -843,94 +861,62 @@ const handleCreateReportLink = (jamiaName) => {
                     // Add new/updated entries
                     mergedReportData.push(...newReportData);
 
-// --- BEFORE SAVING: ensure month value is defined (fallback to computed month name)
-const monthNameSafe = (typeof month === 'string' && month.trim().length > 0)
-    ? month
-    : getMonthName(typeof monthNum === 'number' ? monthNum : currentReportPeriod.monthNum);
+                    const monthNameSafe = (typeof month === 'string' && month.trim().length > 0)
+                        ? month
+                        : getMonthName(typeof monthNum === 'number' ? monthNum : currentReportPeriod.monthNum);
 
-// safety: agar phir bhi undefined ho (kuch bohat ajeeb case) to abort karo with message
-if (!monthNameSafe || monthNameSafe === 'Invalid Date') {
-    console.error('Abort save: month name undefined. currentReportPeriod:', currentReportPeriod);
-    showNotification('Report save nahi hua: selected month undefined hai. Console dekhein.', true, JSON.stringify(currentReportPeriod));
-    showLoader(false);
-    return;
-}
+                    if (!monthNameSafe || monthNameSafe === 'Invalid Date') {
+                        throw new Error("Month name invalid.");
+                    }
                     
-                    // debug log (apeel karne se pehle hata sakte hain)
-console.debug('Saving monthly report with:', { month: monthNameSafe, yearNum, monthNum, activeYear, mergedReportDataLength: mergedReportData.length });
+                    const dataToSave = {
+                        karkardagiReport: {
+                            status: mergedReportData.length > 0 ? 'Done' : 'Pending',
+                            data: mergedReportData
+                        },
+                        userId: currentUser.uid,
+                        academicYear: activeYear,
+                        month: monthNameSafe,
+                        year: yearNum,
+                        monthNum: monthNum,
+                        createdAt: serverTimestamp()
+                    };
 
-const dataToSave = {
-    karkardagiReport: {
-        status: mergedReportData.length > 0 ? 'Done' : 'Pending',
-        data: mergedReportData
-    },
-    // Required top-level fields — ensure month is a proper string (no undefined)
-    userId: currentUser.uid,
-    academicYear: activeYear,
-    month: monthNameSafe,
-    year: yearNum,
-    monthNum: monthNum,
-    createdAt: serverTimestamp()
-};
-
-                    // NOTE: We are using setDoc with the constructed reportId, merging with existing data
                     await setDoc(reportRef, dataToSave, { merge: true });
 
-                    // AFTER await setDoc(reportRef, dataToSave, { merge: true });
-// --- WRITE user_update docs to teacher_submissions (one per teacher+jamia) ---
-try {
-    // Group mergedReportData by teacherId + jamiaName (so jamiaId is always present)
-    const updatesMap = {}; // key: `${teacherId}::${jamiaName}` -> { changedValues: [], changedPeriods: Set() }
+                    // --- PART B: SAVE USER UPDATES (Only for Modified Teachers) ---
+                    const submissionsColl = collection(db, 'teacher_submissions');
 
-    mergedReportData.forEach(entry => {
-        const tid = entry.teacherId || 'unknown';
-        const jamiaName = entry.jamiaName || 'unknown';
-        const mapKey = `${tid}::${jamiaName}`;
+                    for (const mapKey of Object.keys(modifiedUpdatesMap)) {
+                        const rec = modifiedUpdatesMap[mapKey];
 
-        if (!updatesMap[mapKey]) {
-            updatesMap[mapKey] = { teacherId: tid, jamiaName, changedValues: [], changedPeriods: new Set() };
-        }
+                        const userUpdateDoc = {
+                            role: 'user_update',
+                            jamiaId: rec.jamiaName,             
+                            jamiaName: rec.jamiaName,           
+                            teacherId: rec.teacherId,
+                            submissionMonth: monthNum,          
+                            submissionYear: yearNum || currentReportPeriod.yearNum,
+                            changedValues: rec.changedValues,
+                            changedPeriods: Array.from(rec.changedPeriods),
+                            updatedByUserId: currentUser.uid,
+                            updatedByUserName: userProfileData.displayName || currentUser.email || '',
+                            updatedAt: serverTimestamp()
+                        };
 
-        updatesMap[mapKey].changedValues.push({
-            periodId: entry.periodId,
-            pagesTaught: entry.pagesTaught || 0,
-            lastIbarat: entry.lastIbarat || '',
-            lastPageNo: entry.lastPageNo || ''
-        });
-        updatesMap[mapKey].changedPeriods.add(entry.periodId);
-    });
-
-    const submissionsColl = collection(db, 'teacher_submissions');
-
-    for (const mapKey of Object.keys(updatesMap)) {
-        const rec = updatesMap[mapKey];
-
-        // Build doc data (explicit jamiaName used as jamiaId to ensure matching in loader)
-        const userUpdateDoc = {
-            role: 'user_update',
-            jamiaId: rec.jamiaName,             // IMPORTANT: set jamiaId to jamiaName so loader key matches
-            jamiaName: rec.jamiaName,           // also save jamiaName for redundancy
-            teacherId: rec.teacherId,
-            submissionMonth: monthNum,          // currentReportPeriod.monthNum
-            submissionYear: yearNum || currentReportPeriod.yearNum,
-            changedValues: rec.changedValues,
-            changedPeriods: Array.from(rec.changedPeriods),
-            updatedByUserId: currentUser.uid,
-            updatedByUserName: userProfileData.displayName || currentUser.email || '',
-            updatedAt: serverTimestamp()
-        };
-
-        // Create a new document for this teacher+jamia update
-        const newDocRef = doc(submissionsColl); // auto id
-        await setDoc(newDocRef, userUpdateDoc);
-    }
-
-    console.log('User updates written to teacher_submissions for teacher updates (grouped by teacher+jamia).');
-} catch (err) {
-    console.error('Error writing user_update docs for teacher_submissions:', err);
-}
+                        // Create a new document for this teacher+jamia update
+                        const newDocRef = doc(submissionsColl); 
+                        await setDoc(newDocRef, userUpdateDoc);
+                    }
                     
-                    // After saving, reload all data to update the cumulative view correctly
+                    // --- CLEANUP ---
+                    // Reset modified flags in UI
+                    reportingContainer.querySelectorAll('.reporting-row[data-is-modified="true"]').forEach(row => {
+                        row.dataset.isModified = "false";
+                        row.classList.remove('bg-yellow-50');
+                    });
+
+                    // After saving, reload all data 
                     await loadMonthlyReportData(); 
                     showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
                     renderReportingTab(); 
@@ -2632,6 +2618,15 @@ let rowHtml = `
             
             // Attach input event listener for dynamic calculation 
             reportingContainer.querySelectorAll('.pages-taught-input').forEach(input => {
+                // TRACKING CHANGE: Mark row as modified when user types
+                input.addEventListener('change', (e) => {
+                    const row = e.target.closest('.reporting-row');
+                    if (row) {
+                        row.dataset.isModified = "true"; // Ye naya flag hai
+                        row.classList.add('bg-yellow-50'); // Visual hint for admin
+                    }
+                });
+
                 input.addEventListener('input', (e) => {
                     const row = e.target.closest('.reporting-row');
                     const semester = row.dataset.periodSemester;
@@ -2657,9 +2652,8 @@ let rowHtml = `
                     kaifiyatCell.className = `kaifiyat-cell font-bold ${colorClass}`;
                     
                     row.dataset.kaifiyat = kaifiyat;
-                    row.dataset.pagesTaught = taught; // Update monthly pages data attribute
+                    row.dataset.pagesTaught = taught; 
                     
-                    // NEW CUMULATIVE LOGIC: Recalculate and update Cumulative Taught locally (for display only)
                     updateCumulativeDataLocally(row.dataset.periodId, semester, currentMonthNum, currentYearNum, taught, row);
                 });
             });
@@ -3770,6 +3764,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
