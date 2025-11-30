@@ -1209,8 +1209,6 @@ if (editTeacherForm) {
             if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
             const { yearNum, monthNum } = currentReportPeriod;
-            
-            // Current Structure (ID matching ke liye)
             const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
             try {
@@ -1246,9 +1244,41 @@ if (editTeacherForm) {
 
                 const submissionsSnap = await getDocs(submissionsQuery);
 
+                // --- STEP 1: Process Admin Updates First (High Priority) ---
                 submissionsSnap.forEach(docSnap => {
                     const data = docSnap.data() || {};
+                    if (data.role !== 'user_update') return; // Sirf Updates uthao
+
+                    const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
+                    const teacherId = (data.teacherId || '').toString().trim();
                     
+                    // Smart Matching Logic for Updates too
+                    let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
+                    if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
+                    const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
+
+                    if (Array.isArray(data.changedValues)) {
+                        data.changedValues.forEach(cv => {
+                            // GHOST FILTER: Agar 0 hai aur ibarat nahi hai, to ye update bekaar hai
+                            const pTaught = parseInt(cv.pagesTaught || 0, 10);
+                            if (pTaught === 0 && (!cv.lastIbarat || cv.lastIbarat.trim() === '')) return;
+
+                            const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
+                            teacherSubmissionsMap.set(pKey, {
+                                pagesTaught: pTaught,
+                                lastIbarat: cv.lastIbarat,
+                                lastPageNo: cv.lastPageNo,
+                                isUserUpdate: true // Yeh 'VIP' flag hai
+                            });
+                        });
+                    }
+                });
+
+                // --- STEP 2: Process Teacher Data (Low Priority) ---
+                submissionsSnap.forEach(docSnap => {
+                    const data = docSnap.data() || {};
+                    if (data.role === 'user_update') return; // Updates hum pehle hi process kar chuke hain
+
                     const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
                     const teacherId = (data.teacherId || '').toString().trim();
                     let periodId = (data.periodId || '').toString().trim();
@@ -1268,9 +1298,7 @@ if (editTeacherForm) {
                                     p.bookName.trim() === (data.bookName || '').trim() && 
                                     p.className.trim() === (data.className || '').trim()
                                 );
-                                if (matchingPeriod) {
-                                    periodId = matchingPeriod.id;
-                                }
+                                if (matchingPeriod) periodId = matchingPeriod.id;
                             }
                         }
                     }
@@ -1278,52 +1306,26 @@ if (editTeacherForm) {
                     const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
                     const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
 
-                    // --- LOGIC START ---
-                    if (data.role === 'user_update') {
-                        if (Array.isArray(data.changedValues)) {
-                            data.changedValues.forEach(cv => {
-                                // 🛑 GHOST FILTER (Ye Naya Code Hai)
-                                // Agar Admin ne 0 save kiya hai aur koi ibarat nahi likhi, to ye ghalti se save hua hai.
-                                // Isay ignore karein taake teacher ka data show ho sake.
-                                const pTaught = parseInt(cv.pagesTaught || 0, 10);
-                                if (pTaught === 0 && (!cv.lastIbarat || cv.lastIbarat.trim() === '')) {
-                                    return; // Skip this bad update
-                                }
-
-                                const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
-                                teacherSubmissionsMap.set(pKey, {
-                                    pagesTaught: pTaught,
-                                    lastIbarat: cv.lastIbarat,
-                                    lastPageNo: cv.lastPageNo,
-                                    isUserUpdate: true // Valid update
-                                });
-                            });
-                        }
-                    } else {
-                        // Teacher Data Logic
-                        if (!periodId) return;
-
-                        const existing = teacherSubmissionsMap.get(mapKey);
-                        // Agar pehle se koi Valid User Update hai, to teacher ko ignore karo
-                        if (existing && existing.isUserUpdate) {
-                            return; 
-                        }
-
-                        let existingData = teacherSubmissionsMap.get(mapKey);
-                        if (!existingData) {
-                            existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
-                        }
-                        
-                        existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
-                        // Text data ke liye priority: agar naya hai to replace karo
-                        if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
-                        if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
-                        
-                        teacherSubmissionsMap.set(mapKey, existingData);
+                    // CHECK: Kya is jagah pehle se 'VIP' (User Update) data baitha hai?
+                    const existing = teacherSubmissionsMap.get(mapKey);
+                    if (existing && existing.isUserUpdate) {
+                        return; // Haan, Admin update hai, isliye Teacher ka data ignore karo
                     }
+
+                    // Agar koi update nahi hai, to Teacher ka data aggregate karo
+                    let existingData = teacherSubmissionsMap.get(mapKey);
+                    if (!existingData) {
+                        existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+                    }
+                    
+                    existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
+                    if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
+                    if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
+                    
+                    teacherSubmissionsMap.set(mapKey, existingData);
                 });
 
-                console.log('Loaded Data Map (Filtered):', teacherSubmissionsMap);
+                console.log('Loaded Data Map (Priority Fixed):', teacherSubmissionsMap);
 
             } catch (error) {
                 console.error(`Error loading report data:`, error);
@@ -3864,6 +3866,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
