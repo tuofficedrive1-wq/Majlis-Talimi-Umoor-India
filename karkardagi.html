@@ -1209,6 +1209,9 @@ if (editTeacherForm) {
             if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
             const { yearNum, monthNum } = currentReportPeriod;
+            
+            // Current Structure (for ID matching)
+            const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
             try {
                 // 1) Load Saved Admin Reports
@@ -1246,77 +1249,81 @@ if (editTeacherForm) {
                 submissionsSnap.forEach(docSnap => {
                     const data = docSnap.data() || {};
                     
-                    // IDs ko saaf karein
+                    const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
                     const teacherId = (data.teacherId || '').toString().trim();
-                    const periodId = (data.periodId || '').toString().trim();
+                    let periodId = (data.periodId || '').toString().trim();
                     
-                    // Jamia ke har mumkin naam/ID ki list banayen (Smart Match)
-                    const jName = (data.jamiaName || '').toString();
-                    const jId = (data.jamiaId || '').toString();
-                    
-                    // Hum data ko in sab keys ke sath map karenge taake match pakka ho
-                    const possibleJamiaNames = new Set([
-                        jName,              // Asli Name
-                        jName.trim(),       // Bina Space ke
-                        jId,                // ID
-                        jId.trim()          // ID bina space ke
-                    ]);
-
-                    // Agar Teacher/Period ID nahi hai to skip karein
                     if (!teacherId) return;
 
-                    // Har mumkin naam ke liye data ko Map mein set karein
-                    possibleJamiaNames.forEach(jamiaKey => {
-                        if (!jamiaKey) return;
+                    // --- SMART MATCHING LOGIC (ID Repair) ---
+                    // Agar Period ID structure me nahi mil rahi, to Name se dhoondo
+                    let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
+                    // Agar exact name match nahi hua, to trim karke check karo
+                    if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
 
-                        // Key banayen
-                        const mapKey = `${jamiaKey}::${teacherId}::${periodId}`; // PeriodID empty ho sakta hai agar purana data ho
-
-                        // CHECK 1: Agar ye 'User Update' (Admin Edit) hai
-                        if (data.role === 'user_update') {
-                            if (Array.isArray(data.changedValues)) {
-                                data.changedValues.forEach(cv => {
-                                    // User update ke liye bhi period specific key banayen
-                                    const pKey = `${jamiaKey}::${teacherId}::${cv.periodId}`;
-                                    teacherSubmissionsMap.set(pKey, {
-                                        pagesTaught: cv.pagesTaught,
-                                        lastIbarat: cv.lastIbarat,
-                                        lastPageNo: cv.lastPageNo,
-                                        isUserUpdate: true // High Priority Flag
-                                    });
-                                });
-                            }
-                        } 
-                        // CHECK 2: Agar ye Teacher Submission hai
-                        else {
-                            if (!periodId) return; 
-
-                            // Agar pehle se Admin Update (isUserUpdate: true) majood hai, to Teacher data ignore karein
-                            const existing = teacherSubmissionsMap.get(mapKey);
-                            if (existing && existing.isUserUpdate) {
-                                return; // Admin ka hukm sar aankhon par, teacher ka data skip
-                            }
-
-                            // Aggregate Logic: Agar teacher ne tukdon me bheja ho to jama karein
-                            let existingData = teacherSubmissionsMap.get(mapKey);
-                            if (!existingData) {
-                                existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
-                            }
+                    if (jamiaData) {
+                        const teacherData = jamiaData.teachers?.find(t => t.id === teacherId);
+                        if (teacherData && teacherData.periods) {
+                            // Check karo ke kya ye periodId abhi bhi exist karta hai?
+                            const periodExists = teacherData.periods.some(p => p.id === periodId);
                             
-                            // Values ko jodein (sirf pagesTaught judega, baqi replace hoga)
-                            // Note: Hum har variation ke liye alag aggregate kar rahe hain taake collision na ho
-                            existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
-                            
-                            // Text data updated wala rakhein
-                            if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
-                            if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
-                            
-                            teacherSubmissionsMap.set(mapKey, existingData);
+                            if (!periodExists) {
+                                // Agar ID nahi mili (Delete ho gayi thi), to Kitab aur Class ke naam se nayi ID dhoondo
+                                const matchingPeriod = teacherData.periods.find(p => 
+                                    p.bookName.trim() === (data.bookName || '').trim() && 
+                                    p.className.trim() === (data.className || '').trim()
+                                );
+                                
+                                if (matchingPeriod) {
+                                    // Purani ID ko Nayi ID se replace kar do
+                                    periodId = matchingPeriod.id;
+                                    console.log("Fixed Broken Link for:", data.bookName);
+                                }
+                            }
                         }
-                    });
+                    }
+                    // ----------------------------------------
+
+                    // Ab Final Key banao (Corrected ID ke sath)
+                    // Note: Hum Jamia Name ko key me use kar rahe hain jo Structure me hai
+                    const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
+                    const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
+
+                    // Logic for User Updates vs Teacher Submission
+                    if (data.role === 'user_update') {
+                        if (Array.isArray(data.changedValues)) {
+                            data.changedValues.forEach(cv => {
+                                const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
+                                teacherSubmissionsMap.set(pKey, {
+                                    pagesTaught: cv.pagesTaught,
+                                    lastIbarat: cv.lastIbarat,
+                                    lastPageNo: cv.lastPageNo,
+                                    isUserUpdate: true
+                                });
+                            });
+                        }
+                    } else {
+                        if (!periodId) return;
+
+                        const existing = teacherSubmissionsMap.get(mapKey);
+                        if (existing && existing.isUserUpdate) {
+                            return; 
+                        }
+
+                        let existingData = teacherSubmissionsMap.get(mapKey);
+                        if (!existingData) {
+                            existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+                        }
+                        
+                        existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
+                        if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
+                        if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
+                        
+                        teacherSubmissionsMap.set(mapKey, existingData);
+                    }
                 });
 
-                console.log('Loaded Data Map (Smart Matching Enabled):', teacherSubmissionsMap);
+                console.log('Loaded Data Map (Auto-Repaired):', teacherSubmissionsMap);
 
             } catch (error) {
                 console.error(`Error loading report data:`, error);
@@ -3857,6 +3864,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
