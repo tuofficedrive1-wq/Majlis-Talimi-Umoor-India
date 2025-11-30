@@ -1311,30 +1311,34 @@
                         throw new Error("Report data not found.");
                     }
                     
-                    const reportData = docSnap.data(); // Full report data
+                    const reportData = docSnap.data();
                     const existingData = reportData[sectionKey].data;
                     
                     if (index >= 0 && index < existingData.length) {
-                        // Jis item ko delete karna hai usay pakad lein
+                        // Jis item ko delete karna hai usay pehle save kar lein
                         const itemToDelete = existingData[index];
 
                         // Array se item remove karein
                         const updatedData = existingData.filter((_, idx) => idx !== index);
                         
-                        // 1. Update Monthly Report (Admin View)
+                        // 1. Update Monthly Report (Admin ke liye)
                         await updateDoc(reportDocRef, {
                             [`${sectionKey}.data`]: updatedData 
                         });
 
-                        // 2. SPECIAL SYNC: Teacher Submission Delete (With Safety Checks)
+                        // 2. SPECIAL SYNC: Teacher Submission Delete
                         if (sectionKey === 'karkardagiReport' && itemToDelete) {
                              const { teacherId, jamiaName, periodId } = itemToDelete;
                              
-                             // FIX: Safely retrieve Month/Year (database me 'year' ho sakta hai 'yearNum' nahi)
+                             // FIX: Year aur Month ko safely get karein
                              const rMonth = reportData.monthNum;
+                             // Year kabhi 'year' hota hai kabhi 'yearNum', dono check karein
                              const rYear = reportData.year !== undefined ? reportData.year : reportData.yearNum;
 
-                             // CHECK: Agar inmein se koi bhi cheez missing hai to Query mat chalao (Error se bachne ke liye)
+                             // DEBUG LOG: Console mein values check karne ke liye
+                             console.log("Attempting to delete Teacher Submission:", { teacherId, jamiaName, periodId, rMonth, rYear });
+
+                             // SAFETY CHECK: Agar inmein se koi bhi value missing hai to Query NA chalayen
                              if (teacherId && jamiaName && periodId && rMonth !== undefined && rYear !== undefined) {
                                  const batch = writeBatch(db);
                                  const subRef = collection(db, 'teacher_submissions');
@@ -1355,14 +1359,19 @@
                                  
                                  if (!subSnap.empty) {
                                      await batch.commit();
-                                     console.log("Synced deletion with Teacher Submissions.");
+                                     console.log("Successfully deleted from teacher_submissions.");
+                                     showNotification("Entry aur Teacher Submission dono delete ho gaye!");
+                                 } else {
+                                     console.warn("Teacher submission document nahi mila (shayad pehle hi delete ho gaya ho).");
+                                     showNotification("Entry delete ho gayi (Teacher submission nahi mila).");
                                  }
                              } else {
-                                 console.warn("Skipping teacher_submission sync: Some fields were undefined.", { teacherId, jamiaName, periodId, rMonth, rYear });
+                                 console.error("Missing fields, skipping sync delete:", { teacherId, jamiaName, periodId, rMonth, rYear });
+                                 alert("Note: Ye entry Admin panel se delete ho gayi hai, lekin Teacher Form se shayad na hate kyunki iska kuch data (Year/ID) missing tha.");
                              }
+                        } else {
+                            showNotification("Entry successfully deleted!");
                         }
-                        
-                        showNotification("Entry successfully deleted!");
                         
                         // UI Update
                         const updatedReportIndex = fetchedAdminReports.findIndex(r => r.id === reportId);
@@ -1585,5 +1594,6 @@
     </script>
 </body>
 </html>
+
 
 
