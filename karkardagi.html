@@ -776,12 +776,10 @@ const handleCreateReportLink = (jamiaName) => {
 
                 try {
                     const { month, yearNum, monthNum } = currentReportPeriod; 
-                    // CRITICAL DOC ID CONSTRUCTION
                     const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
                     const reportRef = doc(db, 'monthly_reports', reportId);
 
                     const newReportData = [];
-                    // Only save data for the currently filtered Jamia or ALL if filter is 'all'
                     const jamiaFilter = jamiaFilterSelect.value;
                     
                     // Arrays to track what specifically changed for Teacher Forms
@@ -798,15 +796,28 @@ const handleCreateReportLink = (jamiaName) => {
                              const pagesTaught = inputValue === '' ? 0 : parseInt(inputValue, 10) || 0; 
                              
                              const monthlyTarget = parseInt(row.dataset.monthlyTarget, 10) || 0;
-                             let achievement = 0;
                              
+                             // --- SMART FILTER (YE NAYA LOGIC HAI) ---
+                             // Check: Agar Pages 0 hain, Koi Ibarat nahi hai, AUR Admin ne Edit nahi kiya...
+                             // To isay Save list mein mat daalo.
+                             const lastIbarat = row.dataset.lastIbarat || '';
+                             const lastPageNo = row.dataset.lastPageNo || '';
+                             const isModified = row.dataset.isModified === "true";
+
+                             // Agar teacher ne kuch nahi bhara aur admin ne bhi hath nahi lagaya to SKIP karo
+                             if (pagesTaught === 0 && !lastIbarat && !lastPageNo && !isModified) {
+                                 return; // Skip this row
+                             }
+                             // ----------------------------------------
+
+                             let achievement = 0;
                              if (pagesTaught > 0 && monthlyTarget > 0) { 
                                  achievement = Math.round((pagesTaught / monthlyTarget) * 100);
                              }
                              
                              const { kaifiyat } = calculateKaifiyatAndStyle(achievement, parseInt(row.dataset.monthNum, 10), row.dataset.periodSemester);
                              
-                             // 1. Prepare data for Monthly Reports (Admin Record - Always Save All)
+                             // 1. Prepare data for Monthly Reports (Admin Record)
                             newReportData.push({
                                 periodId: row.dataset.periodId,
                                 jamiaName: rowJamiaName,
@@ -817,13 +828,12 @@ const handleCreateReportLink = (jamiaName) => {
                                 pagesTaught: pagesTaught, 
                                 achievement: achievement,
                                 kaifiyat: kaifiyat,
-                                lastIbarat: row.dataset.lastIbarat || '',
-                                lastPageNo: row.dataset.lastPageNo || ''
+                                lastIbarat: lastIbarat,
+                                lastPageNo: lastPageNo
                             });
 
                             // 2. Prepare data for Teacher Submissions (ONLY IF MODIFIED)
-                            // Sirf tab add karein agar Admin ne is row ko chhera hai (modified flag from Step 1)
-                            if (row.dataset.isModified === "true") {
+                            if (isModified) {
                                 const tid = row.dataset.teacherId;
                                 const mapKey = `${tid}::${rowJamiaName}`;
 
@@ -839,15 +849,15 @@ const handleCreateReportLink = (jamiaName) => {
                                 modifiedUpdatesMap[mapKey].changedValues.push({
                                     periodId: row.dataset.periodId,
                                     pagesTaught: pagesTaught,
-                                    lastIbarat: row.dataset.lastIbarat || '',
-                                    lastPageNo: row.dataset.lastPageNo || ''
+                                    lastIbarat: lastIbarat,
+                                    lastPageNo: lastPageNo
                                 });
                                 modifiedUpdatesMap[mapKey].changedPeriods.add(row.dataset.periodId);
                             }
                         }
                     });
 
-                    // --- PART A: SAVE TO MONTHLY REPORTS (Main Admin Record) ---
+                    // --- PART A: SAVE TO MONTHLY REPORTS ---
                     const existingReportSnap = await getDoc(reportRef);
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
                     
@@ -868,7 +878,7 @@ const handleCreateReportLink = (jamiaName) => {
                     if (!monthNameSafe || monthNameSafe === 'Invalid Date') {
                         throw new Error("Month name invalid.");
                     }
-                    
+
                     const dataToSave = {
                         karkardagiReport: {
                             status: mergedReportData.length > 0 ? 'Done' : 'Pending',
@@ -884,7 +894,7 @@ const handleCreateReportLink = (jamiaName) => {
 
                     await setDoc(reportRef, dataToSave, { merge: true });
 
-                    // --- PART B: SAVE USER UPDATES (Only for Modified Teachers) ---
+                    // --- PART B: SAVE USER UPDATES (Only Modified) ---
                     const submissionsColl = collection(db, 'teacher_submissions');
 
                     for (const mapKey of Object.keys(modifiedUpdatesMap)) {
@@ -904,19 +914,16 @@ const handleCreateReportLink = (jamiaName) => {
                             updatedAt: serverTimestamp()
                         };
 
-                        // Create a new document for this teacher+jamia update
                         const newDocRef = doc(submissionsColl); 
                         await setDoc(newDocRef, userUpdateDoc);
                     }
                     
                     // --- CLEANUP ---
-                    // Reset modified flags in UI
                     reportingContainer.querySelectorAll('.reporting-row[data-is-modified="true"]').forEach(row => {
                         row.dataset.isModified = "false";
                         row.classList.remove('bg-yellow-50');
                     });
 
-                    // After saving, reload all data 
                     await loadMonthlyReportData(); 
                     showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
                     renderReportingTab(); 
@@ -3704,6 +3711,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
