@@ -436,11 +436,11 @@ loadTeacherUserUpdates(
         checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year);
     }
 
-    // ----------------- REPLACE existing loadTeacherUserUpdates WITH THIS -----------------
+    // ----------------- REPLACE loadTeacherUserUpdates WITH THIS (FILTERED VERSION) -----------------
 async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
     try {
         const submissionsRef = db.collection('teacher_submissions');
-        // fetch all matching user_update docs (no orderBy to avoid index error)
+        
         const q = submissionsRef
             .where('jamiaId', '==', jamiaId)
             .where('teacherId', '==', teacherId)
@@ -451,7 +451,7 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
         const snap = await q.get();
         if (snap.empty) return;
 
-        // pick latest manually
+        // Pick latest update manually
         let latestDoc = null;
         snap.forEach(d => {
             const data = d.data();
@@ -465,70 +465,78 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
         if (!latestDoc) return;
         const ud = latestDoc.data;
 
-        // --- ensure we have an array to collect per-period changes ---
         const changesSummary = [];
+        let hasValidUpdates = false; // Track agar waqai koi update valid hai
 
         if (Array.isArray(ud.changedValues)) {
             ud.changedValues.forEach(cv => {
+                
+                // --- 🛑 GHOST FILTER (Ye Naya Code Hai) ---
+                // Agar Admin ne 0 save kiya hai aur koi ibarat nahi likhi, to ye ghalti se save hua hai.
+                // Isay ignore karein taake teacher ko purana data hi nazar aaye.
+                const pTaughtCheck = parseInt(cv.pagesTaught || 0, 10);
+                const lIbaratCheck = (cv.lastIbarat || '').trim();
+                
+                // Agar Pages 0 hain AUR Ibarat khali hai -> to ye update bekaar hai, SKIP karo
+                if (pTaughtCheck === 0 && lIbaratCheck === '') {
+                    return; 
+                }
+                // ------------------------------------------
+
+                hasValidUpdates = true; // Agar yahan tak pohanch gaye matlab update asli hai
                 const pid = cv.periodId;
 
-                // find inputs for this period
+                // Find inputs
                 const pagesInp = document.querySelector(`.pages-taught-input[data-period-id="${pid}"]`);
                 const lastInp  = document.querySelector(`.last-lesson-input[data-period-id="${pid}"]`);
                 const pnoInp   = document.querySelector(`.page-number-input[data-period-id="${pid}"]`);
 
-                // previous values (before overwrite) — fallback to '-' if not present
+                // Previous values (Fallback)
                 const prevPages = pagesInp && pagesInp.value !== undefined && pagesInp.value !== '' ? pagesInp.value : '-';
                 const prevLast  = lastInp  && lastInp.value  !== undefined && lastInp.value !== ''  ? lastInp.value  : '-';
                 const prevPno   = pnoInp   && pnoInp.value   !== undefined && pnoInp.value !== ''   ? pnoInp.value   : '-';
 
-                // new values from user update (or fallback to existing)
+                // New values
                 const newPages = (cv.pagesTaught !== undefined && cv.pagesTaught !== null) ? String(cv.pagesTaught) : (pagesInp && pagesInp.value ? pagesInp.value : '-');
                 const newLast  = (cv.lastIbarat !== undefined && cv.lastIbarat !== null) ? String(cv.lastIbarat) : (lastInp && lastInp.value ? lastInp.value : '-');
                 const newPno   = (cv.lastPageNo !== undefined && cv.lastPageNo !== null) ? String(cv.lastPageNo) : (pnoInp && pnoInp.value ? pnoInp.value : '-');
 
-                // apply the new values into the form (so teacher sees updated numbers)
+                // Apply values
                 if (pagesInp) pagesInp.value = newPages;
                 if (lastInp)  lastInp.value  = newLast;
                 if (pnoInp)   pnoInp.value   = newPno;
 
-                // add highlight & badge
-                const card = pagesInp?.closest('.period-card') || pagesInp?.closest('.reporting-row') || pagesInp?.parentElement;
-                if (card) {
-                    card.classList.add('updated-highlight');
-                    // --- Replace existing badge-insert logic with this robust version ---
-if (card && !card.querySelector('.user-badge')) {
-    const badge = document.createElement('span');
-    badge.className = 'user-badge';
-    badge.textContent = 'تعلیمی ذمہ دار نے اپ ڈیٹ کیا';
+                // Highlight & Badge logic
+                const card = pagesInp?.closest('.period-card') || pagesInp?.closest('.reporting-row') || pagesInp?.parentElement?.parentElement?.parentElement; // Adjust selector based on your HTML structure (usually card div)
+                
+                // Card dhoondne ka try karein (Tailwind classes ke hisab se)
+                const actualCard = pagesInp ? pagesInp.closest('div.bg-gray-50') : null;
 
-    // Try to find a meaningful header/container to attach the badge
-    let header = card.querySelector('.mb-2, .font-semibold, .card-header, .text-sm, .card-title') || card.firstElementChild;
-    if (header && header.nodeType === Node.ELEMENT_NODE) {
-        // safest: use prepend if available
-        if (typeof header.prepend === 'function') {
-            header.prepend(badge);
-        } else {
-            // fallback to insertBefore on header's parent
-            header.parentNode.insertBefore(badge, header);
-        }
-    // ... upper badge logic ...
-    } else {
-        // header might be a text node or null — insert badge at top of card
-        card.insertBefore(badge, card.firstChild);
-    }
-} // ye 'if (card && !badge)' ka closing hai
+                if (actualCard) {
+                    actualCard.classList.add('updated-highlight');
+                    
+                    if (!actualCard.querySelector('.user-badge')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'user-badge';
+                        badge.textContent = 'تعلیمی ذمہ دار نے اپ ڈیٹ کیا';
 
-}  // <--- YE WALA BRACKET ADD KAREIN (ye 'if (card)' ko band karega)
-
-// find readable period label if possible
-let periodLabel = pid;
-if (card) {
-                    const labelEl = card.querySelector('.font-semibold, .text-sm, .mb-2, h3') || null;
-                    if (labelEl && labelEl.textContent) periodLabel = labelEl.textContent.trim();
+                        let header = actualCard.querySelector('.mb-2, .font-semibold') || actualCard.firstElementChild;
+                        if (header) {
+                            if (typeof header.prepend === 'function') header.prepend(badge);
+                            else header.parentNode.insertBefore(badge, header);
+                        } else {
+                            actualCard.insertBefore(badge, actualCard.firstChild);
+                        }
+                    }
                 }
 
-                // store summary
+                // Label for summary
+                let periodLabel = pid;
+                if (actualCard) {
+                    const labelEl = actualCard.querySelector('.font-semibold, .text-emerald-700') || null;
+                    if (labelEl && labelEl.textContent) periodLabel = labelEl.textContent.replace('تعلیمی ذمہ دار نے اپ ڈیٹ کیا', '').trim();
+                }
+
                 changesSummary.push({
                     periodLabel,
                     prev: { pages: prevPages, last: prevLast, pno: prevPno },
@@ -537,12 +545,15 @@ if (card) {
             });
         }
 
-        // keep form readonly for teacher
+        // Agar koi valid update nahi mila, to function yahi rok do (Message mat dikhao)
+        if (!hasValidUpdates) return;
+
+        // Keep form readonly
         document.querySelectorAll('.pages-taught-input, .last-lesson-input, .page-number-input').forEach(el => {
             el.readOnly = true;
         });
 
-        // Build Urdu message showing per-period changes
+        // Show Message
         const formMessage = document.getElementById('form-message');
         if (formMessage) {
             const when = ud.updatedAt && typeof ud.updatedAt.toDate === 'function'
@@ -550,7 +561,6 @@ if (card) {
                 : (ud.updatedAt && ud.updatedAt.toMillis ? new Date(ud.updatedAt.toMillis()).toLocaleString() : '');
 
             let html = `<div class="text-right"><strong>اس رپورٹ میں تعلیمی ذمہ دار نے کچھ تبدیلیاں کی ہیں${ when ? ' (' + escapeHtml(when) + ')' : '' } :</strong></div>`;
-
             html += `<ul class="mt-2 text-right" style="list-style:none; padding-right:0; line-height:1.8;">`;
 
             if (changesSummary.length === 0) {
@@ -559,21 +569,15 @@ if (card) {
                 changesSummary.forEach(ch => {
                     html += `<li class="mb-2">`;
                     html += `<strong>${escapeHtml(ch.periodLabel)}</strong><br>`;
-                    if (ch.prev.pages !== ch.now.pages) {
-                        html += `صفحے: پہلے <u>${escapeHtml(ch.prev.pages)}</u> تھے، اب <u>${escapeHtml(ch.now.pages)}</u> کر دیے گئے ہیں۔<br>`;
-                    } else {
-                        html += `صفحے: <u>${escapeHtml(ch.now.pages)}</u>۔<br>`;
-                    }
-                    if (ch.prev.last !== ch.now.last) {
-                        html += `آخری عبارت: پہلے "<u>${escapeHtml(ch.prev.last)}</u>" تھی، اب "<u>${escapeHtml(ch.now.last)}</u>" کر دی گئی ہے۔<br>`;
-                    }
-                    if (ch.prev.pno !== ch.now.pno) {
-                        html += `صفحہ نمبر: پہلے <u>${escapeHtml(ch.prev.pno)}</u> تھا، اب <u>${escapeHtml(ch.now.pno)}</u> کر دیا گیا ہے۔<br>`;
-                    }
+                    if (ch.prev.pages !== ch.now.pages) html += `صفحے: پہلے <u>${escapeHtml(ch.prev.pages)}</u> تھے، اب <u>${escapeHtml(ch.now.pages)}</u> کر دیے گئے ہیں۔<br>`;
+                    else html += `صفحے: <u>${escapeHtml(ch.now.pages)}</u>۔<br>`;
+                    
+                    if (ch.prev.last !== ch.now.last) html += `آخری عبارت: پہلے "<u>${escapeHtml(ch.prev.last)}</u>" تھی، اب "<u>${escapeHtml(ch.now.last)}</u>" کر دی گئی ہے۔<br>`;
+                    
+                    if (ch.prev.pno !== ch.now.pno) html += `صفحہ نمبر: پہلے <u>${escapeHtml(ch.prev.pno)}</u> تھا، اب <u>${escapeHtml(ch.now.pno)}</u> کر دیا گیا ہے۔<br>`;
                     html += `</li>`;
                 });
             }
-
             html += `</ul>`;
             html += `<div class="mt-2"><small>یہ تبدیلیاں فارم میں نمایاں کر دی گئی ہیں۔</small></div>`;
 
@@ -803,6 +807,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
