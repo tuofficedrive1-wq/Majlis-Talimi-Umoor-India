@@ -678,6 +678,104 @@
             }
         };
 
+// Add this function in your main JS (same file jahan db initialized)
+async function applyUserUpdatesToReportingForVisibleRows() {
+    try {
+        // iterate over visible reporting rows and apply latest user_update per teacher
+        const rows = Array.from(document.querySelectorAll('.reporting-row'));
+        if (!rows.length) return;
+
+        // Group rows by jamiaName+teacherId so we can query once per teacher
+        const keys = new Map();
+        rows.forEach(r => {
+            const jamia = r.dataset.jamiaName;
+            const tid   = r.dataset.teacherId;
+            const month = parseInt(r.dataset.monthNum, 10);
+            const year  = parseInt(r.dataset.yearNum || r.dataset.reportYear || currentReportPeriod.yearNum, 10);
+            const k = `${jamia}::${tid}::${month}::${year}`;
+            if (!keys.has(k)) keys.set(k, { jamia, tid, month, year, rows: [] });
+            keys.get(k).rows.push(r);
+        });
+
+        for (const [k, info] of keys.entries()) {
+            const { jamia, tid, month, year, rows: targetRows } = info;
+            // Build two queries (jamiaName saved into either 'jamiaName' or 'jamiaId')
+            const subRef = collection(db, 'teacher_submissions');
+
+            const q1 = query(
+                subRef,
+                where('teacherId', '==', tid),
+                where('jamiaName', '==', jamia),
+                where('submissionMonth', '==', month),
+                where('submissionYear', '==', year),
+                where('role', '==', 'user_update')
+            );
+
+            const q2 = query(
+                subRef,
+                where('teacherId', '==', tid),
+                where('jamiaId', '==', jamia),
+                where('submissionMonth', '==', month),
+                where('submissionYear', '==', year),
+                where('role', '==', 'user_update')
+            );
+
+            const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+            const docs = [];
+            snap1.forEach(d => docs.push({ id: d.id, data: d.data() }));
+            snap2.forEach(d => docs.push({ id: d.id, data: d.data() }));
+
+            if (docs.length === 0) continue;
+
+            // Choose latest by updatedAt (if timestamp available), else latest by serverTimestamp fallback
+            docs.sort((a, b) => {
+                const ta = a.data.updatedAt ? (a.data.updatedAt.toMillis ? a.data.updatedAt.toMillis() : a.data.updatedAt) : 0;
+                const tb = b.data.updatedAt ? (b.data.updatedAt.toMillis ? b.data.updatedAt.toMillis() : b.data.updatedAt) : 0;
+                return tb - ta;
+            });
+            const latest = docs[0].data;
+            if (!latest || !Array.isArray(latest.changedValues)) continue;
+
+            // Apply each changedValues entry to DOM rows (match by periodId)
+            latest.changedValues.forEach(cv => {
+                // filter out ghost/empty updates
+                const pT = parseInt(cv.pagesTaught || 0, 10);
+                const lI = (cv.lastIbarat || '').toString().trim();
+                const lP = (cv.lastPageNo || '').toString().trim();
+                if (pT === 0 && lI === '' && lP === '') return; // skip useless update
+
+                // Find the row(s) for this periodId
+                targetRows.forEach(r => {
+                    if (r.dataset.periodId === cv.periodId) {
+                        // set dataset and inputs if present
+                        r.dataset.lastIbarat = cv.lastIbarat || '';
+                        r.dataset.lastPageNo = cv.lastPageNo || '';
+
+                        const pagesInp = r.querySelector('.pages-taught-input');
+                        const lastInp  = r.querySelector('.last-lesson-input');
+                        const pnoInp   = r.querySelector('.page-number-input');
+
+                        if (pagesInp && (cv.pagesTaught !== undefined && cv.pagesTaught !== null)) {
+                            pagesInp.value = String(cv.pagesTaught);
+                        }
+                        if (lastInp && (cv.lastIbarat !== undefined && cv.lastIbarat !== null)) {
+                            lastInp.value = String(cv.lastIbarat);
+                        }
+                        if (pnoInp && (cv.lastPageNo !== undefined && cv.lastPageNo !== null)) {
+                            pnoInp.value = String(cv.lastPageNo);
+                        }
+
+                        // visual highlight
+                        r.classList.add('updated-highlight');
+                    }
+                });
+            });
+        }
+    } catch (err) {
+        console.error("applyUserUpdatesToReportingForVisibleRows error:", err);
+    }
+}
+        
         // Accordion State Capture Logic (Only for Setup)
         const captureAccordionState = () => {
             openAccordionIds.clear();
@@ -927,6 +1025,7 @@ const handleCreateReportLink = (jamiaName) => {
                     await loadMonthlyReportData(); 
                     showNotification(`Monthly Karkardagi report for ${month} ${yearNum} saved!`);
                     renderReportingTab(); 
+                    await applyUserUpdatesToReportingForVisibleRows();
                 
                 } catch (error) {
                     console.error("Error saving monthly report:", error);
@@ -3874,6 +3973,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
