@@ -1066,11 +1066,6 @@ const handleCreateReportLink = (jamiaName) => {
             );
         }
     }
-                // NEW: Reset Button Listener
-                if (e.target.closest('.reset-teacher-data-btn')) {
-                    handleResetTeacherData(e);
-                    return; 
-                }
 });
             
             // Delegation for Monthly Munasib Image Download - NEW
@@ -2537,25 +2532,11 @@ let rowHtml = `
     <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
     
     ${index === 0 ? `
-         <td rowspan="${teacherPeriods.length}" class="text-center align-middle px-1">
-             <div class="flex flex-col gap-2 items-center justify-center w-full">
-                 
-                 <button type="button"
-                         class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 text-xs font-bold py-1 px-2 border border-emerald-200 rounded bg-emerald-50 w-full flex justify-center items-center"
-                         title="Download Image">
-                     <i class="fas fa-image mr-1"></i> Image
-                 </button>
-                 
-                 <button type="button"
-                         class="reset-teacher-data-btn text-red-600 hover:text-red-800 text-xs font-bold py-1 px-2 border border-red-200 rounded bg-red-50 w-full flex justify-center items-center"
-                         data-teacher-id="${teacher.id}"
-                         data-jamia-name="${jamiaName}"
-                         data-teacher-name="${teacher.name}"
-                         title="Reset Data">
-                     <i class="fas fa-trash-alt mr-1"></i> Reset
-                 </button>
-
-             </div>
+         <td rowspan="${teacherPeriods.length}">
+             <button type="button"
+                     class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
+                 <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
+             </button>
          </td>
     ` : ''}
 </tr>`;
@@ -3689,76 +3670,6 @@ let rowHtml = `
                 }
             });
         });
-
-// --- FUNCTION TO DELETE DATA (RESET) ---
-            const handleResetTeacherData = async (e) => {
-                const btn = e.target.closest('.reset-teacher-data-btn');
-                if (!btn) return;
-
-                const teacherId = btn.dataset.teacherId;
-                const jamiaName = btn.dataset.jamiaName;
-                const teacherName = btn.dataset.teacherName;
-                const { monthNum, yearNum } = currentReportPeriod;
-
-                // Confirm Alert
-                if (!confirm(`⚠ Alert!\n\nKya aap "${teacherName}" ka sara data DELETE karna chahte hain?\n\nTeacher ka form UNLOCK ho jayega.`)) {
-                    return;
-                }
-
-                showLoader(true);
-                try {
-                    const batch = writeBatch(db);
-                    
-                    // 1. Delete Teacher Submissions (Original Forms)
-                    const subRef = collection(db, 'teacher_submissions');
-                    const q = query(
-                        subRef, 
-                        where('teacherId', '==', teacherId),
-                        where('jamiaName', '==', jamiaName), // Ensure jamia matches
-                        where('submissionMonth', '==', monthNum),
-                        where('submissionYear', '==', yearNum)
-                    );
-                    
-                    const subSnap = await getDocs(q);
-                    subSnap.forEach(doc => {
-                        batch.delete(doc.ref);
-                    });
-
-                    // 2. Remove from Admin Monthly Report (Locally Saved Data)
-                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
-                    const reportRef = doc(db, 'monthly_reports', reportId);
-                    const reportSnap = await getDoc(reportRef);
-                    
-                    if (reportSnap.exists()) {
-                        const data = reportSnap.data();
-                        let arr = data.karkardagiReport?.data || [];
-                        
-                        // Filter out this teacher's data
-                        const newArr = arr.filter(item => !(item.teacherId === teacherId && item.jamiaName === jamiaName));
-                        
-                        // Only update if changes happened
-                        if (arr.length !== newArr.length) {
-                            batch.update(reportRef, {
-                                "karkardagiReport.data": newArr
-                            });
-                        }
-                    }
-
-                    await batch.commit();
-                    
-                    showNotification(`${teacherName} ka data reset ho gaya.`);
-                    
-                    // Reload Data
-                    await loadMonthlyReportData();
-                    renderReportingTab();
-
-                } catch (err) {
-                    console.error("Reset Error:", err);
-                    showNotification("Error aayi.", true, err.message);
-                } finally {
-                    showLoader(false);
-                }
-            };
         
         // Ensure initial active tab is styled correctly
         document.addEventListener('DOMContentLoaded', () => {
@@ -3787,6 +3698,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
