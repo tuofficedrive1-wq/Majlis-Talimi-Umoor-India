@@ -1107,29 +1107,49 @@ if (editTeacherForm) {
             showLoader(true);
             
             try {
+                // 1. User Data Fetching
                 if (!isInitialLoad) {
                     const userDocRef = doc(db, 'users', currentUser.uid);
                     const userDocSnap = await getDoc(userDocRef);
                     if (userDocSnap.exists()) {
                         userProfileData = userDocSnap.data(); 
                         allAcademicYearsData = userDocSnap.data().academicYears || {};
-                    } else { showNotification("User profile not found.", true); return; }
+                    } else { 
+                        showNotification("User profile not found.", true);
+                        // Yahan return kar rahe hain, lekin logout nahi kar rahe.
+                        showLoader(false);
+                        return; 
+                    }
                 } else {
                     allAcademicYearsData = userProfileData.academicYears || {};
                 }
                 
+                // 2. Populate Dropdown
                 populateYearSelector(); 
                 
-                // 🛑 SAFETY CHECK (New Addition)
-                // Agar activeYear set nahi ho paya, to yahi ruk jayen taaki crash na ho
+                // 3. AUTO-FIX: Agar Active Year null hai, to dropdown se pehla saal utha lein
                 if (!activeYear) {
-                    console.warn("Active Year not set yet.");
+                    const yearKeys = Object.keys(allAcademicYearsData).sort().reverse();
+                    if (yearKeys.length > 0) {
+                        // Sabse latest saal ko active set karein
+                        activeYear = yearKeys[0];
+                        activeYearSelect.value = activeYear;
+                        console.log("Auto-selected Active Year:", activeYear);
+                    }
+                }
+
+                // 4. Ab Check karein (Agar ab bhi null hai, matlab user naya hai)
+                if (!activeYear) {
+                    console.warn("Koi saal मौजूद nahi hai. Naya saal banayein.");
+                    // Crash na hone dein, bas loader hata kar user ko naya saal banane dein
+                    academicMonthsSetup.classList.add('hidden');
+                    reportingContainer.innerHTML = '<p class="text-yellow-700 font-bold text-center mt-4">Reporting shuru karne ke liye pehle "Setup Structure" mein naya saal banayein.</p>';
                     showLoader(false);
                     return; 
                 }
 
-                // IMPORTANT: Ensure currentReportPeriod's yearNum aligns with the loaded activeYear
-                // Ab ye line crash nahi karegi kyunki humne upar check laga diya hai
+                // 5. Active Year set hone ke baad Logic Update karein
+                // Ensure currentReportPeriod's yearNum aligns with the activeYear
                  const academicYearParts = activeYear.split('-');
                  const academicYearStart = parseInt(academicYearParts[0], 10);
                  const academicYearEnd = parseInt(academicYearParts[1], 10);
@@ -1143,9 +1163,9 @@ if (editTeacherForm) {
                      reportingYearNum = currentReportPeriod.yearNum || academicYearStart;
                  }
                  currentReportPeriod.yearNum = reportingYearNum;
-                 updateReportPeriod({}); // Refresh display with correct yearNum
+                 updateReportPeriod({}); // Refresh display
                 
-                // We load the report data here, and then refresh the UI
+                // 6. Report Load karein
                 await loadMonthlyReportData(); 
                 refreshFullUI();
 
@@ -3678,6 +3698,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
