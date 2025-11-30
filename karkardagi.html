@@ -1209,6 +1209,7 @@ if (editTeacherForm) {
             if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
             const { yearNum, monthNum } = currentReportPeriod;
+            // Structure for name fallback
             const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
             try {
@@ -1244,40 +1245,53 @@ if (editTeacherForm) {
 
                 const submissionsSnap = await getDocs(submissionsQuery);
 
-                // --- STEP 1: Process Admin Updates First (High Priority) ---
+                // --- POWERFUL LOGIC: Track Updated IDs ---
+                const updatedPeriodIds = new Set(); // Jin periods ko admin ne cheda hai
+
+                // STEP A: Pehle Admin Updates Process Karein (VIP)
                 submissionsSnap.forEach(docSnap => {
                     const data = docSnap.data() || {};
-                    if (data.role !== 'user_update') return; // Sirf Updates uthao
+                    if (data.role !== 'user_update') return;
 
                     const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
                     const teacherId = (data.teacherId || '').toString().trim();
                     
-                    // Smart Matching Logic for Updates too
+                    // Smart Name Match
                     let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
                     if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
                     const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
 
                     if (Array.isArray(data.changedValues)) {
                         data.changedValues.forEach(cv => {
-                            // GHOST FILTER: Agar 0 hai aur ibarat nahi hai, to ye update bekaar hai
+                            // Ghost Filter (Optional: Agar 0 hai aur text nahi hai to skip)
                             const pTaught = parseInt(cv.pagesTaught || 0, 10);
                             if (pTaught === 0 && (!cv.lastIbarat || cv.lastIbarat.trim() === '')) return;
 
                             const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
+                            
+                            // Save to Map
                             teacherSubmissionsMap.set(pKey, {
                                 pagesTaught: pTaught,
                                 lastIbarat: cv.lastIbarat,
                                 lastPageNo: cv.lastPageNo,
-                                isUserUpdate: true // Yeh 'VIP' flag hai
+                                isUserUpdate: true
                             });
+
+                            // IS PERIOD ID KO BLOCK LIST MEIN DAAL DO
+                            updatedPeriodIds.add(cv.periodId);
                         });
                     }
                 });
 
-                // --- STEP 2: Process Teacher Data (Low Priority) ---
+                // STEP B: Ab Teacher Data Process Karein (Lekin Blocked walo ko chhod dein)
                 submissionsSnap.forEach(docSnap => {
                     const data = docSnap.data() || {};
-                    if (data.role === 'user_update') return; // Updates hum pehle hi process kar chuke hain
+                    if (data.role === 'user_update') return; // Updates done
+
+                    // Agar ye Period ID pehle hi Update ho chuki hai, to Teacher ka data Phenk do
+                    if (data.periodId && updatedPeriodIds.has(data.periodId)) {
+                        return; // 🛑 BLOCKED: Admin ka data pehle se majood hai
+                    }
 
                     const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
                     const teacherId = (data.teacherId || '').toString().trim();
@@ -1285,7 +1299,7 @@ if (editTeacherForm) {
                     
                     if (!teacherId) return;
 
-                    // --- SMART MATCHING LOGIC (ID Repair) ---
+                    // ID Repair Logic (Agar Period ID change ho gayi ho)
                     let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
                     if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
 
@@ -1306,13 +1320,7 @@ if (editTeacherForm) {
                     const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
                     const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
 
-                    // CHECK: Kya is jagah pehle se 'VIP' (User Update) data baitha hai?
-                    const existing = teacherSubmissionsMap.get(mapKey);
-                    if (existing && existing.isUserUpdate) {
-                        return; // Haan, Admin update hai, isliye Teacher ka data ignore karo
-                    }
-
-                    // Agar koi update nahi hai, to Teacher ka data aggregate karo
+                    // Aggregate Logic
                     let existingData = teacherSubmissionsMap.get(mapKey);
                     if (!existingData) {
                         existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
@@ -1325,7 +1333,7 @@ if (editTeacherForm) {
                     teacherSubmissionsMap.set(mapKey, existingData);
                 });
 
-                console.log('Loaded Data Map (Priority Fixed):', teacherSubmissionsMap);
+                console.log('Loaded Data Map (Priority Fixed with Blocking):', teacherSubmissionsMap);
 
             } catch (error) {
                 console.error(`Error loading report data:`, error);
@@ -3866,6 +3874,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
