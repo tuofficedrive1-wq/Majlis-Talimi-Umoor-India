@@ -1317,69 +1317,54 @@
                     if (index >= 0 && index < existingData.length) {
                         const itemToDelete = existingData[index];
 
-                        // 1. Array se item remove karein (Admin Panel Update)
+                        // 1. Admin Report se remove karein
                         const updatedData = existingData.filter((_, idx) => idx !== index);
                         
                         await updateDoc(reportDocRef, {
                             [`${sectionKey}.data`]: updatedData 
                         });
 
-                        // 2. SPECIAL SYNC: Teacher Submission Delete (Robust Logic)
+                        // 2. SPECIAL SYNC: Teacher Submission Delete (POWERFUL VERSION)
                         if (sectionKey === 'karkardagiReport' && itemToDelete) {
-                             const { teacherId, jamiaName, periodId } = itemToDelete;
+                             const { teacherId, periodId } = itemToDelete; // JamiaName hata diya
                              const rMonth = reportData.monthNum;
                              const rYear = reportData.year !== undefined ? reportData.year : reportData.yearNum;
 
-                             console.log("Deleting Teacher Sub:", { teacherId, jamiaName, periodId, rMonth, rYear });
+                             console.log("Force Deleting Teacher Sub:", { teacherId, periodId, rMonth, rYear });
 
-                             if (teacherId && jamiaName && periodId && rMonth !== undefined && rYear !== undefined) {
+                             if (teacherId && periodId && rMonth !== undefined && rYear !== undefined) {
                                  const batch = writeBatch(db);
                                  const subRef = collection(db, 'teacher_submissions');
                                  
-                                 // QUERY 1: Try finding by 'jamiaId' (Standard Teacher Form)
-                                 const q1 = query(
+                                 // SIMPLIFIED POWER QUERY:
+                                 // Hum Jamia Name check nahi kar rahe, sirf Period ID check kar rahe hain.
+                                 // Period ID unique hoti hai, isliye ye safe hai aur har copy ko pakad lega.
+                                 const q = query(
                                      subRef, 
                                      where('teacherId', '==', teacherId),
-                                     where('jamiaId', '==', jamiaName), // Use jamiaId field
                                      where('periodId', '==', periodId),
                                      where('submissionMonth', '==', rMonth),
                                      where('submissionYear', '==', rYear)
                                  );
                                  
-                                 // QUERY 2: Try finding by 'jamiaName' (User Updates / Older Data)
-                                 const q2 = query(
-                                     subRef, 
-                                     where('teacherId', '==', teacherId),
-                                     where('jamiaName', '==', jamiaName), // Use jamiaName field
-                                     where('periodId', '==', periodId),
-                                     where('submissionMonth', '==', rMonth),
-                                     where('submissionYear', '==', rYear)
-                                 );
-
-                                 // Dono queries chalayen
-                                 const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-                                 
+                                 const subSnap = await getDocs(q);
                                  let deletedCount = 0;
-
-                                 snap1.forEach(doc => { batch.delete(doc.ref); deletedCount++; });
-                                 snap2.forEach(doc => { 
-                                     // Check taake same doc do baar add na ho (agar wo dono queries me match ho)
-                                     if (!snap1.docs.some(d => d.id === doc.id)) {
-                                         batch.delete(doc.ref);
-                                         deletedCount++;
-                                     }
+                                 
+                                 subSnap.forEach(doc => {
+                                     batch.delete(doc.ref);
+                                     deletedCount++;
                                  });
                                  
                                  if (deletedCount > 0) {
                                      await batch.commit();
-                                     console.log(`Successfully deleted ${deletedCount} docs from teacher_submissions.`);
-                                     showNotification("Entry aur Teacher Submission dono delete ho gaye!");
+                                     console.log(`Successfully deleted ${deletedCount} docs (Force Mode).`);
+                                     showNotification(`Entry aur ${deletedCount} Teacher Submissions delete ho gaye!`);
                                  } else {
-                                     console.warn("Teacher submission nahi mila. Sirf Admin report se delete hua.");
-                                     showNotification("Admin Report se delete ho gaya (Teacher Form data nahi mila).");
+                                     console.warn("Teacher submission nahi mila.");
+                                     showNotification("Admin Report se delete ho gaya (Teacher data nahi mila).");
                                  }
                              } else {
-                                 console.error("Missing fields:", { teacherId, jamiaName, periodId, rMonth, rYear });
+                                 console.error("Missing fields:", { teacherId, periodId, rMonth, rYear });
                              }
                         } else {
                             showNotification("Entry successfully deleted!");
@@ -1606,6 +1591,7 @@
     </script>
 </body>
 </html>
+
 
 
 
