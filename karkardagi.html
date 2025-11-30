@@ -1211,7 +1211,7 @@ if (editTeacherForm) {
             const { yearNum, monthNum } = currentReportPeriod;
 
             try {
-                // 1) Load Saved Admin Reports (Monthly Reports Collection)
+                // 1) Load Saved Admin Reports
                 const reportsCollectionRef = collection(db, 'monthly_reports');
                 const q = query(
                     reportsCollectionRef,
@@ -1224,7 +1224,6 @@ if (editTeacherForm) {
                     allYearReportsData.push(docSnap.data());
                 });
 
-                // Get current month's saved report
                 const currentReport = allYearReportsData.find(
                     report => report.year === yearNum && report.monthNum === monthNum
                 );
@@ -1234,7 +1233,7 @@ if (editTeacherForm) {
                     monthlyReportData = currentReport.karkardagiReport?.data || [];
                 }
 
-                // 2) Load Teacher Submissions & User Updates
+                // 2) Load Teacher Submissions
                 const submissionsRef = collection(db, 'teacher_submissions');
                 const submissionsQuery = query(
                     submissionsRef,
@@ -1244,60 +1243,64 @@ if (editTeacherForm) {
 
                 const submissionsSnap = await getDocs(submissionsQuery);
 
-                // Process Priority: User Update > Teacher Submission
                 submissionsSnap.forEach(docSnap => {
                     const data = docSnap.data() || {};
-                    const jamiaKey = (data.jamiaId || data.jamiaName || '').toString().trim();
+                    
+                    // FIX: Jamia Name ko TRIM MAT KAREIN (Exact match ke liye)
+                    const jamiaKey = (data.jamiaId || data.jamiaName || '').toString(); 
                     const teacherId = (data.teacherId || '').toString().trim();
+                    const periodId = (data.periodId || '').toString().trim();
 
-                    // Agar ye 'user_update' hai (yani Admin ne edit kiya hai)
+                    // Agar IDs missing hain to skip karein
+                    if (!jamiaKey || !teacherId) return;
+
+                    // Key banayen
+                    // Note: periodId empty ho sakta hai agar purana data ho
+                    const mapKey = `${jamiaKey}::${teacherId}::${periodId}`;
+
+                    // CHECK: Agar ye 'User Update' (Admin Edit) hai
                     if (data.role === 'user_update') {
                         if (Array.isArray(data.changedValues)) {
                             data.changedValues.forEach(cv => {
-                                const perKey = `${jamiaKey}::${teacherId}::${cv.periodId}`;
-                                teacherSubmissionsMap.set(perKey, {
+                                const pKey = `${jamiaKey}::${teacherId}::${cv.periodId}`;
+                                teacherSubmissionsMap.set(pKey, {
                                     pagesTaught: cv.pagesTaught,
                                     lastIbarat: cv.lastIbarat,
                                     lastPageNo: cv.lastPageNo,
-                                    isUserUpdate: true // Mark as high priority
+                                    isUserUpdate: true // High Priority
                                 });
                             });
                         }
                     } 
-                    // Agar ye Teacher ki submission hai
+                    // CHECK: Agar ye Teacher Submission hai
                     else {
-                        const periodId = (data.periodId || '').toString().trim();
-                        // Agar periodId nahi hai to skip karein
-                        if(!periodId) return;
+                        if (!periodId) return; // Period ID zaroori hai
 
-                        const baseKey = `${jamiaKey}::${teacherId}::${periodId}`;
-                        
-                        // Check karein agar pehle se User Update majood hai to Teacher data ko ignore karein
-                        const existing = teacherSubmissionsMap.get(baseKey);
+                        // Agar pehle se Admin Update majood hai, to Teacher data ignore karein
+                        const existing = teacherSubmissionsMap.get(mapKey);
                         if (existing && existing.isUserUpdate) {
-                            return; // Admin update has priority, skip teacher data
+                            return;
                         }
 
-                        // Agar user update nahi hai, to teacher data store karein
-                        // Aggregate logic: agar teacher ne 2 baar bheja hai to sum karein
-                        let existingData = teacherSubmissionsMap.get(baseKey);
+                        // Aggregate logic (agar teacher ne tukdon me bheja ho)
+                        let existingData = teacherSubmissionsMap.get(mapKey);
                         if (!existingData) {
                             existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
                         }
                         
                         existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
-                        if(data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
-                        if(data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
+                        if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
+                        if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
                         
-                        teacherSubmissionsMap.set(baseKey, existingData);
+                        teacherSubmissionsMap.set(mapKey, existingData);
                     }
                 });
 
-                console.log('Final Data Map:', teacherSubmissionsMap);
+                console.log('Loaded Data Map:', teacherSubmissionsMap);
 
             } catch (error) {
-                console.error(`Error fetching monthly data:`, error);
-                showNotification("Monthly report load error.", true, error.message);
+                console.error(`Error loading report data:`, error);
+                showNotification("Report data load error.", true, error.message);
             }
         };
 
@@ -3834,6 +3837,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
