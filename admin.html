@@ -345,7 +345,8 @@
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
-        import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, updateDoc, getDocs, deleteField, Timestamp, addDoc, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+        // Niche wali line mein 'writeBatch' add kiya gaya hai
+        import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, updateDoc, getDocs, deleteField, Timestamp, addDoc, orderBy, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";   
 
         // --- GLOBAL VARIABLES & CONFIG ---
         const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2"; 
@@ -1313,20 +1314,54 @@
                     const existingData = docSnap.data()[sectionKey].data;
                     
                     if (index >= 0 && index < existingData.length) {
+                        // Jis item ko delete karna hai, usay pehle save kar lein (KKd sync ke liye)
+                        const itemToDelete = existingData[index];
+
+                        // Array se item remove karein
                         const updatedData = existingData.filter((_, idx) => idx !== index);
                         
-                        // Update only the data array within the section
+                        // 1. Update Monthly Report (Admin & User View)
                         await updateDoc(reportDocRef, {
                             [`${sectionKey}.data`]: updatedData 
                         });
+
+                        // 2. SPECIAL SYNC: Agar ye KKd (Teacher Form) ka data hai, to Teacher Submission bhi delete karein
+                        if (sectionKey === 'karkardagiReport' && itemToDelete) {
+                             const { teacherId, jamiaName, periodId } = itemToDelete;
+                             const { monthNum, yearNum } = docSnap.data(); // Report ka month/year uthayen
+
+                             if (teacherId && jamiaName && periodId) {
+                                 const batch = writeBatch(db);
+                                 const subRef = collection(db, 'teacher_submissions');
+                                 
+                                 // Teacher Submission dhund kar delete karein
+                                 const q = query(
+                                     subRef, 
+                                     where('teacherId', '==', teacherId),
+                                     where('jamiaName', '==', jamiaName),
+                                     where('periodId', '==', periodId),
+                                     where('submissionMonth', '==', monthNum),
+                                     where('submissionYear', '==', yearNum)
+                                 );
+                                 
+                                 const subSnap = await getDocs(q);
+                                 subSnap.forEach(doc => {
+                                     batch.delete(doc.ref);
+                                 });
+                                 
+                                 if (!subSnap.empty) {
+                                     await batch.commit();
+                                     console.log("Synced deletion with Teacher Submissions.");
+                                 }
+                             }
+                        }
                         
                         showNotification("Entry successfully deleted!");
                         
-                        // Update local array and re-render modal for immediate effect
+                        // Update local array and re-render modal
                         const updatedReportIndex = fetchedAdminReports.findIndex(r => r.id === reportId);
                         if(updatedReportIndex !== -1) {
                            fetchedAdminReports[updatedReportIndex][sectionKey].data = updatedData;
-                           // Modal ko updated data ke saath dobara kholo
                            showReportModal(fetchedAdminReports[updatedReportIndex], true);
                         } else {
                             reportModal.classList.add('hidden');
@@ -1339,7 +1374,6 @@
                 } catch (error) {
                     console.error("Error deleting sub-entry:", error);
                     showNotification("Entry delete karne mein error.", true);
-                    reportModal.classList.add('hidden'); 
                 } finally {
                     showLoader(false);
                 }
@@ -1545,3 +1579,4 @@
     </script>
 </body>
 </html>
+
