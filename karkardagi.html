@@ -1246,57 +1246,77 @@ if (editTeacherForm) {
                 submissionsSnap.forEach(docSnap => {
                     const data = docSnap.data() || {};
                     
-                    // FIX: Jamia Name ko TRIM MAT KAREIN (Exact match ke liye)
-                    const jamiaKey = (data.jamiaId || data.jamiaName || '').toString(); 
+                    // IDs ko saaf karein
                     const teacherId = (data.teacherId || '').toString().trim();
                     const periodId = (data.periodId || '').toString().trim();
+                    
+                    // Jamia ke har mumkin naam/ID ki list banayen (Smart Match)
+                    const jName = (data.jamiaName || '').toString();
+                    const jId = (data.jamiaId || '').toString();
+                    
+                    // Hum data ko in sab keys ke sath map karenge taake match pakka ho
+                    const possibleJamiaNames = new Set([
+                        jName,              // Asli Name
+                        jName.trim(),       // Bina Space ke
+                        jId,                // ID
+                        jId.trim()          // ID bina space ke
+                    ]);
 
-                    // Agar IDs missing hain to skip karein
-                    if (!jamiaKey || !teacherId) return;
+                    // Agar Teacher/Period ID nahi hai to skip karein
+                    if (!teacherId) return;
 
-                    // Key banayen
-                    // Note: periodId empty ho sakta hai agar purana data ho
-                    const mapKey = `${jamiaKey}::${teacherId}::${periodId}`;
+                    // Har mumkin naam ke liye data ko Map mein set karein
+                    possibleJamiaNames.forEach(jamiaKey => {
+                        if (!jamiaKey) return;
 
-                    // CHECK: Agar ye 'User Update' (Admin Edit) hai
-                    if (data.role === 'user_update') {
-                        if (Array.isArray(data.changedValues)) {
-                            data.changedValues.forEach(cv => {
-                                const pKey = `${jamiaKey}::${teacherId}::${cv.periodId}`;
-                                teacherSubmissionsMap.set(pKey, {
-                                    pagesTaught: cv.pagesTaught,
-                                    lastIbarat: cv.lastIbarat,
-                                    lastPageNo: cv.lastPageNo,
-                                    isUserUpdate: true // High Priority
+                        // Key banayen
+                        const mapKey = `${jamiaKey}::${teacherId}::${periodId}`; // PeriodID empty ho sakta hai agar purana data ho
+
+                        // CHECK 1: Agar ye 'User Update' (Admin Edit) hai
+                        if (data.role === 'user_update') {
+                            if (Array.isArray(data.changedValues)) {
+                                data.changedValues.forEach(cv => {
+                                    // User update ke liye bhi period specific key banayen
+                                    const pKey = `${jamiaKey}::${teacherId}::${cv.periodId}`;
+                                    teacherSubmissionsMap.set(pKey, {
+                                        pagesTaught: cv.pagesTaught,
+                                        lastIbarat: cv.lastIbarat,
+                                        lastPageNo: cv.lastPageNo,
+                                        isUserUpdate: true // High Priority Flag
+                                    });
                                 });
-                            });
-                        }
-                    } 
-                    // CHECK: Agar ye Teacher Submission hai
-                    else {
-                        if (!periodId) return; // Period ID zaroori hai
+                            }
+                        } 
+                        // CHECK 2: Agar ye Teacher Submission hai
+                        else {
+                            if (!periodId) return; 
 
-                        // Agar pehle se Admin Update majood hai, to Teacher data ignore karein
-                        const existing = teacherSubmissionsMap.get(mapKey);
-                        if (existing && existing.isUserUpdate) {
-                            return;
-                        }
+                            // Agar pehle se Admin Update (isUserUpdate: true) majood hai, to Teacher data ignore karein
+                            const existing = teacherSubmissionsMap.get(mapKey);
+                            if (existing && existing.isUserUpdate) {
+                                return; // Admin ka hukm sar aankhon par, teacher ka data skip
+                            }
 
-                        // Aggregate logic (agar teacher ne tukdon me bheja ho)
-                        let existingData = teacherSubmissionsMap.get(mapKey);
-                        if (!existingData) {
-                            existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+                            // Aggregate Logic: Agar teacher ne tukdon me bheja ho to jama karein
+                            let existingData = teacherSubmissionsMap.get(mapKey);
+                            if (!existingData) {
+                                existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+                            }
+                            
+                            // Values ko jodein (sirf pagesTaught judega, baqi replace hoga)
+                            // Note: Hum har variation ke liye alag aggregate kar rahe hain taake collision na ho
+                            existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
+                            
+                            // Text data updated wala rakhein
+                            if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
+                            if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
+                            
+                            teacherSubmissionsMap.set(mapKey, existingData);
                         }
-                        
-                        existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
-                        if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
-                        if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
-                        
-                        teacherSubmissionsMap.set(mapKey, existingData);
-                    }
+                    });
                 });
 
-                console.log('Loaded Data Map:', teacherSubmissionsMap);
+                console.log('Loaded Data Map (Smart Matching Enabled):', teacherSubmissionsMap);
 
             } catch (error) {
                 console.error(`Error loading report data:`, error);
@@ -3837,6 +3857,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
