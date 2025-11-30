@@ -1289,7 +1289,7 @@
           const handleDeleteSubEntry = async (e) => {
                 const button = e.target.closest('.delete-sub-entry-btn');
                 const reportId = button.dataset.reportId;
-                const sectionKey = button.dataset.section; // jaizaReport, tadrisRecording, monthlyTest, karkardagiReport
+                const sectionKey = button.dataset.section; 
                 const index = parseInt(button.dataset.index, 10);
                 
                 if (!reportId || !sectionKey || isNaN(index) || index < 0) {
@@ -1311,37 +1311,41 @@
                         throw new Error("Report data not found.");
                     }
                     
-                    const existingData = docSnap.data()[sectionKey].data;
+                    const reportData = docSnap.data(); // Full report data
+                    const existingData = reportData[sectionKey].data;
                     
                     if (index >= 0 && index < existingData.length) {
-                        // Jis item ko delete karna hai, usay pehle save kar lein (KKd sync ke liye)
+                        // Jis item ko delete karna hai usay pakad lein
                         const itemToDelete = existingData[index];
 
                         // Array se item remove karein
                         const updatedData = existingData.filter((_, idx) => idx !== index);
                         
-                        // 1. Update Monthly Report (Admin & User View)
+                        // 1. Update Monthly Report (Admin View)
                         await updateDoc(reportDocRef, {
                             [`${sectionKey}.data`]: updatedData 
                         });
 
-                        // 2. SPECIAL SYNC: Agar ye KKd (Teacher Form) ka data hai, to Teacher Submission bhi delete karein
+                        // 2. SPECIAL SYNC: Teacher Submission Delete (With Safety Checks)
                         if (sectionKey === 'karkardagiReport' && itemToDelete) {
                              const { teacherId, jamiaName, periodId } = itemToDelete;
-                             const { monthNum, yearNum } = docSnap.data(); // Report ka month/year uthayen
+                             
+                             // FIX: Safely retrieve Month/Year (database me 'year' ho sakta hai 'yearNum' nahi)
+                             const rMonth = reportData.monthNum;
+                             const rYear = reportData.year !== undefined ? reportData.year : reportData.yearNum;
 
-                             if (teacherId && jamiaName && periodId) {
+                             // CHECK: Agar inmein se koi bhi cheez missing hai to Query mat chalao (Error se bachne ke liye)
+                             if (teacherId && jamiaName && periodId && rMonth !== undefined && rYear !== undefined) {
                                  const batch = writeBatch(db);
                                  const subRef = collection(db, 'teacher_submissions');
                                  
-                                 // Teacher Submission dhund kar delete karein
                                  const q = query(
                                      subRef, 
                                      where('teacherId', '==', teacherId),
                                      where('jamiaName', '==', jamiaName),
                                      where('periodId', '==', periodId),
-                                     where('submissionMonth', '==', monthNum),
-                                     where('submissionYear', '==', yearNum)
+                                     where('submissionMonth', '==', rMonth),
+                                     where('submissionYear', '==', rYear)
                                  );
                                  
                                  const subSnap = await getDocs(q);
@@ -1353,12 +1357,14 @@
                                      await batch.commit();
                                      console.log("Synced deletion with Teacher Submissions.");
                                  }
+                             } else {
+                                 console.warn("Skipping teacher_submission sync: Some fields were undefined.", { teacherId, jamiaName, periodId, rMonth, rYear });
                              }
                         }
                         
                         showNotification("Entry successfully deleted!");
                         
-                        // Update local array and re-render modal
+                        // UI Update
                         const updatedReportIndex = fetchedAdminReports.findIndex(r => r.id === reportId);
                         if(updatedReportIndex !== -1) {
                            fetchedAdminReports[updatedReportIndex][sectionKey].data = updatedData;
@@ -1579,4 +1585,5 @@
     </script>
 </body>
 </html>
+
 
