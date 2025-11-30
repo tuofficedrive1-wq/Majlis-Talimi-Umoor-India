@@ -3724,7 +3724,7 @@ let rowHtml = `
         academicSetupPanel.classList.toggle('open');
     });
 }
-        // --- FUNCTION TO DELETE DATA (RESET FORM) ---
+        // --- FUNCTION TO DELETE DATA (POWERFUL RESET) ---
             const handleResetTeacherData = async (e) => {
                 const btn = e.target.closest('.reset-teacher-data-btn');
                 if (!btn) return;
@@ -3734,38 +3734,53 @@ let rowHtml = `
                 const teacherName = btn.dataset.teacherName;
                 const { monthNum, yearNum } = currentReportPeriod;
 
-                if (!confirm(`⚠ ALERT!\n\nKya aap "${teacherName}" ka sara data DELETE karna chahte hain?\n\nTeacher ka form poori tarah UNLOCK ho jayega aur wo dobara fill kar sakenge.`)) {
+                if (!confirm(`⚠ ALERT!\n\nKya aap "${teacherName}" ka sara data DELETE karna chahte hain?\n\nTeacher ka form poori tarah UNLOCK ho jayega.`)) {
                     return;
                 }
 
                 showLoader(true);
                 try {
                     const batch = writeBatch(db);
-                    
-                    // 1. Teacher Submissions (Delete from Raw Database)
                     const subRef = collection(db, 'teacher_submissions');
                     
-                    // Hum do tarah se dhoondenge taake koi record bache nahi
-                    // Query A: Period ID ke baghair (Saara data us mahine ka)
-                    const q = query(
+                    // --- POWERFUL QUERY 1: Using 'jamiaName' field ---
+                    const q1 = query(
                         subRef, 
                         where('teacherId', '==', teacherId),
                         where('jamiaName', '==', jamiaName),
                         where('submissionMonth', '==', monthNum),
                         where('submissionYear', '==', yearNum)
                     );
-                    
-                    const subSnap = await getDocs(q);
-                    
-                    if (subSnap.empty) {
-                        console.warn("Raw submissions nahi miley, lekin Report se clean karenge.");
-                    }
 
-                    subSnap.forEach(doc => {
-                        batch.delete(doc.ref);
-                    });
+                    // --- POWERFUL QUERY 2: Using 'jamiaId' field (Backup) ---
+                    // Kabhi kabhi data 'jamiaId' field mein save hota hai
+                    const q2 = query(
+                        subRef, 
+                        where('teacherId', '==', teacherId),
+                        where('jamiaId', '==', jamiaName),
+                        where('submissionMonth', '==', monthNum),
+                        where('submissionYear', '==', yearNum)
+                    );
+                    
+                    // Dono queries chalao
+                    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+                    
+                    let deletedCount = 0;
+                    const deletedIds = new Set(); // Duplicates se bachne ke liye
 
-                    // 2. Monthly Reports (Admin ki saved file se bhi hatayen)
+                    // Helper to add deletes to batch
+                    const addToBatch = (docSnap) => {
+                        if (!deletedIds.has(docSnap.id)) {
+                            batch.delete(docSnap.ref);
+                            deletedIds.add(docSnap.id);
+                            deletedCount++;
+                        }
+                    };
+
+                    snap1.forEach(addToBatch);
+                    snap2.forEach(addToBatch);
+
+                    // 2. Remove from Admin Monthly Report (Saved Data)
                     const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
                     const reportRef = doc(db, 'monthly_reports', reportId);
                     const reportSnap = await getDoc(reportRef);
@@ -3777,7 +3792,6 @@ let rowHtml = `
                         // Filter: Is teacher ka data nikal dein
                         const newArr = arr.filter(item => !(item.teacherId === teacherId && item.jamiaName === jamiaName));
                         
-                        // Agar kuch change hua to update karein
                         if (arr.length !== newArr.length) {
                             batch.update(reportRef, {
                                 "karkardagiReport.data": newArr
@@ -3785,9 +3799,13 @@ let rowHtml = `
                         }
                     }
 
-                    await batch.commit();
-                    
-                    showNotification(`Mubarak ho! ${teacherName} ka form reset ho gaya.`);
+                    if (deletedCount > 0 || reportSnap.exists()) {
+                        await batch.commit();
+                        console.log(`Reset Complete: Deleted ${deletedCount} raw docs.`);
+                        showNotification(`Success! ${teacherName} ka form (${deletedCount} entries) delete ho gaya.`);
+                    } else {
+                        showNotification("Koi data nahi mila delete karne ke liye.", true);
+                    }
                     
                     // Screen Refresh
                     await loadMonthlyReportData();
@@ -3795,7 +3813,7 @@ let rowHtml = `
 
                 } catch (err) {
                     console.error("Reset Error:", err);
-                    showNotification("Reset karne mein error aayi.", true, err.message);
+                    showNotification("Reset error.", true, err.message);
                 } finally {
                     showLoader(false);
                 }
@@ -3806,6 +3824,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
