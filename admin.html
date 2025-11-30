@@ -1315,59 +1315,71 @@
                     const existingData = reportData[sectionKey].data;
                     
                     if (index >= 0 && index < existingData.length) {
-                        // Jis item ko delete karna hai usay pehle save kar lein
                         const itemToDelete = existingData[index];
 
-                        // Array se item remove karein
+                        // 1. Array se item remove karein (Admin Panel Update)
                         const updatedData = existingData.filter((_, idx) => idx !== index);
                         
-                        // 1. Update Monthly Report (Admin ke liye)
                         await updateDoc(reportDocRef, {
                             [`${sectionKey}.data`]: updatedData 
                         });
 
-                        // 2. SPECIAL SYNC: Teacher Submission Delete
+                        // 2. SPECIAL SYNC: Teacher Submission Delete (Robust Logic)
                         if (sectionKey === 'karkardagiReport' && itemToDelete) {
                              const { teacherId, jamiaName, periodId } = itemToDelete;
-                             
-                             // FIX: Year aur Month ko safely get karein
                              const rMonth = reportData.monthNum;
-                             // Year kabhi 'year' hota hai kabhi 'yearNum', dono check karein
                              const rYear = reportData.year !== undefined ? reportData.year : reportData.yearNum;
 
-                             // DEBUG LOG: Console mein values check karne ke liye
-                             console.log("Attempting to delete Teacher Submission:", { teacherId, jamiaName, periodId, rMonth, rYear });
+                             console.log("Deleting Teacher Sub:", { teacherId, jamiaName, periodId, rMonth, rYear });
 
-                             // SAFETY CHECK: Agar inmein se koi bhi value missing hai to Query NA chalayen
                              if (teacherId && jamiaName && periodId && rMonth !== undefined && rYear !== undefined) {
                                  const batch = writeBatch(db);
                                  const subRef = collection(db, 'teacher_submissions');
                                  
-                                 const q = query(
+                                 // QUERY 1: Try finding by 'jamiaId' (Standard Teacher Form)
+                                 const q1 = query(
                                      subRef, 
                                      where('teacherId', '==', teacherId),
-                                     where('jamiaName', '==', jamiaName),
+                                     where('jamiaId', '==', jamiaName), // Use jamiaId field
                                      where('periodId', '==', periodId),
                                      where('submissionMonth', '==', rMonth),
                                      where('submissionYear', '==', rYear)
                                  );
                                  
-                                 const subSnap = await getDocs(q);
-                                 subSnap.forEach(doc => {
-                                     batch.delete(doc.ref);
+                                 // QUERY 2: Try finding by 'jamiaName' (User Updates / Older Data)
+                                 const q2 = query(
+                                     subRef, 
+                                     where('teacherId', '==', teacherId),
+                                     where('jamiaName', '==', jamiaName), // Use jamiaName field
+                                     where('periodId', '==', periodId),
+                                     where('submissionMonth', '==', rMonth),
+                                     where('submissionYear', '==', rYear)
+                                 );
+
+                                 // Dono queries chalayen
+                                 const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+                                 
+                                 let deletedCount = 0;
+
+                                 snap1.forEach(doc => { batch.delete(doc.ref); deletedCount++; });
+                                 snap2.forEach(doc => { 
+                                     // Check taake same doc do baar add na ho (agar wo dono queries me match ho)
+                                     if (!snap1.docs.some(d => d.id === doc.id)) {
+                                         batch.delete(doc.ref);
+                                         deletedCount++;
+                                     }
                                  });
                                  
-                                 if (!subSnap.empty) {
+                                 if (deletedCount > 0) {
                                      await batch.commit();
-                                     console.log("Successfully deleted from teacher_submissions.");
+                                     console.log(`Successfully deleted ${deletedCount} docs from teacher_submissions.`);
                                      showNotification("Entry aur Teacher Submission dono delete ho gaye!");
                                  } else {
-                                     console.warn("Teacher submission document nahi mila (shayad pehle hi delete ho gaya ho).");
-                                     showNotification("Entry delete ho gayi (Teacher submission nahi mila).");
+                                     console.warn("Teacher submission nahi mila. Sirf Admin report se delete hua.");
+                                     showNotification("Admin Report se delete ho gaya (Teacher Form data nahi mila).");
                                  }
                              } else {
-                                 console.error("Missing fields, skipping sync delete:", { teacherId, jamiaName, periodId, rMonth, rYear });
-                                 alert("Note: Ye entry Admin panel se delete ho gayi hai, lekin Teacher Form se shayad na hate kyunki iska kuch data (Year/ID) missing tha.");
+                                 console.error("Missing fields:", { teacherId, jamiaName, periodId, rMonth, rYear });
                              }
                         } else {
                             showNotification("Entry successfully deleted!");
@@ -1594,6 +1606,7 @@
     </script>
 </body>
 </html>
+
 
 
 
