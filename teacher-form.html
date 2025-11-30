@@ -831,19 +831,17 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (Month-wise Breakdown) ---
+    // --- SHOW PROFILE (Dynamic Month Range: Start to Current) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
-        // Hum table structure JS se banayenge kyunki columns dynamic hain
         const tableContainer = profileView.querySelector('.overflow-x-auto');
         
-        // Loader dikhayen
         tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
         profileView.classList.remove('hidden');
 
         try {
             // 1. Semester & Months Determine Karein
-            const mIndex = currentMonthIndex;
+            const mIndex = currentMonthIndex; // Ye wo mahina hai jiski report khuli hai
             let semMonths = [];
             let semTotalDays = 0;
             const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
@@ -856,6 +854,16 @@ function escapeHtml(str) {
                 semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
             }
 
+            // --- 🛑 LOGIC UPDATE: Sirf Current Month tak dikhana hai ---
+            // Hum check karenge ke current month list mein kahan hai, aur wahan tak kaat lenge.
+            const cutoffIndex = semMonths.indexOf(mIndex);
+            if (cutoffIndex !== -1) {
+                // Agar current month Sep (8) hai, to slice(0, 1) -> sirf Sep dikhayega
+                // Agar current month Nov (10) hai, to slice(0, 3) -> Sep, Oct, Nov dikhayega
+                semMonths = semMonths.slice(0, cutoffIndex + 1);
+            }
+            // --------------------------------------------------------
+
             // 2. Database se Data Layen
             const submissionsRef = db.collection('teacher_submissions');
             const q = submissionsRef
@@ -863,23 +871,18 @@ function escapeHtml(str) {
                 .where('teacherId', '==', teacherId);
                 
             const snap = await q.get();
-            
-            // Data Map: periodId -> monthIndex -> pagesTaught
             const dataMap = {}; 
 
             snap.forEach(doc => {
                 const d = doc.data();
-                // Filter Ghost Data
                 if (d.role === 'user_update' && parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || !d.lastIbarat.trim())) return;
                 
                 if (!dataMap[d.periodId]) dataMap[d.periodId] = {};
-                
-                // Agar teacher ne multiple baar bheja to sum karein
                 if (!dataMap[d.periodId][d.submissionMonth]) dataMap[d.periodId][d.submissionMonth] = 0;
                 dataMap[d.periodId][d.submissionMonth] += parseInt(d.pagesTaught || 0, 10);
             });
 
-            // 3. Teacher Structure (Total Pages)
+            // 3. Teacher Structure
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
             if (!teacherStruct) return;
 
@@ -891,36 +894,33 @@ function escapeHtml(str) {
                             <th class="p-2 border border-emerald-300" rowspan="2" style="position:sticky; right:0; background:#d1fae5; z-index:10;">کتاب / کلاس</th>
             `;
 
-            // Dynamic Month Headers
+            // Dynamic Headers (Sirf filtered mahine)
             semMonths.forEach(m => {
                 const mName = getMonthNameUrdu(m);
                 tableHtml += `<th class="p-2 border border-emerald-300" colspan="2">${mName}</th>`;
             });
 
-            // Final Summary Headers
             tableHtml += `
                             <th class="p-2 border border-emerald-300 bg-blue-100" colspan="3">مجموعی کارکردگی</th>
                         </tr>
                         <tr class="text-xs">
             `;
 
-            // Month Sub-headers
             semMonths.forEach(() => {
                 tableHtml += `<th class="p-1 border border-emerald-300 text-gray-600">ہدف</th>
                               <th class="p-1 border border-emerald-300 text-emerald-700 font-bold">پڑھایا</th>`;
             });
 
-            // Summary Sub-headers
             tableHtml += `
                             <th class="p-1 border border-emerald-300 bg-blue-50">کل صفحات</th>
-                            <th class="p-1 border border-emerald-300 bg-blue-50">کل پڑھایا</th>
+                            <th class="p-1 border border-emerald-300 bg-blue-50">اب تک پڑھایا</th>
                             <th class="p-1 border border-emerald-300 bg-blue-50 text-red-600">بقیہ</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white">
             `;
 
-            // 5. Rows Generate Karein
+            // 5. Rows
             let hasRows = false;
             teacherStruct.periods.forEach(p => {
                 const pSem = p.semester || "1";
@@ -929,16 +929,20 @@ function escapeHtml(str) {
                 if (isCurrentSemPeriod) {
                     hasRows = true;
                     const totalBookPages = parseInt(p.totalPages || 0, 10);
-                    let rowCumulativeTaught = 0;
+                    let rowCumulativeTaught = 0; // Sirf dikhaye gaye mahino ka total
+
+                    // Note: "Ab tak padhaya" column ke liye humein database ke SAARE available data ka total chahiye ya sirf displayed months ka?
+                    // Logic ke hisaab se "Cumulative" ka matlab start se ab tak hota hai.
+                    // Kyunki humne 'semMonths' ko current month par kaat diya hai, to ye loop wese bhi wahin tak chalega.
+                    // Iska matlab 'rowCumulativeTaught' bilkul sahi calculation dega (Start se Current Month tak).
 
                     tableHtml += `<tr class="hover:bg-gray-50">
                         <td class="p-2 border urdu-font text-right font-medium" style="position:sticky; right:0; background:white; z-index:5;">
                             ${p.bookName} <br><span class="text-xs text-gray-500">(${p.className})</span>
                         </td>`;
 
-                    // Loop through each month of the semester
+                    // Loop through filtered months
                     semMonths.forEach(m => {
-                        // Calculate Monthly Target
                         const academicMonths = currentYearData.academicMonths || {};
                         const workingDays = academicMonths[m] || 0;
                         let monthlyTarget = 0;
@@ -948,12 +952,10 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // Get Taught Data
                         const taught = (dataMap[p.id] && dataMap[p.id][m]) ? dataMap[p.id][m] : 0;
                         rowCumulativeTaught += taught;
 
-                        // Color Logic for Taught
-                        let taughtColor = "text-gray-400"; // 0
+                        let taughtColor = "text-gray-400";
                         if (taught > 0) {
                             if(taught >= monthlyTarget) taughtColor = "text-green-600 font-bold";
                             else taughtColor = "text-red-500 font-bold";
@@ -965,11 +967,10 @@ function escapeHtml(str) {
                         `;
                     });
 
-                    // Summary Columns
                     const remaining = totalBookPages - rowCumulativeTaught;
                     let remColor = "text-gray-800";
                     if (remaining <= 0) remColor = "text-green-600 font-bold"; 
-                    else if (remaining < (totalBookPages * 0.2)) remColor = "text-yellow-600 font-bold"; // Less than 20% left
+                    else if (remaining < (totalBookPages * 0.2)) remColor = "text-yellow-600 font-bold";
 
                     tableHtml += `
                         <td class="p-2 border font-semibold bg-blue-50">${totalBookPages}</td>
@@ -1002,6 +1003,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
