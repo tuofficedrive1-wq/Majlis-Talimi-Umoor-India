@@ -148,6 +148,28 @@
         <div id="form-message"
              class="mt-4 p-3 rounded-lg text-center hidden text-sm sm:text-base"></div>
     </form>
+
+    <div id="teacher-profile-view" class="hidden mt-8 border-t pt-6">
+        <h2 class="text-xl font-bold text-center text-emerald-800 mb-4">آپ کی سمسٹر کارکردگی پروفائل</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm sm:text-base border border-gray-300 text-center">
+                <thead class="bg-emerald-100 text-emerald-800">
+                    <tr>
+                        <th class="p-2 border">کتاب / کلاس</th>
+                        <th class="p-2 border">کل صفحات (سمسٹر)</th>
+                        <th class="p-2 border">کل پڑھائے گئے (مجموعی)</th>
+                        <th class="p-2 border">بقیہ</th>
+                    </tr>
+                </thead>
+                <tbody id="profile-table-body" class="bg-white">
+                    </tbody>
+            </table>
+        </div>
+        <div class="mt-4 text-center">
+            <p class="text-sm text-gray-500">جزاک اللہ خیراً! آپ کا ڈیٹا مکمل ہو چکا ہے۔</p>
+        </div>
+    </div>
+
 </div>
 
 <script>
@@ -157,6 +179,7 @@
     let currentMonthIndex   = null;
     let currentReportYear   = null;
     let currentJamiaData    = null;
+    let currentYearData     = null; // <--- YE ADD KAREIN
     let formLocked          = false;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -343,6 +366,7 @@ loadTeacherUserUpdates(
             currentMonthIndex = monthIndex;
             currentReportYear = currentYear;
             currentJamiaData  = { ...jamiaData, teachers };
+            currentYearData   = yearData; // <--- YE LINE ZAROORI HAI TARGET CALCULATION KE LIYE
 
             loadingSpinner.classList.add('hidden');
             formContainer.classList.remove('hidden');
@@ -591,10 +615,12 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
     }
 }
     
-    // 🔒 Existing submission check (GLOBAL)
+    // 🔒 Existing submission check & Partial Locking
     async function checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year) {
         const formMessage = document.getElementById('form-message');
-        const submitBtn   = document.getElementById('submit-btn');
+        const submitBtn   = document.getElementById('submit-button-area');
+        const profileView = document.getElementById('teacher-profile-view');
+        const periodsSection = document.getElementById('periods-section');
 
         try {
             const submissionsRef = db.collection('teacher_submissions');
@@ -605,87 +631,86 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
                 .where('submissionYear', '==', year);
 
             const snap = await q.get();
-
-            if (snap.empty) {
-                formLocked = false;
-                if (submitBtn) submitBtn.disabled = false;
-                return;
-            }
-
-            // Pehle se report hai → lock
-            formLocked = true;
-            if (submitBtn) submitBtn.disabled = true;
-
             const dataByPeriod = {};
 
             snap.forEach(doc => {
                 const d = doc.data();
+                // Filter Ghost/Deleted Data
+                if (d.role === 'user_update' && parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || d.lastIbarat.trim() === '')) return;
+
                 const pId = d.periodId;
                 if (!pId) return;
 
-                if (!dataByPeriod[pId]) {
-                    dataByPeriod[pId] = {
-                        pagesTaught: 0,
-                        lastIbarat: '',
-                        lastPageNo: ''
-                    };
-                }
-
-                dataByPeriod[pId].pagesTaught += parseInt(d.pagesTaught || 0, 10);
-
-                if (d.lastIbarat) {
-                    dataByPeriod[pId].lastIbarat = d.lastIbarat;
-                }
-                if (d.lastPageNo !== undefined && d.lastPageNo !== null && d.lastPageNo !== '') {
-                    dataByPeriod[pId].lastPageNo = d.lastPageNo;
+                // Simple aggregation
+                if (!dataByPeriod[pId]) dataByPeriod[pId] = { ...d };
+                else {
+                    // Agar multiple entries hain to latest wali ya sum logic (Yahan hum simple exist check kar rahe hain)
+                    // Behtar hai ke hum man len ke data exist karta hai.
                 }
             });
 
-            // Inputs me value daal + read-only + popup
-            const pagesInputs = document.querySelectorAll('.pages-taught-input');
-            pagesInputs.forEach(input => {
+            // Ab har card ko check karein
+            const allPeriodInputs = document.querySelectorAll('.pages-taught-input');
+            let totalPeriods = allPeriodInputs.length;
+            let lockedCount = 0;
+
+            allPeriodInputs.forEach(input => {
                 const periodId = input.dataset.periodId;
+                const rowId = input.dataset.rowId;
                 const info = dataByPeriod[periodId];
-                if (!info) return;
 
-                input.value = info.pagesTaught;
-                input.readOnly = true;
-                input.addEventListener('focus', showLockedPopup);
+                const cardDiv = input.closest('div.bg-gray-50');
+
+                if (info) {
+                    // DATA EXISTS -> LOCK THIS CARD
+                    lockedCount++;
+                    
+                    input.value = info.pagesTaught;
+                    input.readOnly = true;
+                    input.classList.add('bg-gray-200', 'cursor-not-allowed');
+
+                    const lastInp = document.querySelector(`.last-lesson-input[data-row-id="${rowId}"]`);
+                    if (lastInp) {
+                        lastInp.value = info.lastIbarat || '';
+                        lastInp.readOnly = true;
+                        lastInp.classList.add('bg-gray-200', 'cursor-not-allowed');
+                    }
+
+                    const pageNoInp = document.querySelector(`.page-number-input[data-row-id="${rowId}"]`);
+                    if (pageNoInp) {
+                        pageNoInp.value = info.lastPageNo || '';
+                        pageNoInp.readOnly = true;
+                        pageNoInp.classList.add('bg-gray-200', 'cursor-not-allowed');
+                    }
+
+                    // Add "Submitted" Badge
+                    if (cardDiv && !cardDiv.querySelector('.submitted-badge')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'submitted-badge float-left bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold';
+                        badge.innerHTML = '<i class="fas fa-check"></i> جمع ہو گیا';
+                        cardDiv.querySelector('.font-semibold').appendChild(badge);
+                    }
+                }
             });
 
-            const lastInputs = document.querySelectorAll('.last-lesson-input');
-            lastInputs.forEach(input => {
-                const rowId = input.dataset.rowId;
-                const info = dataByPeriod[rowId];
-                if (!info) return;
-
-                input.value = info.lastIbarat || '';
-                input.readOnly = true;
-                input.addEventListener('focus', showLockedPopup);
-            });
-
-            const pageNoInputs = document.querySelectorAll('.page-number-input');
-            pageNoInputs.forEach(input => {
-                const rowId = input.dataset.rowId;
-                const info = dataByPeriod[rowId];
-                if (!info) return;
-
-                input.value = info.lastPageNo || '';
-                input.readOnly = true;
-                input.addEventListener('focus', showLockedPopup);
-            });
-
-            if (formMessage) {
-                formMessage.textContent =
-                    'آپ کی اس مہینے کی رپورٹ پہلے ہی جمع ہو چکی ہے۔ اگر کسی قسم کی ترمیم درکار ہو تو اپنے تعلیمی ذمہ دار سے رابطہ فرمائیں۔';
-                formMessage.className =
-                    'mt-4 p-3 rounded-lg text-center bg-yellow-100 text-yellow-800 text-sm sm:text-base';
+            // Agar sab kuch lock ho gaya hai -> Show Profile, Hide Submit
+            if (totalPeriods > 0 && lockedCount === totalPeriods) {
+                submitBtn.classList.add('hidden');
+                periodsSection.classList.add('hidden'); // Cards chhupa dein
+                formMessage.textContent = 'الحمدللہ! آپ کی تمام رپورٹس جمع ہو چکی ہیں۔';
+                formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-green-100 text-green-700 font-bold';
                 formMessage.classList.remove('hidden');
+                
+                // Show Profile
+                renderTeacherSemesterProfile(jamiaName, teacherId, year);
+            } else {
+                // Kuch bacha hai -> Show Submit
+                submitBtn.classList.remove('hidden');
+                profileView.classList.add('hidden');
             }
+
         } catch (err) {
             console.error('Error checking existing submission:', err);
-            formLocked = false;
-            if (submitBtn) submitBtn.disabled = false;
         }
     }
 
@@ -693,25 +718,22 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
         alert('آپ کی اس مہینے کی رپورٹ پہلے ہی جمع ہو چکی ہے۔ کوئی تبدیلی درکار ہو تو اپنے تعلیمی ذمہ دار سے رابطہ فرمائیں۔');
     }
 
-    // ===== SUBMISSION =====
+    // ===== SUBMISSION (UPDATED: Only Submit Unlocked Cards) =====
     async function submitReport(jamiaId, activeYear, monthIndex, year) {
         const periodsList = document.getElementById('periods-list');
         const submitBtn   = document.getElementById('submit-btn');
         const formMessage = document.getElementById('form-message');
-
-        if (formLocked) {
-            alert('یہ رپورٹ پہلے ہی جمع ہو چکی ہے، ترمیم کے لیے تعلیمی ذمہ دار سے رابطہ فرمائیں۔');
-            return;
-        }
 
         if (!selectedTeacherData) {
             alert('پہلے اپنا صحیح ٹیچر کوڈ درج کر کے تصدیق کریں۔');
             return;
         }
 
-        const inputs = periodsList.querySelectorAll('.pages-taught-input');
+        // Sirf wo inputs uthayen jo READ-ONLY nahi hain (Yani jo abhi bhare gaye hain)
+        const inputs = Array.from(periodsList.querySelectorAll('.pages-taught-input')).filter(input => !input.readOnly);
+        
         if (inputs.length === 0) {
-            alert('کوئی پیریڈ موجود نہیں، رپورٹ جمع نہیں ہو سکتی۔');
+            alert('کوئی نیا ڈیٹا موجود نہیں ہے۔ تمام پیریڈز پہلے ہی جمع ہو چکے ہیں۔');
             return;
         }
 
@@ -721,23 +743,25 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
 
             const submissionBatch = [];
 
+            // Loop sirf unlocked inputs par
             inputs.forEach(input => {
                 const rowId       = input.dataset.rowId;
-                const pagesTaught = parseInt(input.value || '0', 10);
-                const lastText    = periodsList.querySelector(`.last-lesson-input[data-row-id="${rowId}"]`)?.value.trim();
-                const lastPageNo  = parseInt(
-                    periodsList.querySelector(`.page-number-input[data-row-id="${rowId}"]`)?.value || '0',
-                    10
-                );
+                const pagesTaught = parseInt(input.value || '', 10); // Check empty string
+                const lastTextInp = periodsList.querySelector(`.last-lesson-input[data-row-id="${rowId}"]`);
+                const lastPageInp = periodsList.querySelector(`.page-number-input[data-row-id="${rowId}"]`);
+                
+                const lastText = lastTextInp?.value.trim();
+                const lastPageNo = parseInt(lastPageInp?.value || '0', 10);
 
-                if (isNaN(pagesTaught) || pagesTaught < 0) {
-                    throw new Error("ہر کارڈ میں درست 'صفحہ پڑھایا' درج کریں۔");
+                // Validation: Agar user ne aadha card bhara hai to error dein
+                if (input.value === '' || isNaN(pagesTaught) || pagesTaught < 0) {
+                    throw new Error("جو کارڈ آپ بھر رہے ہیں، اس میں 'صفحہ پڑھایا' درست درج کریں۔");
                 }
                 if (!lastText) {
-                    throw new Error("ہر کارڈ میں 'سبق کی آخری عبارت' لازماً لکھیں۔");
+                    throw new Error("جو کارڈ آپ بھر رہے ہیں، اس میں 'سبق کی آخری عبارت' لازماً لکھیں۔");
                 }
                 if (isNaN(lastPageNo) || lastPageNo < 0) {
-                    throw new Error("ہر کارڈ میں درست 'صفحہ نمبر' درج کریں۔");
+                    throw new Error("جو کارڈ آپ بھر رہے ہیں، اس میں 'صفحہ نمبر' درست درج کریں۔");
                 }
 
                 submissionBatch.push({
@@ -757,10 +781,6 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
                 });
             });
 
-            if (submissionBatch.length === 0) {
-                throw new Error("کوئی ڈیٹا سبمٹ نہیں ہو رہا۔");
-            }
-
             const batch = db.batch();
             const submissionsRef = db.collection('teacher_submissions');
 
@@ -771,27 +791,22 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
 
             await batch.commit();
 
-            formMessage.textContent =
-                '✅ رپورٹ کامیابی کے ساتھ جمع ہو گئی، جزاکم اللہ خیراً!';
-            formMessage.className =
-                'mt-4 p-3 rounded-lg text-center bg-green-100 text-green-700 text-sm sm:text-base';
+            formMessage.textContent = '✅ منتخب پیریڈز کامیابی سے جمع ہو گئے۔';
+            formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-green-100 text-green-700 text-sm sm:text-base';
             formMessage.classList.remove('hidden');
 
-            document.getElementById('periods-section').classList.add('hidden');
-            document.getElementById('submit-button-area').classList.add('hidden');
-            document.getElementById('teacher-select').disabled = true;
+            // Form ko dobara reload karein taake naya data LOCK ho jaye
+            checkExistingSubmissionForTeacher(decodeURIComponent(jamiaId), selectedTeacherData.id, monthIndex, year);
 
         } catch (error) {
             console.error("Submission Error:", error);
-            formMessage.textContent =
-                `❌ رپورٹ جمع نہیں ہو سکی: ${error.message}`;
-            formMessage.className =
-                'mt-4 p-3 rounded-lg text-center bg-red-100 text-red-700 text-sm sm:text-base';
+            alert(`Error: ${error.message}`);
+            formMessage.textContent = `❌ خرابی: ${error.message}`;
+            formMessage.className = 'mt-4 p-3 rounded-lg text-center bg-red-100 text-red-700 text-sm sm:text-base';
             formMessage.classList.remove('hidden');
         } finally {
             submitBtn.disabled = false;
-            submitBtn.innerHTML =
-                '<i class="fas fa-upload ml-2"></i> ماہانہ تعلیمی کارکردگی جمع کریں';
+            submitBtn.innerHTML = '<i class="fas fa-upload ml-2"></i> ماہانہ تعلیمی کارکردگی جمع کریں';
         }
     }
     // basic HTML-escape helper (keep only one copy in file)
@@ -804,9 +819,190 @@ function escapeHtml(str) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
+    // --- EXIT CONFIRMATION ---
+    window.addEventListener('beforeunload', (e) => {
+        // Agar form open hai aur abhi poora lock nahi hua (matlab kaam baki hai)
+        const periodsSection = document.getElementById('periods-section');
+        const isHidden = periodsSection.classList.contains('hidden');
+        
+        // Agar form dikh raha hai (yani submit nahi hua poora), to warning dein
+        if (!isHidden) {
+            e.preventDefault();
+            e.returnValue = ''; // Standard browser popup trigger karega
+        }
+    });
+    // --- SHOW PROFILE (Month-wise Breakdown) ---
+    async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
+        const profileView = document.getElementById('teacher-profile-view');
+        // Hum table structure JS se banayenge kyunki columns dynamic hain
+        const tableContainer = profileView.querySelector('.overflow-x-auto');
+        
+        // Loader dikhayen
+        tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
+        profileView.classList.remove('hidden');
+
+        try {
+            // 1. Semester & Months Determine Karein
+            const mIndex = currentMonthIndex;
+            let semMonths = [];
+            let semTotalDays = 0;
+            const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
+
+            if (isSem1) {
+                semMonths = [3, 4, 5, 6, 7]; // Apr, May, Jun, Jul, Aug
+                semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
+            } else {
+                semMonths = [8, 9, 10, 11, 0]; // Sep, Oct, Nov, Dec, Jan
+                semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
+            }
+
+            // 2. Database se Data Layen
+            const submissionsRef = db.collection('teacher_submissions');
+            const q = submissionsRef
+                .where('jamiaId', '==', jamiaName)
+                .where('teacherId', '==', teacherId);
+                
+            const snap = await q.get();
+            
+            // Data Map: periodId -> monthIndex -> pagesTaught
+            const dataMap = {}; 
+
+            snap.forEach(doc => {
+                const d = doc.data();
+                // Filter Ghost Data
+                if (d.role === 'user_update' && parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || !d.lastIbarat.trim())) return;
+                
+                if (!dataMap[d.periodId]) dataMap[d.periodId] = {};
+                
+                // Agar teacher ne multiple baar bheja to sum karein
+                if (!dataMap[d.periodId][d.submissionMonth]) dataMap[d.periodId][d.submissionMonth] = 0;
+                dataMap[d.periodId][d.submissionMonth] += parseInt(d.pagesTaught || 0, 10);
+            });
+
+            // 3. Teacher Structure (Total Pages)
+            const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
+            if (!teacherStruct) return;
+
+            // 4. Table HTML Construct Karein
+            let tableHtml = `
+                <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
+                    <thead class="bg-emerald-100 text-emerald-900">
+                        <tr>
+                            <th class="p-2 border border-emerald-300" rowspan="2" style="position:sticky; right:0; background:#d1fae5; z-index:10;">کتاب / کلاس</th>
+            `;
+
+            // Dynamic Month Headers
+            semMonths.forEach(m => {
+                const mName = getMonthNameUrdu(m);
+                tableHtml += `<th class="p-2 border border-emerald-300" colspan="2">${mName}</th>`;
+            });
+
+            // Final Summary Headers
+            tableHtml += `
+                            <th class="p-2 border border-emerald-300 bg-blue-100" colspan="3">مجموعی کارکردگی</th>
+                        </tr>
+                        <tr class="text-xs">
+            `;
+
+            // Month Sub-headers
+            semMonths.forEach(() => {
+                tableHtml += `<th class="p-1 border border-emerald-300 text-gray-600">ہدف</th>
+                              <th class="p-1 border border-emerald-300 text-emerald-700 font-bold">پڑھایا</th>`;
+            });
+
+            // Summary Sub-headers
+            tableHtml += `
+                            <th class="p-1 border border-emerald-300 bg-blue-50">کل صفحات</th>
+                            <th class="p-1 border border-emerald-300 bg-blue-50">کل پڑھایا</th>
+                            <th class="p-1 border border-emerald-300 bg-blue-50 text-red-600">بقیہ</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+            `;
+
+            // 5. Rows Generate Karein
+            let hasRows = false;
+            teacherStruct.periods.forEach(p => {
+                const pSem = p.semester || "1";
+                const isCurrentSemPeriod = (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
+                
+                if (isCurrentSemPeriod) {
+                    hasRows = true;
+                    const totalBookPages = parseInt(p.totalPages || 0, 10);
+                    let rowCumulativeTaught = 0;
+
+                    tableHtml += `<tr class="hover:bg-gray-50">
+                        <td class="p-2 border urdu-font text-right font-medium" style="position:sticky; right:0; background:white; z-index:5;">
+                            ${p.bookName} <br><span class="text-xs text-gray-500">(${p.className})</span>
+                        </td>`;
+
+                    // Loop through each month of the semester
+                    semMonths.forEach(m => {
+                        // Calculate Monthly Target
+                        const academicMonths = currentYearData.academicMonths || {};
+                        const workingDays = academicMonths[m] || 0;
+                        let monthlyTarget = 0;
+                        
+                        if (semTotalDays > 0 && workingDays > 0 && totalBookPages > 0) {
+                            const perDayTarget = totalBookPages / semTotalDays;
+                            monthlyTarget = Math.round(perDayTarget * workingDays);
+                        }
+
+                        // Get Taught Data
+                        const taught = (dataMap[p.id] && dataMap[p.id][m]) ? dataMap[p.id][m] : 0;
+                        rowCumulativeTaught += taught;
+
+                        // Color Logic for Taught
+                        let taughtColor = "text-gray-400"; // 0
+                        if (taught > 0) {
+                            if(taught >= monthlyTarget) taughtColor = "text-green-600 font-bold";
+                            else taughtColor = "text-red-500 font-bold";
+                        }
+
+                        tableHtml += `
+                            <td class="p-2 border text-gray-500 bg-gray-50">${monthlyTarget}</td>
+                            <td class="p-2 border ${taughtColor}">${taught > 0 ? taught : '-'}</td>
+                        `;
+                    });
+
+                    // Summary Columns
+                    const remaining = totalBookPages - rowCumulativeTaught;
+                    let remColor = "text-gray-800";
+                    if (remaining <= 0) remColor = "text-green-600 font-bold"; 
+                    else if (remaining < (totalBookPages * 0.2)) remColor = "text-yellow-600 font-bold"; // Less than 20% left
+
+                    tableHtml += `
+                        <td class="p-2 border font-semibold bg-blue-50">${totalBookPages}</td>
+                        <td class="p-2 border font-bold text-blue-700 bg-blue-50">${rowCumulativeTaught}</td>
+                        <td class="p-2 border ${remColor} bg-blue-50" dir="ltr">${remaining}</td>
+                    </tr>`;
+                }
+            });
+
+            tableHtml += `</tbody></table>`;
+
+            if (!hasRows) {
+                tableContainer.innerHTML = '<p class="text-center p-4 text-red-500">اس سمسٹر کا کوئی ریکارڈ نہیں ملا۔</p>';
+            } else {
+                tableContainer.innerHTML = tableHtml;
+            }
+
+        } catch (error) {
+            console.error("Profile Error:", error);
+            tableContainer.innerHTML = `<p class="text-center p-4 text-red-600">پروفائل لوڈ کرنے میں خرابی: ${error.message}</p>`;
+        }
+    }
+    function getMonthNameUrdu(index) {
+        const urduMonths = [
+            "جنوری", "فروری", "مارچ", "اپریل", "مئی", "جون",
+            "جولائی", "اگست", "ستمبر", "اکتوبر", "نومبر", "دسمبر"
+        ];
+        return urduMonths[index] || "";
+    }
 </script>
 </body>
 </html>
+
 
 
 
