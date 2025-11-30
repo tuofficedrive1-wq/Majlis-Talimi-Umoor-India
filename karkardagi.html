@@ -1073,6 +1073,11 @@ const handleCreateReportLink = (jamiaName) => {
             );
         }
     }
+                // NEW: Reset Button Logic
+                if (e.target.closest('.reset-teacher-data-btn')) {
+                    handleResetTeacherData(e);
+                    return; 
+                }
 });
             
             // Delegation for Monthly Munasib Image Download - NEW
@@ -2539,11 +2544,25 @@ let rowHtml = `
     <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
     
     ${index === 0 ? `
-         <td rowspan="${teacherPeriods.length}">
-             <button type="button"
-                     class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 p-1 flex items-center">
-                 <i class="fas fa-image fa-sm mr-1 pointer-events-none"></i> Image
-             </button>
+         <td rowspan="${teacherPeriods.length}" class="text-center align-middle px-1">
+             <div class="flex flex-col gap-2 items-center justify-center w-full">
+                 
+                 <button type="button"
+                         class="download-teacher-image-btn text-emerald-600 hover:text-emerald-800 text-xs font-bold py-1 px-2 border border-emerald-200 rounded bg-emerald-50 w-full flex justify-center items-center"
+                         title="Download Image">
+                     <i class="fas fa-image mr-1"></i> Image
+                 </button>
+                 
+                 <button type="button"
+                         class="reset-teacher-data-btn text-red-600 hover:text-red-800 text-xs font-bold py-1 px-2 border border-red-200 rounded bg-red-50 w-full flex justify-center items-center"
+                         data-teacher-id="${teacher.id}"
+                         data-jamia-name="${jamiaName}"
+                         data-teacher-name="${teacher.name}"
+                         title="Is Teacher ka Form Reset/Unlock Karein">
+                     <i class="fas fa-trash-alt mr-1"></i> Reset
+                 </button>
+
+             </div>
          </td>
     ` : ''}
 </tr>`;
@@ -3705,12 +3724,89 @@ let rowHtml = `
         academicSetupPanel.classList.toggle('open');
     });
 }
+        // --- FUNCTION TO DELETE DATA (RESET FORM) ---
+            const handleResetTeacherData = async (e) => {
+                const btn = e.target.closest('.reset-teacher-data-btn');
+                if (!btn) return;
+
+                const teacherId = btn.dataset.teacherId;
+                const jamiaName = btn.dataset.jamiaName;
+                const teacherName = btn.dataset.teacherName;
+                const { monthNum, yearNum } = currentReportPeriod;
+
+                if (!confirm(`⚠ ALERT!\n\nKya aap "${teacherName}" ka sara data DELETE karna chahte hain?\n\nTeacher ka form poori tarah UNLOCK ho jayega aur wo dobara fill kar sakenge.`)) {
+                    return;
+                }
+
+                showLoader(true);
+                try {
+                    const batch = writeBatch(db);
+                    
+                    // 1. Teacher Submissions (Delete from Raw Database)
+                    const subRef = collection(db, 'teacher_submissions');
+                    
+                    // Hum do tarah se dhoondenge taake koi record bache nahi
+                    // Query A: Period ID ke baghair (Saara data us mahine ka)
+                    const q = query(
+                        subRef, 
+                        where('teacherId', '==', teacherId),
+                        where('jamiaName', '==', jamiaName),
+                        where('submissionMonth', '==', monthNum),
+                        where('submissionYear', '==', yearNum)
+                    );
+                    
+                    const subSnap = await getDocs(q);
+                    
+                    if (subSnap.empty) {
+                        console.warn("Raw submissions nahi miley, lekin Report se clean karenge.");
+                    }
+
+                    subSnap.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+
+                    // 2. Monthly Reports (Admin ki saved file se bhi hatayen)
+                    const reportId = `${currentUser.uid}_${activeYear}_${yearNum}_${monthNum}`; 
+                    const reportRef = doc(db, 'monthly_reports', reportId);
+                    const reportSnap = await getDoc(reportRef);
+                    
+                    if (reportSnap.exists()) {
+                        const data = reportSnap.data();
+                        let arr = data.karkardagiReport?.data || [];
+                        
+                        // Filter: Is teacher ka data nikal dein
+                        const newArr = arr.filter(item => !(item.teacherId === teacherId && item.jamiaName === jamiaName));
+                        
+                        // Agar kuch change hua to update karein
+                        if (arr.length !== newArr.length) {
+                            batch.update(reportRef, {
+                                "karkardagiReport.data": newArr
+                            });
+                        }
+                    }
+
+                    await batch.commit();
+                    
+                    showNotification(`Mubarak ho! ${teacherName} ka form reset ho gaya.`);
+                    
+                    // Screen Refresh
+                    await loadMonthlyReportData();
+                    renderReportingTab();
+
+                } catch (err) {
+                    console.error("Reset Error:", err);
+                    showNotification("Reset karne mein error aayi.", true, err.message);
+                } finally {
+                    showLoader(false);
+                }
+            };
 
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
