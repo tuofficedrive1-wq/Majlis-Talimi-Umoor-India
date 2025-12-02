@@ -509,6 +509,9 @@
         let allYearReportsData = [];
         // Teacher form se aane wali submissions yahan store hongi
         let teacherSubmissionsMap = new Map();
+                // 🔹 Cache key: kis month/year + academic year ka data last baar load hua
+        let lastLoadedReportKey = null;
+
 
         // Current Period being viewed/edited
         let currentReportPeriod = { 
@@ -665,11 +668,11 @@
             document.getElementById('current-month-year').textContent = `Report for ${displayMonth} ${currentReportPeriod.yearNum || currentReportPeriod.year}`;
             
             // Agar month ya year badla hai toh report ko reload karna hoga
-            if (oldPeriod.monthNum !== currentReportPeriod.monthNum || oldPeriod.yearNum !== currentReportPeriod.yearNum) {
+                        if (oldPeriod.monthNum !== currentReportPeriod.monthNum || oldPeriod.yearNum !== currentReportPeriod.yearNum) {
                 if (currentUser && activeYear) {
-                    loadMonthlyReportData().then(() => {
+                    // 🔹 Month/year change hua to fresh read chahiye
+                    loadMonthlyReportData(true).then(() => {
                         renderReportingTab();
-                        // Also re-render summary tabs if they are visible
                         if (!document.getElementById('summary-tab-content').classList.contains('hidden')) {
                              renderSummaryTab();
                         }
@@ -1292,8 +1295,8 @@ if (editTeacherForm) {
                  currentReportPeriod.yearNum = reportingYearNum;
                  updateReportPeriod({}); 
                 
-                // 6. Report Load
-                await loadMonthlyReportData(); 
+                                // 6. Report Load (first time hamesha fresh)
+                await loadMonthlyReportData(true); 
                 refreshFullUI();
 
             } catch (error) {
@@ -1304,16 +1307,28 @@ if (editTeacherForm) {
             }
         };
         
-        const loadMonthlyReportData = async () => {
-            monthlyReportData = []; 
-            currentMonthReport = {};
-            allYearReportsData = []; 
-            teacherSubmissionsMap = new Map(); 
-
+                const loadMonthlyReportData = async (forceReload = false) => {
             if (!currentUser || !currentUser.uid) return;
             if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
             const { yearNum, monthNum } = currentReportPeriod;
+
+            // 🔹 Ab cache key banayenge: ek academic year + ek month/year ka combination
+            const cacheKey = `${activeYear}|${yearNum}|${monthNum}`;
+
+            // 🔹 Agar pehle se yahi month/year load ho chuka hai
+            //    aur forceReload false hai, to Firestore dubara hit nahi karenge
+            if (!forceReload && cacheKey === lastLoadedReportKey && allYearReportsData.length > 0) {
+                console.log('[Karkardagi] Using cached monthly report data for', cacheKey);
+                return;
+            }
+
+            // Ab naya data load karna hai to pehle purani arrays clear karo
+            monthlyReportData = [];
+            currentMonthReport = {};
+            allYearReportsData = [];
+            teacherSubmissionsMap = new Map();
+
             // Structure for name fallback
             const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
@@ -1393,7 +1408,7 @@ if (editTeacherForm) {
                     const data = docSnap.data() || {};
                     if (data.role === 'user_update') return; // Updates done
 
-                    // Agar ye Period ID pehle hi Update ho chuki hai, to Teacher ka data Phenk do
+                    // Agar ye Period ID pehle hi Update ho chuki hai, to Teacher ka data phenk do
                     if (data.periodId && updatedPeriodIds.has(data.periodId)) {
                         return; // 🛑 BLOCKED: Admin ka data pehle se majood hai
                     }
@@ -1440,11 +1455,15 @@ if (editTeacherForm) {
 
                 console.log('Loaded Data Map (Priority Fixed with Blocking):', teacherSubmissionsMap);
 
+                // ✅ Last successfully loaded key yaad rakh lete hain
+                lastLoadedReportKey = cacheKey;
+
             } catch (error) {
                 console.error(`Error loading report data:`, error);
                 showNotification("Report data load error.", true, error.message);
             }
         };
+
 
         
         // --- MONTH & JAMIA FILTER LOGIC (Updated for No Deadline) ---
@@ -1625,7 +1644,7 @@ if (editTeacherForm) {
                 populateYearSelector(); 
                 activeYear = newYearName; 
                 activeYearSelect.value = newYearName;
-                await loadMonthlyReportData(); 
+                await loadMonthlyReportData(true); 
                 refreshFullUI(); 
             } catch (error) {
                 showNotification("Naya saal banane me error.", true, error.message);
@@ -2140,7 +2159,6 @@ const handleUpdateTeacherName = async (e) => {
                 });
             });
 
-            await loadMonthlyReportData();
             renderSetupTab();
             renderReportingTab();
             populateTeacherProfileFilters();
@@ -3190,7 +3208,7 @@ let rowHtml = `
                  monthlyMunasibContainer.innerHTML = `<p class="text-gray-500">Please wait for the reports to load or select a valid academic year.</p>`;
                  // If data is not loaded, attempt to load it before rendering
                  if (currentUser && activeYear && allAcademicYearsData[activeYear]?.karkardagiStructure?.length > 0) {
-                     loadMonthlyReportData().then(() => {
+                     loadMonthlyReportData(true).then(() => {
                          renderMonthlyMunasibReport();
                      });
                  }
@@ -3837,16 +3855,19 @@ let rowHtml = `
                 document.getElementById(`${tabId}-tab-content`).classList.remove('hidden');
                 
                 // If switching to summary tab, ensure all summary views are updated
-                if (tabId === 'summary') {
-                    // Sync the reporting month selector value to the summary selector before rendering
+                                if (tabId === 'summary') {
                     const currentReportMonthValue = reportMonthSelect.value;
                     if (currentReportMonthValue) {
                          summaryMonthSelect.value = currentReportMonthValue;
-                         teacherProfileMonthSelect.value = currentReportMonthValue; // Update hidden input
+                         teacherProfileMonthSelect.value = currentReportMonthValue;
                     }
-                    
-                    // Trigger loadMonthlyReportData if necessary (it runs on month change too)
-                    loadMonthlyReportData().then(renderSummaryTab); 
+
+                    // 🔹 Sirf tabhi Firestore se read karo jab data hi loaded na ho
+                    if (!lastLoadedReportKey || allYearReportsData.length === 0) {
+                        loadMonthlyReportData(true).then(renderSummaryTab);
+                    } else {
+                        renderSummaryTab();
+                    }
                 }
                 
                 // If switching to reporting tab, ensure it's rendered with current default period
@@ -3979,6 +4000,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
