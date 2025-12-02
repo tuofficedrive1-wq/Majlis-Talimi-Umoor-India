@@ -263,6 +263,17 @@
                                     <option value="all">All Users</option>
                                 </select>
                             </div>
+                                    <div class="flex items-center gap-2 mt-2 md:mt-6">
+            <input
+                type="checkbox"
+                id="kkd-only-unfilled"
+                class="h-4 w-4 text-red-600 border-gray-300 rounded"
+            />
+            <label for="kkd-only-unfilled" class="text-sm text-gray-700">
+                Sirf un teachers ki list dikhayen jin ki KKd report fill <span class="font-semibold">nahi</span> hui hai
+            </label>
+        </div>
+    </div>
                             <div class="self-end">
                                 <button id="kkd-summary-apply-filter-btn" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Apply Filter</button>
                             </div>
@@ -401,6 +412,8 @@
         const kkdSummaryLoadingMsg = document.getElementById('kkd-summary-loading-msg');
         const kkdSummaryTablesContainer = document.getElementById('kkd-summary-tables-container');
         const kkdSectionDedicated = document.getElementById('summary-kkd-section-dedicated');
+        const kkdOnlyUnfilledCheckbox = document.getElementById('kkd-only-unfilled');
+
 
         // Elanaat Tab Elements
         const elanaatForm = document.getElementById('elanaat-form'); 
@@ -1027,176 +1040,254 @@
 
         // === DEDICATED KKD SUMMARY FUNCTION (NEW) ===
 const renderDedicatedKkdSummary = (reports) => {
-    if (!kkdSummaryTablesContainer || !kkdSummaryLoadingMsg || !kkdSectionDedicated) return;
+    if (!kkdSectionDedicated || !kkdSummaryTablesContainer || !kkdSummaryLoadingMsg) return;
+    const onlyUnfilled =
+    kkdOnlyUnfilledCheckbox && kkdOnlyUnfilledCheckbox.checked;
 
-    const selectedUserId = kkdSummaryUserFilter.value;
 
-    if (!reports || reports.length === 0) {
-        kkdSummaryLoadingMsg.textContent = "Is mahine ke liye koi KKd report nahi mili. Pehle 'Fetch Reports' par click karein.";
+    // Agar abhi tak reports load hi nahi hue
+    if (!Array.isArray(reports) || reports.length === 0) {
+        kkdSummaryTablesContainer.classList.remove('hidden');
         kkdSummaryLoadingMsg.classList.remove('hidden');
-        kkdSectionDedicated.innerHTML = "";
+        kkdSummaryLoadingMsg.textContent = "Is period ke liye koi report nahi mili.";
+        kkdSectionDedicated.innerHTML = '';
         return;
     }
 
-    // Filter by user dropdown
-    const filteredReports = (selectedUserId === 'all')
-        ? reports
-        : reports.filter(r => r.userId === selectedUserId);
+    // User filter
+    const selectedUserId = kkdSummaryUserFilter?.value || 'all';
+    let filteredReports = [...reports];
+
+    if (selectedUserId !== 'all') {
+        filteredReports = filteredReports.filter(r => r.userId === selectedUserId);
+    }
+
+    kkdSummaryTablesContainer.classList.remove('hidden');
+    kkdSummaryLoadingMsg.classList.add('hidden');
 
     if (filteredReports.length === 0) {
-        kkdSummaryLoadingMsg.textContent = "Is user ke liye KKd data nahi mila.";
-        kkdSummaryLoadingMsg.classList.remove('hidden');
-        kkdSectionDedicated.innerHTML = "";
+        kkdSectionDedicated.innerHTML = `
+            <p class="text-center text-gray-500">
+                Is filter ke liye koi KKd report nahi mili.
+            </p>`;
         return;
     }
 
-    // Helper: user ka naam
-    const getUserName = (userId) => {
-        const u = allUsersData.find(x => x.id === userId);
-        return u?.name || u?.email || "Unknown User";
+    // Month / Year display (admin ke dropdown se)
+    const selectedMonthName = adminMonthSelect?.value || '';
+    const selectedYearVal = adminYearSelect?.value || '';
+
+    let totalUsers = 0;
+    let totalTeachers = 0;
+    let totalTeachersReported = 0;
+
+    const usersSeen = new Set();
+    let cardsHtml = '';
+
+    const getUserNameById = (id) => {
+        const u = allUsersData.find(x => x.id === id);
+        return u?.name || u?.email || 'N/A';
     };
 
-    kkdSummaryLoadingMsg.classList.add('hidden');
-    kkdSummaryTablesContainer.classList.remove('hidden');
-
-    // ---- STEP 1: Raw KKd entries collect karein ----
-    const kkdEntries = [];
     filteredReports.forEach(report => {
         const userId = report.userId;
-        const userName = getUserName(userId);
-        const data = report.karkardagiReport?.data || [];
+        if (!userId) return;
 
-        data.forEach(item => {
-            kkdEntries.push({
-                userId,
-                userName,
-                jamiaName: item.jamiaName || "-",
-                teacherId: item.teacherId || "",
-                teacherName: item.teacherName || "-",
-                bookName: item.bookName || "-",
-                monthlyTarget: Number(item.monthlyTarget) || 0,
-                pagesTaught: Number(item.pagesTaught) || 0
+        const userDoc = allUsersData.find(u => u.id === userId) || {};
+        const userName = getUserNameById(userId);
+
+        // Kis academic year ka structure use karna hai
+        const academicYears = userDoc.academicYears || {};
+        const academicYearKey = report.academicYear || Object.keys(academicYears)[0];
+
+        const yearData = academicYears[academicYearKey] || {};
+        const structure = yearData.karkardagiStructure || [];
+
+        if (!usersSeen.has(userId)) {
+            usersSeen.add(userId);
+            totalUsers++;
+        }
+
+        // Agar structure hi nahi mila
+        if (!Array.isArray(structure) || structure.length === 0) {
+            cardsHtml += `
+                <div class="summary-card mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-lg font-semibold urdu-font">${userName}</h4>
+                        <span class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                            KKd Structure nahi mila
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-500">
+                        Is user ke academic year <span class="font-semibold">${academicYearKey || '-'}</span> 
+                        ke liye karkardagi structure (Jamia / Teacher list) save nahi hai, 
+                        is liye teachers ki list nahi ban pa rahi.
+                    </p>
+                </div>`;
+            return;
+        }
+
+        // Saare teachers structure se nikal lo (chahe report ho ya na ho)
+        const teacherMap = new Map(); // key: jamiaName::teacherId
+
+        structure.forEach(jamia => {
+            const jName = jamia.jamiaName || 'Jamia';
+            (jamia.teachers || []).forEach(t => {
+                if (!t) return;
+                const key = `${jName}::${t.id}`;
+                if (!teacherMap.has(key)) {
+                    teacherMap.set(key, {
+                        jamiaName: jName,
+                        teacherId: t.id,
+                        teacherName: t.name || 'Teacher',
+                        hasReport: false
+                    });
+                }
             });
         });
+
+        // Ab is month ke monthly_reports ke KKd data se pata karo
+        const kkdEntries = (report.karkardagiReport?.data || []);
+
+        kkdEntries.forEach(entry => {
+            if (!entry) return;
+            const jName = entry.jamiaName || entry.jamiaId || '';
+            const key = `${jName}::${entry.teacherId}`;
+            if (teacherMap.has(key)) {
+                const obj = teacherMap.get(key);
+                obj.hasReport = true; // is month me is teacher ki KKd report aayi hai
+                teacherMap.set(key, obj);
+            }
+        });
+
+        // Saare teachers (structure se)
+const teacherListAll = Array.from(teacherMap.values())
+    .sort((a, b) => {
+        if (a.jamiaName === b.jamiaName) {
+            return (a.teacherName || '').localeCompare(b.teacherName || '');
+        }
+        return (a.jamiaName || '').localeCompare(b.jamiaName || '');
     });
 
-    if (kkdEntries.length === 0) {
-        kkdSummaryLoadingMsg.textContent = "Selected filter ke liye KKd data nahi mila.";
-        kkdSummaryLoadingMsg.classList.remove('hidden');
-        kkdSectionDedicated.innerHTML = "";
+// Table me kya dikhana hai – filter ke hisaab se
+const teacherListDisplay = onlyUnfilled
+    ? teacherListAll.filter(t => !t.hasReport)
+    : teacherListAll;
+
+// Counts hamesha full list pe (overall stat ke liye)
+const userTeacherTotal = teacherListAll.length;
+const userTeacherReported = teacherListAll.filter(t => t.hasReport).length;
+
+
+        totalTeachers += userTeacherTotal;
+        totalTeachersReported += userTeacherReported;
+
+        let rowsHtml = '';
+teacherListDisplay.forEach(t => {
+    rowsHtml += `
+        <tr>
+            <td class="px-3 py-1 border urdu-font">${t.jamiaName}</td>
+            <td class="px-3 py-1 border urdu-font">${t.teacherName}</td>
+            <td class="px-3 py-1 border text-center">
+                ${
+                    t.hasReport
+                        ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">Filled</span>'
+                        : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Not Filled</span>'
+                }
+            </td>
+        </tr>`;
+});
+
+// Agar sirf unfilled mode on hai aur koi teacher nahi bacha
+if (teacherListDisplay.length === 0) {
+    rowsHtml = `
+        <tr>
+            <td colspan="3" class="px-3 py-2 text-center text-gray-500">
+                Is user ke tamam teachers ki KKd report fill ho chuki hai.
+            </td>
+        </tr>`;
+}
+
+        cardsHtml += `
+            <div class="summary-card mt-4">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
+                    <div>
+                        <h4 class="text-lg font-semibold urdu-font">${userName}</h4>
+                        <p class="text-xs text-gray-500">
+                            Academic Year: <span class="font-semibold">${academicYearKey || '-'}</span>
+                        </p>
+                    </div>
+                    <div class="text-sm text-gray-700">
+                        <p>Total Teachers: <span class="font-semibold">${userTeacherTotal}</span></p>
+                        <p>Report Filled: <span class="font-semibold text-emerald-600">${userTeacherReported}</span></p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto mt-2">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="px-3 py-1 border text-left urdu-font">Jamia</th>
+                                <th class="px-3 py-1 border text-left urdu-font">Teacher</th>
+                                <th class="px-3 py-1 border text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml || `<tr><td colspan="3" class="px-3 py-2 text-center text-gray-500">No teachers found in structure.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+    });
+
+    if (usersSeen.size === 0) {
+        kkdSectionDedicated.innerHTML = `
+            <p class="text-center text-gray-500">
+                Is filter ke liye KKd structure ya reports nahi mil paaye.
+            </p>`;
         return;
     }
 
-    // ---- STEP 2: Teacher level aggregation (period wise nahi) ----
-    // Unique teacher = userId + jamiaName + teacherId
-    const teacherMap = new Map();
+    const percentage =
+        totalTeachers > 0
+            ? Math.round((totalTeachersReported / totalTeachers) * 100)
+            : 0;
 
-    kkdEntries.forEach(entry => {
-        const teacherKey = `${entry.userId}||${entry.jamiaName}||${entry.teacherId || entry.teacherName}`;
+    const filterLabel = selectedUserId === 'all'
+        ? 'All Users'
+        : (getUserNameById(selectedUserId));
 
-        let agg = teacherMap.get(teacherKey);
-        if (!agg) {
-            agg = {
-                userId: entry.userId,
-                userName: entry.userName,
-                jamiaName: entry.jamiaName,
-                teacherId: entry.teacherId,
-                teacherName: entry.teacherName,
-                totalTarget: 0,
-                totalTaught: 0
-            };
-        }
-
-        agg.totalTarget += entry.monthlyTarget;
-        agg.totalTaught += entry.pagesTaught;
-        teacherMap.set(teacherKey, agg);
-    });
-
-    const teacherList = Array.from(teacherMap.values());
-
-    // ---- STEP 3: Top level stats ----
-    // Sirf un users ko count karein jinke paas KKd data hai
-    const usersWithKkd = new Set(teacherList.map(t => t.userId));
-    const totalUsers = usersWithKkd.size;
-    const totalTeachers = teacherList.length;
-    const teachersWithFilledReport = teacherList.filter(t => t.totalTaught > 0).length;
-    const totalKkdEntries = kkdEntries.length; // raw rows (period rows) – sirf info ke liye
-
-    // ---- STEP 4: HTML build karein ----
-    let html = "";
-
-    // Top summary cards
-    html += `
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-center">
-                <p class="text-xs text-gray-500 uppercase tracking-wide">Total Users (KKd)</p>
-                <p class="text-2xl font-bold text-emerald-700">${totalUsers}</p>
+    const topSummaryHtml = `
+        <div class="summary-card master-summary-card mb-4">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                <div>
+                    <h4 class="text-lg font-semibold">Talimi & Shashmahi KKd Overall Summary</h4>
+                    <p class="text-sm text-gray-600">
+                        Month: <span class="font-semibold">${selectedMonthName} ${selectedYearVal}</span>
+                    </p>
+                    <p class="text-xs text-gray-500">
+                        Filter: <span class="font-semibold urdu-font">${filterLabel}</span>
+                    </p>
+                </div>
             </div>
-            <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 text-center">
-                <p class="text-xs text-gray-500 uppercase tracking-wide">Total Teachers</p>
-                <p class="text-2xl font-bold text-blue-700">${totalTeachers}</p>
+            <div class="master-summary-stats mt-4">
+                <div>
+                    <p class="text-xs uppercase text-gray-500">Total Users</p>
+                    <p class="text-2xl font-bold">${totalUsers}</p>
+                </div>
+                <div>
+                    <p class="text-xs uppercase text-gray-500">Total Teachers</p>
+                    <p class="text-2xl font-bold">${totalTeachers}</p>
+                </div>
+                <div>
+                    <p class="text-xs uppercase text-gray-500">Teachers Report Filled</p>
+                    <p class="text-2xl font-bold">${totalTeachersReported}</p>
+                    <p class="text-xs text-gray-500 mt-1">${percentage}% complete</p>
+                </div>
             </div>
-            <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-center">
-                <p class="text-xs text-gray-500 uppercase tracking-wide">Report Filled Teachers</p>
-                <p class="text-2xl font-bold text-indigo-700">${teachersWithFilledReport}</p>
-            </div>
-            <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-                <p class="text-xs text-gray-500 uppercase tracking-wide">Total KKd Entries</p>
-                <p class="text-2xl font-bold text-gray-800">${totalKkdEntries}</p>
-            </div>
-        </div>
-    `;
+        </div>`;
 
-    // Teacher-wise simple table (period wise nahi)
-    html += `
-        <h4 class="text-lg font-semibold mb-2">Teacher-wise KKd Summary (period wise nahi)</h4>
-        <div class="overflow-x-auto">
-            <table class="summary-table w-full text-sm">
-                <thead>
-                    <tr class="bg-gray-100">
-                        <th class="!p-2">User</th>
-                        <th class="!p-2">Jamia</th>
-                        <th class="!p-2">Teacher</th>
-                        <th class="!p-2">Total Target (Pages)</th>
-                        <th class="!p-2">Total Taught (Pages)</th>
-                        <th class="!p-2">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-
-    teacherList
-        .sort((a, b) => {
-            // Pehle user name, phir jamia, phir teacher
-            const u = a.userName.localeCompare(b.userName);
-            if (u !== 0) return u;
-            const j = a.jamiaName.localeCompare(b.jamiaName);
-            if (j !== 0) return j;
-            return a.teacherName.localeCompare(b.teacherName);
-        })
-        .forEach(t => {
-            const status = t.totalTaught > 0 ? "Filled" : "Not Filled";
-            html += `
-                <tr>
-                    <td class="urdu-font !p-2">${t.userName}</td>
-                    <td class="urdu-font !p-2">${t.jamiaName}</td>
-                    <td class="urdu-font !p-2">${t.teacherName}</td>
-                    <td class="!p-2 text-right">${t.totalTarget}</td>
-                    <td class="!p-2 text-right">${t.totalTaught}</td>
-                    <td class="!p-2 font-semibold ${t.totalTaught > 0 ? 'text-emerald-700' : 'text-red-600'}">${status}</td>
-                </tr>
-            `;
-        });
-
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
-
-    kkdSectionDedicated.innerHTML = html;
+    kkdSectionDedicated.innerHTML = topSummaryHtml + cardsHtml;
 };
-
          
          // === MAIN EXCEL DOWNLOAD (Reverse Logic for Tadris) ===
          const handleExcelDownload = () => { /* ... (Logic for Excel download) ... */ };
@@ -1761,6 +1852,7 @@ const renderDedicatedKkdSummary = (reports) => {
     </script>
 </body>
 </html>
+
 
 
 
