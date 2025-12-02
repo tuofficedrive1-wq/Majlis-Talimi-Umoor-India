@@ -1218,63 +1218,64 @@ if (editTeacherForm) {
             showLoader(true);
             
             try {
-                // 1. Data Fetching
-                if (!isInitialLoad) {
+                // 1. Data Fetching (Ensure data is loaded)
+                // Agar profile data khali hai to dobara fetch karein
+                if (!userProfileData || Object.keys(userProfileData).length === 0 || !userProfileData.academicYears) {
                     const userDocRef = doc(db, 'users', currentUser.uid);
                     const userDocSnap = await getDoc(userDocRef);
                     if (userDocSnap.exists()) {
                         userProfileData = userDocSnap.data(); 
-                        // Ensure object exists
-                        allAcademicYearsData = userDocSnap.data().academicYears || {};
                     } else { 
-                        showNotification("User profile not found.", true);
-                        showLoader(false);
-                        return; 
+                        console.warn("User profile not found in DB.");
                     }
-                } else {
-                    allAcademicYearsData = userProfileData.academicYears || {};
                 }
                 
-                // DEBUG LOG: Dekhein ke data aaya ya nahi
-                console.log("Loaded Years Data:", allAcademicYearsData);
-
-                // 2. AUTO-SELECT YEAR (Force Logic)
+                allAcademicYearsData = userProfileData.academicYears || {};
+                
+                // 2. AUTO-SELECT YEAR (Database se)
                 const yearKeys = Object.keys(allAcademicYearsData).sort().reverse();
                 
-                // Agar activeYear set nahi hai, ya null hai, to zabardasti pehla saal uthao
-                if (!activeYear || activeYear === "null" || activeYear === "undefined") {
-                    if (yearKeys.length > 0) {
-                        activeYear = yearKeys[0]; // Sabse latest saal
-                        console.log("Auto-Correction: Active Year set to", activeYear);
+                if (!activeYear && yearKeys.length > 0) {
+                    activeYear = yearKeys[0]; // Latest saal utha lo
+                }
+
+                // 3. FALLBACK: Agar DB mein koi saal nahi (New User), to Current Year khud bana lo
+                if (!activeYear) {
+                    const today = new Date();
+                    const month = today.getMonth(); // 0-11
+                    const year = today.getFullYear();
+                    // Agar April (3) ya uske baad hai to "2025-2026", warna "2024-2025"
+                    if (month >= 3) {
+                        activeYear = `${year}-${year + 1}`;
+                    } else {
+                        activeYear = `${year - 1}-${year}`;
+                    }
+                    console.log("Auto-Generated Active Year (Fallback):", activeYear);
+                    
+                    // User ko message dikhayein ke setup karein
+                    if (reportingContainer) {
+                        reportingContainer.innerHTML = `
+                            <div class="text-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
+                                <p class="text-yellow-800 font-bold">نیا تعلیمی سال (${activeYear}) منتخب کیا گیا ہے۔</p>
+                                <p class="text-sm text-yellow-700">براہ کرم "Setup Structure" میں جا کر اس سال کا سیٹ اپ مکمل کریں۔</p>
+                            </div>`;
                     }
                 }
 
-                // 3. Dropdown Update Karein
+                // 4. Dropdown Update
                 populateYearSelector(); 
-                
-                // Dropdown ki value bhi update karein
                 if (activeYear && activeYearSelect) {
+                    // Agar dropdown mein ye saal nahi hai, to temporary option add karein
+                    if (!activeYearSelect.querySelector(`option[value="${activeYear}"]`)) {
+                        const opt = document.createElement('option');
+                        opt.value = activeYear;
+                        opt.textContent = activeYear;
+                        activeYearSelect.prepend(opt);
+                    }
                     activeYearSelect.value = activeYear;
                 }
 
-                // 4. FINAL CHECK (New User Case)
-                if (!activeYear) {
-                    console.warn("Koi saal data mein nahi mila (New User or Empty Data).");
-                    
-                    // User ko bataen ke setup karein (Crash na hone dein)
-                    if (academicMonthsSetup) academicMonthsSetup.classList.add('hidden');
-                    if (reportingContainer) {
-                        reportingContainer.innerHTML = `
-                            <div class="text-center p-6 bg-blue-50 rounded-lg border border-blue-200 mt-4">
-                                <h3 class="text-lg font-bold text-blue-700">Koi Academic Year Nahi Mila</h3>
-                                <p class="text-gray-600 mt-2">Bara-e-karam upar <b>"Setup Structure"</b> tab mein jayen aur <b>"Create Year"</b> karein.</p>
-                            </div>`;
-                    }
-                    showLoader(false);
-                    return; // Yahan ruk jayen taake split error na aaye
-                }
-
-                // 5. Logic Update (Ab crash nahi hoga kyunki activeYear pakka set hai)
+                // 5. Logic Execution (Ab crash nahi hoga)
                  const academicYearParts = activeYear.split('-');
                  const academicYearStart = parseInt(academicYearParts[0], 10);
                  const academicYearEnd = parseInt(academicYearParts[1], 10);
@@ -1297,8 +1298,7 @@ if (editTeacherForm) {
 
             } catch (error) {
                 console.error("Load User Data Error:", error);
-                // Agar error aaye bhi to user ko logout mat karo, bas notify karo
-                showNotification("Internet slow hai, data load ho raha hai...", false);
+                showNotification("Data load error. Refreshing...", true);
             } finally {
                 showLoader(false);
             }
@@ -3979,6 +3979,7 @@ let rowHtml = `
     </script>
 </body>
 </html>
+
 
 
 
