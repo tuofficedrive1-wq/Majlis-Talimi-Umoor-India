@@ -993,63 +993,164 @@
         showLoader(false);
       }
     };
+// Attach listeners to Save buttons in saved table
+function attachSavedCommentHandlers() {
+  document.querySelectorAll(".save-admin-comment-btn").forEach(btn => {
+    if (btn._commentAttached) return;
+    btn._commentAttached = true;
+
+    btn.addEventListener("click", async (e) => {
+      const row = e.currentTarget.closest("tr");
+      if (!row) return;
+      const textarea = row.querySelector(".saved-admin-comment");
+      if (!textarea) return;
+
+      const newVal = textarea.value.trim();
+      const idx = parseInt(textarea.dataset.idx, 10);
+
+      // visual feedback
+      const statusEl = row.querySelector(".save-status");
+      if (statusEl) {
+        statusEl.textContent = "Saving...";
+        statusEl.classList.remove("hidden");
+      }
+
+      try {
+        await saveAdminComment(idx, newVal, textarea);
+        if (statusEl) {
+          statusEl.textContent = "Saved";
+          setTimeout(() => { statusEl.classList.add("hidden"); }, 1500);
+        }
+        showNotification("Zimmedar comment successfully saved.");
+      } catch (err) {
+        console.error("Save admin comment error:", err);
+        if (statusEl) {
+          statusEl.textContent = "Save failed";
+          setTimeout(() => { statusEl.classList.add("hidden"); }, 2000);
+        }
+        showNotification("Comment save failed.", true);
+      }
+    });
+  });
+}
+
+// Save the adminTasurat value into the report doc for matching record
+async function saveAdminComment(itemIndex, commentValue, textareaEl) {
+  if (!reportRef) throw new Error("Report reference missing.");
+  // Read current report doc to ensure sync
+  const snap = await getDoc(reportRef);
+  if (!snap.exists()) throw new Error("Report doc not found.");
+
+  const data = snap.data() || {};
+  const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
+
+  // Attempt to update by index if possible and stable
+  if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
+    arr[itemIndex].adminTasurat = commentValue;
+  } else {
+    // Fallback: try match by fields on textarea dataset
+    const jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
+    const teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
+    const dt = textareaEl.dataset.date || "";
+    const cls = decodeURIComponent(textareaEl.dataset.class || "");
+    const kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
+
+    const foundIdx = arr.findIndex(r =>
+      (r.jamiaName||"") === jamia &&
+      (r.teacherName||"") === teacher &&
+      (r.date||"") === dt &&
+      (r.className||"") === cls &&
+      (r.kitabName||"") === kitab
+    );
+    if (foundIdx >= 0) arr[foundIdx].adminTasurat = commentValue;
+    else throw new Error("Matching record not found.");
+  }
+
+  // preserve existing status if present
+  const existingStatus = data.tadrisRecording?.status || "Pending";
+  await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
+}
 
     // ============================
     // Saved Table Logic
     // ============================
-    function fillSavedTable() {
-      const table = document.getElementById("saved-table-body");
-      table.innerHTML = "";
+    // ======== REPLACE EXISTING fillSavedTable WITH THIS VERSION ========
+function fillSavedTable() {
+  const table = document.getElementById("saved-table-body");
+  table.innerHTML = "";
 
-      const { report } = getCurrentReportForSelectedMonth();
-      const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
+  const { report } = getCurrentReportForSelectedMonth();
+  const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
 
-      if (!data.length) {
-        table.innerHTML = `
-          <tr>
-            <td colspan="8" class="text-center p-3 text-gray-500">
-              Is month ki koi recording save nahi hai.
-            </td>
-          </tr>`;
-        return;
-      }
+  if (!data.length) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center p-3 text-gray-500">
+          Is month ki koi recording save nahi hai.
+        </td>
+      </tr>`;
+    return;
+  }
 
-      data.sort((a, b) => {
-        const da = new Date(a.date).getTime() || 0;
-        const db = new Date(b.date).getTime() || 0;
-        if (db !== da) return db - da;
-        return 0;
-      });
+  // sort newest first
+  data.sort((a, b) => {
+    const da = new Date(a.date).getTime() || 0;
+    const db = new Date(b.date).getTime() || 0;
+    if (db !== da) return db - da;
+    return 0;
+  });
 
-      data.forEach((rec, idx) => {
-        const rowId = `saved-row-${idx}`;
-        table.insertAdjacentHTML("beforeend", `
-          <tr id="${rowId}" class="saved-data-row">
-            <td class="border px-2 py-1 urdu-font">${rec.jamiaName || ""}</td>
-            <td class="border px-2 py-1 urdu-font">${rec.className || ""}</td>
-            <td class="border px-2 py-1 urdu-font">${rec.kitabName || ""}</td>
-            <td class="border px-2 py-1 urdu-font">${rec.teacherName || ""}</td>
-            <td class="border px-2 py-1">${rec.date || ""}</td>
-            <td class="border px-2 py-1 urdu-font">${rec.tasurat || "-"}</td>
-            <td class="border px-2 py-1 urdu-font">${rec.adminTasurat || "-"}</td>
-            <td class="border px-2 py-1">
-              <button class="saved-download-btn text-red-600 underline text-xs"
-                data-row-id="${rowId}"
-                data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
-                data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
-                data-date="${rec.date || ''}"
-                data-class-name="${encodeURIComponent(rec.className || '')}"
-                data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
-                data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
-              >PDF</button>
-            </td>
-          </tr>
-        `);
-      });
+  data.forEach((rec, idx) => {
+    const rowId = `saved-row-${idx}`;
+    const adminComment = rec.tasurat || "-";
+    const zimmedarComment = rec.adminTasurat || "";
 
-      attachSavedDownloadHandlers();
-      attachSavedFiltersListeners();
-    }
+    table.insertAdjacentHTML("beforeend", `
+      <tr id="${rowId}" class="saved-data-row">
+        <td class="border px-2 py-1 urdu-font">${rec.jamiaName || ""}</td>
+        <td class="border px-2 py-1 urdu-font">${rec.className || ""}</td>
+        <td class="border px-2 py-1 urdu-font">${rec.kitabName || ""}</td>
+        <td class="border px-2 py-1 urdu-font">${rec.teacherName || ""}</td>
+        <td class="border px-2 py-1">${rec.date || ""}</td>
+        <td class="border px-2 py-1 urdu-font">${adminComment}</td>
+        <td class="border px-2 py-1 urdu-font">
+          <div class="flex flex-col">
+            <textarea
+              rows="2"
+              class="saved-admin-comment w-full p-1 border rounded-sm text-xs urdu-font"
+              data-idx="${idx}"
+              data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
+              data-teacher="${encodeURIComponent(rec.teacherName||'')}"
+              data-date="${rec.date || ''}"
+              data-class="${encodeURIComponent(rec.className||'')}"
+              data-kitab="${encodeURIComponent(rec.kitabName||'')}"
+            >${zimmedarComment}</textarea>
+            <div class="mt-1 flex gap-2">
+              <button class="save-admin-comment-btn px-2 py-1 text-xs rounded bg-teal-600 text-white">Save</button>
+              <span class="save-status text-xs text-gray-500 hidden" style="align-self:center;">Saved</span>
+            </div>
+          </div>
+        </td>
+        <td class="border px-2 py-1">
+          <button class="saved-download-btn text-red-600 underline text-xs"
+            data-row-id="${rowId}"
+            data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
+            data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
+            data-date="${rec.date || ''}"
+            data-class-name="${encodeURIComponent(rec.className || '')}"
+            data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
+            data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
+          >PDF</button>
+        </td>
+      </tr>
+    `);
+  });
+
+  // Re-attach handlers after table is filled
+  attachSavedDownloadHandlers();
+  attachSavedFiltersListeners();
+  attachSavedCommentHandlers();
+}
 
     let applySavedFilters = function() {
       const jamiaSel = document.getElementById("filter-jamia");
@@ -1237,3 +1338,4 @@
   </script>
 </body>
 </html>
+
