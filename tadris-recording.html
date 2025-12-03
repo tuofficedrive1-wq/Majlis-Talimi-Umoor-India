@@ -1102,128 +1102,96 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
     // ============================
     // Saved Table Logic
     // ============================
-    // ======== UPDATED fillSavedTable (shows comment text only; no inline Save button) ========
-function fillSavedTable() {
-  const table = document.getElementById("saved-table-body");
-  table.innerHTML = "";
-
-  const { report } = getCurrentReportForSelectedMonth();
-  const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
-
-  if (!data.length) {
-    table.innerHTML = `
-      <tr>
-        <td colspan="8" class="text-center p-3 text-gray-500">
-          Is month ki koi recording save nahi hai.
-        </td>
-      </tr>`;
+    // Single delegation for saved-table-body: handles comment-cell clicks AND PDF button clicks
+function attachSavedTableDelegation() {
+  const tbody = document.getElementById("saved-table-body");
+  if (!tbody) {
+    console.error("saved-table-body not found!");
     return;
   }
+  if (tbody._delegationAttached) return;
+  tbody._delegationAttached = true;
 
-  // sort newest first
-  data.sort((a, b) => {
-    const da = new Date(a.date).getTime() || 0;
-    const db = new Date(b.date).getTime() || 0;
-    if (db !== da) return db - da;
-    return 0;
+  tbody.addEventListener("click", async (e) => {
+    // Debug
+    // console.log("tbody click", e.target);
+
+    // 1) Comment cell (works if inner span clicked too)
+    const commentCell = e.target.closest(".zimmedar-comment-cell");
+    if (commentCell && tbody.contains(commentCell)) {
+      e.preventDefault();
+      // read dataset
+      const idx = parseInt(commentCell.dataset.idx || "-1", 10);
+      const jamia = decodeURIComponent(commentCell.dataset.jamia || "");
+      const teacher = decodeURIComponent(commentCell.dataset.teacher || "");
+      const dt = commentCell.dataset.date || "";
+      const cls = decodeURIComponent(commentCell.dataset.class || "");
+      const kitab = decodeURIComponent(commentCell.dataset.kitab || "");
+      let currentText = "";
+      const inner = commentCell.querySelector("span");
+      if (inner && inner.classList.contains("text-gray-500")) currentText = "";
+      else currentText = (commentCell.textContent || "").trim();
+
+      // Debug log
+      console.log("Open comment modal for idx:", idx, { jamia, teacher, dt, cls, kitab, currentText });
+
+      openCommentModal({
+        idx,
+        jamia,
+        teacher,
+        date: dt,
+        className: cls,
+        kitab,
+        currentText,
+        cellElement: commentCell
+      });
+      return;
+    }
+
+    // 2) PDF download button
+    const pdfBtn = e.target.closest(".saved-download-btn");
+    if (pdfBtn && tbody.contains(pdfBtn)) {
+      e.preventDefault();
+      // read data attributes from button
+      const rowId = pdfBtn.dataset.rowId;
+      const jamia = decodeURIComponent(pdfBtn.dataset.jamiaName || "");
+      const teacher = decodeURIComponent(pdfBtn.dataset.teacherName || "");
+      const dt = pdfBtn.dataset.date || "";
+      const cls = decodeURIComponent(pdfBtn.dataset.className || "");
+      const kitab = decodeURIComponent(pdfBtn.dataset.kitabName || "");
+      const tasurat = decodeURIComponent(pdfBtn.dataset.tasurat || "");
+
+      console.log("PDF click:", { rowId, jamia, teacher, dt, cls, kitab });
+
+      // Call existing download logic (replace with your existing function if different)
+      try {
+        // If you already have a function like handleSavedDownload, call it here:
+        if (typeof handleSavedDownload === "function") {
+          handleSavedDownload({ rowId, jamia, teacher, date: dt, className: cls, kitabName: kitab, tasurat });
+        } else {
+          // fallback: simple notification for debug
+          showNotification("PDF functionality not wired to handler (debug).", true);
+          console.warn("No handleSavedDownload() found. Implement it or rename accordingly.");
+        }
+      } catch (err) {
+        console.error("PDF click handler error:", err);
+        showNotification("PDF action failed.", true);
+      }
+      return;
+    }
+
+    // else ignore other clicks
   });
 
-  data.forEach((rec, idx) => {
-    const rowId = `saved-row-${idx}`;
-    const adminComment = rec.tasurat || "-";
-    const zimmedarComment = rec.adminTasurat || "";
-
-    // show zimmedarComment as plain text (clickable)
-    table.insertAdjacentHTML("beforeend", `
-      <tr id="${rowId}" class="saved-data-row">
-        <td class="border px-2 py-1 urdu-font">${rec.jamiaName || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.className || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.kitabName || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.teacherName || ""}</td>
-        <td class="border px-2 py-1">${rec.date || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${adminComment}</td>
-        <td class="border px-2 py-1 urdu-font">
-          <div class="zimmedar-comment-cell cursor-pointer p-1 text-xs"
-     role="button"
-     tabindex="0"
-     data-idx="${idx}"
-     data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
-     data-teacher="${encodeURIComponent(rec.teacherName||'')}"
-     data-date="${rec.date || ''}"
-     data-class="${encodeURIComponent(rec.className||'')}"
-     data-kitab="${encodeURIComponent(rec.kitabName||'')}"
-     title="Click karke comment edit karein"
->
-  ${zimmedarComment 
-      ? escapeHtml(zimmedarComment) 
-      : '<span class="text-gray-500">[Add comment]</span>'}
-</div>
-        </td>
-        <td class="border px-2 py-1">
-          <button class="saved-download-btn text-red-600 underline text-xs"
-            data-row-id="${rowId}"
-            data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
-            data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
-            data-date="${rec.date || ''}"
-            data-class-name="${encodeURIComponent(rec.className || '')}"
-            data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
-            data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
-          >PDF</button>
-        </td>
-      </tr>
-    `);
-  });
-
-  // attach handlers
-  attachSavedDownloadHandlers();
-  attachSavedFiltersListeners();
-  attachSavedCommentClickHandlers();
-}
-
-// small helper to avoid HTML injection when inserting text into cell
-function escapeHtml(unsafe) {
-  if (unsafe === null || unsafe === undefined) return "";
-  return String(unsafe)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-// Event delegation on table body so clicks always work even if rows re-render
-function attachSavedCommentClickHandlers() {
-  const tbody = document.getElementById("saved-table-body");
-  if (!tbody) return;
-  if (tbody._zimmedarDelegationAttached) return;
-  tbody._zimmedarDelegationAttached = true;
-
-  tbody.addEventListener("click", (e) => {
-    const cell = e.target.closest(".zimmedar-comment-cell");
-    if (!cell) return;
-
-    const idx = parseInt(cell.dataset.idx || "-1", 10);
-    const jamia = decodeURIComponent(cell.dataset.jamia || "");
-    const teacher = decodeURIComponent(cell.dataset.teacher || "");
-    const dt = cell.dataset.date || "";
-    const cls = decodeURIComponent(cell.dataset.class || "");
-    const kitab = decodeURIComponent(cell.dataset.kitab || "");
-
-    let currentText = "";
-    const inner = cell.querySelector("span");
-    if (inner && inner.classList.contains("text-gray-500")) currentText = "";
-    else currentText = (cell.textContent || "").trim();
-
-    openCommentModal({
-      idx,
-      jamia,
-      teacher,
-      date: dt,
-      className: cls,
-      kitab,
-      currentText,
-      cellElement: cell
-    });
+  // keyboard support: Enter/Space when a .zimmedar-comment-cell has focus
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") {
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains("zimmedar-comment-cell")) {
+        ev.preventDefault();
+        active.click();
+      }
+    }
   });
 }
 
@@ -1302,7 +1270,10 @@ modalSaveBtn?.addEventListener?.("click", async () => {
         document.body.classList.add("hide-top-controls");
         tabSaved.classList.add("bg-teal-600", "text-white");
         tabAdd.classList.remove("bg-teal-600", "text-white");
-        fillSavedTable();
+        // after rendering rows
+fillSavedTable();
+attachSavedTableDelegation();
+
       }
     }
 
@@ -1330,6 +1301,7 @@ modalSaveBtn?.addEventListener?.("click", async () => {
   </script>
 </body>
 </html>
+
 
 
 
