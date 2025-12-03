@@ -262,6 +262,19 @@
 
   </div>
 
+<!-- Zimmedar Comment Modal -->
+<div id="zimmedarCommentModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black opacity-50" id="zimmedarModalBackdrop"></div>
+  <div class="relative bg-white rounded-lg shadow-lg max-w-lg w-11/12 p-4">
+    <h3 class="text-lg font-semibold urdu-font mb-2">Zimmedar Comment</h3>
+    <textarea id="zimmedarModalTextarea" rows="6" class="w-full p-2 border rounded urdu-font text-sm"></textarea>
+    <div class="mt-3 flex justify-end gap-2">
+      <button id="zimmedarModalCancel" class="px-3 py-1 rounded border text-sm">Cancel</button>
+      <button id="zimmedarModalSave" class="px-3 py-1 rounded bg-teal-600 text-white text-sm">Save</button>
+    </div>
+  </div>
+</div>
+  
   <script type="module">
     // ============================
     // Firebase Imports
@@ -1035,25 +1048,35 @@ function attachSavedCommentHandlers() {
 }
 
 // Save the adminTasurat value into the report doc for matching record
-async function saveAdminComment(itemIndex, commentValue, textareaEl) {
+// Save the adminTasurat value into the report doc for matching record
+// Accepts either textareaEl OR modalContext (from openCommentModal)
+async function saveAdminComment(itemIndex, commentValue, textareaEl = null, modalContext = null) {
   if (!reportRef) throw new Error("Report reference missing.");
-  // Read current report doc to ensure sync
   const snap = await getDoc(reportRef);
   if (!snap.exists()) throw new Error("Report doc not found.");
 
   const data = snap.data() || {};
   const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
 
-  // Attempt to update by index if possible and stable
+  // Try index-based update first (works if array stable)
   if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
     arr[itemIndex].adminTasurat = commentValue;
   } else {
-    // Fallback: try match by fields on textarea dataset
-    const jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
-    const teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
-    const dt = textareaEl.dataset.date || "";
-    const cls = decodeURIComponent(textareaEl.dataset.class || "");
-    const kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
+    // Decide matching fields from textareaEl dataset or modalContext
+    let jamia="", teacher="", dt="", cls="", kitab="";
+    if (textareaEl) {
+      jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
+      teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
+      dt = textareaEl.dataset.date || "";
+      cls = decodeURIComponent(textareaEl.dataset.class || "");
+      kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
+    } else if (modalContext) {
+      jamia = modalContext.jamia || "";
+      teacher = modalContext.teacher || "";
+      dt = modalContext.date || "";
+      cls = modalContext.className || "";
+      kitab = modalContext.kitab || "";
+    }
 
     const foundIdx = arr.findIndex(r =>
       (r.jamiaName||"") === jamia &&
@@ -1068,13 +1091,18 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl) {
 
   // preserve existing status if present
   const existingStatus = data.tadrisRecording?.status || "Pending";
+
+  // Optionally add audit fields here:
+  // arr[foundIdx].adminTasuratUpdatedAt = serverTimestamp();
+  // arr[foundIdx].adminTasuratUpdatedBy = currentUser?.uid || null;
+
   await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
 }
 
     // ============================
     // Saved Table Logic
     // ============================
-    // ======== REPLACE EXISTING fillSavedTable WITH THIS VERSION ========
+    // ======== UPDATED fillSavedTable (shows comment text only; no inline Save button) ========
 function fillSavedTable() {
   const table = document.getElementById("saved-table-body");
   table.innerHTML = "";
@@ -1105,6 +1133,7 @@ function fillSavedTable() {
     const adminComment = rec.tasurat || "-";
     const zimmedarComment = rec.adminTasurat || "";
 
+    // show zimmedarComment as plain text (clickable)
     table.insertAdjacentHTML("beforeend", `
       <tr id="${rowId}" class="saved-data-row">
         <td class="border px-2 py-1 urdu-font">${rec.jamiaName || ""}</td>
@@ -1114,22 +1143,15 @@ function fillSavedTable() {
         <td class="border px-2 py-1">${rec.date || ""}</td>
         <td class="border px-2 py-1 urdu-font">${adminComment}</td>
         <td class="border px-2 py-1 urdu-font">
-          <div class="flex flex-col">
-            <textarea
-              rows="2"
-              class="saved-admin-comment w-full p-1 border rounded-sm text-xs urdu-font"
-              data-idx="${idx}"
-              data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
-              data-teacher="${encodeURIComponent(rec.teacherName||'')}"
-              data-date="${rec.date || ''}"
-              data-class="${encodeURIComponent(rec.className||'')}"
-              data-kitab="${encodeURIComponent(rec.kitabName||'')}"
-            >${zimmedarComment}</textarea>
-            <div class="mt-1 flex gap-2">
-              <button class="save-admin-comment-btn px-2 py-1 text-xs rounded bg-teal-600 text-white">Save</button>
-              <span class="save-status text-xs text-gray-500 hidden" style="align-self:center;">Saved</span>
-            </div>
-          </div>
+          <div class="zimmedar-comment-cell cursor-pointer p-1 text-xs" 
+               data-idx="${idx}"
+               data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
+               data-teacher="${encodeURIComponent(rec.teacherName||'')}"
+               data-date="${rec.date || ''}"
+               data-class="${encodeURIComponent(rec.className||'')}"
+               data-kitab="${encodeURIComponent(rec.kitabName||'')}"
+               title="Click karke comment edit karein"
+          >${zimmedarComment ? escapeHtml(zimmedarComment) : '<span class="text-gray-500">[Add comment]</span>'}</div>
         </td>
         <td class="border px-2 py-1">
           <button class="saved-download-btn text-red-600 underline text-xs"
@@ -1146,151 +1168,108 @@ function fillSavedTable() {
     `);
   });
 
-  // Re-attach handlers after table is filled
+  // attach handlers
   attachSavedDownloadHandlers();
   attachSavedFiltersListeners();
-  attachSavedCommentHandlers();
+  attachSavedCommentClickHandlers();
 }
 
-    let applySavedFilters = function() {
-      const jamiaSel = document.getElementById("filter-jamia");
-      const jamiaQ = jamiaSel ? (jamiaSel.value || "").trim().toLowerCase() : "";
-      const teacherQ = (document.getElementById("filter-teacher")?.value || "").trim().toLowerCase();
-      const dateFrom = document.getElementById("filter-date-from")?.value || "";
-      const dateTo = document.getElementById("filter-date-to")?.value || "";
+// small helper to avoid HTML injection when inserting text into cell
+function escapeHtml(unsafe) {
+  if (unsafe === null || unsafe === undefined) return "";
+  return String(unsafe)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-      document.querySelectorAll("#saved-table-body tr.saved-data-row").forEach((tr) => {
-        const jamia = (tr.children[0]?.textContent || "").trim().toLowerCase();
-        const teacher = (tr.children[3]?.textContent || "").trim().toLowerCase();
-        const dateStr = (tr.children[4]?.textContent || "").trim();
+// ======== Click handlers that open modal ========
+function attachSavedCommentClickHandlers() {
+  document.querySelectorAll(".zimmedar-comment-cell").forEach(cell => {
+    // avoid duplicate attachments
+    if (cell._zimmedarAttached) return;
+    cell._zimmedarAttached = true;
 
-        let visible = true;
-        if (jamiaQ) visible = visible && jamia === jamiaQ;
-        if (teacherQ) visible = visible && teacher.includes(teacherQ);
-        if (dateFrom) {
-          const d = new Date(dateStr);
-          const from = new Date(dateFrom);
-          if (isNaN(d.getTime())) visible = false;
-          else visible = visible && (d >= from);
-        }
-        if (dateTo) {
-          const d = new Date(dateStr);
-          const to = new Date(dateTo);
-          to.setHours(23,59,59,999);
-          if (isNaN(d.getTime())) visible = false;
-          else visible = visible && (d <= to);
-        }
-        tr.style.display = visible ? "" : "none";
+    cell.addEventListener("click", (e) => {
+      const el = e.currentTarget;
+      const idx = parseInt(el.dataset.idx, 10);
+      const jamia = decodeURIComponent(el.dataset.jamia || "");
+      const teacher = decodeURIComponent(el.dataset.teacher || "");
+      const dt = el.dataset.date || "";
+      const cls = decodeURIComponent(el.dataset.class || "");
+      const kitab = decodeURIComponent(el.dataset.kitab || "");
+      const currentText = (el.textContent || "").trim();
+      openCommentModal({
+        idx,
+        jamia,
+        teacher,
+        date: dt,
+        className: cls,
+        kitab,
+        currentText: currentText === "[Add comment]" ? "" : currentText,
+        cellElement: el
       });
-    };
+    });
+  });
+}
 
-    function attachSavedFiltersListeners() {
-      const j = document.getElementById("filter-jamia");
-      const t = document.getElementById("filter-teacher");
-      const f = document.getElementById("filter-date-from");
-      const to = document.getElementById("filter-date-to");
+// ======== Modal control ========
+const modalEl = document.getElementById("zimmedarCommentModal");
+const modalTextarea = document.getElementById("zimmedarModalTextarea");
+const modalSaveBtn = document.getElementById("zimmedarModalSave");
+const modalCancelBtn = document.getElementById("zimmedarModalCancel");
+const modalBackdrop = document.getElementById("zimmedarModalBackdrop");
 
-      if (j && !j._savedFilterAttached) {
-        j.addEventListener("change", applySavedFilters);
-        j._savedFilterAttached = true;
-      }
-      if (t && !t._savedFilterAttached) {
-        t.addEventListener("input", applySavedFilters);
-        t._savedFilterAttached = true;
-      }
-      if (f && !f._savedFilterAttached) {
-        f.addEventListener("change", applySavedFilters);
-        f._savedFilterAttached = true;
-      }
-      if (to && !to._savedFilterAttached) {
-        to.addEventListener("change", applySavedFilters);
-        to._savedFilterAttached = true;
-      }
+let _currentModalContext = null;
+
+function openCommentModal(ctx) {
+  // ctx: { idx, jamia, teacher, date, className, kitab, currentText, cellElement }
+  _currentModalContext = ctx;
+  modalTextarea.value = ctx.currentText || "";
+  modalEl.classList.remove("hidden");
+  modalEl.style.display = "flex";
+  modalTextarea.focus();
+}
+
+function closeCommentModal() {
+  _currentModalContext = null;
+  modalEl.classList.add("hidden");
+  modalEl.style.display = "none";
+  modalTextarea.value = "";
+}
+
+// close modal on backdrop or cancel
+modalBackdrop?.addEventListener?.("click", closeCommentModal);
+modalCancelBtn?.addEventListener?.("click", closeCommentModal);
+
+// Save from modal
+modalSaveBtn?.addEventListener?.("click", async () => {
+  if (!_currentModalContext) return;
+  const newVal = modalTextarea.value.trim();
+
+  // visual feedback
+  modalSaveBtn.disabled = true;
+  modalSaveBtn.textContent = "Saving...";
+
+  try {
+    await saveAdminComment(_currentModalContext.idx, newVal, null, _currentModalContext);
+    // update the cell text in UI
+    const cell = _currentModalContext.cellElement;
+    if (cell) {
+      cell.innerHTML = newVal ? escapeHtml(newVal) : '<span class="text-gray-500">[Add comment]</span>';
     }
-
-    function attachSavedDownloadHandlers() {
-      document.querySelectorAll(".saved-download-btn").forEach(btn => {
-        if (btn._savedDownloadAttached) return;
-        btn._savedDownloadAttached = true;
-        // Reuse the main download handler but we need to decode URI components first
-        // Or write a wrapper. Since window.handleDownloadTadrisPDF expects dataset, we can use it directly
-        // but the data in saved table is encoded.
-        btn.addEventListener("click", (e) => {
-            // Decoding wrapper
-            const t = e.currentTarget;
-            t.dataset.jamiaName = decodeURIComponent(t.dataset.jamiaName);
-            t.dataset.teacherName = decodeURIComponent(t.dataset.teacherName);
-            t.dataset.className = decodeURIComponent(t.dataset.className);
-            t.dataset.kitabName = decodeURIComponent(t.dataset.kitabName);
-            t.dataset.tasurat = decodeURIComponent(t.dataset.tasurat);
-            window.handleDownloadTadrisPDF(e);
-        });
-      });
-    }
-
-    function populateJamiaFilterOptions() {
-      const sel = document.getElementById("filter-jamia");
-      if (!sel) return;
-      sel.innerHTML = '<option value="">-- Sab Jamiaat --</option>';
-      const academicData = (Array.isArray(window.KARKARDAGI_STRUCTURE) && window.KARKARDAGI_STRUCTURE.length) ? window.KARKARDAGI_STRUCTURE : (Array.isArray(userProfileData.academicStructure) ? userProfileData.academicStructure : []);
-      academicData.forEach(j => {
-        const name = j.jamiaName || "";
-        if (name) sel.innerHTML += `<option value="${name}">${name}</option>`;
-      });
-    }
-
-    // ============================
-    // Delegation Handlers (Add Recording)
-    // ============================
-    document.addEventListener("click", function(e) {
-      const btn = e.target.closest && e.target.closest('.add-tadris-entry-btn');
-      if (!btn) return;
-      e.preventDefault();
-      
-      const card = btn.closest('.space-y-3') || btn.closest('.p-4') || btn.closest('div');
-      if (!card) return;
-      
-      const jamiaName = btn.dataset.jamiaName || (card.querySelector('.tadris-teacher-select')?.dataset?.jamiaName) || '';
-      const teacherName = (card.querySelector('.tadris-teacher-select')?.value || '').trim();
-      const className = (card.querySelector('.tadris-class-select')?.value || '').trim();
-      const kitabName = (card.querySelector('.tadris-kitab-select')?.value || '').trim();
-      const date = (card.querySelector('.tadris-date')?.value || '');
-      const tasurat = (card.querySelector('.tadris-tasurat')?.value || '').trim();
-
-      if (!jamiaName || !teacherName || !className || !kitabName || !date) {
-        showNotification('Please select Jamia, Teacher, Class, Kitab and Date before adding.', true);
-        return;
-      }
-
-      const newRec = {
-        jamiaName,
-        teacherName,
-        className,
-        kitabName,
-        date,
-        tasurat: tasurat || '',
-        adminTasurat: '',
-      };
-
-      (async function(){
-        try {
-          if (!reportRef) {
-            showNotification('Report reference missing.', true);
-            return;
-          }
-          const snap = await getDoc(reportRef);
-          const data = snap.exists() ? (snap.data() || {}) : {};
-          const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
-          arr.push(newRec);
-          await setDoc(reportRef, { tadrisRecording: { data: arr, status: 'Pending' } }, { merge: true });
-          showNotification('Recording saved successfully.');
-          await renderForCurrentMonth();
-        } catch(err) {
-          console.error('Error saving tadris entry:', err);
-          showNotification('Record save failed.', true);
-        }
-      })();
-    }, false);
+    showNotification("Zimmedar comment successfully saved.");
+    closeCommentModal();
+  } catch (err) {
+    console.error("Modal save error:", err);
+    showNotification("Comment save failed.", true);
+  } finally {
+    modalSaveBtn.disabled = false;
+    modalSaveBtn.textContent = "Save";
+  }
+});
 
     // ============================
     // Tabs behavior
@@ -1338,4 +1317,5 @@ function fillSavedTable() {
   </script>
 </body>
 </html>
+
 
