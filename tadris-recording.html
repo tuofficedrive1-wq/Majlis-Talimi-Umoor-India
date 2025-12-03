@@ -666,81 +666,163 @@
       currentMonthLabel.textContent = `Report for: ${info.monthName} ${info.yearNum}`;
     }
 
-// ---------------------------------
-// Add Recording handler (client-side)
-// Replace element IDs/selectors to match your HTML
-// ---------------------------------
+// ---------------------------
+// Robust init: add-recording attach + populateJamiaFilterOptions
+// Paste this near the end of your JS (after functions like fillSavedTable, handleDownloadTadrisPDF, etc.)
+// ---------------------------
 document.addEventListener('DOMContentLoaded', () => {
 
-  const addBtn = document.getElementById('add-recording-btn'); // change if different
-  if (!addBtn) {
-    console.warn('Add recording button not found: #add-recording-btn');
-    return;
+  // 1) Attach Add Recording button handler (flexible selector)
+  (function attachAddRecording() {
+    // Try multiple possible selectors so it's resilient to small HTML id/class changes
+    const possibleSelectors = [
+      '#add-recording-btn',
+      '[data-action="add-recording"]',
+      '.add-recording-btn',
+      'button[aria-label="Add Recording"]'
+    ];
+
+    let addBtn = null;
+    for (const sel of possibleSelectors) {
+      addBtn = document.querySelector(sel);
+      if (addBtn) break;
+    }
+
+    if (!addBtn) {
+      console.warn('Add recording button not found using flexible selectors. Please check your HTML. Tried:', possibleSelectors);
+    } else {
+      // ensure we don't attach twice
+      if (!addBtn._attachedAddRecording) {
+        addBtn._attachedAddRecording = true;
+        addBtn.type = addBtn.type || 'button'; // prevent accidental form submit
+        addBtn.addEventListener('click', async (e) => {
+          e.preventDefault && e.preventDefault();
+
+          // Replace IDs below if your form uses different ones
+          const jamia = document.getElementById('jamia-select')?.value || document.querySelector('#jamiaSelect')?.value || '';
+          const teacher = document.getElementById('teacher-select')?.value || document.querySelector('#teacherSelect')?.value || '';
+          const className = document.getElementById('class-select')?.value || '';
+          const kitab = document.getElementById('kitab-select')?.value || '';
+          const date = document.getElementById('recording-date')?.value || '';
+          const adminComment = document.getElementById('admin-comment')?.value || '';
+
+          if (!jamia || !teacher) {
+            alert('Jamia aur Teacher select karen.');
+            return;
+          }
+
+          const payload = { jamia, teacher, className, kitab, date, adminComment };
+
+          console.log('Attempting to save recording:', payload);
+          // If you have an API endpoint, change URL below. Otherwise fallback to localStorage as demo.
+          try {
+            const resp = await fetch('/api/saveRecording', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (resp.ok) {
+              alert('Recording saved.');
+              if (typeof fillSavedTable === 'function') fillSavedTable();
+              return;
+            } else {
+              console.warn('Save API returned not-ok. Status:', resp.status);
+            }
+          } catch (err) {
+            console.warn('Save API error (will fallback to localStorage):', err);
+          }
+
+          // fallback local save for testing
+          try {
+            const key = 'saved_recordings_demo';
+            const existing = JSON.parse(localStorage.getItem(key) || '[]');
+            existing.push(Object.assign({ id: Date.now() }, payload));
+            localStorage.setItem(key, JSON.stringify(existing));
+            alert('Recording saved locally (fallback).');
+            if (typeof fillSavedTable === 'function') fillSavedTable();
+          } catch (err) {
+            console.error('Fallback save failed:', err);
+            alert('Save failed — check console.');
+          }
+        });
+      }
+    }
+  })();
+
+
+  // 2) Provide populateJamiaFilterOptions if missing
+  if (typeof populateJamiaFilterOptions !== 'function') {
+    window.populateJamiaFilterOptions = function populateJamiaFilterOptions() {
+      try {
+        // Preferred: if you have a global array like window.jamiaList or jamiaData use it
+        const sourceList = window.jamiaList || window.jamiaData || null;
+
+        const selectEl = document.getElementById('filter-jamia') || document.querySelector('[name="filter-jamia"]') || null;
+        if (!selectEl) {
+          console.warn('Jamia filter select not found (#filter-jamia). populateJamiaFilterOptions aborted.');
+          return;
+        }
+
+        // Clear existing options but keep first (like "Select Jamia")
+        const firstOption = selectEl.querySelector('option:first-child');
+        selectEl.innerHTML = '';
+        if (firstOption) selectEl.appendChild(firstOption);
+
+        if (Array.isArray(sourceList) && sourceList.length) {
+          sourceList.forEach(j => {
+            const opt = document.createElement('option');
+            // adapt depending on your jamia object shape
+            if (typeof j === 'string') {
+              opt.value = j;
+              opt.textContent = j;
+            } else {
+              opt.value = j.id ?? j.name ?? JSON.stringify(j);
+              opt.textContent = j.name ?? j.title ?? String(j);
+            }
+            selectEl.appendChild(opt);
+          });
+          return;
+        }
+
+        // Fallback: try to collect jamia names from DOM (cards/headers)
+        const jamiaNodes = document.querySelectorAll('.jamia-card .jamia-name, .jamia .jamia-title, .jamia-header .title');
+        const seen = new Set();
+        jamiaNodes.forEach(node => {
+          const text = node.textContent.trim();
+          if (!text) return;
+          if (seen.has(text)) return;
+          seen.add(text);
+          const opt = document.createElement('option');
+          opt.value = text;
+          opt.textContent = text;
+          selectEl.appendChild(opt);
+        });
+
+        if (seen.size === 0) {
+          console.info('populateJamiaFilterOptions found no jamia source; keeping only default option.');
+        }
+      } catch (err) {
+        console.error('populateJamiaFilterOptions error:', err);
+      }
+    };
+    console.info('populateJamiaFilterOptions function added (fallback).');
   }
 
-  addBtn.addEventListener('click', async (e) => {
-    e.preventDefault && e.preventDefault();
-
-    // selectors - update agar aapke form fields ke IDs mukhtalif hon
-    const jamia = document.getElementById('jamia-select')?.value || '';
-    const teacher = document.getElementById('teacher-select')?.value || '';
-    const className = document.getElementById('class-select')?.value || '';
-    const kitab = document.getElementById('kitab-select')?.value || '';
-    const date = document.getElementById('recording-date')?.value || '';
-    const adminComment = document.getElementById('admin-comment')?.value || '';
-
-    // basic validation
-    if (!jamia || !teacher) {
-      alert('Jamia aur Teacher select karen.');
-      return;
-    }
-
-    const payload = {
-      jamia, teacher, className, kitab, date, adminComment,
-      // agar aap koi extra fields chahte ho to add karo
-    };
-
-    // Debug: console pe dekh lo agar kisi JS error se roka ja raha ho
-    console.log('Saving recording payload:', payload);
-
-    // Try saving to backend API if available
+  // 3) Safe-call renderForCurrentMonth (in case populateJamiaFilterOptions was previously expected)
+  if (typeof renderForCurrentMonth === 'function') {
     try {
-      const resp = await fetch('/api/saveRecording', { // update endpoint
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (resp.ok) {
-        // success: re-render saved table ya show message
-        alert('Recording saved.');
-        if (typeof fillSavedTable === 'function') fillSavedTable();
-        return;
-      } else {
-        const text = await resp.text();
-        console.error('Save failed:', resp.status, text);
-        // fallback to local save below
-      }
+      // If renderForCurrentMonth expects populateJamiaFilterOptions to run first, call it now.
+      try { populateJamiaFilterOptions(); } catch (_) {}
+      renderForCurrentMonth();
     } catch (err) {
-      console.error('Network / fetch error while saving:', err);
-      // fallback to local save below
+      console.error('Error running renderForCurrentMonth after init:', err);
     }
+  } else {
+    console.warn('renderForCurrentMonth is not defined at init-time; it will run when available.');
+  }
 
-    // Fallback: save locally to test (localStorage)
-    try {
-      const key = 'saved_recordings_demo';
-      const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      existing.push(Object.assign({ id: Date.now() }, payload));
-      localStorage.setItem(key, JSON.stringify(existing));
-      alert('Recording saved locally (fallback).');
-      if (typeof fillSavedTable === 'function') fillSavedTable();
-    } catch (err) {
-      console.error('Fallback save error:', err);
-      alert('Save failed (check console).');
-    }
-  });
+}); // end DOMContentLoaded
 
-});
 
     
     // ============================
@@ -1440,6 +1522,7 @@ modalSaveBtn?.addEventListener?.("click", async () => {
   </script>
 </body>
 </html>
+
 
 
 
