@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Tadris Recording – Majlis Talimi Umoor India</title>
+  <title>Tadris Recording – Majlis Talimi Umoor India (Patched)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -281,10 +281,10 @@
     // ============================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // ============================
-    // Firebase Config
+    // Firebase Config (same as original)
     // ============================
     const firebaseConfig = {
       apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -301,7 +301,7 @@
     const db = getFirestore(app);
 
     // ============================
-    // DOM Helpers
+    // DOM Helpers & Globals
     // ============================
     const loader = document.getElementById("loader");
     const notification = document.getElementById("notification");
@@ -374,22 +374,22 @@
     };
 
     // ============================
-    // MAIN PDF GENERATION LOGIC (Fixed)
+    // PDF logic (kept as before)
     // ============================
     window.handleDownloadTadrisPDF = async function(e) {
       const btn = e && e.currentTarget ? e.currentTarget : (e && e.target ? e.target : null);
       if (!btn) return;
       
       const jamiaName = btn.dataset.jamiaName || "N/A";
-      const teacherName = btn.dataset.teacherName || "N/A";
-      const className = btn.dataset.className || "";
-      const kitabName = btn.dataset.kitabName || "";
+      const teacherName = btn.dataset.teacherName || btn.dataset.teacher || "N/A";
+      const className = btn.dataset.className || btn.dataset.class || "";
+      const kitabName = btn.dataset.kitabName || btn.dataset.kitab || "";
       const date = btn.dataset.date || "";
       const tasuratAdmin = decodeURIComponent(btn.dataset.tasurat || "") || "Koi comment nahi diya gaya.";
       
       // Try to find the user comment textarea if available in the same container
       let tasuratZimmedar = "";
-      const container = btn.closest('div.p-3') || btn.closest('tr');
+      const container = btn.closest('div.p-3') || btn.closest('tr') || btn.closest('.saved-recordings-list');
       if (container) {
           const textArea = container.querySelector('.user-admin-tasurat-input');
           if (textArea) {
@@ -494,10 +494,11 @@
     };
 
     // ============================
-    // Teaching Structure Logic
+    // Teaching Structure Loader
     // ============================
-    const JAMIA_CLASS_MAP = {};
-    const JAMIA_TEACHER_MAP = {};
+    window.JAMIA_TEACHER_MAP = {};
+    window.JAMIA_CLASS_MAP = {};
+    window.KARKARDAGI_STRUCTURE = [];
 
     async function loadTeachingStructureFromUserDoc(user) {
       try {
@@ -598,16 +599,12 @@
 
     tadrisAccordionContainer.classList.add("hide-saved");
 
-    // ============================
-    // Back to Dashboard
-    // ============================
+    // back button
     backBtn.addEventListener("click", () => {
       window.location.href = "index.html";
     });
 
-    // ============================
-    // Init App
-    // ============================
+    // init app on auth
     onAuthStateChanged(auth, async (user) => {
       showLoader(true);
       if (!user) {
@@ -666,216 +663,53 @@
       currentMonthLabel.textContent = `Report for: ${info.monthName} ${info.yearNum}`;
     }
 
-// ---------------------------
-// Robust init: add-recording attach + populateJamiaFilterOptions
-// Paste this near the end of your JS (after functions like fillSavedTable, handleDownloadTadrisPDF, etc.)
-// ---------------------------
-document.addEventListener('DOMContentLoaded', () => {
-
-  // 1) Attach Add Recording button handler (flexible selector)
-  (function attachAddRecording() {
-    // Try multiple possible selectors so it's resilient to small HTML id/class changes
-    const possibleSelectors = [
-      '#add-recording-btn',
-      '[data-action="add-recording"]',
-      '.add-recording-btn',
-      'button[aria-label="Add Recording"]'
-    ];
-
-    let addBtn = null;
-    for (const sel of possibleSelectors) {
-      addBtn = document.querySelector(sel);
-      if (addBtn) break;
-    }
-
-    if (!addBtn) {
-      console.warn('Add recording button not found using flexible selectors. Please check your HTML. Tried:', possibleSelectors);
-    } else {
-      // ensure we don't attach twice
-      if (!addBtn._attachedAddRecording) {
-        addBtn._attachedAddRecording = true;
-        addBtn.type = addBtn.type || 'button'; // prevent accidental form submit
-        addBtn.addEventListener('click', async (e) => {
-          e.preventDefault && e.preventDefault();
-
-          // Replace IDs below if your form uses different ones
-          const jamia = document.getElementById('jamia-select')?.value || document.querySelector('#jamiaSelect')?.value || '';
-          const teacher = document.getElementById('teacher-select')?.value || document.querySelector('#teacherSelect')?.value || '';
-          const className = document.getElementById('class-select')?.value || '';
-          const kitab = document.getElementById('kitab-select')?.value || '';
-          const date = document.getElementById('recording-date')?.value || '';
-          const adminComment = document.getElementById('admin-comment')?.value || '';
-
-          if (!jamia || !teacher) {
-            alert('Jamia aur Teacher select karen.');
-            return;
-          }
-
-          const payload = { jamia, teacher, className, kitab, date, adminComment };
-
-          console.log('Attempting to save recording:', payload);
-          // If you have an API endpoint, change URL below. Otherwise fallback to localStorage as demo.
-          try {
-            const resp = await fetch('/api/saveRecording', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            if (resp.ok) {
-              alert('Recording saved.');
-              if (typeof fillSavedTable === 'function') fillSavedTable();
-              return;
-            } else {
-              console.warn('Save API returned not-ok. Status:', resp.status);
-            }
-          } catch (err) {
-            console.warn('Save API error (will fallback to localStorage):', err);
-          }
-
-          // fallback local save for testing
-          try {
-            const key = 'saved_recordings_demo';
-            const existing = JSON.parse(localStorage.getItem(key) || '[]');
-            existing.push(Object.assign({ id: Date.now() }, payload));
-            localStorage.setItem(key, JSON.stringify(existing));
-            alert('Recording saved locally (fallback).');
-            if (typeof fillSavedTable === 'function') fillSavedTable();
-          } catch (err) {
-            console.error('Fallback save failed:', err);
-            alert('Save failed — check console.');
-          }
-        });
-      }
-    }
-  })();
-
-
-  // 2) Provide populateJamiaFilterOptions if missing
-  if (typeof populateJamiaFilterOptions !== 'function') {
-    window.populateJamiaFilterOptions = function populateJamiaFilterOptions() {
-      try {
-        // Preferred: if you have a global array like window.jamiaList or jamiaData use it
-        const sourceList = window.jamiaList || window.jamiaData || null;
-
-        const selectEl = document.getElementById('filter-jamia') || document.querySelector('[name="filter-jamia"]') || null;
-        if (!selectEl) {
-          console.warn('Jamia filter select not found (#filter-jamia). populateJamiaFilterOptions aborted.');
-          return;
-        }
-
-        // Clear existing options but keep first (like "Select Jamia")
-        const firstOption = selectEl.querySelector('option:first-child');
-        selectEl.innerHTML = '';
-        if (firstOption) selectEl.appendChild(firstOption);
-
-        if (Array.isArray(sourceList) && sourceList.length) {
-          sourceList.forEach(j => {
-            const opt = document.createElement('option');
-            // adapt depending on your jamia object shape
-            if (typeof j === 'string') {
-              opt.value = j;
-              opt.textContent = j;
-            } else {
-              opt.value = j.id ?? j.name ?? JSON.stringify(j);
-              opt.textContent = j.name ?? j.title ?? String(j);
-            }
-            selectEl.appendChild(opt);
-          });
-          return;
-        }
-
-        // Fallback: try to collect jamia names from DOM (cards/headers)
-        const jamiaNodes = document.querySelectorAll('.jamia-card .jamia-name, .jamia .jamia-title, .jamia-header .title');
-        const seen = new Set();
-        jamiaNodes.forEach(node => {
-          const text = node.textContent.trim();
-          if (!text) return;
-          if (seen.has(text)) return;
-          seen.add(text);
-          const opt = document.createElement('option');
-          opt.value = text;
-          opt.textContent = text;
-          selectEl.appendChild(opt);
-        });
-
-        if (seen.size === 0) {
-          console.info('populateJamiaFilterOptions found no jamia source; keeping only default option.');
-        }
-      } catch (err) {
-        console.error('populateJamiaFilterOptions error:', err);
-      }
-    };
-    console.info('populateJamiaFilterOptions function added (fallback).');
-  }
-
-  // 3) Safe-call renderForCurrentMonth (in case populateJamiaFilterOptions was previously expected)
-  if (typeof renderForCurrentMonth === 'function') {
-    try {
-      // If renderForCurrentMonth expects populateJamiaFilterOptions to run first, call it now.
-      try { populateJamiaFilterOptions(); } catch (_) {}
-      renderForCurrentMonth();
-    } catch (err) {
-      console.error('Error running renderForCurrentMonth after init:', err);
-    }
-  } else {
-    console.warn('renderForCurrentMonth is not defined at init-time; it will run when available.');
-  }
-
-}); // end DOMContentLoaded
-
-
-    
     // ============================
-    // Pick Current Report Doc for Month
+    // Helpers: escapeHtml
     // ============================
-    function getCurrentReportForSelectedMonth() {
-      if (!currentUser) return { report: {}, ref: null };
-
-      const { monthNum, yearNum, monthName, monthInputFormat } = getReportingInfoFromMonthInput(monthInput.value);
-      const academicYear = monthNum >= 3 ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
-      const simpleId = `${currentUser.uid}_${yearNum}_${monthNum}`;
-      const withYearId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
-
-      let found = allReports.find((r) => r.id === withYearId) || allReports.find((r) => r.id === simpleId);
-
-      if (found) {
-        return {
-          report: found,
-          ref: doc(db, "monthly_reports", found.id),
-          meta: { monthNum, yearNum, academicYear, monthName, monthInputFormat },
-        };
-      }
-
-      const newRef = doc(db, "monthly_reports", withYearId);
-      return {
-        report: {},
-        ref: newRef,
-        meta: { monthNum, yearNum, academicYear, monthName, monthInputFormat },
-      };
-    }
-
-    async function ensureReportBaseFields(ref, meta) {
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        await setDoc(ref, {
-            userId: currentUser.uid,
-            month: meta.monthName,
-            year: meta.yearNum,
-            academicYear: meta.academicYear,
-            monthNum: meta.monthNum,
-            monthKey: meta.monthInputFormat,
-            createdAt: serverTimestamp(),
-          }, { merge: true });
-      } else {
-        const data = snap.data() || {};
-        if (!data.monthKey) {
-          await updateDoc(ref, { monthKey: meta.monthInputFormat });
-        }
-      }
+    function escapeHtml(unsafe) {
+      if (unsafe === null || unsafe === undefined) return "";
+      return String(unsafe)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
     }
 
     // ============================
-    // Render Tadris layout for month
+    // Firestore save helper for new recording
+    // ============================
+    async function saveNewRecordingToReport(payload) {
+      if (!reportRef) {
+        throw new Error("Report reference not ready.");
+      }
+      // Ensure payload has keys: jamiaName, teacherName, className, kitabName, date, tasurat
+      const docSnap = await getDoc(reportRef);
+      const existing = docSnap.exists() ? docSnap.data() : {};
+      const arr = Array.isArray(existing.tadrisRecording?.data) ? existing.tadrisRecording.data : [];
+
+      const toSave = Object.assign({
+        id: `local-${Date.now()}`,
+        jamiaName: payload.jamiaName || payload.jamia || "",
+        teacherName: payload.teacherName || payload.teacher || "",
+        className: payload.className || payload.class || "",
+        kitabName: payload.kitabName || payload.kitab || "",
+        date: payload.date || (new Date()).toISOString().slice(0,10),
+        tasurat: payload.tasurat || "",
+        adminTasurat: payload.adminTasurat || "",
+        createdAt: serverTimestamp()
+      }, payload);
+
+      arr.push(toSave);
+      const status = existing.tadrisRecording?.status || "Pending";
+
+      await setDoc(reportRef, { tadrisRecording: { data: arr, status } }, { merge: true });
+
+      return toSave;
+    }
+
+    // ============================
+    // Render Tadris layout for month (main)
     // ============================
     let renderForCurrentMonth = async function() {
       if (!tadrisAccordionContainer) return;
@@ -927,11 +761,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         academicData.forEach((jamia, index) => {
           try {
-            const jamiaName = jamia.jamiaName || `Jamia #${index + 1}`;
+            const jamiaName = jamia.jamiaName || jamia.name || `Jamia #${index + 1}`;
             const jamiaSaved = tadrisData.filter((r) => r.jamiaName === jamiaName);
 
             const accordionItem = document.createElement("div");
-            accordionItem.className = "border border-gray-200 rounded-xl overflow-hidden bg-gray-50";
+            accordionItem.className = "border border-gray-200 rounded-xl overflow-hidden bg-gray-50 jamia-card";
 
             const header = document.createElement("button");
             header.type = "button";
@@ -942,7 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   ${index + 1}
                 </span>
                 <div class="text-left">
-                  <p class="font-semibold text-gray-800 urdu-font">${jamiaName}</p>
+                  <p class="font-semibold text-gray-800 urdu-font jamia-title">${escapeHtml(jamiaName)}</p>
                   <p class="text-[11px] text-gray-500">Classes: ${jamia.classes ? Object.keys(jamia.classes).length : 0} | Saved Recordings: ${jamiaSaved.length}</p>
                 </div>
               </div>
@@ -962,26 +796,25 @@ document.addEventListener('DOMContentLoaded', () => {
                   const adminComment = rec.tasurat || "-";
                   const userComment = rec.adminTasurat || "";
                   const recId = `tadris-rec-${index}-${i}`;
-
                   return `
                     <div
                       class="p-3 bg-white rounded-lg border border-gray-200 text-xs md:text-sm space-y-2"
                       id="${recId}"
-                      data-jamia-name="${rec.jamiaName}"
-                      data-date="${rec.date}"
-                      data-teacher-name="${rec.teacherName}"
-                      data-class-name="${rec.className}"
-                      data-kitab-name="${rec.kitabName}"
+                      data-jamia-name="${escapeHtml(rec.jamiaName || '')}"
+                      data-date="${escapeHtml(rec.date || '')}"
+                      data-teacher-name="${escapeHtml(rec.teacherName || '')}"
+                      data-class-name="${escapeHtml(rec.className || '')}"
+                      data-kitab-name="${escapeHtml(rec.kitabName || '')}"
                       data-tasurat="${encodeURIComponent(adminComment)}"
                     >
                       <p class="urdu-font font-semibold">
-                        ${rec.className} – ${rec.kitabName}
-                        <span class="text-[11px] text-gray-500">(${rec.teacherName}, ${rec.date})</span>
+                        ${escapeHtml(rec.className || '')} – ${escapeHtml(rec.kitabName || '')}
+                        <span class="text-[11px] text-gray-500">(${escapeHtml(rec.teacherName || '')}, ${escapeHtml(rec.date || '')})</span>
                       </p>
 
                       <div>
                         <p class="text-[11px] font-semibold text-gray-600 urdu-font">Recording par Tasurat (Admin ka diya hua):</p>
-                        <p class="urdu-font">${adminComment}</p>
+                        <p class="urdu-font">${escapeHtml(adminComment)}</p>
                       </div>
 
                       <div class="comment-display">
@@ -991,10 +824,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <textarea
                           rows="2"
                           class="user-admin-tasurat-input w-full mt-1 p-2 border rounded-lg urdu-font text-xs"
-                          data-jamia-name="${rec.jamiaName}"
-                          data-date="${rec.date}"
-                          data-teacher-name="${rec.teacherName}"
-                        >${userComment}</textarea>
+                          data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
+                          data-date="${rec.date || ''}"
+                          data-teacher="${encodeURIComponent(rec.teacherName||'')}"
+                        >${escapeHtml(userComment)}</textarea>
                         <button
                           type="button"
                           class="save-user-admin-tasurat-btn mt-2 w-full sm:w-auto px-3 py-1 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white"
@@ -1007,11 +840,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         type="button"
                         class="download-tadris-pdf-btn mt-2 w-full sm:w-auto px-3 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white"
                         data-record-id="${recId}"
-                        data-jamia-name="${rec.jamiaName}"
-                        data-date="${rec.date}"
-                        data-teacher-name="${rec.teacherName}"
-                        data-class-name="${rec.className}"
-                        data-kitab-name="${rec.kitabName}"
+                        data-jamia-name="${escapeHtml(rec.jamiaName || '')}"
+                        data-date="${escapeHtml(rec.date || '')}"
+                        data-teacher-name="${escapeHtml(rec.teacherName || '')}"
+                        data-class-name="${escapeHtml(rec.className || '')}"
+                        data-kitab-name="${escapeHtml(rec.kitabName || '')}"
                         data-tasurat="${encodeURIComponent(adminComment)}"
                       >
                         <i class="fas fa-file-pdf mr-1"></i>
@@ -1031,7 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
                       <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher ka Naam</label>
-                      <select class="tadris-teacher-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" data-jamia-name="${jamiaName}">
+                      <select class="tadris-teacher-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" data-jamia-name="${escapeHtml(jamiaName)}">
                         <option value="">Select Teacher</option>
                       </select>
                     </div>
@@ -1063,17 +896,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     ></textarea>
                   </div>
                   <div class="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                   <button
-  id="add-recording-btn"
-  type="button"
-  class="add-tadris-entry-btn px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-  data-jamia-name="${jamiaName}"
-  data-action="add-recording"
->
-  <i class="fas fa-plus mr-1"></i>
-  Add Recording
-</button>
-
+                    <button
+                      type="button"
+                      class="add-tadris-entry-btn px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                      data-jamia-name="${escapeHtml(jamiaName)}"
+                      data-action="add-recording"
+                    >
+                      <i class="fas fa-plus mr-1"></i>
+                      Add Recording
+                    </button>
                   </div>
                 </div>
 
@@ -1090,7 +921,7 @@ document.addEventListener('DOMContentLoaded', () => {
             accordionItem.appendChild(content);
             tadrisAccordionContainer.appendChild(accordionItem);
 
-            // Logic for select handlers
+            // populate teacher -> class -> kitab selects for this card
             const teacherSelect = content.querySelector(".tadris-teacher-select");
             const classSelect = content.querySelector(".tadris-class-select");
             const kitabSelect = content.querySelector(".tadris-kitab-select");
@@ -1152,6 +983,7 @@ document.addEventListener('DOMContentLoaded', () => {
               };
             }
 
+            // attach PDF buttons already present in savedHTML
             content.querySelectorAll(".download-tadris-pdf-btn").forEach((btn) => {
               btn.addEventListener('click', window.handleDownloadTadrisPDF);
             });
@@ -1168,319 +1000,286 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoader(false);
       }
     };
-// Attach listeners to Save buttons in saved table
-function attachSavedCommentHandlers() {
-  document.querySelectorAll(".save-admin-comment-btn").forEach(btn => {
-    if (btn._commentAttached) return;
-    btn._commentAttached = true;
 
-    btn.addEventListener("click", async (e) => {
-      const row = e.currentTarget.closest("tr");
-      if (!row) return;
-      const textarea = row.querySelector(".saved-admin-comment");
-      if (!textarea) return;
+    // ============================
+    // Ensure report base
+    // ============================
+    function getCurrentReportForSelectedMonth() {
+      if (!currentUser) return { report: {}, ref: null };
 
-      const newVal = textarea.value.trim();
-      const idx = parseInt(textarea.dataset.idx, 10);
+      const { monthNum, yearNum, monthName, monthInputFormat } = getReportingInfoFromMonthInput(monthInput.value);
+      const academicYear = monthNum >= 3 ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+      const simpleId = `${currentUser.uid}_${yearNum}_${monthNum}`;
+      const withYearId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
 
-      // visual feedback
-      const statusEl = row.querySelector(".save-status");
-      if (statusEl) {
-        statusEl.textContent = "Saving...";
-        statusEl.classList.remove("hidden");
+      let found = allReports.find((r) => r.id === withYearId) || allReports.find((r) => r.id === simpleId);
+
+      if (found) {
+        return {
+          report: found,
+          ref: doc(db, "monthly_reports", found.id),
+          meta: { monthNum, yearNum, academicYear, monthName, monthInputFormat },
+        };
       }
 
+      const newRef = doc(db, "monthly_reports", withYearId);
+      return {
+        report: {},
+        ref: newRef,
+        meta: { monthNum, yearNum, academicYear, monthName, monthInputFormat },
+      };
+    }
+
+    async function ensureReportBaseFields(ref, meta) {
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, {
+            userId: currentUser.uid,
+            month: meta.monthName,
+            year: meta.yearNum,
+            academicYear: meta.academicYear,
+            monthNum: meta.monthNum,
+            monthKey: meta.monthInputFormat,
+            createdAt: serverTimestamp(),
+          }, { merge: true });
+      } else {
+        const data = snap.data() || {};
+        if (!data.monthKey) {
+          await updateDoc(ref, { monthKey: meta.monthInputFormat });
+        }
+      }
+    }
+
+    // ============================
+    // Saved table functions
+    // ============================
+    function fillSavedTable() {
+      const table = document.getElementById("saved-table-body");
+      table.innerHTML = "";
+
+      const { report } = getCurrentReportForSelectedMonth();
+      const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
+
+      if (!data.length) {
+        table.innerHTML = `
+          <tr>
+            <td colspan="8" class="text-center p-3 text-gray-500">
+              Is month ki koi recording save nahi hai.
+            </td>
+          </tr>`;
+        return;
+      }
+
+      data.sort((a, b) => {
+        const da = new Date(a.date).getTime() || 0;
+        const db = new Date(b.date).getTime() || 0;
+        if (db !== da) return db - da;
+        return 0;
+      });
+
+      data.forEach((rec, idx) => {
+        const rowId = `saved-row-${idx}`;
+        const adminComment = rec.tasurat || "-";
+        const zimmedarComment = rec.adminTasurat || "";
+
+        table.insertAdjacentHTML("beforeend", `
+          <tr id="${rowId}" class="saved-data-row">
+            <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.jamiaName || "")}</td>
+            <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.className || "")}</td>
+            <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.kitabName || "")}</td>
+            <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.teacherName || "")}</td>
+            <td class="border px-2 py-1">${escapeHtml(rec.date || "")}</td>
+            <td class="border px-2 py-1 urdu-font">${escapeHtml(adminComment)}</td>
+            <td class="border px-2 py-1 urdu-font">
+              <div class="zimmedar-comment-cell cursor-pointer p-1 text-xs" 
+                   data-idx="${idx}"
+                   data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
+                   data-teacher="${encodeURIComponent(rec.teacherName||'')}"
+                   data-date="${rec.date || ''}"
+                   data-class="${encodeURIComponent(rec.className||'')}"
+                   data-kitab="${encodeURIComponent(rec.kitabName||'')}"
+                   title="Click karke comment edit karein"
+              >${zimmedarComment ? escapeHtml(zimmedarComment) : '<span class="text-gray-500">[Add comment]</span>'}</div>
+            </td>
+            <td class="border px-2 py-1">
+              <button class="saved-download-btn text-red-600 underline text-xs"
+                data-row-id="${rowId}"
+                data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
+                data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
+                data-date="${rec.date || ''}"
+                data-class-name="${encodeURIComponent(rec.className || '')}"
+                data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
+                data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
+              >PDF</button>
+            </td>
+          </tr>
+        `);
+      });
+
+      attachSavedDownloadHandlers();
+      attachSavedFiltersListeners();
+      attachSavedCommentClickHandlers();
+    }
+
+    // saved table helpers
+    function attachSavedCommentClickHandlers() {
+      document.querySelectorAll(".zimmedar-comment-cell").forEach(cell => {
+        if (cell._zimmedarAttached) return;
+        cell._zimmedarAttached = true;
+
+        cell.addEventListener("click", (e) => {
+          const el = e.currentTarget;
+          const idx = parseInt(el.dataset.idx, 10);
+          const jamia = decodeURIComponent(el.dataset.jamia || "");
+          const teacher = decodeURIComponent(el.dataset.teacher || "");
+          const dt = el.dataset.date || "";
+          const cls = decodeURIComponent(el.dataset.class || "");
+          const kitab = decodeURIComponent(el.dataset.kitab || "");
+          const currentText = (el.textContent || "").trim();
+          openCommentModal({
+            idx,
+            jamia,
+            teacher,
+            date: dt,
+            className: cls,
+            kitab,
+            currentText: currentText === "[Add comment]" ? "" : currentText,
+            cellElement: el
+          });
+        });
+      });
+    }
+
+    function attachSavedDownloadHandlers() {
+      document.querySelectorAll(".saved-download-btn").forEach(btn => {
+        if (btn._savedDownloadAttached) return;
+        btn._savedDownloadAttached = true;
+
+        btn.addEventListener("click", (e) => {
+          try {
+            window.handleDownloadTadrisPDF({ currentTarget: btn });
+          } catch (err) {
+            console.error("Saved download handler error:", err);
+          }
+        });
+      });
+    }
+
+    function attachSavedFiltersListeners() {
+      if (attachSavedFiltersListeners._attached) return;
+      attachSavedFiltersListeners._attached = true;
+
+      const jamiaSel = document.getElementById("filter-jamia");
+      const teacherInput = document.getElementById("filter-teacher");
+      const dateFrom = document.getElementById("filter-date-from");
+      const dateTo = document.getElementById("filter-date-to");
+
+      const applyFilters = () => {
+        fillSavedTable();
+      };
+
+      jamiaSel?.addEventListener("change", applyFilters);
+      teacherInput?.addEventListener("input", applyFilters);
+      dateFrom?.addEventListener("change", applyFilters);
+      dateTo?.addEventListener("change", applyFilters);
+    }
+
+    // ============================
+    // Save admin comment implementation (used by modal)
+    // ============================
+    async function saveAdminComment(itemIndex, commentValue, textareaEl = null, modalContext = null) {
+      if (!reportRef) throw new Error("Report reference missing.");
+      const snap = await getDoc(reportRef);
+      if (!snap.exists()) throw new Error("Report doc not found.");
+
+      const data = snap.data() || {};
+      const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
+
+      if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
+        arr[itemIndex].adminTasurat = commentValue;
+      } else {
+        let jamia="", teacher="", dt="", cls="", kitab="";
+        if (textareaEl) {
+          jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
+          teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
+          dt = textareaEl.dataset.date || "";
+          cls = decodeURIComponent(textareaEl.dataset.class || "");
+          kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
+        } else if (modalContext) {
+          jamia = modalContext.jamia || "";
+          teacher = modalContext.teacher || "";
+          dt = modalContext.date || "";
+          cls = modalContext.className || "";
+          kitab = modalContext.kitab || "";
+        }
+
+        const foundIdx = arr.findIndex(r =>
+          (r.jamiaName||"") === jamia &&
+          (r.teacherName||"") === teacher &&
+          (r.date||"") === dt &&
+          (r.className||"") === cls &&
+          (r.kitabName||"") === kitab
+        );
+        if (foundIdx >= 0) arr[foundIdx].adminTasurat = commentValue;
+        else throw new Error("Matching record not found.");
+      }
+
+      const existingStatus = data.tadrisRecording?.status || "Pending";
+      await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
+    }
+
+    // ============================
+    // Modal handling
+    // ============================
+    const modalEl = document.getElementById("zimmedarCommentModal");
+    const modalTextarea = document.getElementById("zimmedarModalTextarea");
+    const modalSaveBtn = document.getElementById("zimmedarModalSave");
+    const modalCancelBtn = document.getElementById("zimmedarModalCancel");
+    const modalBackdrop = document.getElementById("zimmedarModalBackdrop");
+    let _currentModalContext = null;
+
+    function openCommentModal(ctx) {
+      _currentModalContext = ctx;
+      modalTextarea.value = ctx.currentText || "";
+      modalEl.classList.remove("hidden");
+      modalEl.style.display = "flex";
+      modalTextarea.focus();
+    }
+
+    function closeCommentModal() {
+      _currentModalContext = null;
+      modalEl.classList.add("hidden");
+      modalEl.style.display = "none";
+      modalTextarea.value = "";
+    }
+
+    modalBackdrop?.addEventListener?.("click", closeCommentModal);
+    modalCancelBtn?.addEventListener?.("click", closeCommentModal);
+
+    modalSaveBtn?.addEventListener?.("click", async () => {
+      if (!_currentModalContext) return;
+      const newVal = modalTextarea.value.trim();
+      modalSaveBtn.disabled = true;
+      modalSaveBtn.textContent = "Saving...";
       try {
-        await saveAdminComment(idx, newVal, textarea);
-        if (statusEl) {
-          statusEl.textContent = "Saved";
-          setTimeout(() => { statusEl.classList.add("hidden"); }, 1500);
+        await saveAdminComment(_currentModalContext.idx, newVal, null, _currentModalContext);
+        const cell = _currentModalContext.cellElement;
+        if (cell) {
+          cell.innerHTML = newVal ? escapeHtml(newVal) : '<span class="text-gray-500">[Add comment]</span>';
         }
         showNotification("Zimmedar comment successfully saved.");
+        closeCommentModal();
       } catch (err) {
-        console.error("Save admin comment error:", err);
-        if (statusEl) {
-          statusEl.textContent = "Save failed";
-          setTimeout(() => { statusEl.classList.add("hidden"); }, 2000);
-        }
+        console.error("Modal save error:", err);
         showNotification("Comment save failed.", true);
+      } finally {
+        modalSaveBtn.disabled = false;
+        modalSaveBtn.textContent = "Save";
       }
     });
-  });
-}
-
-// Save the adminTasurat value into the report doc for matching record
-// Save the adminTasurat value into the report doc for matching record
-// Accepts either textareaEl OR modalContext (from openCommentModal)
-async function saveAdminComment(itemIndex, commentValue, textareaEl = null, modalContext = null) {
-  if (!reportRef) throw new Error("Report reference missing.");
-  const snap = await getDoc(reportRef);
-  if (!snap.exists()) throw new Error("Report doc not found.");
-
-  const data = snap.data() || {};
-  const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
-
-  // Try index-based update first (works if array stable)
-  if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
-    arr[itemIndex].adminTasurat = commentValue;
-  } else {
-    // Decide matching fields from textareaEl dataset or modalContext
-    let jamia="", teacher="", dt="", cls="", kitab="";
-    if (textareaEl) {
-      jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
-      teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
-      dt = textareaEl.dataset.date || "";
-      cls = decodeURIComponent(textareaEl.dataset.class || "");
-      kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
-    } else if (modalContext) {
-      jamia = modalContext.jamia || "";
-      teacher = modalContext.teacher || "";
-      dt = modalContext.date || "";
-      cls = modalContext.className || "";
-      kitab = modalContext.kitab || "";
-    }
-
-    const foundIdx = arr.findIndex(r =>
-      (r.jamiaName||"") === jamia &&
-      (r.teacherName||"") === teacher &&
-      (r.date||"") === dt &&
-      (r.className||"") === cls &&
-      (r.kitabName||"") === kitab
-    );
-    if (foundIdx >= 0) arr[foundIdx].adminTasurat = commentValue;
-    else throw new Error("Matching record not found.");
-  }
-
-  // preserve existing status if present
-  const existingStatus = data.tadrisRecording?.status || "Pending";
-
-  // Optionally add audit fields here:
-  // arr[foundIdx].adminTasuratUpdatedAt = serverTimestamp();
-  // arr[foundIdx].adminTasuratUpdatedBy = currentUser?.uid || null;
-
-  await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
-}
 
     // ============================
-    // Saved Table Logic
-    // ============================
-    // ======== UPDATED fillSavedTable (shows comment text only; no inline Save button) ========
-function fillSavedTable() {
-  const table = document.getElementById("saved-table-body");
-  table.innerHTML = "";
-
-  const { report } = getCurrentReportForSelectedMonth();
-  const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
-
-  if (!data.length) {
-    table.innerHTML = `
-      <tr>
-        <td colspan="8" class="text-center p-3 text-gray-500">
-          Is month ki koi recording save nahi hai.
-        </td>
-      </tr>`;
-    return;
-  }
-
-  // sort newest first
-  data.sort((a, b) => {
-    const da = new Date(a.date).getTime() || 0;
-    const db = new Date(b.date).getTime() || 0;
-    if (db !== da) return db - da;
-    return 0;
-  });
-
-  data.forEach((rec, idx) => {
-    const rowId = `saved-row-${idx}`;
-    const adminComment = rec.tasurat || "-";
-    const zimmedarComment = rec.adminTasurat || "";
-
-    // show zimmedarComment as plain text (clickable)
-    table.insertAdjacentHTML("beforeend", `
-      <tr id="${rowId}" class="saved-data-row">
-        <td class="border px-2 py-1 urdu-font">${rec.jamiaName || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.className || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.kitabName || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${rec.teacherName || ""}</td>
-        <td class="border px-2 py-1">${rec.date || ""}</td>
-        <td class="border px-2 py-1 urdu-font">${adminComment}</td>
-        <td class="border px-2 py-1 urdu-font">
-          <div class="zimmedar-comment-cell cursor-pointer p-1 text-xs" 
-               data-idx="${idx}"
-               data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
-               data-teacher="${encodeURIComponent(rec.teacherName||'')}"
-               data-date="${rec.date || ''}"
-               data-class="${encodeURIComponent(rec.className||'')}"
-               data-kitab="${encodeURIComponent(rec.kitabName||'')}"
-               title="Click karke comment edit karein"
-          >${zimmedarComment ? escapeHtml(zimmedarComment) : '<span class="text-gray-500">[Add comment]</span>'}</div>
-        </td>
-        <td class="border px-2 py-1">
-          <button class="saved-download-btn text-red-600 underline text-xs"
-            data-row-id="${rowId}"
-            data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
-            data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
-            data-date="${rec.date || ''}"
-            data-class-name="${encodeURIComponent(rec.className || '')}"
-            data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
-            data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
-          >PDF</button>
-        </td>
-      </tr>
-    `);
-  });
-
-  // attach handlers
-  attachSavedDownloadHandlers();
-  attachSavedFiltersListeners();
-  attachSavedCommentClickHandlers();
-}
-
-// small helper to avoid HTML injection when inserting text into cell
-function escapeHtml(unsafe) {
-  if (unsafe === null || unsafe === undefined) return "";
-  return String(unsafe)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-// ======== Click handlers that open modal ========
-function attachSavedCommentClickHandlers() {
-  document.querySelectorAll(".zimmedar-comment-cell").forEach(cell => {
-    // avoid duplicate attachments
-    if (cell._zimmedarAttached) return;
-    cell._zimmedarAttached = true;
-
-    cell.addEventListener("click", (e) => {
-      const el = e.currentTarget;
-      const idx = parseInt(el.dataset.idx, 10);
-      const jamia = decodeURIComponent(el.dataset.jamia || "");
-      const teacher = decodeURIComponent(el.dataset.teacher || "");
-      const dt = el.dataset.date || "";
-      const cls = decodeURIComponent(el.dataset.class || "");
-      const kitab = decodeURIComponent(el.dataset.kitab || "");
-      const currentText = (el.textContent || "").trim();
-      openCommentModal({
-        idx,
-        jamia,
-        teacher,
-        date: dt,
-        className: cls,
-        kitab,
-        currentText: currentText === "[Add comment]" ? "" : currentText,
-        cellElement: el
-      });
-    });
-  });
-}
-
-    // ---------------------------
-// Attach handlers for Saved table PDF buttons and filters
-// ---------------------------
-function attachSavedDownloadHandlers() {
-  document.querySelectorAll(".saved-download-btn").forEach(btn => {
-    if (btn._savedDownloadAttached) return;
-    btn._savedDownloadAttached = true;
-
-    btn.addEventListener("click", (e) => {
-      // Use the same PDF generator. handleDownloadTadrisPDF expects an event-like object
-      // with currentTarget.dataset keys (jamiaName, teacherName, className, kitabName, date, tasurat).
-      // Our saved button uses data-jamia-name etc so dataset keys match.
-      try {
-        // ensure dataset values are decoded where needed (handleDownload already decodes tasurat)
-        window.handleDownloadTadrisPDF({ currentTarget: btn });
-      } catch (err) {
-        console.error("Saved download handler error:", err);
-      }
-    });
-  });
-}
-
-// Basic saved-filters listener hookup (so the missing function call doesn't error).
-// You can expand this to actually filter the table as needed.
-function attachSavedFiltersListeners() {
-  if (attachSavedFiltersListeners._attached) return;
-  attachSavedFiltersListeners._attached = true;
-
-  const jamiaSel = document.getElementById("filter-jamia");
-  const teacherInput = document.getElementById("filter-teacher");
-  const dateFrom = document.getElementById("filter-date-from");
-  const dateTo = document.getElementById("filter-date-to");
-
-  const applyFilters = () => {
-    // simple re-render using existing fillSavedTable()
-    // If you want client-side filtering instead of re-fetching, implement filtering here
-    fillSavedTable();
-  };
-
-  jamiaSel?.addEventListener("change", applyFilters);
-  teacherInput?.addEventListener("input", applyFilters);
-  dateFrom?.addEventListener("change", applyFilters);
-  dateTo?.addEventListener("change", applyFilters);
-}
-
-
-// ======== Modal control ========
-const modalEl = document.getElementById("zimmedarCommentModal");
-const modalTextarea = document.getElementById("zimmedarModalTextarea");
-const modalSaveBtn = document.getElementById("zimmedarModalSave");
-const modalCancelBtn = document.getElementById("zimmedarModalCancel");
-const modalBackdrop = document.getElementById("zimmedarModalBackdrop");
-
-let _currentModalContext = null;
-
-function openCommentModal(ctx) {
-  // ctx: { idx, jamia, teacher, date, className, kitab, currentText, cellElement }
-  _currentModalContext = ctx;
-  modalTextarea.value = ctx.currentText || "";
-  modalEl.classList.remove("hidden");
-  modalEl.style.display = "flex";
-  modalTextarea.focus();
-}
-
-function closeCommentModal() {
-  _currentModalContext = null;
-  modalEl.classList.add("hidden");
-  modalEl.style.display = "none";
-  modalTextarea.value = "";
-}
-
-// close modal on backdrop or cancel
-modalBackdrop?.addEventListener?.("click", closeCommentModal);
-modalCancelBtn?.addEventListener?.("click", closeCommentModal);
-
-// Save from modal
-modalSaveBtn?.addEventListener?.("click", async () => {
-  if (!_currentModalContext) return;
-  const newVal = modalTextarea.value.trim();
-
-  // visual feedback
-  modalSaveBtn.disabled = true;
-  modalSaveBtn.textContent = "Saving...";
-
-  try {
-    await saveAdminComment(_currentModalContext.idx, newVal, null, _currentModalContext);
-    // update the cell text in UI
-    const cell = _currentModalContext.cellElement;
-    if (cell) {
-      cell.innerHTML = newVal ? escapeHtml(newVal) : '<span class="text-gray-500">[Add comment]</span>';
-    }
-    showNotification("Zimmedar comment successfully saved.");
-    closeCommentModal();
-  } catch (err) {
-    console.error("Modal save error:", err);
-    showNotification("Comment save failed.", true);
-  } finally {
-    modalSaveBtn.disabled = false;
-    modalSaveBtn.textContent = "Save";
-  }
-});
-
-    // ============================
-    // Tabs behavior
+    // Tabs + accordion (allows multiple open)
     // ============================
     function setActiveTab(isAdd) {
       if (isAdd) {
@@ -1503,7 +1302,7 @@ modalSaveBtn?.addEventListener?.("click", async () => {
 
     tabAdd.addEventListener("click", () => setActiveTab(true));
     tabSaved.addEventListener("click", () => setActiveTab(false));
-    
+
     tadrisAccordionContainer.addEventListener('click', (e) => {
       const btn = e.target.closest('.accordion-button');
       if (!btn) return;
@@ -1519,15 +1318,164 @@ modalSaveBtn?.addEventListener?.("click", async () => {
         }
       }
     });
-    
+
     setActiveTab(true);
+
+    // ============================
+    // Delegated Add Recording handler (per-card)
+    // ============================
+    (function installDelegatedAddRecordingHandler() {
+      if (window._delegatedAddRecordingInstalled) return;
+      window._delegatedAddRecordingInstalled = true;
+
+      document.body.addEventListener('click', async function (ev) {
+        const btn = ev.target.closest('button.add-tadris-entry-btn, button[data-action="add-recording"]');
+        if (!btn) return;
+        ev.preventDefault?.();
+
+        // find nearest card container
+        const card = btn.closest('.jamia-card') || btn.closest('.accordion-content') || document;
+
+        const jamiaName = btn.dataset.jamiaName || btn.getAttribute('data-jamia-name') || card.querySelector('.jamia-title')?.textContent?.trim() || "";
+        const teacherEl = card.querySelector('select.tadris-teacher-select');
+        const classEl = card.querySelector('select.tadris-class-select');
+        const kitabEl = card.querySelector('select.tadris-kitab-select');
+        const dateEl = card.querySelector('input.tadris-date');
+        const tasuratEl = card.querySelector('textarea.tadris-tasurat');
+
+        const teacher = teacherEl?.value || "";
+        const className = classEl?.value || "";
+        const kitab = kitabEl?.value || "";
+        const date = dateEl?.value || "";
+        const tasurat = tasuratEl?.value || "";
+
+        console.log('AddRecording click — found values:', { jamiaName, teacher, className, kitab, date, tasurat });
+
+        if (!jamiaName || !teacher) {
+          alert('Jamia aur Teacher select karen. (Please select Jamia & Teacher)');
+          return;
+        }
+
+        const payload = {
+          jamiaName: jamiaName,
+          teacherName: teacher,
+          className: className,
+          kitabName: kitab,
+          date: date,
+          tasurat: tasurat,
+          createdBy: currentUser?.uid || null
+        };
+
+        showLoader(true);
+        try {
+          // Attempt save to Firestore (reportRef)
+          try {
+            const saved = await saveNewRecordingToReport(payload);
+            showNotification('Recording server par save ho gayi.');
+            // re-render to show new saved entry
+            // trigger re-render by refetching current doc via onSnapshot already set
+            // but we can also call renderForCurrentMonth to reflect instantly
+            setTimeout(() => renderForCurrentMonth(), 800);
+          } catch (err) {
+            console.warn('Firestore save failed, falling back to localStorage:', err);
+            // fallback localStorage
+            const key = 'saved_recordings_demo';
+            const existing = JSON.parse(localStorage.getItem(key) || '[]');
+            existing.push(Object.assign({ id: Date.now() }, payload));
+            localStorage.setItem(key, JSON.stringify(existing));
+            showNotification('Server save available nahi — entry browser me local saved hui.', true);
+          }
+        } catch (err) {
+          console.error('Add recording handler error:', err);
+          showNotification('Recording save karne me error. Console check karein.', true);
+        } finally {
+          showLoader(false);
+        }
+
+      }, { capture: false });
+    })();
+
+    // ============================
+    // populateJamiaFilterOptions fallback
+    // ============================
+    if (typeof populateJamiaFilterOptions !== 'function') {
+      window.populateJamiaFilterOptions = function populateJamiaFilterOptions() {
+        try {
+          const sourceList = window.KARKARDAGI_STRUCTURE || null;
+          const selectEl = document.getElementById('filter-jamia') || null;
+          if (!selectEl) {
+            console.warn('Jamia filter select not found (#filter-jamia).');
+            return;
+          }
+          const firstOption = selectEl.querySelector('option:first-child');
+          selectEl.innerHTML = '';
+          if (firstOption) selectEl.appendChild(firstOption);
+
+          if (Array.isArray(sourceList) && sourceList.length) {
+            sourceList.forEach(j => {
+              const name = j.jamiaName || j.name || j.title || String(j);
+              const opt = document.createElement('option');
+              opt.value = name;
+              opt.textContent = name;
+              selectEl.appendChild(opt);
+            });
+            return;
+          }
+
+          const jamiaNodes = document.querySelectorAll('.jamia-title');
+          const seen = new Set();
+          jamiaNodes.forEach(node => {
+            const text = node.textContent.trim();
+            if (!text) return;
+            if (seen.has(text)) return;
+            seen.add(text);
+            const opt = document.createElement('option');
+            opt.value = text;
+            opt.textContent = text;
+            selectEl.appendChild(opt);
+          });
+
+        } catch (err) {
+          console.error('populateJamiaFilterOptions error:', err);
+        }
+      };
+    }
+
+    // ============================
+    // Safe initial render call
+    // ============================
+    // renderForCurrentMonth will be called by onSnapshot when reports load; but if needed call once
+    (async () => {
+      try {
+        if (currentUser) await loadTeachingStructureFromUserDoc(currentUser);
+        // safe call (it will re-run after auth & snapshot)
+        // renderForCurrentMonth();
+      } catch(e) {}
+    })();
+
+    // ============================
+    // helper: ensureReportBaseFields (used above)
+    // ============================
+    async function ensureReportBaseFields(ref, meta) {
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, {
+            userId: currentUser.uid,
+            month: meta.monthName,
+            year: meta.yearNum,
+            academicYear: meta.academicYear,
+            monthNum: meta.monthNum,
+            monthKey: meta.monthInputFormat,
+            createdAt: serverTimestamp(),
+          }, { merge: true });
+      } else {
+        const data = snap.data() || {};
+        if (!data.monthKey) {
+          await updateDoc(ref, { monthKey: meta.monthInputFormat });
+        }
+      }
+    }
 
   </script>
 </body>
 </html>
-
-
-
-
-
-
