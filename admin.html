@@ -127,51 +127,47 @@
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
 
-/* 3. Single User Card Styles (Full Width Container) */
+/* Replace/remove overflow hidden from single-view-card and ensure full width on mobile */
 .summary-card.single-view-card {
-    display: block !important; /* Flex hata kar block kiya */
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     background: white;
     border-radius: 12px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    margin-bottom: 2rem;
+    margin-bottom: 1.25rem;
     border: 1px solid #e5e7eb;
     border-left: 5px solid #14b8a6;
-    overflow: hidden; /* Content ko bahar jane se roke */
-}
-
-/* Header Section */
-.user-stat-header {
-    width: 100%;
-    background-color: #f0fdfa;
-    border-bottom: 1px solid #ccfbf1;
-    padding: 1.5rem 2rem;
-    box-sizing: border-box; /* Padding width me include ho */
-    
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap; /* Choti screen par wrap ho jaye */
-    gap: 1.5rem;
-}
-
-/* Stats Grid (Desktop default: 4 columns) */
-.single-user-details-grid {
-    width: 100%;
-    padding: 1.5rem 2rem;
+    /* remove overflow: hidden to prevent inner content clipping */
+    overflow: visible; /* was hidden; changed to visible */
     box-sizing: border-box;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 1.5rem;
 }
 
-/* --- MOBILE & TABLET RESPONSIVENESS --- */
+/* Force container to be block when single-user mode so other grid rules don't collide */
+.admin-reports-summary-container.single-user-view {
+    display: block !important;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+}
 
-/* Tablet (iPad etc): 2 Columns */
-@media (max-width: 1024px) {
-    .single-user-details-grid {
-        grid-template-columns: repeat(2, 1fr);
+/* Make sure no sibling element is overlaying the right side (safety) */
+.admin-reports-summary-container,
+.admin-reports-summary-container > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Mobile tweaks: ensure header stats wrap and don't overflow horizontally */
+.user-stat-header,
+.user-stat-header .header-stats-row {
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
+/* If you still see horizontal overflow on small screens, hide page-wide overflow-x */
+@media (max-width: 640px) {
+    html, body {
+        overflow-x: hidden;
     }
 }
 
@@ -935,28 +931,57 @@ kkdSectionDedicated.innerHTML = "";
     const selectedRegion = adminRegionFilterSelect.value; 
 
     // Helper: Calculate Teachers from Structure Safely
-    const getTeacherCountFromStructure = (user) => {
-        let count = 0;
-        try {
-            if (user.academicStructure && Array.isArray(user.academicStructure)) {
-                user.academicStructure.forEach(yearData => {
-                    // Check if karkardagiStructure exists and is array
-                    if (yearData.karkardagiStructure && Array.isArray(yearData.karkardagiStructure)) {
-                        yearData.karkardagiStructure.forEach(jamia => {
-                            // Check if teachers array exists
-                            if (jamia.teachers && Array.isArray(jamia.teachers)) {
-                                count += jamia.teachers.length;
-                            }
+    // REPLACE existing getTeacherCountFromStructure WITH THIS
+const getTeacherCountFromStructure = (user) => {
+    try {
+        let teacherIds = new Set();
+
+        // 1) Old shape: user.academicStructure -> array of years -> karkardagiStructure -> array of jamia -> teachers array
+        if (Array.isArray(user.academicStructure)) {
+            user.academicStructure.forEach(yearData => {
+                const kark = yearData?.karkardagiStructure;
+                if (Array.isArray(kark)) {
+                    kark.forEach(jamia => {
+                        (jamia?.teachers || []).forEach(t => {
+                            if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
                         });
-                    }
-                });
-            }
-        } catch (err) {
-            console.error("Error counting teachers for user:", user.name, err);
+                    });
+                }
+            });
         }
-        // Agar structure empty hai to manual totalAsatiza use karein
-        return count > 0 ? count : (parseInt(user.totalAsatiza) || 0);
-    };
+
+        // 2) Newer shape: user.academicYears is an object keyed by year -> each year may have karkardagiStructure
+        if (user.academicYears && typeof user.academicYears === 'object') {
+            Object.values(user.academicYears).forEach(yearData => {
+                const kark = yearData?.karkardagiStructure || yearData?.karkardagi || [];
+                if (Array.isArray(kark)) {
+                    kark.forEach(jamia => {
+                        (jamia?.teachers || []).forEach(t => {
+                            if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
+                        });
+                    });
+                }
+            });
+        }
+
+        // 3) Also support case where teachers stored directly under jamia list: user.jamiaatList -> jamia.teachers
+        if (Array.isArray(user.jamiaatList)) {
+            user.jamiaatList.forEach(j => {
+                (j?.teachers || []).forEach(t => {
+                    if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
+                });
+            });
+        }
+
+        // 4) Fallback: if set empty, try totalAsatiza numeric
+        if (teacherIds.size > 0) return teacherIds.size;
+        const fallback = parseInt(user.totalAsatiza, 10);
+        return (isNaN(fallback) ? 0 : fallback);
+    } catch (err) {
+        console.error('Error in getTeacherCountFromStructure:', err);
+        return parseInt(user.totalAsatiza, 10) || 0;
+    }
+};
 
     // Group reports
     const reportsByUser = reports.reduce((acc, report) => {
@@ -2132,6 +2157,7 @@ const renderDedicatedKkdSummary = (reports) => {
     </script>
 </body>
 </html>
+
 
 
 
