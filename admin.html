@@ -100,9 +100,9 @@
         
         /* Existing styles... */
 
-/* --- Final Layout Fixes --- */
+/* --- FULL WIDTH & LANDSCAPE FIXES --- */
 
-/* Container Setup */
+/* 1. Container Setup */
 .admin-reports-summary-container {
     width: 100%;
     display: grid;
@@ -110,38 +110,74 @@
     gap: 1.5rem;
 }
 
-/* Jab Single User View active ho, to Grid hata kar Block karein taake Full Width mile */
+/* Single View Mode - Force Block to use full width */
 .admin-reports-summary-container.single-user-view {
     display: block !important;
 }
 
-/* Master Card Styles */
+/* 2. Master Card Styles */
 .summary-card.master-summary-card {
-    grid-column: 1 / -1; /* Force full width in grid */
+    grid-column: 1 / -1;
     width: 100%;
-    border-left: 5px solid #3b82f6; /* Blue border */
+    border-left: 5px solid #3b82f6; /* Blue */
     background: white;
     padding: 1.5rem;
-    border-radius: 10px;
+    border-radius: 12px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-/* Single User Card Styles (Full Width) */
+/* 3. Single User Card Styles (Revised for Landscape) */
 .summary-card.single-view-card {
-    width: 100% !important; /* Force Full Width */
-    max-width: 100%;
+    width: 100% !important;
     background: white;
     border-radius: 12px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     margin-bottom: 2rem;
     border: 1px solid #e5e7eb;
-    border-left: 5px solid #14b8a6; /* Teal border */
+    border-left: 5px solid #14b8a6; /* Teal */
+    
+    /* IMPORTANT: Flex Column to stack Header on Top, Grid on Bottom */
+    display: flex;
+    flex-direction: column; 
 }
 
-/* Master Stats Grid - Ab 5 items ke liye adjust kiya */
+/* Header Section (Full Width Top) */
+.user-stat-header {
+    width: 100%;
+    background-color: #f0fdfa;
+    border-bottom: 1px solid #ccfbf1;
+    padding: 1.5rem 2rem;
+    
+    /* Layout inside header */
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+}
+
+/* Stats Grid (Full Width Bottom) */
+.single-user-details-grid {
+    width: 100%;
+    padding: 1.5rem 2rem;
+    display: grid;
+    /* Desktop: 4 columns barabar */
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 1.5rem;
+}
+
+/* Responsive: Choti screen par 2 columns */
+@media (max-width: 1100px) {
+    .single-user-details-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Master Summary Stats Grid */
 .master-summary-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Thoda bada kiya */
+    /* 6 items ke liye auto-fit */
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
     gap: 1.5rem;
     margin-top: 1.5rem;
 }
@@ -150,37 +186,11 @@
     padding: 1.5rem 1rem;
     border-radius: 8px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    background-color: #f8fafc; /* Fallback bg */
+    border: 1px solid #e2e8f0;
 }
 
-/* User Header (Single Card) */
-.user-stat-header {
-    background-color: #f0fdfa;
-    border-bottom: 1px solid #ccfbf1;
-    padding: 1.5rem 2rem;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 2rem;
-}
-
-/* Details Grid inside Single Card */
-.single-user-details-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr); /* Force 4 columns on desktop */
-    gap: 1.5rem;
-    padding: 1.5rem 2rem;
-}
-
-/* Responsive adjustment for smaller screens */
-@media (max-width: 1024px) {
-    .single-user-details-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-/* Detail Box Styling */
+/* Detail Box Styling (Inner boxes) */
 .detail-box {
     background: white;
     border: 1px solid #e2e8f0;
@@ -201,12 +211,14 @@
     color: #334155;
 }
 
-/* Text Utilities */
+/* Colors & Fonts */
 .stat-val { font-weight: 700; font-size: 1.1rem; }
 .text-green { color: #16a34a; }
 .text-red { color: #dc2626; }
 .text-blue { color: #2563eb; }
 .text-purple { color: #9333ea; }
+.text-teal { color: #0d9488; }
+.text-orange { color: #ea580c; }
         .admin-reports-summary-container.single-user-view .summary-card {
             width: 100%;
         }
@@ -872,7 +884,25 @@ kkdSectionDedicated.innerHTML = "";
     const selectedUserId = adminUserFilterSelect.value;
     const selectedRegion = adminRegionFilterSelect.value; 
 
-    // Group reports by user ID
+    // Helper: Calculate Teachers from Structure
+    const getTeacherCountFromStructure = (user) => {
+        let count = 0;
+        if (user.academicStructure && Array.isArray(user.academicStructure)) {
+            user.academicStructure.forEach(yearData => {
+                if (yearData.karkardagiStructure && Array.isArray(yearData.karkardagiStructure)) {
+                    yearData.karkardagiStructure.forEach(jamia => {
+                        if (jamia.teachers && Array.isArray(jamia.teachers)) {
+                            count += jamia.teachers.length;
+                        }
+                    });
+                }
+            });
+        }
+        // Agar structure se 0 mile, to fallback to user profile field
+        return count > 0 ? count : (user.totalAsatiza || 0);
+    };
+
+    // Group reports
     const reportsByUser = reports.reduce((acc, report) => {
         acc[report.userId] = report;
         return acc;
@@ -887,58 +917,40 @@ kkdSectionDedicated.innerHTML = "";
 
     reportsLoadingMsg.classList.add('hidden');
     adminReportsSummaryContainer.innerHTML = ''; 
-    
-    // Reset view class
     adminReportsSummaryContainer.classList.remove('single-user-view'); 
     
     if (filteredUsers.length === 0) {
-        adminReportsSummaryContainer.innerHTML = '<p class="text-center py-4 text-gray-500 col-span-full">No users or reports found matching the selected filters.</p>';
+        adminReportsSummaryContainer.innerHTML = '<p class="text-center py-4 text-gray-500 col-span-full">No users or reports found.</p>';
         return;
     }
     
-    // --- 1. MASTER SUMMARY (ALL USERS or REGION) ---
+    // --- 1. MASTER SUMMARY ---
     if (selectedUserId === 'all') {
         let totalJamiaat = 0;
-        let totalTeachers = 0; // NEW: Total Teachers across all users
+        let totalTeachers = 0; // Calculated from structure
         let totalJaizaDone = 0;
         let totalMonthlyTests = 0;
-        let totalTeachersFilled = 0; // NEW: Replaced Entries with Teachers Filled
+        let totalTeachersFilled = 0; // Sum of unique teachers filled per user
         let totalTadrisRecordings = 0;
         let reportsSubmitted = 0;
         
         filteredUsers.forEach(user => {
             const report = reportsByUser[user.id];
             
-            // 1. Count Jamiaat
+            // Stats from User Profile/Structure
             totalJamiaat += user.totalJamiaat || (user.jamiaatList ? user.jamiaatList.length : 0);
-            
-            // 2. Count Teachers (User Profile Logic)
-            let userTeachers = user.totalAsatiza || 0;
-            if (userTeachers === 0 && user.academicStructure && Array.isArray(user.academicStructure)) {
-                 user.academicStructure.forEach(yearData => {
-                     if(yearData.karkardagiStructure) {
-                         yearData.karkardagiStructure.forEach(j => {
-                             if(j.teachers) userTeachers += j.teachers.length;
-                         });
-                     }
-                 });
-            }
-            totalTeachers += userTeachers;
+            totalTeachers += getTeacherCountFromStructure(user);
 
             if (report) {
                 reportsSubmitted++;
                 // Jaiza
-                const jaizaData = report.jaizaReport?.data || [];
-                totalJaizaDone += jaizaData.filter(j => (j.percentage > 0 || j.status === 'Done')).length;
-                
+                totalJaizaDone += (report.jaizaReport?.data || []).filter(j => (j.percentage > 0 || j.status === 'Done')).length;
                 // Tests
                 totalMonthlyTests += (report.monthlyTest?.data || []).length;
-
-                // KKd - Count Unique Teachers Filled
+                // KKd (Unique Teachers per user)
                 const kkdData = report.karkardagiReport?.data || [];
                 const uniqueTeachers = new Set(kkdData.map(item => item.teacherId)).size;
                 totalTeachersFilled += uniqueTeachers;
-
                 // Tadris
                 totalTadrisRecordings += (report.tadrisRecording?.data || []).length;
             }
@@ -948,38 +960,35 @@ kkdSectionDedicated.innerHTML = "";
 
         const masterCardHtml = `
             <div class="summary-card master-summary-card">
-                <div class="flex justify-between items-center border-b pb-4 mb-2">
-                    <div>
-                        <h3 class="text-2xl font-bold text-blue-600">${titleText} Master Summary</h3>
-                        <p class="text-sm text-gray-600">Total data for ${filteredUsers.length} users (${reportsSubmitted} reports submitted).</p>
-                    </div>
+                <div class="border-b pb-4 mb-2">
+                    <h3 class="text-2xl font-bold text-blue-600">${titleText} Master Summary</h3>
+                    <p class="text-sm text-gray-600">Total data for ${filteredUsers.length} users (${reportsSubmitted} reports submitted).</p>
                 </div>
                 
                 <div class="master-summary-stats">
-                    <div class="bg-blue-50">
+                    <div class="bg-blue-50 border-blue-100">
                         <p class="text-3xl font-bold text-blue-800">${totalJamiaat}</p>
-                        <p class="text-sm text-blue-600 font-bold uppercase tracking-wide">Total Jamiaat</p>
+                        <p class="text-xs text-blue-600 font-bold uppercase tracking-wide mt-1">Total Jamiaat</p>
                     </div>
-                     <div class="bg-purple-50">
+                     <div class="bg-purple-50 border-purple-100">
                         <p class="text-3xl font-bold text-purple-800">${totalTeachers}</p>
-                        <p class="text-sm text-purple-600 font-bold uppercase tracking-wide">Total Asatiza</p>
+                        <p class="text-xs text-purple-600 font-bold uppercase tracking-wide mt-1">Total Asatiza</p>
                     </div>
-                    <div class="bg-green-50">
+                    <div class="bg-green-50 border-green-100">
                         <p class="text-3xl font-bold text-green-800">${totalJaizaDone}</p>
-                        <p class="text-sm text-green-600 font-bold uppercase tracking-wide">Jaiza Done</p>
+                        <p class="text-xs text-green-600 font-bold uppercase tracking-wide mt-1">Jaiza Done</p>
                     </div>
-                    <div class="bg-yellow-50">
+                    <div class="bg-yellow-50 border-yellow-100">
                         <p class="text-3xl font-bold text-yellow-800">${totalMonthlyTests}</p>
-                        <p class="text-sm text-yellow-600 font-bold uppercase tracking-wide">Tests Taken</p>
+                        <p class="text-xs text-yellow-600 font-bold uppercase tracking-wide mt-1">Tests Taken</p>
                     </div>
-                    <div class="bg-indigo-50">
+                    <div class="bg-indigo-50 border-indigo-100">
                         <p class="text-3xl font-bold text-indigo-800">${totalTeachersFilled}</p>
-                        <p class="text-sm text-indigo-600 font-bold uppercase tracking-wide">Teachers Reports</p>
-                        <p class="text-xs text-gray-500 mt-1">(Filled)</p>
+                        <p class="text-xs text-indigo-600 font-bold uppercase tracking-wide mt-1">Teachers Filled</p>
                     </div>
-                    <div class="bg-teal-50">
+                    <div class="bg-teal-50 border-teal-100">
                         <p class="text-3xl font-bold text-teal-800">${totalTadrisRecordings}</p>
-                        <p class="text-sm text-teal-600 font-bold uppercase tracking-wide">Recordings</p>
+                        <p class="text-xs text-teal-600 font-bold uppercase tracking-wide mt-1">Recordings</p>
                     </div>
                 </div>
             </div>
@@ -990,7 +999,7 @@ kkdSectionDedicated.innerHTML = "";
     
     // --- 2. SINGLE USER DETAILED CARD ---
     if (filteredUsers.length === 1 && selectedUserId !== 'all') {
-        adminReportsSummaryContainer.classList.add('single-user-view'); // Activate Full Width CSS
+        adminReportsSummaryContainer.classList.add('single-user-view'); 
     }
     
     const cardsHtml = filteredUsers.map(user => {
@@ -998,24 +1007,14 @@ kkdSectionDedicated.innerHTML = "";
         const userName = user.name || user.email || 'N/A';
         const userZimmedari = user.zimmedari || 'No Zimmedari';
         
-        // Calculate Totals
+        // Stats Calculation
         const totalJamiaat = user.totalJamiaat || (user.jamiaatList ? user.jamiaatList.length : 0);
-        let totalTeachers = user.totalAsatiza || 0;
-        if (totalTeachers === 0 && user.academicStructure && Array.isArray(user.academicStructure)) {
-             user.academicStructure.forEach(yearData => {
-                 if(yearData.karkardagiStructure) {
-                     yearData.karkardagiStructure.forEach(j => {
-                         if(j.teachers) totalTeachers += j.teachers.length;
-                     });
-                 }
-             });
-        }
+        const totalTeachers = getTeacherCountFromStructure(user); // UPDATED LOGIC
 
         let statusTag = { text: 'PENDING', color: 'text-yellow-600', bgColor: 'bg-yellow-100' };
         let submittedDate = 'Not Submitted';
         let actionsHtml = `<span class="text-sm text-gray-500">No report submitted.</span>`;
 
-        // Stats Variables
         let jaizaOnlyVisit = 0, jaizaMukammal = 0, jaizaPending = totalJamiaat;
         let testDone = 0, testPending = totalJamiaat;
         let kkdFilledUnique = 0, kkdPending = totalTeachers;
@@ -1025,23 +1024,23 @@ kkdSectionDedicated.innerHTML = "";
              statusTag = calculateOverallStatus(report, totalJamiaat);
              submittedDate = report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString() : 'N/A';
 
-             // A. Jaiza
+             // Jaiza
              const jaizaData = report.jaizaReport?.data || [];
              jaizaMukammal = jaizaData.filter(j => j.percentage > 0 || j.status === 'Done').length;
              jaizaOnlyVisit = jaizaData.length - jaizaMukammal;
              jaizaPending = Math.max(0, totalJamiaat - jaizaData.length);
 
-             // B. Test
+             // Test
              const testData = report.monthlyTest?.data || [];
              testDone = testData.length;
              testPending = Math.max(0, totalJamiaat - testDone);
 
-             // C. KKd (Unique Teachers)
+             // KKd
              const kkdData = report.karkardagiReport?.data || [];
              kkdFilledUnique = new Set(kkdData.map(item => item.teacherId)).size;
              kkdPending = Math.max(0, totalTeachers - kkdFilledUnique);
 
-             // D. Tadris
+             // Tadris
              const tadrisData = report.tadrisRecording?.data || [];
              tadrisTotal = tadrisData.length;
              tadrisWithTasurat = tadrisData.filter(t => t.tasurat && t.tasurat.trim() !== '').length;
@@ -1053,65 +1052,69 @@ kkdSectionDedicated.innerHTML = "";
             `;
         }
 
-        const isSingleView = (filteredUsers.length === 1 && selectedUserId !== 'all');
-        let statsContent = '';
-
-        if (isSingleView) {
-            statsContent = `
-            <div class="user-stat-header">
-                <div>
-                    <h3 class="text-2xl font-bold urdu-font text-gray-800">${userName}</h3>
-                    <p class="text-sm text-gray-500 urdu-font font-medium">${user.region || 'Region N/A'} | ${userZimmedari}</p>
-                </div>
-                <div class="flex gap-8 text-center">
+        // RENDER: Single User (Landscape Mode)
+        if (filteredUsers.length === 1 && selectedUserId !== 'all') {
+            return `
+            <div class="summary-card single-view-card">
+                <div class="user-stat-header">
                     <div>
-                        <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Jamiaat</p>
-                        <p class="text-3xl font-bold text-blue-600">${totalJamiaat}</p>
+                        <h3 class="text-2xl font-bold urdu-font text-gray-800">${userName}</h3>
+                        <p class="text-sm text-gray-500 urdu-font font-medium">${user.region || 'Region N/A'} | ${userZimmedari}</p>
                     </div>
-                    <div>
-                        <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Asatiza</p>
-                        <p class="text-3xl font-bold text-purple-600">${totalTeachers}</p>
+                    <div class="flex gap-8 text-center">
+                        <div>
+                            <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Jamiaat</p>
+                            <p class="text-3xl font-bold text-blue-600">${totalJamiaat}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Asatiza</p>
+                            <p class="text-3xl font-bold text-purple-600">${totalTeachers}</p>
+                        </div>
+                         <div>
+                            <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Status</p>
+                            <div class="mt-1"><span class="px-3 py-1 text-sm font-bold rounded-full ${statusTag.bgColor} ${statusTag.color}">${statusTag.text}</span></div>
+                            <p class="text-xs text-gray-400 mt-1">${submittedDate}</p>
+                        </div>
                     </div>
-                     <div>
-                        <p class="text-xs text-gray-500 uppercase font-bold tracking-wider">Status</p>
-                        <div class="mt-1"><span class="px-3 py-1 text-sm font-bold rounded-full ${statusTag.bgColor} ${statusTag.color}">${statusTag.text}</span></div>
-                        <p class="text-xs text-gray-400 mt-1">${submittedDate}</p>
+                </div>
+
+                <div class="single-user-details-grid">
+                    <div class="detail-box border-l-4 border-l-blue-500">
+                        <h4 class="text-blue-600 font-bold uppercase mb-2">Jaiza & Visits</h4>
+                        <div class="detail-stat-row"><span class="stat-label">Mukammal Jaiza:</span> <span class="stat-val text-green">${jaizaMukammal}</span></div>
+                        <div class="detail-stat-row"><span class="stat-label">Sirf Visit:</span> <span class="stat-val text-orange">${jaizaOnlyVisit}</span></div>
+                        <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Pending:</span> <span class="stat-val text-red">${jaizaPending}</span></div>
+                    </div>
+
+                    <div class="detail-box border-l-4 border-l-yellow-500">
+                        <h4 class="text-yellow-600 font-bold uppercase mb-2">Monthly Test</h4>
+                        <div class="detail-stat-row"><span class="stat-label">Test Hua (Taken):</span> <span class="stat-val text-green">${testDone}</span></div>
+                        <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Pending:</span> <span class="stat-val text-red">${testPending}</span></div>
+                    </div>
+
+                    <div class="detail-box border-l-4 border-l-purple-500">
+                        <h4 class="text-purple-600 font-bold uppercase mb-2">Karkardagi (KKd)</h4>
+                        <div class="detail-stat-row"><span class="stat-label">Reports Filled:</span> <span class="stat-val text-green">${kkdFilledUnique}</span></div>
+                        <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Pending:</span> <span class="stat-val text-red">${kkdPending}</span></div>
+                        <p class="text-xs text-gray-400 mt-1 text-center">(Unique Teachers)</p>
+                    </div>
+
+                    <div class="detail-box border-l-4 border-l-teal-500">
+                        <h4 class="text-teal-600 font-bold uppercase mb-2">Tadris Recording</h4>
+                        <div class="detail-stat-row"><span class="stat-label">Total Recordings:</span> <span class="stat-val text-blue">${tadrisTotal}</span></div>
+                        <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Tasurat Given:</span> <span class="stat-val text-green">${tadrisWithTasurat}</span></div>
                     </div>
                 </div>
-            </div>
 
-            <div class="single-user-details-grid">
-                <div class="detail-box border-l-4 border-l-blue-500">
-                    <h4 class="text-blue-600">Jaiza & Visits</h4>
-                    <div class="detail-stat-row"><span class="stat-label">Mukammal Jaiza:</span> <span class="stat-val text-green">${jaizaMukammal}</span></div>
-                    <div class="detail-stat-row"><span class="stat-label">Sirf Visit:</span> <span class="stat-val text-orange">${jaizaOnlyVisit}</span></div>
-                    <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Pending:</span> <span class="stat-val text-red">${jaizaPending}</span></div>
-                </div>
-
-                <div class="detail-box border-l-4 border-l-yellow-500">
-                    <h4 class="text-yellow-600">Monthly Test</h4>
-                    <div class="detail-stat-row"><span class="stat-label">Test Hua (Taken):</span> <span class="stat-val text-green">${testDone}</span></div>
-                    <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Pending:</span> <span class="stat-val text-red">${testPending}</span></div>
-                </div>
-
-                <div class="detail-box border-l-4 border-l-purple-500">
-                    <h4 class="text-purple-600">Karkardagi (KKd)</h4>
-                    <div class="detail-stat-row"><span class="stat-label">Reports Filled:</span> <span class="stat-val text-green">${kkdFilledUnique}</span></div>
-                    <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Pending:</span> <span class="stat-val text-red">${kkdPending}</span></div>
-                    <p class="text-xs text-gray-400 mt-1 text-center">(Unique Teachers)</p>
-                </div>
-
-                <div class="detail-box border-l-4 border-l-teal-500">
-                    <h4 class="text-teal-600">Tadris Recording</h4>
-                    <div class="detail-stat-row"><span class="stat-label">Total Recordings:</span> <span class="stat-val text-blue">${tadrisTotal}</span></div>
-                    <div class="detail-stat-row border-t pt-2 mt-auto"><span class="stat-label">Tasurat Given:</span> <span class="stat-val text-green">${tadrisWithTasurat}</span></div>
+                <div class="p-4 bg-gray-50 border-t flex flex-wrap gap-2 justify-end">
+                    ${actionsHtml}
                 </div>
             </div>
             `;
         } else {
-            // Simplified Card for List View
-            statsContent = `
-            <div class="p-4">
+            // Simplified List View (for multiple users)
+            return `
+            <div class="summary-card p-4 bg-white rounded-lg shadow border border-gray-200">
                 <div class="flex justify-between items-start mb-3 border-b pb-3">
                      <div>
                         <h3 class="text-xl font-bold urdu-font text-gray-800">${userName}</h3>
@@ -1129,20 +1132,11 @@ kkdSectionDedicated.innerHTML = "";
                 </div>
             </div>`;
         }
-
-        return `
-            <div class="summary-card single-view-card">
-                ${statsContent}
-                <div class="p-4 bg-gray-50 border-t flex flex-wrap gap-2 justify-end">
-                    ${actionsHtml}
-                </div>
-            </div>
-        `;
     }).join('');
 
     adminReportsSummaryContainer.innerHTML = cardsHtml;
     
-    // Attach event listeners (Same as before)
+    // Attach event listeners
     document.querySelectorAll('.admin-view-details-btn').forEach(btn => 
         btn.addEventListener('click', (e) => {
             const r = reports.find(item => item.id === e.target.closest('button').dataset.reportId);
@@ -2086,6 +2080,7 @@ const renderDedicatedKkdSummary = (reports) => {
     </script>
 </body>
 </html>
+
 
 
 
