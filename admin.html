@@ -698,13 +698,6 @@
         const kkdSectionDedicated = document.getElementById('summary-kkd-section-dedicated');
         const kkdOnlyUnfilledCheckbox = document.getElementById('kkd-only-unfilled');
 
-// Report Modal Elements  
-const reportModal = document.getElementById('report-modal');
-const closeBtn = document.getElementById('close-modal-btn');
-const closeBottom = document.getElementById('modal-close-bottom-btn');
-const downloadBtn = document.getElementById('modal-download-btn');
-const modalContent = document.getElementById('modal-content');
-
         // Elanaat Tab Elements
         const elanaatForm = document.getElementById('elanaat-form'); 
         const elanaatTextarea = document.getElementById('elanaat-textarea'); 
@@ -842,6 +835,81 @@ window.closeReportModal = closeModal;
         }
         
         logoutBtn.addEventListener('click', handleLogout);
+
+        (function(){
+  // 1) Safe element getters (try multiple ids)
+  const reportModal = document.getElementById('report-modal') || document.querySelector('#report-modal') || null;
+  const modalContent = document.getElementById('modal-content') || null;
+  const downloadBtn = document.getElementById('modal-download-btn') || null;
+
+  // try multiple possible close button ids, return first found or null
+  function findCloseBtn(){
+    return document.getElementById('close-modal-btn')
+        || document.getElementById('modal-close-btn')
+        || document.getElementById('modal-close-bottom-btn')
+        || document.querySelector('.modal-close-btn')
+        || null;
+  }
+
+  // Expose minimal globals so other scripts won't throw ReferenceError
+  window.reportModal = reportModal;
+  window.modalContent = modalContent;
+  window.modalDownloadBtn = downloadBtn;
+
+  // Provide a safe closeModal() implementation (callable anywhere)
+  if(typeof window.closeModal !== 'function'){
+    window.closeModal = function(){
+      try {
+        const m = window.reportModal || document.getElementById('report-modal') || document.querySelector('[role="dialog"][aria-modal="true"]');
+        if(m){
+          m.classList.remove('show');
+          if(m.style) m.style.display = 'none';
+        }
+      } catch(e) {}
+      // restore page scroll
+      try { document.documentElement.style.overflow = ''; document.body.style.overflow = ''; } catch(e){}
+    };
+  }
+
+  // Attach click handler to the close button (immediately if exists)
+  function attachCloseHandlerIfReady(){
+    const btn = findCloseBtn();
+    if(btn && !btn._closeHandlerAttached){
+      btn.addEventListener('click', function(evt){
+        evt.preventDefault();
+        if(typeof window.closeModal === 'function') window.closeModal();
+      });
+      btn._closeHandlerAttached = true;
+      // expose global ref
+      window.closeModalBtn = btn;
+    }
+  }
+
+  // Try attaching now
+  attachCloseHandlerIfReady();
+
+  // If not attached yet, attach when DOM is ready or when new nodes inserted
+  document.addEventListener('DOMContentLoaded', attachCloseHandlerIfReady);
+
+  // Optional: observe DOM for dynamically-inserted modal/close button (helps SPA)
+  if (window.MutationObserver) {
+    const obs = new MutationObserver(function(mutations, observer){
+      attachCloseHandlerIfReady();
+      // stop observing once attached
+      if(window.closeModalBtn) observer.disconnect();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Expose a helper to safe-get modal elements for other scripts
+  window.getSafeModalElements = function(){
+    return {
+      reportModal: window.reportModal || document.getElementById('report-modal'),
+      modalContent: window.modalContent || document.getElementById('modal-content'),
+      closeBtn: window.closeModalBtn || findCloseBtn(),
+      downloadBtn: window.modalDownloadBtn || document.getElementById('modal-download-btn')
+    };
+  };
 
         // --- MAIN APP LOGIC & ROUTING ---
         const initApp = () => {
@@ -2307,6 +2375,7 @@ const renderDedicatedKkdSummary = (reports) => {
     </script>
 </body>
 </html>
+
 
 
 
