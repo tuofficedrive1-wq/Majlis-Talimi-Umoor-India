@@ -2217,67 +2217,127 @@ const renderDedicatedKkdSummary = (reports) => {
 
            // === NAYA FUNCTION: Tadris comment save karna (Admin fills tasurat) ===
            const handleSaveTadrisComment = async (e) => {
-               const button = e.target.closest('.tadris-save-btn');
-               const reportId = button.dataset.reportId;
-               const index = parseInt(button.dataset.index, 10);
-               // Admin ab 'tasurat' field ko fill karega (Recording par Tasurat)
-               const textarea = button.closest('.tadris-comment-cell').querySelector('.tadris-comment-input');
-               const newTasurat = textarea.value.trim();
-               
-               if (!reportId || isNaN(index)) {
-                   showNotification("Data error.", true);
-                   return;
-               }
-               
-               showLoader(true);
-               
-               try {
-                   const reportDocRef = doc(db, 'monthly_reports', reportId);
-                   const docSnap = await getDoc(reportDocRef);
-                   
-                   if (!docSnap.exists() || !docSnap.data().tadrisRecording?.data) {
-                       throw new Error("Report data not found.");
-                   }
-                   
-                   const existingData = docSnap.data().tadrisRecording.data;
-                   
-                   if (index >= 0 && index < existingData.length) {
-                       const updatedData = existingData.map((item, idx) => {
-                           if (idx === index) {
-                               return { ...item, tasurat: newTasurat }; // Admin's comment goes in 'tasurat'
-                           }
-                           return item;
-                       });
-                       
-                       await updateDoc(reportDocRef, { 'tadrisRecording.data': updatedData });
-                       showNotification("Recording par Tasurat (Admin's Comment) saved successfully!");
-                       
-                       // After successful update, re-render the modal content to show the latest data
-                       // Fetch updated report from the local array (onSnapshot handles the actual DB sync)
-                       const updatedReportIndex = fetchedAdminReports.findIndex(r => r.id === reportId);
-                       if(updatedReportIndex !== -1) {
-                           // Manually update the local array for immediate modal refresh
-                           fetchedAdminReports[updatedReportIndex].tadrisRecording.data = updatedData;
-                           showReportModal(fetchedAdminReports[updatedReportIndex], true);
-                       } else {
-                            // Close modal if local array update fails (should not happen)
-                            reportModal.classList.add('hidden');
-                       }
-                       
-                   } else {
-                       throw new Error("Invalid index.");
-                   }
+  const button = e.target.closest('.tadris-save-btn');
+  const reportId = button.dataset.reportId;
+  const index = parseInt(button.dataset.index, 10);
+  const textarea = button.closest('.tadris-comment-cell').querySelector('.tadris-comment-input');
+  const newTasurat = textarea.value.trim();
 
-               } catch (error) {
-                   console.error("Error saving Tadris comment:", error);
-                   showNotification("Comment save karne mein error.", true);
-                   reportModal.classList.add('hidden'); // Close modal on critical error
-               } finally {
-                   showLoader(false);
-               }
-           };
+  if (!reportId || isNaN(index)) {
+    showNotification("Data error.", true);
+    return;
+  }
 
-           
+  showLoader(true);
+  try {
+    const reportDocRef = doc(db, 'monthly_reports', reportId);
+    const docSnap = await getDoc(reportDocRef);
+
+    if (!docSnap.exists() || !Array.isArray(docSnap.data().tadrisRecording?.data)) {
+      throw new Error("Report data not found.");
+    }
+
+    const existing = docSnap.data().tadrisRecording.data;
+    if (index < 0 || index >= existing.length) throw new Error("Invalid index.");
+
+    const updated = existing.map((item, idx) => {
+      if (idx === index) {
+        // Set admin comment (tasurat), set tasuratDate
+        // AND clear adminStatus/adminStatusUpdatedAt (per your request)
+        const copy = {
+          ...item,
+          tasurat: newTasurat || undefined,
+          tasuratDate: newTasurat ? serverTimestamp() : deleteField()
+        };
+        // remove adminStatus fields if admin commented
+        if (newTasurat && (copy.adminStatus || copy.adminStatusUpdatedAt)) {
+          delete copy.adminStatus;
+          delete copy.adminStatusUpdatedAt;
+        }
+        return copy;
+      }
+      return item;
+    });
+
+    await updateDoc(reportDocRef, { 'tadrisRecording.data': updated });
+    showNotification("Recording par Tasurat saved successfully!");
+
+    const idxReport = fetchedAdminReports.findIndex(r => r.id === reportId);
+    if (idxReport !== -1) {
+      fetchedAdminReports[idxReport].tadrisRecording.data = updated;
+      showReportModal(fetchedAdminReports[idxReport], true);
+    } else {
+      reportModal.classList.add('hidden');
+    }
+  } catch (error) {
+    console.error("Error saving Tadris comment:", error);
+    showNotification("Comment save karne mein error.", true);
+    reportModal.classList.add('hidden');
+  } finally {
+    showLoader(false);
+  }
+};
+
+        // === NAYA: Tadris status save karne wala function ===
+const handleSaveTadrisStatus = async (e) => {
+  const btn = e.target.closest('.tadris-status-save-btn');
+  if (!btn) return;
+  const reportId = btn.dataset.reportId;
+  const index = parseInt(btn.dataset.index, 10);
+
+  // get the select value
+  const row = btn.closest('tr');
+  const select = row.querySelector('.tadris-status-select');
+  const newStatus = select ? select.value : '';
+
+  if (!reportId || isNaN(index)) {
+    showNotification("Data error: report id ya index missing.", true);
+    return;
+  }
+
+  showLoader(true);
+  try {
+    const reportDocRef = doc(db, 'monthly_reports', reportId);
+    const docSnap = await getDoc(reportDocRef);
+    if (!docSnap.exists() || !Array.isArray(docSnap.data().tadrisRecording?.data)) {
+      throw new Error("Report ya tadris data nahi mila.");
+    }
+
+    const existing = docSnap.data().tadrisRecording.data;
+    if (index < 0 || index >= existing.length) throw new Error("Invalid index.");
+
+    const updated = existing.map((it, idx) => {
+      if (idx === index) {
+        // set adminStatus and updated timestamp OR clear if empty
+        if (newStatus) {
+          return { ...it, adminStatus: newStatus, adminStatusUpdatedAt: serverTimestamp() };
+        } else {
+          // clear status
+          const copy = { ...it };
+          delete copy.adminStatus;
+          delete copy.adminStatusUpdatedAt;
+          return copy;
+        }
+      }
+      return it;
+    });
+
+    await updateDoc(reportDocRef, { 'tadrisRecording.data': updated });
+    showNotification("Status updated successfully!");
+    // update local array for immediate UI refresh (onSnapshot will sync too)
+    const idxReport = fetchedAdminReports.findIndex(r => r.id === reportId);
+    if (idxReport !== -1) {
+      fetchedAdminReports[idxReport].tadrisRecording.data = updated;
+      showReportModal(fetchedAdminReports[idxReport], true);
+    }
+  } catch (err) {
+    console.error("Error saving status:", err);
+    showNotification("Status save karne mein error.", true);
+  } finally {
+    showLoader(false);
+  }
+};
+   
         // === VIEW REPORT MODAL (Updated for Reverse Logic) ===
         const showReportModal = (report, isAdminView = false) => {
             if (!report) {
@@ -2338,28 +2398,58 @@ const renderDedicatedKkdSummary = (reports) => {
             html += createTableHtml( 'Tadris Recording', ['Jamia', 'Teacher', 'Class', 'Kitab', 'Date', 'Recording par Tasurat', 'Talimi Zimmedar ke Tasurat'], report.tadrisRecording?.data, 'tadrisRecording',
                 (item, index) => {
                     // Admin's comment input field (tasurat field)
-                    const adminTasuratInput = `
-                        <div class="tadris-comment-cell">
-                            <textarea rows="2" class="tadris-comment-input w-full p-1 border rounded-md urdu-font">${item.tasurat || ''}</textarea>
-                            <button type="button" class="tadris-save-btn" 
-                                data-report-id="${report.id}" 
-                                data-index="${index}">Save</button>
-                        </div>`;
-                    
-                    // User's comment (adminTasurat field)
-                    const userTasurat = item.adminTasurat || '-';
+                    // Replace the tadris row render function (inside showReportModal -> createTableHtml for tadrisRecording)
+// --- START REPLACE BLOCK ---
+(data) => {
+  const adminTasuratInput = `
+    <div class="tadris-comment-cell">
+      <textarea rows="2" class="tadris-comment-input w-full p-1 border rounded-md urdu-font">${item.tasurat || ''}</textarea>
+      <button type="button" class="tadris-save-btn"
+        data-report-id="${report.id}"
+        data-index="${index}">Save</button>
+    </div>`;
 
-                    return `<tr> 
-                        <td class="urdu-font">${item.jamiaName}</td> 
-                        <td class="urdu-font">${item.teacherName}</td> 
-                        <td class="urdu-font">${item.className}</td> 
-                        <td class="urdu-font">${item.kitabName}</td> 
-                        <td>${item.date}</td> 
-                        <td class="!p-2">${adminTasuratInput}</td>
-                        <td class="urdu-font">${userTasurat}</td> 
-                        ${deleteButtonHtml(report.id, 'tadrisRecording', index)}
-                    </tr>`;
-                }
+  // NEW: Status dropdown + save button (admin can change status)
+  const statusDropdown = `
+    <div style="min-width:180px">
+      <select class="tadris-status-select p-1 border rounded w-full" data-report-id="${report.id}" data-index="${index}">
+        <option value="">-- Select Status --</option>
+        <option value="OfficePahunchGayi">Recording Office Ko Pahuch gayi Hai</option>
+        <option value="MufattishPahunchGayi">Recording Mufattish ke paas Pahuch Gayi hai</option>
+      </select>
+      <div style="margin-top:6px; display:flex; gap:6px;">
+        <button type="button" class="tadris-status-save-btn px-2 py-1 rounded text-sm border" data-report-id="${report.id}" data-index="${index}">Save Status</button>
+      </div>
+    </div>`;
+
+  // Show existing status or date if present (for visual)
+  const statusDisplay = item.adminStatus
+    ? `<div class="text-xs text-gray-600">${item.adminStatus}</div>`
+    : (item.tasuratDate ? `<div class="text-xs text-gray-600">Comment: ${new Date(item.tasuratDate.seconds*1000).toLocaleString()}</div>` : `<div class="text-xs text-gray-400">-</div>`);
+
+  return `<tr>
+    <td class="urdu-font">${item.jamiaName}</td>
+    <td class="urdu-font">${item.teacherName}</td>
+    <td class="urdu-font">${item.className}</td>
+    <td class="urdu-font">${item.kitabName}</td>
+    <td>${item.date || '-'}</td>
+
+    <!-- Status column -->
+    <td class="!p-2">
+      ${statusDropdown}
+      <div style="margin-top:6px;">${statusDisplay}</div>
+    </td>
+
+    <!-- Admin's Tasurat (comment) -->
+    <td class="!p-2">${adminTasuratInput}</td>
+
+    <!-- User's tasurat shown as before -->
+    <td class="urdu-font">${item.adminTasurat || '-'}</td>
+
+    ${deleteButtonHtml(report.id, 'tadrisRecording', index)}
+  </tr>`;
+}
+// --- END REPLACE BLOCK ---
             );
             // 3. Monthly Test
             html += createTableHtml( 'Monthly Test', ['Jamia', 'Status', 'Month', 'Percentage (%)', 'Wajah'], report.monthlyTest?.data, 'monthlyTest',
@@ -2416,6 +2506,7 @@ const renderDedicatedKkdSummary = (reports) => {
     </script>
 </body>
 </html>
+
 
 
 
