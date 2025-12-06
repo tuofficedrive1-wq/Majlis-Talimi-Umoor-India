@@ -1088,6 +1088,55 @@ async function saveNewRecordingToReport(payload) {
         const adminComment = rec.tasurat || "-";
         const zimmedarComment = rec.adminTasurat || "";
 
+        // helper: map status keys to readable Urdu labels
+function statusLabelMap(key) {
+  if (!key) return null;
+  if (key === 'OfficePahunchGayi') return 'Recording Office Ko Pahunch Gayi Hai';
+  if (key === 'MufattishPahunchGayi') return 'Recording Mufattish ke paas Pahunch Gayi hai';
+  return key;
+}
+
+// helper: format possible timestamp (Firestore {seconds}) or ISO string
+function formatPossibleTimestamp(ts) {
+  if (!ts) return null;
+  try {
+    if (typeof ts === 'string') {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) return d.toLocaleString();
+      return ts;
+    }
+    if (typeof ts === 'object' && ts.seconds) {
+      return new Date(ts.seconds * 1000).toLocaleString();
+    }
+    if (ts.toDate && typeof ts.toDate === 'function') {
+      return ts.toDate().toLocaleString();
+    }
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) return d.toLocaleString();
+  } catch (e) {}
+  return String(ts);
+}
+
+// inside data.forEach((rec, idx) => {
+const statusHtml = (() => {
+
+  // 1) Agar admin ne Mufattish Comment fill kiya → DATE show karein
+  if (rec.tasuratDate) {
+    return `<span class="text-sm text-gray-700">Comment: ${formatPossibleTimestamp(rec.tasuratDate)}</span>`;
+  }
+
+  // 2) Agar adminStatus diya hai → Status show karein
+  if (rec.adminStatus) {
+    return `<span class="text-sm font-semibold text-emerald-700">
+        ${escapeHtml(statusLabelMap(rec.adminStatus))}
+    </span>`;
+  }
+
+  // 3) Agar koi status/comment nahi → Pending show karein
+  return `<span class="text-sm text-gray-500">Pending</span>`;
+})();
+
+
         table.insertAdjacentHTML("beforeend", `
   <tr id="${rowId}" class="saved-data-row">
     <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.jamiaName || "")}</td>
@@ -1111,7 +1160,7 @@ async function saveNewRecordingToReport(payload) {
     </td>
 
     <td class="border px-2 py-1">
-      ${rec.adminStatus ? `<span class="text-sm font-semibold text-emerald-700">${escapeHtml(rec.adminStatus)}</span>` : `<span class="text-gray-500">-</span>`}
+      ${statusHtml}
     </td>
 
     <td class="border px-2 py-1 text-center">
@@ -1233,9 +1282,21 @@ async function saveNewRecordingToReport(payload) {
           (r.className||"") === cls &&
           (r.kitabName||"") === kitab
         );
-        if (foundIdx >= 0) arr[foundIdx].adminTasurat = commentValue;
-        else throw new Error("Matching record not found.");
-      }
+        if (foundIdx >= 0) {
+    arr[foundIdx].tasurat = commentValue;
+
+    if (commentValue) {
+        arr[foundIdx].tasuratDate = serverTimestamp();   // ← date save
+    } else {
+        delete arr[foundIdx].tasuratDate;                // ← delete if blank
+    }
+}
+
+if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
+  arr[itemIndex].adminTasurat = commentValue;
+  if (commentValue) arr[itemIndex].tasuratDate = serverTimestamp();
+  else delete arr[itemIndex].tasuratDate;
+}
 
       const existingStatus = data.tadrisRecording?.status || "Pending";
       await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
@@ -1470,6 +1531,7 @@ async function saveNewRecordingToReport(payload) {
   </script>
 </body>
 </html>
+
 
 
 
