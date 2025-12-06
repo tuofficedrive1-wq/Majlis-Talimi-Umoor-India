@@ -721,6 +721,17 @@
 
 
     <script type="module">
+        if (!window._adminStatusDelegated) {
+  window._adminStatusDelegated = true;
+
+  document.body.addEventListener("click", function (ev) {
+    const btn = ev.target.closest(".tadris-status-save-btn");
+    if (!btn) return;
+
+    handleSaveTadrisStatus({ currentTarget: btn });
+  });
+}
+
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
@@ -2285,64 +2296,68 @@ const renderDedicatedKkdSummary = (reports) => {
 };
 
         // === NAYA: Tadris status save karne wala function ===
-const handleSaveTadrisStatus = async (e) => {
-  const btn = e.target.closest('.tadris-status-save-btn');
-  if (!btn) return;
-  const reportId = btn.dataset.reportId;
-  const index = parseInt(btn.dataset.index, 10);
-
-  // get the select value
-  const row = btn.closest('tr');
-  const select = row.querySelector('.tadris-status-select');
-  const newStatus = select ? select.value : '';
-
-  if (!reportId || isNaN(index)) {
-    showNotification("Data error: report id ya index missing.", true);
-    return;
-  }
-
-  showLoader(true);
+// Safe save status handler — paste inside your admin JS
+async function handleSaveTadrisStatus(e) {
+  const btn = e.currentTarget || e.target;
   try {
+    const reportId = btn.dataset.reportId;
+    const index = parseInt(btn.dataset.index, 10);
+    if (!reportId || isNaN(index)) {
+      console.warn("handleSaveTadrisStatus: missing reportId/index", { reportId, index });
+      showNotification("Data missing (reportId/index).", true);
+      return;
+    }
+
+    const row = btn.closest('tr');
+    const select = row ? row.querySelector('.tadris-status-select') : null;
+    const newStatus = select ? select.value : "";
+
+    showLoader(true);
+
     const reportDocRef = doc(db, 'monthly_reports', reportId);
-    const docSnap = await getDoc(reportDocRef);
-    if (!docSnap.exists() || !Array.isArray(docSnap.data().tadrisRecording?.data)) {
-      throw new Error("Report ya tadris data nahi mila.");
+    const snap = await getDoc(reportDocRef);
+    if (!snap.exists()) throw new Error("Report doc not found");
+
+    const data = snap.data() || {};
+    const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data.slice() : [];
+
+    if (index < 0 || index >= arr.length) throw new Error("Invalid index");
+
+    const nowIso = new Date().toISOString();
+
+    if (newStatus) {
+      arr[index].adminStatus = newStatus;
+      arr[index].adminStatusUpdatedAt = nowIso;
+    } else {
+      delete arr[index].adminStatus;
+      delete arr[index].adminStatusUpdatedAt;
     }
 
-    const existing = docSnap.data().tadrisRecording.data;
-    if (index < 0 || index >= existing.length) throw new Error("Invalid index.");
+    const rootStatus = data.tadrisRecording?.status || "Pending";
+    await setDoc(reportDocRef, { tadrisRecording: { data: arr, status: rootStatus } }, { merge: true });
 
-    const updated = existing.map((it, idx) => {
-      if (idx === index) {
-        // set adminStatus and updated timestamp OR clear if empty
-        if (newStatus) {
-          return { ...it, adminStatus: newStatus, adminStatusUpdatedAt: serverTimestamp() };
-        } else {
-          // clear status
-          const copy = { ...it };
-          delete copy.adminStatus;
-          delete copy.adminStatusUpdatedAt;
-          return copy;
-        }
+    showNotification("Status updated.");
+    // UI refresh: try to update modal if available
+    if (typeof fetchedAdminReports !== "undefined" && Array.isArray(fetchedAdminReports)) {
+      const ridx = fetchedAdminReports.findIndex(r => r.id === reportId);
+      if (ridx !== -1) {
+        fetchedAdminReports[ridx].tadrisRecording = fetchedAdminReports[ridx].tadrisRecording || {};
+        fetchedAdminReports[ridx].tadrisRecording.data = arr;
+        if (typeof showReportModal === "function") showReportModal(fetchedAdminReports[ridx], true);
+        showLoader(false);
+        return;
       }
-      return it;
-    });
-
-    await updateDoc(reportDocRef, { 'tadrisRecording.data': updated });
-    showNotification("Status updated successfully!");
-    // update local array for immediate UI refresh (onSnapshot will sync too)
-    const idxReport = fetchedAdminReports.findIndex(r => r.id === reportId);
-    if (idxReport !== -1) {
-      fetchedAdminReports[idxReport].tadrisRecording.data = updated;
-      showReportModal(fetchedAdminReports[idxReport], true);
     }
+    // fallback
+    setTimeout(() => location.reload(), 700);
   } catch (err) {
-    console.error("Error saving status:", err);
-    showNotification("Status save karne mein error.", true);
+    console.error("handleSaveTadrisStatus error:", err);
+    showNotification("Status save mein error.", true);
   } finally {
     showLoader(false);
   }
-};
+}
+
    
         // === VIEW REPORT MODAL (Updated for Reverse Logic) ===
         const showReportModal = (report, isAdminView = false) => {
@@ -2487,6 +2502,18 @@ html += createTableHtml(
                          <div class="comment-display urdu-font">${report.comment}</div>`;
             }
             modalContent.innerHTML = html;
+            // Attach STATUS SAVE button listeners
+modalContent.querySelectorAll('.tadris-status-save-btn').forEach(btn => {
+    btn.removeEventListener?.('click', handleSaveTadrisStatus);
+    btn.addEventListener('click', handleSaveTadrisStatus);
+});
+
+// Attach COMMENT SAVE button listeners (agar yeh already ho to duplicate hata den)
+modalContent.querySelectorAll('.tadris-save-btn').forEach(btn => {
+    btn.removeEventListener?.('click', handleSaveTadrisComment);
+    btn.addEventListener('click', handleSaveTadrisComment);
+});
+
             
             // NAYA: Event listeners ko modal khulne ke baad attach karein
             // FIX: Sub-entry delete button ka listener dobara attach kar rahe hain
@@ -2513,6 +2540,7 @@ html += createTableHtml(
     </script>
 </body>
 </html>
+
 
 
 
