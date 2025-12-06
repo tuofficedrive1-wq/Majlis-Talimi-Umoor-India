@@ -1063,154 +1063,149 @@ async function saveNewRecordingToReport(payload) {
     // Saved table functions
     // ============================
     function fillSavedTable() {
-      const table = document.getElementById("saved-table-body");
-      table.innerHTML = "";
+  const table = document.getElementById("saved-table-body");
+  table.innerHTML = "";
 
-      const { report } = getCurrentReportForSelectedMonth();
-      const data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
+  const { report } = getCurrentReportForSelectedMonth();
+  // NOTE: change to `let` so we can replace filtered results without error
+  let data = Array.isArray(report?.tadrisRecording?.data) ? [...report.tadrisRecording.data] : [];
 
-      if (!data.length) {
-        table.innerHTML = `
-          <tr>
-            <td colspan="8" class="text-center p-3 text-gray-500">
-              Is month ki koi recording save nahi hai.
-            </td>
-          </tr>`;
-        return;
+  if (!data.length) {
+    table.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center p-3 text-gray-500">
+          Is month ki koi recording save nahi hai.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  // --------- APPLY FILTERS (Jamia / Teacher / Date From / Date To) ----------
+  const jamiaFilter = document.getElementById("filter-jamia")?.value || "";
+  const teacherFilter = (document.getElementById("filter-teacher")?.value || "").trim().toLowerCase();
+  const dateFrom = document.getElementById("filter-date-from")?.value || "";
+  const dateTo = document.getElementById("filter-date-to")?.value || "";
+
+  const filtered = data.filter(r => {
+    try {
+      // Jamia (exact match)
+      if (jamiaFilter && (r.jamiaName || "") !== jamiaFilter) return false;
+
+      // Teacher (contains, case-insensitive)
+      if (teacherFilter && !( (r.teacherName || "").toString().toLowerCase().includes(teacherFilter) )) return false;
+
+      // Dates: ensure record has date in YYYY-MM-DD or comparable format
+      const recDate = (r.date || "").toString();
+      if (dateFrom && recDate < dateFrom) return false;
+      if (dateTo && recDate > dateTo) return false;
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // assign filtered back to data (allowed because data is `let`)
+  data = filtered;
+  // -----------------------------------------------------------------------
+
+  // sort newest first
+  data.sort((a, b) => {
+    const da = new Date(a.date).getTime() || 0;
+    const db = new Date(b.date).getTime() || 0;
+    if (db !== da) return db - da;
+    return 0;
+  });
+
+  data.forEach((rec, idx) => {
+    const rowId = `saved-row-${idx}`;
+    const adminComment = rec.tasurat || "-";
+    const zimmedarComment = rec.adminTasurat || "";
+
+    function statusLabelMap(key) {
+      if (!key) return null;
+      if (key === 'OfficePahunchGayi') return 'Recording Office Ko Pahunch Gayi Hai';
+      if (key === 'MufattishPahunchGayi') return 'Recording Mufattish ke paas Pahunch Gayi hai';
+      return key;
+    }
+
+    function formatPossibleTimestamp(ts) {
+      if (!ts) return null;
+      try {
+        if (typeof ts === 'string') {
+          const d = new Date(ts);
+          if (!isNaN(d.getTime())) return d.toLocaleString();
+          return ts;
+        }
+        if (typeof ts === 'object' && ts.seconds) {
+          return new Date(ts.seconds * 1000).toLocaleString();
+        }
+        if (ts.toDate && typeof ts.toDate === 'function') {
+          return ts.toDate().toLocaleString();
+        }
+        const d = new Date(ts);
+        if (!isNaN(d.getTime())) return d.toLocaleString();
+      } catch (e) {}
+      return String(ts);
+    }
+
+    const statusHtml = (() => {
+      if (rec.tasuratDate) {
+        return `<span class="text-sm text-gray-700">Comment: ${formatPossibleTimestamp(rec.tasuratDate)}</span>`;
       }
+      if (rec.adminStatus) {
+        return `<span class="text-sm font-semibold text-emerald-700">
+            ${escapeHtml(statusLabelMap(rec.adminStatus))}
+        </span>`;
+      }
+      return `<span class="text-sm text-gray-500">Pending</span>`;
+    })();
 
-      // APPLY FILTERS ( MUSTAQEEM BHAI — YEH NAYA CODE ADD KAREIN )
-const jamiaFilter = document.getElementById("filter-jamia")?.value || "";
-const teacherFilter = document.getElementById("filter-teacher")?.value?.toLowerCase() || "";
-const dateFrom = document.getElementById("filter-date-from")?.value || "";
-const dateTo = document.getElementById("filter-date-to")?.value || "";
+    table.insertAdjacentHTML("beforeend", `
+      <tr id="${rowId}" class="saved-data-row">
+        <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.jamiaName || "")}</td>
+        <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.className || "")}</td>
+        <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.kitabName || "")}</td>
+        <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.teacherName || "")}</td>
+        <td class="border px-2 py-1">${escapeHtml(rec.date || "")}</td>
 
-let filtered = data.filter(r => {
-  
-  // Jamia Filter
-  if (jamiaFilter && r.jamiaName !== jamiaFilter) return false;
+        <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.tasurat || "-")}</td>
 
-  // Teacher Filter
-  if (teacherFilter && !r.teacherName.toLowerCase().includes(teacherFilter)) return false;
+        <td class="border px-2 py-1 urdu-font">
+          <div class="zimmedar-comment-cell cursor-pointer p-1 text-xs"
+               data-idx="${idx}"
+               data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
+               data-teacher="${encodeURIComponent(rec.teacherName||'')}"
+               data-date="${rec.date || ''}"
+               data-class="${encodeURIComponent(rec.className||'')}"
+               data-kitab="${encodeURIComponent(rec.kitabName||'')}"
+               title="Click karke comment edit karein"
+          >${zimmedarComment ? escapeHtml(zimmedarComment) : '<span class="text-gray-500">[Add comment]</span>'}</div>
+        </td>
 
-  // Date From
-  if (dateFrom && r.date < dateFrom) return false;
+        <td class="border px-2 py-1">
+          ${statusHtml}
+        </td>
 
-  // Date To
-  if (dateTo && r.date > dateTo) return false;
+        <td class="border px-2 py-1 text-center">
+          <button class="saved-download-btn text-red-600 underline text-xs"
+            data-row-id="${rowId}"
+            data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
+            data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
+            data-date="${rec.date || ''}"
+            data-class-name="${encodeURIComponent(rec.className || '')}"
+            data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
+            data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
+          >PDF</button>
+        </td>
+      </tr>
+    `);
+  });
 
-  return true;
-});
-
-// Data variable ko filtered se replace kar do
-data = filtered;
-
-      data.sort((a, b) => {
-        const da = new Date(a.date).getTime() || 0;
-        const db = new Date(b.date).getTime() || 0;
-        if (db !== da) return db - da;
-        return 0;
-      });
-
-      data.forEach((rec, idx) => {
-        const rowId = `saved-row-${idx}`;
-        const adminComment = rec.tasurat || "-";
-        const zimmedarComment = rec.adminTasurat || "";
-
-        // helper: map status keys to readable Urdu labels
-function statusLabelMap(key) {
-  if (!key) return null;
-  if (key === 'OfficePahunchGayi') return 'Recording Office Ko Pahunch Gayi Hai';
-  if (key === 'MufattishPahunchGayi') return 'Recording Mufattish ke paas Pahunch Gayi hai';
-  return key;
+  attachSavedDownloadHandlers();
+  attachSavedFiltersListeners();
+  attachSavedCommentClickHandlers();
 }
-
-// helper: format possible timestamp (Firestore {seconds}) or ISO string
-function formatPossibleTimestamp(ts) {
-  if (!ts) return null;
-  try {
-    if (typeof ts === 'string') {
-      const d = new Date(ts);
-      if (!isNaN(d.getTime())) return d.toLocaleString();
-      return ts;
-    }
-    if (typeof ts === 'object' && ts.seconds) {
-      return new Date(ts.seconds * 1000).toLocaleString();
-    }
-    if (ts.toDate && typeof ts.toDate === 'function') {
-      return ts.toDate().toLocaleString();
-    }
-    const d = new Date(ts);
-    if (!isNaN(d.getTime())) return d.toLocaleString();
-  } catch (e) {}
-  return String(ts);
-}
-
-// inside data.forEach((rec, idx) => {
-const statusHtml = (() => {
-
-  // 1) Agar admin ne Mufattish Comment fill kiya → DATE show karein
-  if (rec.tasuratDate) {
-    return `<span class="text-sm text-gray-700">Comment: ${formatPossibleTimestamp(rec.tasuratDate)}</span>`;
-  }
-
-  // 2) Agar adminStatus diya hai → Status show karein
-  if (rec.adminStatus) {
-    return `<span class="text-sm font-semibold text-emerald-700">
-        ${escapeHtml(statusLabelMap(rec.adminStatus))}
-    </span>`;
-  }
-
-  // 3) Agar koi status/comment nahi → Pending show karein
-  return `<span class="text-sm text-gray-500">Pending</span>`;
-})();
-
-
-        table.insertAdjacentHTML("beforeend", `
-  <tr id="${rowId}" class="saved-data-row">
-    <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.jamiaName || "")}</td>
-    <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.className || "")}</td>
-    <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.kitabName || "")}</td>
-    <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.teacherName || "")}</td>
-    <td class="border px-2 py-1">${escapeHtml(rec.date || "")}</td>
-
-    <td class="border px-2 py-1 urdu-font">${escapeHtml(rec.tasurat || "-")}</td>
-
-    <td class="border px-2 py-1 urdu-font">
-      <div class="zimmedar-comment-cell cursor-pointer p-1 text-xs"
-           data-idx="${idx}"
-           data-jamia="${encodeURIComponent(rec.jamiaName||'')}"
-           data-teacher="${encodeURIComponent(rec.teacherName||'')}"
-           data-date="${rec.date || ''}"
-           data-class="${encodeURIComponent(rec.className||'')}"
-           data-kitab="${encodeURIComponent(rec.kitabName||'')}"
-           title="Click karke comment edit karein"
-      >${zimmedarComment ? escapeHtml(zimmedarComment) : '<span class="text-gray-500">[Add comment]</span>'}</div>
-    </td>
-
-    <td class="border px-2 py-1">
-      ${statusHtml}
-    </td>
-
-    <td class="border px-2 py-1 text-center">
-      <button class="saved-download-btn text-red-600 underline text-xs"
-        data-row-id="${rowId}"
-        data-jamia-name="${encodeURIComponent(rec.jamiaName || '')}"
-        data-teacher-name="${encodeURIComponent(rec.teacherName || '')}"
-        data-date="${rec.date || ''}"
-        data-class-name="${encodeURIComponent(rec.className || '')}"
-        data-kitab-name="${encodeURIComponent(rec.kitabName || '')}"
-        data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
-      >PDF</button>
-    </td>
-  </tr>
-`);
-      });
-
-      attachSavedDownloadHandlers();
-      attachSavedFiltersListeners();
-      attachSavedCommentClickHandlers();
-    }
 
     // saved table helpers
     function attachSavedCommentClickHandlers() {
@@ -1569,6 +1564,7 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
   </script>
 </body>
 </html>
+
 
 
 
