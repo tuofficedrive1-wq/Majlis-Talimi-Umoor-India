@@ -1247,60 +1247,70 @@ const statusHtml = (() => {
     }
 
     // ============================
-    // Save admin comment implementation (used by modal)
-    // ============================
-    async function saveAdminComment(itemIndex, commentValue, textareaEl = null, modalContext = null) {
-      if (!reportRef) throw new Error("Report reference missing.");
-      const snap = await getDoc(reportRef);
-      if (!snap.exists()) throw new Error("Report doc not found.");
+// Save admin comment implementation (used by modal)
+// Cleaned & fixed version
+// ============================
+async function saveAdminComment(itemIndex, commentValue, textareaEl = null, modalContext = null) {
+  if (!reportRef) throw new Error("Report reference missing.");
+  const snap = await getDoc(reportRef);
+  if (!snap.exists()) throw new Error("Report doc not found.");
 
-      const data = snap.data() || {};
-      const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data : [];
+  const data = snap.data() || {};
+  // make a shallow copy to avoid mutating snapshot arrays directly
+  const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data.slice() : [];
 
-      if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
-        arr[itemIndex].adminTasurat = commentValue;
-      } else {
-        let jamia="", teacher="", dt="", cls="", kitab="";
-        if (textareaEl) {
-          jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
-          teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
-          dt = textareaEl.dataset.date || "";
-          cls = decodeURIComponent(textareaEl.dataset.class || "");
-          kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
-        } else if (modalContext) {
-          jamia = modalContext.jamia || "";
-          teacher = modalContext.teacher || "";
-          dt = modalContext.date || "";
-          cls = modalContext.className || "";
-          kitab = modalContext.kitab || "";
-        }
-
-        const foundIdx = arr.findIndex(r =>
-          (r.jamiaName||"") === jamia &&
-          (r.teacherName||"") === teacher &&
-          (r.date||"") === dt &&
-          (r.className||"") === cls &&
-          (r.kitabName||"") === kitab
-        );
-        if (foundIdx >= 0) {
-    arr[foundIdx].tasurat = commentValue;
-
-    if (commentValue) {
-        arr[foundIdx].tasuratDate = serverTimestamp();   // ← date save
+  // Helper to set admin (zimmedar) comment + its date on a given index
+  const applyAdminCommentAt = (idx, val) => {
+    if (typeof idx !== "number" || idx < 0 || idx >= arr.length) return;
+    arr[idx].adminTasurat = val || "";
+    if (val) {
+      arr[idx].adminTasuratDate = serverTimestamp();
     } else {
-        delete arr[foundIdx].tasuratDate;                // ← delete if blank
+      delete arr[idx].adminTasuratDate;
     }
-}
+  };
 
-if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
-  arr[itemIndex].adminTasurat = commentValue;
-  if (commentValue) arr[itemIndex].tasuratDate = serverTimestamp();
-  else delete arr[itemIndex].tasuratDate;
-}
+  // If caller passed a numeric index (common when modal opened from saved list)
+  if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
+    applyAdminCommentAt(itemIndex, commentValue);
+  } else {
+    // Otherwise try to locate the record by matching identifying fields
+    let jamia = "", teacher = "", dt = "", cls = "", kitab = "";
 
-      const existingStatus = data.tadrisRecording?.status || "Pending";
-      await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
+    if (textareaEl) {
+      jamia = decodeURIComponent(textareaEl.dataset.jamia || "");
+      teacher = decodeURIComponent(textareaEl.dataset.teacher || "");
+      dt = textareaEl.dataset.date || "";
+      cls = decodeURIComponent(textareaEl.dataset.class || "");
+      kitab = decodeURIComponent(textareaEl.dataset.kitab || "");
+    } else if (modalContext) {
+      jamia = modalContext.jamia || "";
+      teacher = modalContext.teacher || "";
+      dt = modalContext.date || "";
+      cls = modalContext.className || "";
+      kitab = modalContext.kitab || "";
     }
+
+    const foundIdx = arr.findIndex(r =>
+      (r.jamiaName || "") === jamia &&
+      (r.teacherName || "") === teacher &&
+      (r.date || "") === dt &&
+      (r.className || "") === cls &&
+      (r.kitabName || "") === kitab
+    );
+
+    if (foundIdx >= 0) {
+      applyAdminCommentAt(foundIdx, commentValue);
+    } else {
+      // agar record nahi mila to console warn — but don't throw
+      console.warn("saveAdminComment: matching record not found for", { jamia, teacher, dt, cls, kitab });
+    }
+  }
+
+  // keep existing tadrisRecording.status if present
+  const existingStatus = data.tadrisRecording?.status || "Pending";
+  await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
+}
 
     // ============================
     // Modal handling
@@ -1531,7 +1541,3 @@ if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
   </script>
 </body>
 </html>
-
-
-
-
