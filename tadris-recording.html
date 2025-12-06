@@ -1248,7 +1248,7 @@ const statusHtml = (() => {
 
     // ============================
 // Save admin comment implementation (used by modal)
-// Cleaned & fixed version
+// serverTimestamp() replaced with client ISO timestamp
 // ============================
 async function saveAdminComment(itemIndex, commentValue, textareaEl = null, modalContext = null) {
   if (!reportRef) throw new Error("Report reference missing.");
@@ -1256,25 +1256,23 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
   if (!snap.exists()) throw new Error("Report doc not found.");
 
   const data = snap.data() || {};
-  // make a shallow copy to avoid mutating snapshot arrays directly
   const arr = Array.isArray(data.tadrisRecording?.data) ? data.tadrisRecording.data.slice() : [];
 
-  // Helper to set admin (zimmedar) comment + its date on a given index
+  const nowISO = new Date().toISOString();
+
   const applyAdminCommentAt = (idx, val) => {
     if (typeof idx !== "number" || idx < 0 || idx >= arr.length) return;
     arr[idx].adminTasurat = val || "";
     if (val) {
-      arr[idx].adminTasuratDate = serverTimestamp();
+      arr[idx].adminTasuratDate = nowISO;
     } else {
       delete arr[idx].adminTasuratDate;
     }
   };
 
-  // If caller passed a numeric index (common when modal opened from saved list)
   if (typeof itemIndex === "number" && itemIndex >= 0 && itemIndex < arr.length) {
     applyAdminCommentAt(itemIndex, commentValue);
   } else {
-    // Otherwise try to locate the record by matching identifying fields
     let jamia = "", teacher = "", dt = "", cls = "", kitab = "";
 
     if (textareaEl) {
@@ -1300,14 +1298,15 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
     );
 
     if (foundIdx >= 0) {
-      applyAdminCommentAt(foundIdx, commentValue);
+      // set comment + client timestamp
+      arr[foundIdx].tasurat = commentValue;
+      if (commentValue) arr[foundIdx].tasuratDate = nowISO;
+      else delete arr[foundIdx].tasuratDate;
     } else {
-      // agar record nahi mila to console warn — but don't throw
       console.warn("saveAdminComment: matching record not found for", { jamia, teacher, dt, cls, kitab });
     }
   }
 
-  // keep existing tadrisRecording.status if present
   const existingStatus = data.tadrisRecording?.status || "Pending";
   await setDoc(reportRef, { tadrisRecording: { data: arr, status: existingStatus } }, { merge: true });
 }
@@ -1541,3 +1540,4 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
   </script>
 </body>
 </html>
+
