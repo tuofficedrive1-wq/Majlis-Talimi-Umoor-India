@@ -140,79 +140,109 @@
             await loadTeachingData();
         };
 
-        // Helper: Get Academic Year from Month Key (Logic from jaiza-form)
+        // Helper: Get Academic Year from Month Key (Correct Logic)
         function getAcademicYear(key) {
             if (!key) return null;
             const [yStr, mStr] = key.split("-");
             const yearNum  = parseInt(yStr);
-            const monthNum = parseInt(mStr) - 1; // JS month is 0-indexed
+            const monthNum = parseInt(mStr) - 1; // JS month is 0-indexed (0=Jan, 11=Dec)
             if (isNaN(yearNum) || isNaN(monthNum)) return null;
 
-            // Logic: Agar mahina 3 (April) ya usse bada hai, to naya saal shuru (Example: 2025-04 => 2025-2026)
+            // Logic: Agar mahina March (Index 2) ya usse bada hai, to naya saal shuru
+            // e.g. 2025-04 (April) => 2025-2026
+            // e.g. 2025-01 (Jan) => 2024-2025
             return monthNum >= 3 ? `${yearNum}-${yearNum+1}` : `${yearNum-1}-${yearNum}`;
         }
 
-        // 2. Load Teaching Data (from Karkardagi Structure)
+        // 2. Load Teaching Data (FIXED LOGIC)
         async function loadTeachingData() {
             try {
                 const acYear = getAcademicYear(monthKey);
                 if(!acYear) { alert("Month format galat hai."); return; }
 
+                console.log("Loading data for:", acYear, jamiaName);
+
                 const userDoc = await getDoc(doc(db, "users", adminUid));
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
                     
-                    // Navigate to academicYears -> [Year] -> karkardagiStructure
+                    // 1. Koshish karein Academic Years structure se lene ki
                     const years = userData.academicYears || {};
                     const yearData = years[acYear];
+                    let jamiaStruct = null;
 
-                    if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
-                        alert(`Is academic year (${acYear}) ke liye Karkardagi Setup nahi mila.`);
-                        return;
-                    }
-
-                    const jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
+                    if (yearData && Array.isArray(yearData.karkardagiStructure)) {
+                        jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
+                    } 
                     
-                    if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
-                        alert("Is Jamia ka setup nahi mila. Kripya Admin se Karkardagi Setup check karwayein.");
+                    // 2. Agar wahan nahi mila, to fallback check karein (Old Structure)
+                    if (!jamiaStruct && Array.isArray(userData.academicStructure)) {
+                        jamiaStruct = userData.academicStructure.find(j => j.jamiaName === jamiaName);
+                    }
+
+                    if (!jamiaStruct) {
+                        alert("Is Jamia ka setup nahi mila. Kripya Admin se Academic Structure check karwayein.");
+                        document.getElementById('loader').innerHTML = "<p class='text-red-500'>Data Not Found</p>";
                         return;
                     }
 
-                    // Parse Data: Build Map of Class -> Books
+                    // 3. Build Map of Class -> Books (Deep Extraction)
                     classBooksMap = {};
 
-                    jamiaStruct.teachers.forEach(t => {
-                        if(Array.isArray(t.periods)) {
-                            t.periods.forEach(p => {
-                                const cName = p.className || p.class || p.darja;
-                                const bName = p.bookName || p.book || p.kitab || p.subject;
+                    // Logic: Teachers -> Periods -> Class/Book
+                    if (Array.isArray(jamiaStruct.teachers)) {
+                        jamiaStruct.teachers.forEach(t => {
+                            if(Array.isArray(t.periods)) {
+                                t.periods.forEach(p => {
+                                    const cName = p.className || p.class || p.darja;
+                                    const bName = p.bookName || p.book || p.kitab || p.subject;
 
-                                if (cName && bName) {
-                                    if (!classBooksMap[cName]) {
-                                        classBooksMap[cName] = new Set();
+                                    if (cName && bName) {
+                                        if (!classBooksMap[cName]) {
+                                            classBooksMap[cName] = new Set();
+                                        }
+                                        classBooksMap[cName].add(bName);
                                     }
-                                    classBooksMap[cName].add(bName);
-                                }
-                            });
-                        }
-                    });
+                                });
+                            }
+                        });
+                    } 
+                    // Fallback: Agar direct classes object hai (Old format)
+                    else if (jamiaStruct.classes) {
+                         const rawClasses = jamiaStruct.classes;
+                         if (Array.isArray(rawClasses)) {
+                             rawClasses.forEach(c => {
+                                 if (c.className && c.kitabs) {
+                                     classBooksMap[c.className] = new Set(c.kitabs);
+                                 }
+                             });
+                         } else if (typeof rawClasses === 'object') {
+                             Object.keys(rawClasses).forEach(cName => {
+                                 const cObj = rawClasses[cName];
+                                 if(cObj.kitabs) {
+                                     classBooksMap[cName] = new Set(cObj.kitabs);
+                                 }
+                             });
+                         }
+                    }
 
                     // Fill Dropdown
                     const select = document.getElementById('class-select');
                     const sortedClasses = Object.keys(classBooksMap).sort();
                     
                     if (sortedClasses.length === 0) {
-                        alert("Koi class data nahi mila.");
+                        alert("Data mila par koi Class detect nahi hui. Structure check karein.");
+                    } else {
+                        sortedClasses.forEach(cls => {
+                            const opt = document.createElement('option');
+                            opt.value = cls;
+                            opt.textContent = cls;
+                            select.appendChild(opt);
+                        });
                     }
 
-                    sortedClasses.forEach(cls => {
-                        const opt = document.createElement('option');
-                        opt.value = cls;
-                        opt.textContent = cls;
-                        select.appendChild(opt);
-                    });
                 } else {
-                    alert("Admin data nahi mila.");
+                    alert("Admin user data nahi mila. Link check karein.");
                 }
 
                 document.getElementById('loader').classList.add('hidden');
@@ -220,7 +250,7 @@
 
             } catch (error) {
                 console.error("Error:", error);
-                alert("Data load karne mein error aaya.");
+                alert("Data load karne mein error aaya: " + error.message);
             }
         }
 
@@ -246,16 +276,16 @@
                 return;
             }
             
-            // Convert Set to Array and Filter (Eng/Maths hata kar, kyunki wo auto add honge)
+            // Convert Set to Array and Filter (Eng/Maths hata kar)
             const filteredSubjects = Array.from(rawSubjectsSet).filter(s => {
                 const lower = s.toLowerCase();
-                return lower !== 'english' && lower !== 'maths' && lower !== 'math' && lower !== 'mathematics';
+                return lower !== 'english' && lower !== 'maths' && lower !== 'math' && lower !== 'mathematics' && lower !== 'urdu' && lower !== 'hindi'; 
+                // Note: Agar Urdu/Hindi ko bhi auto rakhna hai to yahan add karein, warna remove karein
             });
 
+            // Agar list khali ho gayi (sirf Eng/Math the), to warning den
             if (filteredSubjects.length === 0) {
-                 // Agar sirf English/Math hi hain list me, to direct generate ka option den (agar chahein)
-                 // Filhal user ko dikha dete hain taake wo samajh sake
-                 container.innerHTML = "<p class='text-red-500'>Sirf English/Maths mile, jo auto-add honge. Koi aur kitab nahi mili.</p>";
+                 container.innerHTML = "<p class='text-orange-500 text-sm'>Sirf bunyadi mazameen (Eng/Maths) mile. Aap seedha Sheet generate kar sakte hain.</p>";
             }
 
             // Render Checkboxes
@@ -289,9 +319,11 @@
         // 4. Generate Table
         window.generateSheet = () => {
             const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-            if (checkedBoxes.length !== 3) {
-                alert(`Apne ${checkedBoxes.length} kitabein select ki hain. Barae karam poori 3 select karein.`);
-                return;
+            // Rule: Agar checkboxes hain to select karna zaroori hai, warna allow karein
+            if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length !== 3) {
+                if(!confirm(`Apne sirf ${checkedBoxes.length} kitabein select ki hain (Target: 3). Kya aap aage badhna chahte hain?`)) {
+                    return;
+                }
             }
 
             // Final List: [Selected 3] + English + Maths
@@ -353,7 +385,7 @@
             const inputs = row.querySelectorAll('.mark-input');
             inputs.forEach(inp => obtained += Number(inp.value));
             
-            const totalMax = finalSubjectsList.length * 100; // 500
+            const totalMax = finalSubjectsList.length * 100; // e.g. 500
             const percent = totalMax > 0 ? (obtained / totalMax * 100).toFixed(1) : 0;
             
             row.querySelector('.total-val').textContent = obtained;
@@ -399,7 +431,6 @@
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${selectedClass.replace(/\s/g, '_')}`;
 
             try {
-                // Save Sheet
                 await setDoc(doc(db, "monthly_test_sheets", docId), {
                     adminUid,
                     jamiaName,
@@ -410,7 +441,7 @@
                     updatedAt: serverTimestamp()
                 });
 
-                // Update Admin Dashboard
+                // Update Dashboard Status
                 const [yStr, mStr] = monthKey.split('-');
                 const y = parseInt(yStr);
                 const m = parseInt(mStr) - 1;
@@ -421,7 +452,6 @@
                 const reportSnap = await getDoc(reportRef);
                 
                 let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
-                // Purani entry hata kar nayi update karte hain
                 testData = testData.filter(t => t.name !== jamiaName);
                 
                 testData.push({
@@ -451,7 +481,6 @@
                 if (snap.exists()) {
                     const data = snap.data();
                     
-                    // Pre-check checkboxes
                     const allChecks = document.querySelectorAll('.subject-checkbox');
                     const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
                     
