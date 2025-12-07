@@ -15,15 +15,23 @@
         body { font-family: 'Poppins', 'Jameel Noori Nastaleeq', sans-serif; background-color: #f0fdfa; }
         .urdu-font { font-family: 'Jameel Noori Nastaleeq', serif; line-height: 1.6; }
         .mark-input { text-align: center; }
-        .pass-bg { background-color: #dcfce7; color: #166534; }
-        .fail-bg { background-color: #fee2e2; color: #991b1b; }
-        /* Checkbox Style */
+        
+        /* Grades Colors */
+        .grade-mumtaz-sharf { background-color: #15803d; color: white; } /* Green Dark */
+        .grade-mumtaz { background-color: #22c55e; color: white; } /* Green */
+        .grade-jayyid { background-color: #eab308; color: white; } /* Yellow/Gold */
+        .grade-maqbul { background-color: #f97316; color: white; } /* Orange */
+        .grade-nakam { background-color: #ef4444; color: white; } /* Red */
+
+        /* Input Validation Colors */
+        .bg-fail-input { background-color: #fee2e2 !important; color: #991b1b; font-weight: bold; }
+        
         .subject-checkbox:checked + div { background-color: #0d9488; color: white; border-color: #0d9488; }
     </style>
 </head>
 <body class="p-4">
 
-    <div class="max-w-6xl mx-auto bg-white shadow-2xl rounded-xl overflow-hidden border border-teal-100">
+    <div class="max-w-7xl mx-auto bg-white shadow-2xl rounded-xl overflow-hidden border border-teal-100">
         
         <div class="bg-teal-800 text-white p-6 text-center relative">
             <h1 class="text-3xl font-bold urdu-font mb-2" id="display-jamia">Loading...</h1>
@@ -43,6 +51,7 @@
                     <select id="class-select" onchange="handleClassChange()" class="w-full md:w-1/3 p-3 border rounded-lg urdu-font text-lg shadow-sm focus:ring-2 focus:ring-teal-500 bg-white">
                         <option value="">-- Select Class --</option>
                     </select>
+                    <p class="text-xs text-gray-500 mt-1">Ek class save karne ke baad dusri select karein.</p>
                 </div>
 
                 <div id="subject-selection-area" class="hidden">
@@ -53,11 +62,11 @@
 
                     <div class="bg-blue-50 p-3 rounded border border-blue-200 mb-4 text-sm text-blue-800 flex items-center">
                         <i class="fas fa-info-circle mr-2"></i>
-                        Note: <strong>English</strong> aur <strong>Maths</strong> automatically shamil rahenge.
+                        Note: <strong>English (25)</strong> aur <strong>Maths (25)</strong> automatically shamil rahenge. Baqi 100 number ke honge.
                     </div>
 
                     <button onclick="generateSheet()" class="bg-teal-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-teal-700 transition w-full md:w-auto">
-                        Result Sheet Banayein (5 Subjects)
+                        Result Sheet Banayein (Total 350)
                     </button>
                 </div>
             </div>
@@ -76,10 +85,10 @@
                         <p id="pdf-month"></p>
                     </div>
 
-                    <table class="w-full text-sm text-left bg-white">
+                    <table class="w-full text-sm text-left bg-white border-collapse">
                         <thead class="bg-teal-50 text-teal-900 uppercase font-bold" id="table-head">
                             </thead>
-                        <tbody id="students-body" class="divide-y divide-gray-100">
+                        <tbody id="students-body" class="divide-y divide-gray-200">
                             </tbody>
                     </table>
                 </div>
@@ -113,12 +122,11 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // State Variables
         let adminUid = "";
         let jamiaName = "";
         let monthKey = "";
         let finalSubjectsList = []; 
-        let classBooksMap = {}; // Format: { "Class A": ["Book1", "Book2"], "Class B": [...] }
+        let classBooksMap = {}; 
 
         // 1. Initialize
         window.onload = async () => {
@@ -128,8 +136,7 @@
             monthKey = params.get('month');
 
             if (!adminUid || !jamiaName || !monthKey) {
-                alert("Invalid Link. URL parameters missing.");
-                return;
+                alert("Invalid Link."); return;
             }
 
             document.getElementById('display-jamia').textContent = jamiaName;
@@ -140,33 +147,22 @@
             await loadTeachingData();
         };
 
-        // Helper: Get Academic Year from Month Key (Correct Logic)
         function getAcademicYear(key) {
             if (!key) return null;
             const [yStr, mStr] = key.split("-");
             const yearNum  = parseInt(yStr);
-            const monthNum = parseInt(mStr) - 1; // JS month is 0-indexed (0=Jan, 11=Dec)
-            if (isNaN(yearNum) || isNaN(monthNum)) return null;
-
-            // Logic: Agar mahina March (Index 2) ya usse bada hai, to naya saal shuru
-            // e.g. 2025-04 (April) => 2025-2026
-            // e.g. 2025-01 (Jan) => 2024-2025
+            const monthNum = parseInt(mStr) - 1; 
             return monthNum >= 3 ? `${yearNum}-${yearNum+1}` : `${yearNum-1}-${yearNum}`;
         }
 
-        // 2. Load Teaching Data (FIXED LOGIC)
+        // 2. Load Teaching Data
         async function loadTeachingData() {
             try {
                 const acYear = getAcademicYear(monthKey);
-                if(!acYear) { alert("Month format galat hai."); return; }
-
-                console.log("Loading data for:", acYear, jamiaName);
-
                 const userDoc = await getDoc(doc(db, "users", adminUid));
+                
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
-                    
-                    // 1. Koshish karein Academic Years structure se lene ki
                     const years = userData.academicYears || {};
                     const yearData = years[acYear];
                     let jamiaStruct = null;
@@ -174,87 +170,48 @@
                     if (yearData && Array.isArray(yearData.karkardagiStructure)) {
                         jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
                     } 
-                    
-                    // 2. Agar wahan nahi mila, to fallback check karein (Old Structure)
                     if (!jamiaStruct && Array.isArray(userData.academicStructure)) {
                         jamiaStruct = userData.academicStructure.find(j => j.jamiaName === jamiaName);
                     }
 
                     if (!jamiaStruct) {
-                        alert("Is Jamia ka setup nahi mila. Kripya Admin se Academic Structure check karwayein.");
-                        document.getElementById('loader').innerHTML = "<p class='text-red-500'>Data Not Found</p>";
+                        alert("Setup nahi mila. Admin se rabta karein.");
                         return;
                     }
 
-                    // 3. Build Map of Class -> Books (Deep Extraction)
                     classBooksMap = {};
-
-                    // Logic: Teachers -> Periods -> Class/Book
                     if (Array.isArray(jamiaStruct.teachers)) {
                         jamiaStruct.teachers.forEach(t => {
                             if(Array.isArray(t.periods)) {
                                 t.periods.forEach(p => {
                                     const cName = p.className || p.class || p.darja;
                                     const bName = p.bookName || p.book || p.kitab || p.subject;
-
                                     if (cName && bName) {
-                                        if (!classBooksMap[cName]) {
-                                            classBooksMap[cName] = new Set();
-                                        }
+                                        if (!classBooksMap[cName]) classBooksMap[cName] = new Set();
                                         classBooksMap[cName].add(bName);
                                     }
                                 });
                             }
                         });
-                    } 
-                    // Fallback: Agar direct classes object hai (Old format)
-                    else if (jamiaStruct.classes) {
-                         const rawClasses = jamiaStruct.classes;
-                         if (Array.isArray(rawClasses)) {
-                             rawClasses.forEach(c => {
-                                 if (c.className && c.kitabs) {
-                                     classBooksMap[c.className] = new Set(c.kitabs);
-                                 }
-                             });
-                         } else if (typeof rawClasses === 'object') {
-                             Object.keys(rawClasses).forEach(cName => {
-                                 const cObj = rawClasses[cName];
-                                 if(cObj.kitabs) {
-                                     classBooksMap[cName] = new Set(cObj.kitabs);
-                                 }
-                             });
-                         }
                     }
 
-                    // Fill Dropdown
                     const select = document.getElementById('class-select');
                     const sortedClasses = Object.keys(classBooksMap).sort();
-                    
-                    if (sortedClasses.length === 0) {
-                        alert("Data mila par koi Class detect nahi hui. Structure check karein.");
-                    } else {
-                        sortedClasses.forEach(cls => {
-                            const opt = document.createElement('option');
-                            opt.value = cls;
-                            opt.textContent = cls;
-                            select.appendChild(opt);
-                        });
-                    }
-
-                } else {
-                    alert("Admin user data nahi mila. Link check karein.");
+                    sortedClasses.forEach(cls => {
+                        const opt = document.createElement('option');
+                        opt.value = cls;
+                        opt.textContent = cls;
+                        select.appendChild(opt);
+                    });
                 }
-
                 document.getElementById('loader').classList.add('hidden');
                 document.getElementById('main-content').classList.remove('hidden');
-
             } catch (error) {
                 console.error("Error:", error);
-                alert("Data load karne mein error aaya: " + error.message);
             }
         }
 
-        // 3. Handle Class Selection
+        // 3. Handle Class Change
         window.handleClassChange = () => {
             const clsName = document.getElementById('class-select').value;
             const container = document.getElementById('checkbox-container');
@@ -269,26 +226,14 @@
                 return;
             }
 
-            // Get Books from Map
             const rawSubjectsSet = classBooksMap[clsName];
-            if (!rawSubjectsSet || rawSubjectsSet.size === 0) {
-                alert("Is class ke liye koi kitabein setup nahi hain.");
-                return;
-            }
+            if (!rawSubjectsSet) return;
             
-            // Convert Set to Array and Filter (Eng/Maths hata kar)
             const filteredSubjects = Array.from(rawSubjectsSet).filter(s => {
                 const lower = s.toLowerCase();
-                return lower !== 'english' && lower !== 'maths' && lower !== 'math' && lower !== 'mathematics' && lower !== 'urdu' && lower !== 'hindi'; 
-                // Note: Agar Urdu/Hindi ko bhi auto rakhna hai to yahan add karein, warna remove karein
+                return lower !== 'english' && lower !== 'maths' && lower !== 'math' && lower !== 'mathematics';
             });
 
-            // Agar list khali ho gayi (sirf Eng/Math the), to warning den
-            if (filteredSubjects.length === 0) {
-                 container.innerHTML = "<p class='text-orange-500 text-sm'>Sirf bunyadi mazameen (Eng/Maths) mile. Aap seedha Sheet generate kar sakte hain.</p>";
-            }
-
-            // Render Checkboxes
             filteredSubjects.forEach((sub) => {
                 const label = document.createElement('label');
                 label.className = "cursor-pointer block";
@@ -302,12 +247,9 @@
             });
 
             selectionArea.classList.remove('hidden');
-            
-            // Check for existing saved data
             checkExistingForClass(clsName);
         };
 
-        // 3.1 Limit Selection to 3
         window.checkLimit = (elem) => {
             const checked = document.querySelectorAll('.subject-checkbox:checked');
             if (checked.length > 3) {
@@ -319,14 +261,10 @@
         // 4. Generate Table
         window.generateSheet = () => {
             const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-            // Rule: Agar checkboxes hain to select karna zaroori hai, warna allow karein
             if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length !== 3) {
-                if(!confirm(`Apne sirf ${checkedBoxes.length} kitabein select ki hain (Target: 3). Kya aap aage badhna chahte hain?`)) {
-                    return;
-                }
+                if(!confirm(`Apne sirf ${checkedBoxes.length} kitabein select ki hain. Kya aap aage badhna chahte hain?`)) return;
             }
 
-            // Final List: [Selected 3] + English + Maths
             const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
             finalSubjectsList = [...selected3, "English", "Maths"];
 
@@ -337,23 +275,25 @@
         function renderTableHeaders() {
             const head = document.getElementById('table-head');
             let html = `<tr>
-                <th class="px-4 py-3 border">#</th>
-                <th class="px-4 py-3 border w-1/4">Name</th>`;
+                <th class="px-4 py-3 border border-gray-300 w-12">#</th>
+                <th class="px-4 py-3 border border-gray-300 text-left w-1/4">Talib-e-Ilm</th>`;
             
             finalSubjectsList.forEach(sub => {
-                html += `<th class="px-4 py-3 border text-center">${sub} <br><span class="text-xs font-normal">/100</span></th>`;
+                const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
+                const max = isSmall ? 25 : 100;
+                html += `<th class="px-4 py-3 border border-gray-300 text-center">${sub} <br><span class="text-xs font-normal text-gray-200">/${max}</span></th>`;
             });
 
             html += `
-                <th class="px-4 py-3 border text-center bg-gray-100">Total</th>
-                <th class="px-4 py-3 border text-center bg-gray-100">%</th>
-                <th class="px-4 py-3 border text-center bg-gray-100">Grade</th>
-                <th class="px-2 py-3 border text-center text-red-500"><i class="fas fa-trash"></i></th>
+                <th class="px-4 py-3 border border-gray-300 text-center bg-gray-100">Total (350)</th>
+                <th class="px-4 py-3 border border-gray-300 text-center bg-gray-100">%</th>
+                <th class="px-4 py-3 border border-gray-300 text-center bg-gray-100">Grade</th>
+                <th class="px-2 py-3 border border-gray-300 text-center text-red-500 no-print"><i class="fas fa-trash"></i></th>
             </tr>`;
             head.innerHTML = html;
         }
 
-        // 5. Add/Calc Rows
+        // 5. Add Student Row (Updated for 'A')
         window.addStudentRow = (name = "", marks = {}) => {
             const tbody = document.getElementById('students-body');
             const index = tbody.rows.length + 1;
@@ -362,54 +302,100 @@
 
             let inputs = "";
             finalSubjectsList.forEach(sub => {
-                const val = marks[sub] || "";
-                inputs += `<td class="border p-1"><input type="number" data-sub="${sub}" value="${val}" class="w-full p-2 text-center outline-none mark-input focus:bg-blue-50" oninput="calcRow(this)"></td>`;
+                const val = marks[sub] !== undefined ? marks[sub] : "";
+                const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
+                const max = isSmall ? 25 : 100;
+                
+                // Input Type Text kar diya taake 'A' likh sakein
+                inputs += `<td class="border border-gray-200 p-1">
+                    <input type="text" data-sub="${sub}" data-max="${max}" value="${val}" 
+                           class="w-full p-2 text-center outline-none mark-input focus:bg-blue-50" 
+                           oninput="calcRow(this)" placeholder="-">
+                </td>`;
             });
 
             tr.innerHTML = `
-                <td class="border p-2 text-center text-gray-500">${index}</td>
-                <td class="border p-1"><input type="text" value="${name}" placeholder="Student Name" class="w-full p-2 font-semibold urdu-font outline-none std-name"></td>
+                <td class="border border-gray-200 p-2 text-center text-gray-500">${index}</td>
+                <td class="border border-gray-200 p-1"><input type="text" value="${name}" placeholder="Naam likhein" class="w-full p-2 font-semibold urdu-font outline-none std-name"></td>
                 ${inputs}
-                <td class="border p-2 text-center font-bold text-gray-700 total-val">0</td>
-                <td class="border p-2 text-center font-bold text-blue-600 perc-val">0%</td>
-                <td class="border p-2 text-center font-bold grade-val">-</td>
-                <td class="border p-2 text-center cursor-pointer text-red-400 hover:text-red-600" onclick="this.parentElement.remove()">×</td>
+                <td class="border border-gray-200 p-2 text-center font-bold text-gray-700 total-val">0</td>
+                <td class="border border-gray-200 p-2 text-center font-bold text-blue-600 perc-val">0%</td>
+                <td class="border border-gray-200 p-2 text-center font-bold text-xs grade-val">-</td>
+                <td class="border border-gray-200 p-2 text-center cursor-pointer text-red-400 hover:text-red-600 no-print" onclick="this.parentElement.remove()">×</td>
             `;
             tbody.appendChild(tr);
             if(name) calcRow(tr.querySelector('input'));
         };
 
+        // 6. Calculation Logic (Updated for 'A', Fail Color, New Grades)
         window.calcRow = (el) => {
             const row = el.closest('tr');
             let obtained = 0;
             const inputs = row.querySelectorAll('.mark-input');
-            inputs.forEach(inp => obtained += Number(inp.value));
             
-            const totalMax = finalSubjectsList.length * 100; // e.g. 500
-            const percent = totalMax > 0 ? (obtained / totalMax * 100).toFixed(1) : 0;
+            inputs.forEach(inp => {
+                const rawVal = inp.value.trim().toUpperCase();
+                const max = parseInt(inp.dataset.max);
+                const pass = max === 25 ? 10 : 40; // Passing Marks Logic
+
+                let numVal = 0;
+                
+                // Handle 'A' or Empty
+                if (rawVal === 'A') {
+                    numVal = 0;
+                    inp.style.color = 'red';
+                    inp.style.fontWeight = 'bold';
+                } else if (rawVal === '') {
+                    numVal = 0;
+                    inp.classList.remove('bg-fail-input');
+                    inp.style.color = '';
+                } else {
+                    numVal = parseFloat(rawVal);
+                    if (isNaN(numVal)) numVal = 0;
+                }
+
+                // Check Passing (Fail Color)
+                // Agar 'A' hai ya number passing se kam hai (aur khali nahi hai)
+                if ((rawVal === 'A') || (rawVal !== '' && numVal < pass)) {
+                    inp.classList.add('bg-fail-input');
+                } else {
+                    inp.classList.remove('bg-fail-input');
+                    inp.style.color = '';
+                }
+
+                obtained += numVal;
+            });
+            
+            // Total Logic (350 Max)
+            // Subjects: 3 * 100 + 25 + 25 = 350
+            const totalMax = 350; 
+            const percent = (obtained / totalMax * 100).toFixed(1);
             
             row.querySelector('.total-val').textContent = obtained;
             row.querySelector('.perc-val').textContent = percent + '%';
             
-            let grade = "-";
-            let cls = "";
-            if (percent >= 80) { grade = "Mumtaz"; cls = "pass-bg"; }
-            else if (percent >= 60) { grade = "Jayyid Jiddan"; cls = "text-green-600"; }
-            else if (percent >= 50) { grade = "Jayyid"; cls = "text-yellow-600"; }
-            else if (percent >= 40) { grade = "Maqbool"; cls = "text-orange-600"; }
-            else { grade = "Rasib"; cls = "fail-bg"; }
+            // Grade Logic (User Formula)
+            let grade = "Nakam";
+            let cls = "grade-nakam";
+            const p = parseFloat(percent);
+
+            if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "grade-mumtaz-sharf"; }
+            else if (p >= 70) { grade = "Mumtaz"; cls = "grade-mumtaz"; }
+            else if (p >= 50) { grade = "Jayyid"; cls = "grade-jayyid"; }
+            else if (p >= 40) { grade = "Maqbul"; cls = "grade-maqbul"; }
+            else { grade = "Nakam"; cls = "grade-nakam"; }
             
-            row.querySelector('.grade-val').textContent = grade;
-            row.querySelector('.grade-val').className = `border p-2 text-center font-bold grade-val ${cls}`;
+            const gVal = row.querySelector('.grade-val');
+            gVal.textContent = grade;
+            gVal.className = `border border-gray-200 p-2 text-center font-bold text-xs grade-val ${cls} rounded`;
         };
 
-        // 6. Save Logic
+        // 7. Save Logic
         window.saveResult = async () => {
             const rows = document.querySelectorAll('#students-body tr');
             if(rows.length === 0) { alert("Koi student add nahi kiya gaya."); return; }
             
             const selectedClass = document.getElementById('class-select').value;
-
             const students = [];
             let grandObtained = 0;
             let grandMax = 0;
@@ -417,13 +403,20 @@
             rows.forEach(row => {
                 const name = row.querySelector('.std-name').value.trim();
                 if(!name) return;
+                
                 const marks = {};
-                row.querySelectorAll('.mark-input').forEach(inp => marks[inp.dataset.sub] = Number(inp.value));
-                const total = Number(row.querySelector('.total-val').textContent);
+                row.querySelectorAll('.mark-input').forEach(inp => {
+                    // Save as String if 'A', else Number
+                    const val = inp.value.trim().toUpperCase();
+                    marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
+                });
+                
+                const total = parseFloat(row.querySelector('.total-val').textContent);
                 const perc = parseFloat(row.querySelector('.perc-val').textContent);
                 students.push({ name, marks, total, percentage: perc });
+                
                 grandObtained += total;
-                grandMax += (finalSubjectsList.length * 100);
+                grandMax += 350;
             });
 
             const overallPerc = grandMax > 0 ? ((grandObtained / grandMax) * 100).toFixed(1) + '%' : '0%';
@@ -432,16 +425,11 @@
 
             try {
                 await setDoc(doc(db, "monthly_test_sheets", docId), {
-                    adminUid,
-                    jamiaName,
-                    month: monthKey,
-                    class: selectedClass,
-                    subjects: finalSubjectsList,
-                    students,
-                    updatedAt: serverTimestamp()
+                    adminUid, jamiaName, month: monthKey, class: selectedClass,
+                    subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
                 });
 
-                // Update Dashboard Status
+                // Update Admin Dashboard
                 const [yStr, mStr] = monthKey.split('-');
                 const y = parseInt(yStr);
                 const m = parseInt(mStr) - 1;
@@ -450,21 +438,16 @@
 
                 const reportRef = doc(db, 'monthly_reports', reportId);
                 const reportSnap = await getDoc(reportRef);
-                
                 let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
-                testData = testData.filter(t => t.name !== jamiaName);
                 
+                // Update specific entry
+                testData = testData.filter(t => t.name !== jamiaName);
                 testData.push({
-                    name: jamiaName,
-                    status: 'Test Hua',
-                    month: monthKey,
-                    percentage: overallPerc, 
-                    wajah: ''
+                    name: jamiaName, status: 'Test Hua', month: monthKey,
+                    percentage: overallPerc, wajah: ''
                 });
 
-                await setDoc(reportRef, {
-                    monthlyTest: { status: 'Done', data: testData }
-                }, { merge: true });
+                await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
 
                 alert(`Class ${selectedClass} ka Result Save ho gaya!`);
             } catch (error) {
@@ -473,7 +456,7 @@
             }
         };
 
-        // 7. Auto Load Existing Data
+        // 8. Load Existing
         async function checkExistingForClass(clsName) {
              const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsName.replace(/\s/g, '_')}`;
              try {
@@ -491,18 +474,18 @@
                     finalSubjectsList = data.subjects;
                     renderTableHeaders();
                     document.getElementById('result-area').classList.remove('hidden');
-                    
                     document.getElementById('students-body').innerHTML = '';
                     data.students.forEach(s => addStudentRow(s.name, s.marks));
-                    
                     alert(`Class ${clsName} ka purana data load kiya gaya.`);
                 }
              } catch(e) { console.log("New sheet"); }
         }
 
-        // PDF Generator
+        // PDF
         window.downloadPDF = async () => {
             const el = document.getElementById('print-area');
+            document.querySelectorAll('.no-print').forEach(e => e.style.display = 'none');
+            
             const hiddenHeader = el.querySelector('.print-header');
             const cls = document.getElementById('class-select').value;
             hiddenHeader.classList.remove('hidden');
@@ -512,6 +495,7 @@
             const img = canvas.toDataURL('image/png');
             
             hiddenHeader.classList.add('hidden');
+            document.querySelectorAll('.no-print').forEach(e => e.style.display = '');
 
             const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
             const props = pdf.getImageProperties(img);
