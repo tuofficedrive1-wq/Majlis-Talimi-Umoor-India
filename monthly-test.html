@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Test Result Sheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'Jameel Noori Nastaleeq';
+            src: url('https://cdn.jsdelivr.net/gh/sajjadsaeed/UrduFontsWeb@master/fonts/JameelNooriNastaleeq.woff2') format('woff2');
+            font-display: swap;
+        }
+        body { font-family: 'Poppins', 'Jameel Noori Nastaleeq', sans-serif; background-color: #f3f4f6; }
+        .urdu-font { font-family: 'Jameel Noori Nastaleeq', serif; line-height: 1.6; }
+        
+        /* Table Styles */
+        .result-input { width: 100%; text-align: center; border: 1px solid #d1d5db; padding: 4px; border-radius: 4px; }
+        .result-input:focus { outline: none; border-color: #14b8a6; ring: 2px; }
+        table th, table td { padding: 8px; text-align: center; border: 1px solid #e5e7eb; }
+        .pass-bg { background-color: #dcfce7; color: #166534; font-weight: bold; } /* Green */
+        .fail-bg { background-color: #fee2e2; color: #991b1b; font-weight: bold; } /* Red */
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-xl overflow-hidden min-h-screen">
+        
+        <div class="bg-teal-700 text-white p-6 flex flex-col md:flex-row justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold urdu-font" id="display-jamia">Loading Jamia...</h1>
+                <p class="text-teal-100" id="display-month">Loading Month...</p>
+            </div>
+            <div class="mt-4 md:mt-0 flex gap-2">
+                <button onclick="window.close()" class="bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded text-sm">Close</button>
+            </div>
+        </div>
+
+        <div id="loader" class="text-center py-10 hidden"><i class="fas fa-spinner fa-spin text-4xl text-teal-600"></i></div>
+
+        <div class="p-6" id="main-content">
+            
+            <div class="mb-6 bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                <h3 class="font-bold text-gray-700 mb-2">Step 1: Subjects Setup</h3>
+                <div class="flex flex-wrap gap-2 items-center mb-2">
+                    <input type="text" id="new-subject-name" placeholder="Subject Name (e.g. Quran)" class="border p-2 rounded w-48 urdu-font">
+                    <input type="number" id="subject-marks" placeholder="Max Marks (e.g. 100)" value="100" class="border p-2 rounded w-32">
+                    <button onclick="addSubject()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Add Subject</button>
+                </div>
+                <div id="subjects-tags" class="flex flex-wrap gap-2 mt-2">
+                    </div>
+            </div>
+
+            <div class="overflow-x-auto mb-8 border rounded-lg">
+                <div id="print-area" class="bg-white p-4">
+                    
+                    <div class="text-center mb-4 border-b pb-4">
+                        <h2 class="text-2xl font-bold urdu-font text-teal-800">Result Sheet - Monthly Test</h2>
+                        <h3 class="text-xl urdu-font" id="print-jamia-name"></h3>
+                        <p class="text-gray-600" id="print-month-name"></p>
+                    </div>
+
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100 text-gray-700">
+                            <tr id="table-header-row">
+                                <th class="w-12">#</th>
+                                <th class="text-left w-48">Talib-e-Ilm Ka Naam</th>
+                                <th class="w-24 bg-gray-200">Total Marks</th>
+                                <th class="w-24 bg-gray-200">%</th>
+                                <th class="w-32 bg-gray-200">Kaifiyat (Grade)</th>
+                                <th class="w-10 no-print">Del</th>
+                            </tr>
+                        </thead>
+                        <tbody id="students-body">
+                            </tbody>
+                    </table>
+                    
+                    <button onclick="addStudentRow()" class="mt-4 text-teal-600 hover:text-teal-800 font-bold no-print">
+                        <i class="fas fa-plus-circle"></i> Add Student Row
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center border-t pt-6">
+                <p class="text-gray-500 text-sm">Changes save karna na bhulein.</p>
+                <div class="flex gap-3">
+                    <button onclick="downloadPDF()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg flex items-center">
+                        <i class="fas fa-file-pdf mr-2"></i> Download PDF
+                    </button>
+                    <button onclick="saveResultSheet()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg flex items-center">
+                        <i class="fas fa-save mr-2"></i> Save Result
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // --- Firebase Config (Aapki config same rahegi) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", // Aapki key
+            authDomain: "data-f15ab.firebaseapp.com",
+            projectId: "data-f15ab",
+            storageBucket: "data-f15ab.appspot.com",
+            messagingSenderId: "449137002393",
+            appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // --- State Variables ---
+        let subjects = []; // { name: "Quran", max: 100 }
+        let currentJamia = "";
+        let currentMonth = "";
+        let currentUser = null;
+        let reportId = "";
+
+        // --- Init ---
+        window.onload = () => {
+            const params = new URLSearchParams(window.location.search);
+            currentJamia = params.get('jamia');
+            currentMonth = params.get('month'); // e.g., "2025-11"
+
+            if (!currentJamia || !currentMonth) {
+                alert("Invalid Link. Jamia or Month missing.");
+                return;
+            }
+
+            document.getElementById('display-jamia').textContent = currentJamia;
+            document.getElementById('print-jamia-name').textContent = currentJamia;
+            document.getElementById('display-month').textContent = `Report Month: ${currentMonth}`;
+            document.getElementById('print-month-name').textContent = `Month: ${currentMonth}`;
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    loadExistingData();
+                } else {
+                    alert("Please login first.");
+                    window.location.href = "index.html";
+                }
+            });
+        };
+
+        // --- Functions ---
+
+        window.addSubject = (name = null, max = null) => {
+            const nameInput = document.getElementById('new-subject-name');
+            const maxInput = document.getElementById('new-subject-marks');
+            
+            const subName = name || nameInput.value.trim();
+            const subMax = max || parseInt(document.getElementById('subject-marks').value);
+
+            if (!subName) return;
+
+            // Avoid duplicates
+            if(subjects.some(s => s.name === subName)) {
+                if(!name) alert("Subject already added");
+                return;
+            }
+
+            subjects.push({ name: subName, max: subMax });
+
+            // UI Update
+            renderSubjectsTags();
+            rebuildTableColumns();
+            
+            // Input clear
+            nameInput.value = '';
+        };
+
+        function renderSubjectsTags() {
+            const container = document.getElementById('subjects-tags');
+            container.innerHTML = subjects.map((sub, idx) => `
+                <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded flex items-center">
+                    ${sub.name} (${sub.max})
+                    <button onclick="removeSubject(${idx})" class="ml-2 text-red-500 font-bold">×</button>
+                </span>
+            `).join('');
+        }
+
+        window.removeSubject = (idx) => {
+            if(confirm("Is subject ko hatane se marks delete ho jayenge. Kya aap sure hain?")) {
+                subjects.splice(idx, 1);
+                renderSubjectsTags();
+                rebuildTableColumns();
+            }
+        };
+
+        function rebuildTableColumns() {
+            // Header Update
+            const headerRow = document.getElementById('table-header-row');
+            // Reset to base columns
+            headerRow.innerHTML = `
+                <th class="w-12 border border-gray-300">#</th>
+                <th class="text-left w-48 border border-gray-300">Talib-e-Ilm Ka Naam</th>
+            `;
+            
+            // Add Subject Headers
+            subjects.forEach(sub => {
+                headerRow.innerHTML += `<th class="w-24 border border-gray-300 bg-blue-50">${sub.name} <br><span class="text-xs text-gray-500">/${sub.max}</span></th>`;
+            });
+
+            // Add Result Columns
+            headerRow.innerHTML += `
+                <th class="w-24 bg-gray-200 border border-gray-300">Total</th>
+                <th class="w-24 bg-gray-200 border border-gray-300">%</th>
+                <th class="w-32 bg-gray-200 border border-gray-300">Grade</th>
+                <th class="w-10 no-print border border-gray-300">Del</th>
+            `;
+
+            // Rows Update (Keep names, clear marks or try to map?)
+            // For simplicity in this version, we re-render rows but lose marks if column structure changes drastically.
+            // A better way is to read current values from DOM before re-rendering.
+            // *Fix*: We will just re-render the inputs. Logic below preserves existing inputs if name matches.
+        }
+
+        window.addStudentRow = (studentName = "", marksData = {}) => {
+            const tbody = document.getElementById('students-body');
+            const rowCount = tbody.rows.length + 1;
+            const tr = document.createElement('tr');
+            
+            let subjectInputs = subjects.map(sub => {
+                const val = marksData[sub.name] || "";
+                return `<td><input type="number" data-subject="${sub.name}" data-max="${sub.max}" value="${val}" class="result-input mark-entry" oninput="calculateRow(this)"></td>`;
+            }).join('');
+
+            tr.innerHTML = `
+                <td>${rowCount}</td>
+                <td><input type="text" value="${studentName}" class="w-full p-1 border rounded urdu-font student-name" placeholder="Name"></td>
+                ${subjectInputs}
+                <td class="font-bold text-center total-obtained">0</td>
+                <td class="font-bold text-center percentage">0%</td>
+                <td class="font-bold text-center grade">-</td>
+                <td class="no-print"><button onclick="this.closest('tr').remove()" class="text-red-500">×</button></td>
+            `;
+            tbody.appendChild(tr);
+            
+            // Initial calc
+            const firstInput = tr.querySelector('.mark-entry');
+            if(firstInput) calculateRow(firstInput);
+        };
+
+        window.calculateRow = (input) => {
+            const row = input.closest('tr');
+            let obtained = 0;
+            let maxTotal = 0;
+
+            row.querySelectorAll('.mark-entry').forEach(inp => {
+                const val = parseFloat(inp.value) || 0;
+                const max = parseFloat(inp.dataset.max) || 100;
+                obtained += val;
+                maxTotal += max;
+                
+                // Visual validation
+                if(val > max) inp.style.borderColor = 'red';
+                else inp.style.borderColor = '#d1d5db';
+            });
+
+            const percent = maxTotal > 0 ? ((obtained / maxTotal) * 100).toFixed(1) : 0;
+            
+            // Grade Logic
+            let grade = "-";
+            let bgClass = "";
+            
+            if (maxTotal > 0) {
+                if (percent >= 80) { grade = "Mumtaz"; bgClass = "pass-bg"; }
+                else if (percent >= 60) { grade = "Jayyid Jiddan"; bgClass = "bg-green-100 text-green-800"; }
+                else if (percent >= 50) { grade = "Jayyid"; bgClass = "bg-yellow-100 text-yellow-800"; }
+                else if (percent >= 40) { grade = "Maqbool"; bgClass = "bg-orange-100 text-orange-800"; }
+                else { grade = "Rasib (Fail)"; bgClass = "fail-bg"; }
+            }
+
+            // Update UI
+            row.querySelector('.total-obtained').innerText = obtained;
+            const percCell = row.querySelector('.percentage');
+            percCell.innerText = percent + '%';
+            
+            const gradeCell = row.querySelector('.grade');
+            gradeCell.innerText = grade;
+            gradeCell.className = `font-bold text-center grade p-1 rounded ${bgClass}`;
+        };
+
+        // --- Firebase Data Loading ---
+        async function loadExistingData() {
+            const [year, month] = currentMonth.split('-');
+            const yearNum = parseInt(year);
+            const monthNum = parseInt(month) - 1;
+            
+            // ID Format must match what index.html uses
+            // Assuming monthly_test_sheets collection logic:
+            // ID: userId_jamiaName_year_month (Sanitized)
+            const sanitizedJamia = currentJamia.replace(/[^a-zA-Z0-9]/g, '_');
+            const docId = `${currentUser.uid}_${sanitizedJamia}_${year}_${month}`;
+            reportId = docId;
+
+            const docRef = doc(db, 'monthly_test_sheets', docId);
+            const snap = await getDoc(docRef);
+
+            if (snap.exists()) {
+                const data = snap.data();
+                
+                // 1. Load Subjects
+                if (data.subjects && Array.isArray(data.subjects)) {
+                    subjects = data.subjects;
+                    renderSubjectsTags();
+                    rebuildTableColumns();
+                }
+
+                // 2. Load Students
+                if (data.students && Array.isArray(data.students)) {
+                    data.students.forEach(std => {
+                        addStudentRow(std.name, std.marks);
+                    });
+                }
+            } else {
+                // New sheet - Default columns or load from academic structure (User preference)
+                addSubject('Quran', 100);
+                addSubject('Hifz', 100);
+                addStudentRow(); // Empty row
+            }
+        }
+
+        // --- Save Data ---
+        window.saveResultSheet = async () => {
+            const students = [];
+            let grandTotalObtained = 0;
+            let grandTotalMax = 0;
+
+            document.querySelectorAll('#students-body tr').forEach(row => {
+                const name = row.querySelector('.student-name').value.trim();
+                if (!name) return;
+
+                const marks = {};
+                let rowObtained = 0;
+                let rowMax = 0;
+
+                row.querySelectorAll('.mark-entry').forEach(inp => {
+                    const subName = inp.dataset.subject;
+                    const val = parseFloat(inp.value) || 0;
+                    const max = parseFloat(inp.dataset.max) || 0;
+                    
+                    marks[subName] = val;
+                    rowObtained += val;
+                    rowMax += max;
+                });
+                
+                // Calculating percentage for dashboard update
+                const rowPercent = rowMax > 0 ? (rowObtained / rowMax) * 100 : 0;
+                
+                students.push({
+                    name: name,
+                    marks: marks,
+                    total: rowObtained,
+                    percentage: rowPercent
+                });
+
+                grandTotalObtained += rowObtained;
+                grandTotalMax += rowMax;
+            });
+
+            if(students.length === 0) {
+                alert("Koi data nahi hai save karne ke liye.");
+                return;
+            }
+
+            const overallPercentage = grandTotalMax > 0 ? ((grandTotalObtained / grandTotalMax) * 100).toFixed(1) + '%' : '0%';
+
+            const dataToSave = {
+                jamiaName: currentJamia,
+                month: currentMonth,
+                subjects: subjects,
+                students: students,
+                updatedAt: serverTimestamp(),
+                overallPercentage: overallPercentage
+            };
+
+            try {
+                // 1. Save detailed sheet
+                await setDoc(doc(db, 'monthly_test_sheets', reportId), dataToSave);
+
+                // 2. Update Main Report (Monthly Report collection for Dashboard Status)
+                // Need to find the correct report ID logic used in index.html
+                // Logic from index.html: `${currentUser.uid}_${yearNum}_${monthNum}` (Simple) OR AcademicYear based
+                
+                const [yearStr, monthStr] = currentMonth.split('-');
+                const y = parseInt(yearStr);
+                const m = parseInt(monthStr) - 1;
+                const acYear = (m >= 3) ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+                const mainReportId = `${currentUser.uid}_${acYear}_${y}_${m}`;
+
+                // Update partial data in monthly_reports
+                // "data" array needs to be updated. This is tricky with Firestore Arrays.
+                // We will fetch, filter, and push.
+                
+                const reportRef = doc(db, 'monthly_reports', mainReportId);
+                const reportSnap = await getDoc(reportRef);
+                
+                let existingTestData = [];
+                if(reportSnap.exists()) {
+                    existingTestData = reportSnap.data().monthlyTest?.data || [];
+                }
+
+                // Remove old entry for this jamia
+                const otherJamiaData = existingTestData.filter(t => t.name !== currentJamia);
+                
+                // Add new entry
+                const newEntry = {
+                    name: currentJamia,
+                    status: 'Test Hua', // Since we saved a sheet, it's done
+                    month: currentMonth,
+                    percentage: overallPercentage,
+                    wajah: ''
+                };
+                
+                otherJamiaData.push(newEntry);
+
+                await setDoc(reportRef, {
+                    monthlyTest: {
+                        status: 'Done',
+                        data: otherJamiaData
+                    }
+                }, { merge: true });
+
+                alert("Result Sheet Saved Successfully!");
+
+            } catch (err) {
+                console.error(err);
+                alert("Error saving data: " + err.message);
+            }
+        };
+
+        // --- PDF Generation ---
+        window.downloadPDF = async () => {
+            const element = document.getElementById('print-area');
+            
+            // Hide delete buttons for PDF
+            document.querySelectorAll('.no-print').forEach(e => e.style.display = 'none');
+            
+            const canvas = await html2canvas(element, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+            
+            const pdf = new jspdf.jsPDF('l', 'mm', 'a4'); // Landscape
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`Result_${currentJamia}_${currentMonth}.pdf`);
+            
+            // Restore buttons
+            document.querySelectorAll('.no-print').forEach(e => e.style.display = '');
+        };
+
+    </script>
+</body>
+</html>
