@@ -645,34 +645,24 @@
 <script>
 
     
-/* Safe modal element setup — prevents `closeModalBtn is not defined` errors.
-   Paste this immediately AFTER your modal HTML (or right after <body>) and
-   BEFORE any code that calls initAdminView or references closeModalBtn. */
+<script>
+    
+/* Safe modal element setup — prevents unnecessary errors. */
 
 (function(){
-  // 1) Safe element getters (try multiple ids)
+  // 1) Safe element getters 
   const reportModal = document.getElementById('report-modal') || document.querySelector('#report-modal') || null;
   const modalContent = document.getElementById('modal-content') || null;
   const downloadBtn = document.getElementById('modal-download-btn') || null;
 
-  // 1. Sirf X button aur download button ko target karein
-  const safe = (typeof window.getSafeModalElements === 'function')
-    ? window.getSafeModalElements()
-    : {
-        closeBtn: document.getElementById('close-modal-btn'), // <-- Yeh aapka X button hai
-        downloadBtn: document.getElementById('modal-download-btn')
-      };
-
-  // 2. Attach close handler to the 'X' button
-  try {
-    if (safe.closeBtn && !safe.closeBtn._closeHandlerAttached) {
-      safe.closeBtn.addEventListener('click', (e) => { e.preventDefault(); closeModal(); }); 
-      safe.closeBtn._closeHandlerAttached = true;
-    }
-  } catch(e){ console.warn('closeBtn attach failed', e); }
+  // Find close button (updated logic)
+  function findCloseBtn(){
+    return document.getElementById('close-modal-btn')
+        || document.querySelector('.modal-close-btn')
+        || null;
   }
-
-  // Expose minimal globals so other scripts won't throw ReferenceError
+  
+  // Expose minimal globals (used by the module script)
   window.reportModal = reportModal;
   window.modalContent = modalContent;
   window.modalDownloadBtn = downloadBtn;
@@ -681,9 +671,10 @@
   if(typeof window.closeModal !== 'function'){
     window.closeModal = function(){
       try {
-        const m = window.reportModal || document.getElementById('report-modal') || document.querySelector('[role="dialog"][aria-modal="true"]');
+        const m = window.reportModal || document.getElementById('report-modal');
         if(m){
           m.classList.remove('show');
+          m.classList.add('hidden'); // 🟢 FIX: Hidden class wapas jodd rahe hain
           if(m.style) m.style.display = 'none';
         }
       } catch(e) {}
@@ -692,7 +683,7 @@
     };
   }
 
-  // Attach click handler to the close button (immediately if exists)
+  // Attach click handler to the close button (safely)
   function attachCloseHandlerIfReady(){
     const btn = findCloseBtn();
     if(btn && !btn._closeHandlerAttached){
@@ -709,19 +700,6 @@
   // Try attaching now
   attachCloseHandlerIfReady();
 
-  // If not attached yet, attach when DOM is ready or when new nodes inserted
-  document.addEventListener('DOMContentLoaded', attachCloseHandlerIfReady);
-
-  // Optional: observe DOM for dynamically-inserted modal/close button (helps SPA)
-  if (window.MutationObserver) {
-    const obs = new MutationObserver(function(mutations, observer){
-      attachCloseHandlerIfReady();
-      // stop observing once attached
-      if(window.closeModalBtn) observer.disconnect();
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-  }
-
   // Expose a helper to safe-get modal elements for other scripts
   window.getSafeModalElements = function(){
     return {
@@ -731,6 +709,15 @@
       downloadBtn: window.modalDownloadBtn || document.getElementById('modal-download-btn')
     };
   };
+
+  // Attach outside click listener to modal overlay (using parent element)
+  if (reportModal) {
+      reportModal.addEventListener('click', function(evt) {
+          if (evt.target === reportModal) {
+              window.closeModal();
+          }
+      });
+  }
 
 })(); 
 </script>
@@ -774,11 +761,11 @@
         // --- DOM Elements ---
         const loader = document.getElementById('loader');
         const loginView = document.getElementById('login-view');
+        const reportModal = document.getElementById('report-modal'); // **Yeh pehle se hona chahiye**
+        const modalContent = document.getElementById('modal-content'); // **Isko yahan define karein**
         const adminView = document.getElementById('admin-view');
         const userInfo = document.getElementById('user-info');
         const logoutBtn = document.getElementById('logout-btn');
-        const reportModal = document.getElementById('report-modal'); // **Yeh pehle se hona chahiye**
-        const modalContent = document.getElementById('modal-content'); // **Isko yahan define karein**
         // Admin View Elements
         const adminTabButtons = adminView.querySelectorAll('.admin-tab-btn');
         const adminTabContents = adminView.querySelectorAll('.admin-tab-content');
@@ -870,14 +857,14 @@ function openModalWithData(data){
 }
 
 
+// Function jo Module Script mein likha hai (Line 1580 ke aas paas)
 function closeModal(){
-    // 1. 'show' class hatayein (Custom CSS ke liye)
+    // Ensure 'reportModal' is defined before this.
     reportModal.classList.remove('show'); 
     
-    // 2. NAYA IZAFA: 'hidden' class wapas jodd dein (Tailwind ke liye)
+    // NAYA SUDHAAR (Agar aapne HTML mein 'hidden' class lagayi thi)
     reportModal.classList.add('hidden'); 
     
-    // 3. Background scrolling wapas layein
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
 }
@@ -2593,6 +2580,7 @@ modalContent.querySelectorAll('.tadris-save-btn').forEach(btn => {
     </script>
 </body>
 </html>
+
 
 
 
