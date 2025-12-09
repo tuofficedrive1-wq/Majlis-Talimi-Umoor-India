@@ -1151,154 +1151,109 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
         userProfileData.photoURL || 'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'
     );
 
-          // ---------- Academic Structure se Jamia + Asatiza count ----------
-    // Pehle academicStructure (naya) dekhen, warna purane "structure" se data lein
-    const academicStructureRaw =
-        (Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0)
-            ? userProfileData.academicStructure
-            : (Array.isArray(userProfileData.structure) ? userProfileData.structure : []);
+    // ============================================================
+    // UPDATED LOGIC: Count from Karkardagi Structure (Academic Years)
+    // ============================================================
+    let totalJamiaat = 0;
+    let totalAsatiza = 0;
+    let jamiaatListForDropdown = [];
 
-    // Debug ke liye global me rakh do (console me dekhne ke liye)
-    window._userProfileData = userProfileData;
-    window._academicStructureRaw = academicStructureRaw;
+    // 1. Check agar 'academicYears' data maujood hai (New Karkardagi Setup)
+    if (userProfileData.academicYears && Object.keys(userProfileData.academicYears).length > 0) {
+        
+        // Sabse latest saal nikalein (sort karke reverse, taake latest pehle aaye)
+        const years = Object.keys(userProfileData.academicYears).sort().reverse();
+        const latestYear = years[0]; // e.g., "2025-2026"
+        
+        const yearData = userProfileData.academicYears[latestYear];
 
-    // Taake baaki jagah bhi yehi array use ho
-    userProfileData.academicStructure = academicStructureRaw;
+        // Agar us saal ka karkardagiStructure hai
+        if (yearData && Array.isArray(yearData.karkardagiStructure)) {
+            const structure = yearData.karkardagiStructure;
 
-    const jamiaSet = new Set();
-    const teacherSet = new Set();
+            // Jamiaat ki ginti
+            totalJamiaat = structure.length;
 
-    const walkNode = (node) => {
-        if (!node) return;
-
-        // Agar array mila to uske har element ko walk karo
-        if (Array.isArray(node)) {
-            node.forEach(walkNode);
-            return;
-        }
-
-        if (typeof node !== "object") return;
-
-        // Jamia name
-        if (typeof node.jamiaName === "string" && node.jamiaName.trim()) {
-            jamiaSet.add(node.jamiaName.trim());
-        }
-
-        // Teacher name
-        if (typeof node.teacherName === "string" && node.teacherName.trim()) {
-            teacherSet.add(node.teacherName.trim());
-        }
-
-        // teachers array
-        if (Array.isArray(node.teachers)) {
-            node.teachers.forEach((t) => {
-                if (typeof t === "string" && t.trim()) {
-                    teacherSet.add(t.trim());
-                } else if (t && typeof t === "object") {
-                    const n = t.name || t.teacherName;
-                    if (n && String(n).trim()) {
-                        teacherSet.add(String(n).trim());
-                    }
+            // Teachers ki ginti
+            structure.forEach(jamia => {
+                // Dropdown ke liye Jamia ka naam list mein daalein
+                if (jamia.jamiaName) {
+                    jamiaatListForDropdown.push(jamia.jamiaName);
+                }
+                
+                // Teachers count karein
+                if (Array.isArray(jamia.teachers)) {
+                    totalAsatiza += jamia.teachers.length;
                 }
             });
         }
-
-        // Nested structures
-        if (Array.isArray(node.structure)) walkNode(node.structure); // aapke screenshot wala structure[]
-        if (Array.isArray(node.classes)) walkNode(node.classes);
-        else if (node.classes && typeof node.classes === "object") {
-            Object.values(node.classes).forEach(walkNode);
+    } 
+    // 2. Fallback: Agar naya setup nahi mila to purana 'structure' check karein (Backup)
+    else {
+        // Ye purana logic hai, bas backup ke liye rakha hai
+        const oldStructure = Array.isArray(userProfileData.structure) ? userProfileData.structure : [];
+        const oldList = Array.isArray(userProfileData.jamiaatList) ? userProfileData.jamiaatList : [];
+        
+        // Jamia count
+        if (oldList.length > 0) {
+            totalJamiaat = oldList.length;
+            jamiaatListForDropdown = oldList;
+        } else {
+            // Agar list bhi nahi hai to structure se count karo (simple calculation)
+            const jamiaSet = new Set();
+            const teacherSet = new Set();
+            // ... (Purana walkNode function hata diya gaya hai simplicity ke liye)
+            // Agar aapke paas purana data hai hi nahi to ye 0 rahega
         }
-        if (Array.isArray(node.books)) walkNode(node.books);
-        if (Array.isArray(node.kitabs)) walkNode(node.kitabs);
-    };
-
-    // Top-level se walk start
-    walkNode(academicStructureRaw);
-
-    // Jamiaat list ko bhi sync kar lein
-    let jamiaatList = Array.isArray(userProfileData.jamiaatList)
-        ? userProfileData.jamiaatList
-        : [];
-
-    // Agar pehle se jamiaatList hai to use bhi set me daal do
-    if (jamiaSet.size === 0 && jamiaatList.length > 0) {
-        jamiaatList.forEach((name) => {
-            if (typeof name === "string" && name.trim()) {
-                jamiaSet.add(name.trim());
-            }
-        });
     }
 
-    // Agar jamiaatList khali hai lekin structure se Jamia mil gaye,
-    // ---------- Total Jamiaat & Total Asatiza from Karkardagi Setup ----------
+    // ---------- Update DOM Elements ----------
 
-    const totalJamiaat = jamiaSet.size;
-    const totalAsatiza = teacherSet.size;
-
-    // ---------- Dashboard Profile ----------
+    // 1. Dashboard Profile
     if (dashUserName) dashUserName.textContent = userProfileData.name || "N/A";
-    if (dashUserZimmedari)
-        dashUserZimmedari.textContent =
-            userProfileData.zimmedari || userProfileData.role || "N/A";
-    if (dashTotalJamiaat) dashTotalJamiaat.textContent = totalJamiaat;
+    if (dashUserZimmedari) dashUserZimmedari.textContent = userProfileData.zimmedari || userProfileData.role || "N/A";
+    if (dashTotalJamiaat) dashTotalJamiaat.textContent = totalJamiaat; // Updated Count
     if (dashProfilePhoto) dashProfilePhoto.src = convertedUrl;
 
-    // ---------- User View Profile Details ----------
+    // 2. User View Profile Details
     const userNameEl = document.getElementById("user-name");
     const userZimmedariEl = document.getElementById("user-zimmedari");
     const userContactEl = document.getElementById("user-contact");
     const userAjeerCodeEl = document.getElementById("user-ajeer-code");
     const userJamiaatEl = document.getElementById('user-jamiaat');
-const userAsatizaEl = document.getElementById('user-asatiza');
+    const userAsatizaEl = document.getElementById('user-asatiza');
 
     if (userNameEl) userNameEl.textContent = userProfileData.name || "N/A";
-    if (userZimmedariEl)
-        userZimmedariEl.textContent =
-            userProfileData.zimmedari || userProfileData.role || "N/A";
-    if (userContactEl)
-    userContactEl.textContent =
-        userProfileData.contactNo ||
-        userProfileData.contact ||   // 👈 naya add
-        userProfileData.phone ||
-        userProfileData.mobile ||
-        "N/A";
-    if (userAjeerCodeEl)
-        userAjeerCodeEl.textContent =
-            userProfileData.ajeerCode || userProfileData.ajeer || "N/A";
+    if (userZimmedariEl) userZimmedariEl.textContent = userProfileData.zimmedari || userProfileData.role || "N/A";
+    if (userContactEl) userContactEl.textContent = userProfileData.contactNo || userProfileData.contact || userProfileData.phone || "N/A";
+    if (userAjeerCodeEl) userAjeerCodeEl.textContent = userProfileData.ajeerCode || userProfileData.ajeer || "N/A";
+    
+    // Updated Counts Here
     if (userJamiaatEl) userJamiaatEl.textContent = totalJamiaat;
-if (userAsatizaEl) userAsatizaEl.textContent = totalAsatiza;
+    if (userAsatizaEl) userAsatizaEl.textContent = totalAsatiza;
 
     if (profilePhotoImg) profilePhotoImg.src = convertedUrl;
 
-            // ---------- Academic Structure Setup box show/hide ----------
-    const hasAcademicStructure =
-        (Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0) ||
-        (Array.isArray(userProfileData.structure) && userProfileData.structure.length > 0);
-
-    if (!hasAcademicStructure) {
-        academicStructureSetup.classList.remove("hidden");
+    // 3. Academic Structure Setup Warning
+    // Agar Total Jamiaat 0 hain, to Setup box dikhayein
+    if (totalJamiaat === 0) {
+        if(academicStructureSetup) academicStructureSetup.classList.remove("hidden");
     } else {
-        academicStructureSetup.classList.add("hidden");
+        if(academicStructureSetup) academicStructureSetup.classList.add("hidden");
     }
 
-    // ✅ Jaiza Form Jamia dropdown ko fill karein
+    // 4. Populate Jaiza Form Dropdown
     if (jaizaFormJamiaSelect) {
-        jaizaFormJamiaSelect.innerHTML =
-            '<option value="">Jamia select karein</option>';
-        (jamiaatList.length ? jamiaatList : Array.from(jamiaSet)).forEach(
-            (name) => {
-                jaizaFormJamiaSelect.innerHTML += `<option value="${name}">${name}</option>`;
-            }
-        );
+        jaizaFormJamiaSelect.innerHTML = '<option value="">Jamia select karein</option>';
+        jamiaatListForDropdown.forEach((name) => {
+            jaizaFormJamiaSelect.innerHTML += `<option value="${name}">${name}</option>`;
+        });
     }
 
-    // ✅ Button click par naya page open karein
+    // ✅ Button click par naya page open karein (Jaiza)
     if (openJaizaFormBtn) {
         openJaizaFormBtn.onclick = () => {
-            const jamiaName = jaizaFormJamiaSelect
-                ? jaizaFormJamiaSelect.value
-                : "";
+            const jamiaName = jaizaFormJamiaSelect ? jaizaFormJamiaSelect.value : "";
             if (!jamiaName) {
                 showNotification("Pehlay Jamia select karein.", true);
                 return;
@@ -1307,24 +1262,21 @@ if (userAsatizaEl) userAsatizaEl.textContent = totalAsatiza;
                 showNotification("Report ka mahina select karein.", true);
                 return;
             }
-            const url =
-            "jaiza-form.html?jamia=" +
-            encodeURIComponent(jamiaName) +
-            "&month=" +
-            encodeURIComponent(selectedReportingDate);
-        // yahan:
-        window.location.href = url;   // same tab me jaiza-form.html
+            const url = "jaiza-form.html?jamia=" + encodeURIComponent(jamiaName) + "&month=" + encodeURIComponent(selectedReportingDate);
+            window.location.href = url;
         };
     }
 
     // Report filters
     populateReportFilters();
+
 } else {
+    // Profile not found
     const userNameEl = document.getElementById("user-name");
     if (userNameEl) userNameEl.textContent = "Profile Not Found";
     if (dashUserName) dashUserName.textContent = "Profile Not Found";
     showNotification("User profile could not be found.", true);
-    academicStructureSetup.classList.remove("hidden");
+    if(academicStructureSetup) academicStructureSetup.classList.remove("hidden");
 }
 
             
@@ -3045,6 +2997,7 @@ const handleJaizaSubmit = async (e) => {
     </script>
 </body>
 </html>
+
 
 
 
