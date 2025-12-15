@@ -8,7 +8,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
     
     <style>
         @font-face { font-family: 'Jameel Noori Nastaleeq'; src: url('https://cdn.jsdelivr.net/gh/sajjadsaeed/UrduFontsWeb@master/fonts/JameelNooriNastaleeq.woff2') format('woff2'); font-display: swap; }
@@ -706,63 +707,92 @@ async function checkExistingForClass(clsName) {
     }
 }
         // PDF
-        window.downloadPDF = async () => {
-    const el = document.getElementById('print-area');
-
-    // 👉 PDF mode ON
-    el.classList.add('pdf-mode');
-
-    // buttons hide
-    document.querySelectorAll('.no-print').forEach(e => e.style.display = 'none');
-
-    const hiddenHeader = el.querySelector('.print-header');
-    const cls = document.getElementById('class-select').value;
-
-    hiddenHeader.classList.remove('hidden');
-    hiddenHeader.innerHTML = `
-      <h2 class="text-2xl font-bold urdu-font">${jamiaName}</h2>
-      <p>${monthKey}</p>
-      <p class="text-sm">Class: ${cls}</p>
-    `;
-
-    const canvas = await html2canvas(el, {
-        scale: 1.2,
-        useCORS: true,
-        scrollX: 0,
-        scrollY: -window.scrollY
-    });
-
-    const img = canvas.toDataURL('image/png');
-
-    // cleanup
-    hiddenHeader.classList.add('hidden');
-    document.querySelectorAll('.no-print').forEach(e => e.style.display = '');
-    el.classList.remove('pdf-mode');
-
+        window.downloadPDF = () => {
     const pdf = new jspdf.jsPDF({
         orientation: 'landscape',
         unit: 'mm',
         format: 'a4'
     });
 
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
+    const cls = document.getElementById('class-select').value || '';
+    const title = jamiaName;
+    const subTitle = `Month: ${monthKey}   |   Class: ${cls}`;
 
-    const imgProps = pdf.getImageProperties(img);
-    const imgWidth = pageWidth - 10; // margin
-    const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+    // ===== HEADER =====
+    pdf.setFontSize(16);
+    pdf.text(title, pdf.internal.pageSize.getWidth() / 2, 12, { align: 'center' });
 
-    pdf.addImage(
-        img,
-        'PNG',
-        5, // left margin
-        5, // top margin
-        imgWidth,
-        imgHeight
-    );
+    pdf.setFontSize(11);
+    pdf.text(subTitle, pdf.internal.pageSize.getWidth() / 2, 18, { align: 'center' });
+
+    // ===== TABLE HEADERS =====
+    const head = [
+        [
+            '#',
+            'Talib-e-Ilm',
+            ...finalSubjectsList,
+            `Total (${totalMax})`,
+            '%',
+            'Grade'
+        ]
+    ];
+
+    // ===== TABLE BODY =====
+    const body = [];
+    const rows = document.querySelectorAll('#students-body tr');
+
+    rows.forEach((row, index) => {
+        const name = row.querySelector('.std-name')?.value || '';
+        if (!name) return;
+
+        const rowData = [index + 1, name];
+
+        finalSubjectsList.forEach(sub => {
+            const inp = row.querySelector(`input[data-sub="${sub}"]`);
+            rowData.push(inp ? inp.value || '-' : '-');
+        });
+
+        rowData.push(
+            row.querySelector('.total-val')?.textContent || '0',
+            row.querySelector('.perc-val')?.textContent || '0%',
+            row.querySelector('.grade-val')?.textContent || '-'
+        );
+
+        body.push(rowData);
+    });
+
+    // ===== autoTable =====
+    pdf.autoTable({
+        head,
+        body,
+        startY: 25,
+        styles: {
+            fontSize: 11,
+            cellPadding: 3,
+            halign: 'center',
+            valign: 'middle'
+        },
+        headStyles: {
+            fillColor: [13, 148, 136], // teal
+            textColor: 255,
+            fontSize: 11
+        },
+        columnStyles: {
+            1: { halign: 'left' } // Talib-e-Ilm left aligned
+        },
+        didDrawPage: function () {
+            pdf.setFontSize(9);
+            pdf.text(
+                `Generated on: ${new Date().toLocaleDateString()}`,
+                14,
+                pdf.internal.pageSize.getHeight() - 8
+            );
+        }
+    });
 
     pdf.save(`Result_${jamiaName}_${cls}.pdf`);
 };
+
 
         // Step 1: ID nikalna (Smart Check)
 const urlParams = new URLSearchParams(window.location.search);
@@ -819,6 +849,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
