@@ -160,82 +160,115 @@
         }
 
         // 2. Load Teaching Data
-        async function loadTeachingData() {
-            try {
-                const acYear = getAcademicYear(monthKey);
-                const userDoc = await getDoc(doc(db, "users", adminUid));
-                
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    const years = userData.academicYears || {};
-                    const yearData = years[acYear];
-                    let jamiaStruct = null;
+async function loadTeachingData() {
+    try {
+        const acYear = getAcademicYear(monthKey);
+        const userDoc = await getDoc(doc(db, "users", adminUid));
 
-                    if (yearData && Array.isArray(yearData.karkardagiStructure)) {
-                        jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
-                    } 
-                    if (!jamiaStruct && Array.isArray(userData.academicStructure)) {
-                        jamiaStruct = userData.academicStructure.find(j => j.jamiaName === jamiaName);
-                    }
-
-                    if (!jamiaStruct) {
-                        alert("Setup nahi mila. Admin se rabta karein.");
-                        return;
-                    }
-
-                    classBooksMap = {};
-                    if (Array.isArray(jamiaStruct.teachers)) {
-                        jamiaStruct.teachers.forEach(t => {
-                            if(Array.isArray(t.periods)) {
-                                t.periods.forEach(p => {
-                                    const cName = p.className || p.class || p.darja;
-                                    const bName = p.bookName || p.book || p.kitab || p.subject;
-                                    if (cName && bName) {
-                                        if (!classBooksMap[cName]) classBooksMap[cName] = new Set();
-                                        classBooksMap[cName].add(bName);
-                                    }
-                                });
-                            }
-                        });
-                    }
-
-                    const tabs = document.getElementById('class-tabs');
-tabs.innerHTML = '';
-
-sortedClasses.forEach(cls => {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.textContent = cls;
-  btn.className =
-    "px-4 py-2 rounded-lg bg-white border text-sm font-semibold hover:bg-teal-600 hover:text-white transition";
-
-  btn.onclick = () => {
-    // sab tabs normal karo
-    document.querySelectorAll('#class-tabs button').forEach(b => {
-      b.classList.remove('bg-teal-600', 'text-white');
-      b.classList.add('bg-white');
-    });
-
-    // active tab
-    btn.classList.add('bg-teal-600', 'text-white');
-
-    // hidden select me value set karo (JS compatibility ke liye)
-    document.getElementById('class-select').value = cls;
-
-    // existing function call
-    handleClassChange();
-  };
-
-  tabs.appendChild(btn);
-});
-
-                }
-                document.getElementById('loader').classList.add('hidden');
-                document.getElementById('main-content').classList.remove('hidden');
-            } catch (error) {
-                console.error("Error:", error);
-            }
+        if (!userDoc.exists()) {
+            alert("User data nahi mila");
+            return;
         }
+
+        const userData = userDoc.data();
+        const years = userData.academicYears || {};
+        const yearData = years[acYear];
+        let jamiaStruct = null;
+
+        if (yearData && Array.isArray(yearData.karkardagiStructure)) {
+            jamiaStruct = yearData.karkardagiStructure.find(
+                j => j.jamiaName === jamiaName
+            );
+        }
+
+        if (!jamiaStruct && Array.isArray(userData.academicStructure)) {
+            jamiaStruct = userData.academicStructure.find(
+                j => j.jamiaName === jamiaName
+            );
+        }
+
+        if (!jamiaStruct) {
+            alert("Setup nahi mila. Admin se rabta karein.");
+            return;
+        }
+
+        // ===============================
+        // Class → Books mapping
+        // ===============================
+        classBooksMap = {};
+
+        if (Array.isArray(jamiaStruct.teachers)) {
+            jamiaStruct.teachers.forEach(t => {
+                if (Array.isArray(t.periods)) {
+                    t.periods.forEach(p => {
+                        const cName = p.className || p.class || p.darja;
+                        const bName = p.bookName || p.book || p.kitab || p.subject;
+
+                        if (cName && bName) {
+                            if (!classBooksMap[cName]) {
+                                classBooksMap[cName] = new Set();
+                            }
+                            classBooksMap[cName].add(bName);
+                        }
+                    });
+                }
+            });
+        }
+
+        // ===============================
+        // ✅ EXCEL STYLE CLASS TABS
+        // ===============================
+        const tabs = document.getElementById('class-tabs');
+        const select = document.getElementById('class-select');
+
+        tabs.innerHTML = '';
+        select.innerHTML = '<option value="">-- Select Class --</option>';
+
+        // 🔴 YAHI LINE MISSING THI
+        const sortedClasses = Object.keys(classBooksMap).sort();
+
+        sortedClasses.forEach(cls => {
+            // hidden select option (JS compatibility)
+            const opt = document.createElement('option');
+            opt.value = cls;
+            opt.textContent = cls;
+            select.appendChild(opt);
+
+            // Excel-style tab
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = cls;
+            btn.className =
+                "px-4 py-2 rounded-lg bg-white border text-sm font-semibold hover:bg-teal-600 hover:text-white transition";
+
+            btn.onclick = () => {
+                // sab tabs reset
+                document.querySelectorAll('#class-tabs button').forEach(b => {
+                    b.classList.remove('bg-teal-600', 'text-white');
+                    b.classList.add('bg-white');
+                });
+
+                // active tab
+                btn.classList.add('bg-teal-600', 'text-white');
+
+                // hidden select me value set
+                select.value = cls;
+
+                // existing logic call
+                handleClassChange();
+            };
+
+            tabs.appendChild(btn);
+        });
+
+        // UI show
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+
+    } catch (error) {
+        console.error("Error loading teaching data:", error);
+    }
+}
 
         // 3. Handle Class Change
         window.handleClassChange = () => {
@@ -663,6 +696,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
