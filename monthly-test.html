@@ -132,9 +132,6 @@
 
         // 1. Initialize
         window.onload = async () => {
-            const classSelectEl = document.getElementById('class-select');
-            classSelectEl.addEventListener('change', handleClassChange);
-
             const params = new URLSearchParams(window.location.search);
             adminUid = params.get('uid');
             jamiaName = params.get('jamia');
@@ -215,22 +212,6 @@
                 console.error("Error:", error);
             }
         }
-        const tabsDiv = document.getElementById('class-tabs');
-tabsDiv.innerHTML = '';
-
-sortedClasses.forEach(cls => {
-  const btn = document.createElement('button');
-  btn.textContent = cls;
-  btn.className =
-    "px-4 py-2 rounded-lg border bg-gray-100 hover:bg-teal-600 hover:text-white font-semibold";
-
-  btn.onclick = () => {
-    document.getElementById('class-select').value = cls;
-    handleClassChange();
-  };
-
-  tabsDiv.appendChild(btn);
-});
 
         // 3. Handle Class Change
         window.handleClassChange = () => {
@@ -434,89 +415,84 @@ sortedClasses.forEach(cls => {
         };
 
         // 7. Save Logic
-window.saveResult = async () => {
-  try {
-    const selectedClass = document.getElementById('class-select').value.trim();
+        window.saveResult = async () => {
+            const rows = document.querySelectorAll('#students-body tr');
+            if(rows.length === 0) { alert("Koi student add nahi kiya gaya."); return; }
+            
+            // FIX 1: Doc ID ko sirf ek baar define karein (Syntax Error theek kiya)
+            const rawClass = document.getElementById('class-select').value;
+            const cleanClass = rawClass.split('_')[0]; 
+            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
+            console.log("💾 Doc ID used for SAVE:", docId); // Debug Log
+            
+            const selectedClass = rawClass; // Poora class name Firestore mein save hoga
 
-    if (!selectedClass) {
-      alert("Pehle class select karein.");
-      return;
-    }
+            const students = [];
+            let grandObtained = 0;
+            let grandMax = 0;
 
-    const rows = document.querySelectorAll('#students-body tr');
-    if (rows.length === 0) {
-      alert("Koi student add nahi kiya gaya.");
-      return;
-    }
+            rows.forEach(row => {
+                const name = row.querySelector('.std-name').value.trim();
+                if(!name) return;
+                
+                const marks = {};
+                row.querySelectorAll('.mark-input').forEach(inp => {
+                    // Save as String if 'A', else Number
+                    const val = inp.value.trim().toUpperCase();
+                    marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
+                });
+                
+                const total = parseFloat(row.querySelector('.total-val').textContent);
+                const perc = parseFloat(row.querySelector('.perc-val').textContent);
+                students.push({ name, marks, total, percentage: perc });
+                
+                grandObtained += total;
+                grandMax += 350;
+            });
 
-    const docId = `${adminUid}_${jamiaName.replace(/\s/g,'_')}_${monthKey}_${selectedClass.replace(/\s/g,'_')}`;
-    console.log("💾 Doc ID used for SAVE:", docId);
+            const overallPerc = grandMax > 0 ? ((grandObtained / grandMax) * 100).toFixed(1) + '%' : '0%';
+            
+            try {
+                // ✅ Save to monthly_test_sheets
+                await setDoc(doc(db, "monthly_test_sheets", docId), {
+                    adminUid, jamiaName, month: monthKey, class: selectedClass,
+                    subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
+                }); 
+                
+                console.log("✅ Data successfully saved to monthly_test_sheets with ID:", docId); // Confirmation Log
 
-    const students = [];
-    let hasError = false;
+                // Update Admin Dashboard
+                const [yStr, mStr] = monthKey.split('-');
+                const y = parseInt(yStr);
+                const m = parseInt(mStr) - 1;
+                const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+                const reportId = `${adminUid}_${acYear}_${y}_${m}`;
 
-    rows.forEach(row => {
-      const nameInput = row.querySelector('.std-name');
-      const name = nameInput ? nameInput.value.trim() : '';
+                const reportRef = doc(db, 'monthly_reports', reportId);
+                const reportSnap = await getDoc(reportRef);
+                let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
+                
+                // Update specific entry
+                testData = testData.filter(t => t.name !== jamiaName);
+                testData.push({
+                    name: jamiaName, status: 'Test Hua', month: monthKey,
+                    percentage: overallPerc, wajah: ''
+                });
 
-      if (!name) {
-        hasError = true;
-        return;
-      }
+                await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
 
-      const marks = {};
-      row.querySelectorAll('.mark-input').forEach(inp => {
-        const val = inp.value.trim().toUpperCase();
-        marks[inp.dataset.sub] =
-          val === 'A' ? 'A' :
-          val === '' ? 0 :
-          Number(val);
-      });
-
-      const total = Number(row.querySelector('.total-val')?.textContent || 0);
-      const percText = row.querySelector('.perc-val')?.textContent || '0';
-      const percentage = Number(percText.replace('%','')) || 0;
-
-      students.push({
-        name,
-        marks,
-        total,
-        percentage
-      });
-    });
-
-    if (hasError) {
-      alert("Kisi student ka naam khali hai. Save se pehle naam likhein.");
-      return;
-    }
-
-    console.log("📦 Students being saved:", students);
-
-    await setDoc(doc(db, "monthly_test_sheets", docId), {
-      adminUid,
-      jamiaName,
-      month: monthKey,
-      class: selectedClass,
-      subjects: finalSubjectsList,
-      students,
-      updatedAt: serverTimestamp()
-    });
-
-    alert(`Class ${selectedClass} ka result successfully save ho gaya ✅`);
-
-  } catch (error) {
-    console.error("🔥 Save Error:", error);
-    alert("Save karte waqt error aaya: " + error.message);
-  }
-};
+                alert(`Class ${selectedClass} ka Result Save ho gaya!`);
+            } catch (error) {
+                console.error("Save Error:", error);
+                alert("Error: " + error.message);
+            }
+        };
 
        // 8. Load Existing
 async function checkExistingForClass(clsName) {
     
-    // Class name ko clean karein taaki Doc ID save wale se match ho
+    // FIX 2: Doc ID ko sirf ek baar define karein (Syntax Error theek kiya)
     const cleanClass = clsName.split('_')[0]; 
-
-    // Sirf ek baar Doc ID define karein
     const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
     
     console.log("🔎 Doc ID used for LOAD:", docId); // Debug Log
@@ -566,6 +542,7 @@ async function checkExistingForClass(clsName) {
             // ======================================================
             // Naye Changes Yahan Hain (Loading ke baad ka action)
             // ======================================================
+            classSelect.disabled = true; // Class Select ko disable kar do
             selectionArea.classList.add('hidden'); // Subject Selection Area chhipa do
             // ======================================================
             
@@ -623,6 +600,42 @@ if (!reportId) {
     console.log("✅ Report ID Found:", reportId);
 }
 
+// Step 2: Save Function (DHYAN DEN: Yahin do baar save ho raha tha)
+window.saveResult_Admin = async function() { // Function ka naam badal diya
+    
+    if (!reportId) {
+        alert("Cannot Save: Report ID is missing.");
+        return;
+    }
+
+    const saveBtn = document.getElementById('save-btn'); 
+    if(saveBtn) saveBtn.innerText = "Saving...";
+
+    try {
+        const collectionName = "monthly_reports"; 
+        const reportRef = doc(db, collectionName, reportId);
+
+        console.log(`📤 Saving to: ${collectionName}/${reportId}`);
+
+        // Yeh code monthly_reports update karta hai (Jo pehle se exist karta hai)
+        const dataToSave = typeof testData !== 'undefined' ? testData : { check: "Testing" };
+
+        await setDoc(reportRef, { 
+            monthlyTest: { 
+                status: 'Done', 
+                lastUpdated: new Date(),
+                data: dataToSave 
+            } 
+        }, { merge: true });
+
+        console.log("✅ Save Success (Admin Dashboard)!");
+        if(saveBtn) saveBtn.innerText = "Saved";
+
+    } catch (error) {
+        console.error("🔥 Firestore Error (Admin):", error);
+        if(saveBtn) saveBtn.innerText = "Try Again";
+    }
+};
     </script>
 </body>
 </html>
