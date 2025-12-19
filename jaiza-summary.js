@@ -82,23 +82,23 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                     </button>
                     <div id="js-grade-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-gray-300 rounded shadow-xl mt-1 max-h-60 overflow-y-auto p-1">
                         <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
-                            <input type="checkbox" value="ممتاز" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
-                            <span class="text-sm text-gray-700 urdu-font">ممتاز (Excellent)</span>
+                            <input type="checkbox" value="ممتاز" class="js-grade-checkbox form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300">
+                            <span class="text-sm text-emerald-700 font-bold urdu-font">ممتاز (Excellent)</span>
                         </label>
                         <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
-                            <input type="checkbox" value="بہتر" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
-                            <span class="text-sm text-gray-700 urdu-font">بہتر (Very Good)</span>
+                            <input type="checkbox" value="بہتر" class="js-grade-checkbox form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300">
+                            <span class="text-sm text-blue-600 font-bold urdu-font">بہتر (Very Good)</span>
                         </label>
                         <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
-                            <input type="checkbox" value="مناسب" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
-                            <span class="text-sm text-gray-700 urdu-font">مناسب (Good)</span>
+                            <input type="checkbox" value="مناسب" class="js-grade-checkbox form-checkbox h-4 w-4 text-amber-600 rounded border-gray-300">
+                            <span class="text-sm text-amber-600 font-bold urdu-font">مناسب (Good)</span>
                         </label>
                         <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
-                            <input type="checkbox" value="کمزور" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
-                            <span class="text-sm text-gray-700 urdu-font">کمزور (Weak)</span>
+                            <input type="checkbox" value="کمزور" class="js-grade-checkbox form-checkbox h-4 w-4 text-red-600 rounded border-gray-300">
+                            <span class="text-sm text-red-600 font-bold urdu-font">کمزور (Weak)</span>
                         </label>
                         <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
-                            <input type="checkbox" value="-" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
+                            <input type="checkbox" value="-" class="js-grade-checkbox form-checkbox h-4 w-4 text-gray-600 rounded border-gray-300">
                             <span class="text-sm text-gray-700 urdu-font">- (No Grade)</span>
                         </label>
                     </div>
@@ -311,7 +311,7 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     // --- 4. BUTTON CLICK EVENTS ---
     document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, user));
     
-    // *** NEW DOWNLOAD LOGIC: Fixed Width Container ***
+    // *** DOWNLOAD LOGIC: Fixed Width Container ***
     document.getElementById('js-download-img').addEventListener('click', async () => {
         const loader = document.getElementById('js-loader');
         loader.classList.remove('hidden'); 
@@ -351,10 +351,10 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             clonedTable.style.width = '100%';
             clonedTable.style.borderCollapse = 'collapse';
             
-            // Explicit styling for cells to ensure colors/fonts transfer correctly
+            // Explicit styling for cells
             clonedTable.querySelectorAll('th').forEach(th => {
-                th.style.backgroundColor = '#f1f5f9'; // slate-100
-                th.style.color = '#334155'; // slate-700
+                th.style.backgroundColor = '#f1f5f9';
+                th.style.color = '#334155';
                 th.style.border = '1px solid #cbd5e1';
                 th.style.padding = '12px';
                 th.style.fontSize = '16px';
@@ -367,9 +367,12 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 td.style.fontSize = '15px';
                 td.style.textAlign = 'center';
                 
-                // Transfer Colors explicitly
-                if (td.classList.contains('text-red-600')) td.style.color = '#dc2626';
-                if (td.classList.contains('text-green-700')) td.style.color = '#15803d';
+                // Color Transfer Logic (Updated)
+                if (td.classList.contains('text-red-600')) td.style.color = '#dc2626'; // Kamzor
+                if (td.classList.contains('text-emerald-700')) td.style.color = '#047857'; // Mumtaz
+                if (td.classList.contains('text-blue-600')) td.style.color = '#2563eb'; // Behtar
+                if (td.classList.contains('text-amber-600')) td.style.color = '#d97706'; // Munasib
+                
                 if (td.classList.contains('urdu-font')) td.style.fontFamily = "'Jameel Noori Nastaleeq', sans-serif";
             });
 
@@ -377,7 +380,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             tempDiv.innerHTML = headerHtml;
             tempDiv.appendChild(clonedTable);
             
-            // Footer
             const footer = document.createElement('div');
             footer.innerHTML = `<p style="text-align: center; font-size: 12px; color: #999; margin-top: 20px; font-family: sans-serif;">Generated via Monthly Reporting App</p>`;
             tempDiv.appendChild(footer);
@@ -521,9 +523,18 @@ async function fetchAndRenderReport(db, user) {
                 const dateObj = new Date(row.month + "-01");
                 const monthStr = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit' });
 
-                let gradeColor = "text-gray-700";
-                if(row.grade === "ممتاز") gradeColor = "text-green-700 font-bold";
-                if(row.grade === "کمزور") gradeColor = "text-red-600 font-bold";
+                // --- COLORED LOGIC ---
+                let rowColorClass = "text-gray-700"; // Default
+                
+                if (row.grade === "ممتاز") {
+                    rowColorClass = "text-emerald-700 font-bold"; // Green
+                } else if (row.grade === "بہتر") {
+                    rowColorClass = "text-blue-600 font-bold"; // Blue
+                } else if (row.grade === "مناسب") {
+                    rowColorClass = "text-amber-600 font-bold"; // Orange
+                } else if (row.grade === "کمزور") {
+                    rowColorClass = "text-red-600 font-bold"; // Red
+                }
 
                 tbody.innerHTML += `
                     <tr class="hover:bg-teal-50 transition-colors odd:bg-white even:bg-slate-50">
@@ -533,8 +544,9 @@ async function fetchAndRenderReport(db, user) {
                         <td class="px-4 py-3 border-l border-slate-200">${row.teacher}</td>
                         <td class="px-4 py-3 border-l border-slate-200">${row.className}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800">${row.book}</td>
-                        <td class="px-4 py-3 border-l border-slate-200 ${gradeColor}">${row.grade}</td>
-                        <td class="px-4 py-3 font-bold font-sans ${row.percent < 40 ? 'text-red-600' : 'text-gray-800'}">${pVal}</td>
+                        
+                        <td class="px-4 py-3 border-l border-slate-200 ${rowColorClass}">${row.grade}</td>
+                        <td class="px-4 py-3 font-sans ${rowColorClass}">${pVal}</td>
                     </tr>
                 `;
             });
