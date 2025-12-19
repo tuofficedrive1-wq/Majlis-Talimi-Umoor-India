@@ -56,11 +56,15 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
+                
+                <div class="relative">
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Class (Multiple)</label>
-                    <p class="text-[10px] text-gray-500 mb-1">Ctrl + Click to select multiple</p>
-                    <select id="js-class-filter" multiple class="w-full p-2 border rounded text-sm urdu-font bg-gray-100 cursor-not-allowed h-24" disabled>
-                        </select>
+                    <button type="button" id="js-class-dropdown-btn" class="w-full p-2 border rounded text-sm text-left bg-gray-100 text-gray-500 flex justify-between items-center cursor-not-allowed" disabled>
+                        <span class="truncate urdu-font">Tamam Classes</span>
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </button>
+                    <div id="js-class-dropdown-content" class="hidden absolute z-50 w-full bg-white border rounded shadow-xl mt-1 max-h-60 overflow-y-auto p-1">
+                        </div>
                 </div>
 
                 <div>
@@ -129,15 +133,14 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
 
     // --- DOM REFERENCES ---
     const jamiaSelect = document.getElementById('js-jamia-filter');
-    const classSelect = document.getElementById('js-class-filter');
+    const classDropdownBtn = document.getElementById('js-class-dropdown-btn');
+    const classDropdownContent = document.getElementById('js-class-dropdown-content');
     const teacherSelect = document.getElementById('js-teacher-filter');
     const gradeSelect = document.getElementById('js-grade-filter');
     const startMonthInput = document.getElementById('js-month-start');
 
     // --- 1. POPULATE JAMIA DROPDOWN ---
     const jamiaSet = new Set();
-    
-    // Naya Structure
     if (userProfileData.academicYears) {
         Object.keys(userProfileData.academicYears).forEach(yr => {
             const struct = userProfileData.academicYears[yr]?.karkardagiStructure;
@@ -148,43 +151,80 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             }
         });
     }
-
-    // Backup Structure
     if (userProfileData.jamiaatList && Array.isArray(userProfileData.jamiaatList)) {
         userProfileData.jamiaatList.forEach(j => jamiaSet.add(j.trim()));
     }
-
     Array.from(jamiaSet).sort().forEach(j => {
         jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
     });
 
 
-    // --- 2. DYNAMIC FILTERS LOGIC ---
+    // --- 2. DROPDOWN TOGGLE LOGIC ---
+    classDropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Stop click from closing immediately
+        if (!classDropdownBtn.disabled) {
+            classDropdownContent.classList.toggle('hidden');
+        }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!classDropdownBtn.contains(e.target) && !classDropdownContent.contains(e.target)) {
+            classDropdownContent.classList.add('hidden');
+        }
+    });
+
+    // Function to update button text based on selection
+    const updateClassButtonText = () => {
+        const checkedBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
+        const span = classDropdownBtn.querySelector('span');
+        
+        if (checkedBoxes.length === 0) {
+            span.textContent = "Tamam Classes";
+            span.classList.remove('font-bold', 'text-teal-700');
+        } else if (checkedBoxes.length === 1) {
+            span.textContent = checkedBoxes[0].value;
+            span.classList.add('font-bold', 'text-teal-700');
+        } else {
+            span.textContent = `${checkedBoxes.length} Classes Selected`;
+            span.classList.add('font-bold', 'text-teal-700');
+        }
+    };
+
+
+    // --- 3. DYNAMIC FILTERS LOGIC ---
     const updateDropdowns = () => {
         const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
         
         // Reset Dropdowns
-        classSelect.innerHTML = ''; // Clear for multi-select
+        classDropdownContent.innerHTML = '';
+        updateClassButtonText();
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
         if (!selectedJamia) {
-            classSelect.disabled = true;
+            // Disable
+            classDropdownBtn.disabled = true;
+            classDropdownBtn.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+            classDropdownBtn.classList.remove('bg-white', 'text-gray-700');
+            
             teacherSelect.disabled = true;
-            classSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
             teacherSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
             return;
         }
 
-        classSelect.disabled = false;
+        // Enable
+        classDropdownBtn.disabled = false;
+        classDropdownBtn.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+        classDropdownBtn.classList.add('bg-white', 'text-gray-700');
+
         teacherSelect.disabled = false;
-        classSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
         teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
 
+        // Find Data
         const academicYear = getAcademicYear(currentStartMonth);
         let jamiaData = null;
 
-        // Find Data
         if (userProfileData.academicYears && userProfileData.academicYears[academicYear]) {
             const struct = userProfileData.academicYears[academicYear].karkardagiStructure || [];
             jamiaData = struct.find(j => j.jamiaName.trim() === selectedJamia);
@@ -194,17 +234,15 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             jamiaData = userProfileData.academicStructure.find(j => j.jamiaName.trim() === selectedJamia);
         }
 
-        // Populate Found Data
+        // Populate
         if (jamiaData) {
             const uniqueClasses = new Set();
             const uniqueTeachers = new Set();
 
             const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
-
             teachersList.forEach(t => {
                 const tName = t.name || t.teacherName || t.ustad;
                 if (tName) uniqueTeachers.add(tName.trim());
-
                 if (Array.isArray(t.periods)) {
                     t.periods.forEach(p => {
                         const cName = p.className || p.class || p.darja;
@@ -217,17 +255,25 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 Object.keys(jamiaData.classes).forEach(c => uniqueClasses.add(c));
             }
 
-            // Dropdowns Update
+            // A. Populate Classes (CHECKBOXES)
             Array.from(uniqueClasses).sort().forEach(cls => {
-                classSelect.innerHTML += `<option value="${cls}">${cls}</option>`;
+                const label = document.createElement('label');
+                label.className = "flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100 last:border-0";
+                label.innerHTML = `
+                    <input type="checkbox" value="${cls}" class="js-class-checkbox form-checkbox h-4 w-4 text-teal-600 rounded focus:ring-teal-500 border-gray-300">
+                    <span class="text-sm text-gray-700 urdu-font select-none">${cls}</span>
+                `;
+                
+                // Add listener to update button text immediately on change
+                label.querySelector('input').addEventListener('change', updateClassButtonText);
+                
+                classDropdownContent.appendChild(label);
             });
 
+            // B. Populate Teachers (STANDARD SELECT)
             Array.from(uniqueTeachers).sort().forEach(tea => {
                 teacherSelect.innerHTML += `<option value="${tea}">${tea}</option>`;
             });
-
-        } else {
-            console.warn("Jamia ka data nahi mila for:", academicYear);
         }
     };
 
@@ -258,12 +304,13 @@ async function fetchAndRenderReport(db, user) {
     const endMonth = document.getElementById('js-month-end').value;
     const jamiaFilter = document.getElementById('js-jamia-filter').value;
     
-    // Multi-Select Class Logic
-    const classSelect = document.getElementById('js-class-filter');
-    const selectedClasses = Array.from(classSelect.selectedOptions).map(option => option.value);
+    // GET SELECTED CLASSES FROM CHECKBOXES
+    const classDropdownContent = document.getElementById('js-class-dropdown-content');
+    const checkedBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
+    const selectedClasses = Array.from(checkedBoxes).map(cb => cb.value);
 
     const teacherFilter = document.getElementById('js-teacher-filter').value;
-    const gradeFilter = document.getElementById('js-grade-filter').value; // New Filter
+    const gradeFilter = document.getElementById('js-grade-filter').value; 
     
     const loader = document.getElementById('js-loader');
     const reportArea = document.getElementById('js-report-area');
@@ -285,7 +332,7 @@ async function fetchAndRenderReport(db, user) {
     if (jamiaFilter) {
         headerText = jamiaFilter;
         let details = [];
-        if (selectedClasses.length > 0) details.push(`Classes: ${selectedClasses.length}`);
+        if (selectedClasses.length > 0) details.push(`Classes: ${selectedClasses.join(', ')}`);
         if (teacherFilter) details.push(`Teacher: ${teacherFilter}`);
         if (gradeFilter) details.push(`Kaifiyat: ${gradeFilter}`);
         if (details.length > 0) subText += ` | ${details.join(' | ')}`;
@@ -312,7 +359,7 @@ async function fetchAndRenderReport(db, user) {
             filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
         }
         
-        // Class Filter (Ab Multi-Select Array Check Karega)
+        // Class Filter (Array Includes Check)
         if (selectedClasses.length > 0) {
             filteredDocs = filteredDocs.filter(d => selectedClasses.includes(d.className));
         }
@@ -330,10 +377,10 @@ async function fetchAndRenderReport(db, user) {
                         if (tName !== teacherFilter) return;
                     }
 
-                    // Grade Filter (New Logic)
+                    // Grade Filter
                     const currentGrade = getGrade(book.percentage);
                     if (gradeFilter) {
-                        if (currentGrade !== gradeFilter) return; // Skip if grade doesn't match
+                        if (currentGrade !== gradeFilter) return; 
                     }
 
                     rows.push({
