@@ -89,9 +89,8 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                             <th class="px-4 py-3 border-l border-slate-200">استاذ</th>
                             <th class="px-4 py-3 border-l border-slate-200">درجہ</th>
                             <th class="px-4 py-3 border-l border-slate-200">کتاب</th>
-                            <th class="px-4 py-3 border-l border-slate-200 w-24">فیصلہ</th>
-                            <th class="px-4 py-3 w-24">کیفیت (%)</th>
-                        </tr>
+                            
+                            <th class="px-4 py-3 border-l border-slate-200 w-24">کیفیت</th> <th class="px-4 py-3 w-24">فیصد (%)</th> </tr>
                     </thead>
                     <tbody id="js-table-body" class="text-gray-800 urdu-font divide-y divide-gray-200">
                         </tbody>
@@ -112,7 +111,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     const classSelect = document.getElementById('js-class-filter');
     const teacherSelect = document.getElementById('js-teacher-filter');
 
-    // Jamia list bharna
     if (userProfileData && userProfileData.jamiaatList) {
         userProfileData.jamiaatList.forEach(j => {
             jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
@@ -127,7 +125,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         classSelect.innerHTML = '<option value="">Tamam Classes</option>';
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
-        // Agar Jamia select nahi ki gayi to disable kar dein
         if (!selectedJamia) {
             classSelect.disabled = true;
             teacherSelect.disabled = true;
@@ -136,48 +133,38 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             return;
         }
 
-        // Enable Dropdowns
         classSelect.disabled = false;
         teacherSelect.disabled = false;
         classSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
         teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
 
         // --- DATA FINDING LOGIC (Robust) ---
-        // Step 1: Data kahan hai? (Naya ya Purana format check karein)
         let structureData = [];
         if (userProfileData.academicStructure && Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0) {
             structureData = userProfileData.academicStructure;
         } else if (userProfileData.structure && Array.isArray(userProfileData.structure)) {
-            structureData = userProfileData.structure; // Purana backup
+            structureData = userProfileData.structure; 
         }
 
-        // Step 2: Selected Jamia ka Data dhundna
         const jamiaData = structureData.find(j => j.jamiaName === selectedJamia);
             
         if (jamiaData) {
-            console.log("Jamia Data Found:", jamiaData); // Debugging ke liye
-
             // --- POPULATE TEACHERS ---
-            // Teachers array ko dhundne ke liye alag alag naam check karein (teachers, asatiza etc)
             const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
             
             if (Array.isArray(teachersList)) {
-                // Pehle duplicate names hatane ke liye Set use karein
                 const uniqueTeachers = new Set();
 
                 teachersList.forEach(t => {
-                    // Teacher ka naam nikalna (Object ho ya String)
                     let tName = "";
                     if (typeof t === 'object') {
                         tName = t.name || t.teacherName || t.ustad || "";
                     } else {
-                        tName = t; // Agar direct string hai
+                        tName = t;
                     }
-
                     if (tName) uniqueTeachers.add(tName.trim());
                 });
 
-                // Dropdown mein bharna
                 uniqueTeachers.forEach(name => {
                     teacherSelect.innerHTML += `<option value="${name}">${name}</option>`;
                 });
@@ -185,13 +172,10 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
 
             // --- POPULATE CLASSES ---
             if (jamiaData.classes) {
-                // Classes object ki keys (Class Names) nikalna
                 Object.keys(jamiaData.classes).forEach(cls => {
                     classSelect.innerHTML += `<option value="${cls}">${cls}</option>`;
                 });
             }
-        } else {
-            console.warn("Selected Jamia ka data structure mein nahi mila:", selectedJamia);
         }
     });
 
@@ -202,7 +186,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         const area = document.getElementById('js-report-area');
         const btns = document.querySelectorAll('.no-print');
         
-        // Hide UI elements before screenshot
         btns.forEach(b => b.style.display = 'none'); 
         
         html2canvas(area, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
@@ -210,7 +193,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             link.download = `Jaiza_Report_${Date.now()}.png`;
             link.href = canvas.toDataURL();
             link.click();
-            // Show UI elements back
             btns.forEach(b => b.style.display = ''); 
         });
     });
@@ -230,7 +212,6 @@ async function fetchAndRenderReport(db, user) {
     const mainTitle = document.getElementById('js-report-main-title');
     const subTitle = document.getElementById('js-report-sub-title');
 
-    // Validation
     if (!startMonth || !endMonth) { alert("Start aur End month select karein."); return; }
     if (startMonth > endMonth) { alert("Shuru ka mahina baad ka nahi ho sakta."); return; }
 
@@ -243,7 +224,7 @@ async function fetchAndRenderReport(db, user) {
     let subText = `Duration: ${startMonth} to ${endMonth}`;
 
     if (jamiaFilter) {
-        headerText = jamiaFilter; // Main title Jamia ban jayega
+        headerText = jamiaFilter;
         let details = [];
         if (classFilter) details.push(`Class: ${classFilter}`);
         if (teacherFilter) details.push(`Teacher: ${teacherFilter}`);
@@ -255,7 +236,6 @@ async function fetchAndRenderReport(db, user) {
     mainTitle.textContent = headerText;
     subTitle.textContent = subText;
 
-
     try {
         const qRef = collection(db, 'jaiza_forms');
         const q = query(qRef, where("createdBy", "==", user.uid));
@@ -263,33 +243,28 @@ async function fetchAndRenderReport(db, user) {
         const snapshot = await getDocs(q);
         let allDocs = snapshot.docs.map(d => d.data());
 
-        // --- FILTERING LOGIC ---
-        // 1. Filter by Date
+        // --- FILTERING ---
         let filteredDocs = allDocs.filter(d => {
             return d.monthKey >= startMonth && d.monthKey <= endMonth;
         });
 
-        // 2. Filter by Jamia (Doc Level)
         if (jamiaFilter) {
             filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
         }
-
-        // 3. Filter by Class (Doc Level)
         if (classFilter) {
             filteredDocs = filteredDocs.filter(d => d.className === classFilter);
         }
 
-        // --- FLATTENING DATA (Doc -> Book Rows) ---
+        // --- FLATTENING ---
         let rows = [];
 
         filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
                 doc.books.forEach(book => {
                     
-                    // 4. Filter by Teacher (Book Level)
                     if (teacherFilter) {
                         const tName = book.teacherName || "";
-                        if (tName !== teacherFilter) return; // Skip if teacher doesn't match
+                        if (tName !== teacherFilter) return;
                     }
 
                     rows.push({
@@ -306,7 +281,6 @@ async function fetchAndRenderReport(db, user) {
         });
 
         // --- SORTING ---
-        // Order: Month -> Jamia -> Class -> Teacher
         rows.sort((a, b) => {
             if (a.month !== b.month) return a.month.localeCompare(b.month);
             if (a.jamia !== b.jamia) return a.jamia.localeCompare(b.jamia);
@@ -321,11 +295,9 @@ async function fetchAndRenderReport(db, user) {
             rows.forEach((row, index) => {
                 const pVal = row.percent !== null && row.percent !== undefined ? row.percent.toFixed(1) + "%" : "-";
                 
-                // Format Month (2025-10 -> Oct-25)
                 const dateObj = new Date(row.month + "-01");
                 const monthStr = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit' });
 
-                // Grade Color
                 let gradeColor = "text-gray-700";
                 if(row.grade === "ممتاز") gradeColor = "text-green-700 font-bold";
                 if(row.grade === "کمزور") gradeColor = "text-red-600 font-bold";
@@ -338,9 +310,8 @@ async function fetchAndRenderReport(db, user) {
                         <td class="px-4 py-3 border-l border-slate-200">${row.teacher}</td>
                         <td class="px-4 py-3 border-l border-slate-200">${row.className}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800">${row.book}</td>
-                        <td class="px-4 py-3 border-l border-slate-200 ${gradeColor}">${row.grade}</td>
-                        <td class="px-4 py-3 font-bold font-sans ${row.percent < 40 ? 'text-red-600' : 'text-gray-800'}">${pVal}</td>
-                    </tr>
+                        
+                        <td class="px-4 py-3 border-l border-slate-200 ${gradeColor}">${row.grade}</td> <td class="px-4 py-3 font-bold font-sans ${row.percent < 40 ? 'text-red-600' : 'text-gray-800'}">${pVal}</td> </tr>
                 `;
             });
         }
@@ -354,4 +325,3 @@ async function fetchAndRenderReport(db, user) {
         alert("Error: Data load karne mein masla hua.");
     }
 }
-
