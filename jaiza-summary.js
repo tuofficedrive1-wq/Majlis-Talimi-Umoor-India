@@ -180,7 +180,7 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     });
 
 
-    // --- 2. DROPDOWN TOGGLE LOGIC (Compact) ---
+    // --- 2. DROPDOWN TOGGLE LOGIC ---
     const setupCompactDropdown = (btn, content, checkboxClass, defaultText) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -311,41 +311,101 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     // --- 4. BUTTON CLICK EVENTS ---
     document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, user));
     
-    // *** UPDATED DOWNLOAD LOGIC FOR MOBILE FIX ***
-    document.getElementById('js-download-img').addEventListener('click', () => {
-        const area = document.getElementById('js-report-area');
-        const btns = document.querySelectorAll('.no-print');
-        
-        // 1. Buttons chupayein
-        btns.forEach(b => b.style.display = 'none'); 
-        
-        // 2. Original styles save karein
-        const originalWidth = area.style.width;
-        const originalOverflow = area.style.overflow;
-        
-        // 3. Force Desktop Width (Mobile fix)
-        // Ye container ko zabardasti chouda kar dega taake text wrap na ho
-        area.style.width = "1200px"; 
-        area.style.overflow = "visible"; 
-        
-        // 4. Capture with Desktop viewport settings
-        html2canvas(area, { 
-            scale: 2, 
-            backgroundColor: "#ffffff",
-            windowWidth: 1400, // Pretend browser is 1400px wide
-            width: 1200 // Capture 1200px of content
-        }).then(canvas => {
-            // 5. Download Trigger
+    // *** NEW DOWNLOAD LOGIC: Fixed Width Container ***
+    document.getElementById('js-download-img').addEventListener('click', async () => {
+        const loader = document.getElementById('js-loader');
+        loader.classList.remove('hidden'); 
+
+        try {
+            const tableElement = document.querySelector('#js-report-area table');
+            if (!tableElement) {
+                alert("Table nahi mili. Pehle report show karein.");
+                loader.classList.add('hidden');
+                return;
+            }
+
+            // 1. Create Temporary Container (1200px Wide)
+            const tempDiv = document.createElement('div');
+            tempDiv.style.width = '1200px'; 
+            tempDiv.style.padding = '25px';
+            tempDiv.style.backgroundColor = '#ffffff';
+            tempDiv.style.direction = 'rtl';
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px'; 
+            tempDiv.style.top = '0';
+            tempDiv.style.fontFamily = "'Jameel Noori Nastaleeq', 'Poppins', sans-serif";
+
+            // 2. Add Header
+            const mainTitle = document.getElementById('js-report-main-title').textContent;
+            const subTitle = document.getElementById('js-report-sub-title').textContent;
+
+            const headerHtml = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="font-family: 'Jameel Noori Nastaleeq', sans-serif; font-size: 32px; font-weight: bold; color: #0f766e; margin: 0;">${mainTitle}</h1>
+                    <p style="font-family: sans-serif; font-size: 18px; color: #555; margin-top: 5px;">${subTitle}</p>
+                </div>
+            `;
+
+            // 3. Clone Table & Style it for Image
+            const clonedTable = tableElement.cloneNode(true);
+            clonedTable.style.width = '100%';
+            clonedTable.style.borderCollapse = 'collapse';
+            
+            // Explicit styling for cells to ensure colors/fonts transfer correctly
+            clonedTable.querySelectorAll('th').forEach(th => {
+                th.style.backgroundColor = '#f1f5f9'; // slate-100
+                th.style.color = '#334155'; // slate-700
+                th.style.border = '1px solid #cbd5e1';
+                th.style.padding = '12px';
+                th.style.fontSize = '16px';
+                th.style.fontFamily = "'Jameel Noori Nastaleeq', sans-serif";
+            });
+
+            clonedTable.querySelectorAll('td').forEach(td => {
+                td.style.border = '1px solid #e2e8f0';
+                td.style.padding = '10px';
+                td.style.fontSize = '15px';
+                td.style.textAlign = 'center';
+                
+                // Transfer Colors explicitly
+                if (td.classList.contains('text-red-600')) td.style.color = '#dc2626';
+                if (td.classList.contains('text-green-700')) td.style.color = '#15803d';
+                if (td.classList.contains('urdu-font')) td.style.fontFamily = "'Jameel Noori Nastaleeq', sans-serif";
+            });
+
+            // 4. Assemble
+            tempDiv.innerHTML = headerHtml;
+            tempDiv.appendChild(clonedTable);
+            
+            // Footer
+            const footer = document.createElement('div');
+            footer.innerHTML = `<p style="text-align: center; font-size: 12px; color: #999; margin-top: 20px; font-family: sans-serif;">Generated via Monthly Reporting App</p>`;
+            tempDiv.appendChild(footer);
+
+            document.body.appendChild(tempDiv);
+
+            // 5. Capture Image
+            const canvas = await html2canvas(tempDiv, {
+                scale: 2, 
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+
+            // 6. Download
             const link = document.createElement('a');
             link.download = `Jaiza_Report_${Date.now()}.png`;
-            link.href = canvas.toDataURL();
+            link.href = canvas.toDataURL('image/png');
             link.click();
-            
-            // 6. Restore Mobile Styles
-            area.style.width = originalWidth;
-            area.style.overflow = originalOverflow;
-            btns.forEach(b => b.style.display = ''); 
-        });
+
+            // 7. Cleanup
+            document.body.removeChild(tempDiv);
+
+        } catch (err) {
+            console.error(err);
+            alert("Image download karne mein error aaya.");
+        } finally {
+            loader.classList.add('hidden');
+        }
     });
 }
 
