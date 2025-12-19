@@ -115,14 +115,14 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             <p class="mt-2 text-teal-600 font-semibold">Data load ho raha hai...</p>
         </div>
 
-        <div id="js-report-area" class="hidden mt-6 overflow-hidden bg-white rounded-lg">
+        <div id="js-report-area" class="hidden mt-6 bg-white rounded-lg">
             
             <div id="js-report-header-bg" class="bg-teal-700 text-white p-4 text-center rounded-t-lg border-b-4 border-teal-900">
                 <h2 id="js-report-main-title" class="text-2xl font-bold urdu-font">جائزہ رپورٹ</h2>
                 <p id="js-report-sub-title" class="text-sm text-teal-100 mt-1 opacity-90"></p>
             </div>
 
-            <div class="overflow-x-auto">
+            <div id="js-table-wrapper" class="overflow-x-auto">
                 <table class="min-w-full text-center text-sm border-collapse" dir="rtl">
                     <thead>
                         <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-base">
@@ -152,15 +152,10 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
 
     // --- DOM REFERENCES ---
     const jamiaSelect = document.getElementById('js-jamia-filter');
-    
-    // Class Dropdown References
     const classDropdownBtn = document.getElementById('js-class-dropdown-btn');
     const classDropdownContent = document.getElementById('js-class-dropdown-content');
-    
-    // Grade Dropdown References
     const gradeDropdownBtn = document.getElementById('js-grade-dropdown-btn');
     const gradeDropdownContent = document.getElementById('js-grade-dropdown-content');
-
     const teacherSelect = document.getElementById('js-teacher-filter');
     const startMonthInput = document.getElementById('js-month-start');
 
@@ -185,27 +180,20 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     });
 
 
-    // --- 2. DROPDOWN TOGGLE LOGIC (Space Saving) ---
-    // Function to handle opening/closing and text update for any compact dropdown
+    // --- 2. DROPDOWN TOGGLE LOGIC (Compact) ---
     const setupCompactDropdown = (btn, content, checkboxClass, defaultText) => {
-        
-        // Open/Close on Click
         btn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Click bubble rokne ke liye
+            e.stopPropagation();
             if (!btn.disabled) {
-                // Doosra dropdown band karein taake clash na ho
                 if(content !== classDropdownContent) classDropdownContent.classList.add('hidden');
                 if(content !== gradeDropdownContent) gradeDropdownContent.classList.add('hidden');
-                
                 content.classList.toggle('hidden');
             }
         });
 
-        // Update Button Text Logic
         const updateText = () => {
             const checkedBoxes = content.querySelectorAll(`.${checkboxClass}:checked`);
             const span = btn.querySelector('span');
-            
             if (checkedBoxes.length === 0) {
                 span.textContent = defaultText;
                 span.classList.remove('font-bold', 'text-teal-700');
@@ -213,28 +201,21 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 span.textContent = checkedBoxes[0].value;
                 span.classList.add('font-bold', 'text-teal-700');
             } else {
-                span.textContent = `${checkedBoxes.length} Selected`; // E.g. "3 Selected"
+                span.textContent = `${checkedBoxes.length} Selected`;
                 span.classList.add('font-bold', 'text-teal-700');
             }
         };
 
-        // Checkboxes par listener lagana
-        // Grade wale static checkboxes ke liye abhi laga dete hain
         content.querySelectorAll(`.${checkboxClass}`).forEach(cb => {
             cb.addEventListener('change', updateText);
         });
 
-        // Yeh function return karte hain taake baad mein Class checkboxes ke liye reuse kar sakein
         return updateText;
     };
 
-    // Setup Class Dropdown
     const updateClassText = setupCompactDropdown(classDropdownBtn, classDropdownContent, 'js-class-checkbox', 'Tamam Classes');
-
-    // Setup Grade Dropdown
     const updateGradeText = setupCompactDropdown(gradeDropdownBtn, gradeDropdownContent, 'js-grade-checkbox', 'Tamam (All)');
 
-    // Close Dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         if (!classDropdownBtn.contains(e.target) && !classDropdownContent.contains(e.target)) {
             classDropdownContent.classList.add('hidden');
@@ -245,21 +226,18 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     });
 
 
-    // --- 3. DYNAMIC FILTERS LOGIC (Class & Teacher) ---
+    // --- 3. DYNAMIC FILTERS LOGIC ---
     const updateDropdowns = () => {
         const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
         
-        // Reset Logic
-        classDropdownContent.innerHTML = ''; // Classes clear
-        // Button text reset
+        classDropdownContent.innerHTML = ''; 
         const span = classDropdownBtn.querySelector('span');
         span.textContent = "Tamam Classes";
         span.classList.remove('font-bold', 'text-teal-700');
         
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
-        // Agar Jamia select nahi hai to disable rakhein
         if (!selectedJamia) {
             classDropdownBtn.disabled = true;
             classDropdownBtn.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
@@ -270,7 +248,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             return;
         }
 
-        // Enable karein
         classDropdownBtn.disabled = false;
         classDropdownBtn.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
         classDropdownBtn.classList.add('bg-white', 'text-gray-700');
@@ -278,7 +255,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         teacherSelect.disabled = false;
         teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
 
-        // Data dhoondna
         const academicYear = getAcademicYear(currentStartMonth);
         let jamiaData = null;
 
@@ -291,12 +267,11 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             jamiaData = userProfileData.academicStructure.find(j => j.jamiaName.trim() === selectedJamia);
         }
 
-        // Dropdowns Bharna
         if (jamiaData) {
             const uniqueClasses = new Set();
             const uniqueTeachers = new Set();
-
             const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
+            
             teachersList.forEach(t => {
                 const tName = t.name || t.teacherName || t.ustad;
                 if (tName) uniqueTeachers.add(tName.trim());
@@ -312,7 +287,6 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 Object.keys(jamiaData.classes).forEach(c => uniqueClasses.add(c));
             }
 
-            // A. Fill Class Dropdown (Checkboxes)
             Array.from(uniqueClasses).sort().forEach(cls => {
                 const label = document.createElement('label');
                 label.className = "flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100 last:border-0";
@@ -320,14 +294,10 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                     <input type="checkbox" value="${cls}" class="js-class-checkbox form-checkbox h-4 w-4 text-teal-600 rounded focus:ring-teal-500 border-gray-300">
                     <span class="text-sm text-gray-700 urdu-font select-none">${cls}</span>
                 `;
-                
-                // Add listener to update button text immediately
                 label.querySelector('input').addEventListener('change', updateClassText);
-                
                 classDropdownContent.appendChild(label);
             });
 
-            // B. Fill Teacher Select
             Array.from(uniqueTeachers).sort().forEach(tea => {
                 teacherSelect.innerHTML += `<option value="${tea}">${tea}</option>`;
             });
@@ -338,18 +308,42 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     startMonthInput.addEventListener('change', updateDropdowns);
 
 
-    // --- CLICK EVENTS ---
+    // --- 4. BUTTON CLICK EVENTS ---
     document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, user));
     
+    // *** UPDATED DOWNLOAD LOGIC FOR MOBILE FIX ***
     document.getElementById('js-download-img').addEventListener('click', () => {
         const area = document.getElementById('js-report-area');
         const btns = document.querySelectorAll('.no-print');
+        
+        // 1. Buttons chupayein
         btns.forEach(b => b.style.display = 'none'); 
-        html2canvas(area, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
+        
+        // 2. Original styles save karein
+        const originalWidth = area.style.width;
+        const originalOverflow = area.style.overflow;
+        
+        // 3. Force Desktop Width (Mobile fix)
+        // Ye container ko zabardasti chouda kar dega taake text wrap na ho
+        area.style.width = "1200px"; 
+        area.style.overflow = "visible"; 
+        
+        // 4. Capture with Desktop viewport settings
+        html2canvas(area, { 
+            scale: 2, 
+            backgroundColor: "#ffffff",
+            windowWidth: 1400, // Pretend browser is 1400px wide
+            width: 1200 // Capture 1200px of content
+        }).then(canvas => {
+            // 5. Download Trigger
             const link = document.createElement('a');
             link.download = `Jaiza_Report_${Date.now()}.png`;
             link.href = canvas.toDataURL();
             link.click();
+            
+            // 6. Restore Mobile Styles
+            area.style.width = originalWidth;
+            area.style.overflow = originalOverflow;
             btns.forEach(b => b.style.display = ''); 
         });
     });
@@ -361,12 +355,10 @@ async function fetchAndRenderReport(db, user) {
     const endMonth = document.getElementById('js-month-end').value;
     const jamiaFilter = document.getElementById('js-jamia-filter').value;
     
-    // Get Selected Classes (from hidden checkboxes)
     const classDropdownContent = document.getElementById('js-class-dropdown-content');
     const checkedClassBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
     const selectedClasses = Array.from(checkedClassBoxes).map(cb => cb.value);
 
-    // Get Selected Grades (from hidden checkboxes)
     const gradeDropdownContent = document.getElementById('js-grade-dropdown-content');
     const checkedGradeBoxes = gradeDropdownContent.querySelectorAll('.js-grade-checkbox:checked');
     const selectedGrades = Array.from(checkedGradeBoxes).map(cb => cb.value);
@@ -386,7 +378,7 @@ async function fetchAndRenderReport(db, user) {
     reportArea.classList.add('hidden');
     tbody.innerHTML = '';
 
-    // --- DYNAMIC HEADER TEXT ---
+    // Header Text
     let headerText = "جائزہ رپورٹ";
     let subText = `Duration: ${startMonth} to ${endMonth}`;
 
@@ -411,34 +403,28 @@ async function fetchAndRenderReport(db, user) {
         const snapshot = await getDocs(q);
         let allDocs = snapshot.docs.map(d => d.data());
 
-        // --- FILTERING ---
-        let filteredDocs = allDocs.filter(d => {
-            return d.monthKey >= startMonth && d.monthKey <= endMonth;
-        });
+        // Filtering
+        let filteredDocs = allDocs.filter(d => d.monthKey >= startMonth && d.monthKey <= endMonth);
 
         if (jamiaFilter) {
             filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
         }
-        
-        // Class Filter
         if (selectedClasses.length > 0) {
             filteredDocs = filteredDocs.filter(d => selectedClasses.includes(d.className));
         }
 
-        // --- FLATTENING & GRADE FILTER ---
+        // Flattening
         let rows = [];
 
         filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
                 doc.books.forEach(book => {
                     
-                    // Teacher Filter
                     if (teacherFilter) {
                         const tName = book.teacherName || "";
                         if (tName !== teacherFilter) return;
                     }
 
-                    // Grade Filter
                     const currentGrade = getGrade(book.percentage);
                     if (selectedGrades.length > 0) {
                         if (!selectedGrades.includes(currentGrade)) return; 
@@ -457,7 +443,7 @@ async function fetchAndRenderReport(db, user) {
             }
         });
 
-        // --- SORTING ---
+        // Sorting
         rows.sort((a, b) => {
             if (a.month !== b.month) return a.month.localeCompare(b.month);
             if (a.jamia !== b.jamia) return a.jamia.localeCompare(b.jamia);
@@ -465,7 +451,7 @@ async function fetchAndRenderReport(db, user) {
             return a.teacher.localeCompare(b.teacher);
         });
 
-        // --- RENDERING ---
+        // Rendering
         if (rows.length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-red-500 font-bold bg-red-50">Is filter ke mutabiq koi record nahi mila.</td></tr>`;
         } else {
