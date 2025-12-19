@@ -74,15 +74,34 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                     </select>
                 </div>
 
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Kaifiyat (Grade)</label>
-                    <select id="js-grade-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-teal-500">
-                        <option value="">Tamam (All)</option>
-                        <option value="ممتاز">ممتاز (Excellent)</option>
-                        <option value="بہتر">بہتر (Very Good)</option>
-                        <option value="مناسب">مناسب (Good)</option>
-                        <option value="کمزور">کمزور (Weak)</option>
-                    </select>
+                <div class="relative">
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Kaifiyat (Multiple)</label>
+                    <button type="button" id="js-grade-dropdown-btn" class="w-full p-2 border rounded text-sm text-left bg-white text-gray-700 flex justify-between items-center border-gray-300">
+                        <span class="truncate urdu-font">Tamam (All)</span>
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </button>
+                    <div id="js-grade-dropdown-content" class="hidden absolute z-50 w-full bg-white border rounded shadow-xl mt-1 max-h-60 overflow-y-auto p-1">
+                        <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
+                            <input type="checkbox" value="ممتاز" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
+                            <span class="text-sm text-gray-700 urdu-font">ممتاز (Excellent)</span>
+                        </label>
+                        <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
+                            <input type="checkbox" value="بہتر" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
+                            <span class="text-sm text-gray-700 urdu-font">بہتر (Very Good)</span>
+                        </label>
+                        <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
+                            <input type="checkbox" value="مناسب" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
+                            <span class="text-sm text-gray-700 urdu-font">مناسب (Good)</span>
+                        </label>
+                        <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
+                            <input type="checkbox" value="کمزور" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
+                            <span class="text-sm text-gray-700 urdu-font">کمزور (Weak)</span>
+                        </label>
+                         <label class="flex items-center space-x-3 p-2 hover:bg-teal-50 cursor-pointer rounded transition border-b border-gray-100">
+                            <input type="checkbox" value="-" class="js-grade-checkbox form-checkbox h-4 w-4 text-teal-600 rounded border-gray-300">
+                            <span class="text-sm text-gray-700 urdu-font">- (No Grade)</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -133,11 +152,18 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
 
     // --- DOM REFERENCES ---
     const jamiaSelect = document.getElementById('js-jamia-filter');
+    
+    // Class Dropdown Refs
     const classDropdownBtn = document.getElementById('js-class-dropdown-btn');
     const classDropdownContent = document.getElementById('js-class-dropdown-content');
+    
+    // Grade Dropdown Refs
+    const gradeDropdownBtn = document.getElementById('js-grade-dropdown-btn');
+    const gradeDropdownContent = document.getElementById('js-grade-dropdown-content');
+
     const teacherSelect = document.getElementById('js-teacher-filter');
-    const gradeSelect = document.getElementById('js-grade-filter');
     const startMonthInput = document.getElementById('js-month-start');
+
 
     // --- 1. POPULATE JAMIA DROPDOWN ---
     const jamiaSet = new Set();
@@ -159,47 +185,71 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     });
 
 
-    // --- 2. DROPDOWN TOGGLE LOGIC ---
-    classDropdownBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Stop click from closing immediately
-        if (!classDropdownBtn.disabled) {
-            classDropdownContent.classList.toggle('hidden');
-        }
-    });
+    // --- 2. DROPDOWN TOGGLE LOGIC (Generic) ---
+    const setupDropdown = (btn, content, checkboxClass, defaultText) => {
+        // Toggle
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!btn.disabled) {
+                // Close other dropdowns
+                if(content !== classDropdownContent) classDropdownContent.classList.add('hidden');
+                if(content !== gradeDropdownContent) gradeDropdownContent.classList.add('hidden');
+                
+                content.classList.toggle('hidden');
+            }
+        });
 
-    // Close dropdown when clicking outside
+        // Update Text
+        const updateText = () => {
+            const checkedBoxes = content.querySelectorAll(`.${checkboxClass}:checked`);
+            const span = btn.querySelector('span');
+            
+            if (checkedBoxes.length === 0) {
+                span.textContent = defaultText;
+                span.classList.remove('font-bold', 'text-teal-700');
+            } else if (checkedBoxes.length === 1) {
+                span.textContent = checkedBoxes[0].value;
+                span.classList.add('font-bold', 'text-teal-700');
+            } else {
+                span.textContent = `${checkedBoxes.length} Selected`;
+                span.classList.add('font-bold', 'text-teal-700');
+            }
+        };
+
+        // Attach listeners to checkboxes
+        content.querySelectorAll(`.${checkboxClass}`).forEach(cb => {
+            cb.addEventListener('change', updateText);
+        });
+    };
+
+    // Setup Class Dropdown
+    setupDropdown(classDropdownBtn, classDropdownContent, 'js-class-checkbox', 'Tamam Classes');
+
+    // Setup Grade Dropdown
+    setupDropdown(gradeDropdownBtn, gradeDropdownContent, 'js-grade-checkbox', 'Tamam (All)');
+
+    // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         if (!classDropdownBtn.contains(e.target) && !classDropdownContent.contains(e.target)) {
             classDropdownContent.classList.add('hidden');
         }
+        if (!gradeDropdownBtn.contains(e.target) && !gradeDropdownContent.contains(e.target)) {
+            gradeDropdownContent.classList.add('hidden');
+        }
     });
 
-    // Function to update button text based on selection
-    const updateClassButtonText = () => {
-        const checkedBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
-        const span = classDropdownBtn.querySelector('span');
-        
-        if (checkedBoxes.length === 0) {
-            span.textContent = "Tamam Classes";
-            span.classList.remove('font-bold', 'text-teal-700');
-        } else if (checkedBoxes.length === 1) {
-            span.textContent = checkedBoxes[0].value;
-            span.classList.add('font-bold', 'text-teal-700');
-        } else {
-            span.textContent = `${checkedBoxes.length} Classes Selected`;
-            span.classList.add('font-bold', 'text-teal-700');
-        }
-    };
 
-
-    // --- 3. DYNAMIC FILTERS LOGIC ---
+    // --- 3. DYNAMIC FILTERS LOGIC (Class & Teacher) ---
     const updateDropdowns = () => {
         const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
         
         // Reset Dropdowns
         classDropdownContent.innerHTML = '';
-        updateClassButtonText();
+        const span = classDropdownBtn.querySelector('span');
+        span.textContent = "Tamam Classes";
+        span.classList.remove('font-bold', 'text-teal-700');
+        
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
         if (!selectedJamia) {
@@ -264,8 +314,21 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                     <span class="text-sm text-gray-700 urdu-font select-none">${cls}</span>
                 `;
                 
-                // Add listener to update button text immediately on change
-                label.querySelector('input').addEventListener('change', updateClassButtonText);
+                // Add listener re-attach
+                label.querySelector('input').addEventListener('change', () => {
+                     const checkedBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
+                     const span = classDropdownBtn.querySelector('span');
+                     if (checkedBoxes.length === 0) {
+                         span.textContent = "Tamam Classes";
+                         span.classList.remove('font-bold', 'text-teal-700');
+                     } else if (checkedBoxes.length === 1) {
+                         span.textContent = checkedBoxes[0].value;
+                         span.classList.add('font-bold', 'text-teal-700');
+                     } else {
+                         span.textContent = `${checkedBoxes.length} Classes Selected`;
+                         span.classList.add('font-bold', 'text-teal-700');
+                     }
+                });
                 
                 classDropdownContent.appendChild(label);
             });
@@ -304,13 +367,17 @@ async function fetchAndRenderReport(db, user) {
     const endMonth = document.getElementById('js-month-end').value;
     const jamiaFilter = document.getElementById('js-jamia-filter').value;
     
-    // GET SELECTED CLASSES FROM CHECKBOXES
+    // Multi-Select Classes
     const classDropdownContent = document.getElementById('js-class-dropdown-content');
-    const checkedBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
-    const selectedClasses = Array.from(checkedBoxes).map(cb => cb.value);
+    const checkedClassBoxes = classDropdownContent.querySelectorAll('.js-class-checkbox:checked');
+    const selectedClasses = Array.from(checkedClassBoxes).map(cb => cb.value);
+
+    // Multi-Select Grades (NEW)
+    const gradeDropdownContent = document.getElementById('js-grade-dropdown-content');
+    const checkedGradeBoxes = gradeDropdownContent.querySelectorAll('.js-grade-checkbox:checked');
+    const selectedGrades = Array.from(checkedGradeBoxes).map(cb => cb.value);
 
     const teacherFilter = document.getElementById('js-teacher-filter').value;
-    const gradeFilter = document.getElementById('js-grade-filter').value; 
     
     const loader = document.getElementById('js-loader');
     const reportArea = document.getElementById('js-report-area');
@@ -334,7 +401,7 @@ async function fetchAndRenderReport(db, user) {
         let details = [];
         if (selectedClasses.length > 0) details.push(`Classes: ${selectedClasses.join(', ')}`);
         if (teacherFilter) details.push(`Teacher: ${teacherFilter}`);
-        if (gradeFilter) details.push(`Kaifiyat: ${gradeFilter}`);
+        if (selectedGrades.length > 0) details.push(`Kaifiyat: ${selectedGrades.join(', ')}`);
         if (details.length > 0) subText += ` | ${details.join(' | ')}`;
     } else {
         headerText = "تمام جامعات کی رپورٹ";
@@ -359,7 +426,7 @@ async function fetchAndRenderReport(db, user) {
             filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
         }
         
-        // Class Filter (Array Includes Check)
+        // Class Filter
         if (selectedClasses.length > 0) {
             filteredDocs = filteredDocs.filter(d => selectedClasses.includes(d.className));
         }
@@ -377,10 +444,10 @@ async function fetchAndRenderReport(db, user) {
                         if (tName !== teacherFilter) return;
                     }
 
-                    // Grade Filter
+                    // Grade Filter (Multi-select check)
                     const currentGrade = getGrade(book.percentage);
-                    if (gradeFilter) {
-                        if (currentGrade !== gradeFilter) return; 
+                    if (selectedGrades.length > 0) {
+                        if (!selectedGrades.includes(currentGrade)) return; 
                     }
 
                     rows.push({
