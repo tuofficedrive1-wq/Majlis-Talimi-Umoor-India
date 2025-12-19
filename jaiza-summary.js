@@ -13,7 +13,7 @@ const getGrade = (p) => {
     return "کمزور";
 };
 
-// Helper: Academic Year Calculation (Same as jaiza-form.html)
+// Helper: Academic Year Calculation (Bilkul Jaiza Form Jaisa)
 const getAcademicYear = (dateString) => {
     if (!dateString) return null;
     const [yStr, mStr] = dateString.split("-");
@@ -124,36 +124,39 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     const startMonthInput = document.getElementById('js-month-start');
 
     // --- 1. POPULATE JAMIA DROPDOWN ---
-    // Naya logic: Pehle Academic Years se Jamia nikalo, agar nahi mila to purani list se
-    const startMonthVal = startMonthInput.value;
-    const acYear = getAcademicYear(startMonthVal);
-    
-    // Set for unique Jamia names
+    // Hum `academicYears` ke andar se saare Jamiaat dhoond kar layenge
     const jamiaSet = new Set();
-
-    // A. Try getting from Academic Structure (New)
-    if (userProfileData.academicYears && userProfileData.academicYears[acYear] && Array.isArray(userProfileData.academicYears[acYear].karkardagiStructure)) {
-        userProfileData.academicYears[acYear].karkardagiStructure.forEach(j => {
-            if(j.jamiaName) jamiaSet.add(j.jamiaName);
+    
+    // Naya Structure Check
+    if (userProfileData.academicYears) {
+        Object.keys(userProfileData.academicYears).forEach(yr => {
+            const struct = userProfileData.academicYears[yr]?.karkardagiStructure;
+            if (Array.isArray(struct)) {
+                struct.forEach(j => {
+                    if (j.jamiaName) jamiaSet.add(j.jamiaName.trim());
+                });
+            }
         });
     }
 
-    // B. Fallback to Jamia List (Old)
+    // Purana Structure Check (Backup)
     if (userProfileData.jamiaatList && Array.isArray(userProfileData.jamiaatList)) {
-        userProfileData.jamiaatList.forEach(j => jamiaSet.add(j));
+        userProfileData.jamiaatList.forEach(j => jamiaSet.add(j.trim()));
     }
 
-    // Populate
-    jamiaSet.forEach(j => {
+    // Dropdown bharna
+    Array.from(jamiaSet).sort().forEach(j => {
         jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
     });
 
 
-    // --- 2. DYNAMIC FILTERS LOGIC (UPDATED TO MATCH JAIZA-FORM) ---
+    // --- 2. DYNAMIC FILTERS LOGIC (EXACT JAIZA FORM COPY) ---
     const updateDropdowns = () => {
-        const selectedJamia = jamiaSelect.value;
+        const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
         
+        console.log("Filter Update Triggered:", selectedJamia, currentStartMonth);
+
         // Reset Dropdowns
         classSelect.innerHTML = '<option value="">Tamam Classes</option>';
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
@@ -172,71 +175,77 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
 
         // --- CORE LOGIC START ---
-        // Academic Year nikalo (From Month ke hisaab se)
+        // 1. Academic Year nikalo (Jaiza Form ki tarah)
         const academicYear = getAcademicYear(currentStartMonth);
+        console.log("Calculated Academic Year:", academicYear);
+
         let jamiaData = null;
 
-        // Step A: Check Naya Structure (academicYears)
+        // 2. Data dhoondo
+        // Pehle check karein ke 'academicYears' exist karta hai ya nahi
         if (userProfileData.academicYears && userProfileData.academicYears[academicYear]) {
             const struct = userProfileData.academicYears[academicYear].karkardagiStructure || [];
-            jamiaData = struct.find(j => j.jamiaName === selectedJamia);
+            // Match Jamia Name (Trim karke compare karein)
+            jamiaData = struct.find(j => j.jamiaName.trim() === selectedJamia);
         }
 
-        // Step B: Fallback (agar naya nahi mila, to purana check karo)
+        // Backup: Agar academicYear match nahi kiya, to user ka purana structure check karein
         if (!jamiaData && userProfileData.academicStructure && Array.isArray(userProfileData.academicStructure)) {
-            jamiaData = userProfileData.academicStructure.find(j => j.jamiaName === selectedJamia);
+            console.log("Using Backup Structure");
+            jamiaData = userProfileData.academicStructure.find(j => j.jamiaName.trim() === selectedJamia);
         }
 
         // --- POPULATE FROM FOUND DATA ---
         if (jamiaData) {
-            // 1. Teachers aur Classes nikalna (Periods ke zariye)
+            console.log("Jamia Data Found:", jamiaData);
+
             const uniqueClasses = new Set();
             const uniqueTeachers = new Set();
 
-            // Agar 'teachers' array hai (New Structure mein teachers ke andar periods hote hain)
-            if (Array.isArray(jamiaData.teachers)) {
-                jamiaData.teachers.forEach(t => {
-                    const tName = t.name || t.teacherName || t.ustad;
-                    if (tName) uniqueTeachers.add(tName);
+            // Teachers Array ko loop karein
+            const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
 
-                    // Teacher ke periods se Class nikalna
-                    if (Array.isArray(t.periods)) {
-                        t.periods.forEach(p => {
-                            const cName = p.className || p.class || p.darja;
-                            if (cName) uniqueClasses.add(cName);
-                        });
-                    }
-                });
-            }
+            teachersList.forEach(t => {
+                // Teacher Name nikalna (Object ya String)
+                const tName = t.name || t.teacherName || t.ustad;
+                if (tName) uniqueTeachers.add(tName.trim());
 
-            // Fallback: Agar classes alag se defined hain (Old Structure)
+                // *** CRITICAL STEP: Periods ke andar se Class nikalna ***
+                // Jaiza form yahi karta hai: t.periods loop karta hai
+                if (Array.isArray(t.periods)) {
+                    t.periods.forEach(p => {
+                        const cName = p.className || p.class || p.darja;
+                        if (cName) uniqueClasses.add(cName.trim());
+                    });
+                }
+            });
+
+            // Backup: Agar classes alag se defined hain (Old Structure)
             if (jamiaData.classes && typeof jamiaData.classes === 'object') {
                 Object.keys(jamiaData.classes).forEach(c => uniqueClasses.add(c));
             }
 
-            // 2. Dropdowns Fill Karna
-            // Classes
-            const sortedClasses = Array.from(uniqueClasses).sort();
-            sortedClasses.forEach(cls => {
+            console.log("Classes Found:", uniqueClasses);
+            console.log("Teachers Found:", uniqueTeachers);
+
+            // Dropdowns Update
+            Array.from(uniqueClasses).sort().forEach(cls => {
                 classSelect.innerHTML += `<option value="${cls}">${cls}</option>`;
             });
 
-            // Teachers
-            const sortedTeachers = Array.from(uniqueTeachers).sort();
-            sortedTeachers.forEach(tea => {
+            Array.from(uniqueTeachers).sort().forEach(tea => {
                 teacherSelect.innerHTML += `<option value="${tea}">${tea}</option>`;
             });
 
         } else {
-            console.warn("Jamia ka data structure mein nahi mila:", selectedJamia, academicYear);
-            // Agar data nahi mila, to kam se kam Teachers dropdown mein kuch nahi dikhayega
+            console.warn("Jamia ka data nahi mila for:", academicYear);
+            // Agar selected mahine ke saal me data nahi hai, to user ko shayad mahina change karna padega
+            // Hum fallback ke taur par 'Classes' aur 'Teachers' dropdown ko khali hi rakhenge
         }
-        // --- CORE LOGIC END ---
     };
 
     // Listeners
     jamiaSelect.addEventListener('change', updateDropdowns);
-    // Agar user "From Month" change kare, to academic year badal sakta hai, isliye dropdowns refresh karo
     startMonthInput.addEventListener('change', updateDropdowns);
 
 
