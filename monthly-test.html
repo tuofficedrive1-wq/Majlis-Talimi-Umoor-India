@@ -9,7 +9,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
-    <script src="jameel-font.js"></script>
+<script src="jameel-font.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 
     
@@ -708,87 +710,102 @@ async function checkExistingForClass(clsName) {
         console.log("New sheet or error loading:", e);
     }
 }
-        window.downloadPDF = () => {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-    });
+        // ✅ NAYA CODE (Html2Canvas Fix)
+window.downloadPDF = async () => {
+    // 1. Library Check
+    if (!window.html2canvas) {
+        alert("Error: html2canvas library missing hai. Head section me script lagayein.");
+        return;
+    }
 
-    const cls = document.getElementById('class-select').value || '';
-    const title = jamiaName;
-    const subTitle = `Month: ${monthKey} | Class: ${cls}`;
+    const saveBtn = document.querySelector('button[onclick="downloadPDF()"]');
+    if(saveBtn) saveBtn.innerText = "Processing...";
 
-    // ===== Header =====
-    pdf.setFont('Jameel');
-    pdf.setFontSize(16);
-    pdf.text(title, pdf.internal.pageSize.getWidth() / 2, 12, { align: 'center' });
+    // 2. Element Select
+    const originalElement = document.getElementById('print-area'); // Aapka Table Container ID
 
-    pdf.setFontSize(11);
-    pdf.text(subTitle, pdf.internal.pageSize.getWidth() / 2, 18, { align: 'center' });
+    if (!originalElement) {
+        alert("Print area nahi mila!");
+        if(saveBtn) saveBtn.innerText = "Download PDF";
+        return;
+    }
 
-    // ===== Table Head =====
-    const head = [[
-        '#',
-        'Talib-e-Ilm',
-        ...finalSubjectsList,
-        `Total (${totalMax})`,
-        '%',
-        'Grade'
-    ]];
+    try {
+        // --- STEP A: PDF Header Show Karein ---
+        // Hidden header ko temporary dikhana padega taaki photo me aaye
+        const pdfHeader = originalElement.querySelector('.print-header');
+        if(pdfHeader) pdfHeader.classList.remove('hidden');
 
-    // ===== Table Body =====
-    const body = [];
-    const rows = document.querySelectorAll('#students-body tr');
+        // --- STEP B: Clone Banayein (Taaki inputs text ban jayein) ---
+        const clonedElement = originalElement.cloneNode(true);
+        
+        // Clone ko screen se bahar set karein
+        clonedElement.style.position = 'absolute';
+        clonedElement.style.left = '-9999px';
+        clonedElement.style.top = '0px';
+        // Width fix karein (A4 Landscape approx 1100px)
+        clonedElement.style.width = '1100px'; 
+        
+        document.body.appendChild(clonedElement);
 
-    rows.forEach((row, index) => {
-        const name = row.querySelector('.std-name')?.value || '';
-        if (!name) return;
-
-        const rowData = [index + 1, name];
-
-        finalSubjectsList.forEach(sub => {
-            const inp = row.querySelector(`input[data-sub="${sub}"]`);
-            rowData.push(inp ? inp.value || '-' : '-');
+        // --- STEP C: Inputs ko Text me badlein ---
+        const inputs = clonedElement.querySelectorAll('input');
+        inputs.forEach(input => {
+            const div = document.createElement('div');
+            div.innerText = input.value;
+            div.className = input.className;
+            // Styling fix
+            div.style.border = "none";
+            div.style.background = "transparent";
+            div.style.textAlign = "center";
+            div.style.padding = "5px";
+            div.style.fontWeight = "bold";
+            
+            if(input.parentNode) input.parentNode.replaceChild(div, input);
         });
 
-        rowData.push(
-            row.querySelector('.total-val')?.textContent || '0',
-            row.querySelector('.perc-val')?.textContent || '0%',
-            row.querySelector('.grade-val')?.textContent || '-'
-        );
+        // --- STEP D: Photo Khinchein ---
+        const canvas = await html2canvas(clonedElement, { 
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff"
+        });
 
-        body.push(rowData);
-    });
+        // --- STEP E: PDF Banayein ---
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = 297; // A4 Landscape Width mm
+        const pageHeight = 210; // A4 Landscape Height mm
+        const imgHeight = canvas.height * imgWidth / canvas.width;
+        
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4'); // Landscape Mode
 
-    // ===== autoTable (YAHAN styles SAHI JAGAH PAR HAIN) =====
-    pdf.autoTable({
-        head,
-        body,
-        startY: 25,
+        let heightLeft = imgHeight;
+        let position = 0;
 
-        styles: {                // ✅ YAHAN
-            font: 'Jameel',
-            fontSize: 12,
-            cellPadding: 3,
-            halign: 'center',
-            valign: 'middle'
-        },
+        doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
 
-        headStyles: {
-            font: 'Jameel',
-            fillColor: [13, 148, 136],
-            textColor: 255,
-            fontSize: 12
-        },
-
-        columnStyles: {
-            1: { halign: 'left' }
+        while (heightLeft >= 0) {
+            position = heightLeft - imgHeight;
+            doc.addPage();
+            doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
         }
-    });
 
-    pdf.save(`Result_${jamiaName}_${cls}.pdf`);
+        // Cleanup
+        document.body.removeChild(clonedElement);
+        if(pdfHeader) pdfHeader.classList.add('hidden'); // Header wapas chupayein
+
+        const cls = document.getElementById('class-select').value || 'Sheet';
+        doc.save(`Result_${jamiaName}_${cls}.pdf`);
+
+    } catch (error) {
+        console.error("PDF Error:", error);
+        alert("PDF banane me error aaya.");
+    } finally {
+        if(saveBtn) saveBtn.innerText = "Download PDF";
+    }
 };
 
 
@@ -847,6 +864,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
