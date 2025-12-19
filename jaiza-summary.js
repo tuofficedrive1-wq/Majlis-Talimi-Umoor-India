@@ -13,13 +13,12 @@ const getGrade = (p) => {
     return "کمزور";
 };
 
-// Helper: Academic Year Calculation (Bilkul Jaiza Form Jaisa)
+// Helper: Academic Year Calculation
 const getAcademicYear = (dateString) => {
     if (!dateString) return null;
     const [yStr, mStr] = dateString.split("-");
     const yearNum = parseInt(yStr);
     const monthNum = parseInt(mStr) - 1; // 0-11
-    // Agar month April (3) ya uske baad hai to Naya saal, warna Pichla saal
     return monthNum >= 3 ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
 };
 
@@ -56,18 +55,29 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Class (Optional)</label>
-                    <select id="js-class-filter" class="w-full p-2 border rounded text-sm urdu-font bg-gray-100 cursor-not-allowed" disabled>
-                        <option value="">Tamam Classes</option>
-                    </select>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Class (Multiple)</label>
+                    <p class="text-[10px] text-gray-500 mb-1">Ctrl + Click to select multiple</p>
+                    <select id="js-class-filter" multiple class="w-full p-2 border rounded text-sm urdu-font bg-gray-100 cursor-not-allowed h-24" disabled>
+                        </select>
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Teacher (Optional)</label>
                     <select id="js-teacher-filter" class="w-full p-2 border rounded text-sm urdu-font bg-gray-100 cursor-not-allowed" disabled>
                         <option value="">Tamam Asatiza</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Kaifiyat (Grade)</label>
+                    <select id="js-grade-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-teal-500">
+                        <option value="">Tamam (All)</option>
+                        <option value="ممتاز">ممتاز (Excellent)</option>
+                        <option value="بہتر">بہتر (Very Good)</option>
+                        <option value="مناسب">مناسب (Good)</option>
+                        <option value="کمزور">کمزور (Weak)</option>
                     </select>
                 </div>
             </div>
@@ -121,13 +131,13 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     const jamiaSelect = document.getElementById('js-jamia-filter');
     const classSelect = document.getElementById('js-class-filter');
     const teacherSelect = document.getElementById('js-teacher-filter');
+    const gradeSelect = document.getElementById('js-grade-filter');
     const startMonthInput = document.getElementById('js-month-start');
 
     // --- 1. POPULATE JAMIA DROPDOWN ---
-    // Hum `academicYears` ke andar se saare Jamiaat dhoond kar layenge
     const jamiaSet = new Set();
     
-    // Naya Structure Check
+    // Naya Structure
     if (userProfileData.academicYears) {
         Object.keys(userProfileData.academicYears).forEach(yr => {
             const struct = userProfileData.academicYears[yr]?.karkardagiStructure;
@@ -139,26 +149,23 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         });
     }
 
-    // Purana Structure Check (Backup)
+    // Backup Structure
     if (userProfileData.jamiaatList && Array.isArray(userProfileData.jamiaatList)) {
         userProfileData.jamiaatList.forEach(j => jamiaSet.add(j.trim()));
     }
 
-    // Dropdown bharna
     Array.from(jamiaSet).sort().forEach(j => {
         jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
     });
 
 
-    // --- 2. DYNAMIC FILTERS LOGIC (EXACT JAIZA FORM COPY) ---
+    // --- 2. DYNAMIC FILTERS LOGIC ---
     const updateDropdowns = () => {
         const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
         
-        console.log("Filter Update Triggered:", selectedJamia, currentStartMonth);
-
         // Reset Dropdowns
-        classSelect.innerHTML = '<option value="">Tamam Classes</option>';
+        classSelect.innerHTML = ''; // Clear for multi-select
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
         if (!selectedJamia) {
@@ -174,44 +181,30 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         classSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
         teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
 
-        // --- CORE LOGIC START ---
-        // 1. Academic Year nikalo (Jaiza Form ki tarah)
         const academicYear = getAcademicYear(currentStartMonth);
-        console.log("Calculated Academic Year:", academicYear);
-
         let jamiaData = null;
 
-        // 2. Data dhoondo
-        // Pehle check karein ke 'academicYears' exist karta hai ya nahi
+        // Find Data
         if (userProfileData.academicYears && userProfileData.academicYears[academicYear]) {
             const struct = userProfileData.academicYears[academicYear].karkardagiStructure || [];
-            // Match Jamia Name (Trim karke compare karein)
             jamiaData = struct.find(j => j.jamiaName.trim() === selectedJamia);
         }
 
-        // Backup: Agar academicYear match nahi kiya, to user ka purana structure check karein
         if (!jamiaData && userProfileData.academicStructure && Array.isArray(userProfileData.academicStructure)) {
-            console.log("Using Backup Structure");
             jamiaData = userProfileData.academicStructure.find(j => j.jamiaName.trim() === selectedJamia);
         }
 
-        // --- POPULATE FROM FOUND DATA ---
+        // Populate Found Data
         if (jamiaData) {
-            console.log("Jamia Data Found:", jamiaData);
-
             const uniqueClasses = new Set();
             const uniqueTeachers = new Set();
 
-            // Teachers Array ko loop karein
             const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
 
             teachersList.forEach(t => {
-                // Teacher Name nikalna (Object ya String)
                 const tName = t.name || t.teacherName || t.ustad;
                 if (tName) uniqueTeachers.add(tName.trim());
 
-                // *** CRITICAL STEP: Periods ke andar se Class nikalna ***
-                // Jaiza form yahi karta hai: t.periods loop karta hai
                 if (Array.isArray(t.periods)) {
                     t.periods.forEach(p => {
                         const cName = p.className || p.class || p.darja;
@@ -220,13 +213,9 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 }
             });
 
-            // Backup: Agar classes alag se defined hain (Old Structure)
             if (jamiaData.classes && typeof jamiaData.classes === 'object') {
                 Object.keys(jamiaData.classes).forEach(c => uniqueClasses.add(c));
             }
-
-            console.log("Classes Found:", uniqueClasses);
-            console.log("Teachers Found:", uniqueTeachers);
 
             // Dropdowns Update
             Array.from(uniqueClasses).sort().forEach(cls => {
@@ -239,12 +228,9 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
 
         } else {
             console.warn("Jamia ka data nahi mila for:", academicYear);
-            // Agar selected mahine ke saal me data nahi hai, to user ko shayad mahina change karna padega
-            // Hum fallback ke taur par 'Classes' aur 'Teachers' dropdown ko khali hi rakhenge
         }
     };
 
-    // Listeners
     jamiaSelect.addEventListener('change', updateDropdowns);
     startMonthInput.addEventListener('change', updateDropdowns);
 
@@ -255,9 +241,7 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     document.getElementById('js-download-img').addEventListener('click', () => {
         const area = document.getElementById('js-report-area');
         const btns = document.querySelectorAll('.no-print');
-        
         btns.forEach(b => b.style.display = 'none'); 
-        
         html2canvas(area, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
             const link = document.createElement('a');
             link.download = `Jaiza_Report_${Date.now()}.png`;
@@ -273,8 +257,13 @@ async function fetchAndRenderReport(db, user) {
     const startMonth = document.getElementById('js-month-start').value;
     const endMonth = document.getElementById('js-month-end').value;
     const jamiaFilter = document.getElementById('js-jamia-filter').value;
-    const classFilter = document.getElementById('js-class-filter').value;
+    
+    // Multi-Select Class Logic
+    const classSelect = document.getElementById('js-class-filter');
+    const selectedClasses = Array.from(classSelect.selectedOptions).map(option => option.value);
+
     const teacherFilter = document.getElementById('js-teacher-filter').value;
+    const gradeFilter = document.getElementById('js-grade-filter').value; // New Filter
     
     const loader = document.getElementById('js-loader');
     const reportArea = document.getElementById('js-report-area');
@@ -296,8 +285,9 @@ async function fetchAndRenderReport(db, user) {
     if (jamiaFilter) {
         headerText = jamiaFilter;
         let details = [];
-        if (classFilter) details.push(`Class: ${classFilter}`);
+        if (selectedClasses.length > 0) details.push(`Classes: ${selectedClasses.length}`);
         if (teacherFilter) details.push(`Teacher: ${teacherFilter}`);
+        if (gradeFilter) details.push(`Kaifiyat: ${gradeFilter}`);
         if (details.length > 0) subText += ` | ${details.join(' | ')}`;
     } else {
         headerText = "تمام جامعات کی رپورٹ";
@@ -321,20 +311,29 @@ async function fetchAndRenderReport(db, user) {
         if (jamiaFilter) {
             filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
         }
-        if (classFilter) {
-            filteredDocs = filteredDocs.filter(d => d.className === classFilter);
+        
+        // Class Filter (Ab Multi-Select Array Check Karega)
+        if (selectedClasses.length > 0) {
+            filteredDocs = filteredDocs.filter(d => selectedClasses.includes(d.className));
         }
 
-        // --- FLATTENING ---
+        // --- FLATTENING & GRADE FILTER ---
         let rows = [];
 
         filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
                 doc.books.forEach(book => {
                     
+                    // Teacher Filter
                     if (teacherFilter) {
                         const tName = book.teacherName || "";
                         if (tName !== teacherFilter) return;
+                    }
+
+                    // Grade Filter (New Logic)
+                    const currentGrade = getGrade(book.percentage);
+                    if (gradeFilter) {
+                        if (currentGrade !== gradeFilter) return; // Skip if grade doesn't match
                     }
 
                     rows.push({
@@ -344,7 +343,7 @@ async function fetchAndRenderReport(db, user) {
                         className: doc.className || "-",
                         book: book.bookName || "-",
                         percent: book.percentage, 
-                        grade: getGrade(book.percentage)
+                        grade: currentGrade
                     });
                 });
             }
