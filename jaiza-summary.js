@@ -119,17 +119,16 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
         });
     }
 
-    // --- LOGIC: DYNAMIC FILTERS (DEPENDENT DROPDOWNS) ---
-    // Jab Jamia select ho, tabhi uske Class aur Teacher dikhayein
+    // --- LOGIC: DYNAMIC FILTERS (UPDATED & ROBUST) ---
     jamiaSelect.addEventListener('change', (e) => {
         const selectedJamia = e.target.value;
 
-        // Reset
+        // Reset Dropdowns
         classSelect.innerHTML = '<option value="">Tamam Classes</option>';
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
+        // Agar Jamia select nahi ki gayi to disable kar dein
         if (!selectedJamia) {
-            // Disable if no jamia selected
             classSelect.disabled = true;
             teacherSelect.disabled = true;
             classSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
@@ -137,31 +136,62 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             return;
         }
 
-        // Enable
+        // Enable Dropdowns
         classSelect.disabled = false;
         teacherSelect.disabled = false;
         classSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
         teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
 
-        // Data Structure se Class aur Teacher nikalna
-        if (userProfileData && userProfileData.academicStructure) {
-            const jamiaData = userProfileData.academicStructure.find(j => j.jamiaName === selectedJamia);
+        // --- DATA FINDING LOGIC (Robust) ---
+        // Step 1: Data kahan hai? (Naya ya Purana format check karein)
+        let structureData = [];
+        if (userProfileData.academicStructure && Array.isArray(userProfileData.academicStructure) && userProfileData.academicStructure.length > 0) {
+            structureData = userProfileData.academicStructure;
+        } else if (userProfileData.structure && Array.isArray(userProfileData.structure)) {
+            structureData = userProfileData.structure; // Purana backup
+        }
+
+        // Step 2: Selected Jamia ka Data dhundna
+        const jamiaData = structureData.find(j => j.jamiaName === selectedJamia);
             
-            if (jamiaData) {
-                // Populate Teachers
-                if (jamiaData.teachers && Array.isArray(jamiaData.teachers)) {
-                    jamiaData.teachers.forEach(t => {
-                        const tName = t.name || t.teacherName;
-                        teacherSelect.innerHTML += `<option value="${tName}">${tName}</option>`;
-                    });
-                }
-                // Populate Classes (Keys of classes object)
-                if (jamiaData.classes) {
-                    Object.keys(jamiaData.classes).forEach(cls => {
-                        classSelect.innerHTML += `<option value="${cls}">${cls}</option>`;
-                    });
-                }
+        if (jamiaData) {
+            console.log("Jamia Data Found:", jamiaData); // Debugging ke liye
+
+            // --- POPULATE TEACHERS ---
+            // Teachers array ko dhundne ke liye alag alag naam check karein (teachers, asatiza etc)
+            const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
+            
+            if (Array.isArray(teachersList)) {
+                // Pehle duplicate names hatane ke liye Set use karein
+                const uniqueTeachers = new Set();
+
+                teachersList.forEach(t => {
+                    // Teacher ka naam nikalna (Object ho ya String)
+                    let tName = "";
+                    if (typeof t === 'object') {
+                        tName = t.name || t.teacherName || t.ustad || "";
+                    } else {
+                        tName = t; // Agar direct string hai
+                    }
+
+                    if (tName) uniqueTeachers.add(tName.trim());
+                });
+
+                // Dropdown mein bharna
+                uniqueTeachers.forEach(name => {
+                    teacherSelect.innerHTML += `<option value="${name}">${name}</option>`;
+                });
             }
+
+            // --- POPULATE CLASSES ---
+            if (jamiaData.classes) {
+                // Classes object ki keys (Class Names) nikalna
+                Object.keys(jamiaData.classes).forEach(cls => {
+                    classSelect.innerHTML += `<option value="${cls}">${cls}</option>`;
+                });
+            }
+        } else {
+            console.warn("Selected Jamia ka data structure mein nahi mila:", selectedJamia);
         }
     });
 
@@ -324,3 +354,4 @@ async function fetchAndRenderReport(db, user) {
         alert("Error: Data load karne mein masla hua.");
     }
 }
+
