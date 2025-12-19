@@ -4,11 +4,11 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Helper: Grade nikalne ke liye (Image ke hisaab se)
+// Helper: Grade Logic
 const getGrade = (p) => {
     if (!p && p !== 0) return "-";
     if (p >= 80) return "ممتاز";
-    if (p >= 60) return "بہتر"; // 60-79
+    if (p >= 60) return "بہتر";
     if (p >= 40) return "مناسب";
     return "کمزور";
 };
@@ -18,173 +18,298 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // Default Month (Current)
+    // Default Date (Current Month)
     const date = new Date();
-    const defaultMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-    // UI Structure matches the Image style
+    // --- HTML STRUCTURE ---
     container.innerHTML = `
-      <div class="bg-white p-4 rounded-lg shadow border border-gray-200 space-y-4">
+      <div class="bg-white p-5 rounded-xl shadow-lg border border-gray-200 space-y-5">
         
-        <div class="flex flex-col md:flex-row gap-4 items-end no-print">
-            <div class="w-full md:w-1/3">
-                <label class="block text-xs font-medium text-gray-700 mb-1">Mahina Select Karein</label>
-                <input type="month" id="js-month-filter" class="w-full p-2 border rounded text-sm" value="${defaultMonth}">
-            </div>
+        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 no-print">
+            <h4 class="text-sm font-bold text-gray-500 uppercase mb-3 border-b pb-1">Report Filters</h4>
             
-            <div class="w-full md:w-1/3">
-                <label class="block text-xs font-medium text-gray-700 mb-1">Jamia (Optional)</label>
-                <select id="js-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
-                    <option value="">Tamam Jamiaat</option>
-                </select>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">From Month</label>
+                    <input type="month" id="js-month-start" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-teal-500" value="${currentMonth}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">To Month</label>
+                    <input type="month" id="js-month-end" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-teal-500" value="${currentMonth}">
+                </div>
+                 <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
+                    <select id="js-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-teal-500">
+                        <option value="">Tamam Jamiaat (All)</option>
+                    </select>
+                </div>
             </div>
 
-            <button id="js-show-btn" class="w-full md:w-auto bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded transition">
-                Report Dekhein
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Class (Optional)</label>
+                    <select id="js-class-filter" class="w-full p-2 border rounded text-sm urdu-font bg-gray-100 cursor-not-allowed" disabled>
+                        <option value="">Tamam Classes</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Teacher (Optional)</label>
+                    <select id="js-teacher-filter" class="w-full p-2 border rounded text-sm urdu-font bg-gray-100 cursor-not-allowed" disabled>
+                        <option value="">Tamam Asatiza</option>
+                    </select>
+                </div>
+            </div>
+
+            <button id="js-show-btn" class="w-full mt-4 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
+                <i class="fas fa-search mr-2"></i> Report Show Karein
             </button>
         </div>
 
-        <div id="js-loader" class="hidden text-center py-4 text-teal-600 font-bold">
-            Report tyar ho rahi hai...
+        <div id="js-loader" class="hidden text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-teal-500 border-t-transparent"></div>
+            <p class="mt-2 text-teal-600 font-semibold">Data load ho raha hai...</p>
         </div>
 
-        <div id="js-report-area" class="hidden mt-6 overflow-x-auto bg-white p-2">
+        <div id="js-report-area" class="hidden mt-6 overflow-hidden bg-white rounded-lg">
             
-            <div class="bg-[#4a7c2d] text-white text-center py-3 font-bold text-xl urdu-font border border-black border-b-0 rounded-t-lg" id="js-report-header">
-                درجہ جائزہ رپورٹ
+            <div id="js-report-header-bg" class="bg-teal-700 text-white p-4 text-center rounded-t-lg border-b-4 border-teal-900">
+                <h2 id="js-report-main-title" class="text-2xl font-bold urdu-font">جائزہ رپورٹ</h2>
+                <p id="js-report-sub-title" class="text-sm text-teal-100 mt-1 opacity-90"></p>
             </div>
 
-            <table class="min-w-full border-collapse border border-black text-center text-sm" dir="rtl">
-                <thead>
-                    <tr class="bg-blue-100 urdu-font text-black font-bold text-base">
-                        <th class="border border-black px-2 py-2 w-10">نمبر</th>
-                        <th class="border border-black px-2 py-2">جامعہ</th>
-                        <th class="border border-black px-2 py-2">استاذ</th>
-                        <th class="border border-black px-2 py-2 w-24">درجہ</th>
-                        <th class="border border-black px-2 py-2">کتاب</th>
-                        <th class="border border-black px-2 py-2 w-20">کیفیت (%)</th> <th class="border border-black px-2 py-2 w-20">فیصلہ</th> </tr>
-                </thead>
-                <tbody id="js-table-body" class="urdu-font text-gray-900">
-                    </tbody>
-            </table>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-center text-sm border-collapse" dir="rtl">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-base">
+                            <th class="px-4 py-3 border-l border-slate-200">#</th>
+                            <th class="px-4 py-3 border-l border-slate-200">ماہ</th>
+                            <th class="px-4 py-3 border-l border-slate-200">جامعہ</th>
+                            <th class="px-4 py-3 border-l border-slate-200">استاذ</th>
+                            <th class="px-4 py-3 border-l border-slate-200">درجہ</th>
+                            <th class="px-4 py-3 border-l border-slate-200">کتاب</th>
+                            <th class="px-4 py-3 border-l border-slate-200 w-24">فیصلہ</th>
+                            <th class="px-4 py-3 w-24">کیفیت (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="js-table-body" class="text-gray-800 urdu-font divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
 
-            <div class="mt-4 flex justify-end no-print">
-                <button id="js-download-img" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded text-sm">
-                    <i class="fas fa-image mr-2"></i> Download Image
+            <div class="bg-gray-50 p-3 flex justify-end border-t no-print">
+                <button id="js-download-img" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-5 rounded shadow">
+                    <i class="fas fa-download"></i> Download Image
                 </button>
             </div>
         </div>
       </div>
     `;
 
-    // Populate Jamia Filter
+    // --- LOGIC: POPULATE JAMIA DROPDOWN ---
     const jamiaSelect = document.getElementById('js-jamia-filter');
+    const classSelect = document.getElementById('js-class-filter');
+    const teacherSelect = document.getElementById('js-teacher-filter');
+
+    // Jamia list bharna
     if (userProfileData && userProfileData.jamiaatList) {
         userProfileData.jamiaatList.forEach(j => {
             jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
         });
     }
 
-    // Logic for Button
+    // --- LOGIC: DYNAMIC FILTERS (DEPENDENT DROPDOWNS) ---
+    // Jab Jamia select ho, tabhi uske Class aur Teacher dikhayein
+    jamiaSelect.addEventListener('change', (e) => {
+        const selectedJamia = e.target.value;
+
+        // Reset
+        classSelect.innerHTML = '<option value="">Tamam Classes</option>';
+        teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
+        
+        if (!selectedJamia) {
+            // Disable if no jamia selected
+            classSelect.disabled = true;
+            teacherSelect.disabled = true;
+            classSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
+            teacherSelect.classList.add('bg-gray-100', 'cursor-not-allowed');
+            return;
+        }
+
+        // Enable
+        classSelect.disabled = false;
+        teacherSelect.disabled = false;
+        classSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
+        teacherSelect.classList.remove('bg-gray-100', 'cursor-not-allowed');
+
+        // Data Structure se Class aur Teacher nikalna
+        if (userProfileData && userProfileData.academicStructure) {
+            const jamiaData = userProfileData.academicStructure.find(j => j.jamiaName === selectedJamia);
+            
+            if (jamiaData) {
+                // Populate Teachers
+                if (jamiaData.teachers && Array.isArray(jamiaData.teachers)) {
+                    jamiaData.teachers.forEach(t => {
+                        const tName = t.name || t.teacherName;
+                        teacherSelect.innerHTML += `<option value="${tName}">${tName}</option>`;
+                    });
+                }
+                // Populate Classes (Keys of classes object)
+                if (jamiaData.classes) {
+                    Object.keys(jamiaData.classes).forEach(cls => {
+                        classSelect.innerHTML += `<option value="${cls}">${cls}</option>`;
+                    });
+                }
+            }
+        }
+    });
+
+    // --- CLICK EVENTS ---
     document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, user));
     
-    // Logic for Download
     document.getElementById('js-download-img').addEventListener('click', () => {
         const area = document.getElementById('js-report-area');
         const btns = document.querySelectorAll('.no-print');
-        btns.forEach(b => b.style.display = 'none'); // Hide buttons for image
         
-        html2canvas(area, { scale: 2 }).then(canvas => {
+        // Hide UI elements before screenshot
+        btns.forEach(b => b.style.display = 'none'); 
+        
+        html2canvas(area, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
             const link = document.createElement('a');
-            link.download = `Jaiza_Report.png`;
+            link.download = `Jaiza_Report_${Date.now()}.png`;
             link.href = canvas.toDataURL();
             link.click();
-            btns.forEach(b => b.style.display = ''); // Show buttons back
+            // Show UI elements back
+            btns.forEach(b => b.style.display = ''); 
         });
     });
 }
 
+// --- MAIN FETCH & RENDER LOGIC ---
 async function fetchAndRenderReport(db, user) {
-    const monthKey = document.getElementById('js-month-filter').value;
+    const startMonth = document.getElementById('js-month-start').value;
+    const endMonth = document.getElementById('js-month-end').value;
     const jamiaFilter = document.getElementById('js-jamia-filter').value;
+    const classFilter = document.getElementById('js-class-filter').value;
+    const teacherFilter = document.getElementById('js-teacher-filter').value;
+    
     const loader = document.getElementById('js-loader');
     const reportArea = document.getElementById('js-report-area');
     const tbody = document.getElementById('js-table-body');
-    const headerTitle = document.getElementById('js-report-header');
+    const mainTitle = document.getElementById('js-report-main-title');
+    const subTitle = document.getElementById('js-report-sub-title');
 
-    if (!monthKey) { alert("Mahina select karein"); return; }
+    // Validation
+    if (!startMonth || !endMonth) { alert("Start aur End month select karein."); return; }
+    if (startMonth > endMonth) { alert("Shuru ka mahina baad ka nahi ho sakta."); return; }
 
     loader.classList.remove('hidden');
     reportArea.classList.add('hidden');
     tbody.innerHTML = '';
 
-    // Month name in Urdu for Header
-    const dateObj = new Date(monthKey + "-01");
-    const monthName = dateObj.toLocaleString('en-US', { month: 'long' });
-    headerTitle.textContent = `درجہ جائزہ: ${monthKey} (${monthName}) کی رپورٹ`;
+    // --- DYNAMIC HEADER TEXT ---
+    let headerText = "جائزہ رپورٹ";
+    let subText = `Duration: ${startMonth} to ${endMonth}`;
+
+    if (jamiaFilter) {
+        headerText = jamiaFilter; // Main title Jamia ban jayega
+        let details = [];
+        if (classFilter) details.push(`Class: ${classFilter}`);
+        if (teacherFilter) details.push(`Teacher: ${teacherFilter}`);
+        if (details.length > 0) subText += ` | ${details.join(' | ')}`;
+    } else {
+        headerText = "تمام جامعات کی رپورٹ";
+    }
+
+    mainTitle.textContent = headerText;
+    subTitle.textContent = subText;
+
 
     try {
         const qRef = collection(db, 'jaiza_forms');
-        let q = query(qRef, where("createdBy", "==", user.uid), where("monthKey", "==", monthKey));
-        
-        // Note: Firestore me multiple fields par filter ke liye composite index chahiye hota hai.
-        // Agar index error aaye, to hum JS me filter kar lenge (Better for dynamic filtering).
+        const q = query(qRef, where("createdBy", "==", user.uid));
         
         const snapshot = await getDocs(q);
-        let docs = snapshot.docs.map(d => d.data());
+        let allDocs = snapshot.docs.map(d => d.data());
 
-        // JS Filtering for Jamia (if selected)
+        // --- FILTERING LOGIC ---
+        // 1. Filter by Date
+        let filteredDocs = allDocs.filter(d => {
+            return d.monthKey >= startMonth && d.monthKey <= endMonth;
+        });
+
+        // 2. Filter by Jamia (Doc Level)
         if (jamiaFilter) {
-            docs = docs.filter(d => d.jamiaId === jamiaFilter);
+            filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
         }
 
-        // --- CORE LOGIC: FLATTENING THE DATA ---
-        // Hamare paas data Class-wise hai, hamein Kitab-wise rows chahiye image ki tarah.
+        // 3. Filter by Class (Doc Level)
+        if (classFilter) {
+            filteredDocs = filteredDocs.filter(d => d.className === classFilter);
+        }
+
+        // --- FLATTENING DATA (Doc -> Book Rows) ---
         let rows = [];
 
-        docs.forEach(doc => {
+        filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
                 doc.books.forEach(book => {
-                    // Agar koi data hi nahi bhara, to skip karein (optional)
-                    // if (!book.teacherName && !book.percentage) return;
+                    
+                    // 4. Filter by Teacher (Book Level)
+                    if (teacherFilter) {
+                        const tName = book.teacherName || "";
+                        if (tName !== teacherFilter) return; // Skip if teacher doesn't match
+                    }
 
                     rows.push({
+                        month: doc.monthKey,
                         jamia: doc.jamiaId,
                         teacher: book.teacherName || "-",
                         className: doc.className || "-",
                         book: book.bookName || "-",
-                        percent: book.percentage, // Number expected
+                        percent: book.percentage, 
                         grade: getGrade(book.percentage)
                     });
                 });
             }
         });
 
-        // Sorting: Pehle Jamia ke naam se, phir Class ke naam se
+        // --- SORTING ---
+        // Order: Month -> Jamia -> Class -> Teacher
         rows.sort((a, b) => {
-            if (a.jamia === b.jamia) {
-                return a.className.localeCompare(b.className);
-            }
-            return a.jamia.localeCompare(b.jamia);
+            if (a.month !== b.month) return a.month.localeCompare(b.month);
+            if (a.jamia !== b.jamia) return a.jamia.localeCompare(b.jamia);
+            if (a.className !== b.className) return a.className.localeCompare(b.className);
+            return a.teacher.localeCompare(b.teacher);
         });
 
-        // Rendering Rows
+        // --- RENDERING ---
         if (rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-red-500">Is mahine ka koi data nahi mila.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-red-500 font-bold bg-red-50">Is filter ke mutabiq koi record nahi mila.</td></tr>`;
         } else {
             rows.forEach((row, index) => {
-                const pVal = row.percent !== null && row.percent !== undefined ? row.percent.toFixed(2) : "-";
+                const pVal = row.percent !== null && row.percent !== undefined ? row.percent.toFixed(1) + "%" : "-";
                 
-                // Row Style
+                // Format Month (2025-10 -> Oct-25)
+                const dateObj = new Date(row.month + "-01");
+                const monthStr = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+
+                // Grade Color
+                let gradeColor = "text-gray-700";
+                if(row.grade === "ممتاز") gradeColor = "text-green-700 font-bold";
+                if(row.grade === "کمزور") gradeColor = "text-red-600 font-bold";
+
                 tbody.innerHTML += `
-                    <tr class="hover:bg-gray-50 border-b border-gray-300">
-                        <td class="border border-black px-2 py-1 font-sans">${index + 1}</td>
-                        <td class="border border-black px-2 py-1">${row.jamia}</td>
-                        <td class="border border-black px-2 py-1">${row.teacher}</td>
-                        <td class="border border-black px-2 py-1">${row.className}</td>
-                        <td class="border border-black px-2 py-1">${row.book}</td>
-                        <td class="border border-black px-2 py-1 font-bold font-sans">${pVal}</td>
-                        <td class="border border-black px-2 py-1">${row.grade}</td>
+                    <tr class="hover:bg-teal-50 transition-colors odd:bg-white even:bg-slate-50">
+                        <td class="px-4 py-3 border-l border-slate-200">${index + 1}</td>
+                        <td class="px-4 py-3 border-l border-slate-200 font-bold text-gray-600 font-sans text-xs">${monthStr}</td>
+                        <td class="px-4 py-3 border-l border-slate-200">${row.jamia}</td>
+                        <td class="px-4 py-3 border-l border-slate-200">${row.teacher}</td>
+                        <td class="px-4 py-3 border-l border-slate-200">${row.className}</td>
+                        <td class="px-4 py-3 border-l border-slate-200 text-teal-800">${row.book}</td>
+                        <td class="px-4 py-3 border-l border-slate-200 ${gradeColor}">${row.grade}</td>
+                        <td class="px-4 py-3 font-bold font-sans ${row.percent < 40 ? 'text-red-600' : 'text-gray-800'}">${pVal}</td>
                     </tr>
                 `;
             });
@@ -195,6 +320,7 @@ async function fetchAndRenderReport(db, user) {
 
     } catch (err) {
         console.error(err);
-        loader.textContent = "Error: Data load nahi ho saka.";
+        loader.classList.add('hidden');
+        alert("Error: Data load karne mein masla hua.");
     }
 }
