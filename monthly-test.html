@@ -869,24 +869,24 @@ window.downloadAllClassesPDF = async () => {
 
     const btn = document.getElementById('download-all-btn');
     const originalText = btn.innerText;
-    btn.innerText = "Starting...";
-    btn.disabled = true;
+    btn.innerText = "Processing..."; // Button text change
+    btn.disabled = true;             // Button disable taaki do baar click na ho
 
     try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('l', 'mm', 'a4'); // Landscape PDF
         let pageCount = 0;
 
-        // Saari Classes ki list nikalein (Sorted)
+        // System me jitni bhi classes hain unki list nikalein
         const allClasses = Object.keys(classBooksMap).sort();
 
-        // --- Loop: Har Class ke liye ---
+        // --- LOOP: Har Class ke liye ---
         for (const clsName of allClasses) {
             
-            // Button par progress dikhayein
-            btn.innerText = `Processing: ${clsName}...`;
+            // Button par dikhayein ki kaunsi class chal rahi hai
+            btn.innerText = `Generating: ${clsName}...`;
 
-            // 1. Database se Data layein
+            // 1. Firestore se Data layein
             const cleanClass = clsName.split('_')[0]; 
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
             
@@ -902,18 +902,16 @@ window.downloadAllClassesPDF = async () => {
             const students = data.students || [];
             const subjects = data.subjects || [];
 
-            // Agar students nahi hain to skip
-            if (students.length === 0) continue;
+            if (students.length === 0) continue; // Agar students nahi hain to skip
 
-            // --- 2. HTML Structure Taiyaar Karein (Memory me) ---
+            // --- 2. Temporary HTML Structure Banayein ---
             const tempContainer = document.createElement('div');
             tempContainer.style.position = 'absolute';
             tempContainer.style.left = '-9999px';
-            tempContainer.style.top = '0px';
-            tempContainer.style.width = '1100px'; 
+            tempContainer.style.width = '1100px'; // A4 Width Fixed
             document.body.appendChild(tempContainer);
 
-            // Table Header HTML Generate Karein
+            // Table Header Generate Karein
             let headerHTML = `<tr>
                 <th class="px-2 py-1 border border-gray-300 w-12">#</th>
                 <th class="px-2 py-1 border border-gray-300 text-left w-1/4">Talib-e-Ilm</th>`;
@@ -932,7 +930,7 @@ window.downloadAllClassesPDF = async () => {
                 <th class="px-2 py-1 border border-gray-300 text-center bg-gray-100">Grade</th>
             </tr>`;
 
-            // Page Helper Function (Same as before)
+            // Page Helper (Same "Compact" styling as before)
             const PAGE_HEIGHT_LIMIT = 765; 
 
             function createNewPage() {
@@ -957,7 +955,7 @@ window.downloadAllClassesPDF = async () => {
                 return pageDiv;
             }
 
-            // --- 3. Rows Generate & Grade Logic ---
+            // --- 3. Rows Fill Karein ---
             let currentPage = createNewPage();
             let currentTbody = currentPage.querySelector('tbody');
 
@@ -965,17 +963,17 @@ window.downloadAllClassesPDF = async () => {
                 const std = students[i];
                 const tr = document.createElement('tr');
                 
-                // Marks Columns
                 let tds = "";
-                let hasAbsent = false;
+                let hasAbsent = false; // 🔴 Absent Logic Check
 
                 subjects.forEach(sub => {
                     let val = std.marks[sub];
                     if (val === undefined) val = "-";
                     
-                    let cellStyle = "";
+                    let cellStyle = "background: transparent;";
                     let displayVal = val;
 
+                    // Check 'A' (Absent) or Fail Marks
                     if (val === 'A') {
                         hasAbsent = true;
                         cellStyle = "background-color: #fee2e2; color: #991b1b;"; // Fail Color
@@ -985,20 +983,21 @@ window.downloadAllClassesPDF = async () => {
                          if (val < pass) cellStyle = "background-color: #fee2e2; color: #991b1b;";
                     }
 
-                    tds += `<td class="border border-gray-300 p-1 text-center font-bold" style="${cellStyle}; padding: 3px 2px; font-size: 13px;">${displayVal}</td>`;
+                    tds += `<td class="border border-gray-300 p-1 text-center font-bold" style="${cellStyle} padding: 3px 2px; font-size: 13px;">${displayVal}</td>`;
                 });
 
-                // Calculate Grade (Absent Logic ke saath)
+                // Grade Calculation (Absent = Nakam Logic)
                 let grade = "Nakam";
-                let cls = "background-color: #ef4444; color: white;"; // Red
+                let cls = "background-color: #ef4444; color: white;"; // Red Default
                 const p = parseFloat(std.percentage);
 
                 if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "background-color: #15803d; color: white;"; }
                 else if (p >= 70) { grade = "Mumtaz"; cls = "background-color: #22c55e; color: white;"; }
                 else if (p >= 50) { grade = "Jayyid"; cls = "background-color: #eab308; color: white;"; }
                 else if (p >= 40) { grade = "Maqbul"; cls = "background-color: #f97316; color: white;"; }
-                
-                // 🔴 ABSENT CHECK:
+                else { grade = "Nakam"; cls = "background-color: #ef4444; color: white;"; }
+
+                // 🔴 Agar 'A' hai to Force Fail
                 if (hasAbsent) {
                     grade = "Nakam";
                     cls = "background-color: #ef4444; color: white;";
@@ -1013,24 +1012,24 @@ window.downloadAllClassesPDF = async () => {
                     <td class="border border-gray-300 p-1 text-center font-bold text-xs rounded" style="${cls} padding: 3px 2px;">${grade}</td>
                 `;
 
-                // Add Row & Check Height
+                // Add Row & Pagination Check
                 currentTbody.appendChild(tr);
 
                 if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
-                    currentTbody.removeChild(tr);
-                    currentPage = createNewPage();
+                    currentTbody.removeChild(tr); // Wapas nikalo
+                    currentPage = createNewPage(); // Naya page banao
                     currentTbody = currentPage.querySelector('tbody');
-                    currentTbody.appendChild(tr);
+                    currentTbody.appendChild(tr); // Wahan daalo
                 }
             }
 
-            // --- 4. Capture & Add to PDF ---
+            // --- 4. Capture Pages & Add to PDF ---
             const pages = tempContainer.querySelectorAll('div.bg-white');
             for (let j = 0; j < pages.length; j++) {
                 const page = pages[j];
                 const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
                 const imgData = canvas.toDataURL('image/png');
-                const imgWidth = 297; 
+                const imgWidth = 297; // A4 Landscape mm
                 const imgHeight = canvas.height * imgWidth / canvas.width;
 
                 if (pageCount > 0) doc.addPage();
@@ -1038,19 +1037,19 @@ window.downloadAllClassesPDF = async () => {
                 pageCount++;
             }
 
-            // Cleanup for this class
+            // Cleanup temp container
             document.body.removeChild(tempContainer);
         }
 
-        // --- 5. Final Save ---
+        // --- 5. Save Final PDF ---
         if (pageCount === 0) {
-            alert("Koi saved data nahi mila kisi bhi class ka.");
+            alert("Koi bhi saved data nahi mila. Pehle 'Save Result' karein.");
         } else {
             doc.save(`All_Classes_Result_${jamiaName}_${monthKey}.pdf`);
         }
 
     } catch (error) {
-        console.error("All PDF Error:", error);
+        console.error("PDF Error:", error);
         alert("Error: " + error.message);
     } finally {
         btn.innerText = originalText;
@@ -1112,6 +1111,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
