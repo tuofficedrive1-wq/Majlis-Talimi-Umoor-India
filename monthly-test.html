@@ -722,39 +722,40 @@ async function checkExistingForClass(clsName) {
     const saveBtn = document.querySelector('button[onclick="downloadPDF()"]');
     if(saveBtn) saveBtn.innerText = "Processing...";
 
-    // Original Data Elements
+    // Original Data
     const originalTableBody = document.getElementById('students-body');
     const tableHeadHTML = document.getElementById('table-head').innerHTML;
     
-    // Header Data Prepare Karein
+    // Header Info
     const jamiaTitle = document.getElementById('pdf-jamia').innerText;
     const currentClass = document.getElementById('class-select').value || "";
     const monthText = `Month: ${monthKey}  |  Class: ${currentClass}`;
 
-    // --- STEP A: Temporary Container Banayein ---
-    // Hum invisible pages banayenge browser memory me
+    // --- STEP A: Temporary Container ---
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
     tempContainer.style.left = '-9999px';
     tempContainer.style.top = '0px';
-    tempContainer.style.width = '1100px'; // A4 Landscape Fixed Width
+    // Width 1100px rakhi hai taaki quality achi rahe A4 Landscape par
+    tempContainer.style.width = '1100px'; 
     document.body.appendChild(tempContainer);
 
-    // Page Settings (A4 Landscape Height approx 750px safe area)
-    const PAGE_HEIGHT_LIMIT = 700; 
+    // 🔥 SETTING 1: HEIGHT LIMIT BADHAYI (Pehle 700 tha, ab 765 kiya)
+    // Isse page ke bottom tak print hoga
+    const PAGE_HEIGHT_LIMIT = 765; 
     
-    // Helper Function: Naya Page Banane ke liye
+    // Helper: Naya Page Banane ka function
     function createNewPage() {
         const pageDiv = document.createElement('div');
-        pageDiv.className = "bg-white p-6 border-none"; // Padding
+        // 🔥 SETTING 2: PADDING KAM KI (p-6 ki jagah p-3)
+        pageDiv.className = "bg-white p-3 border-none"; 
         pageDiv.style.width = "100%";
         pageDiv.style.backgroundColor = "white";
 
-        // 1. Header Add Karein (Har page par aayega)
+        // 🔥 SETTING 3: HEADER MARGIN KAM KIYA
         pageDiv.innerHTML = `
-            <div class="text-center mb-4">
-                <h2 class="text-2xl font-bold urdu-font" style="font-family: 'Jameel Noori Nastaleeq', serif;">${jamiaTitle}</h2>
-                <p style="color: #333; font-size: 14px; margin-top: 5px;">${monthText}</p>
+            <div class="text-center mb-2"> <h2 class="text-xl font-bold urdu-font" style="font-family: 'Jameel Noori Nastaleeq', serif; margin-bottom: 2px;">${jamiaTitle}</h2>
+                <p style="color: #333; font-size: 13px; margin-top: 0px;">${monthText}</p>
             </div>
             <table class="w-full text-sm text-left border-collapse" style="width: 100%; table-layout: fixed;">
                 <thead class="bg-teal-50 text-teal-900 uppercase font-bold text-center">
@@ -765,7 +766,7 @@ async function checkExistingForClass(clsName) {
             </table>
         `;
         
-        // Delete button header se hatayein (Last TH)
+        // Delete button header remove
         const ths = pageDiv.querySelectorAll('th');
         if(ths.length > 0) ths[ths.length - 1].remove(); 
 
@@ -774,35 +775,34 @@ async function checkExistingForClass(clsName) {
     }
 
     try {
-        // --- STEP B: Rows ko Pages me Divide Karein ---
+        // --- STEP B: Rows Divide Logic ---
         const rows = Array.from(originalTableBody.querySelectorAll('tr'));
         
         let currentPage = createNewPage();
         let currentTbody = currentPage.querySelector('tbody');
 
-        // Loop through all students
         for (let row of rows) {
-            // 1. Row Clone Karein
             const clonedRow = row.cloneNode(true);
             
-            // 2. Delete Button Column Hatayein
+            // Delete Column Hatana
             const lastTd = clonedRow.querySelector('td:last-child');
             if(lastTd) lastTd.remove();
 
-            // 3. Inputs ko Text me badlein (Fix Cutting)
+            // Inputs to Text Conversion
             const inputs = clonedRow.querySelectorAll('input');
             inputs.forEach(input => {
                 const div = document.createElement('div');
                 div.innerText = input.value || '-';
                 
-                // Styling Copy
+                // 🔥 SETTING 4: COMPACT STYLING (Padding kam ki)
                 div.style.textAlign = "center";
                 div.style.fontWeight = "bold";
                 div.style.border = "none";
                 div.style.background = "transparent";
                 div.style.width = "100%";
+                div.style.padding = "2px 0"; // Padding bilkul kam kar di
+                div.style.fontSize = "13px"; // Font size adjust
 
-                // Fail Color Check
                 if(input.classList.contains('bg-fail-input')) {
                     div.style.backgroundColor = "#fee2e2"; 
                     div.style.color = "#991b1b";
@@ -810,33 +810,31 @@ async function checkExistingForClass(clsName) {
                 
                 if(input.parentNode) input.parentNode.replaceChild(div, input);
             });
+            
+            // Table Cells (TD) ki padding bhi kam karein
+            clonedRow.querySelectorAll('td').forEach(td => {
+                td.style.padding = "3px 2px"; // Row height kam ho jayegi
+            });
 
-            // 4. Temporary Add karke height check karein
+            // Add & Check Height
             currentTbody.appendChild(clonedRow);
             
-            // Agar Height Limit cross ho gayi
             if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
-                // Last row wapas nikalein
                 currentTbody.removeChild(clonedRow);
-                
-                // Naya Page Banayein
                 currentPage = createNewPage();
                 currentTbody = currentPage.querySelector('tbody');
-                
-                // Row ko naye page me dalein
                 currentTbody.appendChild(clonedRow);
             }
         }
 
-        // --- STEP C: Har Page ki Photo (Canvas) lein aur PDF banayein ---
-        const pages = tempContainer.querySelectorAll('div.bg-white'); // Select generated pages
+        // --- STEP C: Generate PDF ---
+        const pages = tempContainer.querySelectorAll('div.bg-white');
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
+        const doc = new jsPDF('l', 'mm', 'a4');
 
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
             
-            // Wait for Canvas
             const canvas = await html2canvas(page, { 
                 scale: 2, 
                 useCORS: true,
@@ -844,15 +842,13 @@ async function checkExistingForClass(clsName) {
             });
             
             const imgData = canvas.toDataURL('image/png');
-            const imgWidth = 297; // A4 Width
+            const imgWidth = 297; 
             const imgHeight = canvas.height * imgWidth / canvas.width;
 
-            if (i > 0) doc.addPage(); // Pehle page ke baad naya page add karein
-            
+            if (i > 0) doc.addPage();
             doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
         }
 
-        // --- STEP D: Save & Cleanup ---
         document.body.removeChild(tempContainer);
         const cls = document.getElementById('class-select').value || 'Sheet';
         doc.save(`Result_${jamiaName}_${cls}.pdf`);
@@ -921,6 +917,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
