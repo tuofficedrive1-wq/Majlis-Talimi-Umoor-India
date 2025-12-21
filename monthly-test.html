@@ -722,107 +722,144 @@ async function checkExistingForClass(clsName) {
     const saveBtn = document.querySelector('button[onclick="downloadPDF()"]');
     if(saveBtn) saveBtn.innerText = "Processing...";
 
-    const originalElement = document.getElementById('print-area');
+    // Original Data Elements
+    const originalTableBody = document.getElementById('students-body');
+    const tableHeadHTML = document.getElementById('table-head').innerHTML;
+    
+    // Header Data Prepare Karein
+    const jamiaTitle = document.getElementById('pdf-jamia').innerText;
+    const currentClass = document.getElementById('class-select').value || "";
+    const monthText = `Month: ${monthKey}  |  Class: ${currentClass}`;
 
-    if (!originalElement) {
-        alert("Print area nahi mila!");
-        if(saveBtn) saveBtn.innerText = "Download PDF";
-        return;
+    // --- STEP A: Temporary Container Banayein ---
+    // Hum invisible pages banayenge browser memory me
+    const tempContainer = document.createElement('div');
+    tempContainer.style.position = 'absolute';
+    tempContainer.style.left = '-9999px';
+    tempContainer.style.top = '0px';
+    tempContainer.style.width = '1100px'; // A4 Landscape Fixed Width
+    document.body.appendChild(tempContainer);
+
+    // Page Settings (A4 Landscape Height approx 750px safe area)
+    const PAGE_HEIGHT_LIMIT = 700; 
+    
+    // Helper Function: Naya Page Banane ke liye
+    function createNewPage() {
+        const pageDiv = document.createElement('div');
+        pageDiv.className = "bg-white p-6 border-none"; // Padding
+        pageDiv.style.width = "100%";
+        pageDiv.style.backgroundColor = "white";
+
+        // 1. Header Add Karein (Har page par aayega)
+        pageDiv.innerHTML = `
+            <div class="text-center mb-4">
+                <h2 class="text-2xl font-bold urdu-font" style="font-family: 'Jameel Noori Nastaleeq', serif;">${jamiaTitle}</h2>
+                <p style="color: #333; font-size: 14px; margin-top: 5px;">${monthText}</p>
+            </div>
+            <table class="w-full text-sm text-left border-collapse" style="width: 100%; table-layout: fixed;">
+                <thead class="bg-teal-50 text-teal-900 uppercase font-bold text-center">
+                    ${tableHeadHTML}
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                </tbody>
+            </table>
+        `;
+        
+        // Delete button header se hatayein (Last TH)
+        const ths = pageDiv.querySelectorAll('th');
+        if(ths.length > 0) ths[ths.length - 1].remove(); 
+
+        tempContainer.appendChild(pageDiv);
+        return pageDiv;
     }
 
     try {
-        // --- STEP A: PDF Header Show & Update (Yahan change kiya hai) ---
-        const pdfHeader = originalElement.querySelector('.print-header');
-        if(pdfHeader) {
-            // Class ka naam nikalein
-            const currentClass = document.getElementById('class-select').value || "Unknown Class";
+        // --- STEP B: Rows ko Pages me Divide Karein ---
+        const rows = Array.from(originalTableBody.querySelectorAll('tr'));
+        
+        let currentPage = createNewPage();
+        let currentTbody = currentPage.querySelector('tbody');
+
+        // Loop through all students
+        for (let row of rows) {
+            // 1. Row Clone Karein
+            const clonedRow = row.cloneNode(true);
             
-            // Header text update karein (Month + Class)
-            const subTitle = document.getElementById('pdf-month');
-            if(subTitle) {
-                // 'monthKey' global variable hai jo upar defined hai
-                subTitle.innerText = `Month: ${monthKey}  |  Class: ${currentClass}`;
+            // 2. Delete Button Column Hatayein
+            const lastTd = clonedRow.querySelector('td:last-child');
+            if(lastTd) lastTd.remove();
+
+            // 3. Inputs ko Text me badlein (Fix Cutting)
+            const inputs = clonedRow.querySelectorAll('input');
+            inputs.forEach(input => {
+                const div = document.createElement('div');
+                div.innerText = input.value || '-';
                 
-                // Thoda styling taaki PDF me prominent dikhe
-                subTitle.style.fontSize = "14px"; 
-                subTitle.style.marginTop = "4px";
-                subTitle.style.color = "#333";
+                // Styling Copy
+                div.style.textAlign = "center";
+                div.style.fontWeight = "bold";
+                div.style.border = "none";
+                div.style.background = "transparent";
+                div.style.width = "100%";
+
+                // Fail Color Check
+                if(input.classList.contains('bg-fail-input')) {
+                    div.style.backgroundColor = "#fee2e2"; 
+                    div.style.color = "#991b1b";
+                }
+                
+                if(input.parentNode) input.parentNode.replaceChild(div, input);
+            });
+
+            // 4. Temporary Add karke height check karein
+            currentTbody.appendChild(clonedRow);
+            
+            // Agar Height Limit cross ho gayi
+            if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
+                // Last row wapas nikalein
+                currentTbody.removeChild(clonedRow);
+                
+                // Naya Page Banayein
+                currentPage = createNewPage();
+                currentTbody = currentPage.querySelector('tbody');
+                
+                // Row ko naye page me dalein
+                currentTbody.appendChild(clonedRow);
             }
-            
-            pdfHeader.classList.remove('hidden');
         }
 
-        // --- STEP B: Clone Banayein ---
-        const clonedElement = originalElement.cloneNode(true);
-        
-        clonedElement.style.position = 'absolute';
-        clonedElement.style.left = '-9999px';
-        clonedElement.style.top = '0px';
-        clonedElement.style.width = '1100px'; // A4 Landscape width
-        
-        document.body.appendChild(clonedElement);
-
-        // --- STEP C: Delete Buttons Hatayein (Pichla fix) ---
-        const deleteButtons = clonedElement.querySelectorAll('.no-print');
-        deleteButtons.forEach(el => el.remove());
-
-        // --- STEP D: Inputs ko Text me badlein ---
-        const inputs = clonedElement.querySelectorAll('input');
-        inputs.forEach(input => {
-            const div = document.createElement('div');
-            div.innerText = input.value;
-            div.className = input.className;
-            
-            // Styling fix
-            div.style.border = "none";
-            div.style.background = "transparent";
-            div.style.textAlign = "center";
-            div.style.padding = "5px";
-            div.style.fontWeight = "bold";
-            div.style.height = "auto";
-            
-            if(input.parentNode) input.parentNode.replaceChild(div, input);
-        });
-
-        // --- STEP E: Photo Khinchein ---
-        const canvas = await html2canvas(clonedElement, { 
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff"
-        });
-
-        // --- STEP F: PDF Generate ---
-        const imgData = canvas.toDataURL('image/png');
-        const imgWidth = 297; // A4 Landscape Width mm
-        const pageHeight = 210; // A4 Landscape Height mm
-        const imgHeight = canvas.height * imgWidth / canvas.width;
-        
+        // --- STEP C: Har Page ki Photo (Canvas) lein aur PDF banayein ---
+        const pages = tempContainer.querySelectorAll('div.bg-white'); // Select generated pages
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('l', 'mm', 'a4');
+        const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
 
-        let heightLeft = imgHeight;
-        let position = 0;
+        for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            
+            // Wait for Canvas
+            const canvas = await html2canvas(page, { 
+                scale: 2, 
+                useCORS: true,
+                backgroundColor: "#ffffff"
+            });
+            
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = 297; // A4 Width
+            const imgHeight = canvas.height * imgWidth / canvas.width;
 
-        doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft >= 0) {
-            position = heightLeft - imgHeight;
-            doc.addPage();
-            doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
+            if (i > 0) doc.addPage(); // Pehle page ke baad naya page add karein
+            
+            doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
         }
 
-        // Cleanup
-        document.body.removeChild(clonedElement);
-        if(pdfHeader) pdfHeader.classList.add('hidden'); // Header wapas chhupayein
-
+        // --- STEP D: Save & Cleanup ---
+        document.body.removeChild(tempContainer);
         const cls = document.getElementById('class-select').value || 'Sheet';
         doc.save(`Result_${jamiaName}_${cls}.pdf`);
 
     } catch (error) {
-        console.error("PDF Error:", error);
-        alert("PDF banane me error aaya.");
+        console.error("PDF Logic Error:", error);
+        alert("PDF Generation Failed: " + error.message);
     } finally {
         if(saveBtn) saveBtn.innerText = "Download PDF";
     }
@@ -884,6 +921,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
