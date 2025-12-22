@@ -567,7 +567,7 @@ window.calcRow = (el) => {
     gVal.className = `border border-gray-200 p-2 text-center font-bold text-xs grade-val ${cls} rounded`;
 };
 
-        // 7. Save Logic (Updated for All Classes Aggregation)
+        // 7. Save Logic (Updated: Pass/Fail Percentage System)
         window.saveResult = async () => {
             const rows = document.querySelectorAll('#students-body tr');
             if(rows.length === 0) { alert("Koi student add nahi kiya gaya."); return; }
@@ -579,13 +579,12 @@ window.calcRow = (el) => {
 
             const rawClass = document.getElementById('class-select').value;
             const cleanClass = rawClass.split('_')[0]; 
-            // 1. Current Class Sheet ID
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
             
             const selectedClass = rawClass; 
             const students = [];
 
-            // Current Class Data Gather
+            // --- STEP 1: Current Class ka Data Jama Karein ---
             rows.forEach(row => {
                 const name = row.querySelector('.std-name').value.trim();
                 if(!name) return;
@@ -598,13 +597,13 @@ window.calcRow = (el) => {
                 
                 const total = parseFloat(row.querySelector('.total-val').textContent);
                 const perc = parseFloat(row.querySelector('.perc-val').textContent);
+                
+                // Student Data Save
                 students.push({ name, marks, total, percentage: perc });
             });
 
             try {
-                // ======================================================
-                // STEP A: Current Class ko Save Karein
-                // ======================================================
+                // Firestore mein Current Class Save
                 await setDoc(doc(db, "monthly_test_sheets", docId), {
                     adminUid, jamiaName, month: monthKey, class: selectedClass,
                     subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
@@ -612,19 +611,20 @@ window.calcRow = (el) => {
                 console.log("✅ Current Class Saved:", selectedClass);
 
                 // ======================================================
-                // STEP B: Poore Jamia ka Total Calculate Karein (Aggregation)
+                // STEP 2: Pure Jamia ka "PASS RESULT" Calculate Karein
+                // Formula: (Kul Pass Bache / Kul Hazir Bache) * 100
                 // ======================================================
-                let jamiaGrandObtained = 0;
-                let jamiaGrandMax = 0;
+                
+                let grandTotalStudents = 0; // Kul Hazir
+                let grandPassedStudents = 0; // Kul Pass
 
-                // System mein maujood saari classes ki list lein
-                const allClasses = Object.keys(classBooksMap); // e.g., ['Class 1', 'Class 2', 'Class 3']
+                // System ki saari classes fetch karein
+                const allClasses = Object.keys(classBooksMap);
                 
                 for (const cls of allClasses) {
                     const clsClean = cls.split('_')[0];
                     const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
                     
-                    // Har class ki sheet fetch karein
                     const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
 
                     if (sheetSnap.exists()) {
@@ -632,31 +632,46 @@ window.calcRow = (el) => {
                         const sStudents = sData.students || [];
                         const sSubjects = sData.subjects || [];
 
-                        // Is class ka Max Marks per student calculate karein
-                        let sMaxPerStudent = 0;
-                        sSubjects.forEach(sub => {
-                            const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
-                            sMaxPerStudent += isSmall ? 25 : 100;
+                        // Har bache ko check karein ki wo Pass hai ya Fail
+                        sStudents.forEach(std => {
+                            grandTotalStudents++; // Total Hazir mein ginti
+
+                            let isFail = false;
+                            
+                            // Check 1: Kya Percentage 40% se kam hai?
+                            if (parseFloat(std.percentage) < 40) {
+                                isFail = true;
+                            }
+
+                            // Check 2: Kya kisi subject me 'A' (Absent) hai?
+                            // Hum marks object check karenge
+                            if (!isFail) { // Agar pehle se fail nahi hai to check karo
+                                sSubjects.forEach(sub => {
+                                    if (std.marks[sub] === 'A') {
+                                        isFail = true;
+                                    }
+                                });
+                            }
+
+                            // Agar Fail nahi hai, to Pass maana jayega
+                            if (!isFail) {
+                                grandPassedStudents++;
+                            }
                         });
-
-                        // Is class ke obtained aur max marks jodein
-                        const sObtained = sStudents.reduce((sum, std) => sum + (parseFloat(std.total) || 0), 0);
-                        const sMax = sStudents.length * sMaxPerStudent;
-
-                        jamiaGrandObtained += sObtained;
-                        jamiaGrandMax += sMax;
                     }
                 }
 
-                // Final Jamia Percentage
-                const jamiaFinalPerc = jamiaGrandMax > 0 
-                    ? ((jamiaGrandObtained / jamiaGrandMax) * 100).toFixed(1) + '%' 
-                    : '0%';
+                // Final Pass Percentage Calculate Karein
+                // Example: Agar 10 bache hain, 8 pass hain. (8 / 10) * 100 = 80%
+                let jamiaPassPerc = "0%";
+                if (grandTotalStudents > 0) {
+                    jamiaPassPerc = ((grandPassedStudents / grandTotalStudents) * 100).toFixed(1) + '%';
+                }
 
-                console.log(`📊 Jamia Total: ${jamiaGrandObtained}/${jamiaGrandMax} = ${jamiaFinalPerc}`);
+                console.log(`📊 Jamia Result: ${grandPassedStudents} Pass out of ${grandTotalStudents} = ${jamiaPassPerc}`);
 
                 // ======================================================
-                // STEP C: Admin Report Update Karein (Grand Total ke sath)
+                // STEP 3: Admin Report Update
                 // ======================================================
                 const [yStr, mStr] = monthKey.split('-');
                 const y = parseInt(yStr);
@@ -668,19 +683,19 @@ window.calcRow = (el) => {
                 const reportSnap = await getDoc(reportRef);
                 let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
                 
-                // Purani entry hatayein aur nayi (aggregate wali) add karein
+                // List update karein
                 testData = testData.filter(t => t.name !== jamiaName);
                 testData.push({
                     name: jamiaName, 
                     status: 'Test Hua', 
                     month: monthKey,
-                    percentage: jamiaFinalPerc, // 🔥 Ab ye sabhi classes ka average hai
+                    percentage: jamiaPassPerc, // 🔥 Ab ye PASS percentage hai
                     wajah: ''
                 });
 
                 await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
 
-                alert(`Class ${selectedClass} Save ho gayi!\n\nPure Jamia ka Result update ho gaya: ${jamiaFinalPerc}`);
+                alert(`Class Save ho gayi!\n\nJamia ka Result Update: ${grandPassedStudents} Pass / ${grandTotalStudents} Hazir (${jamiaPassPerc})`);
 
             } catch (error) {
                 console.error("Save Error:", error);
@@ -1242,6 +1257,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
