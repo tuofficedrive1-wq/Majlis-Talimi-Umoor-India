@@ -567,30 +567,31 @@ window.calcRow = (el) => {
     gVal.className = `border border-gray-200 p-2 text-center font-bold text-xs grade-val ${cls} rounded`;
 };
 
-        // 7. Save Logic
+        // 7. Save Logic (Updated for All Classes Aggregation)
         window.saveResult = async () => {
             const rows = document.querySelectorAll('#students-body tr');
             if(rows.length === 0) { alert("Koi student add nahi kiya gaya."); return; }
             
-            // FIX 1: Doc ID ko sirf ek baar define karein (Syntax Error theek kiya)
+            const btn = document.querySelector('button[onclick="saveResult()"]');
+            const originalText = btn.innerText;
+            btn.innerText = "Saving...";
+            btn.disabled = true;
+
             const rawClass = document.getElementById('class-select').value;
             const cleanClass = rawClass.split('_')[0]; 
+            // 1. Current Class Sheet ID
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
-            console.log("💾 Doc ID used for SAVE:", docId); // Debug Log
             
-            const selectedClass = rawClass; // Poora class name Firestore mein save hoga
-
+            const selectedClass = rawClass; 
             const students = [];
-            let grandObtained = 0;
-            let grandMax = 0;
 
+            // Current Class Data Gather
             rows.forEach(row => {
                 const name = row.querySelector('.std-name').value.trim();
                 if(!name) return;
                 
                 const marks = {};
                 row.querySelectorAll('.mark-input').forEach(inp => {
-                    // Save as String if 'A', else Number
                     const val = inp.value.trim().toUpperCase();
                     marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
                 });
@@ -598,23 +599,65 @@ window.calcRow = (el) => {
                 const total = parseFloat(row.querySelector('.total-val').textContent);
                 const perc = parseFloat(row.querySelector('.perc-val').textContent);
                 students.push({ name, marks, total, percentage: perc });
-                
-                grandObtained += total;
-                grandMax += 350;
             });
 
-            const overallPerc = grandMax > 0 ? ((grandObtained / grandMax) * 100).toFixed(1) + '%' : '0%';
-            
             try {
-                // ✅ Save to monthly_test_sheets
+                // ======================================================
+                // STEP A: Current Class ko Save Karein
+                // ======================================================
                 await setDoc(doc(db, "monthly_test_sheets", docId), {
                     adminUid, jamiaName, month: monthKey, class: selectedClass,
                     subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
                 }); 
-                
-                console.log("✅ Data successfully saved to monthly_test_sheets with ID:", docId); // Confirmation Log
+                console.log("✅ Current Class Saved:", selectedClass);
 
-                // Update Admin Dashboard
+                // ======================================================
+                // STEP B: Poore Jamia ka Total Calculate Karein (Aggregation)
+                // ======================================================
+                let jamiaGrandObtained = 0;
+                let jamiaGrandMax = 0;
+
+                // System mein maujood saari classes ki list lein
+                const allClasses = Object.keys(classBooksMap); // e.g., ['Class 1', 'Class 2', 'Class 3']
+                
+                for (const cls of allClasses) {
+                    const clsClean = cls.split('_')[0];
+                    const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
+                    
+                    // Har class ki sheet fetch karein
+                    const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
+
+                    if (sheetSnap.exists()) {
+                        const sData = sheetSnap.data();
+                        const sStudents = sData.students || [];
+                        const sSubjects = sData.subjects || [];
+
+                        // Is class ka Max Marks per student calculate karein
+                        let sMaxPerStudent = 0;
+                        sSubjects.forEach(sub => {
+                            const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
+                            sMaxPerStudent += isSmall ? 25 : 100;
+                        });
+
+                        // Is class ke obtained aur max marks jodein
+                        const sObtained = sStudents.reduce((sum, std) => sum + (parseFloat(std.total) || 0), 0);
+                        const sMax = sStudents.length * sMaxPerStudent;
+
+                        jamiaGrandObtained += sObtained;
+                        jamiaGrandMax += sMax;
+                    }
+                }
+
+                // Final Jamia Percentage
+                const jamiaFinalPerc = jamiaGrandMax > 0 
+                    ? ((jamiaGrandObtained / jamiaGrandMax) * 100).toFixed(1) + '%' 
+                    : '0%';
+
+                console.log(`📊 Jamia Total: ${jamiaGrandObtained}/${jamiaGrandMax} = ${jamiaFinalPerc}`);
+
+                // ======================================================
+                // STEP C: Admin Report Update Karein (Grand Total ke sath)
+                // ======================================================
                 const [yStr, mStr] = monthKey.split('-');
                 const y = parseInt(yStr);
                 const m = parseInt(mStr) - 1;
@@ -625,21 +668,28 @@ window.calcRow = (el) => {
                 const reportSnap = await getDoc(reportRef);
                 let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
                 
-                // Update specific entry
+                // Purani entry hatayein aur nayi (aggregate wali) add karein
                 testData = testData.filter(t => t.name !== jamiaName);
                 testData.push({
-                    name: jamiaName, status: 'Test Hua', month: monthKey,
-                    percentage: overallPerc, wajah: ''
+                    name: jamiaName, 
+                    status: 'Test Hua', 
+                    month: monthKey,
+                    percentage: jamiaFinalPerc, // 🔥 Ab ye sabhi classes ka average hai
+                    wajah: ''
                 });
 
                 await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
 
-                alert(`Class ${selectedClass} ka Result Save ho gaya!`);
+                alert(`Class ${selectedClass} Save ho gayi!\n\nPure Jamia ka Result update ho gaya: ${jamiaFinalPerc}`);
+
             } catch (error) {
                 console.error("Save Error:", error);
                 alert("Error: " + error.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
             }
-            };
+        };
 
        // 8. Load Existing Data & Check View Mode
 window.checkExistingForClass = async (clsName) => {
@@ -1192,6 +1242,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
