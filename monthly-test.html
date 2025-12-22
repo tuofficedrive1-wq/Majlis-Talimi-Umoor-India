@@ -769,64 +769,358 @@
             } catch (error) { console.error("PDF Logic Error:", error); alert("PDF Generation Failed: " + error.message); } finally { if(saveBtn) saveBtn.innerText = "Download PDF"; }
         };
 
+        // --- UPDATED: DOWNLOAD ALL CLASSES WITH SUMMARY PAGE ---
         window.downloadAllClassesPDF = async () => {
             if (!window.html2canvas) { alert("html2canvas library missing hai."); return; }
-            const btn = document.getElementById('download-all-btn'); const originalText = btn.innerText;
-            btn.innerText = "Processing..."; btn.disabled = true;             
+
+            const btn = document.getElementById('download-all-btn');
+            const originalText = btn.innerText;
+            btn.innerText = "Processing..."; 
+            btn.disabled = true;             
+
             try {
-                const { jsPDF } = window.jspdf; const pdfDoc = new jsPDF('l', 'mm', 'a4'); let pageCount = 0;
-                const allClasses = Object.keys(classBooksMap).sort(); const COLOR_TEAL_DARK = "#0f766e"; const COLOR_TEAL_LIGHT = "#f0fdfa"; const COLOR_BORDER = "#0f766e";
+                const { jsPDF } = window.jspdf;
+                const pdfDoc = new jsPDF('l', 'mm', 'a4'); 
+                
+                // Colors Constants (PDF Styling)
+                const COLOR_TEAL_DARK = "#0f766e"; 
+                const COLOR_TEAL_LIGHT = "#f0fdfa"; 
+                const COLOR_BORDER = "#0f766e";
+
+                // 1. Data Fetching & Summary Calculation
+                const allClasses = Object.keys(classBooksMap).sort();
+                const classDataList = []; // Data cache taaki dobara fetch na karna pade
+
+                // Summary Variables
+                let mainRowsHTML = "";
+                let asriRowsHTML = "";
+                let gMain = { total: 0, present: 0, pass: 0, fail: 0 };
+                let gAsri = { total: 0, present: 0, pass: 0, fail: 0 };
+                let sn = 1;
+
+                // Loop 1: Fetch All Data & Build Summary
                 for (const clsName of allClasses) {
-                    btn.innerText = `Generating: ${clsName}...`;
+                    btn.innerText = `Reading: ${clsName}...`;
                     const cleanClass = clsName.split('_')[0]; 
                     const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
                     const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+
                     if (!docSnap.exists()) continue;
-                    const data = docSnap.data(); const students = data.students || []; const subjects = data.subjects || [];
+
+                    const data = docSnap.data();
+                    const students = data.students || [];
+                    const subjects = data.subjects || [];
                     if (students.length === 0) continue;
-                    const tempContainer = document.createElement('div'); tempContainer.style.position = 'absolute'; tempContainer.style.left = '-9999px'; tempContainer.style.top = '0px'; tempContainer.style.width = '1100px'; 
-                    document.body.appendChild(tempContainer);
-                    let totalMax = 0; let headerCells = "";
-                    subjects.forEach(sub => {
-                        const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths'; const max = isSmall ? 25 : 100; totalMax += max;
+
+                    // Cache Data for Step 3
+                    classDataList.push({ clsName, data, students, subjects });
+
+                    // --- CALCULATION LOGIC (Same as View Summary) ---
+                    let mTotal = students.length; let mPresent = 0; let mPass = 0; let mFail = 0;
+                    let aTotal = students.length; let aPresent = 0; let aPass = 0; let aFail = 0;
+                    let hasAsriSubjects = false;
+
+                    students.forEach(std => {
+                        // Main Calculation
+                        mPresent++;
+                        let isFailMain = false;
+                        if (parseFloat(std.percentage) < 40) isFailMain = true;
+                        const subKeys = Object.keys(std.marks);
+                        subKeys.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
+                        if (isFailMain) mFail++; else mPass++;
+
+                        // Asri Calculation
+                        let engMark = std.marks['English'];
+                        let mathMark = std.marks['Maths'];
+                        if (engMark !== undefined || mathMark !== undefined) {
+                            hasAsriSubjects = true;
+                            aPresent++;
+                            let isFailAsri = false;
+                            if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                            if (isFailAsri) aFail++; else aPass++;
+                        }
+                    });
+
+                    // Main Row HTML
+                    let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(1) : "0.0";
+                    let mGrade = getSummaryGrade(mPerc);
+                    gMain.total += mTotal; gMain.present += mPresent; gMain.pass += mPass; gMain.fail += mFail;
+
+                    mainRowsHTML += `
+                        <tr style="background-color: ${sn % 2 === 0 ? '#f9fafb' : 'white'};">
+                            <td style="border:1px solid #ccc; padding:6px;">${sn}</td>
+                            <td style="border:1px solid #ccc; padding:6px; text-align:left;">${clsName}</td>
+                            <td style="border:1px solid #ccc; padding:6px;">${mTotal}</td>
+                            <td style="border:1px solid #ccc; padding:6px;">${mPresent}</td>
+                            <td style="border:1px solid #ccc; padding:6px; color:#15803d; font-weight:bold;">${mPass}</td>
+                            <td style="border:1px solid #ccc; padding:6px; color:#dc2626; font-weight:bold;">${mFail}</td>
+                            <td style="border:1px solid #ccc; padding:6px; font-weight:bold;">${mPerc}%</td>
+                            <td style="border:1px solid #ccc; padding:6px;">${mGrade}</td>
+                        </tr>`;
+
+                    // Asri Row HTML
+                    if (hasAsriSubjects) {
+                        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
+                        let aGrade = getSummaryGrade(aPerc);
+                        gAsri.total += aTotal; gAsri.present += aPresent; gAsri.pass += aPass; gAsri.fail += aFail;
+
+                        asriRowsHTML += `
+                            <tr style="background-color: ${sn % 2 === 0 ? '#f9fafb' : 'white'};">
+                                <td style="border:1px solid #ccc; padding:6px;">${sn}</td>
+                                <td style="border:1px solid #ccc; padding:6px; text-align:left;">${clsName}</td>
+                                <td style="border:1px solid #ccc; padding:6px;">${aTotal}</td>
+                                <td style="border:1px solid #ccc; padding:6px;">${aPresent}</td>
+                                <td style="border:1px solid #ccc; padding:6px; color:#15803d; font-weight:bold;">${aPass}</td>
+                                <td style="border:1px solid #ccc; padding:6px; color:#dc2626; font-weight:bold;">${aFail}</td>
+                                <td style="border:1px solid #ccc; padding:6px; font-weight:bold;">${aPerc}%</td>
+                                <td style="border:1px solid #ccc; padding:6px;">${aGrade}</td>
+                            </tr>`;
+                    }
+                    sn++;
+                }
+
+                if (classDataList.length === 0) {
+                    alert("Koi bhi saved data nahi mila.");
+                    btn.innerText = originalText; btn.disabled = false;
+                    return;
+                }
+
+                // Temp Container for PDF Generation
+                const tempContainer = document.createElement('div');
+                tempContainer.style.position = 'absolute';
+                tempContainer.style.left = '-9999px';
+                tempContainer.style.top = '0px';
+                tempContainer.style.width = '1100px'; 
+                document.body.appendChild(tempContainer);
+
+                // 2. Generate SUMMARY PAGE
+                btn.innerText = "Generating Summary...";
+                
+                let gMainPerc = gMain.present > 0 ? ((gMain.pass / gMain.present) * 100).toFixed(1) : "0.0";
+                let gAsriPerc = gAsri.present > 0 ? ((gAsri.pass / gAsri.present) * 100).toFixed(1) : "0.0";
+
+                const summaryDiv = document.createElement('div');
+                summaryDiv.style.backgroundColor = "white"; summaryDiv.style.padding = "20px"; summaryDiv.style.width = "100%"; summaryDiv.style.boxSizing = "border-box";
+                
+                summaryDiv.innerHTML = `
+                    <div style="text-align:center; margin-bottom:20px;">
+                        <h1 style="font-family: 'Jameel Noori Nastaleeq', serif; font-size:30px; margin:0;">${jamiaName}</h1>
+                        <h2 style="font-size:18px; color:#0f766e; margin:5px 0;">Monthly Test Summary Report - ${monthKey}</h2>
+                    </div>
+
+                    <div style="margin-bottom:20px;">
+                        <div style="background-color:${COLOR_TEAL_DARK}; color:white; padding:5px; font-weight:bold; text-align:center;">Result Summary (All Subjects)</div>
+                        <table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">
+                            <thead style="background-color:${COLOR_TEAL_LIGHT}; color:#0f766e; font-weight:bold;">
+                                <tr>
+                                    <th style="border:1px solid #ccc; padding:8px;">#</th>
+                                    <th style="border:1px solid #ccc; padding:8px; text-align:left;">Class</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Total</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Present</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Pass</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Fail</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">%</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>${mainRowsHTML}</tbody>
+                            <tfoot style="background-color:#0f766e; color:white; font-weight:bold;">
+                                <tr>
+                                    <td colspan="2" style="border:1px solid #ccc; padding:8px; text-align:right;">Grand Total</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.total}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.present}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.pass}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.fail}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gMainPerc}%</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${getSummaryGrade(gMainPerc)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div>
+                        <div style="background-color:${COLOR_TEAL_DARK}; color:white; padding:5px; font-weight:bold; text-align:center;">Asri Subjects Summary (English & Maths)</div>
+                        <table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">
+                            <thead style="background-color:${COLOR_TEAL_LIGHT}; color:#0f766e; font-weight:bold;">
+                                <tr>
+                                    <th style="border:1px solid #ccc; padding:8px;">#</th>
+                                    <th style="border:1px solid #ccc; padding:8px; text-align:left;">Class</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Total</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Present</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Pass</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Fail</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">%</th>
+                                    <th style="border:1px solid #ccc; padding:8px;">Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>${asriRowsHTML}</tbody>
+                            <tfoot style="background-color:#0f766e; color:white; font-weight:bold;">
+                                <tr>
+                                    <td colspan="2" style="border:1px solid #ccc; padding:8px; text-align:right;">Grand Total</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.total}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.present}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.pass}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.fail}</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${gAsriPerc}%</td>
+                                    <td style="border:1px solid #ccc; padding:8px;">${getSummaryGrade(gAsriPerc)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                `;
+
+                tempContainer.appendChild(summaryDiv);
+
+                // Capture Summary
+                const sumCanvas = await html2canvas(summaryDiv, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+                const sumImg = sumCanvas.toDataURL('image/png');
+                const imgWidth = 297; 
+                const imgHeight = sumCanvas.height * imgWidth / sumCanvas.width;
+                pdfDoc.addImage(sumImg, 'PNG', 0, 0, imgWidth, imgHeight);
+
+                // Remove summary div to save memory
+                tempContainer.removeChild(summaryDiv);
+
+
+                // 3. Generate CLASS PAGES
+                for (const item of classDataList) {
+                    btn.innerText = `Generating: ${item.clsName}...`;
+                    
+                    // Create Page Layout (Reusing Logic)
+                    const pageDiv = document.createElement('div');
+                    pageDiv.style.backgroundColor = "white"; pageDiv.style.padding = "20px"; pageDiv.style.width = "100%"; pageDiv.style.boxSizing = "border-box";
+                    
+                    // Header HTML
+                    let headerCells = "";
+                    let totalMax = 0;
+                    item.subjects.forEach(sub => {
+                        const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths'; 
+                        const max = isSmall ? 25 : 100; totalMax += max;
                         headerCells += `<th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc;">${sub} <br><span style="font-size: 10px; font-weight: normal; color: #ccfbf1;">/${max}</span></th>`;
                     });
+
+                    pageDiv.innerHTML = `
+                        <div style="margin-bottom: 10px; border: 2px solid ${COLOR_BORDER}; border-radius: 8px; overflow: hidden;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr style="height: 40px;">
+                                    <td style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold; font-size: 18px; width: 66%; border-right: 1px solid white; text-transform: uppercase;">Monthly Test Result</td>
+                                    <td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-bottom: 1px solid ${COLOR_BORDER}; border-right: 1px solid ${COLOR_BORDER}; width: 17%;">CLASS</td>
+                                    <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid ${COLOR_BORDER}; width: 17%;">${item.clsName}</td>
+                                </tr>
+                                <tr style="height: 50px;">
+                                    <td style="background-color: white; color: #115e59; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 24px; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">${jamiaName}</td>
+                                    <td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">MONTH</td>
+                                    <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold;">${monthKey}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <table class="result-table" style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;">
+                            <thead style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold;">
+                                <tr>
+                                    <th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc; width: 40px;">#</th>
+                                    <th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc; width: 25%; text-align: center;">Talib-e-Ilm</th>
+                                    ${headerCells}
+                                    <th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">Total (${totalMax})</th>
+                                    <th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">%</th>
+                                    <th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200" style="text-align: center;"></tbody>
+                        </table>`;
+                    
+                    tempContainer.appendChild(pageDiv);
+
+                    // Fill Rows
                     const PAGE_HEIGHT_LIMIT = 760; 
-                    function createNewPage() {
-                        const pageDiv = document.createElement('div'); pageDiv.style.backgroundColor = "white"; pageDiv.style.padding = "20px"; pageDiv.style.width = "100%"; pageDiv.style.boxSizing = "border-box";
-                        pageDiv.innerHTML = `<div style="margin-bottom: 10px; border: 2px solid ${COLOR_BORDER}; border-radius: 8px; overflow: hidden;"><table style="width: 100%; border-collapse: collapse;"><tr style="height: 40px;"><td style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold; font-size: 18px; width: 66%; border-right: 1px solid white; text-transform: uppercase;">Monthly Test Result</td><td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-bottom: 1px solid ${COLOR_BORDER}; border-right: 1px solid ${COLOR_BORDER}; width: 17%;">CLASS</td><td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid ${COLOR_BORDER}; width: 17%;">${clsName}</td></tr><tr style="height: 50px;"><td style="background-color: white; color: #115e59; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 24px; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">${jamiaName}</td><td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">MONTH</td><td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold;">${monthKey}</td></tr></table></div><table class="result-table" style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;"><thead style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold;"><tr><th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc; width: 40px;">#</th><th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc; width: 25%; text-align: center;">Talib-e-Ilm</th>${headerCells}<th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">Total (${totalMax})</th><th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">%</th><th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">Grade</th></tr></thead><tbody class="divide-y divide-gray-200" style="text-align: center;"></tbody></table>`;
-                        tempContainer.appendChild(pageDiv); return pageDiv;
-                    }
-                    let currentPage = createNewPage(); let currentTbody = currentPage.querySelector('.result-table tbody');
-                    for (let i = 0; i < students.length; i++) {
-                        const std = students[i]; const tr = document.createElement('tr'); let tds = ""; let hasAbsent = false;
-                        subjects.forEach(sub => {
-                            let val = std.marks[sub]; if (val === undefined) val = "-"; let cellStyle = "background: transparent;"; let displayVal = val;
+                    let currentTbody = pageDiv.querySelector('.result-table tbody');
+                    let tempPage = pageDiv; // Reference to current page div
+
+                    // Rows Loop
+                    for (let i = 0; i < item.students.length; i++) {
+                        const std = item.students[i];
+                        const tr = document.createElement('tr');
+                        let tds = ""; let hasAbsent = false;
+
+                        item.subjects.forEach(sub => {
+                            let val = std.marks[sub]; if (val === undefined) val = "-"; 
+                            let cellStyle = "background: transparent;"; let displayVal = val;
+                            
                             if (val === 'A') { hasAbsent = true; cellStyle = "background-color: #fee2e2; color: #991b1b;"; } 
-                            else if (val !== '-' && typeof val === 'number') { const max = (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') ? 25 : 100; const pass = max === 25 ? 10 : 40; if (val < pass) cellStyle = "background-color: #fee2e2; color: #991b1b;"; }
+                            else if (val !== '-' && typeof val === 'number') { 
+                                const max = (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') ? 25 : 100; 
+                                const pass = max === 25 ? 10 : 40; 
+                                if (val < pass) cellStyle = "background-color: #fee2e2; color: #991b1b;"; 
+                            }
                             tds += `<td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; ${cellStyle}">${displayVal}</td>`;
                         });
-                        let grade = "Nakam"; let cls = "background-color: #ef4444; color: white;"; const p = parseFloat(std.percentage);
+
+                        let grade = "Nakam"; let cls = "background-color: #ef4444; color: white;"; 
+                        const p = parseFloat(std.percentage);
                         if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "background-color: #15803d; color: white;"; }
                         else if (p >= 70) { grade = "Mumtaz"; cls = "background-color: #22c55e; color: white;"; }
                         else if (p >= 50) { grade = "Jayyid"; cls = "background-color: #eab308; color: white;"; }
                         else if (p >= 40) { grade = "Maqbul"; cls = "background-color: #f97316; color: white;"; }
+                        
                         if (hasAbsent || p < 40) { grade = "Nakam"; cls = "background-color: #ef4444; color: white;"; }
-                        tr.innerHTML = `<td style="border: 1px solid #e5e7eb; padding: 5px 2px; color: #6b7280;">${i + 1}</td><td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: 600; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 14px; text-align: center;">${std.name}</td>${tds}<td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold;">${std.total}</td><td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; color: #2563eb;">${std.percentage}%</td><td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; font-size: 12px; border-radius: 4px; ${cls}">${grade}</td>`;
+
+                        tr.innerHTML = `
+                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; color: #6b7280;">${i + 1}</td>
+                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: 600; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 14px; text-align: center;">${std.name}</td>
+                            ${tds}
+                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold;">${std.total}</td>
+                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; color: #2563eb;">${std.percentage}%</td>
+                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; font-size: 12px; border-radius: 4px; ${cls}">${grade}</td>
+                        `;
                         currentTbody.appendChild(tr);
-                        if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) { currentTbody.removeChild(tr); currentPage = createNewPage(); currentTbody = currentPage.querySelector('.result-table tbody'); currentTbody.appendChild(tr); }
+
+                        // Page Break Check
+                        if (tempPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
+                            currentTbody.removeChild(tr);
+                            
+                            // Capture Full Page
+                            const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+                            const imgData = canvas.toDataURL('image/png');
+                            const imgWidth = 297; const imgHeight = canvas.height * imgWidth / canvas.width;
+                            pdfDoc.addPage();
+                            pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+                            // Create New Page for remaining rows
+                            tempContainer.removeChild(tempPage); // Clean old
+                            
+                            // Re-create Header
+                            const newPageDiv = pageDiv.cloneNode(true); 
+                            newPageDiv.querySelector('tbody').innerHTML = ''; // Clear rows
+                            tempPage = newPageDiv;
+                            tempContainer.appendChild(tempPage);
+                            currentTbody = tempPage.querySelector('tbody');
+                            currentTbody.appendChild(tr);
+                        }
                     }
-                    const directPages = Array.from(tempContainer.children);
-                    for (let j = 0; j < directPages.length; j++) {
-                        const page = directPages[j]; const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-                        const imgData = canvas.toDataURL('image/png'); const imgWidth = 297; const imgHeight = canvas.height * imgWidth / canvas.width;
-                        if (pageCount > 0) pdfDoc.addPage(); pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight); pageCount++;
-                    }
-                    document.body.removeChild(tempContainer);
+
+                    // Capture Last Page of this class
+                    const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgWidth = 297; const imgHeight = canvas.height * imgWidth / canvas.width;
+                    pdfDoc.addPage();
+                    pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+                    tempContainer.removeChild(tempPage);
                 }
-                if (pageCount === 0) { alert("Koi bhi saved data nahi mila."); } else { pdfDoc.save(`All_Classes_Result_${jamiaName}_${monthKey}.pdf`); }
-            } catch (error) { console.error("PDF Error:", error); alert("Error: " + error.message); } finally { btn.innerText = originalText; btn.disabled = false; }
+
+                document.body.removeChild(tempContainer);
+                pdfDoc.save(`All_Classes_Result_${jamiaName}_${monthKey}.pdf`);
+
+            } catch (error) {
+                console.error("PDF Error:", error);
+                alert("Error: " + error.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         };
     </script>
 </body>
 </html>
+
