@@ -639,132 +639,115 @@ window.calcRow = (el) => {
                 console.error("Save Error:", error);
                 alert("Error: " + error.message);
             }
-        };
+            };
 
-       // 8. Load Existing
-async function checkExistingForClass(clsName) {
+       // 8. Load Existing Data & Check View Mode
+window.checkExistingForClass = async (clsName) => {
     
-    // FIX 2: Doc ID ko sirf ek baar define karein (Syntax Error theek kiya)
     const cleanClass = clsName.split('_')[0]; 
     const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
     
-    console.log("🔎 Doc ID used for LOAD:", docId); // Debug Log
+    console.log("🔎 Doc ID used for LOAD:", docId);
     
     const resultArea = document.getElementById('result-area');
     const studentsBody = document.getElementById('students-body');
     const classSelect = document.getElementById('class-select');
     const selectionArea = document.getElementById('subject-selection-area'); 
 
-    // **Step 1: Subjects aur Table ko Reset Karein (Important!)**
+    // Reset UI
     finalSubjectsList = [];
     studentsBody.innerHTML = '';
     resultArea.classList.add('hidden'); 
     document.getElementById('table-head').innerHTML = '';
-    
-    // Select kiye gaye subjects ke checkboxes ko uncheck karein
     document.querySelectorAll('.subject-checkbox').forEach(chk => chk.checked = false);
     
-    // Hamesha Class Select ko enable rakhein shuru mein
+    // Default Enable
     classSelect.disabled = false; 
 
-    console.log("Attempting to load docId:", docId); // ⬅️ Doc ID check karein
-    
     try {
         const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
         
         if (snap.exists()) {
             const data = snap.data(); 
+            console.log("✅ Data Found:", data);
             
-            console.log("✅ Data Found:", data); // ⬅️ Data object ko check karein
-            
-            // 1. Subjects ko Check karein:
+            // 1. Subjects Load
             const allChecks = document.querySelectorAll('.subject-checkbox');
             const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
-            
             allChecks.forEach(chk => {
                 if (savedVariableSubjects.includes(chk.value)) chk.checked = true;
             });
             
-            // 2. Final Subjects Set karein:
+            // 2. Final Subjects Set
             finalSubjectsList = data.subjects;
             
-            // 3. Header aur Result Area dikhayein:
+            // 3. Render Headers & Show Area
             renderTableHeaders(); 
             resultArea.classList.remove('hidden'); 
             
-            // ======================================================
-            // Naye Changes Yahan Hain (Loading ke baad ka action)
-            // ======================================================
-            classSelect.disabled = true; // Class Select ko disable kar do
-            selectionArea.classList.add('hidden'); // Subject Selection Area chhipa do
-            // ======================================================
+            // 4. Lock Selection
+            classSelect.disabled = true; 
+            selectionArea.classList.add('hidden'); 
             
-           // 4. Students Load hone ke baad:
+            // 5. Load Students
             document.getElementById('students-body').innerHTML = ''; 
             data.students.forEach(s => addStudentRow(s.name, s.marks)); 
 
             // ========================================================
-            // 🔥 VIEW MODE LOGIC (Yahan Paste Karein)
+            // 🔥 VIEW MODE LOGIC (Integrated Here)
             // ========================================================
             const params = new URLSearchParams(window.location.search);
             
             if (params.get('mode') === 'view') {
                 console.log("👀 View Mode Active: Editing Disabled");
 
-                // 1. Heading Update - Batao ki ye View Only hai
+                // A. Heading Update
                 const headerTitle = document.querySelector('h1');
-                if(headerTitle) {
+                if(headerTitle && !headerTitle.innerText.includes("View Only")) {
                     headerTitle.innerHTML += ` <span class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
                 }
 
-                // 2. Hide Editing Controls (Buttons & Checkboxes)
-                const elementsToHide = [
-                    'subject-selection-area',          // Checkboxes
-                    'class-tabs',                      // Class Tabs
-                    'class-select',                    // Class Dropdown
-                ];
+                // B. Hide Editing Controls
+                const elementsToHide = ['subject-selection-area', 'class-tabs', 'class-select'];
                 elementsToHide.forEach(id => {
                     const el = document.getElementById(id);
                     if(el) el.classList.add('hidden');
                 });
                 
-                // Add Student & Save Buttons Hide
+                // Hide Buttons
                 const addStudentBtn = document.querySelector('button[onclick="addStudentRow()"]');
                 const saveResultBtn = document.querySelector('button[onclick="saveResult()"]');
                 if(addStudentBtn) addStudentBtn.style.display = 'none';
                 if(saveResultBtn) saveResultBtn.style.display = 'none';
 
-                // 3. Inputs Disable (Read-Only Look)
+                // C. Lock Inputs (Read-Only)
                 const allInputs = document.querySelectorAll('#students-body input');
                 allInputs.forEach(inp => {
-                    inp.disabled = true; // Edit nahi kar sakte
-                    inp.style.backgroundColor = 'transparent'; // Background white/transparent
-                    inp.style.border = 'none'; // Border hata do
-                    inp.style.textAlign = 'center'; // Center text
-                    inp.style.fontWeight = 'bold'; // Bold text
-                    inp.style.color = '#1f2937'; // Dark Gray text color
-                    
-                    // Placeholders hata do taaki safai dikhe
+                    inp.disabled = true;
+                    inp.style.backgroundColor = 'transparent';
+                    inp.style.border = 'none';
+                    inp.style.textAlign = 'center';
+                    inp.style.fontWeight = 'bold';
+                    inp.style.color = '#1f2937'; 
                     inp.placeholder = "";
                 });
 
-                // 4. Delete Buttons Hide (Trash Icons)
+                // D. Hide Delete Buttons & Columns
                 const deleteBtns = document.querySelectorAll('.no-print');
                 deleteBtns.forEach(btn => btn.style.display = 'none');
-
-                // 5. Table Header Delete Column Hide
+                
                 const headerTrash = document.querySelector('#table-head th:last-child');
                 if(headerTrash) headerTrash.style.display = 'none';
 
-                // 6. Sirf Download Buttons Dikhayein
+                // E. Center Download Buttons
                 const actionContainer = document.querySelector('.mt-8.flex.flex-col');
                 if (actionContainer) {
                     actionContainer.classList.remove('justify-end');
-                    actionContainer.classList.add('justify-center'); // Center align download buttons
+                    actionContainer.classList.add('justify-center');
                 }
 
             } else {
-                // Agar normal mode hai to alert dikhayein
+                // Normal Mode Alert
                 alert(`Class ${clsName} ka purana data load kiya gaya.`);
             }
             // ========================================================
@@ -772,7 +755,11 @@ async function checkExistingForClass(clsName) {
         } else {
              console.log("❌ Document does not exist for this class."); 
         }
-        };
+    } catch(e) { 
+        console.log("New sheet or error loading:", e);
+    }
+};
+    
        window.downloadPDF = async () => {
     // 1. Library Check
     if (!window.html2canvas) { alert("Error: html2canvas library missing hai."); return; }
@@ -1190,6 +1177,7 @@ window.saveResult_Admin = async function() { // Function ka naam badal diya
     </script>
 </body>
 </html>
+
 
 
 
