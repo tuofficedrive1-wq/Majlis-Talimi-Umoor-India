@@ -1246,8 +1246,7 @@
                 btn.disabled = false;
             }
         };
-        // --- REPORT CARD GENERATION LOGIC ---
-
+        // --- PROFESSIONAL REPORT CARD GENERATION ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
@@ -1256,7 +1255,7 @@ window.downloadReportCards = async () => {
 
     const btn = document.querySelector('button[onclick="downloadReportCards()"]');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Making...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Designing...';
     btn.disabled = true;
 
     try {
@@ -1273,8 +1272,6 @@ window.downloadReportCards = async () => {
 
             const totalObtained = parseFloat(row.querySelector('.total-val').textContent) || 0;
             const percentage = parseFloat(row.querySelector('.perc-val').textContent) || 0;
-            
-            // Grade Logic
             let grade = row.querySelector('.grade-val').textContent;
 
             studentsData.push({
@@ -1287,42 +1284,46 @@ window.downloadReportCards = async () => {
             });
         });
 
-        // Sort for Ranking (Higher percentage = Rank 1)
+        // Ranking Logic
         studentsData.sort((a, b) => b.percentage - a.percentage);
-        
-        // Assign Ranks
         studentsData.forEach((std, i) => { std.rank = i + 1; });
 
-        // 3. PDF Setup
+        // 3. Translation Helper
+        const getSubjectNames = (originalName) => {
+            const lower = originalName.toLowerCase();
+            if(lower.includes('english')) return { en: 'English Language', ur: 'انگریزی' };
+            if(lower.includes('math')) return { en: 'Mathematics', ur: 'حساب' };
+            // Baaki subjects ke liye original naam use karein
+            return { en: originalName, ur: originalName };
+        };
+
+        // 4. PDF Setup
         const { jsPDF } = window.jspdf;
-        // A4 Portrait size
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = 210;
         const pageHeight = 297;
 
-        const template = document.getElementById('report-card-template');
-        const container = document.getElementById('report-card-container');
+        // Hidden Container Setup
+        let container = document.getElementById('report-card-container');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'report-card-container';
+            document.body.appendChild(container);
+        }
         
-        // Element ko temporarily dikhana (off-screen) zaroori hai capture ke liye
+        container.style.position = 'absolute';
         container.style.left = '0px'; 
-        container.style.zIndex = '-1';
+        container.style.top = '0px';
+        container.style.zIndex = '-100'; // Screen par na dikhe
 
-        // 4. Generate Pages Loop
+        // 5. Loop Through Students
         for (let i = 0; i < studentsData.length; i++) {
             const std = studentsData[i];
             
-            // --- Fill Template Data ---
-            document.getElementById('rc-month').textContent = (monthKey || "MONTH").toUpperCase();
-            document.getElementById('rc-class').textContent = document.getElementById('class-select').value || "Class";
-            document.getElementById('rc-name').textContent = std.name;
-            document.getElementById('rc-branch').textContent = jamiaName || "Jamia";
-            document.getElementById('rc-roll').textContent = std.index; // Roll no sequence
-            
-            // Marks Body
-            const tbody = document.getElementById('rc-marks-body');
-            tbody.innerHTML = '';
-            
+            // Grand Total Calc
             let grandTotalMax = 0;
+            let rowsHTML = "";
+            
             finalSubjectsList.forEach(sub => {
                 const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
                 const max = isSmall ? 25 : 100;
@@ -1331,48 +1332,141 @@ window.downloadReportCards = async () => {
                 let obt = std.marks[sub] || '-';
                 if(obt === 'A') obt = 'Abs';
 
-                tbody.innerHTML += `
-                    <tr>
-                        <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">${sub}</td>
-                        <td style="border: 1px solid #000; padding: 8px;">${max}</td>
-                        <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">${obt}</td>
-                        <td style="border: 1px solid #000; padding: 8px; font-family: 'Jameel Noori Nastaleeq';">${sub}</td> 
+                // Get Translated Names
+                const names = getSubjectNames(sub);
+
+                rowsHTML += `
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <td style="padding: 10px; text-align: left; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0;">${names.en}</td>
+                        <td style="padding: 10px; text-align: center; color: #4a5568; border-right: 1px solid #e2e8f0;">${max}</td>
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #2b6cb0; border-right: 1px solid #e2e8f0;">${obt}</td>
+                        <td style="padding: 10px; text-align: right; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 18px; color: #2d3748;">${names.ur}</td> 
                     </tr>
                 `;
             });
 
-            document.getElementById('rc-grand-total').textContent = grandTotalMax;
-            document.getElementById('rc-obtained').textContent = std.obtained;
-            document.getElementById('rc-percentage').textContent = std.percentage.toFixed(2) + '%';
-            document.getElementById('rc-grade').textContent = std.grade;
-            document.getElementById('rc-rank').textContent = std.rank;
-            
-            // Status Logic
-            const statusEl = document.getElementById('rc-status');
-            if(std.grade.includes('Nakam') || std.grade === 'Fail') {
-                statusEl.textContent = "FAIL";
-                statusEl.style.color = "red";
-            } else {
-                statusEl.textContent = "PASS";
-                statusEl.style.color = "green";
-            }
+            // Status Color
+            const isFail = std.grade.includes('Nakam') || std.grade === 'Fail';
+            const statusColor = isFail ? '#e53e3e' : '#38a169'; // Red or Green
+            const statusText = isFail ? 'FAIL' : 'PASS';
 
-            // --- Capture & Add to PDF ---
-            if (i > 0) pdf.addPage(); // Naya page har student ke liye
+            // HTML Template (New Design)
+            container.innerHTML = `
+                <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 40px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
+                    
+                    <div style="border: 4px double #0f766e; height: 100%; padding: 5px; box-sizing: border-box; position: relative;">
+                        <div style="border: 1px solid #d4af37; height: 100%; padding: 20px; box-sizing: border-box; background: linear-gradient(to bottom, #ffffff, #fafdff);">
+                            
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.05; pointer-events: none;">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Jamia_logo.png" style="width: 500px;">
+                            </div>
 
-            // Capture High Quality
-            const canvas = await html2canvas(template, {
-                scale: 2, // High resolution
-                useCORS: true,
-                backgroundColor: "#ffffff"
-            });
+                            <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #d4af37; padding-bottom: 20px;">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Jamia_logo.png" style="width: 80px; margin-bottom: 10px;">
+                                <h1 style="color: #0f766e; font-weight: 800; font-size: 32px; margin: 0; letter-spacing: 1px; text-transform: uppercase;">Jamia Tul Madina India</h1>
+                                <div style="background-color: #0f766e; color: #fff; display: inline-block; padding: 5px 20px; border-radius: 20px; margin-top: 10px;">
+                                    <h2 style="font-size: 18px; margin: 0; font-weight: 500;">Monthly Test Result: ${monthKey}</h2>
+                                </div>
+                            </div>
 
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 30px; background-color: #f0fdfa; border: 1px solid #b2f5ea; border-radius: 10px; padding: 20px;">
+                                <div style="width: 60%;">
+                                    <p style="margin: 5px 0; font-size: 14px; color: #555;">Name of Student:</p>
+                                    <h2 style="margin: 0; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 28px; color: #2d3748; line-height: 1.2;">${std.name}</h2>
+                                    <p style="margin: 15px 0 5px 0; font-size: 14px; color: #555;">Class:</p>
+                                    <h3 style="margin: 0; font-weight: 700; color: #2c5282;">${document.getElementById('class-select').value}</h3>
+                                </div>
+                                <div style="width: 35%; text-align: right; border-left: 2px dashed #cbd5e0; padding-left: 20px;">
+                                    <p style="margin: 5px 0; font-size: 14px; color: #555;">Roll No:</p>
+                                    <h3 style="margin: 0; font-weight: 700; font-size: 22px;">${std.index}</h3>
+                                    <p style="margin: 15px 0 5px 0; font-size: 14px; color: #555;">Branch:</p>
+                                    <h3 style="margin: 0; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 20px;">${jamiaName}</h3>
+                                </div>
+                            </div>
+
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                                <thead style="background-color: #0f766e; color: #ffffff;">
+                                    <tr>
+                                        <th style="padding: 12px; text-align: left; border-right: 1px solid #1ba193;">Subjects (English)</th>
+                                        <th style="padding: 12px; text-align: center; border-right: 1px solid #1ba193;">Total</th>
+                                        <th style="padding: 12px; text-align: center; border-right: 1px solid #1ba193;">Obtained</th>
+                                        <th style="padding: 12px; text-align: right; font-family: 'Jameel Noori Nastaleeq'; font-size: 18px;">مضمون</th>
+                                    </tr>
+                                </thead>
+                                <tbody style="background-color: #fff;">
+                                    ${rowsHTML}
+                                </tbody>
+                            </table>
+
+                            <div style="display: flex; gap: 20px; margin-bottom: 40px;">
+                                <div style="flex: 1; border: 2px solid #d4af37; border-radius: 12px; padding: 15px; background: #fffdf0;">
+                                    <table style="width: 100%;">
+                                        <tr>
+                                            <td style="color: #555;">Total Marks:</td>
+                                            <td style="text-align: right; font-weight: bold;">${grandTotalMax}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="color: #555;">Obtained:</td>
+                                            <td style="text-align: right; font-weight: bold; color: #2b6cb0;">${std.obtained}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="color: #555;">Percentage:</td>
+                                            <td style="text-align: right; font-weight: bold; color: #2b6cb0;">${std.percentage.toFixed(2)}%</td>
+                                        </tr>
+                                    </table>
+                                </div>
+
+                                <div style="flex: 1; display: flex; flex-col; align-items: center; justify-content: center; background-color: ${statusColor}; color: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                                    <div style="text-align: center;">
+                                        <p style="margin: 0; font-size: 14px; opacity: 0.9;">RESULT</p>
+                                        <h1 style="margin: 0; font-size: 36px; font-weight: 800; letter-spacing: 2px;">${statusText}</h1>
+                                    </div>
+                                </div>
+
+                                <div style="flex: 1; border: 2px solid #0f766e; border-radius: 12px; padding: 15px; background: #f0fdfa;">
+                                    <table style="width: 100%;">
+                                        <tr>
+                                            <td style="color: #0f766e; font-weight: bold;">Grade:</td>
+                                            <td style="text-align: right; font-weight: 800; font-size: 18px;">${std.grade}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="color: #0f766e; font-weight: bold;">Class Rank:</td>
+                                            <td style="text-align: right; font-weight: 800; font-size: 24px; color: #d69e2e;">#${std.rank}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div style="position: absolute; bottom: 40px; width: calc(100% - 50px); display: flex; justify-content: space-between;">
+                                <div style="text-align: center;">
+                                    <div style="width: 150px; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
+                                    <p style="margin: 0; font-weight: 600; color: #555;">Principal Signature</p>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="width: 150px; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
+                                    <p style="margin: 0; font-weight: 600; color: #555;">Taleemi Zimmedar</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Wait for DOM
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Capture
+            const element = document.getElementById(`rc-template-${i}`);
+            if (i > 0) pdf.addPage();
+
+            const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
             const imgData = canvas.toDataURL('image/png');
-            // A4 size me fit karein
             pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
         }
 
-        // Hide Template Again
+        // Clean up
+        container.innerHTML = ''; 
         container.style.left = '-9999px';
 
         // Save
@@ -1384,12 +1478,11 @@ window.downloadReportCards = async () => {
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
-        // Template wapas chupayein agar error aaye
-        document.getElementById('report-card-container').style.left = '-9999px';
     }
 };
     </script>
 </body>
 </html>
+
 
 
