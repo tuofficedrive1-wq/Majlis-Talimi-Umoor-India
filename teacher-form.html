@@ -470,143 +470,140 @@
     }
 
     // --- NEW FUNCTION TO SHOW PREVIOUS MONTH DATA ---
-   // --- FINAL FIXED FUNCTION: Matches Table Logic Exactly (Looks inside changedValues) ---
-async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
-    try {
-        // 1. Calculate Previous Month
-        let pm = currentMonth - 1;
-        let py = currentYear;
-        if (pm < 0) { 
-            pm = 11; 
-            py -= 1; 
+   // --- UPDATED BLUE BOX FUNCTION (Smart Calculation for Pages + Latest Text) ---
+    async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
+        try {
+            // 1. Previous Month Calculate karein
+            let pm = currentMonth - 1;
+            let py = currentYear;
+            if (pm < 0) { 
+                pm = 11; 
+                py -= 1; 
+            }
+
+            // URL se Active Year uthayen (Taake mix na ho)
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentActiveYear = urlParams.get('activeYear');
+
+            const submissionsRef = db.collection('teacher_submissions');
+            const q = submissionsRef
+                .where('jamiaId', '==', jamiaName)
+                .where('teacherId', '==', teacherId)
+                .where('submissionMonth', '==', pm)
+                .where('submissionYear', '==', py);
+
+            const snap = await q.get();
+            if (snap.empty) return; // Agar pichle mahine koi data nahi to wapis jayen
+
+            // 2. Data Grouping Logic
+            const periodData = {}; 
+
+            snap.forEach(doc => {
+                const d = doc.data();
+                if (!d.periodId) return;
+
+                // 🛑 Active Year Check (Important)
+                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
+
+                const pid = d.periodId;
+                const ts = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
+
+                if (!periodData[pid]) {
+                    periodData[pid] = {
+                        teacherSum: 0,      // Teacher ke pages ka total
+                        adminVal: 0,        // Admin ke pages
+                        adminTs: 0,         // Admin update ka time
+                        latestTs: 0,        // Text ke liye sabse latest time
+                        lastPageNo: '-',
+                        lastIbarat: '-'
+                    };
+                }
+
+                const slot = periodData[pid];
+
+                // --- TEXT DATA (Hamesha Latest wala uthana hai) ---
+                if (ts > slot.latestTs) {
+                    slot.latestTs = ts;
+                    // Default values from doc
+                    slot.lastPageNo = d.lastPageNo;
+                    slot.lastIbarat = d.lastIbarat;
+
+                    // Agar Admin update hai, to check karein changedValues mein text hai ya nahi
+                    if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
+                        const cvText = d.changedValues.find(x => x.lastIbarat !== undefined);
+                        if (cvText) slot.lastIbarat = cvText.lastIbarat;
+                        
+                        const cvPage = d.changedValues.find(x => x.lastPageNo !== undefined);
+                        if (cvPage) slot.lastPageNo = cvPage.lastPageNo;
+                    }
+                }
+
+                // --- PAGES DATA (Smart Calculation) ---
+                // CASE A: Admin Update
+                if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
+                    d.changedValues.forEach(change => {
+                        if (change.periodId === pid && change.pagesTaught !== undefined && change.pagesTaught !== null) {
+                            const val = parseInt(change.pagesTaught, 10);
+                            // Sirf tab maane jab value 0 se badi ho
+                            if (val > 0) {
+                                // Agar multiple admin updates hain to latest wali leni hai
+                                if (ts > slot.adminTs) {
+                                    slot.adminVal = val;
+                                    slot.adminTs = ts;
+                                }
+                            }
+                        }
+                    });
+                } 
+                // CASE B: Teacher Submission
+                else if (d.role !== 'user_update') {
+                    const val = parseInt(d.pagesTaught || 0, 10);
+                    slot.teacherSum += val; // Teacher ka data JODTE (Sum) jayen
+                }
+            });
+
+            // 3. Final Render
+            Object.keys(periodData).forEach(pid => {
+                const container = document.getElementById(`prev-record-${pid}`);
+                if (container) {
+                    const data = periodData[pid];
+                    
+                    // Faisla: Agar Admin Value hai to wo, warna Teacher Sum
+                    let finalPages = 0;
+                    if (data.adminVal > 0) {
+                        finalPages = data.adminVal;
+                    } else {
+                        finalPages = data.teacherSum;
+                    }
+
+                    const html = `
+                        <div class="flex flex-col sm:flex-row sm:justify-between gap-2 sm:gap-4 text-xs sm:text-sm">
+                             <div>
+                                <span class="font-bold text-gray-700">پڑھائے گئے صفحات:</span> 
+                                <span class="text-blue-800 font-mono font-bold bg-blue-100 px-2 py-0.5 rounded border border-blue-200">
+                                    ${finalPages}
+                                </span>
+                             </div>
+                             <div>
+                                <span class="font-bold text-gray-700">آخری صفحہ نمبر:</span> 
+                                <span class="text-blue-800 font-mono font-bold">${data.lastPageNo || '-'}</span>
+                             </div>
+                             <div>
+                                <span class="font-bold text-gray-700">آخری عبارت:</span> 
+                                <span class="text-blue-800">${escapeHtml(data.lastIbarat || '-')}</span>
+                             </div>
+                        </div>
+                    `;
+
+                    container.querySelector('.content').innerHTML = html;
+                    container.classList.remove('hidden');
+                }
+            });
+
+        } catch (e) {
+            console.error("Error loading previous month data:", e);
         }
-
-        const submissionsRef = db.collection('teacher_submissions');
-        const q = submissionsRef
-            .where('jamiaId', '==', jamiaName)
-            .where('teacherId', '==', teacherId)
-            .where('submissionMonth', '==', pm)
-            .where('submissionYear', '==', py);
-
-        const snap = await q.get();
-        if (snap.empty) return; 
-
-        // --- STEP 1: DATA GROUPING (Smart Way) ---
-        const periodDataMap = {}; // Structure: { periodId: { teacherDocs: [], adminDocs: [] } }
-
-        snap.forEach(doc => {
-            const d = doc.data();
-            
-            // CASE A: ADMIN UPDATE (Check inside changedValues)
-            if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
-                d.changedValues.forEach(change => {
-                    const pId = change.periodId;
-                    if (pId) {
-                        if (!periodDataMap[pId]) periodDataMap[pId] = { teacherDocs: [], adminDocs: [] };
-                        // Admin doc ko us specific period ki list me daal do
-                        periodDataMap[pId].adminDocs.push({ ...d, specificChange: change }); 
-                    }
-                });
-            } 
-            // CASE B: TEACHER SUBMISSION (Check root periodId)
-            else if (d.periodId) {
-                const pId = d.periodId;
-                if (!periodDataMap[pId]) periodDataMap[pId] = { teacherDocs: [], adminDocs: [] };
-                periodDataMap[pId].teacherDocs.push(d);
-            }
-        });
-
-        // --- STEP 2: CALCULATE FINAL VALUES ---
-        Object.keys(periodDataMap).forEach(pid => {
-            const { teacherDocs, adminDocs } = periodDataMap[pid];
-            
-            let finalPages = 0;
-            let finalPageNo = '-';
-            let finalIbarat = '-';
-            let foundAdminPages = false;
-
-            // 1. ADMIN PRIORITY (Agar Admin update hai to pages wahin se lo)
-            if (adminDocs.length > 0) {
-                // Sort by latest (agar ek se zyada admin updates hon)
-                adminDocs.sort((a, b) => {
-                    const tA = a.updatedAt ? a.updatedAt.toMillis() : 0;
-                    const tB = b.updatedAt ? b.updatedAt.toMillis() : 0;
-                    return tB - tA;
-                });
-                
-                const latestAdmin = adminDocs[0];
-                const change = latestAdmin.specificChange; // Wo specific change jo is period ka tha
-
-                if (change.pagesTaught !== undefined && change.pagesTaught !== null) {
-                    finalPages = parseInt(change.pagesTaught, 10);
-                    foundAdminPages = true; // Flag: Admin ne pages set kar diye hain
-                }
-
-                // Text fields bhi admin se utha lo agar hain
-                if (change.lastPageNo) finalPageNo = change.lastPageNo;
-                else if (latestAdmin.lastPageNo) finalPageNo = latestAdmin.lastPageNo;
-
-                if (change.lastIbarat) finalIbarat = change.lastIbarat;
-                else if (latestAdmin.lastIbarat) finalIbarat = latestAdmin.lastIbarat;
-            }
-
-            // 2. TEACHER FALLBACK (Agar Admin ne pages nahi cheday, ya admin record hi nahi hai)
-            if (!foundAdminPages) {
-                // Sirf tab sum karo jab Admin ne overwrite na kiya ho
-                teacherDocs.forEach(tDoc => {
-                    finalPages += parseInt(tDoc.pagesTaught || 0, 10);
-                });
-            }
-
-            // 3. TEXT FIELDS FALLBACK (Agar Admin ne Text nahi diya, to Teacher ka latest text lo)
-            if (finalPageNo === '-' || finalIbarat === '-') {
-                // Find latest teacher doc for text
-                let latestTs = 0;
-                let bestTDoc = null;
-                teacherDocs.forEach(tDoc => {
-                    const t = tDoc.submittedAt ? tDoc.submittedAt.toMillis() : 0;
-                    if (t > latestTs) {
-                        latestTs = t;
-                        bestTDoc = tDoc;
-                    }
-                });
-
-                if (bestTDoc) {
-                    if (finalPageNo === '-') finalPageNo = bestTDoc.lastPageNo;
-                    if (finalIbarat === '-') finalIbarat = bestTDoc.lastIbarat;
-                }
-            }
-            
-            // --- STEP 3: HTML RENDER ---
-            const container = document.getElementById(`prev-record-${pid}`);
-            if (container) {
-                const html = `
-                    <div class="flex flex-col sm:flex-row sm:justify-between gap-2 sm:gap-4 text-xs sm:text-sm">
-                            <div>
-                            <span class="font-bold text-gray-700">پڑھائے گئے صفحات:</span> 
-                            <span class="text-blue-800 font-mono font-bold bg-blue-100 px-2 py-0.5 rounded border border-blue-200">
-                                ${finalPages}
-                            </span>
-                            </div>
-                            <div>
-                            <span class="font-bold text-gray-700">آخری صفحہ نمبر:</span> 
-                            <span class="text-blue-800 font-mono font-bold">${finalPageNo || '-'}</span>
-                            </div>
-                            <div>
-                            <span class="font-bold text-gray-700">آخری عبارت:</span> 
-                            <span class="text-blue-800">${escapeHtml(finalIbarat || '-')}</span>
-                            </div>
-                    </div>
-                `;
-                container.querySelector('.content').innerHTML = html;
-                container.classList.remove('hidden');
-            }
-        });
-
-    } catch (e) {
-        console.error("Error loading previous month data:", e);
     }
-}
 
 
     // ----------------- REDESIGNED & FILTERED UPDATE FUNCTION -----------------
@@ -1233,6 +1230,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
