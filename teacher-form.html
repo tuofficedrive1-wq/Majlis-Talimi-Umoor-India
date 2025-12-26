@@ -1002,7 +1002,7 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (BULLETPROOF FIX: Groups Data & Picks Latest Date) ---
+    // --- SHOW PROFILE (FINAL FIX: Ignores '0' from Admin) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
@@ -1012,7 +1012,7 @@ function escapeHtml(str) {
 
         try {
             // 1. سمسٹر اور مہینوں کا تعین
-            const mIndex = currentMonthIndex;
+            const mIndex = parseInt(currentMonthIndex, 10);
             let semMonths = [];
             let semTotalDays = 0;
             const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
@@ -1039,44 +1039,48 @@ function escapeHtml(str) {
             const snap = await q.get();
             
             // --- 🛑 STEP 1: RAW DATA GROUPING ---
-            // ہم پہلے ڈیٹا کو پیریڈ اور مہینے کے حساب سے الگ الگ ڈبوں میں رکھیں گے
             const rawMap = {}; 
             // Structure: { periodId: { monthIndex: { adminDocs: [], teacherDocs: [] } } }
 
             snap.forEach(doc => {
                 const d = doc.data();
-                const mid = d.submissionMonth;
+                // Safety: Month ko hamesha Number banayen
+                const mid = parseInt(d.submissionMonth, 10);
 
-                // A: اگر یہ ADMIN UPDATE ہے (changedValues کے اندر چیک کریں)
+                // A: اگر یہ ADMIN UPDATE ہے
                 if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
                     d.changedValues.forEach(change => {
-                        // صرف تب اٹھائیں اگر اس میں 'pagesTaught' موجود ہو
+                        // 🛠️ FIX: صرف تب اٹھائیں اگر pagesTaught > 0 ہو (0 کو اگنور کریں)
                         if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
-                            const pId = change.periodId;
-                            if (!rawMap[pId]) rawMap[pId] = {};
-                            if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
+                            const val = parseInt(change.pagesTaught, 10);
+                            
+                            // صرف مثبت نمبرز (Positive Numbers) کو ایڈمن کی اپ ڈیٹ مانیں
+                            if (val > 0) {
+                                const pId = change.periodId;
+                                if (!rawMap[pId]) rawMap[pId] = {};
+                                if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
 
-                            // Admin کا ڈیٹا اور ٹائم اسٹیمپ محفوظ کریں تاکہ بعد میں Sort کر سکیں
-                            rawMap[pId][mid].adminDocs.push({
-                                val: parseInt(change.pagesTaught, 10),
-                                ts: d.updatedAt ? d.updatedAt.toMillis() : 0 // Time check zaroori hai
-                            });
+                                rawMap[pId][mid].adminDocs.push({
+                                    val: val,
+                                    ts: d.updatedAt ? d.updatedAt.toMillis() : 0
+                                });
+                            }
                         }
                     });
                 } 
                 // B: اگر یہ نارمل TEACHER SUBMISSION ہے
                 else if (d.periodId && d.role !== 'user_update') {
                     const pId = d.periodId;
+                    const val = parseInt(d.pagesTaught || 0, 10);
+                    
                     if (!rawMap[pId]) rawMap[pId] = {};
                     if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
 
-                    rawMap[pId][mid].teacherDocs.push({
-                        val: parseInt(d.pagesTaught || 0, 10)
-                    });
+                    rawMap[pId][mid].teacherDocs.push({ val: val });
                 }
             });
 
-            // --- 🛑 STEP 2: WINNER DECISION (SMART MAP) ---
+            // --- 🛑 STEP 2: WINNER DECISION ---
             const smartMap = {}; 
 
             Object.keys(rawMap).forEach(pId => {
@@ -1084,13 +1088,12 @@ function escapeHtml(str) {
                 Object.keys(rawMap[pId]).forEach(mid => {
                     const slot = rawMap[pId][mid];
                     
-                    // اصول 1: اگر Admin کی کوئی اپ ڈیٹ ہے، تو سب سے آخری (Latest) والی لو
+                    // اصول 1: اگر Admin کا کوئی VALID (>0) ڈیٹا ہے، تو Latest والا لو
                     if (slot.adminDocs.length > 0) {
-                        // Sort Descending (سب سے نئی تاریخ اوپر)
-                        slot.adminDocs.sort((a, b) => b.ts - a.ts);
+                        slot.adminDocs.sort((a, b) => b.ts - a.ts); // Latest First
                         smartMap[pId][mid] = { pages: slot.adminDocs[0].val }; 
                     } 
-                    // اصول 2: اگر Admin نہیں ہے، تو ٹیچر کا ڈیٹا جمع (Sum) کر لو
+                    // اصول 2: ورنہ Teacher کا ڈیٹا جمع (Sum) کر لو
                     else {
                         const sum = slot.teacherDocs.reduce((acc, curr) => acc + curr.val, 0);
                         smartMap[pId][mid] = { pages: sum };
@@ -1100,7 +1103,10 @@ function escapeHtml(str) {
 
             // 3. Teacher Structure Load
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
-            if (!teacherStruct) return;
+            if (!teacherStruct) {
+                tableContainer.innerHTML = '<p class="text-red-600 text-center p-4">ٹیچر کا ڈیٹا نہیں ملا۔</p>';
+                return;
+            }
 
             // 4. Table HTML Build
             let tableHtml = `
@@ -1161,8 +1167,9 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // --- DATA PICKING FROM SMART MAP ---
+                        // --- DATA PICKING ---
                         let taught = 0;
+                        // Key hamesha String hoti hai, isliye 'm' ko string key ke tor par match karega
                         if (smartMap[p.id] && smartMap[p.id][m]) {
                             taught = smartMap[p.id][m].pages;
                         }
@@ -1217,6 +1224,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
