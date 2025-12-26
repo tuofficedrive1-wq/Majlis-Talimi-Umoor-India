@@ -1002,200 +1002,191 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (FULLY FIXED: Reads inside changedValues) ---
-async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
-    const profileView = document.getElementById('teacher-profile-view');
-    const tableContainer = profileView.querySelector('.overflow-x-auto');
-    
-    tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
-    profileView.classList.remove('hidden');
-
-    try {
-        // 1. Semester & Months Logic
-        const mIndex = currentMonthIndex;
-        let semMonths = [];
-        let semTotalDays = 0;
-        const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
-
-        if (isSem1) {
-            semMonths = [3, 4, 5, 6, 7]; 
-            semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
-        } else {
-            semMonths = [8, 9, 10, 11, 0]; 
-            semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
-        }
-
-        // Cutoff future months
-        const cutoffIndex = semMonths.indexOf(mIndex);
-        if (cutoffIndex !== -1) {
-            semMonths = semMonths.slice(0, cutoffIndex + 1);
-        }
-
-        // 2. Fetch Data
-        const submissionsRef = db.collection('teacher_submissions');
-        const q = submissionsRef
-            .where('jamiaId', '==', jamiaName)
-            .where('teacherId', '==', teacherId);
-            
-        const snap = await q.get();
+    // --- SHOW PROFILE (FIXED: Matches Blue Box Logic / Admin Priority) ---
+    async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
+        const profileView = document.getElementById('teacher-profile-view');
+        const tableContainer = profileView.querySelector('.overflow-x-auto');
         
-        // --- 🛑 SMART DATA MAPPING START ---
-        const smartMap = {}; 
+        tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
+        profileView.classList.remove('hidden');
 
-        snap.forEach(doc => {
-            const d = doc.data();
-            const mid = d.submissionMonth;
+        try {
+            // 1. Semester & Months Setup
+            const mIndex = currentMonthIndex;
+            let semMonths = [];
+            let semTotalDays = 0;
+            const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
 
-            // CASE A: Ye ADMIN ki update hai
-            if (d.role === 'user_update') {
-                // Admin data 'changedValues' array ke andar hota hai
-                if (Array.isArray(d.changedValues)) {
+            if (isSem1) {
+                semMonths = [3, 4, 5, 6, 7]; 
+                semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
+            } else {
+                semMonths = [8, 9, 10, 11, 0]; 
+                semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
+            }
+
+            const cutoffIndex = semMonths.indexOf(mIndex);
+            if (cutoffIndex !== -1) {
+                semMonths = semMonths.slice(0, cutoffIndex + 1);
+            }
+
+            // 2. Fetch All Data
+            const submissionsRef = db.collection('teacher_submissions');
+            const q = submissionsRef
+                .where('jamiaId', '==', jamiaName)
+                .where('teacherId', '==', teacherId);
+                
+            const snap = await q.get();
+            
+            // --- 🛑 SMART MAPPING LOGIC (Ye Blue Box jaisi hai) ---
+            const smartMap = {}; 
+            // Structure: { periodId: { monthIndex: { pages: 0, isAdmin: false } } }
+
+            snap.forEach(doc => {
+                const d = doc.data();
+                const mid = d.submissionMonth;
+
+                // --- CASE A: ADMIN UPDATE (Check changedValues) ---
+                if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
                     d.changedValues.forEach(change => {
-                        // Sirf wahi uthayen jahan pagesTaught majood ho
+                        // Sirf tab uthao agar pagesTaught isme majood hai
                         if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
                             const pId = change.periodId;
                             const pages = parseInt(change.pagesTaught, 10);
 
                             if (!smartMap[pId]) smartMap[pId] = {};
 
-                            // Admin ka data sabse POWERFUL hai -> Direct Overwrite
+                            // ADMIN VETO POWER: Overwrite anything teacher said
                             smartMap[pId][mid] = { pages: pages, isAdmin: true };
                         }
                     });
-                }
-            } 
-            // CASE B: Ye TEACHER ki normal submission hai
-            else {
-                const pId = d.periodId;
-                if (!pId) return; // Agar periodId nahi hai to ignore karein
+                } 
+                // --- CASE B: TEACHER SUBMISSION ---
+                else if (d.periodId && d.role !== 'user_update') {
+                    const pId = d.periodId;
+                    const pages = parseInt(d.pagesTaught || 0, 10);
 
-                const pages = parseInt(d.pagesTaught || 0, 10);
+                    if (!smartMap[pId]) smartMap[pId] = {};
+
+                    // Agar Admin ne pehle se lock nahi kiya, tabhi Teacher ka data add karo
+                    if (!smartMap[pId][mid] || !smartMap[pId][mid].isAdmin) {
+                        const existing = smartMap[pId][mid] ? smartMap[pId][mid].pages : 0;
+                        smartMap[pId][mid] = { pages: existing + pages, isAdmin: false };
+                    }
+                }
+            });
+            // --- SMART MAPPING END ---
+
+            // 3. Teacher Structure
+            const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
+            if (!teacherStruct) return;
+
+            // 4. Build Table
+            let tableHtml = `
+                <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
+                    <thead class="bg-emerald-100 text-emerald-900">
+                        <tr>
+                            <th class="p-2 border border-emerald-300" rowspan="2" style="position:sticky; right:0; background:#d1fae5; z-index:10;">کتاب / کلاس</th>
+            `;
+
+            semMonths.forEach(m => {
+                const mName = getMonthNameUrdu(m);
+                tableHtml += `<th class="p-2 border border-emerald-300" colspan="2">${mName}</th>`;
+            });
+
+            tableHtml += `
+                            <th class="p-2 border border-emerald-300 bg-blue-100" colspan="3">مجموعی کارکردگی</th>
+                        </tr>
+                        <tr class="text-xs">
+            `;
+
+            semMonths.forEach(() => {
+                tableHtml += `<th class="p-1 border border-emerald-300 text-gray-600">ہدف</th>
+                              <th class="p-1 border border-emerald-300 text-emerald-700 font-bold">پڑھایا</th>`;
+            });
+
+            tableHtml += `
+                            <th class="p-1 border border-emerald-300 bg-blue-50">کل صفحات</th>
+                            <th class="p-1 border border-emerald-300 bg-blue-50">اب تک پڑھایا</th>
+                            <th class="p-1 border border-emerald-300 bg-blue-50 text-red-600">بقیہ</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+            `;
+
+            // 5. Generate Rows
+            let hasRows = false;
+            teacherStruct.periods.forEach(p => {
+                const pSem = p.semester || "1";
+                const isCurrentSemPeriod = (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
                 
-                if (!smartMap[pId]) smartMap[pId] = {};
+                if (isCurrentSemPeriod) {
+                    hasRows = true;
+                    const totalBookPages = parseInt(p.totalPages || 0, 10);
+                    let rowCumulativeTaught = 0;
 
-                // Agar Admin ne pehle se update nahi kiya, tabhi Teacher ka data maane
-                if (!smartMap[pId][mid] || !smartMap[pId][mid].isAdmin) {
-                    // Agar Teacher ne tukdon me bheja hai to jama karein
-                    const existing = smartMap[pId][mid] ? smartMap[pId][mid].pages : 0;
-                    smartMap[pId][mid] = { pages: existing + pages, isAdmin: false };
-                }
-            }
-        });
-        // --- SMART DATA MAPPING END ---
+                    tableHtml += `<tr class="hover:bg-gray-50">
+                        <td class="p-2 border urdu-font text-right font-medium" style="position:sticky; right:0; background:white; z-index:5;">
+                            ${p.bookName} <br><span class="text-xs text-gray-500">(${p.className})</span>
+                        </td>`;
 
-        // 3. Teacher Structure Load
-        const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
-        if (!teacherStruct) {
-            tableContainer.innerHTML = '<p class="text-red-600 p-4">ٹیچر کا ڈیٹا نہیں ملا۔</p>';
-            return;
-        }
+                    semMonths.forEach(m => {
+                        const academicMonths = currentYearData.academicMonths || {};
+                        const workingDays = academicMonths[m] || 0;
+                        let monthlyTarget = 0;
+                        
+                        if (semTotalDays > 0 && workingDays > 0 && totalBookPages > 0) {
+                            const perDayTarget = totalBookPages / semTotalDays;
+                            monthlyTarget = Math.round(perDayTarget * workingDays);
+                        }
 
-        // 4. Build Table HTML
-        let tableHtml = `
-            <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
-                <thead class="bg-emerald-100 text-emerald-900">
-                    <tr>
-                        <th class="p-2 border border-emerald-300" rowspan="2" style="position:sticky; right:0; background:#d1fae5; z-index:10;">کتاب / کلاس</th>
-        `;
+                        // --- DATA PICKING ---
+                        let taught = 0;
+                        // Ab smartMap se data uthayega (jo Admin Check kar chuka hai)
+                        if (smartMap[p.id] && smartMap[p.id][m]) {
+                            taught = smartMap[p.id][m].pages;
+                        }
+                        
+                        rowCumulativeTaught += taught;
 
-        semMonths.forEach(m => {
-            const mName = getMonthNameUrdu(m);
-            tableHtml += `<th class="p-2 border border-emerald-300" colspan="2">${mName}</th>`;
-        });
+                        let taughtColor = "text-gray-400";
+                        if (taught > 0) {
+                            if(taught >= monthlyTarget) taughtColor = "text-green-600 font-bold";
+                            else taughtColor = "text-red-500 font-bold";
+                        }
 
-        tableHtml += `
-                        <th class="p-2 border border-emerald-300 bg-blue-100" colspan="3">مجموعی کارکردگی</th>
-                    </tr>
-                    <tr class="text-xs">
-        `;
+                        tableHtml += `
+                            <td class="p-2 border text-gray-500 bg-gray-50">${monthlyTarget}</td>
+                            <td class="p-2 border ${taughtColor}">${taught > 0 ? taught : '-'}</td>
+                        `;
+                    });
 
-        semMonths.forEach(() => {
-            tableHtml += `<th class="p-1 border border-emerald-300 text-gray-600">ہدف</th>
-                          <th class="p-1 border border-emerald-300 text-emerald-700 font-bold">پڑھایا</th>`;
-        });
-
-        tableHtml += `
-                        <th class="p-1 border border-emerald-300 bg-blue-50">کل صفحات</th>
-                        <th class="p-1 border border-emerald-300 bg-blue-50">اب تک پڑھایا</th>
-                        <th class="p-1 border border-emerald-300 bg-blue-50 text-red-600">بقیہ</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white">
-        `;
-
-        // 5. Generate Rows
-        let hasRows = false;
-        teacherStruct.periods.forEach(p => {
-            const pSem = p.semester || "1";
-            const isCurrentSemPeriod = (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
-            
-            if (isCurrentSemPeriod) {
-                hasRows = true;
-                const totalBookPages = parseInt(p.totalPages || 0, 10);
-                let rowCumulativeTaught = 0;
-
-                tableHtml += `<tr class="hover:bg-gray-50">
-                    <td class="p-2 border urdu-font text-right font-medium" style="position:sticky; right:0; background:white; z-index:5;">
-                        ${p.bookName} <br><span class="text-xs text-gray-500">(${p.className})</span>
-                    </td>`;
-
-                semMonths.forEach(m => {
-                    const academicMonths = currentYearData.academicMonths || {};
-                    const workingDays = academicMonths[m] || 0;
-                    let monthlyTarget = 0;
-                    
-                    if (semTotalDays > 0 && workingDays > 0 && totalBookPages > 0) {
-                        const perDayTarget = totalBookPages / semTotalDays;
-                        monthlyTarget = Math.round(perDayTarget * workingDays);
-                    }
-
-                    // --- TABLE DATA PICKING ---
-                    let taught = 0;
-                    // Check map for specific Period ID and Month
-                    if (smartMap[p.id] && smartMap[p.id][m]) {
-                        taught = smartMap[p.id][m].pages;
-                    }
-                    
-                    rowCumulativeTaught += taught;
-
-                    let taughtColor = "text-gray-400";
-                    if (taught > 0) {
-                        if(taught >= monthlyTarget) taughtColor = "text-green-600 font-bold";
-                        else taughtColor = "text-red-500 font-bold";
-                    }
+                    const remaining = totalBookPages - rowCumulativeTaught;
+                    let remColor = "text-gray-800";
+                    if (remaining <= 0) remColor = "text-green-600 font-bold"; 
+                    else if (remaining < (totalBookPages * 0.2)) remColor = "text-yellow-600 font-bold";
 
                     tableHtml += `
-                        <td class="p-2 border text-gray-500 bg-gray-50">${monthlyTarget}</td>
-                        <td class="p-2 border ${taughtColor}">${taught > 0 ? taught : '-'}</td>
-                    `;
-                });
+                        <td class="p-2 border font-semibold bg-blue-50">${totalBookPages}</td>
+                        <td class="p-2 border font-bold text-blue-700 bg-blue-50">${rowCumulativeTaught}</td>
+                        <td class="p-2 border ${remColor} bg-blue-50" dir="ltr">${remaining}</td>
+                    </tr>`;
+                }
+            });
 
-                const remaining = totalBookPages - rowCumulativeTaught;
-                let remColor = "text-gray-800";
-                if (remaining <= 0) remColor = "text-green-600 font-bold"; 
-                else if (remaining < (totalBookPages * 0.2)) remColor = "text-yellow-600 font-bold";
+            tableHtml += `</tbody></table>`;
 
-                tableHtml += `
-                    <td class="p-2 border font-semibold bg-blue-50">${totalBookPages}</td>
-                    <td class="p-2 border font-bold text-blue-700 bg-blue-50">${rowCumulativeTaught}</td>
-                    <td class="p-2 border ${remColor} bg-blue-50" dir="ltr">${remaining}</td>
-                </tr>`;
+            if (!hasRows) {
+                tableContainer.innerHTML = '<p class="text-center p-4 text-red-500">اس سمسٹر کا کوئی ریکارڈ نہیں ملا۔</p>';
+            } else {
+                tableContainer.innerHTML = tableHtml;
             }
-        });
 
-        tableHtml += `</tbody></table>`;
-
-        if (!hasRows) {
-            tableContainer.innerHTML = '<p class="text-center p-4 text-red-500">اس سمسٹر کا کوئی ریکارڈ نہیں ملا۔</p>';
-        } else {
-            tableContainer.innerHTML = tableHtml;
+        } catch (error) {
+            console.error("Profile Error:", error);
+            tableContainer.innerHTML = `<p class="text-center p-4 text-red-600">پروفائل لوڈ کرنے میں خرابی: ${error.message}</p>`;
         }
-
-    } catch (error) {
-        console.error("Profile Error:", error);
-        tableContainer.innerHTML = `<p class="text-center p-4 text-red-600">پروفائل لوڈ کرنے میں خرابی: ${error.message}</p>`;
     }
-}
     function getMonthNameUrdu(index) {
         const urduMonths = [
             "جنوری", "فروری", "مارچ", "اپریل", "مئی", "جون",
@@ -1206,6 +1197,7 @@ async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
 </script>
 </body>
 </html>
+
 
 
 
