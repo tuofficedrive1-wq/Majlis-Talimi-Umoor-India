@@ -914,7 +914,7 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (With Admin Priority Fix) ---
+    // --- SHOW PROFILE (FIXED: Admin Updates from changedValues) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
@@ -951,23 +951,31 @@ function escapeHtml(str) {
                 
             const snap = await q.get();
             
-            // --- 🛑 PRIORITY LOGIC START ---
-            // Data Map structure: { periodId: { monthIndex: { pages: 0, isAdmin: false } } }
+            // --- 🛑 PRIORITY LOGIC START (FIXED) ---
             const smartMap = {}; 
 
             snap.forEach(doc => {
                 const d = doc.data();
-                // Filter Ghost Data (0 pages with no text)
+                // Filter Ghost Data
                 if (d.role === 'user_update' && parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || !d.lastIbarat.trim())) return;
                 
                 const pid = d.periodId;
                 const mid = d.submissionMonth;
-                const pages = parseInt(d.pagesTaught || 0, 10);
+                let pages = parseInt(d.pagesTaught || 0, 10); // Default root value
                 const isUpdate = (d.role === 'user_update');
+
+                // === 🛠️ FIX: AGAR ADMIN UPDATE HAI TO 'changedValues' SE DATA UTHAO ===
+                if (isUpdate && Array.isArray(d.changedValues)) {
+                    // Check karo agar changedValues me updated pagesTaught मौजूद hai
+                    const updateEntry = d.changedValues.find(cv => cv.pagesTaught !== undefined && cv.pagesTaught !== null);
+                    if (updateEntry) {
+                        pages = parseInt(updateEntry.pagesTaught, 10);
+                    }
+                }
+                // =================================================================
 
                 if (!smartMap[pid]) smartMap[pid] = {};
 
-                // Agar is mahine ka record pehle se hai
                 const currentSlot = smartMap[pid][mid];
 
                 if (isUpdate) {
@@ -979,7 +987,6 @@ function escapeHtml(str) {
                         if (!currentSlot) {
                             smartMap[pid][mid] = { pages: pages, isAdmin: false };
                         } else {
-                            // Agar teacher ne tukdon me bheja hai to jama karo (lekin Admin update nahi hai)
                             smartMap[pid][mid].pages += pages;
                         }
                     }
@@ -1106,3 +1113,4 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
