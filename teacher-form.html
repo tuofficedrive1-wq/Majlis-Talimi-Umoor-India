@@ -470,10 +470,10 @@
     }
 
     // --- NEW FUNCTION TO SHOW PREVIOUS MONTH DATA ---
-    // --- UPDATED FUNCTION: Show Pages Taught in Previous Record ---
+    // --- FINAL FIXED FUNCTION: Matches Profile Table Logic (Smart Sum + Admin Priority) ---
     async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
         try {
-            // Calculate previous month logic
+            // 1. Calculate Previous Month
             let pm = currentMonth - 1;
             let py = currentYear;
             if (pm < 0) { 
@@ -489,60 +489,101 @@
                 .where('submissionYear', '==', py);
 
             const snap = await q.get();
-            if (snap.empty) return; // No previous data
+            if (snap.empty) return; 
 
+            // 2. SMART CALCULATION (Exactly like the Table)
             const periodData = {};
 
             snap.forEach(doc => {
                 const d = doc.data();
                 if (!d.periodId) return;
 
-                // Ignore incomplete updates (optional safety)
-                if (d.role === 'user_update' && parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || !d.lastIbarat.trim())) return;
+                const pid = d.periodId;
+                const timestamp = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
 
-                // Get Timestamp for latest sorting
-                const t = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
+                // --- CASE A: Admin Update ---
+                if (d.role === 'user_update') {
+                    // Ghost check
+                    if (parseInt(d.pagesTaught) === 0 && (!d.lastIbarat || !d.lastIbarat.trim())) return;
 
-                // Keep the latest entry for each period
-                if (!periodData[d.periodId] || t > periodData[d.periodId].timestamp) {
-                    periodData[d.periodId] = {
-                        timestamp: t,
-                        lastPageNo: d.lastPageNo,
-                        lastIbarat: d.lastIbarat,
-                        pagesTaught: d.pagesTaught // Data yahan aa raha tha, bas show nahi ho raha tha
-                    };
+                    let adminPages = 0;
+                    // ChangedValues se sahi pages nikalo
+                    if (Array.isArray(d.changedValues)) {
+                        const cv = d.changedValues.find(x => x.pagesTaught !== undefined && x.pagesTaught !== null);
+                        if (cv) adminPages = parseInt(cv.pagesTaught, 10);
+                        else adminPages = parseInt(d.pagesTaught || 0, 10); // Fallback
+                    } else {
+                        adminPages = parseInt(d.pagesTaught || 0, 10);
+                    }
+
+                    // Admin data hamesha overwrite karega
+                    if (!periodData[pid]) periodData[pid] = { totalPages: 0, latestTs: 0, lastPageNo: '-', lastIbarat: '-' };
+                    
+                    periodData[pid].totalPages = adminPages; // Direct set (No sum for admin)
+                    periodData[pid].isAdmin    = true;       // Lock flag
+                    
+                    // Text (Ibarat) Update Logic (Latest wins)
+                    if (timestamp > periodData[pid].latestTs) {
+                        periodData[pid].latestTs   = timestamp;
+                        // Admin update me aksar lastPageNo changedValues me hota hai
+                        let adminPageNo = d.lastPageNo;
+                        let adminIbarat = d.lastIbarat;
+                        
+                        if(Array.isArray(d.changedValues)) {
+                             const cvPage = d.changedValues.find(x => x.lastPageNo !== undefined);
+                             if(cvPage) adminPageNo = cvPage.lastPageNo;
+                             const cvIb = d.changedValues.find(x => x.lastIbarat !== undefined);
+                             if(cvIb) adminIbarat = cvIb.lastIbarat;
+                        }
+
+                        periodData[pid].lastPageNo = adminPageNo;
+                        periodData[pid].lastIbarat = adminIbarat;
+                    }
+                } 
+                // --- CASE B: Teacher Submission ---
+                else {
+                    const pages = parseInt(d.pagesTaught || 0, 10);
+
+                    if (!periodData[pid]) periodData[pid] = { totalPages: 0, latestTs: 0, lastPageNo: '-', lastIbarat: '-', isAdmin: false };
+
+                    // Agar Admin ka data pehle se aa chuka hai, to Teacher ka data Pages me add mat karo
+                    if (!periodData[pid].isAdmin) {
+                        periodData[pid].totalPages += pages; // SUM logic (Example: 20 + 20 = 40)
+                    }
+
+                    // Text (Ibarat/PageNo) hamesha Latest wala dikhana hai
+                    if (timestamp > periodData[pid].latestTs) {
+                        periodData[pid].latestTs   = timestamp;
+                        periodData[pid].lastPageNo = d.lastPageNo;
+                        periodData[pid].lastIbarat = d.lastIbarat;
+                    }
                 }
             });
 
-            // Update DOM
+            // 3. Render HTML
             Object.keys(periodData).forEach(pid => {
                 const container = document.getElementById(`prev-record-${pid}`);
                 if (container) {
                     const data = periodData[pid];
                     
-                    // === 👇 YAHAN NAYA HTML SET KIYA HAI 👇 ===
                     const html = `
                         <div class="flex flex-col sm:flex-row sm:justify-between gap-2 sm:gap-4 text-xs sm:text-sm">
-                             
                              <div>
                                 <span class="font-bold text-gray-700">پڑھائے گئے صفحات:</span> 
                                 <span class="text-blue-800 font-mono font-bold bg-blue-100 px-2 py-0.5 rounded border border-blue-200">
-                                    ${data.pagesTaught !== undefined ? data.pagesTaught : '0'}
+                                    ${data.totalPages}
                                 </span>
                              </div>
-
                              <div>
                                 <span class="font-bold text-gray-700">آخری صفحہ نمبر:</span> 
                                 <span class="text-blue-800 font-mono font-bold">${data.lastPageNo || '-'}</span>
                              </div>
-
                              <div>
                                 <span class="font-bold text-gray-700">آخری عبارت:</span> 
                                 <span class="text-blue-800">${escapeHtml(data.lastIbarat || '-')}</span>
                              </div>
                         </div>
                     `;
-                    // ==========================================
 
                     container.querySelector('.content').innerHTML = html;
                     container.classList.remove('hidden');
@@ -1152,6 +1193,7 @@ async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
 </script>
 </body>
 </html>
+
 
 
 
