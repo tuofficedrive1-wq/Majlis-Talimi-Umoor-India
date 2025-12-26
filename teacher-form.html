@@ -1002,7 +1002,7 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (FIXED: Matches Blue Box Logic / Admin Priority) ---
+    // --- SHOW PROFILE (BULLETPROOF FIX: Groups Data & Picks Latest Date) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
@@ -1011,7 +1011,7 @@ function escapeHtml(str) {
         profileView.classList.remove('hidden');
 
         try {
-            // 1. Semester & Months Setup
+            // 1. سمسٹر اور مہینوں کا تعین
             const mIndex = currentMonthIndex;
             let semMonths = [];
             let semTotalDays = 0;
@@ -1030,7 +1030,7 @@ function escapeHtml(str) {
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
             }
 
-            // 2. Fetch All Data
+            // 2. ڈیٹا لانا (Fetching)
             const submissionsRef = db.collection('teacher_submissions');
             const q = submissionsRef
                 .where('jamiaId', '==', jamiaName)
@@ -1038,50 +1038,71 @@ function escapeHtml(str) {
                 
             const snap = await q.get();
             
-            // --- 🛑 SMART MAPPING LOGIC (Ye Blue Box jaisi hai) ---
-            const smartMap = {}; 
-            // Structure: { periodId: { monthIndex: { pages: 0, isAdmin: false } } }
+            // --- 🛑 STEP 1: RAW DATA GROUPING ---
+            // ہم پہلے ڈیٹا کو پیریڈ اور مہینے کے حساب سے الگ الگ ڈبوں میں رکھیں گے
+            const rawMap = {}; 
+            // Structure: { periodId: { monthIndex: { adminDocs: [], teacherDocs: [] } } }
 
             snap.forEach(doc => {
                 const d = doc.data();
                 const mid = d.submissionMonth;
 
-                // --- CASE A: ADMIN UPDATE (Check changedValues) ---
+                // A: اگر یہ ADMIN UPDATE ہے (changedValues کے اندر چیک کریں)
                 if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
                     d.changedValues.forEach(change => {
-                        // Sirf tab uthao agar pagesTaught isme majood hai
+                        // صرف تب اٹھائیں اگر اس میں 'pagesTaught' موجود ہو
                         if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
                             const pId = change.periodId;
-                            const pages = parseInt(change.pagesTaught, 10);
+                            if (!rawMap[pId]) rawMap[pId] = {};
+                            if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
 
-                            if (!smartMap[pId]) smartMap[pId] = {};
-
-                            // ADMIN VETO POWER: Overwrite anything teacher said
-                            smartMap[pId][mid] = { pages: pages, isAdmin: true };
+                            // Admin کا ڈیٹا اور ٹائم اسٹیمپ محفوظ کریں تاکہ بعد میں Sort کر سکیں
+                            rawMap[pId][mid].adminDocs.push({
+                                val: parseInt(change.pagesTaught, 10),
+                                ts: d.updatedAt ? d.updatedAt.toMillis() : 0 // Time check zaroori hai
+                            });
                         }
                     });
                 } 
-                // --- CASE B: TEACHER SUBMISSION ---
+                // B: اگر یہ نارمل TEACHER SUBMISSION ہے
                 else if (d.periodId && d.role !== 'user_update') {
                     const pId = d.periodId;
-                    const pages = parseInt(d.pagesTaught || 0, 10);
+                    if (!rawMap[pId]) rawMap[pId] = {};
+                    if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
 
-                    if (!smartMap[pId]) smartMap[pId] = {};
-
-                    // Agar Admin ne pehle se lock nahi kiya, tabhi Teacher ka data add karo
-                    if (!smartMap[pId][mid] || !smartMap[pId][mid].isAdmin) {
-                        const existing = smartMap[pId][mid] ? smartMap[pId][mid].pages : 0;
-                        smartMap[pId][mid] = { pages: existing + pages, isAdmin: false };
-                    }
+                    rawMap[pId][mid].teacherDocs.push({
+                        val: parseInt(d.pagesTaught || 0, 10)
+                    });
                 }
             });
-            // --- SMART MAPPING END ---
 
-            // 3. Teacher Structure
+            // --- 🛑 STEP 2: WINNER DECISION (SMART MAP) ---
+            const smartMap = {}; 
+
+            Object.keys(rawMap).forEach(pId => {
+                smartMap[pId] = {};
+                Object.keys(rawMap[pId]).forEach(mid => {
+                    const slot = rawMap[pId][mid];
+                    
+                    // اصول 1: اگر Admin کی کوئی اپ ڈیٹ ہے، تو سب سے آخری (Latest) والی لو
+                    if (slot.adminDocs.length > 0) {
+                        // Sort Descending (سب سے نئی تاریخ اوپر)
+                        slot.adminDocs.sort((a, b) => b.ts - a.ts);
+                        smartMap[pId][mid] = { pages: slot.adminDocs[0].val }; 
+                    } 
+                    // اصول 2: اگر Admin نہیں ہے، تو ٹیچر کا ڈیٹا جمع (Sum) کر لو
+                    else {
+                        const sum = slot.teacherDocs.reduce((acc, curr) => acc + curr.val, 0);
+                        smartMap[pId][mid] = { pages: sum };
+                    }
+                });
+            });
+
+            // 3. Teacher Structure Load
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
             if (!teacherStruct) return;
 
-            // 4. Build Table
+            // 4. Table HTML Build
             let tableHtml = `
                 <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
                     <thead class="bg-emerald-100 text-emerald-900">
@@ -1140,9 +1161,8 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // --- DATA PICKING ---
+                        // --- DATA PICKING FROM SMART MAP ---
                         let taught = 0;
-                        // Ab smartMap se data uthayega (jo Admin Check kar chuka hai)
                         if (smartMap[p.id] && smartMap[p.id][m]) {
                             taught = smartMap[p.id][m].pages;
                         }
@@ -1197,6 +1217,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
