@@ -1321,7 +1321,7 @@
                 btn.disabled = false;
             }
         };
-        // --- PROFESSIONAL REPORT CARD GENERATION (FINAL VERSION) ---
+        // --- PROFESSIONAL REPORT CARD GENERATION (FIXED SIGNATURE LOGIC) ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
@@ -1330,10 +1330,54 @@ window.downloadReportCards = async () => {
 
     const btn = document.querySelector('button[onclick="downloadReportCards()"]');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Designing...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching Signs...';
     btn.disabled = true;
 
     try {
+        // --- HELPER: GOOGLE DRIVE IMAGE URL CONVERTER ---
+        const convertGoogleDriveURL = (url) => {
+            if (!url || !url.includes("drive.google.com")) return url;
+            let id = null;
+            let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+            if (match) id = match[1];
+            else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
+            return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w300-h300-n` : url;
+        };
+
+        // --- STEP A: FETCH SIGNATURES ---
+        
+        // 1. Taleemi Zimmedar Sign (From Admin Profile - Global)
+        // Ye humne loadTeachingData me globalUserData me save kiya tha
+        const taleemiSigUrl = globalUserData.signatureTaleemi ? convertGoogleDriveURL(globalUserData.signatureTaleemi) : null;
+
+        // 2. Principal Sign (From Specific Jamia Entry in Monthly Report)
+        let principalSigUrl = null;
+        try {
+            // Report ID banayein (Same logic as index.html)
+            const [yStr, mStr] = monthKey.split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr) - 1;
+            const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+            const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+
+            // Firestore se report fetch karein
+            const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
+            
+            if (reportSnap.exists()) {
+                const reportData = reportSnap.data();
+                // Monthly Test data me se is Jamia ko dhundhein
+                const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name === jamiaName);
+                
+                if (jamiaEntry && jamiaEntry.signature) {
+                    principalSigUrl = convertGoogleDriveURL(jamiaEntry.signature);
+                }
+            }
+        } catch (err) {
+            console.error("Error fetching principal signature:", err);
+        }
+
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Designing...';
+
         // --- TRANSLATION DATA ---
         const classTranslations = {
             "ابتدائیہ": "Ibtedaiyah", "اولى": "Awwal (1st Year)", "ثانیہ": "Saniyah (2nd Year)",
@@ -1342,24 +1386,14 @@ window.downloadReportCards = async () => {
             "مدنی": "Madani", "بنین": "Banin"
         };
 
-        // 🔥 UPDATED SUBJECT NAME LOGIC 🔥
         const getSubjectNames = (originalName) => {
             const lower = originalName.toLowerCase();
             const urduTxt = originalName.trim();
-            
             let enName = originalName; 
-            let urName = originalName; // Default wahi rahega
+            let urName = originalName;
 
-            // 1. English / Maths Handling
-            if(lower.includes('english')) {
-                enName = "English Language";
-                urName = "انگریزی"; // ✅ Urdu Translation
-            }
-            else if(lower.includes('math') || lower.includes('حساب')) {
-                enName = "Mathematics";
-                urName = "حساب"; // ✅ Urdu Translation
-            }
-            // 2. Urdu Subjects Handling (Urdu to English)
+            if(lower.includes('english')) { enName = "English Language"; urName = "انگریزی"; }
+            else if(lower.includes('math') || lower.includes('حساب')) { enName = "Mathematics"; urName = "حساب"; }
             else if(urduTxt.includes('قرآن') || urduTxt.includes('قرآن')) enName = "Quran Pak";
             else if(urduTxt.includes('نحو')) enName = "Nahw (Grammar)";
             else if(urduTxt.includes('صرف')) enName = "Sarf (Morphology)";
@@ -1432,8 +1466,6 @@ window.downloadReportCards = async () => {
                 grandTotalMax += max;
                 let obt = std.marks[sub] || '-';
                 if(obt === 'A') obt = 'Abs';
-                
-                // ✅ Get Correct Names (Eng & Urdu)
                 const names = getSubjectNames(sub);
 
                 rowsHTML += `
@@ -1446,13 +1478,11 @@ window.downloadReportCards = async () => {
                 `;
             });
 
-            // Check Fully Absent logic here
+            // Status Logic
             const subKeys = Object.keys(std.marks);
             const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
-
             const isFail = std.grade.includes('Nakam') || std.grade === 'Fail';
             
-            // Status Color & Text Logic
             let statusColor = '#38a169'; // Green (Pass)
             let statusText = 'PASS';
 
@@ -1463,7 +1493,7 @@ window.downloadReportCards = async () => {
                 statusColor = '#e53e3e'; // Red
                 statusText = 'FAIL';
             }
-            
+
             // 🔥 HTML TEMPLATE 🔥
             container.innerHTML = `
                 <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
@@ -1477,15 +1507,12 @@ window.downloadReportCards = async () => {
 
                             <div style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #d4af37; padding-bottom: 15px;">
                                 <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Jamia_logo.png" style="width: 80px; margin-bottom: 10px;">
-                                
                                 <h1 style="color: #2c5282; font-weight: 900; font-size: 42px; margin: 0; letter-spacing: 2px; text-transform: uppercase; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
                                     MONTHLY TEST RESULT
                                 </h1>
-                                
                                 <h2 style="color: #0f766e; font-weight: 700; font-size: 28px; margin: 5px 0 10px 0; letter-spacing: 1px; text-transform: uppercase;">
                                     JAMIA TUL MADINA INDIA
                                 </h2>
-                                
                                 <div style="margin-top: 5px;">
                                     <span style="color: #d69e2e; font-weight: 800; font-size: 26px; text-transform: uppercase; font-family: 'Poppins', sans-serif;">MONTH: </span>
                                     <span style="color: #000000; font-weight: 800; font-size: 26px; font-family: 'Poppins', sans-serif;">${monthKey}</span>
@@ -1550,14 +1577,29 @@ window.downloadReportCards = async () => {
                             </div>
 
                             <div style="position: absolute; bottom: 90px; width: 100%; padding: 0 80px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
-                                <div style="text-align: center; width: 200px;">
+                                
+                                <div style="text-align: center; width: 200px; position: relative;">
+                                    <div style="height: 50px; display: flex; align-items: end; justify-content: center; margin-bottom: 2px;">
+                                        ${ principalSigUrl 
+                                           ? `<img src="${principalSigUrl}" style="max-height: 50px; max-width: 150px; object-fit: contain;">` 
+                                           : '' 
+                                        }
+                                    </div>
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 16px;">Principal Signature</p>
                                 </div>
-                                <div style="text-align: center; width: 200px;">
+
+                                <div style="text-align: center; width: 200px; position: relative;">
+                                    <div style="height: 50px; display: flex; align-items: end; justify-content: center; margin-bottom: 2px;">
+                                        ${ taleemiSigUrl 
+                                           ? `<img src="${taleemiSigUrl}" style="max-height: 50px; max-width: 150px; object-fit: contain;">` 
+                                           : '' 
+                                        }
+                                    </div>
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 16px;">Taleemi Zimmedar</p>
                                 </div>
+
                             </div>
 
                         </div>
@@ -1585,6 +1627,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
