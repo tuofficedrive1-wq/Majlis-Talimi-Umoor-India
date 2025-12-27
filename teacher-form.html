@@ -999,12 +999,12 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (FIXED: Handles Fresh Admin Entries + Teacher Missing) ---
+    // --- SHOW PROFILE (FIXED: Shows Admin Data even if ActiveYear is missing) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
         
-        // Active Year Filter
+        // URL se Active Year uthayen
         const urlParams = new URLSearchParams(window.location.search);
         const currentActiveYear = urlParams.get('activeYear');
 
@@ -1031,7 +1031,7 @@ function escapeHtml(str) {
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
             }
 
-            // 2. Fetch Data
+            // 2. Data Fetching
             const submissionsRef = db.collection('teacher_submissions');
             const q = submissionsRef
                 .where('jamiaId', '==', jamiaName)
@@ -1039,67 +1039,68 @@ function escapeHtml(str) {
                 
             const snap = await q.get();
             
-            // --- 🛑 STEP 1: RAW DATA GROUPING ---
+            // --- 🛑 DATA PROCESSING ---
             const rawMap = {}; 
             
             snap.forEach(doc => {
                 const d = doc.data();
                 
-                // Active Year Filter
-                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
+                // 🛠️ FIX: ACTIVE YEAR FILTER (Soft Check)
+                // Agar record me activeYear hai, aur wo match nahi karta -> tab return karo.
+                // Agar record me activeYear HAI HI NAHI (undefined) -> to usay Jaane do (Show karo).
+                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) {
+                    return; 
+                }
 
                 const mid = parseInt(d.submissionMonth, 10);
                 const ts = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
 
-                // === CASE A: ADMIN RECORD ===
+                // CASE A: ADMIN RECORD (via User Update Role)
                 if (d.role === 'user_update') {
-                    let adminDataFound = false;
-
-                    // Option 1: Check inside 'changedValues' (Agar edit kiya gaya ho)
+                    let foundInList = false;
+                    // Check inside list
                     if (Array.isArray(d.changedValues)) {
                         d.changedValues.forEach(change => {
                             if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
                                 const val = parseInt(change.pagesTaught, 10);
-                                // Sirf > 0 walay count karein
                                 if (val > 0) {
                                     const pId = change.periodId;
                                     if (!rawMap[pId]) rawMap[pId] = {};
                                     if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-
+                                    
                                     rawMap[pId][mid].adminDocs.push({ val: val, ts: ts });
-                                    adminDataFound = true;
+                                    foundInList = true;
                                 }
                             }
                         });
                     }
-
-                    // Option 2: Check Root Fields (Agar Admin ne FRESH entry ki ho aur changedValues na ho)
-                    if (!adminDataFound && d.periodId && d.pagesTaught !== undefined) {
+                    // Check Root (Agar Admin ne direct fill kiya ho aur list na ho)
+                    if (!foundInList && d.periodId && d.pagesTaught !== undefined) {
                         const val = parseInt(d.pagesTaught, 10);
                         if (val > 0) {
                             const pId = d.periodId;
                             if (!rawMap[pId]) rawMap[pId] = {};
                             if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-
-                            // Isay Admin Doc ki list me dalein
+                            
                             rawMap[pId][mid].adminDocs.push({ val: val, ts: ts });
                         }
                     }
                 } 
-                // === CASE B: TEACHER SUBMISSION ===
+                // CASE B: TEACHER SUBMISSION (Or Simple Admin Fill)
                 else if (d.periodId) {
-                    // Agar role 'user_update' nahi hai, to ye Teacher ka data hai
                     const pId = d.periodId;
                     const val = parseInt(d.pagesTaught || 0, 10);
                     
                     if (!rawMap[pId]) rawMap[pId] = {};
                     if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
 
+                    // Agar ye 'user_update' nahi hai, to ise hum filhal Teacher Doc mante hain
+                    // Lekin agar Admin panel bina role ke save kar raha hai, to hum ise bhi count karenge
                     rawMap[pId][mid].teacherDocs.push({ val: val });
                 }
             });
 
-            // --- 🛑 STEP 2: WINNER DECISION ---
+            // --- WINNER DECISION ---
             const smartMap = {}; 
 
             Object.keys(rawMap).forEach(pId => {
@@ -1107,12 +1108,12 @@ function escapeHtml(str) {
                 Object.keys(rawMap[pId]).forEach(mid => {
                     const slot = rawMap[pId][mid];
                     
-                    // Priority 1: Admin Data (Agar majood ho to wohi final hai)
+                    // Priority 1: Admin Data
                     if (slot.adminDocs.length > 0) {
-                        slot.adminDocs.sort((a, b) => b.ts - a.ts); // Latest First
+                        slot.adminDocs.sort((a, b) => b.ts - a.ts);
                         smartMap[pId][mid] = { pages: slot.adminDocs[0].val }; 
                     } 
-                    // Priority 2: Teacher Data (Agar Admin nahi hai to Teacher ka Sum)
+                    // Priority 2: Teacher/Standard Data Sum
                     else {
                         const sum = slot.teacherDocs.reduce((acc, curr) => acc + curr.val, 0);
                         smartMap[pId][mid] = { pages: sum };
@@ -1120,14 +1121,13 @@ function escapeHtml(str) {
                 });
             });
 
-            // 3. Teacher Structure Load
+            // 3. Render Table
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
             if (!teacherStruct) {
                 tableContainer.innerHTML = '<p class="text-red-600 text-center p-4">ٹیچر کا ڈیٹا نہیں ملا۔</p>';
                 return;
             }
 
-            // 4. Build Table
             let tableHtml = `
                 <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
                     <thead class="bg-emerald-100 text-emerald-900">
@@ -1160,7 +1160,7 @@ function escapeHtml(str) {
                     <tbody class="bg-white">
             `;
 
-            // 5. Generate Rows
+            // Rows
             let hasRows = false;
             teacherStruct.periods.forEach(p => {
                 const pSem = p.semester || "1";
@@ -1186,7 +1186,7 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // Get Data from SmartMap
+                        // Get Data
                         let taught = 0;
                         if (smartMap[p.id] && smartMap[p.id][m]) {
                             taught = smartMap[p.id][m].pages;
@@ -1242,6 +1242,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
