@@ -29,6 +29,7 @@
         .grade-jayyid { background-color: #eab308; color: white; } 
         .grade-maqbul { background-color: #f97316; color: white; } 
         .grade-nakam { background-color: #ef4444; color: white; } 
+        .grade-absent { background-color: #6b7280; color: white; }
 
         /* Input Validation Colors */
         .bg-fail-input { background-color: #fee2e2 !important; color: #991b1b; font-weight: bold; }
@@ -532,36 +533,83 @@
         window.calcRow = (el) => {
             const row = el.closest('tr');
             let obtained = 0;
-            let hasAbsent = false;
-            row.querySelectorAll('.mark-input').forEach(inp => {
-                const max = parseInt(inp.dataset.max);
+            let hasAbsent = false; 
+            let allAbsent = true; // Track if ALL are absent
+            let hasMarks = false; // Track if ANY marks exist
+
+            const inputs = row.querySelectorAll('.mark-input');
+            
+            inputs.forEach(inp => {
+                const max = parseInt(inp.dataset.max); 
                 let rawVal = inp.value.trim().toUpperCase();
-                if (rawVal !== 'A' && rawVal !== '') { if (isNaN(parseFloat(rawVal))) { inp.value = ''; rawVal = ''; } }
-                let numVal = 0;
-                if (rawVal === 'A') { hasAbsent = true; numVal = 0; inp.style.color = 'red'; inp.classList.add('bg-fail-input'); }
-                else if (rawVal === '') { numVal = 0; inp.classList.remove('bg-fail-input'); inp.style.color = ''; }
-                else {
-                    numVal = parseFloat(rawVal);
-                    if (numVal > max) { alert(`Maximum marks ${max} hain.`); inp.value = max; numVal = max; }
-                    const pass = max === 25 ? 10 : 40;
-                    if (numVal < pass) inp.classList.add('bg-fail-input'); else { inp.classList.remove('bg-fail-input'); inp.style.color = ''; }
+                
+                if (rawVal !== 'A' && rawVal !== '') {
+                    if (isNaN(parseFloat(rawVal)) || !isFinite(rawVal)) {
+                        inp.value = ''; rawVal = '';
+                    }
                 }
+
+                let numVal = 0;
+                
+                if (rawVal === 'A') {
+                    hasAbsent = true;
+                    numVal = 0;
+                    inp.style.color = 'red';
+                    inp.classList.add('bg-fail-input');
+                } else if (rawVal === '') {
+                    // Empty field
+                    allAbsent = false; // Empty is not Absent
+                } else {
+                    // Marks present
+                    allAbsent = false; 
+                    hasMarks = true;
+                    numVal = parseFloat(rawVal);
+                    
+                    if (numVal > max) { alert(`Maximum marks ${max} hain.`); inp.value = max; numVal = max; }
+
+                    const pass = max === 25 ? 10 : 40; 
+                    if (numVal < pass) inp.classList.add('bg-fail-input'); 
+                    else { inp.classList.remove('bg-fail-input'); inp.style.color = ''; }
+                }
+                
                 obtained += numVal;
             });
-            let currentTotalMax = 0;
-            finalSubjectsList.forEach(sub => { if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') currentTotalMax += 25; else currentTotalMax += 100; });
-            const percent = currentTotalMax > 0 ? (obtained / currentTotalMax * 100).toFixed(1) : 0;
+            
+            // Total Max
+            let totalMax = 0;
+            finalSubjectsList.forEach(sub => {
+                if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; 
+                else totalMax += 100;
+            });
+
+            const percent = totalMax > 0 ? (obtained / totalMax * 100).toFixed(1) : 0;
+            
             row.querySelector('.total-val').textContent = obtained;
             row.querySelector('.perc-val').textContent = percent + '%';
             
-            let grade = "Nakam"; let cls = "grade-nakam"; const p = parseFloat(percent);
-            if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "grade-mumtaz-sharf"; }
-            else if (p >= 70) { grade = "Mumtaz"; cls = "grade-mumtaz"; }
-            else if (p >= 50) { grade = "Jayyid"; cls = "grade-jayyid"; }
-            else if (p >= 40) { grade = "Maqbul"; cls = "grade-maqbul"; }
-            
-            // Absent hone par FAIL
-            if (hasAbsent || p < 40) { grade = "Nakam"; cls = "grade-nakam"; }
+            // --- GRADE LOGIC UPDATED ---
+            let grade = "Nakam";
+            let cls = "grade-nakam";
+            const p = parseFloat(percent);
+
+            // Check if FULLY ABSENT (All subjects 'A')
+            if (allAbsent && inputs.length > 0) {
+                grade = "Absent";
+                cls = "grade-absent"; // Gray color
+            } 
+            else if (hasAbsent) {
+                // Agar partial absent hai (kuch 'A', kuch marks), to Nakam
+                grade = "Nakam";
+                cls = "grade-nakam";
+            }
+            else {
+                // Normal Grading
+                if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "grade-mumtaz-sharf"; }
+                else if (p >= 70) { grade = "Mumtaz"; cls = "grade-mumtaz"; }
+                else if (p >= 50) { grade = "Jayyid"; cls = "grade-jayyid"; }
+                else if (p >= 40) { grade = "Maqbul"; cls = "grade-maqbul"; }
+                else { grade = "Nakam"; cls = "grade-nakam"; }
+            }
             
             const gVal = row.querySelector('.grade-val');
             gVal.textContent = grade;
@@ -596,14 +644,14 @@
             });
 
             try {
-                // 1. Current Class Save
+                // 1. Save Class
                 await setDoc(doc(db, "monthly_test_sheets", docId), {
                     adminUid, jamiaName, month: monthKey, class: selectedClass,
                     subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
                 }); 
                 
-                // 2. Aggregation Logic (Count Pass/Fail)
-                let grandTotalStudents = 0;
+                // 2. Aggregation Logic (Exclude Full Absent from Total)
+                let grandTotalStudents = 0; // Only Present
                 let grandPassedStudents = 0;
                 const allClasses = Object.keys(classBooksMap);
                 
@@ -615,16 +663,23 @@
                         const sData = sheetSnap.data();
                         const sStudents = sData.students || [];
                         const sSubjects = sData.subjects || [];
+                        
                         sStudents.forEach(std => {
-                            grandTotalStudents++; 
-                            let isFail = false;
-                            // Criteria 1: < 40%
-                            if (parseFloat(std.percentage) < 40) isFail = true;
-                            // Criteria 2: Any Absent
-                            if (!isFail) {
-                                sSubjects.forEach(sub => { if (std.marks[sub] === 'A') isFail = true; });
+                            // Check Full Absent
+                            const subKeys = Object.keys(std.marks);
+                            const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
+
+                            if (!isFullAbsent) {
+                                grandTotalStudents++; // Sirf hazir bache gino
+                                
+                                let isFail = false;
+                                if (parseFloat(std.percentage) < 40) isFail = true;
+                                if (!isFail) {
+                                    // Partial absent check
+                                    sSubjects.forEach(sub => { if (std.marks[sub] === 'A') isFail = true; });
+                                }
+                                if (!isFail) grandPassedStudents++;
                             }
-                            if (!isFail) grandPassedStudents++;
                         });
                     }
                 }
@@ -789,36 +844,56 @@
                     let hasAsriSubjects = false;
 
                     students.forEach(std => {
-                        // Main Calculation
-                        mPresent++;
-                        let isFailMain = false;
-                        if (parseFloat(std.percentage) < 40) isFailMain = true;
+                        // --- Main Calculation ---
                         const subjects = Object.keys(std.marks);
-                        subjects.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
-                        if (isFailMain) mFail++; else mPass++;
+                        // Check if ALL subjects are 'A'
+                        const isFullAbsent = subjects.length > 0 && subjects.every(sub => std.marks[sub] === 'A');
 
-                        // Asri Calculation
+                        if (!isFullAbsent) {
+                            mPresent++;
+                            let isFailMain = false;
+                            if (parseFloat(std.percentage) < 40) isFailMain = true;
+                            // Check Partial Absent
+                            subjects.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
+                            
+                            if (isFailMain) mFail++; else mPass++;
+                        }
+
+                        // --- Asri Calculation ---
                         let engMark = std.marks['English'];
                         let mathMark = std.marks['Maths'];
                         if (engMark !== undefined || mathMark !== undefined) {
                             hasAsriSubjects = true;
-                            aPresent++;
-                            let isFailAsri = false;
-                            if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
-                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
-                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
-                            if (isFailAsri) aFail++; else aPass++;
+                            
+                            // Asri Full Absent Check
+                            let asriFullAbsent = false;
+                            if (engMark !== undefined && mathMark !== undefined) {
+                                if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
+                            } else if (engMark !== undefined && engMark === 'A') {
+                                asriFullAbsent = true;
+                            } else if (mathMark !== undefined && mathMark === 'A') {
+                                asriFullAbsent = true;
+                            }
+
+                            if (!asriFullAbsent) {
+                                aPresent++;
+                                let isFailAsri = false;
+                                if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                                if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                                if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                                if (isFailAsri) aFail++; else aPass++;
+                            }
                         }
                     });
 
-                    let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(2) : "0.00";
+                    let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(1) : "0.0";
                     let mGrade = getSummaryGrade(mPerc);
                     gMain.total += mTotal; gMain.present += mPresent; gMain.pass += mPass; gMain.fail += mFail;
 
                     mainRowsHTML += `<tr class="odd:bg-white even:bg-gray-50 hover:bg-purple-50"><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td class="p-2 border">${mTotal}</td><td class="p-2 border">${mPresent}</td><td class="p-2 border text-green-700 font-bold">${mPass}</td><td class="p-2 border text-red-600 font-bold">${mFail}</td><td class="p-2 border font-bold">${mPerc}%</td><td class="p-2 border"><span class="${getGradeColor(mGrade)} px-2 py-1 rounded text-xs text-white">${mGrade}</span></td></tr>`;
 
                     if (hasAsriSubjects) {
-                        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(2) : "0.00";
+                        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
                         let aGrade = getSummaryGrade(aPerc);
                         gAsri.total += aTotal; gAsri.present += aPresent; gAsri.pass += aPass; gAsri.fail += aFail;
                         asriRowsHTML += `<tr class="odd:bg-white even:bg-gray-50 hover:bg-purple-50"><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td class="p-2 border">${aTotal}</td><td class="p-2 border">${aPresent}</td><td class="p-2 border text-green-700 font-bold">${aPass}</td><td class="p-2 border text-red-600 font-bold">${aFail}</td><td class="p-2 border font-bold">${aPerc}%</td><td class="p-2 border"><span class="${getGradeColor(aGrade)} px-2 py-1 rounded text-xs text-white">${aGrade}</span></td></tr>`;
@@ -1371,7 +1446,23 @@ window.downloadReportCards = async () => {
                 `;
             });
 
+            // Check Fully Absent logic here
+            const subKeys = Object.keys(std.marks);
+            const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
+
             const isFail = std.grade.includes('Nakam') || std.grade === 'Fail';
+            
+            // Status Color & Text Logic
+            let statusColor = '#38a169'; // Green (Pass)
+            let statusText = 'PASS';
+
+            if (isFullAbsent) {
+                statusColor = '#718096'; // Gray
+                statusText = 'ABSENT';
+            } else if (isFail) {
+                statusColor = '#e53e3e'; // Red
+                statusText = 'FAIL';
+            }
             const statusColor = isFail ? '#e53e3e' : '#38a169'; 
             const statusText = isFail ? 'FAIL' : 'PASS';
 
@@ -1496,6 +1587,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
