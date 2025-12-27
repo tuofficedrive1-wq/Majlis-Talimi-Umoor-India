@@ -999,21 +999,17 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- FINAL UNIFIED TABLE LOGIC (Matches Blue Box Perfectly) ---
+    // --- SHOW PROFILE (FIXED: Admin Data from changedValues) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
         
-        // URL se Active Year uthayen (Taake mix na ho)
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentActiveYear = urlParams.get('activeYear');
-
         tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
         profileView.classList.remove('hidden');
 
         try {
-            // 1. Semester & Months Setup
-            const mIndex = parseInt(currentMonthIndex, 10);
+            // 1. Semester & Months Determine Karein
+            const mIndex = currentMonthIndex;
             let semMonths = [];
             let semTotalDays = 0;
             const isSem1 = (mIndex >= 3 && mIndex <= 7); // Apr-Aug
@@ -1026,12 +1022,13 @@ function escapeHtml(str) {
                 semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
             }
 
+            // Current Month tak slice karein
             const cutoffIndex = semMonths.indexOf(mIndex);
             if (cutoffIndex !== -1) {
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
             }
 
-            // 2. Data Fetching
+            // 2. Database se Data Layen
             const submissionsRef = db.collection('teacher_submissions');
             const q = submissionsRef
                 .where('jamiaId', '==', jamiaName)
@@ -1039,60 +1036,55 @@ function escapeHtml(str) {
                 
             const snap = await q.get();
             
-            // --- 🛑 CORE LOGIC (SAME AS BLUE BOX) ---
-            const rawMap = {}; 
-            // Structure: { periodId: { monthIndex: { adminVal: 0, adminTs: 0, teacherSum: 0 } } }
+            // --- 🛑 PRIORITY LOGIC START (FIXED) ---
+            const smartMap = {}; 
 
             snap.forEach(doc => {
                 const d = doc.data();
-                
-                // 1. Active Year Filter (Ghost Data rokne ke liye)
-                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
+                const mid = d.submissionMonth;
 
-                const mid = parseInt(d.submissionMonth, 10);
-                const pId = d.periodId;
-                if (!pId) return;
+                // CASE A: Ye ADMIN ki update hai
+                if (d.role === 'user_update') {
+                    // Admin data 'changedValues' array ke andar hota hai
+                    if (Array.isArray(d.changedValues)) {
+                        d.changedValues.forEach(change => {
+                            // Sirf wahi uthayen jahan pagesTaught majood ho
+                            if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
+                                const pId = change.periodId;
+                                const pages = parseInt(change.pagesTaught, 10);
 
-                const ts = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
+                                if (!smartMap[pId]) smartMap[pId] = {};
 
-                // Map initialize
-                if (!rawMap[pId]) rawMap[pId] = {};
-                if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminVal: 0, adminTs: 0, teacherSum: 0 };
-
-                const slot = rawMap[pId][mid];
-
-                // CASE A: Admin Update (Check inside changedValues)
-                if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
-                    d.changedValues.forEach(change => {
-                        if (change.periodId === pId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
-                            const val = parseInt(change.pagesTaught, 10);
-                            
-                            // Sirf tab maane jab value 0 se badi ho
-                            if (val > 0) {
-                                // Latest update pick karein
-                                if (ts > slot.adminTs) {
-                                    slot.adminVal = val;
-                                    slot.adminTs = ts;
-                                }
+                                // Admin ka data sabse POWERFUL hai -> Direct Overwrite
+                                smartMap[pId][mid] = { pages: pages, isAdmin: true };
                             }
-                        }
-                    });
+                        });
+                    }
                 } 
-                // CASE B: Teacher Submission (Sum Logic)
-                else if (d.role !== 'user_update') {
-                    const val = parseInt(d.pagesTaught || 0, 10);
-                    slot.teacherSum += val; // JODNA (Sum)
+                // CASE B: Ye TEACHER ki normal submission hai
+                else {
+                    const pId = d.periodId;
+                    if (!pId) return; // Agar periodId nahi hai to ignore karein
+
+                    const pages = parseInt(d.pagesTaught || 0, 10);
+                    
+                    if (!smartMap[pId]) smartMap[pId] = {};
+
+                    // Agar Admin ne pehle se update nahi kiya, tabhi Teacher ka data maane
+                    if (!smartMap[pId][mid] || !smartMap[pId][mid].isAdmin) {
+                        // Agar Teacher ne tukdon me bheja hai to jama karein
+                        const existing = smartMap[pId][mid] ? smartMap[pId][mid].pages : 0;
+                        smartMap[pId][mid] = { pages: existing + pages, isAdmin: false };
+                    }
                 }
             });
+            // --- PRIORITY LOGIC END ---
 
-            // 3. Teacher Structure Load
+            // 3. Teacher Structure
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
-            if (!teacherStruct) {
-                tableContainer.innerHTML = '<p class="text-red-600 text-center p-4">ٹیچر کا ڈیٹا نہیں ملا۔</p>';
-                return;
-            }
+            if (!teacherStruct) return;
 
-            // 4. Build Table HTML
+            // 4. Table HTML Construction
             let tableHtml = `
                 <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
                     <thead class="bg-emerald-100 text-emerald-900">
@@ -1125,7 +1117,7 @@ function escapeHtml(str) {
                     <tbody class="bg-white">
             `;
 
-            // 5. Generate Rows
+            // 5. Rows Generation
             let hasRows = false;
             teacherStruct.periods.forEach(p => {
                 const pSem = p.semester || "1";
@@ -1151,16 +1143,11 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // --- FINAL DECISION ---
+                        // Data map se value uthayen (Smart Logic applied)
                         let taught = 0;
-                        if (rawMap[p.id] && rawMap[p.id][m]) {
-                            const slot = rawMap[p.id][m];
-                            // Agar Admin ka value hai (>0) to wo, warna Teacher ka Sum
-                            if (slot.adminVal > 0) {
-                                taught = slot.adminVal;
-                            } else {
-                                taught = slot.teacherSum;
-                            }
+                        // Check map for specific Period ID and Month
+                        if (smartMap[p.id] && smartMap[p.id][m]) {
+                            taught = smartMap[p.id][m].pages;
                         }
                         
                         rowCumulativeTaught += taught;
@@ -1213,6 +1200,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
