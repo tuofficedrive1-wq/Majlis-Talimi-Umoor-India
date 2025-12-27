@@ -999,12 +999,12 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (FIXED: Active Year Filter + Strict Checking) ---
+    // --- FINAL UNIFIED TABLE LOGIC (Matches Blue Box Perfectly) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
         
-        // URL se Active Year uthayen (Taake purana data mix na ho)
+        // URL se Active Year uthayen (Taake mix na ho)
         const urlParams = new URLSearchParams(window.location.search);
         const currentActiveYear = urlParams.get('activeYear');
 
@@ -1012,7 +1012,7 @@ function escapeHtml(str) {
         profileView.classList.remove('hidden');
 
         try {
-            // 1. سمسٹر اور مہینوں کا تعین
+            // 1. Semester & Months Setup
             const mIndex = parseInt(currentMonthIndex, 10);
             let semMonths = [];
             let semTotalDays = 0;
@@ -1031,7 +1031,7 @@ function escapeHtml(str) {
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
             }
 
-            // 2. ڈیٹا لانا
+            // 2. Data Fetching
             const submissionsRef = db.collection('teacher_submissions');
             const q = submissionsRef
                 .where('jamiaId', '==', jamiaName)
@@ -1039,80 +1039,60 @@ function escapeHtml(str) {
                 
             const snap = await q.get();
             
-            // --- 🛑 STEP 1: RAW DATA GROUPING ---
+            // --- 🛑 CORE LOGIC (SAME AS BLUE BOX) ---
             const rawMap = {}; 
-            
+            // Structure: { periodId: { monthIndex: { adminVal: 0, adminTs: 0, teacherSum: 0 } } }
+
             snap.forEach(doc => {
                 const d = doc.data();
                 
-                // 🛑 IMPORTANT FIX: صرف موجودہ Active Year کا ڈیٹا اٹھائیں
-                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) {
-                    return; // اگر سال میچ نہیں ہوتا تو اس ریکارڈ کو چھوڑ دیں
-                }
+                // 1. Active Year Filter (Ghost Data rokne ke liye)
+                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
 
                 const mid = parseInt(d.submissionMonth, 10);
+                const pId = d.periodId;
+                if (!pId) return;
 
-                // A: ADMIN UPDATE
+                const ts = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
+
+                // Map initialize
+                if (!rawMap[pId]) rawMap[pId] = {};
+                if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminVal: 0, adminTs: 0, teacherSum: 0 };
+
+                const slot = rawMap[pId][mid];
+
+                // CASE A: Admin Update (Check inside changedValues)
                 if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
                     d.changedValues.forEach(change => {
-                        // Period ID Match Check
-                        if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
+                        if (change.periodId === pId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
                             const val = parseInt(change.pagesTaught, 10);
                             
-                            // صرف تب اٹھائیں جب ویلیو 0 سے بڑی ہو
+                            // Sirf tab maane jab value 0 se badi ho
                             if (val > 0) {
-                                const pId = change.periodId;
-                                if (!rawMap[pId]) rawMap[pId] = {};
-                                if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-
-                                rawMap[pId][mid].adminDocs.push({
-                                    val: val,
-                                    ts: d.updatedAt ? d.updatedAt.toMillis() : 0
-                                });
+                                // Latest update pick karein
+                                if (ts > slot.adminTs) {
+                                    slot.adminVal = val;
+                                    slot.adminTs = ts;
+                                }
                             }
                         }
                     });
                 } 
-                // B: TEACHER SUBMISSION
-                else if (d.periodId && d.role !== 'user_update') {
-                    const pId = d.periodId;
+                // CASE B: Teacher Submission (Sum Logic)
+                else if (d.role !== 'user_update') {
                     const val = parseInt(d.pagesTaught || 0, 10);
-                    
-                    if (!rawMap[pId]) rawMap[pId] = {};
-                    if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-
-                    rawMap[pId][mid].teacherDocs.push({ val: val });
+                    slot.teacherSum += val; // JODNA (Sum)
                 }
             });
 
-            // --- 🛑 STEP 2: WINNER DECISION ---
-            const smartMap = {}; 
-
-            Object.keys(rawMap).forEach(pId => {
-                smartMap[pId] = {};
-                Object.keys(rawMap[pId]).forEach(mid => {
-                    const slot = rawMap[pId][mid];
-                    
-                    // Priority 1: Admin Data (Latest & Valid)
-                    if (slot.adminDocs.length > 0) {
-                        slot.adminDocs.sort((a, b) => b.ts - a.ts);
-                        smartMap[pId][mid] = { pages: slot.adminDocs[0].val }; 
-                    } 
-                    // Priority 2: Teacher Data Sum
-                    else {
-                        const sum = slot.teacherDocs.reduce((acc, curr) => acc + curr.val, 0);
-                        smartMap[pId][mid] = { pages: sum };
-                    }
-                });
-            });
-
-            // 3. Table Construction
+            // 3. Teacher Structure Load
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
             if (!teacherStruct) {
                 tableContainer.innerHTML = '<p class="text-red-600 text-center p-4">ٹیچر کا ڈیٹا نہیں ملا۔</p>';
                 return;
             }
 
+            // 4. Build Table HTML
             let tableHtml = `
                 <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
                     <thead class="bg-emerald-100 text-emerald-900">
@@ -1145,7 +1125,7 @@ function escapeHtml(str) {
                     <tbody class="bg-white">
             `;
 
-            // 5. Rows
+            // 5. Generate Rows
             let hasRows = false;
             teacherStruct.periods.forEach(p => {
                 const pSem = p.semester || "1";
@@ -1171,18 +1151,21 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // Get Data from SmartMap
+                        // --- FINAL DECISION ---
                         let taught = 0;
-                        if (smartMap[p.id] && smartMap[p.id][m]) {
-                            taught = smartMap[p.id][m].pages;
+                        if (rawMap[p.id] && rawMap[p.id][m]) {
+                            const slot = rawMap[p.id][m];
+                            // Agar Admin ka value hai (>0) to wo, warna Teacher ka Sum
+                            if (slot.adminVal > 0) {
+                                taught = slot.adminVal;
+                            } else {
+                                taught = slot.teacherSum;
+                            }
                         }
                         
                         rowCumulativeTaught += taught;
 
                         let taughtColor = "text-gray-400";
-                        // Agar taught 0 hai lekin database me entry thi (matlab user ne 0 enter kiya), tab bhi 0 dikhaye
-                        // Lekin humne map me sirf valid data rakha hai.
-                        
                         if (taught > 0) {
                             if(taught >= monthlyTarget) taughtColor = "text-green-600 font-bold";
                             else taughtColor = "text-red-500 font-bold";
@@ -1230,6 +1213,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
