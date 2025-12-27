@@ -1323,7 +1323,7 @@
                 btn.disabled = false;
             }
         };
-        // --- PROFESSIONAL REPORT CARD GENERATION (FIXED: SIGNATURES & NO LOGO) ---
+        // --- PROFESSIONAL REPORT CARD GENERATION (FINAL WITH FOOTER TEXT) ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
@@ -1343,31 +1343,24 @@ window.downloadReportCards = async () => {
     btn.disabled = true;
 
     try {
-        // --- PROXY HELPER FOR IMAGES (Fixes CORS Error) ---
+        // --- PROXY HELPER FOR IMAGES ---
         const getCorsFriendlyUrl = (url) => {
             if (!url) return null;
             let directUrl = url;
-            
-            // 1. Google Drive Link Convert
             if (url.includes("drive.google.com")) {
                 let id = null;
                 let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
                 if (match) id = match[1];
                 else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
-                if (id) directUrl = `https://drive.google.com/thumbnail?id=${id}&sz=w500`; // High Quality
+                if (id) directUrl = `https://drive.google.com/thumbnail?id=${id}&sz=w500`; 
             }
-
-            // 2. Wrap in Proxy to bypass CORS (Magic Fix)
             return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
         };
 
-        // --- STEP A: FETCH SIGNATURES ---
-        
-        // 1. Taleemi Zimmedar (From Admin Profile)
+        // --- FETCH SIGNATURES ---
         const taleemiSigRaw = globalUserData.signatureTaleemi || null;
         const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
 
-        // 2. Principal Sign (From Monthly Report Database)
         let principalSigUrl = null;
         try {
             const [yStr, mStr] = monthKey.split('-');
@@ -1376,25 +1369,19 @@ window.downloadReportCards = async () => {
             const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
             const reportId = `${adminUid}_${acYear}_${y}_${m}`;
 
-            // Database se report nikalein
             const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
-            
             if (reportSnap.exists()) {
                 const reportData = reportSnap.data();
-                // Check karein ki is Jamia ka data hai ya nahi
                 const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
-                
                 if (jamiaEntry && jamiaEntry.signature) {
                     principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
                 }
             }
-        } catch (err) {
-            console.error("Principal sign fetch error:", err);
-        }
+        } catch (err) { console.error(err); }
 
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Designing...';
 
-        // --- TRANSLATION DATA ---
+        // --- TRANSLATION & SUBJECTS ---
         const classTranslations = {
             "ابتدائیہ": "Ibtedaiyah", "اولى": "Awwal (1st Year)", "ثانیہ": "Saniyah (2nd Year)", "ثالثہ": "Salisah (3rd Year)",
             "رابعہ": "Rabiah (4th Year)", "خامسہ": "Khamisah (5th Year)", "سادسہ": "Sadisah (6th Year)",
@@ -1423,7 +1410,6 @@ window.downloadReportCards = async () => {
             return { en: enName, ur: urName };
         };
 
-        // Class Name Logic
         const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
         let englishClassName = classTranslations[urduClassName] || urduClassName;
         for (const [key, val] of Object.entries(classTranslations)) {
@@ -1503,7 +1489,7 @@ window.downloadReportCards = async () => {
                 statusColor = '#e53e3e'; statusText = 'FAIL';
             }
 
-            // HTML Template (NO LOGO & PROXY IMAGES)
+            // HTML Template
             container.innerHTML = `
                 <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
                     
@@ -1575,7 +1561,6 @@ window.downloadReportCards = async () => {
                             </div>
 
                             <div style="position: absolute; bottom: 80px; width: 100%; padding: 0 80px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
-                                
                                 <div style="text-align: center; width: 200px; position: relative;">
                                     <div style="height: 60px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
                                         ${ principalSigUrl 
@@ -1586,7 +1571,6 @@ window.downloadReportCards = async () => {
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 16px;">Principal Signature</p>
                                 </div>
-
                                 <div style="text-align: center; width: 200px; position: relative;">
                                     <div style="height: 60px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
                                         ${ taleemiSigUrl 
@@ -1597,7 +1581,12 @@ window.downloadReportCards = async () => {
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 16px;">Taleemi Zimmedar</p>
                                 </div>
+                            </div>
 
+                            <div style="position: absolute; bottom: 25px; width: 100%; text-align: center; left: 0;">
+                                <p style="margin: 0; font-size: 14px; color: #0f766e; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;">
+                                    MAJLIS TALIMI UMOOR INDIA
+                                </p>
                             </div>
 
                         </div>
@@ -1609,7 +1598,6 @@ window.downloadReportCards = async () => {
             const element = document.getElementById(`rc-template-${i}`);
             if (i > 0) pdf.addPage();
             
-            // AllowTaint true rakha hai aur CORS enable kiya hai
             const canvas = await html2canvas(element, { 
                 scale: 2, 
                 useCORS: true, 
@@ -1633,6 +1621,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
