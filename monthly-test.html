@@ -1323,17 +1323,17 @@
                 btn.disabled = false;
             }
         };
-        // --- PROFESSIONAL REPORT CARD GENERATION (NO LOGO & FIXED SIGNATURES) ---
+        // --- PROFESSIONAL REPORT CARD GENERATION (FIXED: SIGNATURES & NO LOGO) ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
     const rows = document.querySelectorAll('#students-body tr');
     if(rows.length === 0) { alert("Koi data nahi hai."); return; }
 
-    // Check if globalUserData is loaded
+    // Check Global Data
     if (typeof globalUserData === 'undefined') {
-        console.error("Critical Error: globalUserData is missing.");
-        alert("System Error: User Data variable missing. Please check Step 1.");
+        console.error("Error: globalUserData missing.");
+        alert("System Error: Page refresh karein.");
         return;
     }
 
@@ -1343,22 +1343,32 @@ window.downloadReportCards = async () => {
     btn.disabled = true;
 
     try {
-        const convertGoogleDriveURL = (url) => {
-            if (!url || !url.includes("drive.google.com")) return url;
-            let id = null;
-            let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-            if (match) id = match[1];
-            else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
-            return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w300-h300-n` : url;
+        // --- PROXY HELPER FOR IMAGES (Fixes CORS Error) ---
+        const getCorsFriendlyUrl = (url) => {
+            if (!url) return null;
+            let directUrl = url;
+            
+            // 1. Google Drive Link Convert
+            if (url.includes("drive.google.com")) {
+                let id = null;
+                let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                if (match) id = match[1];
+                else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
+                if (id) directUrl = `https://drive.google.com/thumbnail?id=${id}&sz=w500`; // High Quality
+            }
+
+            // 2. Wrap in Proxy to bypass CORS (Magic Fix)
+            return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
         };
 
-        // --- FETCH SIGNATURES ---
-        // Taleemi Zimmedar (Global Profile se)
-        const taleemiSigUrl = globalUserData.signatureTaleemi ? convertGoogleDriveURL(globalUserData.signatureTaleemi) : null;
+        // --- STEP A: FETCH SIGNATURES ---
         
-        // Principal (Monthly Report Database se specific Jamia ke liye)
+        // 1. Taleemi Zimmedar (From Admin Profile)
+        const taleemiSigRaw = globalUserData.signatureTaleemi || null;
+        const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
+
+        // 2. Principal Sign (From Monthly Report Database)
         let principalSigUrl = null;
-        
         try {
             const [yStr, mStr] = monthKey.split('-');
             const y = parseInt(yStr);
@@ -1366,13 +1376,16 @@ window.downloadReportCards = async () => {
             const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
             const reportId = `${adminUid}_${acYear}_${y}_${m}`;
 
+            // Database se report nikalein
             const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
+            
             if (reportSnap.exists()) {
                 const reportData = reportSnap.data();
-                // Jamia name match karein (trim karke)
+                // Check karein ki is Jamia ka data hai ya nahi
                 const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
+                
                 if (jamiaEntry && jamiaEntry.signature) {
-                    principalSigUrl = convertGoogleDriveURL(jamiaEntry.signature);
+                    principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
                 }
             }
         } catch (err) {
@@ -1412,13 +1425,10 @@ window.downloadReportCards = async () => {
 
         // Class Name Logic
         const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
-        let englishClassName = classTranslations[urduClassName];
-        if (!englishClassName) {
-            for (const [key, val] of Object.entries(classTranslations)) {
-                if (urduClassName.includes(key)) { englishClassName = val; break; }
-            }
+        let englishClassName = classTranslations[urduClassName] || urduClassName;
+        for (const [key, val] of Object.entries(classTranslations)) {
+            if (urduClassName.includes(key)) { englishClassName = val; break; }
         }
-        if (!englishClassName) englishClassName = urduClassName;
 
         // Data Prep
         let studentsData = [];
@@ -1493,7 +1503,7 @@ window.downloadReportCards = async () => {
                 statusColor = '#e53e3e'; statusText = 'FAIL';
             }
 
-            // HTML Template (LOGO REMOVED)
+            // HTML Template (NO LOGO & PROXY IMAGES)
             container.innerHTML = `
                 <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
                     
@@ -1599,7 +1609,7 @@ window.downloadReportCards = async () => {
             const element = document.getElementById(`rc-template-${i}`);
             if (i > 0) pdf.addPage();
             
-            // Allow Taint true kiya taaki agar CORS fail bhi ho to crash na kare
+            // AllowTaint true rakha hai aur CORS enable kiya hai
             const canvas = await html2canvas(element, { 
                 scale: 2, 
                 useCORS: true, 
@@ -1623,6 +1633,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
