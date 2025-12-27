@@ -1323,17 +1323,17 @@
                 btn.disabled = false;
             }
         };
-        // --- PROFESSIONAL REPORT CARD GENERATION (FIXED SIGNATURES) ---
+        // --- PROFESSIONAL REPORT CARD GENERATION (NO LOGO & FIXED SIGNATURES) ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
     const rows = document.querySelectorAll('#students-body tr');
     if(rows.length === 0) { alert("Koi data nahi hai."); return; }
 
-    // Check Global Data
+    // Check if globalUserData is loaded
     if (typeof globalUserData === 'undefined') {
-        console.error("Error: globalUserData missing.");
-        alert("Page ko refresh karein, user data load nahi hua.");
+        console.error("Critical Error: globalUserData is missing.");
+        alert("System Error: User Data variable missing. Please check Step 1.");
         return;
     }
 
@@ -1352,13 +1352,13 @@ window.downloadReportCards = async () => {
             return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w300-h300-n` : url;
         };
 
-        // --- STEP A: FETCH SIGNATURES ---
-        
-        // 1. Taleemi Zimmedar (From Admin Profile)
+        // --- FETCH SIGNATURES ---
+        // Taleemi Zimmedar (Global Profile se)
         const taleemiSigUrl = globalUserData.signatureTaleemi ? convertGoogleDriveURL(globalUserData.signatureTaleemi) : null;
-
-        // 2. Principal Sign (From Monthly Report Database)
+        
+        // Principal (Monthly Report Database se specific Jamia ke liye)
         let principalSigUrl = null;
+        
         try {
             const [yStr, mStr] = monthKey.split('-');
             const y = parseInt(yStr);
@@ -1366,19 +1366,13 @@ window.downloadReportCards = async () => {
             const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
             const reportId = `${adminUid}_${acYear}_${y}_${m}`;
 
-            // Database se report nikalein
             const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
-            
             if (reportSnap.exists()) {
                 const reportData = reportSnap.data();
-                // Check karein ki is Jamia ka data hai ya nahi
-                // Note: Naam ko trim kar rahe hain taaki space ki wajah se galti na ho
+                // Jamia name match karein (trim karke)
                 const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
-                
                 if (jamiaEntry && jamiaEntry.signature) {
                     principalSigUrl = convertGoogleDriveURL(jamiaEntry.signature);
-                } else {
-                    console.log("Signature not found for this Jamia in DB.");
                 }
             }
         } catch (err) {
@@ -1418,10 +1412,13 @@ window.downloadReportCards = async () => {
 
         // Class Name Logic
         const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
-        let englishClassName = classTranslations[urduClassName] || urduClassName;
-        for (const [key, val] of Object.entries(classTranslations)) {
-            if (urduClassName.includes(key)) { englishClassName = val; break; }
+        let englishClassName = classTranslations[urduClassName];
+        if (!englishClassName) {
+            for (const [key, val] of Object.entries(classTranslations)) {
+                if (urduClassName.includes(key)) { englishClassName = val; break; }
+            }
         }
+        if (!englishClassName) englishClassName = urduClassName;
 
         // Data Prep
         let studentsData = [];
@@ -1496,7 +1493,7 @@ window.downloadReportCards = async () => {
                 statusColor = '#e53e3e'; statusText = 'FAIL';
             }
 
-            // HTML Template (LOGO REMOVED & SIGNATURES FIXED)
+            // HTML Template (LOGO REMOVED)
             container.innerHTML = `
                 <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
                     
@@ -1602,6 +1599,7 @@ window.downloadReportCards = async () => {
             const element = document.getElementById(`rc-template-${i}`);
             if (i > 0) pdf.addPage();
             
+            // Allow Taint true kiya taaki agar CORS fail bhi ho to crash na kare
             const canvas = await html2canvas(element, { 
                 scale: 2, 
                 useCORS: true, 
@@ -1625,6 +1623,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
