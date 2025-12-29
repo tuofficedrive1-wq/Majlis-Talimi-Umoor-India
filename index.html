@@ -1455,7 +1455,7 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
         };
         
         // ===============================================
-// ==  UPDATED DASHBOARD RENDER LOGIC (PERCENTAGE WISE) ==
+// ==  FINAL DASHBOARD RENDER (PROGRESS BAR & COUNT) ==
 // ===============================================
 const renderDashboard = (reports, monthInputFormat) => {
     const currentReportInfo = getReportingMonthYearFromInput(monthInputFormat);
@@ -1474,8 +1474,7 @@ const renderDashboard = (reports, monthInputFormat) => {
 
     const { monthNum, yearNum } = currentReportInfo; 
     
-    // --- 1. Total Jamiaat Count Nikalna ---
-    // Hum userProfileData.jamiaatList use karenge jo humne initUserView me set kiya tha
+    // --- 1. Total Jamiaat Count ---
     const allJamiaat = userProfileData.jamiaatList || [];
     const totalJamiaatCount = allJamiaat.length;
 
@@ -1493,72 +1492,84 @@ const renderDashboard = (reports, monthInputFormat) => {
     const prevReportIdWithYear = `${currentUser.uid}_${prevAcademicYear}_${prevYearNum}_${prevMonthNum}`;
     const lastMonthReport = reports.find(r => r.id === prevReportIdWithYear || r.id === prevReportIdSimple) || {};
 
-    console.log(`Rendering Dashboard for ${currentReportInfo.month} ${currentReportInfo.year}`);
-
-    // --- 4. Calculate Percentages (Naya Logic) ---
-    
-    // Helper function to calculate unique jamia count in submitted data
+    // --- 4. Counts Calculation ---
     const getUniqueCount = (dataArray, keyName = 'name') => {
         if (!Array.isArray(dataArray)) return 0;
-        // Unique Jamia names count karein (taake agar ek jamia ki 2 entry ho to 1 hi gina jaye)
         const uniqueSet = new Set(dataArray.map(item => (item[keyName] || '').trim()));
         return uniqueSet.size;
     };
 
     const jaizaCount = getUniqueCount(currentReport.jaizaReport?.data, 'name');
-    const tadrisCount = getUniqueCount(currentReport.tadrisRecording?.data, 'jamiaName'); // Tadris me key 'jamiaName' hai
+    const tadrisCount = getUniqueCount(currentReport.tadrisRecording?.data, 'jamiaName'); 
     const testCount = getUniqueCount(currentReport.monthlyTest?.data, 'name');
     const kkdCount = getUniqueCount(currentReport.karkardagiReport?.data || currentReport.kkdReport?.data, 'jamiaName');
 
-    // Percentage Formula: (Done / Total) * 100
-    const calcPercent = (count) => totalJamiaatCount > 0 ? Math.round((count / totalJamiaatCount) * 100) : 0;
+    // --- 5. Helper Function to Render Progress Tile ---
+    const renderProgressTile = (targetTab, title, count, total, colorTheme, iconClass) => {
+        // Button element dhoondhein
+        const btn = document.querySelector(`button[data-target-tab="${targetTab}"]`);
+        if (!btn) return;
 
-    const jaizaPercent = calcPercent(jaizaCount);
-    const tadrisPercent = calcPercent(tadrisCount);
-    const testPercent = calcPercent(testCount);
-    const kkdPercent = calcPercent(kkdCount);
+        // Percentage Calculation
+        let percent = 0;
+        if (total > 0) {
+            percent = Math.round((count / total) * 100);
+        }
 
-    // --- 5. Update Status Tiles with Percentage ---
-    
-    const updateStatusTile = (element, percent, labelText) => {
-        // Text update karein
-        if (totalJamiaatCount === 0) {
-            element.textContent = "Setup Required";
+        // Setup Required Check
+        if (total === 0) {
+            btn.innerHTML = `<div class="text-center text-gray-400"><p class="font-bold">Setup Required</p><p class="text-xs">Add Jamiaat first</p></div>`;
             return;
         }
 
-        element.textContent = `${percent}% Done`;
+        // Color Classes Definition
+        const colors = {
+            teal:   { bg: 'bg-teal-50',   barBg: 'bg-teal-200',   barFill: 'bg-teal-600',   text: 'text-teal-800' },
+            blue:   { bg: 'bg-blue-50',   barBg: 'bg-blue-200',   barFill: 'bg-blue-600',   text: 'text-blue-800' },
+            indigo: { bg: 'bg-indigo-50', barBg: 'bg-indigo-200', barFill: 'bg-indigo-600', text: 'text-indigo-800' },
+            purple: { bg: 'bg-purple-50', barBg: 'bg-purple-200', barFill: 'bg-purple-600', text: 'text-purple-800' }
+        };
+        const c = colors[colorTheme];
 
-        const button = element.closest('.section-status-btn');
-        if (button) {
-            // Reset classes
-            button.className = 'section-status-btn p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition text-left relative overflow-hidden';
-            element.className = 'text-xl font-bold mt-1';
+        // Apply Button Classes (Background update)
+        btn.className = `section-status-btn group ${c.bg} p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition text-left relative overflow-hidden`;
 
-            // Color Logic based on Percentage
-            if (percent === 100) {
-                // Complete (Green)
-                button.classList.add('bg-emerald-50');
-                element.classList.add('text-emerald-600');
-            } else if (percent > 0) {
-                // Partial (Blue/Orange)
-                button.classList.add('bg-blue-50');
-                element.classList.add('text-blue-600');
-            } else {
-                // Pending (Yellow/Gray)
-                button.classList.add('bg-white'); // Clean look for 0%
-                element.classList.add('text-gray-400'); // Dim text
-                element.textContent = "Pending (0%)";
-            }
-        }
+        // Inject New HTML Structure
+        btn.innerHTML = `
+            <div class="flex justify-between items-start mb-3 relative z-10">
+                <div>
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">${title}</p>
+                    <h3 class="text-2xl font-bold ${c.text}">${percent}% <span class="text-sm font-medium opacity-70">Done</span></h3>
+                </div>
+                <div class="p-2 bg-white rounded-lg shadow-sm">
+                    <i class="${iconClass} text-xl ${c.text}"></i>
+                </div>
+            </div>
+
+            <div class="relative z-10">
+                <div class="flex justify-between text-xs font-semibold text-gray-500 mb-1.5">
+                    <span>${count}/${total} Jamiaat</span>
+                    <span>Completed</span>
+                </div>
+                <div class="w-full ${c.barBg} rounded-full h-2.5">
+                    <div class="${c.barFill} h-2.5 rounded-full transition-all duration-1000 ease-out" style="width: ${percent}%"></div>
+                </div>
+            </div>
+            
+            <div class="absolute -right-4 -bottom-4 opacity-5 transform rotate-12 pointer-events-none transition group-hover:opacity-10 group-hover:scale-110">
+                 <i class="${iconClass} text-8xl ${c.text}"></i>
+            </div>
+        `;
     };
 
-    updateStatusTile(dashJaizaStatusText, jaizaPercent, 'Jaiza');
-    updateStatusTile(dashTadrisStatusText, tadrisPercent, 'Tadris');
-    updateStatusTile(dashTestStatusText, testPercent, 'Test');
-    updateStatusTile(dashKkdStatusText, kkdPercent, 'Karkardagi');
+    // --- 6. Render All 4 Tiles ---
+    renderProgressTile('jaiza', 'Jaiza Report', jaizaCount, totalJamiaatCount, 'teal', 'fas fa-clipboard-check');
+    renderProgressTile('tadris', 'Tadris Recording', tadrisCount, totalJamiaatCount, 'blue', 'fas fa-microphone-alt');
+    renderProgressTile('test', 'Monthly Test', testCount, totalJamiaatCount, 'indigo', 'fas fa-file-alt');
+    renderProgressTile('kkd', 'Karkardagi', kkdCount, totalJamiaatCount, 'purple', 'fas fa-graduation-cap');
 
-    // --- 6. Summary Table Logic (No Changes needed usually, keeping existing logic) ---
+
+    // --- 7. Summary Table Logic (Existing Logic) ---
     summaryTableBody.innerHTML = ''; 
     
     if (allJamiaat.length === 0) {
@@ -1632,19 +1643,7 @@ const renderDashboard = (reports, monthInputFormat) => {
     summaryLoadingMsg.classList.add('hidden');
     summaryTable.classList.remove('hidden');
 
-    // --- Chart Update Logic (Same as before) ---
-    jaizaChartData.sort((a, b) => b.thisMonth - a.thisMonth); 
-    testChartData.sort((a, b) => b.thisMonth - a.thisMonth);
-
-    const jaizaChartLabels = jaizaChartData.map(d => d.jamia);
-    const thisMonthJaizaPercentages = jaizaChartData.map(d => d.thisMonth);
-    
-    const testChartLabels = testChartData.map(d => d.jamia);
-    const thisMonthTestPercentages = testChartData.map(d => d.thisMonth);
-
-    // ... (Upar ka renderDashboard code same rahega) ...
-
-    // --- CHART GRADIENT HELPER FUNCTION ---
+    // --- Chart Logic (Same as before) ---
     const createGradient = (ctx, colorStart, colorEnd) => {
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
         gradient.addColorStop(0, colorStart);
@@ -1652,12 +1651,14 @@ const renderDashboard = (reports, monthInputFormat) => {
         return gradient;
     };
 
-    // --- 5. Render Jaiza Chart (Colorful & Stylish) ---
+    // Jaiza Chart
+    jaizaChartData.sort((a, b) => b.thisMonth - a.thisMonth); 
+    const jaizaChartLabels = jaizaChartData.map(d => d.jamia);
+    const thisMonthJaizaPercentages = jaizaChartData.map(d => d.thisMonth);
+
     const ctxJaiza = document.getElementById('comparisonChart').getContext('2d');
     if (dashboardChart) dashboardChart.destroy();
-
-    // Teal Gradient for Jaiza
-    const jaizaGradient = createGradient(ctxJaiza, '#2dd4bf', '#0f766e'); // Light Teal to Dark Teal
+    const jaizaGradient = createGradient(ctxJaiza, '#2dd4bf', '#0f766e');
 
     dashboardChart = new Chart(ctxJaiza, {
         type: 'bar',
@@ -1666,66 +1667,11 @@ const renderDashboard = (reports, monthInputFormat) => {
             datasets: [{
                 label: `Jaiza Performance`,
                 data: thisMonthJaizaPercentages,
-                backgroundColor: jaizaGradient, // Gradient Color
+                backgroundColor: jaizaGradient,
                 hoverBackgroundColor: '#0d9488',
                 borderColor: '#115e59',
                 borderWidth: 1,
-                borderRadius: 8, // Bars ko Gol (Rounded) karne ke liye
-                barPercentage: 0.6, // Bars ki chaurai adjust ki
-            }]
-        },
-        plugins: [ChartDataLabels], 
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: { top: 20 } },
-            scales: {
-                x: { 
-                    ticks: { 
-                        font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' },
-                        color: '#374151'
-                    },
-                    grid: { display: false } // Grid lines hatayi clean look ke liye
-                },
-                y: { 
-                    beginAtZero: true, 
-                    max: 100,
-                    grid: { color: '#f3f4f6' }
-                }
-            },
-            plugins: {
-                legend: { display: false },
-                title: { display: false }, // Canvas par title nahi dikhayenge (Download me aayega)
-                datalabels: { 
-                    anchor: 'end', align: 'top',
-                    formatter: (v) => v > 0 ? v + '%' : '',
-                    color: '#0f766e', font: { weight: 'bold', size: 12 },
-                    offset: -5
-                }
-            }
-        }
-    });
-    document.getElementById('comparisonChart').style.height = '350px';
-
-    // --- 6. Render Test Chart (Colorful & Stylish) ---
-    const ctxTest = document.getElementById('testComparisonChart').getContext('2d');
-    if (testDashboardChart) testDashboardChart.destroy();
-
-    // Indigo/Purple Gradient for Test
-    const testGradient = createGradient(ctxTest, '#818cf8', '#4338ca'); // Light Indigo to Dark Indigo
-
-    testDashboardChart = new Chart(ctxTest, {
-        type: 'bar',
-        data: {
-            labels: testChartLabels,
-            datasets: [{
-                label: `Test Performance`,
-                data: thisMonthTestPercentages,
-                backgroundColor: testGradient, // Gradient Color
-                hoverBackgroundColor: '#4f46e5',
-                borderColor: '#3730a3',
-                borderWidth: 1,
-                borderRadius: 8, // Bars ko Gol (Rounded) karne ke liye
+                borderRadius: 8,
                 barPercentage: 0.6,
             }]
         },
@@ -1735,28 +1681,55 @@ const renderDashboard = (reports, monthInputFormat) => {
             maintainAspectRatio: false,
             layout: { padding: { top: 20 } },
             scales: {
-                x: { 
-                    ticks: { 
-                        font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' },
-                        color: '#374151'
-                    },
-                    grid: { display: false }
-                },
-                y: { 
-                    beginAtZero: true, 
-                    max: 100,
-                    grid: { color: '#f3f4f6' }
-                }
+                x: { ticks: { font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' }, color: '#374151' }, grid: { display: false } },
+                y: { beginAtZero: true, max: 100, grid: { color: '#f3f4f6' } }
             },
             plugins: {
                 legend: { display: false },
                 title: { display: false },
-                datalabels: { 
-                    anchor: 'end', align: 'top',
-                    formatter: (v) => v > 0 ? v + '%' : '',
-                    color: '#4338ca', font: { weight: 'bold', size: 12 },
-                    offset: -5
-                }
+                datalabels: { anchor: 'end', align: 'top', formatter: (v) => v > 0 ? v + '%' : '', color: '#0f766e', font: { weight: 'bold', size: 12 }, offset: -5 }
+            }
+        }
+    });
+    document.getElementById('comparisonChart').style.height = '350px';
+
+    // Test Chart
+    testChartData.sort((a, b) => b.thisMonth - a.thisMonth);
+    const testChartLabels = testChartData.map(d => d.jamia);
+    const thisMonthTestPercentages = testChartData.map(d => d.thisMonth);
+
+    const ctxTest = document.getElementById('testComparisonChart').getContext('2d');
+    if (testDashboardChart) testDashboardChart.destroy();
+    const testGradient = createGradient(ctxTest, '#818cf8', '#4338ca');
+
+    testDashboardChart = new Chart(ctxTest, {
+        type: 'bar',
+        data: {
+            labels: testChartLabels,
+            datasets: [{
+                label: `Test Performance`,
+                data: thisMonthTestPercentages,
+                backgroundColor: testGradient,
+                hoverBackgroundColor: '#4f46e5',
+                borderColor: '#3730a3',
+                borderWidth: 1,
+                borderRadius: 8,
+                barPercentage: 0.6,
+            }]
+        },
+        plugins: [ChartDataLabels], 
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 20 } },
+            scales: {
+                x: { ticks: { font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' }, color: '#374151' }, grid: { display: false } },
+                y: { beginAtZero: true, max: 100, grid: { color: '#f3f4f6' } }
+            },
+            plugins: {
+                legend: { display: false },
+                title: { display: false },
+                datalabels: { anchor: 'end', align: 'top', formatter: (v) => v > 0 ? v + '%' : '', color: '#4338ca', font: { weight: 'bold', size: 12 }, offset: -5 }
             }
         }
     });
@@ -3323,6 +3296,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
