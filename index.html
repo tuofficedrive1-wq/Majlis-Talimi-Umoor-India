@@ -1423,275 +1423,269 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
         };
         
         // ===============================================
-        // ==  UPDATED DASHBOARD RENDER LOGIC (WITH CHART) ==
-        // ===============================================
-        const renderDashboard = (reports, monthInputFormat) => {
-            const currentReportInfo = getReportingMonthYearFromInput(monthInputFormat);
-            const prevMonthDate = new Date(currentReportInfo.yearNum, currentReportInfo.monthNum, 0); 
-            const lastMonthReportInfo = getReportingMonthYear(prevMonthDate);
+// ==  UPDATED DASHBOARD RENDER LOGIC (PERCENTAGE WISE) ==
+// ===============================================
+const renderDashboard = (reports, monthInputFormat) => {
+    const currentReportInfo = getReportingMonthYearFromInput(monthInputFormat);
+    const prevMonthDate = new Date(currentReportInfo.yearNum, currentReportInfo.monthNum, 0); 
+    const lastMonthReportInfo = getReportingMonthYear(prevMonthDate);
 
-            dashCurrentMonthYear.textContent = `Currently showing data for: ${currentReportInfo.month} ${currentReportInfo.year}`;
-            document.getElementById('jaiza-chart-title').textContent = `Jaiza Performance (${currentReportInfo.month} ${currentReportInfo.year})`;
-            document.getElementById('test-chart-title').textContent = `Monthly Test Performance (${currentReportInfo.month} ${currentReportInfo.year})`;
+    // Header Date Update
+    const headerDateEl = document.getElementById('dash-current-month-year');
+    if(headerDateEl) {
+        headerDateEl.textContent = `Currently showing data for: ${currentReportInfo.month} ${currentReportInfo.year}`;
+    }
 
+    // Chart Titles Update
+    document.getElementById('jaiza-chart-title').textContent = `Jaiza Performance (${currentReportInfo.month} ${currentReportInfo.year})`;
+    document.getElementById('test-chart-title').textContent = `Monthly Test Performance (${currentReportInfo.month} ${currentReportInfo.year})`;
 
-            const { monthNum, yearNum } = currentReportInfo; 
-            const allJamiaat = userProfileData.jamiaatList || [];
+    const { monthNum, yearNum } = currentReportInfo; 
+    
+    // --- 1. Total Jamiaat Count Nikalna ---
+    // Hum userProfileData.jamiaatList use karenge jo humne initUserView me set kiya tha
+    const allJamiaat = userProfileData.jamiaatList || [];
+    const totalJamiaatCount = allJamiaat.length;
 
-            // --- 1. Find Current Month Report ---
-            const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
-            const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; 
-            const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`; 
-            const currentReport = reports.find(r => r.id === currentReportIdWithYear) || reports.find(r => r.id === currentReportIdSimple) || {};
-            
-            // --- 2. Find Last Month Report (for Comparison) ---
-            const prevMonthNum = lastMonthReportInfo.monthNum;
-            const prevYearNum = lastMonthReportInfo.yearNum;
-            const prevAcademicYear = (prevMonthNum >= 3) ? `${prevYearNum}-${prevYearNum + 1}` : `${prevYearNum - 1}-${prevYearNum}`;
-            const prevReportIdSimple = `${currentUser.uid}_${prevYearNum}_${prevMonthNum}`;
-            const prevReportIdWithYear = `${currentUser.uid}_${prevAcademicYear}_${prevYearNum}_${prevMonthNum}`;
-            const lastMonthReport = reports.find(r => r.id === prevReportIdWithYear || r.id === prevReportIdSimple) || {};
+    // --- 2. Current Month Report Find Karna ---
+    const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+    const currentReportIdSimple = `${currentUser.uid}_${yearNum}_${monthNum}`; 
+    const currentReportIdWithYear = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`; 
+    const currentReport = reports.find(r => r.id === currentReportIdWithYear) || reports.find(r => r.id === currentReportIdSimple) || {};
+    
+    // --- 3. Last Month Report (Comparison ke liye) ---
+    const prevMonthNum = lastMonthReportInfo.monthNum;
+    const prevYearNum = lastMonthReportInfo.yearNum;
+    const prevAcademicYear = (prevMonthNum >= 3) ? `${prevYearNum}-${prevYearNum + 1}` : `${prevYearNum - 1}-${prevYearNum}`;
+    const prevReportIdSimple = `${currentUser.uid}_${prevYearNum}_${prevMonthNum}`;
+    const prevReportIdWithYear = `${currentUser.uid}_${prevAcademicYear}_${prevYearNum}_${prevMonthNum}`;
+    const lastMonthReport = reports.find(r => r.id === prevReportIdWithYear || r.id === prevReportIdSimple) || {};
 
-            console.log(`Rendering Dashboard for ${currentReportInfo.month} ${currentReportInfo.year}. Last Month: ${lastMonthReportInfo.month} ${lastMonthReportInfo.year}`);
+    console.log(`Rendering Dashboard for ${currentReportInfo.month} ${currentReportInfo.year}`);
 
-            // --- 3. Update Overall Status Box & Section Status Tiles ---
-            const jaizaDone = currentReport.jaizaReport?.status === 'Done';
-            const tadrisDone = currentReport.tadrisRecording?.status === 'Done';
-            const testDone = currentReport.monthlyTest?.status === 'Done'; 
-            const kkdDone = currentReport.karkardagiReport?.status === 'Done' || currentReport.kkdReport?.status === 'Done';
-            
-            const updateStatusTile = (element, isDone, colorCode) => {
-                element.textContent = isDone ? 'Done' : 'Pending';
-                const button = element.closest('.section-status-btn');
-                if (button) {
-                    button.className = `section-status-btn p-4 rounded-lg text-center shadow-md transition-shadow duration-300 hover:shadow-lg ${isDone ? `bg-${colorCode}-100` : 'bg-yellow-100'}`;
-                    element.className = `text-xl font-bold mt-1 ${isDone ? `text-${colorCode}-700` : 'text-yellow-600'}`;
-                }
-            };
+    // --- 4. Calculate Percentages (Naya Logic) ---
+    
+    // Helper function to calculate unique jamia count in submitted data
+    const getUniqueCount = (dataArray, keyName = 'name') => {
+        if (!Array.isArray(dataArray)) return 0;
+        // Unique Jamia names count karein (taake agar ek jamia ki 2 entry ho to 1 hi gina jaye)
+        const uniqueSet = new Set(dataArray.map(item => (item[keyName] || '').trim()));
+        return uniqueSet.size;
+    };
 
-            updateStatusTile(dashJaizaStatusText, jaizaDone, 'teal');
-            updateStatusTile(dashTadrisStatusText, tadrisDone, 'blue');
-            updateStatusTile(dashTestStatusText, testDone, 'indigo');
-            updateStatusTile(dashKkdStatusText, kkdDone, 'purple');
+    const jaizaCount = getUniqueCount(currentReport.jaizaReport?.data, 'name');
+    const tadrisCount = getUniqueCount(currentReport.tadrisRecording?.data, 'jamiaName'); // Tadris me key 'jamiaName' hai
+    const testCount = getUniqueCount(currentReport.monthlyTest?.data, 'name');
+    const kkdCount = getUniqueCount(currentReport.karkardagiReport?.data || currentReport.kkdReport?.data, 'jamiaName');
 
-                        // --- 4. Render Jamia-wise Comparison Table & Chart ---
-            summaryTableBody.innerHTML = ''; 
-            
-            if (allJamiaat.length === 0) {
-                summaryLoadingMsg.textContent = "Aapke profile mein koi Jamia add nahi hai. Pehle Academic Structure save karein.";
-                summaryLoadingMsg.classList.remove('hidden');
-                summaryTable.classList.add('hidden');
-                return;
+    // Percentage Formula: (Done / Total) * 100
+    const calcPercent = (count) => totalJamiaatCount > 0 ? Math.round((count / totalJamiaatCount) * 100) : 0;
+
+    const jaizaPercent = calcPercent(jaizaCount);
+    const tadrisPercent = calcPercent(tadrisCount);
+    const testPercent = calcPercent(testCount);
+    const kkdPercent = calcPercent(kkdCount);
+
+    // --- 5. Update Status Tiles with Percentage ---
+    
+    const updateStatusTile = (element, percent, labelText) => {
+        // Text update karein
+        if (totalJamiaatCount === 0) {
+            element.textContent = "Setup Required";
+            return;
+        }
+
+        element.textContent = `${percent}% Done`;
+
+        const button = element.closest('.section-status-btn');
+        if (button) {
+            // Reset classes
+            button.className = 'section-status-btn p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition text-left relative overflow-hidden';
+            element.className = 'text-xl font-bold mt-1';
+
+            // Color Logic based on Percentage
+            if (percent === 100) {
+                // Complete (Green)
+                button.classList.add('bg-emerald-50');
+                element.classList.add('text-emerald-600');
+            } else if (percent > 0) {
+                // Partial (Blue/Orange)
+                button.classList.add('bg-blue-50');
+                element.classList.add('text-blue-600');
+            } else {
+                // Pending (Yellow/Gray)
+                button.classList.add('bg-white'); // Clean look for 0%
+                element.classList.add('text-gray-400'); // Dim text
+                element.textContent = "Pending (0%)";
             }
+        }
+    };
 
-            const currentJaizaData = currentReport.jaizaReport?.data || [];
-const currentTestData  = currentReport.monthlyTest?.data || [];
-const lastJaizaData    = lastMonthReport.jaizaReport?.data || [];
-const lastTestData     = lastMonthReport.monthlyTest?.data || [];
+    updateStatusTile(dashJaizaStatusText, jaizaPercent, 'Jaiza');
+    updateStatusTile(dashTadrisStatusText, tadrisPercent, 'Tadris');
+    updateStatusTile(dashTestStatusText, testPercent, 'Test');
+    updateStatusTile(dashKkdStatusText, kkdPercent, 'Karkardagi');
 
-const jaizaChartData = [];
-const testChartData  = [];
+    // --- 6. Summary Table Logic (No Changes needed usually, keeping existing logic) ---
+    summaryTableBody.innerHTML = ''; 
+    
+    if (allJamiaat.length === 0) {
+        summaryLoadingMsg.textContent = "Aapke profile mein koi Jamia add nahi hai. Pehle Academic Structure save karein.";
+        summaryLoadingMsg.classList.remove('hidden');
+        summaryTable.classList.add('hidden');
+        return;
+    }
 
-// 🔹 Naam normalize karne ka helper (trim + lowercase)
-const normalizeName = (s) => (s || "").trim().toLowerCase();
+    const currentJaizaData = currentReport.jaizaReport?.data || [];
+    const currentTestData  = currentReport.monthlyTest?.data || [];
+    const lastJaizaData    = lastMonthReport.jaizaReport?.data || [];
+    const lastTestData     = lastMonthReport.monthlyTest?.data || [];
 
-allJamiaat.forEach(jamiaName => {
-    const normJamia = normalizeName(jamiaName);
+    const jaizaChartData = [];
+    const testChartData  = [];
 
-    const thisMonthJaiza = currentJaizaData.find(
-        j => normalizeName(j.name) === normJamia
-    );
-    const thisMonthTest = currentTestData.find(
-        t => normalizeName(t.name) === normJamia
-    );
-    const lastMonthJaiza = lastJaizaData.find(
-        j => normalizeName(j.name) === normJamia
-    );
-    const lastMonthTest = lastTestData.find(
-        t => normalizeName(t.name) === normJamia
-    );
+    const normalizeName = (s) => (s || "").trim().toLowerCase();
 
-                // --- Table Data Logic ---
-                let jaizaStatus = '<span class="text-yellow-600 font-medium">Pending</span>';
-                if (thisMonthJaiza) {
-                    jaizaStatus = (thisMonthJaiza.type === 'Nahi Hua' || thisMonthJaiza.type === 'Visit') 
-                        ? `<span class="text-blue-600">${thisMonthJaiza.type}</span>` 
-                        : `<span class="text-green-600">Done (${thisMonthJaiza.percentage || 'N/A'}%)</span>`;
+    allJamiaat.forEach(jamiaName => {
+        const normJamia = normalizeName(jamiaName);
+
+        const thisMonthJaiza = currentJaizaData.find(j => normalizeName(j.name) === normJamia);
+        const thisMonthTest = currentTestData.find(t => normalizeName(t.name) === normJamia);
+        const lastMonthJaiza = lastJaizaData.find(j => normalizeName(j.name) === normJamia);
+        const lastMonthTest = lastTestData.find(t => normalizeName(t.name) === normJamia);
+
+        // --- Table Row ---
+        let jaizaStatus = '<span class="text-gray-400 text-xs">Pending</span>';
+        if (thisMonthJaiza) {
+            jaizaStatus = (thisMonthJaiza.type === 'Nahi Hua' || thisMonthJaiza.type === 'Visit') 
+                ? `<span class="text-blue-600 font-medium">${thisMonthJaiza.type}</span>` 
+                : `<span class="text-emerald-600 font-bold">${thisMonthJaiza.percentage || 'N/A'}%</span>`;
+        }
+        
+        let testStatus = '<span class="text-gray-400 text-xs">Pending</span>';
+        if (thisMonthTest) {
+            testStatus = (thisMonthTest.status === 'Nahi Hua') 
+                ? `<span class="text-blue-600 font-medium">${thisMonthTest.status}</span>` 
+                : `<span class="text-emerald-600 font-bold">${thisMonthTest.percentage || 'N/A'}%</span>`;
+        }
+
+        const lastJaizaPercent = lastMonthJaiza?.percentage || (lastMonthJaiza ? lastMonthJaiza.type : '-');
+        const lastTestPercent = lastMonthTest?.percentage || (lastMonthTest ? lastMonthTest.status : '-');
+
+        const row = `
+            <tr class="text-sm hover:bg-gray-50 transition">
+                <td class="px-6 py-4 urdu-font font-medium text-gray-700">${jamiaName}</td>
+                <td class="px-6 py-4">${jaizaStatus}</td>
+                <td class="px-6 py-4">${testStatus}</td>
+                <td class="px-6 py-4 text-gray-500">${lastJaizaPercent}</td>
+                <td class="px-6 py-4 text-gray-500">${lastTestPercent}</td>
+            </tr>
+        `;
+        summaryTableBody.innerHTML += row;
+
+        // --- Chart Data Push ---
+        let thisMonthJaizaPercent = 0;
+        if (thisMonthJaiza && thisMonthJaiza.type === 'Jaiza' && thisMonthJaiza.percentage) {
+            thisMonthJaizaPercent = parseFloat(thisMonthJaiza.percentage.replace('%', '')) || 0;
+        }
+        let thisMonthTestPercent = 0;
+        if (thisMonthTest && thisMonthTest.status === 'Test Hua' && thisMonthTest.percentage) {
+            thisMonthTestPercent = parseFloat(thisMonthTest.percentage.replace('%', '')) || 0;
+        }
+
+        jaizaChartData.push({ jamia: jamiaName, thisMonth: thisMonthJaizaPercent });
+        testChartData.push({ jamia: jamiaName, thisMonth: thisMonthTestPercent });
+    });
+
+    summaryLoadingMsg.classList.add('hidden');
+    summaryTable.classList.remove('hidden');
+
+    // --- Chart Update Logic (Same as before) ---
+    jaizaChartData.sort((a, b) => b.thisMonth - a.thisMonth); 
+    testChartData.sort((a, b) => b.thisMonth - a.thisMonth);
+
+    const jaizaChartLabels = jaizaChartData.map(d => d.jamia);
+    const thisMonthJaizaPercentages = jaizaChartData.map(d => d.thisMonth);
+    
+    const testChartLabels = testChartData.map(d => d.jamia);
+    const thisMonthTestPercentages = testChartData.map(d => d.thisMonth);
+
+    // Update Jaiza Chart
+    const ctxJaiza = document.getElementById('comparisonChart').getContext('2d');
+    if (dashboardChart) dashboardChart.destroy();
+
+    dashboardChart = new Chart(ctxJaiza, {
+        type: 'bar',
+        data: {
+            labels: jaizaChartLabels,
+            datasets: [{
+                label: `${currentReportInfo.month} Jaiza %`,
+                data: thisMonthJaizaPercentages,
+                backgroundColor: 'rgba(20, 184, 166, 0.8)', 
+                borderColor: 'rgba(20, 184, 166, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        plugins: [ChartDataLabels], 
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { font: { family: 'Jameel Noori Nastaleeq', size: 12 } } },
+                y: { beginAtZero: true, max: 100 }
+            },
+            plugins: {
+                legend: { display: false },
+                title: { display: false },
+                datalabels: { 
+                    anchor: 'end', align: 'top',
+                    formatter: (v) => v > 0 ? v + '%' : '',
+                    color: '#4b5563', font: { weight: 'bold', size: 10 }
                 }
-                
-                let testStatus = '<span class="text-yellow-600 font-medium">Pending</span>';
-                if (thisMonthTest) {
-                    testStatus = (thisMonthTest.status === 'Nahi Hua') 
-                        ? `<span class="text-blue-600">${thisMonthTest.status}</span>` 
-                        : `<span class="text-green-600">Done (${thisMonthTest.percentage || 'N/A'}%)</span>`;
-                }
-
-                const lastJaizaPercent = lastMonthJaiza?.percentage || (lastMonthJaiza ? lastMonthJaiza.type : 'N/A');
-                const lastTestPercent = lastMonthTest?.percentage || (lastMonthTest ? lastMonthTest.status : 'N/A');
-
-                const row = `
-                    <tr class="text-sm">
-                        <td class="px-6 py-4 urdu-font font-medium">${jamiaName}</td>
-                        <td class="px-6 py-4">${jaizaStatus}</td>
-                        <td class="px-6 py-4">${testStatus}</td>
-                        <td class="px-6 py-4">${lastJaizaPercent}</td>
-                        <td class="px-6 py-4">${lastTestPercent}</td>
-                    </tr>
-                `;
-                summaryTableBody.innerHTML += row;
-
-                // --- Chart Data Logic ---
-                let thisMonthJaizaPercent = 0;
-                if (thisMonthJaiza && thisMonthJaiza.type === 'Jaiza' && thisMonthJaiza.percentage) {
-                    thisMonthJaizaPercent = parseFloat(thisMonthJaiza.percentage.replace('%', '')) || 0;
-                }
-                let thisMonthTestPercent = 0;
-                if (thisMonthTest && thisMonthTest.status === 'Test Hua' && thisMonthTest.percentage) {
-                    thisMonthTestPercent = parseFloat(thisMonthTest.percentage.replace('%', '')) || 0;
-                }
-
-                // Push current month data only for single display
-                jaizaChartData.push({ jamia: jamiaName, thisMonth: thisMonthJaizaPercent });
-                testChartData.push({ jamia: jamiaName, thisMonth: thisMonthTestPercent });
-
-            });
-
-            summaryLoadingMsg.classList.add('hidden');
-            summaryTable.classList.remove('hidden');
-
-            // --- SORTING (Descending by percentage) ---
-            jaizaChartData.sort((a, b) => b.thisMonth - a.thisMonth); 
-            testChartData.sort((a, b) => b.thisMonth - a.thisMonth);
-
-            // Sorted data se arrays banana
-            const jaizaChartLabels = jaizaChartData.map(d => d.jamia);
-            const thisMonthJaizaPercentages = jaizaChartData.map(d => d.thisMonth);
-            
-            const testChartLabels = testChartData.map(d => d.jamia);
-            const thisMonthTestPercentages = testChartData.map(d => d.thisMonth);
-
-
-            // --- 5. Render the Jaiza Chart (Only Selected Month) ---
-            const ctxJaiza = document.getElementById('comparisonChart').getContext('2d');
-            
-            if (dashboardChart) {
-                dashboardChart.destroy();
             }
+        }
+    });
+    document.getElementById('comparisonChart').style.height = '300px';
 
-            dashboardChart = new Chart(ctxJaiza, {
-                type: 'bar',
-                data: {
-                    labels: jaizaChartLabels,
-                    datasets: [
-                        {
-                            label: `${currentReportInfo.month} Jaiza %`,
-                            data: thisMonthJaizaPercentages,
-                            backgroundColor: 'rgba(20, 184, 166, 0.9)', // Teal
-                            borderColor: 'rgba(20, 184, 166, 1)',
-                            borderWidth: 1
-                        }
-                    ]
-                },
-                plugins: [ChartDataLabels], 
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { 
-                            ticks: { 
-                                font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' } // Font bold/size for X-axis
-                            } 
-                        },
-                        y: {
-                            beginAtZero: true,
-                            max: 100, 
-                            ticks: { callback: function(value) { return value + '%' } }
-                        }
-                    },
-                    plugins: {
-                        legend: { 
-                            position: 'top', 
-                            labels: { 
-                                font: { size: 14, weight: 'bold' } 
-                            } 
-                        },
-                        title: { 
-                            display: true, 
-                            text: `Jaiza Performance (${currentReportInfo.month} ${currentReportInfo.year})`,
-                            font: { size: 16, weight: 'bold' } 
-                        },
-                        datalabels: { 
-                            anchor: 'end',
-                            align: 'top',
-                            formatter: (value) => value > 0 ? value + '%' : '',
-                            color: '#4b5563',
-                            font: { weight: 'bold', size: 14 } // Data label font/bold
-                        }
-                    }
+    // Update Test Chart
+    const ctxTest = document.getElementById('testComparisonChart').getContext('2d');
+    if (testDashboardChart) testDashboardChart.destroy();
+
+    testDashboardChart = new Chart(ctxTest, {
+        type: 'bar',
+        data: {
+            labels: testChartLabels,
+            datasets: [{
+                label: `${currentReportInfo.month} Test %`,
+                data: thisMonthTestPercentages,
+                backgroundColor: 'rgba(99, 102, 241, 0.8)', // Indigo color for Test
+                borderColor: 'rgba(99, 102, 241, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        plugins: [ChartDataLabels], 
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { font: { family: 'Jameel Noori Nastaleeq', size: 12 } } },
+                y: { beginAtZero: true, max: 100 }
+            },
+            plugins: {
+                legend: { display: false },
+                title: { display: false },
+                datalabels: { 
+                    anchor: 'end', align: 'top',
+                    formatter: (v) => v > 0 ? v + '%' : '',
+                    color: '#4b5563', font: { weight: 'bold', size: 10 }
                 }
-            });
-             document.getElementById('comparisonChart').style.height = '400px';
-
-            // --- 6. Render the Monthly Test Chart (Only Selected Month) ---
-            const ctxTest = document.getElementById('testComparisonChart').getContext('2d');
-            
-            if (testDashboardChart) { testDashboardChart.destroy(); }
-
-            testDashboardChart = new Chart(ctxTest, {
-                type: 'bar',
-                data: {
-                    labels: testChartLabels,
-                    datasets: [
-                        {
-                            label: `${currentReportInfo.month} Test %`,
-                            data: thisMonthTestPercentages,
-                            // NAYA: Color change
-                            backgroundColor: 'rgba(34, 197, 94, 0.9)', // Green-600
-                            borderColor: 'rgba(34, 197, 94, 1)',
-                            borderWidth: 1
-                        }
-                    ]
-                },
-                plugins: [ChartDataLabels], 
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                     scales: {
-                        x: { 
-                            ticks: { 
-                                font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' } // Font bold/size for X-axis
-                            } 
-                        },
-                        y: {
-                            beginAtZero: true,
-                            max: 100, 
-                            ticks: { callback: function(value) { return value + '%' } }
-                        }
-                    },
-                    plugins: {
-                        legend: { 
-                            position: 'top', 
-                            labels: { 
-                                font: { size: 14, weight: 'bold' } 
-                            } 
-                        },
-                        title: { 
-                            display: true, 
-                            text: `Monthly Test Performance (${currentReportInfo.month} ${currentReportInfo.year})`,
-                            font: { size: 16, weight: 'bold' } // Title font/bold
-                        },
-                        datalabels: { 
-                            anchor: 'end',
-                            align: 'top',
-                            formatter: (value) => value > 0 ? value + '%' : '',
-                            color: '#4b5563',
-                            font: { weight: 'bold', size: 14 } // Data label font/bold
-                        }
-                    }
-                }
-            });
-            document.getElementById('testComparisonChart').style.height = '400px';
-        };
+            }
+        }
+    });
+    document.getElementById('testComparisonChart').style.height = '300px';
+};
 
         const renderUserDashboard = (reports, reportInfo) => {
             reportingDateInfo = reportInfo; 
@@ -3253,6 +3247,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
