@@ -907,38 +907,51 @@ if(btnEntry && btnSummary) {
              return getReportingMonthYear(date);
         };
         
-        // UPDATED: Chart Download Helper (Manual White background fix)
-        const downloadChartImage = (chartId, filename) => {
-            const chartInstance = chartId === 'comparisonChart' ? dashboardChart : testDashboardChart;
+        // ===============================================
+// ==  UPDATED DOWNLOAD CHART FUNCTION (WITH TITLE) ==
+// ===============================================
+const downloadChartImage = (chartId, title, subtitle) => {
+    const originalCanvas = document.getElementById(chartId);
+    if (!originalCanvas) {
+        showNotification("Chart not found.", true);
+        return;
+    }
 
-            if (chartInstance) {
-                // Manually create a temporary canvas to draw the chart with a white background
-                const originalCanvas = document.getElementById(chartId);
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = originalCanvas.width;
-                tempCanvas.height = originalCanvas.height;
-                const ctx = tempCanvas.getContext('2d');
+    // 1. Naya Canvas banayenge (thoda bada taake text aa sake)
+    const tempCanvas = document.createElement('canvas');
+    const extraHeight = 100; // Title aur Month ke liye jagah
+    tempCanvas.width = originalCanvas.width;
+    tempCanvas.height = originalCanvas.height + extraHeight;
+    const ctx = tempCanvas.getContext('2d');
 
-                // Draw white background
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    // 2. White Background set karein
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-                // Draw the chart image onto the white background
-                ctx.drawImage(originalCanvas, 0, 0);
+    // 3. Title Likhna (Heading)
+    ctx.fillStyle = '#111827'; // Dark Gray Text
+    ctx.font = 'bold 24px "Poppins", sans-serif'; // Bada Font
+    ctx.textAlign = 'center';
+    ctx.fillText(title, tempCanvas.width / 2, 40);
 
-                const imgData = tempCanvas.toDataURL('image/png');
+    // 4. Subtitle Likhna (Month/Year)
+    ctx.fillStyle = '#14b8a6'; // Teal Color
+    ctx.font = '18px "Poppins", sans-serif';
+    ctx.fillText(subtitle, tempCanvas.width / 2, 70);
 
-                const a = document.createElement('a');
-                a.href = imgData;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                showNotification("Chart image downloaded.");
-            } else {
-                 showNotification("Chart not found or not initialized.", true);
-            }
-        };
+    // 5. Asal Chart ko niche draw karein
+    ctx.drawImage(originalCanvas, 0, extraHeight);
+
+    // 6. Image Download karein
+    const imgData = tempCanvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = imgData;
+    a.download = `${title.replace(/\s+/g, '_')}_${subtitle.replace(/\s+/g, '_')}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showNotification("Chart image downloaded with title!");
+};
 
 
         // --- AUTHENTICATION ---
@@ -1171,13 +1184,24 @@ if (firstTabBtn) firstTabBtn.click();
                 });
             });
 
-            // NAYA: Chart Download Buttons listener (DownloadChartImage function is updated)
-            document.getElementById('download-jaiza-chart-btn').addEventListener('click', () => {
-                downloadChartImage('comparisonChart', `Jaiza_Performance_${reportingDateInfo.month}_${reportingDateInfo.year}.png`);
-            });
-            document.getElementById('download-test-chart-btn').addEventListener('click', () => {
-                downloadChartImage('testComparisonChart', `Test_Performance_${reportingDateInfo.month}_${reportingDateInfo.year}.png`);
-            });
+            // --- UPDATED LISTENERS FOR DOWNLOAD BUTTONS ---
+document.getElementById('download-jaiza-chart-btn').addEventListener('click', () => {
+    // Heading: Jaiza Performance, Subtitle: Month Year
+    downloadChartImage(
+        'comparisonChart', 
+        'Jaiza Report Performance', 
+        `${reportingDateInfo.month} ${reportingDateInfo.year}`
+    );
+});
+
+document.getElementById('download-test-chart-btn').addEventListener('click', () => {
+    // Heading: Monthly Test Performance, Subtitle: Month Year
+    downloadChartImage(
+        'testComparisonChart', 
+        'Monthly Test Performance', 
+        `${reportingDateInfo.month} ${reportingDateInfo.year}`
+    );
+});
 
 
             // --- Photo Edit Logic ---
@@ -1618,68 +1642,111 @@ const renderDashboard = (reports, monthInputFormat) => {
     const testChartLabels = testChartData.map(d => d.jamia);
     const thisMonthTestPercentages = testChartData.map(d => d.thisMonth);
 
-    // Update Jaiza Chart
+    // ... (Upar ka renderDashboard code same rahega) ...
+
+    // --- CHART GRADIENT HELPER FUNCTION ---
+    const createGradient = (ctx, colorStart, colorEnd) => {
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, colorStart);
+        gradient.addColorStop(1, colorEnd);
+        return gradient;
+    };
+
+    // --- 5. Render Jaiza Chart (Colorful & Stylish) ---
     const ctxJaiza = document.getElementById('comparisonChart').getContext('2d');
     if (dashboardChart) dashboardChart.destroy();
+
+    // Teal Gradient for Jaiza
+    const jaizaGradient = createGradient(ctxJaiza, '#2dd4bf', '#0f766e'); // Light Teal to Dark Teal
 
     dashboardChart = new Chart(ctxJaiza, {
         type: 'bar',
         data: {
             labels: jaizaChartLabels,
             datasets: [{
-                label: `${currentReportInfo.month} Jaiza %`,
+                label: `Jaiza Performance`,
                 data: thisMonthJaizaPercentages,
-                backgroundColor: 'rgba(20, 184, 166, 0.8)', 
-                borderColor: 'rgba(20, 184, 166, 1)',
+                backgroundColor: jaizaGradient, // Gradient Color
+                hoverBackgroundColor: '#0d9488',
+                borderColor: '#115e59',
                 borderWidth: 1,
-                borderRadius: 4
+                borderRadius: 8, // Bars ko Gol (Rounded) karne ke liye
+                barPercentage: 0.6, // Bars ki chaurai adjust ki
             }]
         },
         plugins: [ChartDataLabels], 
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: { padding: { top: 20 } },
             scales: {
-                x: { ticks: { font: { family: 'Jameel Noori Nastaleeq', size: 12 } } },
-                y: { beginAtZero: true, max: 100 }
+                x: { 
+                    ticks: { 
+                        font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' },
+                        color: '#374151'
+                    },
+                    grid: { display: false } // Grid lines hatayi clean look ke liye
+                },
+                y: { 
+                    beginAtZero: true, 
+                    max: 100,
+                    grid: { color: '#f3f4f6' }
+                }
             },
             plugins: {
                 legend: { display: false },
-                title: { display: false },
+                title: { display: false }, // Canvas par title nahi dikhayenge (Download me aayega)
                 datalabels: { 
                     anchor: 'end', align: 'top',
                     formatter: (v) => v > 0 ? v + '%' : '',
-                    color: '#4b5563', font: { weight: 'bold', size: 10 }
+                    color: '#0f766e', font: { weight: 'bold', size: 12 },
+                    offset: -5
                 }
             }
         }
     });
-    document.getElementById('comparisonChart').style.height = '300px';
+    document.getElementById('comparisonChart').style.height = '350px';
 
-    // Update Test Chart
+    // --- 6. Render Test Chart (Colorful & Stylish) ---
     const ctxTest = document.getElementById('testComparisonChart').getContext('2d');
     if (testDashboardChart) testDashboardChart.destroy();
+
+    // Indigo/Purple Gradient for Test
+    const testGradient = createGradient(ctxTest, '#818cf8', '#4338ca'); // Light Indigo to Dark Indigo
 
     testDashboardChart = new Chart(ctxTest, {
         type: 'bar',
         data: {
             labels: testChartLabels,
             datasets: [{
-                label: `${currentReportInfo.month} Test %`,
+                label: `Test Performance`,
                 data: thisMonthTestPercentages,
-                backgroundColor: 'rgba(99, 102, 241, 0.8)', // Indigo color for Test
-                borderColor: 'rgba(99, 102, 241, 1)',
+                backgroundColor: testGradient, // Gradient Color
+                hoverBackgroundColor: '#4f46e5',
+                borderColor: '#3730a3',
                 borderWidth: 1,
-                borderRadius: 4
+                borderRadius: 8, // Bars ko Gol (Rounded) karne ke liye
+                barPercentage: 0.6,
             }]
         },
         plugins: [ChartDataLabels], 
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: { padding: { top: 20 } },
             scales: {
-                x: { ticks: { font: { family: 'Jameel Noori Nastaleeq', size: 12 } } },
-                y: { beginAtZero: true, max: 100 }
+                x: { 
+                    ticks: { 
+                        font: { family: 'Jameel Noori Nastaleeq', size: 14, weight: 'bold' },
+                        color: '#374151'
+                    },
+                    grid: { display: false }
+                },
+                y: { 
+                    beginAtZero: true, 
+                    max: 100,
+                    grid: { color: '#f3f4f6' }
+                }
             },
             plugins: {
                 legend: { display: false },
@@ -1687,12 +1754,13 @@ const renderDashboard = (reports, monthInputFormat) => {
                 datalabels: { 
                     anchor: 'end', align: 'top',
                     formatter: (v) => v > 0 ? v + '%' : '',
-                    color: '#4b5563', font: { weight: 'bold', size: 10 }
+                    color: '#4338ca', font: { weight: 'bold', size: 12 },
+                    offset: -5
                 }
             }
         }
     });
-    document.getElementById('testComparisonChart').style.height = '300px';
+    document.getElementById('testComparisonChart').style.height = '350px';
 };
 
         const renderUserDashboard = (reports, reportInfo) => {
@@ -3255,6 +3323,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
