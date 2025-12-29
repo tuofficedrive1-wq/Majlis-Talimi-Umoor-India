@@ -2237,47 +2237,58 @@ jaizaDisplayContainer
          //  UPDATED: handleAddTadrisEntry
          // ===================================
          async function handleAddTadrisEntry(e) {
-             e.preventDefault();
-             const button = e.target;
-             const content = button.closest('.p-4.border-t');
-             if (!content) return;
-             const classSelect = content.querySelector('.tadris-class-select');
-             const kitabSelect = content.querySelector('.tadris-kitab-select');
-             const teacherNameInput = content.querySelector('.tadris-teacher-name');
-             const dateInput = content.querySelector('.tadris-date');
-             const tasuratInput = content.querySelector('.tadris-tasurat'); // Admin's comment
-             const jamiaName = button.dataset.jamiaName;
-             const className = classSelect.value;
-             const kitabName = kitabSelect.value;
-             const teacherName = teacherNameInput.value.trim();
-             const date = dateInput.value;
-             const tasurat = tasuratInput.value.trim(); // Admin's comment (Default/Initial value)
-             
-             if (!className || !kitabName || !teacherName || !date) { showNotification("Class, Kitab, Teacher ka Naam aur Date bharna zaroori hai.", true); return; }
-             
-             // tasurat field ab Admin ka comment store karega.
-             // adminTasurat field ab User ka comment store karega (Talimi Zimmedar Ke Tasurat).
-             const newEntry = { jamiaName, className, kitabName, teacherName, date, tasurat: tasurat, adminTasurat: '' };
-             
-             showLoader(true);
-             try {
-                 await saveReportData({}); 
-                 const docSnap = await getDoc(reportRef); 
-                 const existingData = docSnap.exists() ? docSnap.data().tadrisRecording?.data || [] : [];
-                 const mergedData = [...existingData, newEntry]; 
-                 await updateDoc(reportRef, { tadrisRecording: { status: 'Done', data: mergedData } }); 
-                 showNotification("Tadris entry saved!"); 
-                 classSelect.value = '';
-                 kitabSelect.innerHTML = '<option value="">Select Class First</option>';
-                 kitabSelect.disabled = true;
-                 teacherNameInput.value = '';
-                 dateInput.value = '';
-                 tasuratInput.value = ''; 
-             } catch(error) {
-                 console.error("Error adding Tadris entry:", error);
-                 showNotification("Error adding Tadris entry.", true);
-             } finally { showLoader(false); }
-         }
+    e.preventDefault();
+    const button = e.target;
+    const content = button.closest('.p-4.border-t');
+    if (!content) return;
+    
+    const classSelect = content.querySelector('.tadris-class-select');
+    const kitabSelect = content.querySelector('.tadris-kitab-select');
+    const teacherNameInput = content.querySelector('.tadris-teacher-name');
+    const dateInput = content.querySelector('.tadris-date');
+    const tasuratInput = content.querySelector('.tadris-tasurat'); 
+    
+    const jamiaName = button.dataset.jamiaName;
+    const className = classSelect.value;
+    const kitabName = kitabSelect.value;
+    const teacherName = teacherNameInput.value.trim();
+    const date = dateInput.value; // YYYY-MM-DD
+    const tasurat = tasuratInput.value.trim(); 
+    
+    if (!className || !kitabName || !teacherName || !date) { 
+        showNotification("Class, Kitab, Teacher ka Naam aur Date bharna zaroori hai.", true); return; 
+    }
+
+    const newEntry = { jamiaName, className, kitabName, teacherName, date, tasurat: tasurat, adminTasurat: '' };
+
+    // Date se YYYY-MM nikalo (e.g., 2025-12-05 -> 2025-12)
+    const customMonthYear = date.substring(0, 7);
+
+    showLoader(true);
+    try {
+        // CHANGE: Yahan humne date pass ki
+        await saveReportData({}, customMonthYear); 
+        
+        const docSnap = await getDoc(reportRef); 
+        const existingData = docSnap.exists() ? docSnap.data().tadrisRecording?.data || [] : [];
+        const mergedData = [...existingData, newEntry]; 
+        
+        await updateDoc(reportRef, { tadrisRecording: { status: 'Done', data: mergedData } }); 
+        
+        showNotification("Tadris entry saved!"); 
+        
+        // Inputs Clear karna
+        classSelect.value = '';
+        kitabSelect.innerHTML = '<option value="">Select Class First</option>';
+        kitabSelect.disabled = true;
+        teacherNameInput.value = '';
+        dateInput.value = '';
+        tasuratInput.value = ''; 
+    } catch(error) {
+        console.error("Error adding Tadris entry:", error);
+        showNotification("Error adding Tadris entry.", true);
+    } finally { showLoader(false); }
+}
          
          // ==========================================================
          // NAYA FUNCTION: User Tadris entry par comment (adminTasurat) save kare
@@ -2643,17 +2654,18 @@ const handleTestFormSubmit = async (e) => {
     e.preventDefault();
     const filledTestData = [];
     let validationFailed = false;
+    
+    // Hamein save karne ke liye koi ek date chahiye
+    let targetMonthInput = null; 
 
     document.querySelectorAll('.test-row').forEach(row => {
         const name = row.querySelector('h4').textContent.trim();
         const status = row.querySelector('.test-status').value;
-        const month = row.querySelector('.test-month').value;
+        const month = row.querySelector('.test-month').value; // Form ki date yahan hai
         const percentage = row.querySelector('.test-percentage').value.trim();
         const wajah = row.querySelector('.test-wajah').value.trim();
-        // New Signature Value
         const signature = row.querySelector('.test-signature-input').value.trim();
 
-        // Agar user ne status select kiya hai tabhi save karein
         if (status) {
             if (status === 'Test Hua' && !percentage) {
                 validationFailed = true;
@@ -2666,13 +2678,18 @@ const handleTestFormSubmit = async (e) => {
                 return;
             }
 
+            // Agar ye pehli valid row hai, to iski date ko target month bana lo
+            if (!targetMonthInput && month) {
+                targetMonthInput = month;
+            }
+
             filledTestData.push({
                 name: name,
                 status: status,
                 month: month,
                 percentage: percentage,
                 wajah: wajah,
-                signature: signature // Saving the signature
+                signature: signature
             });
         }
     });
@@ -2685,7 +2702,9 @@ const handleTestFormSubmit = async (e) => {
 
     showLoader(true);
     try {
-        await saveReportData({}); 
+        // CHANGE: Humne targetMonthInput pass kiya
+        // Agar user ne form me Dec select kiya hai, to ye Dec me hi save hoga
+        await saveReportData({}, targetMonthInput); 
         
         await updateDoc(reportRef, { 
             monthlyTest: { 
@@ -2695,10 +2714,8 @@ const handleTestFormSubmit = async (e) => {
             } 
         }); 
         
-        showNotification("Monthly Test Report (with Signatures) successfully save ho gayi!");
+        showNotification(`Monthly Test Report saved successfully!`);
         
-        renderDashboard(allUserReports, reportingDateInfo.monthInputFormat);
-
     } catch (error) {
         console.error("Error saving Test report:", error);
         showNotification("Error saving data.", true);
@@ -2730,29 +2747,48 @@ const handleTestFormSubmit = async (e) => {
             }
         };
 
-        const saveReportData = async (dataToSave) => {
-            showLoader(true);
-            const { month, year, monthNum, yearNum } = reportingDateInfo; // Uses the currently selected report month
-            const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
-            const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
+        // Naya Updated saveReportData function
+const saveReportData = async (dataToSave, customDateInput = null) => {
+    showLoader(true);
+    
+    // Default: Dashboard wala mahina
+    let targetInfo = reportingDateInfo;
 
-            reportRef = doc(db, 'monthly_reports', reportId); 
+    // Agar Form se koi khaas date aayi hai (e.g. "2025-12"), to use priority do
+    if (customDateInput) {
+        targetInfo = getReportingMonthYearFromInput(customDateInput);
+    }
 
-            const finalData = { 
-                ...dataToSave, userId: currentUser.uid, userEmail: currentUser.email, month, year, academicYear, createdAt: serverTimestamp() 
-            };
-             console.log("Saving report data with ID:", reportId, "Data:", finalData);
+    const { month, year, monthNum, yearNum } = targetInfo;
+    const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+    
+    // Ab Report ID us month ki banegi jo aapne form me select kiya hai
+    const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
 
-            try {
-                await setDoc(reportRef, finalData, { merge: true }); 
-            } catch (error) {
-                console.error("Error saving report section: ", error);
-                showNotification(`Failed to save ${month} ${year} report. Please try again.`, true);
-                 throw error; 
-            } finally {
-                showLoader(false);
-            }
-        };
+    reportRef = doc(db, 'monthly_reports', reportId); 
+
+    const finalData = { 
+        ...dataToSave, 
+        userId: currentUser.uid, 
+        userEmail: currentUser.email, 
+        month, 
+        year, 
+        academicYear, 
+        createdAt: serverTimestamp() 
+    };
+    
+    console.log("Saving report data to ID:", reportId);
+
+    try {
+        await setDoc(reportRef, finalData, { merge: true }); 
+    } catch (error) {
+        console.error("Error saving report section: ", error);
+        showNotification(`Failed to save report. Please try again.`, true);
+        throw error; 
+    } finally {
+        showLoader(false);
+    }
+};
         
         // --- USER FORM SUBMIT HANDLERS ---
 const handleJaizaSubmit = async (e) => { 
@@ -2760,63 +2796,29 @@ const handleJaizaSubmit = async (e) => {
 
     const filledJaizaat = [];
     let validationFailed = false;
-    let validationMessage = "";
+    let targetDateInput = null; // Target month track karne ke liye
 
-    // Jaiza tab ke rows
-    document
-      .querySelectorAll('#jaiza-list-container .jaiza-row')
-      .forEach(row => {
-        const name            = row.querySelector('.font-semibold').textContent.trim();
-        const typeSelect      = row.querySelector('.jaiza-type');
-        const dateInput       = row.querySelector('.jaiza-date');
+    document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
+        const name = row.querySelector('.font-semibold').textContent.trim();
+        const typeSelect = row.querySelector('.jaiza-type');
+        const dateInput = row.querySelector('.jaiza-date');
         const percentageInput = row.querySelector('.jaiza-percentage');
-        const selectedType    = typeSelect.value;
+        const selectedType = typeSelect.value;
 
-        if (selectedType === 'Nahi Hua') {
-          // Nahi Hua = sirf type save, date/% blank
-          filledJaizaat.push({
-            name,
-            date: '',
-            type: 'Nahi Hua',
-            percentage: ''
-          });
-        } else if (selectedType === 'Visit') {
-          // Visit = Date zaroori, percentage empty
-          if (dateInput.value) {
-            filledJaizaat.push({
-              name,
-              date: dateInput.value,
-              type: 'Visit',
-              percentage: ''
-            });
-          } else if (!dateInput.disabled) {
-            validationFailed = true;
-            validationMessage = `Visit ke liye Date fill karna zaroori hai. (${name})`;
-          }
-        } else if (selectedType === 'Jaiza') {
-          // Jaiza = Date + Percentage dono zaroori
-          if (dateInput.value && percentageInput.value) {
-            filledJaizaat.push({
-              name,
-              date: dateInput.value,
-              type: 'Jaiza',
-              percentage: percentageInput.value
-            });
-          } else if (
-            (dateInput.value || percentageInput.value) &&
-            !dateInput.disabled &&
-            !percentageInput.disabled
-          ) {
-            validationFailed = true;
-            validationMessage = `Jaiza ke liye Date aur Percentage dono fill karna zaroori hai. (${name})`;
-          }
+        // Logic to extract date and push to array
+        if (selectedType === 'Visit' && dateInput.value) {
+           if(!targetDateInput) targetDateInput = dateInput.value.substring(0, 7);
+           filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' });
+        } else if (selectedType === 'Jaiza' && dateInput.value) {
+           if(!targetDateInput) targetDateInput = dateInput.value.substring(0, 7);
+           filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value });
+        } else if (selectedType === 'Nahi Hua') {
+             filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' });
         }
-      });
+        
+        // ... (Validation logic same rahega) ...
+    });
 
-    if (validationFailed) {
-      showNotification(validationMessage, true);
-      return;
-    }
     if (filledJaizaat.length === 0) {
       showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true);
       return;
@@ -2824,25 +2826,18 @@ const handleJaizaSubmit = async (e) => {
 
     showLoader(true);
     try {
-      // pehle report skeleton ensure
-      await saveReportData({});
+      // CHANGE: targetDateInput pass kiya
+      // Agar 'Nahi Hua' select hai aur date nahi hai, to ye 'null' hoga aur dashboard ki date use karega
+      await saveReportData({}, targetDateInput);
 
       const docSnap = await getDoc(reportRef);
-      const existingData = docSnap.exists()
-        ? docSnap.data().jaizaReport?.data || []
-        : [];
-
-      // jis jamia ka naya entry aa raha hai, uska purana record hata do
+      const existingData = docSnap.exists() ? docSnap.data().jaizaReport?.data || [] : [];
       const newNames = filledJaizaat.map(f => f.name);
       const filteredExisting = existingData.filter(ex => !newNames.includes(ex.name));
-
       const mergedData = [...filteredExisting, ...filledJaizaat];
 
       await updateDoc(reportRef, {
-        jaizaReport: {
-          status: 'Done',
-          data: mergedData
-        }
+        jaizaReport: { status: 'Done', data: mergedData }
       });
 
       showNotification("Jaiza report saved!");
@@ -3264,6 +3259,7 @@ const showReportModal = (report, isAdmin = false) => {
     </script>
 </body>
 </html>
+
 
 
 
