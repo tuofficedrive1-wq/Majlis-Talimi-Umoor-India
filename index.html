@@ -156,6 +156,7 @@
                 <button id="dash-manage-signatures-btn" class="text-xs bg-purple-50 text-purple-700 hover:bg-purple-100 px-3 py-1.5 rounded-full border border-purple-200 transition flex items-center">
                     <i class="fas fa-signature mr-1"></i> Signature
                 </button>
+                <img id="dash-signature-preview" src="" class="h-8 w-auto border border-gray-300 rounded hidden ml-2 bg-white p-0.5">
                 <div class="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 flex items-center">
                     <i class="fas fa-mosque mr-1"></i> Jamiaat: <span id="dash-total-jamiaat" class="font-bold ml-1">0</span>
                 </div>
@@ -1074,59 +1075,77 @@ selectedReportingDate = reportingDateInfo.monthInputFormat;
         const initUserView = (user) => { 
             console.log("Initializing User View & Dashboard");
             // --- DASHBOARD SIGNATURE BUTTON LOGIC ---
-            const dashSigBtn = document.getElementById('dash-manage-signatures-btn'); //
-            const sigModal = document.getElementById('signature-modal');
-            const closeSigBtn = document.getElementById('close-sig-modal');
-            const closeSigBtnX = document.getElementById('close-sig-modal-x');
-            const saveSigBtn = document.getElementById('save-sig-btn');
-            const sigInput = document.getElementById('sig-taleemi-input');
+const dashSigBtn = document.getElementById('dash-manage-signatures-btn');
+const sigModal = document.getElementById('signature-modal');
+const closeSigBtn = document.getElementById('close-sig-modal');
+const closeSigBtnX = document.getElementById('close-sig-modal-x');
+const saveSigBtn = document.getElementById('save-sig-btn');
+const sigInput = document.getElementById('sig-taleemi-input');
 
-            // 1. Modal Open Karna
-            if (dashSigBtn) {
-                dashSigBtn.addEventListener('click', () => {
-                    // Purana saved signature input mein dikhayein
-                    sigInput.value = userProfileData.signatureTaleemi || '';
-                    sigModal.classList.remove('hidden');
-                });
+// 👇 YEH NAYA VARIABLE ADD KAREIN 👇
+const dashSigPreview = document.getElementById('dash-signature-preview');
+
+// 1. Page Load hone par check karein (Agar pehle se save hai to dikhayein)
+if (userProfileData.signatureTaleemi && dashSigPreview) {
+    dashSigPreview.src = convertGoogleDriveURL(userProfileData.signatureTaleemi);
+    dashSigPreview.classList.remove('hidden');
+}
+
+// 2. Modal Open Karna
+if (dashSigBtn) {
+    dashSigBtn.addEventListener('click', () => {
+        sigInput.value = userProfileData.signatureTaleemi || '';
+        sigModal.classList.remove('hidden');
+    });
+}
+
+// 3. Modal Close Karna
+const closeSigModal = () => sigModal.classList.add('hidden');
+if (closeSigBtn) closeSigBtn.addEventListener('click', closeSigModal);
+if (closeSigBtnX) closeSigBtnX.addEventListener('click', closeSigModal);
+
+// 4. Signature Save Karna (Update Logic)
+if (saveSigBtn) {
+    saveSigBtn.addEventListener('click', async () => {
+        const tSig = sigInput.value.trim();
+
+        if (!currentUser) {
+            showNotification("User login nahi hai.", true);
+            return;
+        }
+
+        showLoader(true);
+        try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+
+            // Firebase Update
+            await updateDoc(userDocRef, {
+                signatureTaleemi: tSig
+            });
+
+            // Local Data Update
+            userProfileData.signatureTaleemi = tSig;
+
+            // 👇 YEH LOGIC ADD KAREIN: Dashboard par Image Update 👇
+            if (tSig && dashSigPreview) {
+                dashSigPreview.src = convertGoogleDriveURL(tSig);
+                dashSigPreview.classList.remove('hidden');
+            } else if (dashSigPreview) {
+                // Agar user ne link hata diya to image chhupa dein
+                dashSigPreview.classList.add('hidden');
+                dashSigPreview.src = '';
             }
 
-            // 2. Modal Close Karna
-            const closeSigModal = () => sigModal.classList.add('hidden');
-            if (closeSigBtn) closeSigBtn.addEventListener('click', closeSigModal);
-            if (closeSigBtnX) closeSigBtnX.addEventListener('click', closeSigModal);
-
-            // 3. Signature Save Karna
-            if (saveSigBtn) {
-                saveSigBtn.addEventListener('click', async () => {
-                    const tSig = sigInput.value.trim();
-                    
-                    if (!currentUser) {
-                        showNotification("User login nahi hai.", true);
-                        return;
-                    }
-
-                    showLoader(true);
-                    try {
-                        const userDocRef = doc(db, 'users', currentUser.uid);
-                        
-                        // Firebase Database me update karein
-                        await updateDoc(userDocRef, {
-                            signatureTaleemi: tSig
-                        });
-                        
-                        // Local data bhi update karein (taaki refresh na karna pade)
-                        userProfileData.signatureTaleemi = tSig;
-                        
-                        closeSigModal();
-                        showNotification("Signature successfully save ho gaya!");
-                    } catch (error) {
-                        console.error("Error saving signature:", error);
-                        showNotification("Signature save nahi ho saka.", true);
-                    } finally {
-                        showLoader(false);
-                    }
-                });
-            }
+            closeSigModal();
+            showNotification("Signature successfully save ho gaya!");
+        } catch (error) {
+            console.error("Error saving signature:", error);
+            showNotification("Signature save nahi ho saka.", true);
+        } finally {
+            showLoader(false);
+        }
+    });
+}
 
             // --- NAYA LOGIC: ENTRY MONTH SELECTOR & NAVIGATION ---
             const entryMonthSelector = document.getElementById('entry-month-selector');
@@ -3361,6 +3380,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
