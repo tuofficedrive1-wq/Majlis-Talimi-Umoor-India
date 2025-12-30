@@ -2724,20 +2724,20 @@ closeJamiaSigBtn.addEventListener('click', () => {
     jamiaSigModal.classList.add('hidden');
 });
 
-saveJamiaSigBtn.addEventListener('click', () => {
+// --- UPDATED: JAMIA SIGNATURE AUTO-SAVE LOGIC ---
+saveJamiaSigBtn.addEventListener('click', async () => {
     if (!currentSigHiddenInput) return;
 
     const newUrl = jamiaSigInput.value.trim();
-    
-    // Update Hidden Input
-    currentSigHiddenInput.value = newUrl;
+    const row = currentSigButton.closest('.test-row');
+    const jamiaName = row.querySelector('h4').textContent.trim();
+    const testMonth = row.querySelector('.test-month').value;
 
-    // Update Preview
+    // 1. UI Update (Fauran preview dikhane ke liye)
+    currentSigHiddenInput.value = newUrl;
     if (newUrl) {
         const converted = convertGoogleDriveURL(newUrl);
         currentSigPreviewContainer.innerHTML = `<img src="${converted}" class="h-8 w-auto border rounded border-gray-300">`;
-        
-        // Update Button Style
         currentSigButton.innerHTML = `<i class="fas fa-signature mr-1"></i> Edit Sign`;
         currentSigButton.className = "add-jamia-sig-btn text-xs font-medium px-2 py-1 rounded border border-transparent hover:border-purple-300 transition text-gray-600 bg-gray-100";
     } else {
@@ -2746,8 +2746,49 @@ saveJamiaSigBtn.addEventListener('click', () => {
         currentSigButton.className = "add-jamia-sig-btn text-xs font-medium px-2 py-1 rounded border border-transparent hover:border-purple-300 transition text-purple-700 bg-purple-100";
     }
 
-    jamiaSigModal.classList.add('hidden');
-});           
+    // 2. Database Auto-Save
+    showLoader(true);
+    try {
+        // Report ID generate karein (Taki sahi mahine me save ho)
+        await saveReportData({}, testMonth); 
+        
+        // Purana data nikalein
+        const docSnap = await getDoc(reportRef);
+        let testData = docSnap.exists() ? (docSnap.data().monthlyTest?.data || []) : [];
+
+        // Is Jamia ka index dhoondhein
+        const entryIndex = testData.findIndex(t => t.name === jamiaName);
+
+        if (entryIndex !== -1) {
+            // Agar pehle se record hai to sirf signature update karein
+            testData[entryIndex].signature = newUrl;
+        } else {
+            // Agar record nahi hai to naya object banayein (sirf signature ke saath)
+            testData.push({
+                name: jamiaName,
+                status: row.querySelector('.test-status').value || '',
+                month: testMonth,
+                percentage: row.querySelector('.test-percentage').value.trim() || '',
+                wajah: row.querySelector('.test-wajah').value.trim() || '',
+                signature: newUrl
+            });
+        }
+
+        // Firestore Update
+        await updateDoc(reportRef, {
+            "monthlyTest.data": testData,
+            "monthlyTest.status": "Done" // Status update taake dashboard par reflect ho
+        });
+
+        jamiaSigModal.classList.add('hidden');
+        showNotification("Signature automatically save ho gaya!");
+    } catch (error) {
+        console.error("Signature auto-save error:", error);
+        showNotification("Signature save karne mein masla aaya.", true);
+    } finally {
+        showLoader(false);
+    }
+});        
                  
         // ===============================================
 // =========  UPDATED SAVE TEST FUNCTION  ========
@@ -3380,6 +3421,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
