@@ -354,6 +354,66 @@
         .admin-reports-summary-container.single-user-view .summary-card-stats p strong {
              font-size: 1rem; /* Slightly larger text */
         }
+        /* User Profile Detail View Styles */
+.profile-header-card {
+    background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+.profile-photo-container {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.3);
+    overflow: hidden;
+    background: #f0f0f0;
+}
+.profile-photo-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.user-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    width: 100%;
+}
+.data-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.data-card h4 {
+    border-bottom: 2px solid #f3f4f6;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    font-weight: 700;
+    color: #374151;
+}
+.jamia-list-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.2s;
+}
+.jamia-list-item:hover { background: #f9fafb; }
+.teacher-tag {
+    display: inline-block;
+    background: #e0f2f1;
+    color: #00796b;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin: 2px;
+}
     
     </style>
 </head>
@@ -1215,6 +1275,18 @@ kkdSectionDedicated.innerHTML = "";
     if (!adminReportsSummaryContainer) return;
     
     const selectedUserId = adminUserFilterSelect.value;
+    
+    // AGAR AIK SINGLE USER SELECT HAI, TO NAYA ANALYSIS VIEW DIKHAYEIN
+    if (selectedUserId !== 'all') {
+        const user = allUsersData.find(u => u.id === selectedUserId);
+        // Is user ki saari reports filter karein (sirf ek mahine ki nahi balki jo fetch hui hain)
+        const userReports = reports.filter(r => r.userId === selectedUserId);
+        
+        if (user) {
+            renderFullUserAnalysis(user, userReports);
+            return; // Baaki purana function mat chalayein
+        }
+    }
     const selectedRegion = adminRegionFilterSelect.value; 
 
     // Helper: Calculate Teachers from Structure Safely
@@ -2573,13 +2645,129 @@ modalContent.querySelectorAll('.tadris-save-btn').forEach(btn => {
         const renderAdminAnnouncementsList = (docs) => { /* ... (Logic to render announcements) ... */ };
         const handleElanaatSubmit = async (e) => { /* ... (Logic for announcement submit) ... */ };
         const handleDeleteElanaat = async (e) => { /* ... (Logic for announcement delete) ... */ };
+// --- Naya Function: User ki poori bariki (Analysis) dikhane ke liye ---
+const renderFullUserAnalysis = (user, userReports) => {
+    const container = document.getElementById('admin-reports-summary-container');
+    container.classList.add('single-user-view');
+    
+    // Total stats calculate karein (Ab tak ki poori history)
+    const totalReports = userReports.length;
+    let grandTotalJaiza = 0;
+    let grandTotalTests = 0;
+    
+    userReports.forEach(r => {
+        grandTotalJaiza += (r.jaizaReport?.data || []).length;
+        grandTotalTests += (r.monthlyTest?.data || []).length;
+    });
 
+    // Jamiaat aur Teachers ki list taiyar karein
+    let jamiaHtml = '';
+    const jamiaList = user.jamiaatList || [];
+    
+    jamiaList.forEach(jamia => {
+        // Is jamia ke teachers dhundein
+        const teachers = jamia.teachers || [];
+        const teacherTags = teachers.map(t => `<span class="teacher-tag urdu-font">${t.name || t}</span>`).join('');
+        
+        jamiaHtml += `
+            <div class="jamia-list-item">
+                <p class="font-bold urdu-font text-teal-700">${jamia.name || jamia}</p>
+                <div class="mt-1">${teacherTags || '<span class="text-xs text-gray-400">No teachers listed</span>'}</div>
+            </div>`;
+    });
+
+    const photoURL = convertGoogleDriveURL(user.photoURL);
+
+    container.innerHTML = `
+        <div class="col-span-full">
+            <div class="profile-header-card shadow-lg">
+                <div class="profile-photo-container">
+                    <img src="${photoURL}" alt="User Photo" onerror="this.src='https://placehold.co/150x150/e2e8f0/94a3b8?text=User'">
+                </div>
+                <div class="flex-1">
+                    <h2 class="text-3xl font-bold urdu-font">${user.name || 'N/A'}</h2>
+                    <p class="text-teal-100 urdu-font">${user.zimmedari} | ${user.region}</p>
+                    <div class="flex gap-4 mt-4 text-sm">
+                        <span><i class="fas fa-id-badge"></i> Ajeer: ${user.ajeerCode || '-'}</span>
+                        <span><i class="fas fa-phone"></i> ${user.contact || '-'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="data-card lg:col-span-1">
+                    <h4><i class="fas fa-mosque mr-2"></i> Jamiaat & Teachers</h4>
+                    <div class="max-height-[400px] overflow-y-auto">
+                        ${jamiaHtml || '<p class="text-gray-500">No Jamiaat found.</p>'}
+                    </div>
+                </div>
+
+                <div class="data-card lg:col-span-2">
+                    <h4><i class="fas fa-chart-line mr-2"></i> Lifetime Performance Summary</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="text-center p-3 bg-blue-50 rounded-lg">
+                            <p class="text-xs text-blue-600 font-bold">REPORTS</p>
+                            <p class="text-2xl font-bold text-blue-800">${totalReports}</p>
+                        </div>
+                        <div class="text-center p-3 bg-green-50 rounded-lg">
+                            <p class="text-xs text-green-600 font-bold">TOTAL JAIZA</p>
+                            <p class="text-2xl font-bold text-green-800">${grandTotalJaiza}</p>
+                        </div>
+                        <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                            <p class="text-xs text-yellow-600 font-bold">TOTAL TESTS</p>
+                            <p class="text-2xl font-bold text-yellow-800">${grandTotalTests}</p>
+                        </div>
+                        <div class="text-center p-3 bg-purple-50 rounded-lg">
+                            <p class="text-xs text-purple-600 font-bold">JAMIAAT</p>
+                            <p class="text-2xl font-bold text-purple-800">${jamiaList.length}</p>
+                        </div>
+                    </div>
+
+                    <h5 class="font-bold text-sm mb-2 text-gray-500 uppercase">Monthly History</h5>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="p-2 text-left">Month/Year</th>
+                                    <th class="p-2 text-center">Jaiza</th>
+                                    <th class="p-2 text-center">Tests</th>
+                                    <th class="p-2 text-center">KKd Filled</th>
+                                    <th class="p-2 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${userReports.map(r => `
+                                    <tr class="border-b">
+                                        <td class="p-2 font-medium">${r.month} ${r.year}</td>
+                                        <td class="p-2 text-center">${(r.jaizaReport?.data || []).length}</td>
+                                        <td class="p-2 text-center">${(r.monthlyTest?.data || []).length}</td>
+                                        <td class="p-2 text-center">${(r.karkardagiReport?.data || []).length}</td>
+                                        <td class="p-2 text-right">
+                                            <button class="text-teal-600 hover:underline font-bold" onclick="window.openReportModalById('${r.id}')">View</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+// Global helper for the table button
+window.openReportModalById = (id) => {
+    const report = fetchedAdminReports.find(r => r.id === id);
+    if(report) showReportModal(report, true);
+};
         
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
