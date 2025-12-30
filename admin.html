@@ -448,6 +448,7 @@
                          <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-admin-tab="users">Manage Users</button>
                          <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-admin-tab="summary">Report Details Summary</button>
                          <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-admin-tab="kkd-summary">KKd Summary</button>
+                         <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-admin-tab="analysis">User Analysis</button>
                          <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-admin-tab="elanaat">Elanaat</button>
                      </nav>
                  </div>
@@ -588,6 +589,24 @@
                             <p class="text-gray-500">Koi elaan nahi mila.</p>
                         </div>
                      </div>
+                 <div id="admin-analysis-tab" class="admin-tab-content hidden">
+    <div class="bg-white p-6 rounded-xl shadow-md mb-8 border border-teal-100">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">Makhsoos User Ki Bariki (Deep Analysis)</h3>
+        <div class="flex flex-wrap gap-4 items-end">
+            <div class="flex-1 min-w-[250px]">
+                <label class="block text-sm font-medium text-gray-700 mb-1">User Select Karein</label>
+                <select id="analysis-user-select" class="w-full p-2 border rounded-lg urdu-font bg-gray-50 focus:ring-2 focus:ring-teal-500"></select>
+            </div>
+            <button id="btn-generate-analysis" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
+                <i class="fas fa-chart-line mr-2"></i> Analysis Dekhen
+            </button>
+        </div>
+    </div>
+
+    <div id="analysis-report-container">
+        <p class="text-center text-gray-400 py-20">Upar se kisi user ko select karke 'Analysis Dekhen' par click karein.</p>
+    </div>
+</div>
 
                  </div>
             </div>
@@ -2761,12 +2780,103 @@ window.openReportModalById = (id) => {
     const report = fetchedAdminReports.find(r => r.id === id);
     if(report) showReportModal(report, true);
 };
+        // 1. Dropdown bharne wala function
+const updateAnalysisDropdown = () => {
+    const select = document.getElementById('analysis-user-select');
+    if(!select) return;
+    select.innerHTML = '<option value="">-- Intekhab Karein --</option>';
+    allUsersData.forEach(u => {
+        select.innerHTML += `<option value="${u.id}">${u.name || u.email}</option>`;
+    });
+};
+
+// 2. Report Render karne wala function
+const renderAnalysisReport = (user, userReports) => {
+    const container = document.getElementById('analysis-report-container');
+    const photoURL = user.photoURL || 'https://placehold.co/150x150/e2e8f0/94a3b8?text=User';
+
+    let jamiaHtml = (user.jamiaatList || []).map(j => `
+        <div class="p-3 border-b hover:bg-gray-50 transition">
+            <p class="font-bold text-teal-700 urdu-font">${j.name || j}</p>
+            <div class="mt-1">
+                ${(j.teachers || []).map(t => `<span class="inline-block bg-teal-50 text-teal-700 text-xs px-2 py-1 rounded mr-1 mb-1 urdu-font">${t.name || t}</span>`).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="bg-gradient-to-r from-teal-600 to-teal-800 text-white p-6 rounded-xl shadow-lg flex flex-wrap items-center gap-6 mb-8">
+            <img src="${photoURL}" class="w-24 h-24 rounded-full border-4 border-white/20 object-cover shadow-xl">
+            <div>
+                <h2 class="text-3xl font-bold urdu-font">${user.name || 'N/A'}</h2>
+                <p class="opacity-90 urdu-font">${user.zimmedari} | ${user.region}</p>
+                <div class="flex gap-4 mt-3 text-sm">
+                    <span><i class="fas fa-id-card mr-1"></i> Ajeer: ${user.ajeerCode || '-'}</span>
+                    <span><i class="fas fa-phone mr-1"></i> ${user.contact || '-'}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-5 rounded-xl border shadow-sm">
+                <h4 class="font-bold border-b pb-2 mb-4 text-teal-800"><i class="fas fa-university mr-2"></i> Jamiaat & Asatiza</h4>
+                <div class="max-h-96 overflow-y-auto">${jamiaHtml || 'Data Maujood Nahi'}</div>
+            </div>
+            <div class="lg:col-span-2 bg-white p-5 rounded-xl border shadow-sm">
+                <h4 class="font-bold border-b pb-2 mb-4 text-teal-800"><i class="fas fa-history mr-2"></i> Mahina-war Performance History</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="p-3">Month/Year</th>
+                                <th class="p-3 text-center">Jaiza</th>
+                                <th class="p-3 text-center">Tests</th>
+                                <th class="p-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${userReports.map(r => `
+                                <tr class="border-b">
+                                    <td class="p-3 font-semibold">${r.month} ${r.year}</td>
+                                    <td class="p-3 text-center">${(r.jaizaReport?.data || []).length}</td>
+                                    <td class="p-3 text-center">${(r.monthlyTest?.data || []).length}</td>
+                                    <td class="p-3 text-right">
+                                        <button onclick="window.openReportFromAnalysis('${r.id}')" class="text-teal-600 font-bold hover:underline">View</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+// 3. Button Click Event
+document.getElementById('btn-generate-analysis').addEventListener('click', () => {
+    const userId = document.getElementById('analysis-user-select').value;
+    if(!userId) return showNotification("Pehle user select karein", true);
+    
+    const user = allUsersData.find(u => u.id === userId);
+    // Purani saari reports jo admin ne fetch ki hain
+    const userReports = fetchedAdminReports.filter(r => r.userId === userId);
+    
+    renderAnalysisReport(user, userReports);
+});
+
+// 4. Modal Helper
+window.openReportFromAnalysis = (id) => {
+    const r = fetchedAdminReports.find(item => item.id === id);
+    if(r) showReportModal(r, true);
+};
         
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
