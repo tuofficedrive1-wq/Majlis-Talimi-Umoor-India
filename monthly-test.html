@@ -1323,14 +1323,13 @@
                 btn.disabled = false;
             }
         };
-       // --- PROFESSIONAL REPORT CARD GENERATION (WITH SEMESTER) ---
+       // --- PROFESSIONAL REPORT CARD GENERATION (FAIL LOGIC ADDED) ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
     const rows = document.querySelectorAll('#students-body tr');
     if(rows.length === 0) { alert("Koi data nahi hai."); return; }
 
-    // Check Global Data
     if (typeof globalUserData === 'undefined') {
         console.error("Error: globalUserData missing.");
         alert("System Error: Page refresh karein.");
@@ -1339,11 +1338,11 @@ window.downloadReportCards = async () => {
 
     const btn = document.querySelector('button[onclick="downloadReportCards()"]');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching Signs...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
     btn.disabled = true;
 
     try {
-        // --- 1. PROXY HELPER FOR IMAGES ---
+        // --- HELPERS ---
         const getCorsFriendlyUrl = (url) => {
             if (!url) return null;
             let directUrl = url;
@@ -1357,9 +1356,6 @@ window.downloadReportCards = async () => {
             return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
         };
 
-        // --- 2. DATE & SEMESTER FORMATTER ---
-        
-        // Month Name Logic
         const formatMonthYear = (yyyyMm) => {
             if (!yyyyMm) return "";
             const [year, month] = yyyyMm.split('-');
@@ -1368,62 +1364,25 @@ window.downloadReportCards = async () => {
             return `${monthNames[parseInt(month) - 1]} ${year}`;
         };
 
-        // Semester Logic (April-Sept = 1st, Oct-March = 2nd)
         const getSemester = (yyyyMm) => {
             if (!yyyyMm) return "";
             const month = parseInt(yyyyMm.split('-')[1]);
-            
-            // Logic: Agar mahina 4 (April) se 9 (Sept) hai to 1st Semester
-            if (month >= 4 && month <= 9) {
-                return "1st SEMESTER";
-            } else {
-                return "2nd SEMESTER";
-            }
+            if (month >= 4 && month <= 9) return "1st SEMESTER";
+            else return "2nd SEMESTER";
         };
 
         const displayMonth = formatMonthYear(monthKey);
-        const displaySemester = getSemester(monthKey); // 🔥 Semester Value
-
-        // --- FETCH SIGNATURES ---
-        const taleemiSigRaw = globalUserData.signatureTaleemi || null;
-        const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
-
-        let principalSigUrl = null;
-        try {
-            const [yStr, mStr] = monthKey.split('-');
-            const y = parseInt(yStr);
-            const m = parseInt(mStr) - 1;
-            const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-            const reportId = `${adminUid}_${acYear}_${y}_${m}`;
-
-            const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
-            if (reportSnap.exists()) {
-                const reportData = reportSnap.data();
-                const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
-                if (jamiaEntry && jamiaEntry.signature) {
-                    principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
-                }
-            }
-        } catch (err) { console.error(err); }
-
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Designing...';
-
-        // --- TRANSLATION & SUBJECTS ---
-        const classTranslations = {
-            "ابتدائیہ": "primary", "سال اول": "Pre Darse Nizami 1st year", "سال دوم": "Pre Darse Nizami 2nd Year", "اولى": "Ula (1st Year)", "ثانیہ": "Saniyah (2nd Year)", "ثالثہ": "Salisah (3rd Year)",
-            "رابعہ": "Rabiah (4th Year)", "خامسہ": "Khamisah (5th Year)", "سادسہ": "Sadisah (6th Year)",
-            "سابغہ": "Sabiah (7th Year)", "دورہ حدیث": "Darse Nizami Final Year", "مدنی": "Madani", "بنین": "Banin"
-        };
+        const displaySemester = getSemester(monthKey);
 
         const getSubjectNames = (originalName) => {
-            const lower = originalName.toLowerCase();
+            const lower = originalName.toLowerCase().trim();
             const urduTxt = originalName.trim();
-            let enName = originalName; 
-            let urName = originalName;
+            let enName = originalName; let urName = originalName;
 
-            if(lower.includes('english')) { enName = "English Language"; urName = "انگریزی"; }
-            else if(lower.includes('math') || lower.includes('حساب')) { enName = "Mathematics"; urName = "حساب"; }
-            // ---- B. ISLAMIC SUBJECTS (Darse Nizami) ----
+            if (lower.includes('english') || lower.includes('eng')) { enName = "English Language"; urName = "انگریزی"; }
+            else if (lower.includes('math') || lower.includes('hisab') || urduTxt.includes('حساب') || urduTxt.includes('ریاضی')) { enName = "Mathematics"; urName = "حساب"; }
+            else if (lower.includes('computer') || urduTxt.includes('کمپیوٹر')) { enName = "Computer Science"; urName = "کمپیوٹر"; }
+            else if (lower.includes('science') || urduTxt.includes('سائنس')) { enName = "General Science"; urName = "سائنس"; }
             else if (lower.includes('quran') || urduTxt.includes('قرآن') || urduTxt.includes('قرآن')) { enName = "Quran Pak"; urName = "قرآن کریم"; }
             else if (lower.includes('tarjuma') || urduTxt.includes('ترجمہ')) { enName = "Tarjuma-tul-Quran"; urName = "ترجمہ قرآن"; }
             else if (lower.includes('tafsir') || urduTxt.includes('تفسیر')) { enName = "Tafseer"; urName = "تفسیر"; }
@@ -1443,17 +1402,42 @@ window.downloadReportCards = async () => {
             else if (lower.includes('hindi') || urduTxt.includes('ہندی')) { enName = "Hindi"; urName = "ہندی"; }
             else if (lower.includes('history') || urduTxt.includes('تاریخ')) { enName = "History"; urName = "تاریخ"; }
             else if (lower.includes('geo') || urduTxt.includes('جغرافیہ')) { enName = "Geography"; urName = "جغرافیہ"; }
-            
+
             return { en: enName, ur: urName };
         };
 
         const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
+        const classTranslations = {
+            "ابتدائیہ": "Ibtedaiyah", "اولى": "Awwal", "ثانیہ": "Saniyah", "ثالثہ": "Salisah",
+            "رابعہ": "Rabiah", "خامسہ": "Khamisah", "سادسہ": "Sadisah", "سابغہ": "Sabiah",
+            "دورہ حدیث": "Daura-e-Hadith", "مدنی": "Madani", "بنین": "Banin"
+        };
         let englishClassName = classTranslations[urduClassName] || urduClassName;
         for (const [key, val] of Object.entries(classTranslations)) {
             if (urduClassName.includes(key)) { englishClassName = val; break; }
         }
 
-        // Data Prep
+        // --- FETCH SIGNATURES ---
+        const taleemiSigRaw = globalUserData.signatureTaleemi || null;
+        const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
+        let principalSigUrl = null;
+        try {
+            const [yStr, mStr] = monthKey.split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr) - 1;
+            const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+            const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+            const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
+            if (reportSnap.exists()) {
+                const reportData = reportSnap.data();
+                const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
+                if (jamiaEntry && jamiaEntry.signature) {
+                    principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
+                }
+            }
+        } catch (err) { console.error(err); }
+
+        // --- DATA PREPARATION ---
         let studentsData = [];
         rows.forEach((row, index) => {
             const name = row.querySelector('.std-name').value.trim();
@@ -1475,7 +1459,7 @@ window.downloadReportCards = async () => {
         studentsData.sort((a, b) => b.percentage - a.percentage);
         studentsData.forEach((std, i) => { std.rank = i + 1; });
 
-        // PDF Setup
+        // --- PDF GENERATION ---
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = 210;
@@ -1493,57 +1477,85 @@ window.downloadReportCards = async () => {
             const std = studentsData[i];
             let grandTotalMax = 0;
             let rowsHTML = "";
-            
+            let failedSubjectsCount = 0; // 🔥 Fail Counter
+
             finalSubjectsList.forEach(sub => {
-                const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
+                const subLower = sub.toLowerCase();
+                const isSmall = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab');
                 const max = isSmall ? 25 : 100;
                 grandTotalMax += max;
-                let obt = std.marks[sub] || '-';
-                if(obt === 'A') obt = 'Abs';
+                
+                let obtStr = std.marks[sub] || '-';
+                let obtVal = 0;
+                let isAbsent = false;
+
+                if(obtStr === 'A') {
+                    obtStr = 'Abs';
+                    isAbsent = true;
+                } else {
+                    obtVal = parseFloat(obtStr) || 0;
+                }
+
+                // 🔥 Check if Fail in Subject (Passing marks: 33% le raha hu standard)
+                const passingMarks = max * 0.33; // 100 me se 33, 25 me se 8.25
+                if (isAbsent || (!isNaN(obtVal) && obtVal < passingMarks)) {
+                    failedSubjectsCount++;
+                }
+
                 const names = getSubjectNames(sub);
 
                 rowsHTML += `
                     <tr style="border-bottom: 1px solid #e2e8f0;">
                         <td style="padding: 10px; text-align: left; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0; font-size: 14px;">${names.en}</td>
                         <td style="padding: 10px; text-align: center; color: #4a5568; border-right: 1px solid #e2e8f0;">${max}</td>
-                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #2b6cb0; border-right: 1px solid #e2e8f0;">${obt}</td>
+                        <td style="padding: 10px; text-align: center; font-weight: bold; color: #2b6cb0; border-right: 1px solid #e2e8f0;">${obtStr}</td>
                         <td style="padding: 10px; text-align: right; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 18px; color: #2d3748;">${names.ur}</td> 
                     </tr>
                 `;
             });
 
-            // Status Logic
+            // --- STATUS LOGIC (UPDATED) ---
             const subKeys = Object.keys(std.marks);
             const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
-            const isFail = std.grade.includes('Nakam') || std.grade === 'Fail';
             
+            // Default Status
             let statusColor = '#38a169'; 
             let statusText = 'PASS';
+            let finalGrade = std.grade;
 
+            // 1. Agar sab me Absent hai
             if (isFullAbsent) {
-                statusColor = '#718096'; statusText = 'ABSENT';
-            } else if (isFail) {
-                statusColor = '#e53e3e'; statusText = 'FAIL';
+                statusColor = '#718096'; 
+                statusText = 'ABSENT';
+                finalGrade = 'Absent';
+            } 
+            // 2. 🔥 Agar 2 se ziyada subjects me fail hai (Yaani 3, 4...)
+            else if (failedSubjectsCount > 2) {
+                statusColor = '#e53e3e'; 
+                statusText = 'FAIL';
+                finalGrade = 'Nakam'; // Grade bhi Nakam kar diya
+            }
+            // 3. Agar pehle se grade me Fail likha hai (Overall % kam hone par)
+            else if (std.grade.includes('Nakam') || std.grade === 'Fail') {
+                statusColor = '#e53e3e'; 
+                statusText = 'FAIL';
             }
 
             // HTML Template
             container.innerHTML = `
                 <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
-                    
                     <div style="border: 4px double #0f766e; height: 100%; padding: 5px; box-sizing: border-box; position: relative;">
                         <div style="border: 1px solid #d4af37; height: 100%; padding: 20px; box-sizing: border-box; background: linear-gradient(to bottom, #ffffff, #fafdff);">
                             
                             <div style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #d4af37; padding-bottom: 15px;">
                                 <h1 style="color: #2c5282; font-weight: 900; font-size: 42px; margin: 0; letter-spacing: 2px; text-transform: uppercase;">MONTHLY TEST RESULT</h1>
                                 <h2 style="color: #0f766e; font-weight: 700; font-size: 28px; margin: 5px 0 10px 0; text-transform: uppercase;">JAMIA TUL MADINA INDIA</h2>
-                                
                                 <div style="margin-top: 5px;">
                                     <span style="color: #d69e2e; font-weight: 800; font-size: 24px; text-transform: uppercase;">MONTH: </span>
                                     <span style="color: #000000; font-weight: 800; font-size: 24px;">${displayMonth}</span>
                                     <span style="color: #cbd5e0; margin: 0 10px;">|</span>
                                     <span style="color: #0f766e; font-weight: 800; font-size: 24px; text-transform: uppercase;">${displaySemester}</span>
                                 </div>
-
                             </div>
 
                             <div style="display: flex; justify-content: space-between; margin-bottom: 25px; background-color: #f0fdfa; border: 1px solid #b2f5ea; border-radius: 10px; padding: 15px 20px;">
@@ -1595,7 +1607,7 @@ window.downloadReportCards = async () => {
                                 </div>
                                 <div style="flex: 1; border: 2px solid #0f766e; border-radius: 12px; padding: 15px; background: #f0fdfa;">
                                     <table style="width: 100%;">
-                                        <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Grade:</td><td style="text-align: right; font-weight: 800; font-size: 18px;">${std.grade}</td></tr>
+                                        <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Grade:</td><td style="text-align: right; font-weight: 800; font-size: 18px;">${finalGrade}</td></tr>
                                         <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Class Rank:</td><td style="text-align: right; font-weight: 800; font-size: 24px; color: #d69e2e;">#${std.rank}</td></tr>
                                     </table>
                                 </div>
@@ -1605,10 +1617,7 @@ window.downloadReportCards = async () => {
                                 
                                 <div style="text-align: center; width: 200px; position: relative;">
                                     <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                        ${ principalSigUrl 
-                                           ? `<img src="${principalSigUrl}" style="max-height: 75px; max-width: 180px; object-fit: contain;" crossorigin="anonymous">` 
-                                           : '' 
-                                        }
+                                        ${ principalSigUrl ? `<img src="${principalSigUrl}" style="max-height: 75px; max-width: 180px; object-fit: contain;" crossorigin="anonymous">` : '' }
                                     </div>
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 16px;">Principal Signature</p>
@@ -1616,10 +1625,7 @@ window.downloadReportCards = async () => {
 
                                 <div style="text-align: center; width: 200px; position: relative;">
                                     <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                        ${ taleemiSigUrl 
-                                           ? `<img src="${taleemiSigUrl}" style="max-height: 75px; max-width: 180px; object-fit: contain;" crossorigin="anonymous">` 
-                                           : '' 
-                                        }
+                                        ${ taleemiSigUrl ? `<img src="${taleemiSigUrl}" style="max-height: 75px; max-width: 180px; object-fit: contain;" crossorigin="anonymous">` : '' }
                                     </div>
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 16px;">Taleemi Zimmedar</p>
@@ -1628,27 +1634,18 @@ window.downloadReportCards = async () => {
                             </div>
 
                             <div style="position: absolute; bottom: 25px; width: 100%; text-align: center; left: 0;">
-                                <p style="margin: 0; font-size: 14px; color: #0f766e; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;">
-                                    MAJLIS TALIMI UMOOR INDIA
-                                </p>
+                                <p style="margin: 0; font-size: 14px; color: #0f766e; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;">MAJLIS TALIMI UMOOR INDIA</p>
                             </div>
 
                         </div>
                     </div>
                 </div>
             `;
-
             await new Promise(resolve => setTimeout(resolve, 100));
             const element = document.getElementById(`rc-template-${i}`);
             if (i > 0) pdf.addPage();
             
-            const canvas = await html2canvas(element, { 
-                scale: 2, 
-                useCORS: true, 
-                allowTaint: true,
-                backgroundColor: "#ffffff" 
-            });
-            
+            const canvas = await html2canvas(element, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#ffffff" });
             const imgData = canvas.toDataURL('image/png');
             pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
         }
@@ -1665,6 +1662,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
