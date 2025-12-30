@@ -340,7 +340,8 @@
         let jamiaName = "";
         let monthKey = "";
         let globalUserData = {};
-        let finalSubjectsList = []; 
+        let finalSubjectsList = [];
+        let currentSheetData = [];
         let totalMax = 350; 
         let classBooksMap = {}; 
         let selectedClassName = '';
@@ -754,90 +755,98 @@ window.calcRow = (el) => {
             finally { btn.innerText = originalText; btn.disabled = false; }
         };
 
-        // 8. View Mode Logic (Tabs fixed, Summary visible)
         window.checkExistingForClass = async (clsName) => {
-            const cleanClass = clsName.split('_')[0]; 
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const resultArea = document.getElementById('result-area');
-            const studentsBody = document.getElementById('students-body');
-            const classSelect = document.getElementById('class-select');
-            const selectionArea = document.getElementById('subject-selection-area'); 
+    const cleanClass = clsName.split('_')[0]; 
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+    const resultArea = document.getElementById('result-area');
+    const studentsBody = document.getElementById('students-body');
+    const classSelect = document.getElementById('class-select');
+    const selectionArea = document.getElementById('subject-selection-area'); 
 
-            finalSubjectsList = [];
-            studentsBody.innerHTML = '';
-            resultArea.classList.add('hidden'); 
-            document.getElementById('table-head').innerHTML = '';
-            document.querySelectorAll('.subject-checkbox').forEach(chk => chk.checked = false);
-            classSelect.disabled = false; 
+    finalSubjectsList = [];
+    studentsBody.innerHTML = '';
+    resultArea.classList.add('hidden'); 
+    document.getElementById('table-head').innerHTML = '';
+    document.querySelectorAll('.subject-checkbox').forEach(chk => chk.checked = false);
+    classSelect.disabled = false; 
 
-            try {
-                const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
-                if (snap.exists()) {
-                    const data = snap.data(); 
-                    const allChecks = document.querySelectorAll('.subject-checkbox');
-                    const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
-                    allChecks.forEach(chk => { if (savedVariableSubjects.includes(chk.value)) chk.checked = true; });
-                    finalSubjectsList = data.subjects;
-                    
-                    totalMax = 0;
-                    finalSubjectsList.forEach(sub => {
-                        if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; else totalMax += 100;
-                    });
-                    
-                    renderTableHeaders(); 
-                    resultArea.classList.remove('hidden'); 
-                    selectionArea.classList.add('hidden'); 
-                    
-                    document.getElementById('students-body').innerHTML = ''; 
-                    data.students.forEach(s => addStudentRow(s.name, s.marks)); 
+    try {
+        const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
+        if (snap.exists()) {
+            const data = snap.data(); 
+            currentSheetData = data.students || []; // 🔥 Data store kiya global variable me
 
-                    // VIEW MODE HANDLING
-                    const params = new URLSearchParams(window.location.search);
-                    if (params.get('mode') === 'view') {
-                        const headerTitle = document.querySelector('h1');
-                        if(headerTitle && !headerTitle.innerText.includes("View Only")) {
-                            headerTitle.innerHTML += ` <span class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
-                        }
-                        const stepHeading = document.getElementById('step-heading');
-                        const stepInstruction = document.getElementById('step-instruction');
-                        if(stepHeading) stepHeading.style.display = 'none';
-                        if(stepInstruction) stepInstruction.style.display = 'none';
-                        
-                        // NOTE: Tabs ko hide NAHI karenge taaki switch kar sakein
-                        const elementsToHide = ['subject-selection-area', 'class-select']; 
-                        elementsToHide.forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
-                        
-                        const addStudentBtn = document.querySelector('button[onclick="addStudentRow()"]');
-                        const saveResultBtn = document.querySelector('button[onclick="saveResult()"]');
-                        if(addStudentBtn) addStudentBtn.style.display = 'none';
-                        if(saveResultBtn) saveResultBtn.style.display = 'none';
+            // Checkboxes set karein
+            const allChecks = document.querySelectorAll('.subject-checkbox');
+            const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
+            allChecks.forEach(chk => { if (savedVariableSubjects.includes(chk.value)) chk.checked = true; });
+            
+            finalSubjectsList = data.subjects;
+            
+            // Total calculate
+            totalMax = 0;
+            finalSubjectsList.forEach(sub => {
+                if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; else totalMax += 100;
+            });
+            
+            renderTableHeaders(); 
+            resultArea.classList.remove('hidden'); 
+            
+            // Selection area hide karein (View mode default)
+            selectionArea.classList.add('hidden'); 
+            
+            // Students render karein
+            document.getElementById('students-body').innerHTML = ''; 
+            currentSheetData.forEach(s => addStudentRow(s.name, s.marks)); 
 
-                        document.querySelectorAll('#students-body input').forEach(inp => {
-                            inp.disabled = true;
-                            inp.style.backgroundColor = 'transparent';
-                            inp.style.border = 'none';
-                            inp.style.textAlign = 'center';
-                            inp.style.fontWeight = 'bold';
-                            inp.style.color = '#1f2937'; 
-                            inp.placeholder = "";
-                        });
-                        document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
-                        const headerTrash = document.querySelector('#table-head th:last-child');
-                        if(headerTrash) headerTrash.style.display = 'none';
-                        const actionContainer = document.querySelector('.mt-8.flex.flex-col');
-                        if (actionContainer) { actionContainer.classList.remove('justify-end'); actionContainer.classList.add('justify-center'); }
-                    } else {
-                        alert(`Class ${clsName} ka purana data load kiya gaya.`);
-                    }
-                } else {
-                     const params = new URLSearchParams(window.location.search);
-                     if (params.get('mode') === 'view') {
-                         resultArea.classList.add('hidden');
-                         // View mode mein message dikha sakte hain ya blank rakh sakte hain
-                     }
+            // VIEW MODE HANDLING
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('mode') === 'view') {
+                const headerTitle = document.querySelector('h1');
+                
+                // Header Update with Edit Button
+                if(headerTitle && !document.getElementById('edit-mode-btn')) {
+                    headerTitle.innerHTML += ` 
+                        <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>
+                        <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
+                            <i class="fas fa-edit"></i> Enable Editing
+                        </button>`;
                 }
-            } catch(e) { console.log("New sheet or error loading:", e); }
-        };
+
+                // Hide Controls Initially
+                const elementsToHide = ['step-heading', 'step-instruction', 'class-select']; 
+                elementsToHide.forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+                
+                // Hide Buttons
+                const addStudentBtn = document.querySelector('button[onclick="addStudentRow()"]');
+                const saveResultBtn = document.querySelector('button[onclick="saveResult()"]');
+                if(addStudentBtn) addStudentBtn.classList.add('hidden-in-view'); // Special class mark ki
+                if(saveResultBtn) saveResultBtn.classList.add('hidden-in-view');
+                if(addStudentBtn) addStudentBtn.style.display = 'none';
+                if(saveResultBtn) saveResultBtn.style.display = 'none';
+
+                // Disable Inputs
+                document.querySelectorAll('#students-body input').forEach(inp => {
+                    inp.disabled = true;
+                    inp.classList.add('view-mode-input'); // Class add ki taaki baad me hata sakein
+                    inp.style.backgroundColor = 'transparent';
+                    inp.style.border = 'none';
+                    inp.style.textAlign = 'center';
+                    inp.style.fontWeight = 'bold';
+                    inp.style.color = '#1f2937'; 
+                });
+
+                // Hide Trash Icons
+                document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
+                const headerTrash = document.querySelector('#table-head th:last-child');
+                if(headerTrash) headerTrash.style.display = 'none';
+
+            } else {
+                alert(`Class ${clsName} ka purana data load kiya gaya.`);
+            }
+        }
+    } catch(e) { console.log("New sheet or error loading:", e); }
+};
 
         // --- SUMMARY FEATURE LOGIC ---
         window.toggleSummary = async () => {
@@ -1703,9 +1712,130 @@ window.downloadReportCards = async () => {
         btn.innerHTML = originalText; btn.disabled = false;
     }
 };
+        // --- NEW: ENABLE EDIT MODE FOR ADMIN ---
+window.enableEditMode = () => {
+    // 1. UI Update
+    const badge = document.getElementById('view-badge');
+    const btn = document.getElementById('edit-mode-btn');
+    if(badge) { badge.textContent = "Editing Mode"; badge.className = "text-xl bg-red-200 text-red-800 px-2 py-1 rounded ml-2 align-middle"; }
+    if(btn) btn.style.display = 'none';
+
+    // 2. Selection Area Show (For Changing Subjects)
+    const selectionArea = document.getElementById('subject-selection-area');
+    selectionArea.classList.remove('hidden');
+    
+    // "Result Sheet Banayein" button ko change karke "Update Subjects" banayein
+    const generateBtn = selectionArea.querySelector('button[onclick="generateSheet()"]');
+    if(generateBtn) {
+        generateBtn.innerText = "Update Subjects & Columns";
+        generateBtn.onclick = updateSheetColumns; // Function badal diya
+        generateBtn.classList.remove('bg-teal-600');
+        generateBtn.classList.add('bg-orange-600', 'hover:bg-orange-700');
+    }
+
+    // 3. Inputs Enable
+    document.querySelectorAll('.view-mode-input').forEach(inp => {
+        inp.disabled = false;
+        inp.style.backgroundColor = ''; // Reset to default css
+        inp.style.border = '';
+        inp.classList.remove('view-mode-input');
+    });
+
+    // 4. Buttons Show
+    document.querySelectorAll('.hidden-in-view').forEach(b => {
+        b.style.display = 'inline-block';
+        b.classList.remove('hidden-in-view');
+    });
+    
+    // 5. Trash Icons Show
+    document.querySelectorAll('.no-print').forEach(btn => btn.style.display = '');
+    const headerTrash = document.querySelector('#table-head th:last-child');
+    if(headerTrash) headerTrash.style.display = '';
+
+    alert("Editing Enabled! Ab aap Subjects add/remove kar sakte hain aur marks change kar sakte hain.");
+};
+
+// --- NEW: UPDATE SHEET COLUMNS (Preserves Data) ---
+window.updateSheetColumns = () => {
+    // 1. Naye Subjects Check Karein
+    const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
+    if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length > 3) {
+        alert("Maximum 3 subjects select kar sakte hain.");
+        return;
+    }
+    
+    // 2. Current Data Save Karein (Jo abhi table me hai)
+    const currentRows = document.querySelectorAll('#students-body tr');
+    currentSheetData = []; // Update global data
+    currentRows.forEach(row => {
+        const name = row.querySelector('.std-name').value.trim();
+        if(!name) return;
+        const marks = {};
+        row.querySelectorAll('.mark-input').forEach(inp => {
+            const val = inp.value.trim().toUpperCase();
+            marks[inp.dataset.sub] = val; // Purane subjects ke marks
+        });
+        currentSheetData.push({ name, marks });
+    });
+
+    // 3. Nayi Subject List Banayein
+    const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
+    finalSubjectsList = [...selected3];
+    if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
+    if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
+
+    // 4. Total Marks Update
+    totalMax = 0;
+    finalSubjectsList.forEach(sub => {
+        if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25;
+        else totalMax += 100;
+    });
+
+    // 5. Table Re-render
+    renderTableHeaders();
+    
+    // 6. Rows Re-populate (Mapping Logic)
+    const tbody = document.getElementById('students-body');
+    tbody.innerHTML = '';
+    
+    currentSheetData.forEach((std, index) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-gray-50";
+        let inputs = "";
+        
+        finalSubjectsList.forEach(sub => {
+            // Agar purane data me ye subject tha, to wahi marks lo, warna blank
+            const val = std.marks[sub] !== undefined ? std.marks[sub] : "";
+            
+            const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths';
+            const max = isSmall ? 25 : 100;
+            
+            inputs += `<td class="border border-gray-200 p-1">
+                <input type="text" data-sub="${sub}" data-max="${max}" value="${val}" 
+                class="w-full p-2 text-center outline-none mark-input focus:bg-blue-50" 
+                oninput="calcRow(this)" placeholder="-">
+            </td>`;
+        });
+
+        tr.innerHTML = `
+            <td class="border border-gray-200 p-2 text-center text-gray-500">${index + 1}</td>
+            <td class="border border-gray-200 p-1"><input type="text" value="${std.name}" class="w-full p-2 font-semibold urdu-font outline-none std-name"></td>
+            ${inputs}
+            <td class="border border-gray-200 p-2 text-center font-bold text-gray-700 total-val">0</td>
+            <td class="border border-gray-200 p-2 text-center font-bold text-blue-600 perc-val">0%</td>
+            <td class="border border-gray-200 p-2 text-center font-bold text-xs grade-val">-</td>
+            <td class="border border-gray-200 p-2 text-center cursor-pointer text-red-400 hover:text-red-600 no-print" onclick="this.parentElement.remove()">×</td>
+        `;
+        tbody.appendChild(tr);
+        calcRow(tr.querySelector('input')); // Recalculate totals
+    });
+
+    alert("Subjects updated! Purane marks (jo match huye) restore kar diye gaye hain.");
+};
     </script>
 </body>
 </html>
+
 
 
 
