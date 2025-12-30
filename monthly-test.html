@@ -532,91 +532,109 @@
             if(name) calcRow(tr.querySelector('input'));
         };
 
-        window.calcRow = (el) => {
-            const row = el.closest('tr');
-            let obtained = 0;
-            let hasAbsent = false; 
-            let allAbsent = true; // Track if ALL are absent
-            let hasMarks = false; // Track if ANY marks exist
+        // --- ROW CALCULATION LOGIC (MERGED: New Grades + 3 Fail Rule) ---
+window.calculateRow = (input) => {
+    const row = input.closest('tr');
+    const inputs = row.querySelectorAll('.mark-input');
+    
+    let obtained = 0;
+    let totalMax = 0;
+    let failCount = 0;       // Kitne subjects me fail hai
+    let subjectCount = 0;    // Total subjects count
+    let absentCount = 0;     // Kitne subjects me absent hai
 
-            const inputs = row.querySelectorAll('.mark-input');
-            
-            inputs.forEach(inp => {
-                const max = parseInt(inp.dataset.max); 
-                let rawVal = inp.value.trim().toUpperCase();
-                
-                if (rawVal !== 'A' && rawVal !== '') {
-                    if (isNaN(parseFloat(rawVal)) || !isFinite(rawVal)) {
-                        inp.value = ''; rawVal = '';
-                    }
+    inputs.forEach(inp => {
+        subjectCount++;
+        const sub = inp.dataset.sub.toLowerCase();
+        let val = inp.value.trim().toUpperCase();
+        
+        // 1. Max Marks Tay Karein
+        let max = 100;
+        if (sub.includes('english') || sub.includes('math') || sub.includes('hisab')) {
+            max = 25;
+        }
+        totalMax += max;
+
+        // 2. Marks Jodein aur Fail Check Karein
+        let numVal = 0;
+        
+        if (val === 'A') {
+            // Absent Logic
+            absentCount++;
+            failCount++; // Absent ko bhi Fail mana jayega count ke liye
+            inp.style.color = 'red';
+            inp.style.fontWeight = 'bold';
+        } 
+        else if (val === '') {
+            inp.style.color = ''; // Reset
+        }
+        else {
+            numVal = parseFloat(val);
+            if (!isNaN(numVal)) {
+                if (numVal > max) { 
+                    alert(`Maximum marks ${max} hain.`); 
+                    inp.value = max; 
+                    numVal = max; 
                 }
 
-                let numVal = 0;
-                
-                if (rawVal === 'A') {
-                    hasAbsent = true;
-                    numVal = 0;
-                    inp.style.color = 'red';
-                    inp.classList.add('bg-fail-input');
-                } else if (rawVal === '') {
-                    // Empty field
-                    allAbsent = false; // Empty is not Absent
-                } else {
-                    // Marks present
-                    allAbsent = false; 
-                    hasMarks = true;
-                    numVal = parseFloat(rawVal);
-                    
-                    if (numVal > max) { alert(`Maximum marks ${max} hain.`); inp.value = max; numVal = max; }
-
-                    const pass = max === 25 ? 10 : 40; 
-                    if (numVal < pass) inp.classList.add('bg-fail-input'); 
-                    else { inp.classList.remove('bg-fail-input'); inp.style.color = ''; }
-                }
-                
                 obtained += numVal;
-            });
-            
-            // Total Max
-            let totalMax = 0;
-            finalSubjectsList.forEach(sub => {
-                if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; 
-                else totalMax += 100;
-            });
-
-            const percent = totalMax > 0 ? (obtained / totalMax * 100).toFixed(1) : 0;
-            
-            row.querySelector('.total-val').textContent = obtained;
-            row.querySelector('.perc-val').textContent = percent + '%';
-            
-            // --- GRADE LOGIC UPDATED ---
-            let grade = "Nakam";
-            let cls = "grade-nakam";
-            const p = parseFloat(percent);
-
-            // Check if FULLY ABSENT (All subjects 'A')
-            if (allAbsent && inputs.length > 0) {
-                grade = "Absent";
-                cls = "grade-absent"; // Gray color
-            } 
-            else if (hasAbsent) {
-                // Agar partial absent hai (kuch 'A', kuch marks), to Nakam
-                grade = "Nakam";
-                cls = "grade-nakam";
+                
+                // 🔥 FAIL CHECK (40% Passing Marks)
+                // 100 me se 40, 25 me se 10 passing hain
+                const passingMarks = max * 0.40;
+                
+                if (numVal < passingMarks) {
+                    failCount++; // Marks kam hain to fail count badhao
+                    inp.style.color = 'red';
+                } else {
+                    inp.style.color = 'black';
+                }
             }
-            else {
-                // Normal Grading
-                if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "grade-mumtaz-sharf"; }
-                else if (p >= 70) { grade = "Mumtaz"; cls = "grade-mumtaz"; }
-                else if (p >= 50) { grade = "Jayyid"; cls = "grade-jayyid"; }
-                else if (p >= 40) { grade = "Maqbul"; cls = "grade-maqbul"; }
-                else { grade = "Nakam"; cls = "grade-nakam"; }
-            }
-            
-            const gVal = row.querySelector('.grade-val');
-            gVal.textContent = grade;
-            gVal.className = `border border-gray-200 p-2 text-center font-bold text-xs grade-val ${cls} rounded`;
-        };
+        }
+    });
+
+    // 3. Percentage Nikalein
+    let percentage = 0;
+    if (totalMax > 0) percentage = (obtained / totalMax) * 100;
+
+    // 4. Grade Logic (Updated Names)
+    let grade = "Nakam";
+    let cls = "grade-nakam";
+
+    // Rule 1: Agar poori tarah Absent hai
+    if (absentCount === subjectCount) {
+        grade = "Absent";
+        cls = "grade-absent"; // CSS class for gray styling
+    }
+    // Rule 2: Agar 3 ya ziyada subjects me Fail/Absent hai to NAKAM
+    else if (failCount >= 3) {
+        grade = "Nakam";
+        cls = "grade-nakam";
+    }
+    // Rule 3: Percentage Base Grading
+    else {
+        if (percentage >= 80) { grade = "Mumtaz Ma Sharf"; cls = "grade-mumtaz-sharf"; }
+        else if (percentage >= 70) { grade = "Mumtaz"; cls = "grade-mumtaz"; }
+        else if (percentage >= 60) { grade = "Jayyid Jiddan"; cls = "grade-jayyid-jiddan"; }
+        else if (percentage >= 50) { grade = "Jayyid"; cls = "grade-jayyid"; }
+        else if (percentage >= 40) { grade = "Maqbool"; cls = "grade-maqbul"; }
+        else { grade = "Nakam"; cls = "grade-nakam"; }
+    }
+
+    // 5. Update UI
+    row.querySelector('.total-val').innerText = obtained;
+    row.querySelector('.perc-val').innerText = percentage.toFixed(2) + '%';
+    
+    const gradeCell = row.querySelector('.grade-val');
+    gradeCell.innerText = grade;
+
+    // Styling
+    gradeCell.className = "px-4 py-2 text-center font-bold text-xs border grade-val " + cls;
+    
+    if (grade === "Nakam") gradeCell.style.color = "red";
+    else if (grade === "Absent") gradeCell.style.color = "gray";
+    else gradeCell.style.color = "green";
+};
 
         // --- NEW SAVE LOGIC (PASS/FAIL AGGREGATION) ---
         window.saveResult = async () => {
@@ -1661,6 +1679,7 @@ window.downloadReportCards = async () => {
     </script>
 </body>
 </html>
+
 
 
 
