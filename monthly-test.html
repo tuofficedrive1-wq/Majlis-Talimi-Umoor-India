@@ -339,6 +339,7 @@
         let adminUid = "";
         let jamiaName = "";
         let currentSheetData = [];
+        let isEditingMode = false;
         let monthKey = "";
         let globalUserData = {};
         let finalSubjectsList = [];
@@ -774,9 +775,8 @@ window.calcRow = (el) => {
         const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
         if (snap.exists()) {
             const data = snap.data(); 
-            currentSheetData = data.students || []; // 🔥 Data yahan store hoga
+            currentSheetData = data.students || []; 
             
-            // Checkboxes set karein
             const allChecks = document.querySelectorAll('.subject-checkbox');
             const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
             allChecks.forEach(chk => { if (savedVariableSubjects.includes(chk.value)) chk.checked = true; });
@@ -790,17 +790,17 @@ window.calcRow = (el) => {
             
             renderTableHeaders(); 
             resultArea.classList.remove('hidden'); 
-            selectionArea.classList.add('hidden'); // View mode me selection hide rahega
+            selectionArea.classList.add('hidden'); 
             
             document.getElementById('students-body').innerHTML = ''; 
             currentSheetData.forEach(s => addStudentRow(s.name, s.marks)); 
 
-            // --- VIEW MODE LOGIC WITH EDIT BUTTON ---
+            // --- VIEW MODE LOGIC ---
             const params = new URLSearchParams(window.location.search);
             if (params.get('mode') === 'view') {
                 const headerTitle = document.querySelector('h1');
                 
-                // Header update karein
+                // Edit Button Show Logic
                 if(headerTitle && !document.getElementById('edit-mode-btn')) {
                     const badge = document.getElementById('view-badge');
                     if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
@@ -811,18 +811,17 @@ window.calcRow = (el) => {
                         </button>`;
                 }
 
-                // Hide Controls
+                // Hide Controls Default
                 ['step-heading', 'step-instruction', 'class-select'].forEach(id => { 
                     const el = document.getElementById(id); if(el) el.classList.add('hidden'); 
                 });
                 
-                // Hide Action Buttons
                 const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
                 const saveBtn = document.querySelector('button[onclick="saveResult()"]');
                 if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
                 if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
 
-                // Inputs Disable
+                // Inputs Disable Default
                 document.querySelectorAll('#students-body input').forEach(inp => {
                     inp.disabled = true;
                     inp.classList.add('view-mode-input');
@@ -833,11 +832,16 @@ window.calcRow = (el) => {
                     inp.style.color = '#1f2937'; 
                 });
 
-                // Hide Trash
                 document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
                 const headerTrash = document.querySelector('#table-head th:last-child');
                 if(headerTrash) headerTrash.style.display = 'none';
-            } 
+            }
+            
+            // 🔥 CRITICAL FIX: Agar Editing Mode ON hai, to nayi class load hone ke baad wapas apply karo
+            if (isEditingMode) {
+                // true pass kiya taaki 'Alert' na aaye
+                enableEditMode(true); 
+            }
         }
     } catch(e) { console.log("New sheet or error loading:", e); }
 };
@@ -1706,19 +1710,21 @@ window.downloadReportCards = async () => {
         btn.innerHTML = originalText; btn.disabled = false;
     }
 };
-        // --- NEW: ENABLE EDIT MODE FOR ADMIN ---
-window.enableEditMode = () => {
-    // 1. Badge Change
+        window.enableEditMode = (skipAlert = false) => {
+    // 1. Flag Set Karein
+    isEditingMode = true;
+
+    // 2. UI Update (Badge & Button)
     const badge = document.getElementById('view-badge');
     const btn = document.getElementById('edit-mode-btn');
     if(badge) { badge.textContent = "Editing Mode"; badge.className = "text-xl bg-red-200 text-red-800 px-2 py-1 rounded ml-2 align-middle"; }
     if(btn) btn.style.display = 'none';
 
-    // 2. Selection Area Open
+    // 3. Selection Area Show
     const selectionArea = document.getElementById('subject-selection-area');
-    selectionArea.classList.remove('hidden');
+    if(selectionArea) selectionArea.classList.remove('hidden');
 
-    // 🔥 CUSTOM SUBJECT BOX ADD KAREIN
+    // Custom Subject Box Check
     if (!document.getElementById('custom-sub-box')) {
         const customDiv = document.createElement('div');
         customDiv.id = 'custom-sub-box';
@@ -1730,26 +1736,22 @@ window.enableEditMode = () => {
             <div class="flex gap-2">
                 <input type="text" id="custom-sub-input" placeholder="Subject name..." class="border border-indigo-300 p-2 rounded w-full outline-none">
                 <button onclick="addCustomSubject()" class="bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 whitespace-nowrap">Add</button>
-            </div>
-        `;
-        // Button se pehle insert karein
+            </div>`;
         const updateBtn = selectionArea.querySelector('button'); 
         if(updateBtn) selectionArea.insertBefore(customDiv, updateBtn);
         else selectionArea.appendChild(customDiv);
     }
 
-    // 3. Button Function Change (Generate -> Update)
-    // Hum class ya onclick attribute se button dhoondhenge
+    // 4. Button Update
     const generateBtn = Array.from(selectionArea.querySelectorAll('button')).find(b => b.innerText.includes('Result Sheet') || b.getAttribute('onclick') === 'generateSheet()');
-    
     if(generateBtn) {
         generateBtn.innerText = "Update Subjects & Columns";
-        generateBtn.onclick = updateSheetColumns; // 🔥 Naya function link kiya
+        generateBtn.onclick = updateSheetColumns;
         generateBtn.classList.remove('bg-teal-600');
         generateBtn.classList.add('bg-orange-600', 'hover:bg-orange-700');
     }
 
-    // 4. Inputs Enable
+    // 5. Inputs Enable
     document.querySelectorAll('.view-mode-input').forEach(inp => {
         inp.disabled = false;
         inp.style.backgroundColor = ''; 
@@ -1757,18 +1759,18 @@ window.enableEditMode = () => {
         inp.classList.remove('view-mode-input');
     });
 
-    // 5. Hidden Buttons Show
+    // 6. Hidden Controls Show
     document.querySelectorAll('.hidden-in-view').forEach(b => {
         b.style.display = 'inline-block';
         b.classList.remove('hidden-in-view');
     });
     
-    // 6. Trash Icons Show
     document.querySelectorAll('.no-print').forEach(btn => btn.style.display = '');
     const headerTrash = document.querySelector('#table-head th:last-child');
     if(headerTrash) headerTrash.style.display = '';
 
-    alert("Editing Enabled!");
+    // Sirf tab alert dikhaye jab user pehli baar click kare
+    if (!skipAlert) alert("Editing Enabled! Ab aap class change karenge tab bhi edit mode rahega.");
 };
 
 // --- UPDATE COLUMNS BUT SAVE DATA ---
@@ -1854,6 +1856,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
