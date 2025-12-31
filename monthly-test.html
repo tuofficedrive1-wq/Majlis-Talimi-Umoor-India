@@ -781,25 +781,34 @@ window.saveResult = async (isAutoSave = false) => {
     const classSelect = document.getElementById('class-select');
     const selectionArea = document.getElementById('subject-selection-area'); 
 
+    // Reset UI
     finalSubjectsList = [];
     studentsBody.innerHTML = '';
     resultArea.classList.add('hidden'); 
     document.getElementById('table-head').innerHTML = '';
     document.querySelectorAll('.subject-checkbox').forEach(chk => chk.checked = false);
     classSelect.disabled = false; 
+    
+    // Check View Mode (Admin)
+    const params = new URLSearchParams(window.location.search);
+    const isViewMode = params.get('mode') === 'view';
 
     try {
         const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
+        
+        // --- SCENARIO 1: DATA EXISTS ---
         if (snap.exists()) {
             const data = snap.data(); 
             currentSheetData = data.students || []; 
             
+            // Checkboxes Check Karein
             const allChecks = document.querySelectorAll('.subject-checkbox');
             const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
             allChecks.forEach(chk => { if (savedVariableSubjects.includes(chk.value)) chk.checked = true; });
             
             finalSubjectsList = data.subjects;
             
+            // Total Max setup
             totalMax = 0;
             finalSubjectsList.forEach(sub => {
                 if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; else totalMax += 100;
@@ -811,55 +820,64 @@ window.saveResult = async (isAutoSave = false) => {
             
             document.getElementById('students-body').innerHTML = ''; 
             currentSheetData.forEach(s => addStudentRow(s.name, s.marks)); 
-
-            // --- VIEW MODE LOGIC ---
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('mode') === 'view') {
-                const headerTitle = document.querySelector('h1');
-                
-                // Edit Button Show Logic
-                if(headerTitle && !document.getElementById('edit-mode-btn')) {
-                    const badge = document.getElementById('view-badge');
-                    if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
-                    
-                    headerTitle.innerHTML += `
-                        <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
-                            <i class="fas fa-edit"></i> Enable Editing
-                        </button>`;
-                }
-
-                // Hide Controls Default
-                ['step-heading', 'step-instruction', 'class-select'].forEach(id => { 
-                    const el = document.getElementById(id); if(el) el.classList.add('hidden'); 
-                });
-                
-                const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
-                const saveBtn = document.querySelector('button[onclick="saveResult()"]');
-                if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
-                if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
-
-                // Inputs Disable Default
-                document.querySelectorAll('#students-body input').forEach(inp => {
-                    inp.disabled = true;
-                    inp.classList.add('view-mode-input');
-                    inp.style.backgroundColor = 'transparent';
-                    inp.style.border = 'none';
-                    inp.style.textAlign = 'center';
-                    inp.style.fontWeight = 'bold';
-                    inp.style.color = '#1f2937'; 
-                });
-
-                document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
-                const headerTrash = document.querySelector('#table-head th:last-child');
-                if(headerTrash) headerTrash.style.display = 'none';
-            }
-            
-            // 🔥 CRITICAL FIX: Agar Editing Mode ON hai, to nayi class load hone ke baad wapas apply karo
-            if (isEditingMode) {
-                // true pass kiya taaki 'Alert' na aaye
-                enableEditMode(true); 
+        } 
+        // --- SCENARIO 2: NO DATA (NEW CLASS) ---
+        else {
+            currentSheetData = [];
+            // Agar Admin hai to Result Area dikhana padega taaki wo Edit kar sake
+            if (isViewMode) {
+                resultArea.classList.remove('hidden');
+                document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
             }
         }
+
+        // --- VIEW MODE UI SETUP (RUNS ALWAYS) ---
+        if (isViewMode) {
+            const headerTitle = document.querySelector('h1');
+            
+            // 1. Edit Button Inject Karein (Agar nahi hai)
+            if(headerTitle && !document.getElementById('edit-mode-btn')) {
+                const badge = document.getElementById('view-badge');
+                if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
+                
+                headerTitle.innerHTML += `
+                    <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
+                        <i class="fas fa-edit"></i> Enable Editing
+                    </button>`;
+            }
+
+            // 2. Teacher Controls Hide Karein
+            ['step-heading', 'step-instruction', 'class-select'].forEach(id => { 
+                const el = document.getElementById(id); if(el) el.classList.add('hidden'); 
+            });
+            
+            const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
+            const saveBtn = document.querySelector('button[onclick="saveResult()"]');
+            if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
+            if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
+
+            // 3. Inputs Disable (Agar table bani hai to)
+            document.querySelectorAll('#students-body input').forEach(inp => {
+                inp.disabled = true;
+                inp.classList.add('view-mode-input');
+                inp.style.backgroundColor = 'transparent';
+                inp.style.border = 'none';
+                inp.style.textAlign = 'center';
+                inp.style.fontWeight = 'bold';
+                inp.style.color = '#1f2937'; 
+            });
+
+            document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
+            const headerTrash = document.querySelector('#table-head th:last-child');
+            if(headerTrash) headerTrash.style.display = 'none';
+        }
+        
+        // 🔥 AUTO-ENABLE EDITING IF FLAG IS TRUE
+        // Ye tab kaam aayega jab Admin class switch karega
+        if (isEditingMode) {
+            enableEditMode(true); // true = No Alert
+        }
+
     } catch(e) { console.log("New sheet or error loading:", e); }
 };
 
@@ -1881,6 +1899,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
