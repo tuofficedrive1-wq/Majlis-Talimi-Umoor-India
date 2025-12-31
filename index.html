@@ -1061,21 +1061,25 @@ selectedReportingDate = reportingDateInfo.monthInputFormat;
     const mode = urlParams.get('mode');
 
     if (mode === 'filling') {
-        // Agar signal mila to seedha Filling Panel (userView) kholein
-        dashboardView.classList.add('hidden');
-        userView.classList.remove('hidden');
-        
-        // (Optional) Mahina select karne ka logic set karein
-        const reportSelector = document.getElementById('report-month-selector');
-        const entrySelector = document.getElementById('entry-month-selector');
-        if (reportSelector && entrySelector) {
-            entrySelector.value = reportSelector.value;
-        }
+    dashboardView.classList.add('hidden');
+    userView.classList.remove('hidden');
+    
+    // Date Sync Logic
+    const reportSelector = document.getElementById('report-month-selector');
+    const entrySelector = document.getElementById('entry-month-selector');
+    
+    // Agar report selector mein value hai to usay use karein, warna current date lein
+    if (reportSelector && reportSelector.value) {
+        selectedReportingDate = reportSelector.value; // GLOBAL VARIABLE UPDATE ZAROORI HAI
+        if (entrySelector) entrySelector.value = reportSelector.value;
     } else {
-        // Agar koi signal nahi to Normal Dashboard kholein
-        dashboardView.classList.remove('hidden');
-        userView.classList.add('hidden');
+        // Fallback: Agar value nahi mili to aaj ki date set karein
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        selectedReportingDate = `${year}-${month}`;
     }
+}
 
     showLoader(false);
 }
@@ -1529,15 +1533,22 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
             }
 
             unsubscribeUserReports = onSnapshot(q, (snapshot) => {
-                allUserReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderDashboard(allUserReports, selectedReportingDate); 
-         
-            }, (error) => {
-                console.error("Error fetching user reports: ", error);
-                showNotification("Could not load reports.", true);
-                renderDashboard([], selectedReportingDate); 
-            });
-            
+    allUserReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // 1. Dashboard Update karein
+    renderDashboard(allUserReports, selectedReportingDate); 
+
+    // 2. CHECK: Agar User abhi 'User View' (Filling Page) par khada hai, to Forms bhi render karein
+    if (!userView.classList.contains('hidden')) {
+         const currentInfo = getReportingMonthYearFromInput(selectedReportingDate);
+         renderUserDashboard(allUserReports, currentInfo);
+    }
+
+}, (error) => {
+    console.error("Error fetching user reports: ", error);
+    showNotification("Could not load reports.", true);
+    renderDashboard([], selectedReportingDate); 
+});       
             listenForAnnouncements();
         };
         
@@ -3441,6 +3452,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
