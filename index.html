@@ -1006,42 +1006,101 @@ const downloadChartImage = (chartId, title, subtitle) => {
 
 
         // --- MAIN APP LOGIC & ROUTING ---
-        const initApp = () => {
-             showLoader(true);
-             onAuthStateChanged(auth, async user => { 
-                if (unsubscribeUserReports) { unsubscribeUserReports(); unsubscribeUserReports = null; }
-                if (unsubscribeAnnouncements) { unsubscribeAnnouncements(); unsubscribeAnnouncements = null; }
-                cleanupUserView(); 
+const initApp = () => {
+    showLoader(true);
+    onAuthStateChanged(auth, async user => {
+        // Purane listeners hatana
+        if (unsubscribeUserReports) { unsubscribeUserReports(); unsubscribeUserReports = null; }
+        if (unsubscribeAnnouncements) { unsubscribeAnnouncements(); unsubscribeAnnouncements = null; }
+        
+        cleanupUserView(); // View saaf karein
 
-                currentUser = user;
-                if (user) {
-                    try {
-                         const userDocRef = doc(db, 'users', user.uid);
-                         const userDocSnap = await getDoc(userDocRef);
-                         if (userDocSnap.exists()) {
-                             userProfileData = userDocSnap.data(); 
-                         } else { 
-                            console.error("User profile not found during auth check."); 
-                            userProfileData = {}; 
-                         }
-                     } catch (err) { 
-                        console.error("Error fetching user profile during auth:", err); 
-                        userProfileData = {}; 
+        currentUser = user;
+        if (user) {
+            // User Profile Load karna
+            try {
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    userProfileData = userDocSnap.data();
+                } else {
+                    console.error("User profile not found.");
+                    userProfileData = {};
+                }
+            } catch (err) {
+                console.error("Error fetching profile:", err);
+                userProfileData = {};
+            }
+
+            // Default Date Setup
+            const currentDate = new Date();
+            reportingDateInfo = getReportingMonthYear(currentDate);
+            selectedReportingDate = reportingDateInfo.monthInputFormat;
+
+            if (reportMonthSelector) {
+                reportMonthSelector.value = reportingDateInfo.monthInputFormat;
+                // Listener attach karein
+                reportMonthSelector.removeEventListener('change', handleDashboardDateChange); // Purana hata dein agar ho
+                reportMonthSelector.addEventListener('change', handleDashboardDateChange);
+            }
+
+            // UI Elements set karna
+            userInfo.classList.remove('hidden');
+            loginView.classList.add('hidden');
+            resetPasswordView.classList.add('hidden');
+
+            if (user.uid === ADMIN_UID) {
+                // Admin Redirect
+                showLoader(false);
+                window.location.href = 'admin.html';
+            } else {
+                // --- NORMAL USER LOGIC ---
+                
+                // Pehle data load karein
+                initUserView(user);
+
+                // URL Check karein (?mode=filling hai ya nahi)
+                const urlParams = new URLSearchParams(window.location.search);
+                const mode = urlParams.get('mode');
+
+                if (mode === 'filling') {
+                    // CASE 1: Agar Filling Mode hai to User View dikhayein
+                    console.log("Opening Filling Panel...");
+                    dashboardView.classList.add('hidden');
+                    userView.classList.remove('hidden');
+
+                    // Date Sync Logic
+                    const entrySelector = document.getElementById('entry-month-selector');
+                    if (reportMonthSelector && reportMonthSelector.value) {
+                        selectedReportingDate = reportMonthSelector.value;
+                        if (entrySelector) entrySelector.value = reportMonthSelector.value;
                     }
-                    
-                    // CHANGE: Default reporting month CURRENT MONTH set karna
-const currentDate = new Date();
-// lastMonth.setMonth(lastMonth.getMonth() - 1); // Yeh line hata di gayi hai
-reportingDateInfo = getReportingMonthYear(currentDate); 
-selectedReportingDate = reportingDateInfo.monthInputFormat;
-                    
-                    // Selector ko default value set karna
-                    if (reportMonthSelector) {
-                        reportMonthSelector.value = reportingDateInfo.monthInputFormat;
-                        reportMonthSelector.addEventListener('change', (e) => {
-                            selectedReportingDate = e.target.value;
-                            renderDashboard(allUserReports, selectedReportingDate); 
-                        });
+                } else {
+                    // CASE 2: Agar Normal Login hai to DASHBOARD dikhayein
+                    console.log("Opening Main Dashboard...");
+                    dashboardView.classList.remove('hidden'); // <--- YE LINE ZAROORI HAI
+                    userView.classList.add('hidden');
+                }
+
+                showLoader(false);
+        } else {
+            // Agar User Login Nahi Hai
+            reportingDateInfo = getReportingMonthYear(new Date());
+            userInfo.classList.add('hidden');
+            loginView.classList.remove('hidden'); // Login form dikhayein
+            userView.classList.add('hidden');
+            dashboardView.classList.add('hidden');
+            resetPasswordView.classList.add('hidden');
+            showLoader(false);
+        }
+    });
+};
+
+// Helper function for dashboard date change (taaki code clean rahe)
+const handleDashboardDateChange = (e) => {
+    selectedReportingDate = e.target.value;
+    renderDashboard(allUserReports, selectedReportingDate);
+};
                     }
 
                     userInfo.classList.remove('hidden');
@@ -3452,6 +3511,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
