@@ -665,44 +665,53 @@ window.calcRow = (el) => {
     gradeCell.className = `grade-val px-2 py-1 text-center font-bold text-xs border rounded shadow-sm ${badgeClass}`;
 };
 
-        // --- NEW SAVE LOGIC (PASS/FAIL AGGREGATION) ---
-        window.saveResult = async () => {
-            const rows = document.querySelectorAll('#students-body tr');
-            if(rows.length === 0) { alert("Koi student add nahi kiya gaya."); return; }
-            const btn = document.querySelector('button[onclick="saveResult()"]');
-            const originalText = btn.innerText;
-            btn.innerText = "Saving..."; btn.disabled = true;
+        // --- UPDATED SAVE RESULT (ALLOWS EMPTY TABLE FOR ADMIN) ---
+window.saveResult = async (isAutoSave = false) => {
+    const rows = document.querySelectorAll('#students-body tr');
+    // REMOVED: if(rows.length === 0) check hata diya gaya hai taaki khali sheet bhi save ho sake
 
-            const rawClass = document.getElementById('class-select').value;
-            const cleanClass = rawClass.split('_')[0]; 
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
-            const selectedClass = rawClass; 
-            const students = [];
+    const btn = document.querySelector('button[onclick="saveResult()"]');
+    let originalText = "Save Result Sheet";
+    if(btn) { 
+        originalText = btn.innerText;
+        btn.innerText = "Saving..."; 
+        btn.disabled = true; 
+    }
 
-            rows.forEach(row => {
-                const name = row.querySelector('.std-name').value.trim();
-                if(!name) return;
-                const marks = {};
-                row.querySelectorAll('.mark-input').forEach(inp => {
-                    const val = inp.value.trim().toUpperCase();
-                    marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
-                });
-                const total = parseFloat(row.querySelector('.total-val').textContent);
-                const perc = parseFloat(row.querySelector('.perc-val').textContent);
-                students.push({ name, marks, total, percentage: perc });
+    const rawClass = document.getElementById('class-select').value;
+    if(!rawClass && !isAutoSave) { alert("Class select nahi hai."); if(btn) btn.disabled=false; return; }
+    
+    const cleanClass = rawClass.split('_')[0]; 
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
+    const selectedClass = rawClass; 
+    const students = [];
+
+    // Agar students hain to unka data lo, warna khali list rahegi
+    if (rows.length > 0) {
+        rows.forEach(row => {
+            const name = row.querySelector('.std-name').value.trim();
+            if(!name) return;
+            const marks = {};
+            row.querySelectorAll('.mark-input').forEach(inp => {
+                const val = inp.value.trim().toUpperCase();
+                marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
             });
+            const total = parseFloat(row.querySelector('.total-val').textContent);
+            const perc = parseFloat(row.querySelector('.perc-val').textContent);
+            students.push({ name, marks, total, percentage: perc });
+        });
+    }
 
-            try {
-                // 1. Save Class
-                await setDoc(doc(db, "monthly_test_sheets", docId), {
-                    adminUid, jamiaName, month: monthKey, class: selectedClass,
-                    subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
-                }); 
-                
-                // 2. Aggregation Logic (Exclude Full Absent from Total)
-                let grandTotalStudents = 0; // Only Present
-                let grandPassedStudents = 0;
-                const allClasses = Object.keys(classBooksMap);
+    try {
+        // 1. Save Class (Subjects & Students)
+        await setDoc(doc(db, "monthly_test_sheets", docId), {
+            adminUid, jamiaName, month: monthKey, class: selectedClass,
+            subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
+        }); 
+        
+        // 2. Aggregation Logic (Sirf tab chalega jab students honge)
+        let grandTotalStudents = 0; 
+        let grandPassedStudents = 0;
                 
                 for (const cls of allClasses) {
                     const clsClean = cls.split('_')[0];
@@ -751,10 +760,18 @@ window.calcRow = (el) => {
                 testData.push({ name: jamiaName, status: 'Test Hua', month: monthKey, percentage: jamiaPassPerc, wajah: '' });
                 await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
 
-                alert(`Class Save ho gayi!\n\nJamia Result Update: ${grandPassedStudents} Pass / ${grandTotalStudents} Hazir (${jamiaPassPerc})`);
-            } catch (error) { console.error("Save Error:", error); alert("Error: " + error.message); } 
-            finally { btn.innerText = originalText; btn.disabled = false; }
-        };
+                if (!isAutoSave) {
+            alert(`Settings Save ho gayi!\nSubjects/Columns update ho chuke hain.`);
+        }
+
+    } catch (error) { 
+        console.error("Save Error:", error); 
+        if(!isAutoSave) alert("Error: " + error.message); 
+    } 
+    finally { 
+        if(btn) { btn.innerText = originalText; btn.disabled = false; }
+    }
+};
 
         window.checkExistingForClass = async (clsName) => {
     const cleanClass = clsName.split('_')[0]; 
@@ -1856,6 +1873,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
