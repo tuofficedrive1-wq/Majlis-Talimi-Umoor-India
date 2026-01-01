@@ -1114,6 +1114,107 @@ window.closeReportModal = closeModal;
                  button.removeEventListener('click', handleAdminTabSwitch); 
                  button.addEventListener('click', handleAdminTabSwitch); 
              });
+               // --- 1. Analysis Button Handler ---
+document.getElementById('btn-generate-analysis').addEventListener('click', () => {
+    const reportType = document.getElementById('analysis-report-type-select').value;
+    const container = document.getElementById('analysis-report-container');
+
+    if (!reportType) {
+        showNotification("Please select a report type first.", true);
+        return;
+    }
+
+    // Agar reports fetch nahi hui hain to user ko alert karein
+    if (!fetchedAdminReports || fetchedAdminReports.length === 0) {
+        container.innerHTML = '<p class="text-center text-red-500 py-10">Reports load nahi hui hain. Pehle "Monthly Reports" tab mein jakar "Fetch Reports" karein.</p>';
+        return;
+    }
+
+    if (reportType === 'jaiza') {
+        renderAllUsersJaizaTable();
+    } else {
+        container.innerHTML = '<p class="text-center text-gray-500 py-10">Is report ka analysis abhi ban raha hai...</p>';
+    }
+});
+
+
+// --- 2. Render Jaiza Table Function ---
+const renderAllUsersJaizaTable = () => {
+    const container = document.getElementById('analysis-report-container');
+    
+    // Sirf active users filter karein (Admin ko hatakar)
+    const users = allUsersData
+        .filter(u => u.id !== ADMIN_UID)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    let rowsHtml = '';
+
+    users.forEach(user => {
+        // Current fetched reports mein se is user ki report dhundhein
+        const report = fetchedAdminReports.find(r => r.userId === user.id);
+
+        // 1. Total Jamia Calculation
+        const totalJamia = user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0);
+
+        // 2. Jaiza Calculations
+        let jaizaDoneCount = 0;
+        let visitOnlyCount = 0;
+
+        if (report && report.jaizaReport && Array.isArray(report.jaizaReport.data)) {
+            report.jaizaReport.data.forEach(item => {
+                // Logic: Agar percentage hai ya status Done hai to 'Jaiza Hua'
+                // Warna agar sirf entry hai to 'Visit Hua'
+                if (parseInt(item.percentage) > 0 || item.status === 'Done') {
+                    jaizaDoneCount++;
+                } else {
+                    visitOnlyCount++;
+                }
+            });
+        }
+
+        // 3. Pending Calculation
+        // (Total Jamia) minus (Jitne Jaize ya Visit ho chuke hain)
+        // Math.max use kiya taaki negative na ho agar data mismatch ho
+        const pendingCount = Math.max(0, totalJamia - (jaizaDoneCount + visitOnlyCount));
+
+        // Row Color Logic (Optional: Agar pending 0 hai to green row)
+        const rowClass = pendingCount === 0 && totalJamia > 0 ? 'bg-green-50' : 'hover:bg-gray-50';
+
+        rowsHtml += `
+            <tr class="border-b ${rowClass} transition">
+                <td class="p-3 font-semibold urdu-font text-gray-800">${user.name || 'N/A'}</td>
+                <td class="p-3 text-center font-bold text-blue-600">${totalJamia}</td>
+                <td class="p-3 text-center font-bold text-green-600">${jaizaDoneCount}</td>
+                <td class="p-3 text-center font-bold text-orange-500">${visitOnlyCount}</td>
+                <td class="p-3 text-center font-bold text-red-500">${pendingCount}</td>
+            </tr>
+        `;
+    });
+
+    // Table Header & Structure
+    container.innerHTML = `
+        <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis (All Users)</h4>
+                <span class="text-sm text-gray-500">Total Users: ${users.length}</span>
+            </div>
+            <table class="w-full text-sm text-left border-collapse">
+                <thead class="bg-teal-600 text-white uppercase text-xs">
+                    <tr>
+                        <th class="p-3 rounded-tl-lg">User Name</th>
+                        <th class="p-3 text-center">Total Jamia</th>
+                        <th class="p-3 text-center">Jaiza Mukammal</th>
+                        <th class="p-3 text-center">Sirf Visit</th>
+                        <th class="p-3 text-center rounded-tr-lg">Nahi Hua (Pending)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    ${rowsHtml || '<tr><td colspan="5" class="p-4 text-center text-gray-500">Koi user data nahi mila.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    `;
+};
 // 1. Dropdown ko populate karne ka function
 const populateAnalysisDropdown = () => {
     const select = document.getElementById('analysis-user-select');
@@ -2952,6 +3053,7 @@ window.openReportFromAnalysis = (id) => {
     </script>
 </body>
 </html>
+
 
 
 
