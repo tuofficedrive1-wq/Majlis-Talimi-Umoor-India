@@ -343,6 +343,7 @@
         let monthKey = "";
         let globalUserData = {};
         let finalSubjectsList = [];
+        let subjectTranslationMap = {};
         let totalMax = 350; 
         let classBooksMap = {}; 
         let selectedClassName = '';
@@ -450,33 +451,81 @@
             } catch (error) { console.error("Error loading data:", error); }
         }
 
-        window.handleClassChange = () => {
-            const clsName = document.getElementById('class-select').value;
-            const container = document.getElementById('checkbox-container');
-            const selectionArea = document.getElementById('subject-selection-area');
-            const resultArea = document.getElementById('result-area');
+        // --- UPDATED UI FOR SUBJECT SELECTION ---
+window.handleClassChange = () => {
+    const clsName = document.getElementById('class-select').value;
+    const container = document.getElementById('checkbox-container');
+    const selectionArea = document.getElementById('subject-selection-area');
+    const resultArea = document.getElementById('result-area');
 
-            container.innerHTML = '';
-            resultArea.classList.add('hidden'); 
-            document.getElementById('students-body').innerHTML = ''; // Clear previous students
+    container.innerHTML = '';
+    resultArea.classList.add('hidden'); 
+    document.getElementById('students-body').innerHTML = ''; 
 
-            if (!clsName) { selectionArea.classList.add('hidden'); return; }
+    if (!clsName) { selectionArea.classList.add('hidden'); return; }
 
-            const rawSubjectsSet = classBooksMap[clsName];
-            if (!rawSubjectsSet) return;
-            const filteredSubjects = Array.from(rawSubjectsSet).filter(s => {
-                const lower = s.toLowerCase();
-                return lower !== 'english' && lower !== 'maths' && lower !== 'math' && lower !== 'mathematics';
-            });
-            filteredSubjects.forEach((sub) => {
-                const label = document.createElement('label');
-                label.className = "cursor-pointer block";
-                label.innerHTML = `<input type="checkbox" value="${sub}" class="subject-checkbox hidden" onchange="checkLimit(this)"><div class="border p-2 rounded text-center hover:bg-teal-50 transition urdu-font select-none bg-white shadow-sm">${sub}</div>`;
-                container.appendChild(label);
-            });
-            selectionArea.classList.remove('hidden');
-            checkExistingForClass(clsName);
-        };
+    // Header Instruction Add Karein
+    if(!document.getElementById('eng-instruction')) {
+        const instr = document.createElement('p');
+        instr.id = 'eng-instruction';
+        instr.className = "text-sm text-red-600 font-bold mb-3 bg-red-50 p-2 rounded border border-red-200";
+        instr.innerHTML = '<i class="fas fa-keyboard"></i> Note: Subject select karein aur Report Card ke liye uska English naam neeche box me likhein.';
+        selectionArea.insertBefore(instr, document.getElementById('checkbox-container'));
+    }
+
+    const rawSubjectsSet = classBooksMap[clsName];
+    if (!rawSubjectsSet) return;
+    
+    const filteredSubjects = Array.from(rawSubjectsSet).filter(s => {
+        const lower = s.toLowerCase();
+        return lower !== 'english' && lower !== 'maths';
+    });
+
+    filteredSubjects.forEach((sub) => {
+        // Container for each subject
+        const wrapper = document.createElement('div');
+        wrapper.className = "bg-white border rounded shadow-sm p-2 hover:shadow-md transition";
+
+        // Checkbox & Urdu Name
+        const label = document.createElement('label');
+        label.className = "cursor-pointer flex items-center justify-between mb-2";
+        label.innerHTML = `
+            <span class="font-bold text-teal-700 urdu-font text-lg">${sub}</span>
+            <input type="checkbox" value="${sub}" class="subject-checkbox w-5 h-5 text-teal-600" onchange="toggleSubjectInput(this)">
+        `;
+
+        // English Input (Hidden by default)
+        const input = document.createElement('input');
+        input.type = "text";
+        input.id = `eng-inp-${sub.replace(/\s/g, '_')}`; // Unique ID
+        input.placeholder = "English Name";
+        input.className = "w-full text-xs border border-gray-300 rounded p-1 outline-none focus:border-teal-500 hidden eng-name-input";
+        input.dataset.forSub = sub; // Link input to subject
+        
+        wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
+    });
+
+    selectionArea.classList.remove('hidden');
+    checkExistingForClass(clsName);
+};
+
+// Helper function to toggle input visibility
+window.toggleSubjectInput = (checkbox) => {
+    const wrapper = checkbox.closest('div');
+    const input = wrapper.querySelector('input[type="text"]');
+    
+    if (checkbox.checked) {
+        checkLimit(checkbox); // Limit check karo
+        if(checkbox.checked) { // Agar limit ke baad bhi checked hai
+            input.classList.remove('hidden');
+            input.focus();
+        }
+    } else {
+        input.classList.add('hidden');
+    }
+};
 
         window.checkLimit = (elem) => {
             const checked = document.querySelectorAll('.subject-checkbox:checked');
@@ -493,6 +542,16 @@
             }
             const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
             finalSubjectsList = [...selected3];
+            // 🔥 SAVE ENGLISH NAMES TO MAP 🔥
+    subjectTranslationMap = {}; // Reset
+    checkedBoxes.forEach(cb => {
+        const sub = cb.value;
+        const wrapper = cb.closest('div');
+        const input = wrapper.querySelector('.eng-name-input');
+        // Agar user ne English naam likha hai to wo lo, warna Urdu wala hi lelo
+        const engName = input.value.trim() || sub; 
+        subjectTranslationMap[sub] = engName;
+    });
             if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
             if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
 
@@ -708,16 +767,14 @@ window.saveResult = async (isAutoSave = false) => {
     }
 
     try {
-        // 1. Save Class Data (Students & Subjects)
+        // Inside saveResult function...
         await setDoc(doc(db, "monthly_test_sheets", docId), {
-            adminUid, 
-            jamiaName, 
-            month: monthKey, 
-            class: selectedClass,
+            adminUid, jamiaName, month: monthKey, class: selectedClass,
             subjects: finalSubjectsList, 
+            subjectMap: subjectTranslationMap, // 🔥 YE LINE ADD KARNI HAI
             students, 
             updatedAt: serverTimestamp()
-        }); 
+        });
         
         // 2. Aggregation Logic (Puri Jamia ka Result Jodna)
         let grandTotalStudents = 0; 
@@ -858,6 +915,25 @@ window.saveResult = async (isAutoSave = false) => {
         // --- SCENARIO 1: DATA EXISTS ---
         if (snap.exists()) {
             const data = snap.data(); 
+            // 🔥 LOAD ENGLISH NAMES 🔥
+            subjectTranslationMap = data.subjectMap || {}; // Load from DB
+            
+            const allChecks = document.querySelectorAll('.subject-checkbox');
+            const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
+
+            allChecks.forEach(chk => { 
+                if (savedVariableSubjects.includes(chk.value)) {
+                    chk.checked = true;
+                    // Input show karo aur value bharo
+                    const wrapper = chk.closest('div');
+                    const input = wrapper.querySelector('.eng-name-input');
+                    if(input) {
+                        input.classList.remove('hidden');
+                        // Agar map me naam hai to wahi dikhao, warna Urdu wala
+                        input.value = subjectTranslationMap[chk.value] || ""; 
+                    }
+                }
+            });
             currentSheetData = data.students || []; 
             
             // Checkboxes Check Karein
@@ -1953,6 +2029,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
