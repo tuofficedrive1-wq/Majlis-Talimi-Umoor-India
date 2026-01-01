@@ -665,28 +665,33 @@ window.calcRow = (el) => {
     gradeCell.className = `grade-val px-2 py-1 text-center font-bold text-xs border rounded shadow-sm ${badgeClass}`;
 };
 
-        // --- UPDATED SAVE RESULT (ALLOWS EMPTY TABLE FOR ADMIN) ---
+        // --- FINAL SAVE RESULT (FIXED: allClasses Error & Supports Empty Table) ---
 window.saveResult = async (isAutoSave = false) => {
     const rows = document.querySelectorAll('#students-body tr');
-    // REMOVED: if(rows.length === 0) check hata diya gaya hai taaki khali sheet bhi save ho sake
-
+    
+    // AutoSave ke waqt button change na karein taaki user disturb na ho
     const btn = document.querySelector('button[onclick="saveResult()"]');
     let originalText = "Save Result Sheet";
-    if(btn) { 
+    
+    if(btn && !isAutoSave) { 
         originalText = btn.innerText;
         btn.innerText = "Saving..."; 
         btn.disabled = true; 
     }
 
     const rawClass = document.getElementById('class-select').value;
-    if(!rawClass && !isAutoSave) { alert("Class select nahi hai."); if(btn) btn.disabled=false; return; }
+    if(!rawClass && !isAutoSave) { 
+        alert("Class select nahi hai."); 
+        if(btn) btn.disabled=false; 
+        return; 
+    }
     
     const cleanClass = rawClass.split('_')[0]; 
     const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
     const selectedClass = rawClass; 
     const students = [];
 
-    // Agar students hain to unka data lo, warna khali list rahegi
+    // Students ka data jama karein (Agar table me koi hai to)
     if (rows.length > 0) {
         rows.forEach(row => {
             const name = row.querySelector('.std-name').value.trim();
@@ -703,65 +708,119 @@ window.saveResult = async (isAutoSave = false) => {
     }
 
     try {
-        // 1. Save Class (Subjects & Students)
+        // 1. Save Class Data (Students & Subjects)
         await setDoc(doc(db, "monthly_test_sheets", docId), {
-            adminUid, jamiaName, month: monthKey, class: selectedClass,
-            subjects: finalSubjectsList, students, updatedAt: serverTimestamp()
+            adminUid, 
+            jamiaName, 
+            month: monthKey, 
+            class: selectedClass,
+            subjects: finalSubjectsList, 
+            students, 
+            updatedAt: serverTimestamp()
         }); 
         
-        // 2. Aggregation Logic (Sirf tab chalega jab students honge)
+        // 2. Aggregation Logic (Puri Jamia ka Result Jodna)
         let grandTotalStudents = 0; 
         let grandPassedStudents = 0;
-                
-                for (const cls of allClasses) {
-                    const clsClean = cls.split('_')[0];
-                    const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
-                    const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
-                    if (sheetSnap.exists()) {
-                        const sData = sheetSnap.data();
-                        const sStudents = sData.students || [];
-                        const sSubjects = sData.subjects || [];
-                        
-                        sStudents.forEach(std => {
-                            // Check Full Absent
-                            const subKeys = Object.keys(std.marks);
-                            const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
+        
+        // 🔥 FIX: Ye line missing thi, ise wapas add kiya gaya hai
+        const allClasses = Object.keys(classBooksMap);
+        
+        for (const cls of allClasses) {
+            const clsClean = cls.split('_')[0];
+            const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
+            
+            // Khud ko dubara fetch karne ki bajaye current data use karein agar same class hai
+            let sStudents = [];
+            let sSubjects = [];
 
-                            if (!isFullAbsent) {
-                                grandTotalStudents++; // Sirf hazir bache gino
-                                
-                                let isFail = false;
-                                if (parseFloat(std.percentage) < 40) isFail = true;
-                                if (!isFail) {
-                                    // Partial absent check
-                                    sSubjects.forEach(sub => { if (std.marks[sub] === 'A') isFail = true; });
-                                }
-                                if (!isFail) grandPassedStudents++;
-                            }
-                        });
+            if (cls === rawClass) {
+                sStudents = students;
+                sSubjects = finalSubjectsList;
+            } else {
+                const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
+                if (sheetSnap.exists()) {
+                    const sData = sheetSnap.data();
+                    sStudents = sData.students || [];
+                    sSubjects = sData.subjects || [];
+                }
+            }
+            
+            sStudents.forEach(std => {
+                // Check Full Absent
+                const subKeys = Object.keys(std.marks);
+                const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
+
+                if (!isFullAbsent) {
+                    grandTotalStudents++; // Sirf hazir bache gino
+                    
+                    let isFail = false;
+                    
+                    // 1. Percentage check
+                    if (parseFloat(std.percentage) < 40) isFail = true;
+                    
+                    // 2. Partial absent check
+                    if (!isFail) {
+                        sSubjects.forEach(sub => { if (std.marks[sub] === 'A') isFail = true; });
                     }
+                    
+                    // 3. Subject-wise marks check (Agar marks available hain)
+                    if (!isFail) {
+                        let failCount = 0;
+                         sSubjects.forEach(sub => {
+                            let max = (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') ? 25 : 100;
+                            let pass = max * 0.40;
+                            let m = std.marks[sub];
+                            if (typeof m === 'number' && m < pass) failCount++;
+                        });
+                        if(failCount >= 3) isFail = true;
+                    }
+
+                    if (!isFail) grandPassedStudents++;
                 }
+            });
+        }
 
-                let jamiaPassPerc = "0%";
-                if (grandTotalStudents > 0) {
-                    jamiaPassPerc = ((grandPassedStudents / grandTotalStudents) * 100).toFixed(1) + '%';
-                }
+        let jamiaPassPerc = "0%";
+        if (grandTotalStudents > 0) {
+            jamiaPassPerc = ((grandPassedStudents / grandTotalStudents) * 100).toFixed(1) + '%';
+        }
 
-                // 3. Admin Report Update
-                const [yStr, mStr] = monthKey.split('-');
-                const y = parseInt(yStr);
-                const m = parseInt(mStr) - 1;
-                const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-                const reportId = `${adminUid}_${acYear}_${y}_${m}`;
-                const reportRef = doc(db, 'monthly_reports', reportId);
-                const reportSnap = await getDoc(reportRef);
-                let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
-                testData = testData.filter(t => t.name !== jamiaName);
-                testData.push({ name: jamiaName, status: 'Test Hua', month: monthKey, percentage: jamiaPassPerc, wajah: '' });
-                await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
+        // 3. Admin Report Update
+        const [yStr, mStr] = monthKey.split('-');
+        const y = parseInt(yStr);
+        const m = parseInt(mStr) - 1;
+        const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+        const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+        const reportRef = doc(db, 'monthly_reports', reportId);
+        
+        // Report update safely
+        try {
+            const reportSnap = await getDoc(reportRef);
+            let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
+            
+            // Purani entry hata kar nayi update karein
+            testData = testData.filter(t => t.name !== jamiaName);
+            testData.push({ 
+                name: jamiaName, 
+                status: 'Test Hua', 
+                month: monthKey, 
+                percentage: jamiaPassPerc, 
+                wajah: '' 
+            });
+            
+            await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
+        } catch (repErr) {
+            console.warn("Report update failed (Minor error):", repErr);
+        }
 
-                if (!isAutoSave) {
-            alert(`Settings Save ho gayi!\nSubjects/Columns update ho chuke hain.`);
+        if (!isAutoSave) {
+            // Agar Admin ne columns update kiye hain aur students 0 hain
+            if (students.length === 0) {
+                alert("Subjects/Columns update ho gaye hain!");
+            } else {
+                alert(`Result Save ho gaya!\n\nJamia Total Pass: ${grandPassedStudents} / ${grandTotalStudents} (${jamiaPassPerc})`);
+            }
         }
 
     } catch (error) { 
@@ -769,7 +828,7 @@ window.saveResult = async (isAutoSave = false) => {
         if(!isAutoSave) alert("Error: " + error.message); 
     } 
     finally { 
-        if(btn) { btn.innerText = originalText; btn.disabled = false; }
+        if(btn && !isAutoSave) { btn.innerText = originalText; btn.disabled = false; }
     }
 };
 
@@ -1899,6 +1958,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
