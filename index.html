@@ -2775,16 +2775,19 @@ closeJamiaSigBtn.addEventListener('click', () => {
     jamiaSigModal.classList.add('hidden');
 });
 
-// --- UPDATED: JAMIA SIGNATURE AUTO-SAVE LOGIC ---
+// --- UPDATED: JAMIA SIGNATURE AUTO-SAVE LOGIC (FIXED) ---
 saveJamiaSigBtn.addEventListener('click', async () => {
     if (!currentSigHiddenInput) return;
 
     const newUrl = jamiaSigInput.value.trim();
+    // Button se row dhoondhein (Detached DOM issue se bachne ke liye ID use karein agar available ho, warna closest)
     const row = currentSigButton.closest('.test-row');
+    
+    // Naam ko trim karein taake spaces ka masla na ho
     const jamiaName = row.querySelector('h4').textContent.trim();
     const testMonth = row.querySelector('.test-month').value;
 
-    // 1. UI Update (Fauran preview dikhane ke liye)
+    // 1. UI Update (Fauran preview dikhane ke liye taake user ko wait na karna pade)
     currentSigHiddenInput.value = newUrl;
     if (newUrl) {
         const converted = convertGoogleDriveURL(newUrl);
@@ -2797,24 +2800,33 @@ saveJamiaSigBtn.addEventListener('click', async () => {
         currentSigButton.className = "add-jamia-sig-btn text-xs font-medium px-2 py-1 rounded border border-transparent hover:border-purple-300 transition text-purple-700 bg-purple-100";
     }
 
+    // Modal band karein
+    jamiaSigModal.classList.add('hidden');
+
     // 2. Database Auto-Save
     showLoader(true);
     try {
         // Report ID generate karein (Taki sahi mahine me save ho)
+        // Note: Empty object pass kiya hai taake purana data overwrite na ho, sirf ID set ho
         await saveReportData({}, testMonth); 
         
-        // Purana data nikalein
+        // Database se taza data layein
         const docSnap = await getDoc(reportRef);
         let testData = docSnap.exists() ? (docSnap.data().monthlyTest?.data || []) : [];
 
-        // Is Jamia ka index dhoondhein
-        const entryIndex = testData.findIndex(t => t.name === jamiaName);
+        // Is Jamia ka index dhoondhein (Case insensitive aur Trimmed match)
+        const entryIndex = testData.findIndex(t => t.name.trim().toLowerCase() === jamiaName.toLowerCase());
 
         if (entryIndex !== -1) {
             // Agar pehle se record hai to sirf signature update karein
             testData[entryIndex].signature = newUrl;
+            
+            // Safety: Agar status empty hai to form se utha lein
+            if (!testData[entryIndex].status) {
+                 testData[entryIndex].status = row.querySelector('.test-status').value || '';
+            }
         } else {
-            // Agar record nahi hai to naya object banayein (sirf signature ke saath)
+            // Agar record nahi hai to naya object banayein
             testData.push({
                 name: jamiaName,
                 status: row.querySelector('.test-status').value || '',
@@ -2825,21 +2837,20 @@ saveJamiaSigBtn.addEventListener('click', async () => {
             });
         }
 
-        // Firestore Update
+        // Firestore Update (Sirf Monthly Test ka data update karein)
         await updateDoc(reportRef, {
             "monthlyTest.data": testData,
             "monthlyTest.status": "Done" // Status update taake dashboard par reflect ho
         });
 
-        jamiaSigModal.classList.add('hidden');
-        showNotification("Signature automatically save ho gaya!");
+        showNotification("Signature successfully save ho gaya!", false); // Green notification
     } catch (error) {
         console.error("Signature auto-save error:", error);
-        showNotification("Signature save karne mein masla aaya.", true);
+        showNotification("Signature save karne mein masla aaya. Internet check karein.", true);
     } finally {
         showLoader(false);
     }
-});        
+});     
                  
         // ===============================================
 // =========  UPDATED SAVE TEST FUNCTION  ========
@@ -3472,6 +3483,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
