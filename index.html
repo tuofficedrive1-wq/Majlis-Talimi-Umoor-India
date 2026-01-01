@@ -1061,21 +1061,42 @@ selectedReportingDate = reportingDateInfo.monthInputFormat;
     const mode = urlParams.get('mode');
 
     if (mode === 'filling') {
-        // Agar signal mila to seedha Filling Panel (userView) kholein
-        dashboardView.classList.add('hidden');
-        userView.classList.remove('hidden');
-        
-        // (Optional) Mahina select karne ka logic set karein
-        const reportSelector = document.getElementById('report-month-selector');
-        const entrySelector = document.getElementById('entry-month-selector');
-        if (reportSelector && entrySelector) {
-            entrySelector.value = reportSelector.value;
-        }
-    } else {
-        // Agar koi signal nahi to Normal Dashboard kholein
-        dashboardView.classList.remove('hidden');
-        userView.classList.add('hidden');
+    // Agar signal mila to seedha Filling Panel (userView) kholein
+    dashboardView.classList.add('hidden');
+    userView.classList.remove('hidden');
+    
+    // (Optional) Mahina select karne ka logic set karein
+    const reportSelector = document.getElementById('report-month-selector');
+    const entrySelector = document.getElementById('entry-month-selector');
+    
+    // --- FIX START ---
+    // Dashboard ka mahina Entry selector mein set karein
+    if (reportSelector && entrySelector) {
+        entrySelector.value = reportSelector.value;
     }
+    
+    // Global date update karein taake listener sahi kaam kare
+    if (reportSelector && reportSelector.value) {
+        selectedReportingDate = reportSelector.value;
+    }
+
+    // Agar reports pehle se load ho chuki hain (cache se), to turant render karein
+    // (Agar nahi hui hain, to Step 1 wala listener isay sambhal lega)
+    if (allUserReports.length > 0) {
+        const info = getReportingMonthYearFromInput(selectedReportingDate);
+        renderUserDashboard(allUserReports, info);
+    }
+
+    // Default Tab Activate karein (Jaiza)
+    const firstTabBtn = userView.querySelector('.tab-btn[data-tab="jaiza"]');
+    if (firstTabBtn) firstTabBtn.click();
+    // --- FIX END ---
+
+} else {
+    // Agar koi signal nahi to Normal Dashboard kholein
+    dashboardView.classList.remove('hidden');
+    userView.classList.add('hidden');
+}
 
     showLoader(false);
 }
@@ -1529,14 +1550,24 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
             }
 
             unsubscribeUserReports = onSnapshot(q, (snapshot) => {
-                allUserReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderDashboard(allUserReports, selectedReportingDate); 
-         
-            }, (error) => {
-                console.error("Error fetching user reports: ", error);
-                showNotification("Could not load reports.", true);
-                renderDashboard([], selectedReportingDate); 
-            });
+    allUserReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // 1. Main Dashboard Tiles update karein
+    renderDashboard(allUserReports, selectedReportingDate); 
+    
+    // --- FIX START ---
+    // 2. Agar User abhi "Form View" (Filling Page) par hai, to wahan bhi data render karein
+    if (!userView.classList.contains('hidden')) {
+        const currentInfo = getReportingMonthYearFromInput(selectedReportingDate);
+        renderUserDashboard(allUserReports, currentInfo);
+    }
+    // --- FIX END ---
+
+}, (error) => {
+    console.error("Error fetching user reports: ", error);
+    showNotification("Could not load reports.", true);
+    renderDashboard([], selectedReportingDate); 
+});
             
             listenForAnnouncements();
         };
@@ -3441,6 +3472,7 @@ window.switchDashTab = (tabName) => {
     </script>
 </body>
 </html>
+
 
 
 
