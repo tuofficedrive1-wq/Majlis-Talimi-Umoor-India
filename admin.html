@@ -1120,30 +1120,22 @@ window.closeReportModal = closeModal;
                  button.removeEventListener('click', handleAdminTabSwitch); 
                  button.addEventListener('click', handleAdminTabSwitch); 
              });
-               // --- Analysis Button Handler (Sirf ye wala rakhna hai) ---
+               // --- Analysis Button Handler ---
 document.getElementById('btn-generate-analysis').addEventListener('click', () => {
-    // Note: Yahan hum naya ID use kar rahe hain
+    // Note: Hum naya ID 'analysis-report-type-select' use kar rahe hain
     const reportTypeElement = document.getElementById('analysis-report-type-select');
     
-    if (!reportTypeElement) {
-        console.error("Dropdown element nahi mila! ID check karein.");
-        return;
-    }
+    // Safety check
+    if (!reportTypeElement) return;
 
     const reportType = reportTypeElement.value;
     const container = document.getElementById('analysis-report-container');
 
     if (!reportType) {
-        // Notification function agar aapke paas hai to use karein, warna alert
-        if(typeof showNotification === 'function') {
-            showNotification("Please select a report type first.", true);
-        } else {
-            alert("Please select a report type first.");
-        }
+        alert("Please select a report type first.");
         return;
     }
 
-    // Agar reports fetch nahi hui hain
     if (!fetchedAdminReports || fetchedAdminReports.length === 0) {
         container.innerHTML = '<p class="text-center text-red-500 py-10">Reports load nahi hui hain. Pehle "Monthly Reports" tab mein jakar "Fetch Reports" karein.</p>';
         return;
@@ -1157,11 +1149,11 @@ document.getElementById('btn-generate-analysis').addEventListener('click', () =>
 });
 
 
-// --- Render Jaiza Table Function (Based on Jaiza Summary Logic) ---
+// --- Render Jaiza Table Function (Exact List-Based Counting) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
-    // Sirf active users filter karein (Admin ko hatakar)
+    // Active users filter
     const users = allUsersData
         .filter(u => u.id !== ADMIN_UID)
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -1170,73 +1162,74 @@ const renderAllUsersJaizaTable = () => {
 
     users.forEach(user => {
         const report = fetchedAdminReports.find(r => r.userId === user.id);
-        const totalJamia = user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0);
+        const totalJamiaTarget = user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0);
 
-        // Sets aur Counters
-        let uniqueJamiasDone = new Set(); // Unique Jamiaat count karne ke liye
-        let totalClassesCount = 0;        // Kul Classes
-        let totalBooksCount = 0;          // Kul Kitaben
-        let visitOnlyCount = 0;           // Sirf Visit
+        // --- COUNTING VARIABLES ---
+        let uniqueJamiasList = new Set();  // Jamia count ke liye
+        let uniqueClassesList = new Set(); // Class count ke liye (Jamia + Class combination)
+        let totalBooksList = 0;            // Books count ke liye
+        let visitOnlyCount = 0;
 
         if (report && report.jaizaReport && Array.isArray(report.jaizaReport.data)) {
-            report.jaizaReport.data.forEach(item => {
+            report.jaizaReport.data.forEach(form => {
                 
-                // Jaiza Summary wali Logic:
-                // Check karein ki kya waqai kaam hua hai? (Percentage ho ya Status Done ho)
-                // Note: Kuch purane forms mein shayad status na ho, isliye percentage check zaroori hai.
-                const hasWork = (parseInt(item.percentage) > 0 || item.status === 'Done');
+                // Check: Kya waqai kaam hua hai?
+                const isWorkDone = (parseInt(form.percentage) > 0 || form.status === 'Done');
 
-                if (hasWork) {
-                    // 1. JAMIA COUNT: Unique Jamia set mein dalen
-                    // (Jaiza form mein jamiaId ya jamiaName hota hai)
-                    const jName = item.jamiaId || item.jamiaName || item.name;
-                    if (jName) uniqueJamiasDone.add(jName.trim());
+                if (isWorkDone) {
+                    // 1. JAMIA COUNT
+                    // Form mein jamiaId ya name hota hai
+                    const jamiaName = form.jamiaId || form.jamiaName || form.name;
+                    if (jamiaName) {
+                        uniqueJamiasList.add(jamiaName.trim());
+                    }
 
-                    // 2. CLASS COUNT:
-                    // Jaiza Form ka har document ek Class hota hai.
-                    // Isliye har loop entry = 1 Class.
-                    totalClassesCount++;
+                    // 2. CLASS COUNT
+                    // Hum "Jamia Name + Class Name" ko unique key banayenge
+                    // Taake agar 'Bhopal' me 'Awwal' hai aur 'Indore' me 'Awwal' hai, to 2 count hon.
+                    const className = form.className || form.darja; 
+                    if (jamiaName && className) {
+                        uniqueClassesList.add(`${jamiaName.trim()}_${className.trim()}`);
+                    }
 
-                    // 3. BOOKS COUNT:
-                    // Jaiza Form mein 'books' ek array hota hai.
-                    // Hum check karenge ki kya books array maujood hai?
-                    if (item.books && Array.isArray(item.books)) {
-                        totalBooksCount += item.books.length;
+                    // 3. BOOKS COUNT
+                    // Seedha books array ki length uthayenge (yahi list banti hai)
+                    if (form.books && Array.isArray(form.books)) {
+                        totalBooksList += form.books.length;
                     } else {
-                        // Agar array nahi hai, toh shayad purana format ho, ya 0
-                        // Fallback agar direct number save ho (waise naye form mein array hi hai)
-                        totalBooksCount += (item.totalBooks || 0);
+                        // Agar books array na ho (purana data), to fallback
+                        totalBooksList += (form.totalBooks || 0);
                     }
 
                 } else {
-                    // Agar percentage 0 hai aur status Done nahi hai, to ye sirf Visit hai
+                    // Agar kaam nahi hua, sirf visit hai
                     visitOnlyCount++;
                 }
             });
         }
 
-        // Pending Calculation: Total Jamia assigned - Jitni unique Jamiaat ka kaam hua
-        const pendingCount = Math.max(0, totalJamia - uniqueJamiasDone.size);
+        // Pending = Total Target - Jitni Jamiaat mein kaam hua
+        const pendingCount = Math.max(0, totalJamiaTarget - uniqueJamiasList.size);
         
         // Row Styling
-        const rowClass = pendingCount === 0 && totalJamia > 0 ? 'bg-green-50' : 'hover:bg-gray-50';
+        const rowClass = pendingCount === 0 && totalJamiaTarget > 0 ? 'bg-green-50' : 'hover:bg-gray-50';
 
         rowsHtml += `
             <tr class="border-b ${rowClass} transition">
                 <td class="p-3 font-semibold urdu-font text-gray-800 border-r">${user.name || 'N/A'}</td>
                 
-                <td class="p-3 text-center font-bold text-gray-600 border-r">${totalJamia}</td>
+                <td class="p-3 text-center font-bold text-gray-600 border-r">${totalJamiaTarget}</td>
                 
-                <td class="p-3 text-center font-bold text-green-700 bg-green-50 border-r" title="Unique Jamiaat Done">
-                    ${uniqueJamiasDone.size}
+                <td class="p-3 text-center font-bold text-green-700 bg-green-50 border-r" title="Unique Jamiaat Checked">
+                    ${uniqueJamiasList.size}
                 </td>
                 
-                <td class="p-3 text-center font-bold text-blue-600 border-r" title="Total Classes Checked">
-                    ${totalClassesCount}
+                <td class="p-3 text-center font-bold text-blue-600 border-r" title="Unique Classes Checked">
+                    ${uniqueClassesList.size}
                 </td>
 
                 <td class="p-3 text-center font-bold text-purple-600 border-r" title="Total Books Checked">
-                    ${totalBooksCount}
+                    ${totalBooksList}
                 </td>
                 
                 <td class="p-3 text-center font-bold text-orange-500 border-r">${visitOnlyCount}</td>
@@ -1246,13 +1239,13 @@ const renderAllUsersJaizaTable = () => {
         `;
     });
 
-    // Table Container Update
+    // Table Structure
     container.innerHTML = `
         <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis (Detailed)</h4>
+                <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis</h4>
                 <div class="text-sm text-gray-500">
-                    <span class="mr-3"><i class="fas fa-users text-teal-600"></i> Users: ${users.length}</span>
+                    Calculated based on List Entries (Books & Classes)
                 </div>
             </div>
             <table class="w-full text-sm text-left border-collapse">
@@ -1264,7 +1257,7 @@ const renderAllUsersJaizaTable = () => {
                         <th class="p-3 text-center border-r border-teal-500">Classes Checked</th>
                         <th class="p-3 text-center border-r border-teal-500">Books Checked</th>
                         <th class="p-3 text-center border-r border-teal-500">Sirf Visit</th>
-                        <th class="p-3 text-center rounded-tr-lg">Pending (Jamia)</th>
+                        <th class="p-3 text-center rounded-tr-lg">Pending</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
@@ -3112,6 +3105,7 @@ window.openReportFromAnalysis = (id) => {
     </script>
 </body>
 </html>
+
 
 
 
