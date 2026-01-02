@@ -1676,29 +1676,36 @@ window.downloadReportCards = async () => {
             if (urduClassName.includes(key)) { englishClassName = val; break; }
         }
 
-        // --- FETCH SIGNATURES (UPDATED FOR SETUP STRUCTURE) ---
+        // --- FETCH SIGNATURES (FIXED: Fetch from Academic Years) ---
         const taleemiSigRaw = globalUserData.signatureTaleemi || null;
         const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
         
         let principalSigUrl = null;
 
-        // 1. Check Setup Structure (Karkardagi Setup) - PRIORITY
-        // Ye line Setup me save kiye gaye signature ko uthayegi
-        if (globalUserData.academicStructure && Array.isArray(globalUserData.academicStructure)) {
-             // Jamia ka naam match karke signature nikalo
-             const structEntry = globalUserData.academicStructure.find(j => j.jamiaName === jamiaName);
-             if (structEntry && structEntry.principalSignature) {
-                 principalSigUrl = getCorsFriendlyUrl(structEntry.principalSignature);
-             }
-        }
+        try {
+            // 1. Calculate Academic Year (Taaki sahi saal ka signature mile)
+            const [yStr, mStr] = monthKey.split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr) - 1; // JS months 0-11
+            const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+            
+            // 2. Check Setup in Academic Years (PRIORITY)
+            if (globalUserData.academicYears && 
+                globalUserData.academicYears[acYear] && 
+                globalUserData.academicYears[acYear].karkardagiStructure) {
+                
+                const structure = globalUserData.academicYears[acYear].karkardagiStructure;
+                // Jamia match karein
+                const structEntry = structure.find(j => j.jamiaName === jamiaName);
+                
+                if (structEntry && structEntry.principalSignature) {
+                    principalSigUrl = getCorsFriendlyUrl(structEntry.principalSignature);
+                    console.log("Signature found in Setup for year:", acYear);
+                }
+            }
 
-        // 2. Fallback: Agar Setup me nahi mila, to Monthly Report check karein (Purana Tareeqa)
-        if (!principalSigUrl) {
-            try {
-                const [yStr, mStr] = monthKey.split('-');
-                const y = parseInt(yStr);
-                const m = parseInt(mStr) - 1;
-                const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+            // 3. Fallback: Agar Setup me nahi mila, to Monthly Report check karein (Purana)
+            if (!principalSigUrl) {
                 const reportId = `${adminUid}_${acYear}_${y}_${m}`;
                 const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
                 if (reportSnap.exists()) {
@@ -1708,8 +1715,8 @@ window.downloadReportCards = async () => {
                         principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
                     }
                 }
-            } catch (err) { console.error("Sig fetch error:", err); }
-        }
+            }
+        } catch (err) { console.error("Sig fetch error:", err); }
 
         // --- DATA PREPARATION ---
         let studentsData = [];
@@ -2097,6 +2104,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
