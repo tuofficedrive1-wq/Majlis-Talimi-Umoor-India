@@ -290,6 +290,7 @@
                 currentMonthIndex,
                 currentReportYear
             );
+            loadAdminTeacherProfileOnly(currentJamiaName, teacher.id);
 
             // USER UPDATE OVERLAY
             loadTeacherUserUpdates(
@@ -462,84 +463,49 @@
         periodsSection.classList.remove('hidden');
         submitButtonArea.classList.remove('hidden');
 
-        // Load Previous Month Record
-        loadAndShowPreviousRecord(jamiaName, teacherId, monthIndex, year);
-
-        // 🔒 Existing submission check
-        checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year);
-    }
-
-    async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
+        async function loadAdminTeacherProfileOnly(jamiaName, teacherId) {
     try {
-        // 🔹 previous month calculate
-        let pm = currentMonth - 1;
-        let py = currentYear;
-        if (pm < 0) {
-            pm = 11;
-            py -= 1;
-        }
-
         const urlParams = new URLSearchParams(window.location.search);
         const activeYear = urlParams.get('activeYear');
         const userId     = urlParams.get('userId');
 
-        const submissionsRef = db.collection('teacher_submissions');
+        const userRef  = db.collection('users').doc(userId);
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) return;
 
-        // 🔹 STEP 1: teacher submissions check
-        const snap = await submissionsRef
-            .where('jamiaId', '==', jamiaName)
-            .where('teacherId', '==', teacherId)
-            .where('submissionMonth', '==', pm)
-            .where('submissionYear', '==', py)
-            .get();
+        const yearData = userSnap.data().academicYears?.[activeYear];
+        if (!yearData) return;
 
-        let periodData = {};
+        const jamia = yearData.karkardagiStructure
+            ?.find(j => j.jamiaName === jamiaName);
+        if (!jamia) return;
 
-        if (!snap.empty) {
-            // ✅ CASE A: teacher data mila
-            snap.forEach(doc => {
-                const d = doc.data();
-                if (!d.periodId) return;
+        const teacher = jamia.teachers
+            ?.find(t => t.id === teacherId);
+        if (!teacher) return;
 
-                if (!periodData[d.periodId]) {
-                    periodData[d.periodId] = {
-                        pages: 0,
-                        lastIbarat: d.lastIbarat || '-',
-                        lastPageNo: d.lastPageNo || '-'
-                    };
-                }
-                periodData[d.periodId].pages += parseInt(d.pagesTaught || 0, 10);
-            });
-        } else {
-            // ❗ CASE B: teacher data nahi mila → ADMIN karkardagi uthao
-            const userRef = db.collection('users').doc(userId);
-            const userSnap = await userRef.get();
-            if (!userSnap.exists) return;
+        // 🔹 wahi data jo ADMIN Summary → Teacher Profile me hota hai
+        teacher.periods.forEach(p => {
+            const box = document.getElementById(`prev-record-${p.id}`);
+            if (!box) return;
 
-            const yearData = userSnap.data().academicYears?.[activeYear];
-            if (!yearData) return;
+            const totalPages = p.totalPages || 0;
+            const taught     = p.totalTaughtPages || 0;
+            const remaining  = Math.max(totalPages - taught, 0);
 
-            const jamia = yearData.karkardagiStructure
-                ?.find(j => j.jamiaName === jamiaName);
-            if (!jamia) return;
+            box.querySelector('.content').innerHTML = `
+                <div>کل صفحات (سمسٹر): <b>${totalPages}</b></div>
+                <div>کل پڑھائے گئے: <b>${taught}</b></div>
+                <div>بقیہ صفحات: <b>${remaining}</b></div>
+            `;
+            box.classList.remove('hidden');
+        });
 
-            const teacher = jamia.teachers
-                ?.find(t => t.id === teacherId);
-            if (!teacher || !Array.isArray(teacher.periods)) return;
+    } catch (e) {
+        console.error('Admin teacher profile load error:', e);
+    }
+}
 
-            teacher.periods.forEach(p => {
-                if (!Array.isArray(p.monthlyData)) return;
-
-                const m = p.monthlyData.find(x => x.monthIndex === pm);
-                if (!m) return;
-
-                periodData[p.id] = {
-                    pages: parseInt(m.pagesTaught || 0, 10),
-                    lastIbarat: m.lastIbarat || '-',
-                    lastPageNo: m.lastPageNo || '-'
-                };
-            });
-        }
 
         // 🔹 FINAL RENDER (blue box)
         Object.keys(periodData).forEach(pid => {
@@ -1198,6 +1164,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
