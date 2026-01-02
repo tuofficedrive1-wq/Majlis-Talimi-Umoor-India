@@ -469,141 +469,97 @@
         checkExistingSubmissionForTeacher(jamiaName, teacherId, monthIndex, year);
     }
 
-    // --- NEW FUNCTION TO SHOW PREVIOUS MONTH DATA ---
-   // --- UPDATED BLUE BOX FUNCTION (Smart Calculation for Pages + Latest Text) ---
     async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
-        try {
-            // 1. Previous Month Calculate karein
-            let pm = currentMonth - 1;
-            let py = currentYear;
-            if (pm < 0) { 
-                pm = 11; 
-                py -= 1; 
-            }
+    try {
+        // 🔹 previous month calculate
+        let pm = currentMonth - 1;
+        let py = currentYear;
+        if (pm < 0) {
+            pm = 11;
+            py -= 1;
+        }
 
-            // URL se Active Year uthayen (Taake mix na ho)
-            const urlParams = new URLSearchParams(window.location.search);
-            const currentActiveYear = urlParams.get('activeYear');
+        const urlParams = new URLSearchParams(window.location.search);
+        const activeYear = urlParams.get('activeYear');
+        const userId     = urlParams.get('userId');
 
-            const submissionsRef = db.collection('teacher_submissions');
-            const q = submissionsRef
-                .where('jamiaId', '==', jamiaName)
-                .where('teacherId', '==', teacherId)
-                .where('submissionMonth', '==', pm)
-                .where('submissionYear', '==', py);
+        const submissionsRef = db.collection('teacher_submissions');
 
-            const snap = await q.get();
-            if (snap.empty) return; // Agar pichle mahine koi data nahi to wapis jayen
+        // 🔹 STEP 1: teacher submissions check
+        const snap = await submissionsRef
+            .where('jamiaId', '==', jamiaName)
+            .where('teacherId', '==', teacherId)
+            .where('submissionMonth', '==', pm)
+            .where('submissionYear', '==', py)
+            .get();
 
-            // 2. Data Grouping Logic
-            const periodData = {}; 
+        let periodData = {};
 
+        if (!snap.empty) {
+            // ✅ CASE A: teacher data mila
             snap.forEach(doc => {
                 const d = doc.data();
                 if (!d.periodId) return;
 
-                // 🛑 Active Year Check (Important)
-                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
-
-                const pid = d.periodId;
-                const ts = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
-
-                if (!periodData[pid]) {
-                    periodData[pid] = {
-                        teacherSum: 0,      // Teacher ke pages ka total
-                        adminVal: 0,        // Admin ke pages
-                        adminTs: 0,         // Admin update ka time
-                        latestTs: 0,        // Text ke liye sabse latest time
-                        lastPageNo: '-',
-                        lastIbarat: '-'
+                if (!periodData[d.periodId]) {
+                    periodData[d.periodId] = {
+                        pages: 0,
+                        lastIbarat: d.lastIbarat || '-',
+                        lastPageNo: d.lastPageNo || '-'
                     };
                 }
-
-                const slot = periodData[pid];
-
-                // --- TEXT DATA (Hamesha Latest wala uthana hai) ---
-                if (ts > slot.latestTs) {
-                    slot.latestTs = ts;
-                    // Default values from doc
-                    slot.lastPageNo = d.lastPageNo;
-                    slot.lastIbarat = d.lastIbarat;
-
-                    // Agar Admin update hai, to check karein changedValues mein text hai ya nahi
-                    if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
-                        const cvText = d.changedValues.find(x => x.lastIbarat !== undefined);
-                        if (cvText) slot.lastIbarat = cvText.lastIbarat;
-                        
-                        const cvPage = d.changedValues.find(x => x.lastPageNo !== undefined);
-                        if (cvPage) slot.lastPageNo = cvPage.lastPageNo;
-                    }
-                }
-
-                // --- PAGES DATA (Smart Calculation) ---
-                // CASE A: Admin Update
-                if (d.role === 'user_update' && Array.isArray(d.changedValues)) {
-                    d.changedValues.forEach(change => {
-                        if (change.periodId === pid && change.pagesTaught !== undefined && change.pagesTaught !== null) {
-                            const val = parseInt(change.pagesTaught, 10);
-                            // Sirf tab maane jab value 0 se badi ho
-                            if (val > 0) {
-                                // Agar multiple admin updates hain to latest wali leni hai
-                                if (ts > slot.adminTs) {
-                                    slot.adminVal = val;
-                                    slot.adminTs = ts;
-                                }
-                            }
-                        }
-                    });
-                } 
-                // CASE B: Teacher Submission
-                else if (d.role !== 'user_update') {
-                    const val = parseInt(d.pagesTaught || 0, 10);
-                    slot.teacherSum += val; // Teacher ka data JODTE (Sum) jayen
-                }
+                periodData[d.periodId].pages += parseInt(d.pagesTaught || 0, 10);
             });
+        } else {
+            // ❗ CASE B: teacher data nahi mila → ADMIN karkardagi uthao
+            const userRef = db.collection('users').doc(userId);
+            const userSnap = await userRef.get();
+            if (!userSnap.exists) return;
 
-            // 3. Final Render
-            Object.keys(periodData).forEach(pid => {
-                const container = document.getElementById(`prev-record-${pid}`);
-                if (container) {
-                    const data = periodData[pid];
-                    
-                    // Faisla: Agar Admin Value hai to wo, warna Teacher Sum
-                    let finalPages = 0;
-                    if (data.adminVal > 0) {
-                        finalPages = data.adminVal;
-                    } else {
-                        finalPages = data.teacherSum;
-                    }
+            const yearData = userSnap.data().academicYears?.[activeYear];
+            if (!yearData) return;
 
-                    const html = `
-                        <div class="flex flex-col sm:flex-row sm:justify-between gap-2 sm:gap-4 text-xs sm:text-sm">
-                             <div>
-                                <span class="font-bold text-gray-700">پڑھائے گئے صفحات:</span> 
-                                <span class="text-blue-800 font-mono font-bold bg-blue-100 px-2 py-0.5 rounded border border-blue-200">
-                                    ${finalPages}
-                                </span>
-                             </div>
-                             <div>
-                                <span class="font-bold text-gray-700">آخری صفحہ نمبر:</span> 
-                                <span class="text-blue-800 font-mono font-bold">${data.lastPageNo || '-'}</span>
-                             </div>
-                             <div>
-                                <span class="font-bold text-gray-700">آخری عبارت:</span> 
-                                <span class="text-blue-800">${escapeHtml(data.lastIbarat || '-')}</span>
-                             </div>
-                        </div>
-                    `;
+            const jamia = yearData.karkardagiStructure
+                ?.find(j => j.jamiaName === jamiaName);
+            if (!jamia) return;
 
-                    container.querySelector('.content').innerHTML = html;
-                    container.classList.remove('hidden');
-                }
+            const teacher = jamia.teachers
+                ?.find(t => t.id === teacherId);
+            if (!teacher || !Array.isArray(teacher.periods)) return;
+
+            teacher.periods.forEach(p => {
+                if (!Array.isArray(p.monthlyData)) return;
+
+                const m = p.monthlyData.find(x => x.monthIndex === pm);
+                if (!m) return;
+
+                periodData[p.id] = {
+                    pages: parseInt(m.pagesTaught || 0, 10),
+                    lastIbarat: m.lastIbarat || '-',
+                    lastPageNo: m.lastPageNo || '-'
+                };
             });
-
-        } catch (e) {
-            console.error("Error loading previous month data:", e);
         }
+
+        // 🔹 FINAL RENDER (blue box)
+        Object.keys(periodData).forEach(pid => {
+            const box = document.getElementById(`prev-record-${pid}`);
+            if (!box) return;
+
+            const d = periodData[pid];
+            box.querySelector('.content').innerHTML = `
+                <div>پڑھائے گئے صفحات: <b>${d.pages}</b></div>
+                <div>آخری عبارت: ${d.lastIbarat}</div>
+                <div>صفحہ نمبر: ${d.lastPageNo}</div>
+            `;
+            box.classList.remove('hidden');
+        });
+
+    } catch (e) {
+        console.error('Previous record load error:', e);
     }
+}
+
 
 
     // ----------------- REDESIGNED & FILTERED UPDATE FUNCTION -----------------
@@ -1242,6 +1198,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
