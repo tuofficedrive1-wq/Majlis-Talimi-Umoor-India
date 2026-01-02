@@ -1676,25 +1676,39 @@ window.downloadReportCards = async () => {
             if (urduClassName.includes(key)) { englishClassName = val; break; }
         }
 
-        // --- FETCH SIGNATURES ---
+        // --- FETCH SIGNATURES (UPDATED FOR SETUP STRUCTURE) ---
         const taleemiSigRaw = globalUserData.signatureTaleemi || null;
         const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
+        
         let principalSigUrl = null;
-        try {
-            const [yStr, mStr] = monthKey.split('-');
-            const y = parseInt(yStr);
-            const m = parseInt(mStr) - 1;
-            const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-            const reportId = `${adminUid}_${acYear}_${y}_${m}`;
-            const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
-            if (reportSnap.exists()) {
-                const reportData = reportSnap.data();
-                const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
-                if (jamiaEntry && jamiaEntry.signature) {
-                    principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
+
+        // 1. Check Setup Structure (Karkardagi Setup) - PRIORITY
+        // Ye naya code hai jo Setup me save kiye gaye signature ko uthayega
+        if (globalUserData.academicStructure && Array.isArray(globalUserData.academicStructure)) {
+             const structEntry = globalUserData.academicStructure.find(j => j.jamiaName === jamiaName);
+             if (structEntry && structEntry.principalSignature) {
+                 principalSigUrl = getCorsFriendlyUrl(structEntry.principalSignature);
+             }
+        }
+
+        // 2. Fallback: Agar Setup me nahi mila, to Monthly Report check karein (Purana Tareeqa)
+        if (!principalSigUrl) {
+            try {
+                const [yStr, mStr] = monthKey.split('-');
+                const y = parseInt(yStr);
+                const m = parseInt(mStr) - 1;
+                const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+                const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+                const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
+                if (reportSnap.exists()) {
+                    const reportData = reportSnap.data();
+                    const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
+                    if (jamiaEntry && jamiaEntry.signature) {
+                        principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
+                    }
                 }
-            }
-        } catch (err) { console.error(err); }
+            } catch (err) { console.error("Sig fetch error:", err); }
+        }
 
         // --- DATA PREPARATION ---
         let studentsData = [];
@@ -2082,6 +2096,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
