@@ -1120,12 +1120,9 @@ window.closeReportModal = closeModal;
                  button.removeEventListener('click', handleAdminTabSwitch); 
                  button.addEventListener('click', handleAdminTabSwitch); 
              });
-               // --- Analysis Button Handler ---
-document.getElementById('btn-generate-analysis').addEventListener('click', () => {
-    // Note: Hum naya ID 'analysis-report-type-select' use kar rahe hain
+               // --- Analysis Button Handler (Updated for Detailed Test Data) ---
+document.getElementById('btn-generate-analysis').addEventListener('click', async () => {
     const reportTypeElement = document.getElementById('analysis-report-type-select');
-    
-    // Safety check
     if (!reportTypeElement) return;
 
     const reportType = reportTypeElement.value;
@@ -1136,14 +1133,39 @@ document.getElementById('btn-generate-analysis').addEventListener('click', () =>
         return;
     }
 
-    if (!fetchedAdminReports || fetchedAdminReports.length === 0) {
-        container.innerHTML = '<p class="text-center text-red-500 py-10">Reports load nahi hui hain. Pehle "Monthly Reports" tab mein jakar "Fetch Reports" karein.</p>';
-        return;
-    }
+    // Loader dikhayen
+    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Data calculate ho raha hai...</p></div>';
 
     if (reportType === 'jaiza') {
         renderAllUsersJaizaTable();
-    } else {
+    } 
+    else if (reportType === 'test') {
+        // --- MONTHLY TEST DATA FETCHING ---
+        try {
+            // 1. Current selected month/year nikalein
+            const monthName = document.getElementById('admin-month-select').value;
+            const yearVal = document.getElementById('admin-year-select').value;
+            
+            // Month name to number convert karein (January = 01)
+            const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+            const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`; // e.g., "2025-12"
+
+            // 2. Query: monthly_test_sheets se is mahine ka data layein
+            const sheetsRef = collection(db, "monthly_test_sheets");
+            const q = query(sheetsRef, where("month", "==", monthKey));
+            
+            const snapshot = await getDocs(q);
+            const allTestSheets = snapshot.docs.map(doc => doc.data());
+
+            // 3. Table Render karein
+            renderAllUsersMonthlyTestTable(allTestSheets);
+
+        } catch (err) {
+            console.error(err);
+            container.innerHTML = `<p class="text-center text-red-500 py-10">Error loading test data: ${err.message}</p>`;
+        }
+    } 
+    else {
         container.innerHTML = '<p class="text-center text-gray-500 py-10">Is report ka analysis abhi ban raha hai...</p>';
     }
 });
@@ -1287,6 +1309,123 @@ const renderAllUsersJaizaTable = () => {
         </div>
     `;
 };
+               // --- Render Monthly Test Analysis Table (Detailed) ---
+const renderAllUsersMonthlyTestTable = (allSheets) => {
+    const container = document.getElementById('analysis-report-container');
+    
+    // Active users filter
+    const users = allUsersData
+        .filter(u => u.id !== ADMIN_UID)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    let rowsHtml = '';
+
+    users.forEach(user => {
+        // User ke total Jamia target
+        const totalJamiaTarget = user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0);
+
+        // Sirf is user ki sheets filter karein
+        const userSheets = allSheets.filter(sheet => sheet.adminUid === user.id);
+
+        // --- STATS CALCULATION ---
+        let uniqueJamias = new Set();
+        let totalClasses = userSheets.length; // Jitni sheets, utni classes
+        let totalStudents = 0;
+        let totalPassed = 0;
+        let totalFailed = 0;
+
+        userSheets.forEach(sheet => {
+            // Jamia Count
+            if (sheet.jamiaName) uniqueJamias.add(sheet.jamiaName.trim());
+
+            // Student Stats
+            if (Array.isArray(sheet.students)) {
+                totalStudents += sheet.students.length;
+
+                sheet.students.forEach(std => {
+                    // Pass/Fail Logic: 
+                    // Agar obtained marks total ke 40% se zyada hain to PASS, warna FAIL
+                    // Aap is logic ko badal sakte hain
+                    const obtained = Number(std.obtainedMarks) || 0;
+                    const total = Number(std.totalMarks) || 100;
+                    
+                    // Agar marks entry nahi hai, lekin student maujood hai to use fail nahi ginenge (Depends on policy)
+                    // Filhal simple 40% rule:
+                    if (total > 0 && (obtained / total) >= 0.4) {
+                        totalPassed++;
+                    } else {
+                        totalFailed++;
+                    }
+                });
+            }
+        });
+
+        const jamiaDoneCount = uniqueJamias.size;
+        const pendingJamia = Math.max(0, totalJamiaTarget - jamiaDoneCount);
+
+        // Row Styling
+        const rowClass = pendingJamia === 0 && totalJamiaTarget > 0 ? 'bg-green-50' : 'hover:bg-gray-50';
+
+        rowsHtml += `
+            <tr class="border-b ${rowClass} transition">
+                <td class="p-3 font-semibold urdu-font text-gray-800 border-r">${user.name || 'N/A'}</td>
+                
+                <td class="p-3 text-center font-bold text-gray-600 border-r" title="Kul Jamiaat">
+                    ${totalJamiaTarget}
+                </td>
+                
+                <td class="p-3 text-center font-bold text-teal-700 border-r" title="Kitne Jamia me Test hua">
+                    ${jamiaDoneCount}
+                </td>
+                
+                <td class="p-3 text-center font-bold text-blue-600 border-r" title="Kul Classes jinka test hua">
+                    ${totalClasses}
+                </td>
+
+                <td class="p-3 text-center font-bold text-purple-600 border-r" title="Kul Students jinhone test diya">
+                    ${totalStudents}
+                </td>
+                
+                <td class="p-3 text-center font-bold text-green-600 border-r" title="Pass">
+                    ${totalPassed}
+                </td>
+
+                <td class="p-3 text-center font-bold text-red-500" title="Fail">
+                    ${totalFailed}
+                </td>
+            </tr>
+        `;
+    });
+
+    // Table Structure
+    container.innerHTML = `
+        <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                <h4 class="font-bold text-lg text-gray-700">Monthly Test Analysis (Detailed)</h4>
+                <div class="text-sm text-gray-500">
+                    Data Source: Monthly Test Sheets
+                </div>
+            </div>
+            <table class="w-full text-sm text-left border-collapse">
+                <thead class="bg-indigo-600 text-white uppercase text-xs">
+                    <tr>
+                        <th class="p-3 rounded-tl-lg border-r border-indigo-500">User Name</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Total Jamia</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Test Hua</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Kul Classes</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Kul Students</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Pass</th>
+                        <th class="p-3 text-center rounded-tr-lg">Fail</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    ${rowsHtml || '<tr><td colspan="7" class="p-4 text-center text-gray-500">Is mahine koi test sheet nahi mili.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    `;
+};
+               
 // 1. Dropdown ko populate karne ka function
 const populateAnalysisDropdown = () => {
     const select = document.getElementById('analysis-user-select');
@@ -3105,6 +3244,7 @@ window.openReportFromAnalysis = (id) => {
     </script>
 </body>
 </html>
+
 
 
 
