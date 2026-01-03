@@ -2612,6 +2612,29 @@ const renderTestTab = (currentReport) => {
             const baseUrl = `${window.location.origin}${window.location.pathname.replace('index.html', '')}`;
             const formUrl = `monthly-test.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthInputFormat)}`;
             const viewUrl = `${formUrl}&mode=view`;
+            // ... Action buttons logic ke baad ...
+
+// 👇 Ye Line Add Karein (Stats dikhane ke liye placeholder)
+const statsId = `stats-${index}`; // Unique ID har row ke liye
+const statsHTML = `<div id="${statsId}" class="mt-2 text-xs text-gray-500 flex flex-col gap-1">
+    <span class="flex items-center"><i class="fas fa-spinner fa-spin mr-1"></i> Checking data...</span>
+</div>`;
+
+// Row HTML return karte waqt actionButtons ke baad statsHTML lagayein
+return `
+<div class="test-row p-4 border rounded-lg bg-white shadow-sm grid grid-cols-1 md:grid-cols-12 gap-4 items-start mb-4 transition hover:shadow-md" id="test-row-${index}">
+    
+    <div class="md:col-span-4">
+        <h4 class="font-bold text-gray-800 urdu-font text-lg leading-tight mb-2">${jamiaName}</h4>
+        
+        <div class="flex flex-wrap items-center gap-2 mt-1">
+            ${actionButtons}
+            <span class="text-gray-300">|</span>
+            </div>
+
+        ${statsHTML}
+    </div>
+    </div>`;
 
             // --- 1. Action Buttons Raw HTML (Div Wrapper Hata Diya) ---
             let actionButtons = '';
@@ -2697,6 +2720,12 @@ const btnColor = '';    // ❌ no styling
         }).join('');
 
         attachTestRowListeners();
+
+// 👇 Ye Loop Add Karein: Har Jamia ke liye stats fetch karega
+allJamiaat.forEach((jamiaName, index) => {
+    fetchTestStats(jamiaName, monthInputFormat, `stats-${index}`);
+});
+        
 
     } else {
         testListContainer.innerHTML = '<p class="text-center text-gray-500 mt-4">Koi Jamia add nahi hai.</p>';
@@ -3445,12 +3474,71 @@ window.switchDashTab = (tabName) => {
     activeBtn.classList.remove('text-gray-500', 'border-transparent');
     activeBtn.classList.add('text-teal-600', 'border-teal-600');
 };
+        // 🔹 Function to fetch detailed stats for Monthly Test
+async function fetchTestStats(jamiaName, monthKey, elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    try {
+        const sheetsRef = collection(db, "monthly_test_sheets");
+        const q = query(
+            sheetsRef,
+            where("adminUid", "==", currentUser.uid),
+            where("jamiaName", "==", jamiaName),
+            where("month", "==", monthKey)
+        );
+
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            el.innerHTML = `<span class="text-orange-500"><i class="fas fa-exclamation-circle"></i> Abhi koi data add nahi hua.</span>`;
+            return;
+        }
+
+        let totalClasses = snapshot.size; // Kitne documents hain (har class ka ek doc hota hai)
+        let totalStudents = 0;
+        let pdfDownloads = 0;
+        let reportCardDownloads = 0;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            // Students count
+            if (data.students && Array.isArray(data.students)) {
+                totalStudents += data.students.length;
+            }
+            // Download Counts (Agar aapne Step 2 kiya hai to ye kaam karega)
+            pdfDownloads += (data.downloadCount || 0);
+            reportCardDownloads += (data.reportCardCount || 0);
+        });
+
+        // HTML Update karein
+        el.innerHTML = `
+            <div class="flex items-center gap-3 mt-1">
+                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                    <i class="fas fa-chalkboard text-xs"></i> <b>${totalClasses}</b> Classes
+                </span>
+                <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
+                    <i class="fas fa-user-graduate text-xs"></i> <b>${totalStudents}</b> Students
+                </span>
+            </div>
+            ${ (pdfDownloads > 0 || reportCardDownloads > 0) ? `
+            <div class="text-xs text-gray-400 mt-1">
+                <i class="fas fa-download"></i> PDF: ${pdfDownloads} | Cards: ${reportCardDownloads}
+            </div>` : '' }
+        `;
+
+    } catch (error) {
+        console.error("Stats fetch error:", error);
+        el.innerHTML = `<span class="text-red-400 text-xs">Error loading stats</span>`;
+    }
+}
 
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
