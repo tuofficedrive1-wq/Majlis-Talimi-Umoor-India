@@ -1149,7 +1149,7 @@ document.getElementById('btn-generate-analysis').addEventListener('click', () =>
 });
 
 
-// --- Render Jaiza Table Function (Correct Logic) ---
+// --- Render Jaiza Table Function (Jamia-wise Correct Calculation) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
@@ -1165,58 +1165,68 @@ const renderAllUsersJaizaTable = () => {
         const totalJamiaTarget = user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0);
 
         // --- COUNTING VARIABLES ---
-        let uniqueJamiasList = new Set();  // Jamia count ke liye
-        let visitOnlyCount = 0;
+        let uniqueJamiasList = new Set();  // Jamia count ke liye (Done)
+        let visitOnlyList = new Set();     // Sirf Visit wali Jamiaat ke liye
         
-        // Map banayenge taake har Jamia ka total sirf ek baar count ho
-        let jamiaTotalsMap = {}; // Format: { 'JamiaID': { classes: 0, books: 0 } }
+        // Is Map ka kaam hai har Jamia ka Total Class/Book sirf ek baar hold karna
+        // Structure: { 'JamiaID': { classes: 3, books: 9 } }
+        let jamiaStatsMap = {}; 
 
         if (report && report.jaizaReport && Array.isArray(report.jaizaReport.data)) {
             report.jaizaReport.data.forEach(form => {
                 
-                // Check: Kya waqai kaam hua hai?
+                // Jamia ka naam ya ID nikalna zaroori hai grouping ke liye
+                const jamiaKey = form.jamiaId || form.jamiaName || form.name;
+                
+                if (!jamiaKey) return; // Agar naam nahi to skip karein
+
+                // Check: Kya waqai kaam hua hai? (Percentage > 0 ya Status Done)
                 const isWorkDone = (parseInt(form.percentage) > 0 || form.status === 'Done');
 
                 if (isWorkDone) {
-                    // 1. JAMIA COUNT
-                    const jamiaIdentifier = form.jamiaId || form.jamiaName || form.name || "Unknown";
-                    if (jamiaIdentifier) {
-                        uniqueJamiasList.add(jamiaIdentifier.trim());
-                    }
+                    // 1. UNIQUE JAMIA DONE COUNT
+                    uniqueJamiasList.add(jamiaKey);
 
-                    // 2. CLASS & BOOK COUNT LOGIC
+                    // 2. CLASSES & BOOKS LOGIC (Grouping by Jamia)
                     // Agar ye Jamia pehle map me nahi hai, to initialize karein
-                    if (!jamiaTotalsMap[jamiaIdentifier]) {
-                        jamiaTotalsMap[jamiaIdentifier] = { classes: 0, books: 0 };
+                    if (!jamiaStatsMap[jamiaKey]) {
+                        jamiaStatsMap[jamiaKey] = { classes: 0, books: 0 };
                     }
 
-                    // Har form me us Jamia ka total likha hota hai.
-                    // Hum MAX value lenge taake agar kisi ek doc me galti se 0 ho to sahi number aa jaye.
-                    const formClasses = Number(form.totalClasses) || 0;
-                    const formBooks = Number(form.totalBooks) || 0;
+                    // Har form me us Jamia ka "Total" likha hota hai.
+                    // Hum MAX value lenge. Is se agar 3 forms hain aur sab me "Total Classes: 3" likha hai,
+                    // to hum usay jodenge nahi, balki sirf '3' hi manenge.
+                    
+                    const savedClasses = Number(form.totalClasses) || 0;
+                    const savedBooks = Number(form.totalBooks) || 0;
 
-                    if (formClasses > jamiaTotalsMap[jamiaIdentifier].classes) {
-                        jamiaTotalsMap[jamiaIdentifier].classes = formClasses;
+                    if (savedClasses > jamiaStatsMap[jamiaKey].classes) {
+                        jamiaStatsMap[jamiaKey].classes = savedClasses;
                     }
-                    if (formBooks > jamiaTotalsMap[jamiaIdentifier].books) {
-                        jamiaTotalsMap[jamiaIdentifier].books = formBooks;
+                    if (savedBooks > jamiaStatsMap[jamiaKey].books) {
+                        jamiaStatsMap[jamiaKey].books = savedBooks;
                     }
 
                 } else {
                     // Agar kaam nahi hua, sirf visit hai
-                    visitOnlyCount++;
+                    // Visit ko bhi set me dalenge taake duplicate visit count na ho
+                    if (!uniqueJamiasList.has(jamiaKey)) {
+                         visitOnlyList.add(jamiaKey);
+                    }
                 }
             });
         }
 
         // Ab Map se Grand Total nikalein (Sab Jamiaat ka mila kar)
-        let totalClassesCount = 0;
-        let totalBooksCount = 0;
+        let grandTotalClasses = 0;
+        let grandTotalBooks = 0;
 
-        Object.values(jamiaTotalsMap).forEach(val => {
-            totalClassesCount += val.classes;
-            totalBooksCount += val.books;
+        Object.values(jamiaStatsMap).forEach(stat => {
+            grandTotalClasses += stat.classes;
+            grandTotalBooks += stat.books;
         });
+
+        const visitOnlyCount = visitOnlyList.size;
 
         // Pending = Total Target - Jitni Jamiaat mein kaam hua
         const pendingCount = Math.max(0, totalJamiaTarget - uniqueJamiasList.size);
@@ -1234,12 +1244,12 @@ const renderAllUsersJaizaTable = () => {
                     ${uniqueJamiasList.size}
                 </td>
                 
-                <td class="p-3 text-center font-bold text-blue-600 border-r" title="Total Classes">
-                    ${totalClassesCount}
+                <td class="p-3 text-center font-bold text-blue-600 border-r" title="Total Classes (Jamia-wise)">
+                    ${grandTotalClasses}
                 </td>
 
-                <td class="p-3 text-center font-bold text-purple-600 border-r" title="Total Books">
-                    ${totalBooksCount}
+                <td class="p-3 text-center font-bold text-purple-600 border-r" title="Total Books (Jamia-wise)">
+                    ${grandTotalBooks}
                 </td>
                 
                 <td class="p-3 text-center font-bold text-orange-500 border-r">${visitOnlyCount}</td>
@@ -1255,7 +1265,7 @@ const renderAllUsersJaizaTable = () => {
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
                 <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis</h4>
                 <div class="text-sm text-gray-500">
-                    Calculated based on List Entries (Books & Classes)
+                    Calculated Jamia-wise (Total Classes & Books grouped by Jamia)
                 </div>
             </div>
             <table class="w-full text-sm text-left border-collapse">
@@ -3095,6 +3105,7 @@ window.openReportFromAnalysis = (id) => {
     </script>
 </body>
 </html>
+
 
 
 
