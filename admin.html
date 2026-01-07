@@ -1334,23 +1334,21 @@ const renderAllUsersJaizaTable = () => {
         </div>
     `;
 };
-               // --- UPDATED RENDER FUNCTION WITH FILTER ---
+               // --- UPDATED: CORRECTED MONTHLY TEST SUMMARY (Class/Sub fix + Pass Logic) ---
 const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
     const container = document.getElementById('analysis-report-container');
     
     // 1. FILTER LOGIC
     const filteredSheets = allSheets.filter(sheet => {
-        // Subject ka naam nikalein (lowercase karke check karenge)
-        const sub = (sheet.subject || sheet.kitab || '').toLowerCase();
+        // Subject dhoondne ke liye har mumkin field check karein
+        const sub = (sheet.subject || sheet.sub || sheet.kitab || sheet.book || sheet.mazmoon || '').toLowerCase();
         
-        // Asri subjects ki pehchan (English, Math, Hisab, Angrezi)
-        const isAsri = sub.includes('english') || sub.includes('math') || sub.includes('hisab') || sub.includes('angrezi');
+        const isAsri = sub.includes('english') || sub.includes('math') || sub.includes('hisab') || sub.includes('angrezi') || sub.includes('science');
 
         if (filterMode === 'asri') {
-            return isAsri; // Sirf Asri dikhaye
+            return isAsri; 
         } else {
-            return true; // Sab kuch dikhaye (All Subjects)
-            // Agar aap chahte hain ke 'All' mein Asri NA aaye, to yahan 'return !isAsri;' likhein
+            return true; 
         }
     });
 
@@ -1366,28 +1364,66 @@ const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
     const sortedSheets = filteredSheets.sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || ''));
 
     sortedSheets.forEach((sheet, index) => {
-        // ... (Baaki wahi purana code calculation ke liye) ...
+        // Teacher Name
         const user = allUsersData.find(u => u.id === sheet.adminUid);
         const teacherName = user ? (user.name || user.email) : (sheet.teacherName || 'Unknown');
         const jamiaName = sheet.jamiaName || 'N/A';
-        const className = sheet.className || 'N/A';
-        const subject = sheet.subject || sheet.kitab || '-';
+        
+        // --- FIX 1: Class & Subject Fetching (Multiple checks) ---
+        const className = sheet.className || sheet.class || sheet.darja || sheet.grade || 'N/A';
+        const subject = sheet.subject || sheet.sub || sheet.kitab || sheet.book || sheet.mazmoon || '-';
 
-        let totalStudents = 0, totalPassed = 0, totalFailed = 0, totalPercentageSum = 0;
+        // --- FIX 2: Pass / Fail / Absent Logic ---
+        let totalStudents = 0;
+        let totalAbsent = 0;
+        let totalFailed = 0;
+        let totalPassed = 0;
+        let totalPercentageSum = 0;
+        let studentsPresent = 0;
 
         if (Array.isArray(sheet.students)) {
             totalStudents = sheet.students.length;
+            
             sheet.students.forEach(std => {
-                const obt = Number(std.obtainedMarks) || 0;
+                const obtVal = std.obtainedMarks; // Marks value
                 const tot = Number(std.totalMarks) || 100;
-                let per = (tot > 0) ? (obt / tot) * 100 : 0;
-                totalPercentageSum += per;
-                if (per >= 40) totalPassed++; else totalFailed++;
+
+                // Check Absent: Agar "A", "Absent" likha ho ya value khali/null ho
+                let isAbsent = false;
+                if (typeof obtVal === 'string') {
+                    const v = obtVal.trim().toLowerCase();
+                    if (v === 'a' || v === 'absent' || v === 'ab' || v === '') isAbsent = true;
+                } else if (obtVal === null || obtVal === undefined) {
+                    isAbsent = true;
+                }
+
+                if (isAbsent) {
+                    totalAbsent++;
+                } else {
+                    // Marks Calculation
+                    const obt = Number(obtVal) || 0;
+                    let per = (tot > 0) ? (obt / tot) * 100 : 0;
+                    
+                    // Fail Logic: 40% se kam
+                    if (per < 40) {
+                        totalFailed++;
+                    }
+                    // Accumulate percentage for Average
+                    totalPercentageSum += per;
+                    studentsPresent++;
+                }
             });
+
+            // --- MAIN LOGIC CHANGE ---
+            // Pass = Total - (Fail + Absent)
+            // Yani jo Absent nahi hain aur Fail nahi hain, wo sab Pass hain.
+            totalPassed = totalStudents - (totalFailed + totalAbsent);
         }
 
-        const avgResult = totalStudents > 0 ? (totalPercentageSum / totalStudents).toFixed(1) : '0';
+        // Avg Result (Sirf Present students ka)
+        const avgResult = studentsPresent > 0 ? (totalPercentageSum / studentsPresent).toFixed(1) : '0';
         
+        // Result Color
         let resultColor = 'text-gray-600';
         if(Number(avgResult) >= 80) resultColor = 'text-green-600 font-bold';
         else if(Number(avgResult) < 40) resultColor = 'text-red-600 font-bold';
@@ -1398,21 +1434,40 @@ const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
                 <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
                 <td class="p-3 urdu-font border-r">${teacherName}</td>
                 <td class="p-3 text-center border-r">
-                    <span class="block font-semibold">${className}</span>
-                    <span class="text-xs text-gray-500">${subject}</span>
+                    <span class="block font-semibold text-gray-800">${className}</span>
+                    <span class="text-xs text-blue-600 font-medium">${subject}</span>
                 </td>
-                <td class="p-3 text-center font-bold border-r bg-blue-50 text-blue-700">${totalStudents}</td>
-                <td class="p-3 text-center font-bold text-green-600 border-r">${totalPassed}</td>
-                <td class="p-3 text-center font-bold text-red-500 border-r">${totalFailed}</td>
-                <td class="p-3 text-center border-r"><span class="${resultColor} text-lg">${avgResult}%</span></td>
+                
+                <td class="p-3 text-center font-bold border-r bg-gray-50 text-gray-700" title="Total Students">
+                    ${totalStudents}
+                </td>
+
+                <td class="p-3 text-center font-bold text-green-600 border-r bg-green-50" title="Pass (Fail aur Absent ke ilawa)">
+                    ${totalPassed}
+                </td>
+
+                <td class="p-3 text-center font-bold text-red-500 border-r bg-red-50" title="Fail (Nakam)">
+                    ${totalFailed}
+                </td>
+                
+                <td class="p-3 text-center font-bold text-orange-500 border-r bg-orange-50" title="Absent (Ghair Hazir)">
+                    ${totalAbsent}
+                </td>
+
+                <td class="p-3 text-center border-r">
+                    <span class="${resultColor} text-lg">${avgResult}%</span>
+                </td>
+                
                 <td class="p-3 text-center">
-                    <button onclick="viewSheetDetails('${sheet.id}')" class="text-blue-600 hover:text-blue-800 text-sm underline">View Sheet</button>
+                    <button onclick="viewSheetDetails('${sheet.id}')" class="text-blue-600 hover:text-blue-800 text-sm underline">
+                        View Sheet
+                    </button>
                 </td>
             </tr>
         `;
     });
 
-    // Title Update
+    // Table Header Update (Added Absent Column)
     const titleText = filterMode === 'asri' ? "Asri Subjects (English & Maths) Summary" : "All Subjects Result Summary";
 
     container.innerHTML = `
@@ -1431,7 +1486,8 @@ const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
                         <th class="p-3 text-center border-r border-indigo-500">Total</th>
                         <th class="p-3 text-center border-r border-indigo-500">Pass</th>
                         <th class="p-3 text-center border-r border-indigo-500">Fail</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Avg Result</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Absent</th>
+                        <th class="p-3 text-center border-r border-indigo-500">Avg %</th>
                         <th class="p-3 text-center">Action</th>
                     </tr>
                 </thead>
@@ -3312,6 +3368,7 @@ function renderJamiaTags() {
     </script>
 </body>
 </html>
+
 
 
 
