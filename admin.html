@@ -1334,83 +1334,84 @@ const renderAllUsersJaizaTable = () => {
         </div>
     `;
 };
-               // --- UPDATED: ROBUST MONTHLY TEST SUMMARY (Fixed for Arrays & Errors) ---
+               // --- UPDATED: CLASS-WISE CONSOLIDATED SUMMARY (No Subject Column) ---
 const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
     const container = document.getElementById('analysis-report-container');
     
-    // Safety: Try-Catch block taake agar error aaye to screen par dikhe
     try {
-        // Helper: Data dhundne ke liye (Text ya Array handle karega)
+        // Helper: Data dhundne ke liye
         const getSafeVal = (obj, keys) => {
             if (!obj) return null;
             for (const k of keys) {
                 let val = obj[k];
-                // Agar value Array hai (Multiple Subjects), to comma laga kar jod dein
-                if (Array.isArray(val)) {
-                    return val.join(', ');
-                }
+                if (Array.isArray(val)) return val.join(', ');
                 if (val !== undefined && val !== null && val !== '') return val;
             }
             return null;
         };
 
-        // 1. FILTER LOGIC
+        // 1. FILTER LOGIC (Sirf Data Uthane ke liye)
         const filteredSheets = allSheets.filter(sheet => {
-            // Subject ka naam nikalein (Array ho ya String)
             let sub = getSafeVal(sheet, ['subject', 'sub', 'kitab', 'book', 'mazmoon']) || '';
-            const subLower = String(sub).toLowerCase(); // String() lagaya taake crash na ho
+            const subLower = String(sub).toLowerCase();
             
-            // Asri check
+            // Asri Check
             const isAsri = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab') || subLower.includes('angrezi') || subLower.includes('science') || subLower.includes('hindi');
 
             if (filterMode === 'asri') return isAsri;
             return true; 
         });
 
-        // 2. Empty Check
         if (!filteredSheets || filteredSheets.length === 0) {
             const msg = filterMode === 'asri' ? "Is mahine English/Maths ka koi test nahi mila." : "Is mahine ki koi Test Sheet nahi mili.";
             container.innerHTML = `<p class="text-center text-gray-500 py-10">${msg}</p>`;
             return;
         }
 
-        let rowsHtml = '';
-        
-        // 3. Sorting (Jamia Name)
-        const sortedSheets = filteredSheets.sort((a, b) => {
-            const nameA = a.jamiaName || '';
-            const nameB = b.jamiaName || '';
-            return nameA.localeCompare(nameB);
-        });
+        // --- 2. GROUPING LOGIC (Class Wise Jodna) ---
+        const groupedData = {};
 
-        sortedSheets.forEach((sheet, index) => {
-            // Teacher & Jamia Name
-            // allUsersData global variable check
+        filteredSheets.forEach(sheet => {
+            // Jamia Name aur Class Name ko Key banayenge
+            const jamiaName = (sheet.jamiaName || 'Unknown').trim();
+            const rawClass = getSafeVal(sheet, ['className', 'class', 'darja', 'grade', 'class_name']) || 'N/A';
+            const className = rawClass.trim(); // Normalize
+
+            // Teacher / Zimmedar Name (Admin UID se)
             const user = (typeof allUsersData !== 'undefined') ? allUsersData.find(u => u.id === sheet.adminUid) : null;
-            const teacherName = user ? (user.name || user.email) : (sheet.teacherName || 'Unknown');
-            const jamiaName = sheet.jamiaName || 'N/A';
-            
-            // Class & Subject Fetching
-            let className = getSafeVal(sheet, ['className', 'class', 'darja', 'grade', 'class_name']) || 'N/A';
-            let subject = getSafeVal(sheet, ['subject', 'sub', 'kitab', 'book', 'mazmoon']) || '-';
+            const zimmedarName = user ? (user.name || user.email) : (sheet.teacherName || 'Unknown');
 
-            // Result Logic
-            let totalStudents = 0;
-            let totalAbsent = 0;
-            let totalFailed = 0;
-            let totalPassed = 0;
-            let totalObtainedSum = 0;
-            let totalMaxMarksSum = 0;
+            // Unique Key for Grouping: "JamiaName_ClassName"
+            const groupKey = `${jamiaName}_${className}`;
+
+            if (!groupedData[groupKey]) {
+                groupedData[groupKey] = {
+                    jamiaName: jamiaName,
+                    zimmedarName: zimmedarName,
+                    className: className,
+                    totalSheets: 0,
+                    totalStudents: 0,
+                    totalPassed: 0,
+                    totalFailed: 0,
+                    totalAbsent: 0,
+                    totalObtainedSum: 0,
+                    totalMaxMarksSum: 0,
+                    sheetIds: []
+                };
+            }
+
+            // Stats Calculation
+            groupedData[groupKey].totalSheets++;
+            groupedData[groupKey].sheetIds.push(sheet.id);
 
             if (Array.isArray(sheet.students)) {
-                totalStudents = sheet.students.length;
+                groupedData[groupKey].totalStudents += sheet.students.length;
                 
                 sheet.students.forEach(std => {
-                    const obtVal = std.obtainedMarks; 
+                    const obtVal = std.obtainedMarks;
                     const totalVal = Number(std.totalMarks) || 100;
 
-                    // --- ABSENT CHECK ---
-                    // monthly-test.html logic: 'A', 'a', 'absent' ya khali
+                    // Absent Check
                     let isAbsent = false;
                     if (typeof obtVal === 'string') {
                         const v = obtVal.trim().toLowerCase();
@@ -1420,33 +1421,43 @@ const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
                     }
 
                     if (isAbsent) {
-                        totalAbsent++;
+                        groupedData[groupKey].totalAbsent++;
                     } else {
-                        // --- FAIL CHECK ---
+                        // Fail Check (< 40%)
                         const obtained = Number(obtVal) || 0;
                         const percentage = (totalVal > 0) ? (obtained / totalVal) * 100 : 0;
 
-                        // Fail < 40%
                         if (percentage < 40) {
-                            totalFailed++;
+                            groupedData[groupKey].totalFailed++;
                         }
                         
-                        totalObtainedSum += obtained;
-                        totalMaxMarksSum += totalVal;
+                        groupedData[groupKey].totalObtainedSum += obtained;
+                        groupedData[groupKey].totalMaxMarksSum += totalVal;
                     }
                 });
-
-                // --- PASS LOGIC ---
-                // Total me se (Absent + Fail) nikal dein, baaki Pass hain
-                totalPassed = totalStudents - (totalAbsent + totalFailed);
             }
+        });
 
+        // Pass Calculation (After Loop for each group)
+        Object.keys(groupedData).forEach(key => {
+            const g = groupedData[key];
+            // Pass = Total Appearances - (Absent + Fail)
+            g.totalPassed = g.totalStudents - (g.totalAbsent + g.totalFailed);
+        });
+
+        // --- 3. SORTING & RENDERING ---
+        // Convert Object to Array for sorting
+        const sortedGroups = Object.values(groupedData).sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
+
+        let rowsHtml = '';
+        sortedGroups.forEach((group, index) => {
+            
             // Avg Percentage
             let avgResult = '0';
-            if (totalMaxMarksSum > 0) {
-                avgResult = ((totalObtainedSum / totalMaxMarksSum) * 100).toFixed(1);
+            if (group.totalMaxMarksSum > 0) {
+                avgResult = ((group.totalObtainedSum / group.totalMaxMarksSum) * 100).toFixed(1);
             }
-            
+
             // Color Logic
             let resultColor = 'text-gray-600';
             if(Number(avgResult) >= 80) resultColor = 'text-green-600 font-bold';
@@ -1455,50 +1466,43 @@ const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
             rowsHtml += `
                 <tr class="border-b hover:bg-gray-50 transition">
                     <td class="p-3 text-center text-gray-500">${index + 1}</td>
-                    <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
-                    <td class="p-3 urdu-font border-r">${teacherName}</td>
-                    <td class="p-3 text-center border-r">
-                        <span class="block font-semibold text-gray-800">${className}</span>
-                        <span class="text-xs text-blue-600 font-medium whitespace-pre-wrap">${subject}</span>
+                    <td class="p-3 font-bold urdu-font text-teal-800 border-r">${group.jamiaName}</td>
+                    <td class="p-3 urdu-font border-r">${group.zimmedarName}</td>
+                    <td class="p-3 text-center border-r font-semibold text-gray-800">
+                        ${group.className}
                     </td>
                     
-                    <td class="p-3 text-center font-bold border-r bg-gray-50 text-gray-700" title="Total Students">
-                        ${totalStudents}
+                    <td class="p-3 text-center font-bold border-r bg-gray-50 text-gray-700" title="Total Papers (Students x Subjects)">
+                        ${group.totalStudents}
                     </td>
 
                     <td class="p-3 text-center font-bold text-green-600 border-r bg-green-50" title="Pass">
-                        ${totalPassed}
+                        ${group.totalPassed}
                     </td>
 
                     <td class="p-3 text-center font-bold text-red-500 border-r bg-red-50" title="Fail">
-                        ${totalFailed}
+                        ${group.totalFailed}
                     </td>
                     
                     <td class="p-3 text-center font-bold text-orange-500 border-r bg-orange-50" title="Absent">
-                        ${totalAbsent}
+                        ${group.totalAbsent}
                     </td>
 
                     <td class="p-3 text-center border-r">
                         <span class="${resultColor} text-lg">${avgResult}%</span>
                     </td>
-                    
-                    <td class="p-3 text-center">
-                        <button onclick="viewSheetDetails('${sheet.id}')" class="text-blue-600 hover:text-blue-800 text-sm underline">
-                            View Sheet
-                        </button>
-                    </td>
                 </tr>
             `;
         });
 
-        // Title
-        const titleText = filterMode === 'asri' ? "Asri Subjects (English & Maths) Summary" : "All Subjects Result Summary";
+        // Table Header (Removed Subject Column, Action Column Removed because it's consolidated)
+        const titleText = filterMode === 'asri' ? "Asri Subjects Class Result" : "Class Wise Combined Result";
 
         container.innerHTML = `
             <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
                 <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
                     <h4 class="font-bold text-lg text-gray-700">${titleText}</h4>
-                    <div class="text-sm text-gray-500">Total Sheets: <b>${sortedSheets.length}</b></div>
+                    <div class="text-sm text-gray-500">Total Classes: <b>${sortedGroups.length}</b></div>
                 </div>
                 <table class="w-full text-sm text-left border-collapse">
                     <thead class="bg-indigo-600 text-white uppercase text-xs">
@@ -1506,13 +1510,12 @@ const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
                             <th class="p-3 text-center w-10">#</th>
                             <th class="p-3 border-r border-indigo-500">Jamia Name</th>
                             <th class="p-3 border-r border-indigo-500">Zimmedar</th>
-                            <th class="p-3 text-center border-r border-indigo-500">Class / Subject</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Class</th>
                             <th class="p-3 text-center border-r border-indigo-500">Total</th>
                             <th class="p-3 text-center border-r border-indigo-500">Pass</th>
                             <th class="p-3 text-center border-r border-indigo-500">Fail</th>
                             <th class="p-3 text-center border-r border-indigo-500">Absent</th>
                             <th class="p-3 text-center border-r border-indigo-500">Avg %</th>
-                            <th class="p-3 text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -3400,6 +3403,7 @@ function renderJamiaTags() {
     </script>
 </body>
 </html>
+
 
 
 
