@@ -1334,176 +1334,201 @@ const renderAllUsersJaizaTable = () => {
         </div>
     `;
 };
-               // --- UPDATED: ROBUST MONTHLY TEST SUMMARY ---
+               // --- UPDATED: ROBUST MONTHLY TEST SUMMARY (Fixed for Arrays & Errors) ---
 const renderAllUsersMonthlyTestTable = (allSheets, filterMode = 'all') => {
     const container = document.getElementById('analysis-report-container');
     
-    // Helper: Har tarah ke naam check karega (Data dhundne ke liye)
-    const getSafeVal = (obj, keys) => {
-        if (!obj) return null;
-        for (const k of keys) {
-            if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
-        }
-        return null;
-    };
+    // Safety: Try-Catch block taake agar error aaye to screen par dikhe
+    try {
+        // Helper: Data dhundne ke liye (Text ya Array handle karega)
+        const getSafeVal = (obj, keys) => {
+            if (!obj) return null;
+            for (const k of keys) {
+                let val = obj[k];
+                // Agar value Array hai (Multiple Subjects), to comma laga kar jod dein
+                if (Array.isArray(val)) {
+                    return val.join(', ');
+                }
+                if (val !== undefined && val !== null && val !== '') return val;
+            }
+            return null;
+        };
 
-    // 1. FILTER LOGIC
-    const filteredSheets = allSheets.filter(sheet => {
-        // Subject dhundne ke liye sare options check karein
-        const sub = getSafeVal(sheet, ['subject', 'sub', 'kitab', 'book', 'mazmoon']) || '';
-        const subLower = sub.toLowerCase();
-        
-        const isAsri = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab') || subLower.includes('angrezi') || subLower.includes('science');
-
-        if (filterMode === 'asri') return isAsri;
-        return true; 
-    });
-
-    if (!filteredSheets || filteredSheets.length === 0) {
-        const msg = filterMode === 'asri' ? "Is mahine English/Maths ka koi test nahi mila." : "Is mahine ki koi Test Sheet nahi mili.";
-        container.innerHTML = `<p class="text-center text-gray-500 py-10">${msg}</p>`;
-        return;
-    }
-
-    let rowsHtml = '';
-    
-    // Sort by Jamia Name
-    const sortedSheets = filteredSheets.sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || ''));
-
-    sortedSheets.forEach((sheet, index) => {
-        // Teacher Name
-        const user = allUsersData.find(u => u.id === sheet.adminUid);
-        const teacherName = user ? (user.name || user.email) : (sheet.teacherName || 'Unknown');
-        const jamiaName = sheet.jamiaName || 'N/A';
-        
-        // --- FIX 1: Class & Subject (Mazboot tareeqe se dhundna) ---
-        let className = getSafeVal(sheet, ['className', 'class', 'darja', 'grade', 'class_name']) || 'N/A';
-        let subject = getSafeVal(sheet, ['subject', 'sub', 'kitab', 'book', 'mazmoon']) || '-';
-
-        // --- FIX 2: Result Logic (Same as Monthly Test Form) ---
-        let totalStudents = 0;
-        let totalAbsent = 0;
-        let totalFailed = 0;
-        let totalPassed = 0;
-        let totalObtainedSum = 0;
-        let totalMaxMarksSum = 0;
-
-        if (Array.isArray(sheet.students)) {
-            totalStudents = sheet.students.length;
+        // 1. FILTER LOGIC
+        const filteredSheets = allSheets.filter(sheet => {
+            // Subject ka naam nikalein (Array ho ya String)
+            let sub = getSafeVal(sheet, ['subject', 'sub', 'kitab', 'book', 'mazmoon']) || '';
+            const subLower = String(sub).toLowerCase(); // String() lagaya taake crash na ho
             
-            sheet.students.forEach(std => {
-                const obtVal = std.obtainedMarks; 
-                const totalVal = Number(std.totalMarks) || 100;
+            // Asri check
+            const isAsri = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab') || subLower.includes('angrezi') || subLower.includes('science') || subLower.includes('hindi');
 
-                // 1. Check Absent (Agar 'A', 'a', 'absent' ya khali ho)
-                let isAbsent = false;
-                if (typeof obtVal === 'string') {
-                    const v = obtVal.trim().toLowerCase();
-                    if (v === 'a' || v === 'absent' || v === 'ab' || v === '') isAbsent = true;
-                } else if (obtVal === null || obtVal === undefined) {
-                    isAbsent = true;
-                }
+            if (filterMode === 'asri') return isAsri;
+            return true; 
+        });
 
-                if (isAbsent) {
-                    totalAbsent++;
-                } else {
-                    // 2. Marks Calculation
-                    const obtained = Number(obtVal) || 0;
-                    
-                    // Fail Check (40% se kam)
-                    if ((obtained / totalVal) * 100 < 40) {
-                        totalFailed++;
-                    }
-                    
-                    // Average ke liye jama karein
-                    totalObtainedSum += obtained;
-                    totalMaxMarksSum += totalVal;
-                }
-            });
-
-            // 3. Pass Logic: (Total - Absent - Fail) = Pass
-            totalPassed = totalStudents - (totalAbsent + totalFailed);
+        // 2. Empty Check
+        if (!filteredSheets || filteredSheets.length === 0) {
+            const msg = filterMode === 'asri' ? "Is mahine English/Maths ka koi test nahi mila." : "Is mahine ki koi Test Sheet nahi mili.";
+            container.innerHTML = `<p class="text-center text-gray-500 py-10">${msg}</p>`;
+            return;
         }
 
-        // Avg Percentage Calculation
-        let avgResult = '0';
-        if (totalMaxMarksSum > 0) {
-            avgResult = ((totalObtainedSum / totalMaxMarksSum) * 100).toFixed(1);
-        }
+        let rowsHtml = '';
         
-        // Result Color Logic
-        let resultColor = 'text-gray-600';
-        if(Number(avgResult) >= 80) resultColor = 'text-green-600 font-bold';
-        else if(Number(avgResult) < 40) resultColor = 'text-red-600 font-bold';
+        // 3. Sorting (Jamia Name)
+        const sortedSheets = filteredSheets.sort((a, b) => {
+            const nameA = a.jamiaName || '';
+            const nameB = b.jamiaName || '';
+            return nameA.localeCompare(nameB);
+        });
 
-        rowsHtml += `
-            <tr class="border-b hover:bg-gray-50 transition">
-                <td class="p-3 text-center text-gray-500">${index + 1}</td>
-                <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
-                <td class="p-3 urdu-font border-r">${teacherName}</td>
-                <td class="p-3 text-center border-r">
-                    <span class="block font-semibold text-gray-800">${className}</span>
-                    <span class="text-xs text-blue-600 font-medium">${subject}</span>
-                </td>
+        sortedSheets.forEach((sheet, index) => {
+            // Teacher & Jamia Name
+            // allUsersData global variable check
+            const user = (typeof allUsersData !== 'undefined') ? allUsersData.find(u => u.id === sheet.adminUid) : null;
+            const teacherName = user ? (user.name || user.email) : (sheet.teacherName || 'Unknown');
+            const jamiaName = sheet.jamiaName || 'N/A';
+            
+            // Class & Subject Fetching
+            let className = getSafeVal(sheet, ['className', 'class', 'darja', 'grade', 'class_name']) || 'N/A';
+            let subject = getSafeVal(sheet, ['subject', 'sub', 'kitab', 'book', 'mazmoon']) || '-';
+
+            // Result Logic
+            let totalStudents = 0;
+            let totalAbsent = 0;
+            let totalFailed = 0;
+            let totalPassed = 0;
+            let totalObtainedSum = 0;
+            let totalMaxMarksSum = 0;
+
+            if (Array.isArray(sheet.students)) {
+                totalStudents = sheet.students.length;
                 
-                <td class="p-3 text-center font-bold border-r bg-gray-50 text-gray-700" title="Total Students">
-                    ${totalStudents}
-                </td>
+                sheet.students.forEach(std => {
+                    const obtVal = std.obtainedMarks; 
+                    const totalVal = Number(std.totalMarks) || 100;
 
-                <td class="p-3 text-center font-bold text-green-600 border-r bg-green-50" title="Pass">
-                    ${totalPassed}
-                </td>
+                    // --- ABSENT CHECK ---
+                    // monthly-test.html logic: 'A', 'a', 'absent' ya khali
+                    let isAbsent = false;
+                    if (typeof obtVal === 'string') {
+                        const v = obtVal.trim().toLowerCase();
+                        if (v === 'a' || v === 'absent' || v === 'ab' || v === '') isAbsent = true;
+                    } else if (obtVal === null || obtVal === undefined) {
+                        isAbsent = true;
+                    }
 
-                <td class="p-3 text-center font-bold text-red-500 border-r bg-red-50" title="Fail">
-                    ${totalFailed}
-                </td>
-                
-                <td class="p-3 text-center font-bold text-orange-500 border-r bg-orange-50" title="Absent">
-                    ${totalAbsent}
-                </td>
+                    if (isAbsent) {
+                        totalAbsent++;
+                    } else {
+                        // --- FAIL CHECK ---
+                        const obtained = Number(obtVal) || 0;
+                        const percentage = (totalVal > 0) ? (obtained / totalVal) * 100 : 0;
 
-                <td class="p-3 text-center border-r">
-                    <span class="${resultColor} text-lg">${avgResult}%</span>
-                </td>
-                
-                <td class="p-3 text-center">
-                    <button onclick="viewSheetDetails('${sheet.id}')" class="text-blue-600 hover:text-blue-800 text-sm underline">
-                        View Sheet
-                    </button>
-                </td>
-            </tr>
-        `;
-    });
+                        // Fail < 40%
+                        if (percentage < 40) {
+                            totalFailed++;
+                        }
+                        
+                        totalObtainedSum += obtained;
+                        totalMaxMarksSum += totalVal;
+                    }
+                });
 
-    const titleText = filterMode === 'asri' ? "Asri Subjects (English & Maths) Summary" : "All Subjects Result Summary";
+                // --- PASS LOGIC ---
+                // Total me se (Absent + Fail) nikal dein, baaki Pass hain
+                totalPassed = totalStudents - (totalAbsent + totalFailed);
+            }
 
-    container.innerHTML = `
-        <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
-            <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h4 class="font-bold text-lg text-gray-700">${titleText}</h4>
-                <div class="text-sm text-gray-500">Total Sheets: <b>${sortedSheets.length}</b></div>
+            // Avg Percentage
+            let avgResult = '0';
+            if (totalMaxMarksSum > 0) {
+                avgResult = ((totalObtainedSum / totalMaxMarksSum) * 100).toFixed(1);
+            }
+            
+            // Color Logic
+            let resultColor = 'text-gray-600';
+            if(Number(avgResult) >= 80) resultColor = 'text-green-600 font-bold';
+            else if(Number(avgResult) < 40) resultColor = 'text-red-600 font-bold';
+
+            rowsHtml += `
+                <tr class="border-b hover:bg-gray-50 transition">
+                    <td class="p-3 text-center text-gray-500">${index + 1}</td>
+                    <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
+                    <td class="p-3 urdu-font border-r">${teacherName}</td>
+                    <td class="p-3 text-center border-r">
+                        <span class="block font-semibold text-gray-800">${className}</span>
+                        <span class="text-xs text-blue-600 font-medium whitespace-pre-wrap">${subject}</span>
+                    </td>
+                    
+                    <td class="p-3 text-center font-bold border-r bg-gray-50 text-gray-700" title="Total Students">
+                        ${totalStudents}
+                    </td>
+
+                    <td class="p-3 text-center font-bold text-green-600 border-r bg-green-50" title="Pass">
+                        ${totalPassed}
+                    </td>
+
+                    <td class="p-3 text-center font-bold text-red-500 border-r bg-red-50" title="Fail">
+                        ${totalFailed}
+                    </td>
+                    
+                    <td class="p-3 text-center font-bold text-orange-500 border-r bg-orange-50" title="Absent">
+                        ${totalAbsent}
+                    </td>
+
+                    <td class="p-3 text-center border-r">
+                        <span class="${resultColor} text-lg">${avgResult}%</span>
+                    </td>
+                    
+                    <td class="p-3 text-center">
+                        <button onclick="viewSheetDetails('${sheet.id}')" class="text-blue-600 hover:text-blue-800 text-sm underline">
+                            View Sheet
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        // Title
+        const titleText = filterMode === 'asri' ? "Asri Subjects (English & Maths) Summary" : "All Subjects Result Summary";
+
+        container.innerHTML = `
+            <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
+                <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                    <h4 class="font-bold text-lg text-gray-700">${titleText}</h4>
+                    <div class="text-sm text-gray-500">Total Sheets: <b>${sortedSheets.length}</b></div>
+                </div>
+                <table class="w-full text-sm text-left border-collapse">
+                    <thead class="bg-indigo-600 text-white uppercase text-xs">
+                        <tr>
+                            <th class="p-3 text-center w-10">#</th>
+                            <th class="p-3 border-r border-indigo-500">Jamia Name</th>
+                            <th class="p-3 border-r border-indigo-500">Zimmedar</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Class / Subject</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Total</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Pass</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Fail</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Absent</th>
+                            <th class="p-3 text-center border-r border-indigo-500">Avg %</th>
+                            <th class="p-3 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        ${rowsHtml}
+                    </tbody>
+                </table>
             </div>
-            <table class="w-full text-sm text-left border-collapse">
-                <thead class="bg-indigo-600 text-white uppercase text-xs">
-                    <tr>
-                        <th class="p-3 text-center w-10">#</th>
-                        <th class="p-3 border-r border-indigo-500">Jamia Name</th>
-                        <th class="p-3 border-r border-indigo-500">Zimmedar</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Class / Subject</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Total</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Pass</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Fail</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Absent</th>
-                        <th class="p-3 text-center border-r border-indigo-500">Avg %</th>
-                        <th class="p-3 text-center">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200">
-                    ${rowsHtml}
-                </tbody>
-            </table>
-        </div>
-    `;
+        `;
+
+    } catch (err) {
+        console.error("Render Error:", err);
+        container.innerHTML = `<div class="p-4 bg-red-100 text-red-700 border border-red-400 rounded">
+            <strong>Error:</strong> Table load nahi ho saki.<br>
+            <small>${err.message}</small>
+        </div>`;
+    }
 };
                
 // 1. Dropdown ko populate karne ka function
@@ -3375,6 +3400,7 @@ function renderJamiaTags() {
     </script>
 </body>
 </html>
+
 
 
 
