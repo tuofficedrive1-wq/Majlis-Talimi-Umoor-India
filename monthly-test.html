@@ -1555,7 +1555,7 @@ window.checkExistingForClass = async (clsName) => {
                 btn.disabled = false;
             }
         };
-       // --- PROFESSIONAL REPORT CARD GENERATION (FIXED: FETCH ENGLISH NAMES FROM DB) ---
+       // --- PROFESSIONAL REPORT CARD GENERATION (WITH FAILED SUBJECTS LIST) ---
 window.downloadReportCards = async () => {
     // 1. Validations
     if (!window.html2canvas) { alert("Library missing."); return; }
@@ -1574,8 +1574,7 @@ window.downloadReportCards = async () => {
     btn.disabled = true;
 
     try {
-        // --- 1. FETCH SAVED ENGLISH NAMES FROM DB (NEW LOGIC) ---
-        // Ye sabse zaroori step hai. Hum DB se map mangwayenge.
+        // --- 1. FETCH SAVED ENGLISH NAMES FROM DB ---
         let dbSubjectMap = {}; 
         try {
             const rawClass = document.getElementById('class-select').value;
@@ -1618,7 +1617,6 @@ window.downloadReportCards = async () => {
             else return "2nd SEMESTER";
         };
 
-        // Name Font Sizer
         const getNameFontSize = (name) => {
             if (!name) return '28px';
             const len = name.length;
@@ -1631,44 +1629,26 @@ window.downloadReportCards = async () => {
         const displayMonth = formatMonthYear(monthKey);
         const displaySemester = getSemester(monthKey);
 
-        // 🔥 UPDATED SUBJECT NAME LOGIC 🔥
         const getSubjectNames = (originalName) => {
             const lower = originalName.toLowerCase().trim();
             const urduTxt = originalName.trim();
             
-            // 1. Check Database Map (Priority 1)
-            // Agar aapne form me English naam likha tha, to wo yahan se aayega
-            if (dbSubjectMap[originalName]) {
-                return { en: dbSubjectMap[originalName], ur: originalName };
-            }
+            if (dbSubjectMap[originalName]) return { en: dbSubjectMap[originalName], ur: originalName };
+            if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[originalName]) return { en: subjectTranslationMap[originalName], ur: originalName };
 
-            // 2. Fallback to Global Map (Priority 2)
-            if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[originalName]) {
-                return { en: subjectTranslationMap[originalName], ur: originalName };
-            }
-
-            // 3. Standard Subjects (English/Maths)
             if (lower.includes('english') || lower.includes('eng')) return { en: "English Language", ur: "انگریزی" };
-            if (lower.includes('math') || lower.includes('hisab') || urduTxt.includes('حساب')) return { en: "Mathematics", ur: "حساب" };
+            if (lower.includes('math') || lower.includes('hisab')) return { en: "Mathematics", ur: "حساب" };
             
-            // 4. Default: Agar kuch nahi mila to wahi naam wapas karo
             return { en: originalName, ur: originalName };
         };
 
         const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
         const classTranslations = {
-            "ابتدائیہ": "Ibtedaiyah(Primary)",
-            "سال اول": "Pre Darse Nizami 1st year", "اول": "Pre Darse Nizami 1st year", 
-            "سال دوم": "Pre Darse Nizami 2nd Year", "دوم": "Pre Darse Nizami 2nd Year", 
-            "اولى": "Ula(1st Year)", "اولٰى": "Ula(1st Year)", 
-            "ثانیہ": "Saniyah(2nd Year)", 
-            "ثالثہ": "Salisah(3rd year)",
-            "رابعہ": "Rabiah(4th year)", 
-            "خامسہ": "Khamisah(5th year)", 
-            "سادسہ": "Sadisah(6th year)", 
-            "سابعہ": "Sabiah(7th Year)",
-            "دورہ حدیث": "Daura-e-Hadith(Final year)", 
-            "مدنی": "Madani", "بنین": "Banin"
+            "ابتدائیہ": "Ibtedaiyah(Primary)", "سال اول": "Pre Darse Nizami 1st year", "اول": "Pre Darse Nizami 1st year", 
+            "سال دوم": "Pre Darse Nizami 2nd Year", "دوم": "Pre Darse Nizami 2nd Year", "اولى": "Ula(1st Year)", 
+            "اولٰى": "Ula(1st Year)", "ثانیہ": "Saniyah(2nd Year)", "ثالثہ": "Salisah(3rd year)", "رابعہ": "Rabiah(4th year)", 
+            "خامسہ": "Khamisah(5th year)", "سادسہ": "Sadisah(6th year)", "سابعہ": "Sabiah(7th Year)",
+            "دورہ حدیث": "Daura-e-Hadith(Final year)", "مدنی": "Madani", "بنین": "Banin"
         };
         
         let englishClassName = classTranslations[urduClassName] || urduClassName;
@@ -1676,7 +1656,7 @@ window.downloadReportCards = async () => {
             if (urduClassName.includes(key)) { englishClassName = val; break; }
         }
 
-        // --- FETCH SIGNATURES (FIXED: Fetch from Academic Years) ---
+        // --- FETCH SIGNATURES (UPDATED FOR SETUP STRUCTURE) ---
         const taleemiSigRaw = globalUserData.signatureTaleemi || null;
         const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
         
@@ -1695,16 +1675,14 @@ window.downloadReportCards = async () => {
                 globalUserData.academicYears[acYear].karkardagiStructure) {
                 
                 const structure = globalUserData.academicYears[acYear].karkardagiStructure;
-                // Jamia match karein
                 const structEntry = structure.find(j => j.jamiaName === jamiaName);
                 
                 if (structEntry && structEntry.principalSignature) {
                     principalSigUrl = getCorsFriendlyUrl(structEntry.principalSignature);
-                    console.log("Signature found in Setup for year:", acYear);
                 }
             }
 
-            // 3. Fallback: Agar Setup me nahi mila, to Monthly Report check karein (Purana)
+            // 3. Fallback: Monthly Report (Purana)
             if (!principalSigUrl) {
                 const reportId = `${adminUid}_${acYear}_${y}_${m}`;
                 const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
@@ -1761,6 +1739,9 @@ window.downloadReportCards = async () => {
             let grandTotalMax = 0;
             let rowsHTML = "";
             let failedSubjectsCount = 0;
+            
+            // 🔥 NAYI LIST: Fail Subjects Jama Karne Ke Liye 🔥
+            let failedSubjectNames = [];
 
             finalSubjectsList.forEach(sub => {
                 const subLower = sub.toLowerCase();
@@ -1786,8 +1767,12 @@ window.downloadReportCards = async () => {
                     isFail = true;
                 }
 
-                // 🔥 Yahan Naya getSubjectNames function use hoga
                 const names = getSubjectNames(sub);
+
+                // 🔥 Agar fail hai to naam list me daalo 🔥
+                if (isFail) {
+                    failedSubjectNames.push(names.en);
+                }
 
                 const markCellStyle = isFail 
                     ? 'padding: 10px; text-align: center; font-weight: bold; color: #991b1b; background-color: #fee2e2; border-right: 1px solid #e2e8f0;' 
@@ -1813,6 +1798,21 @@ window.downloadReportCards = async () => {
             else if (std.grade.includes('Nakam') || std.grade === 'Fail') { statusColor = '#e53e3e'; statusText = 'FAIL'; }
 
             const nameFontSize = getNameFontSize(std.name);
+
+            // 🔥 FAIL NOTE BANANA 🔥
+            let failNoteHTML = "";
+            if (failedSubjectNames.length > 0) {
+                failNoteHTML = `
+                    <div style="margin-top: 15px; padding: 8px 15px; border: 1px solid #feb2b2; background-color: #fff5f5; border-radius: 8px; text-align: center;">
+                        <span style="color: #c53030; font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <i class="fas fa-exclamation-circle"></i> Failed in:
+                        </span>
+                        <span style="color: #e53e3e; font-weight: 600; font-size: 14px; margin-left: 5px;">
+                            ${failedSubjectNames.join(", ")}
+                        </span>
+                    </div>
+                `;
+            }
 
             // HTML Template 
             container.innerHTML = `
@@ -1864,7 +1864,7 @@ window.downloadReportCards = async () => {
                                 <tbody style="background-color: #fff;">${rowsHTML}</tbody>
                             </table>
 
-                            <div style="display: flex; gap: 15px; margin-bottom: 30px;">
+                            <div style="display: flex; gap: 15px; margin-bottom: 10px;">
                                 <div style="flex: 1; border: 2px solid #d4af37; border-radius: 12px; padding: 15px; background: #fffdf0;">
                                     <table style="width: 100%;">
                                         <tr><td style="color: #555; font-size: 14px;">Total Marks:</td><td style="text-align: right; font-weight: bold; font-size: 16px;">${grandTotalMax}</td></tr>
@@ -1885,6 +1885,8 @@ window.downloadReportCards = async () => {
                                     </table>
                                 </div>
                             </div>
+
+                            ${failNoteHTML}
 
                             <div style="position: absolute; bottom: 80px; width: 100%; padding: 0 80px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
                                 <div style="text-align: center; width: 200px; position: relative;">
@@ -2104,6 +2106,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
