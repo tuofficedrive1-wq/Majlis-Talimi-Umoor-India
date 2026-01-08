@@ -152,232 +152,282 @@
     </div>
 
          <script>
-        // --- 1. FIREBASE CONFIGURATION (Same as before) ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-            authDomain: "data-f15ab.firebaseapp.com",
-            projectId: "data-f15ab",
-            storageBucket: "data-f15ab.appspot.com",
-            messagingSenderId: "449137002393",
-            appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
-            measurementId: "G-1PHNJQWNPZ",
-        };
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+    // --- 1. FIREBASE CONFIGURATION ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+        authDomain: "data-f15ab.firebaseapp.com",
+        projectId: "data-f15ab",
+        storageBucket: "data-f15ab.appspot.com",
+        messagingSenderId: "449137002393",
+        appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+        measurementId: "G-1PHNJQWNPZ",
+    };
+    // Initialize Firebase
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // --- Global Variables ---
+    let flattenedReports = []; // Table me dikhane ke liye data
+    let currentEditingDocId = null; // Parent Document ID (Monthly Report ID)
+    let currentEditingRecordId = null; // Specific Recording ID (Array ke andar ka ID)
+
+    // --- 2. AUTH CHECK ---
+    auth.onAuthStateChanged(async (user) => {
+        if (!user) {
+            window.location.href = 'index.html';
+        } else {
+            console.log("Logged in as:", user.email);
+            // Optional: Check role here if needed
         }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+    });
 
-        let currentReports = [];
-        let currentEditingId = null;
+    function logout() {
+        auth.signOut().then(() => window.location.href = 'index.html');
+    }
 
-        // --- 2. AUTH CHECK ---
-        auth.onAuthStateChanged(async (user) => {
-            if (!user) {
-                window.location.href = 'index.html';
-            } else {
-                console.log("Logged in:", user.email);
-                // Aap chahein to yahan role check wapas laga sakte hain
-            }
-        });
-        function logout() {
-            auth.signOut().then(() => window.location.href = 'index.html');
-        }
+    // --- 3. FETCH DATA (From 'monthly_reports') ---
+    async function fetchReports() {
+        const monthName = document.getElementById('filter-month').value;
+        const year = document.getElementById('filter-year').value;
+        
+        // Month Index (Jan=01)
+        const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`; // e.g. "2025-11"
 
-        // --- 3. FETCH DATA (UPDATED: Date Range + Collection Check) ---
-        async function fetchReports() {
-            const month = document.getElementById('filter-month').value;
-            const year = document.getElementById('filter-year').value;
-            
-            // Month ka number (Jan=0, Feb=1...)
-            const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(month);
-            
-            // Poore mahine ki Date Range banayi (e.g. 2025-11-01 se 2025-11-31)
-            // Taake agar 'month' field missing ho tab bhi data mil jaye
-            const startDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
-            const endDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-31`;
+        const loader = document.getElementById('loader-container');
+        const container = document.getElementById('reports-container');
+        
+        loader.classList.remove('hidden');
+        container.innerHTML = '';
+        flattenedReports = []; // Reset
 
-            const loader = document.getElementById('loader-container');
-            const container = document.getElementById('reports-container');
-            
-            loader.classList.remove('hidden');
-            container.innerHTML = ''; 
+        try {
+            console.log(`Searching in monthly_reports for monthKey: ${monthKey}`);
 
-            try {
-                // IMPORTANT: Yahan Collection ka naam 'teacher_submissions' assume kiya hai
-                // Agar aapka data 'tadris_reports' me hai to naam badal lein
-                const collectionName = 'teacher_submissions'; 
+            // Query: monthly_reports jahan monthKey match ho (e.g. 2025-11)
+            const snapshot = await db.collection('monthly_reports')
+                .where('monthKey', '==', monthKey)
+                .get();
 
-                const snapshot = await db.collection(collectionName)
-                    .where('date', '>=', startDate)
-                    .where('date', '<=', endDate)
-                    .get();
-
-                if (snapshot.empty) {
-                    container.innerHTML = `<div class="p-10 text-center text-red-400">Is mahine (${month} ${year}) ki koi recording nahi mili.<br><span class="text-xs text-gray-400">Searching in: ${collectionName}</span></div>`;
-                    loader.classList.add('hidden');
-                    return;
-                }
-
-                currentReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderTable(currentReports);
-
-            } catch (error) {
-                console.error("Error:", error);
-                container.innerHTML = `<div class="p-10 text-center text-red-500">Error: ${error.message}</div>`;
-            } finally {
+            if (snapshot.empty) {
+                container.innerHTML = `<div class="p-10 text-center text-red-400">Is mahine (${monthName} ${year}) ki koi report file nahi mili.</div>`;
                 loader.classList.add('hidden');
+                return;
             }
-        }
 
-        // --- 4. RENDER TABLE (UPDATED: Nested 'tadrisRecording' Access) ---
-        function renderTable(reports) {
-            const container = document.getElementById('reports-container');
-            
-            let rows = reports.map((r, index) => {
-                // NESTED DATA ACCESS
-                // Agar tadrisRecording object nahi hai to empty object maan lo
-                const tadrisData = r.tadrisRecording || {};
+            // Loop through all users' reports
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const parentId = doc.id;
                 
-                // Status check ab tadrisRecording ke andar se hoga
-                const isDone = tadrisData.status === 'Done';
-                const hasComment = tadrisData.mufattishComment && tadrisData.mufattishComment.trim() !== "";
-                
-                // Badge Logic
-                let statusBadge;
-                if (hasComment) {
-                    statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Checked</span>`;
-                } else if (isDone) {
-                    // Agar Teacher ne 'Done' mark kiya hai par Mufattish ne check nahi kiya
-                    statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold border border-blue-200">Submitted</span>`;
-                } else {
-                    statusBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span>`;
+                // Check if 'tadrisRecording' exists and has data array
+                if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
+                    
+                    data.tadrisRecording.data.forEach(record => {
+                        // Har recording ko ek flat object banayenge taake table me dikha sakein
+                        flattenedReports.push({
+                            parentDocId: parentId, // Update karne ke liye zaroori hai
+                            recordId: record.id,   // Array me identify karne ke liye
+                            jamiaName: record.jamiaName || record.jamia || 'Unknown',
+                            teacherName: record.teacherName || record.teacher || 'Unknown',
+                            className: record.className || record.class || '-',
+                            kitabName: record.kitabName || record.kitab || '-',
+                            date: record.date || '-',
+                            // 'tasurat' wo hai jo Zimmedar ne likha
+                            zimmedarComment: record.tasurat || '',
+                            // 'mufattishComment' wo hoga jo AAP (Admin) likhenge
+                            mufattishComment: record.mufattishComment || '',
+                            recordingLink: record.url || record.link || '#'
+                        });
+                    });
                 }
+            });
 
-                // Agar recording link hi nahi hai
-                const hasRecording = tadrisData.url || tadrisData.link;
-                const btnDisabled = !hasRecording ? 'opacity-50 cursor-not-allowed' : '';
+            if (flattenedReports.length === 0) {
+                container.innerHTML = `<div class="p-10 text-center text-gray-500">Reports mili hain, lekin unme Tadris ki koi recording save nahi hai.</div>`;
+            } else {
+                renderTable(flattenedReports);
+            }
 
-                return `
-                <tr class="hover:bg-gray-50 border-b transition">
-                    <td class="p-4 text-center text-gray-500">${index + 1}</td>
-                    <td class="p-4 font-bold urdu-font text-gray-800 text-right text-lg">${r.jamiaName || r.jamia || 'Unknown'}</td>
-                    <td class="p-4 urdu-font text-right text-teal-700 font-semibold">${r.teacherName || r.teacher || 'Unknown'}</td>
-                    <td class="p-4 text-center">
-                        <div class="font-semibold text-sm">${r.subject || r.kitab || '-'}</div>
-                        <div class="text-xs text-gray-500">${r.date || '-'}</div>
-                    </td>
-                    <td class="p-4 text-center">${statusBadge}</td>
-                    <td class="p-4 text-center">
-                        <button onclick="openReviewModal('${r.id}')" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded shadow text-sm transition ${btnDisabled}">
-                            <i class="fas fa-headphones-alt"></i> Check
-                        </button>
-                    </td>
-                </tr>
-                `;
-            }).join('');
+        } catch (error) {
+            console.error("Error fetching reports:", error);
+            container.innerHTML = `<div class="p-10 text-center text-red-500">Error: ${error.message}</div>`;
+        } finally {
+            loader.classList.add('hidden');
+        }
+    }
 
-            container.innerHTML = `
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-teal-700 text-white uppercase text-xs">
-                            <tr>
-                                <th class="p-4 text-center">#</th>
-                                <th class="p-4 text-right">Jamia</th>
-                                <th class="p-4 text-right">Teacher</th>
-                                <th class="p-4 text-center">Kitab/Date</th>
-                                <th class="p-4 text-center">Status</th>
-                                <th class="p-4 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200 bg-white">
-                            ${rows}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="p-3 bg-gray-50 text-right text-xs text-gray-500 border-t">
-                    Total: <b>${reports.length}</b>
-                </div>
+    // --- 4. RENDER TABLE ---
+    function renderTable(reports) {
+        const container = document.getElementById('reports-container');
+        
+        let rows = reports.map((r, index) => {
+            // Status Logic
+            const hasMufattishComment = r.mufattishComment && r.mufattishComment.trim() !== "";
+            
+            let statusBadge;
+            if (hasMufattishComment) {
+                statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Checked</span>`;
+            } else {
+                statusBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span>`;
+            }
+
+            return `
+            <tr class="hover:bg-gray-50 border-b transition">
+                <td class="p-4 text-center text-gray-500">${index + 1}</td>
+                <td class="p-4 font-bold urdu-font text-gray-800 text-right text-lg">${r.jamiaName}</td>
+                <td class="p-4 urdu-font text-right text-teal-700 font-semibold">${r.teacherName}</td>
+                <td class="p-4 text-center">
+                    <div class="font-semibold text-sm">${r.className} - ${r.kitabName}</div>
+                    <div class="text-xs text-gray-500">${r.date}</div>
+                </td>
+                <td class="p-4 text-center">${statusBadge}</td>
+                <td class="p-4 text-center">
+                    <button onclick="openReviewModal('${r.parentDocId}', '${r.recordId}')" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded shadow text-sm transition">
+                        <i class="fas fa-edit"></i> Check
+                    </button>
+                </td>
+            </tr>
             `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-teal-700 text-white uppercase text-xs">
+                        <tr>
+                            <th class="p-4 text-center">#</th>
+                            <th class="p-4 text-right">Jamia</th>
+                            <th class="p-4 text-right">Teacher</th>
+                            <th class="p-4 text-center">Details</th>
+                            <th class="p-4 text-center">Status</th>
+                            <th class="p-4 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white">
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 bg-gray-50 text-right text-xs text-gray-500 border-t">
+                Total Recordings: <b>${reports.length}</b>
+            </div>
+        `;
+    }
+
+    // --- 5. MODAL LOGIC ---
+    function openReviewModal(parentDocId, recordId) {
+        // Find local data
+        const report = flattenedReports.find(r => r.parentDocId === parentDocId && r.recordId === recordId);
+        if (!report) return;
+
+        currentEditingDocId = parentDocId;
+        currentEditingRecordId = recordId;
+
+        // Fill Data in Modal
+        document.getElementById('modal-teacher').innerText = report.teacherName;
+        document.getElementById('modal-jamia').innerText = report.jamiaName;
+        document.getElementById('modal-subject').innerText = `${report.className} - ${report.kitabName}`;
+        document.getElementById('modal-date').innerText = report.date;
+        
+        // Recording Link
+        const linkEl = document.getElementById('modal-link');
+        if (report.recordingLink && report.recordingLink !== '#') {
+            linkEl.href = report.recordingLink;
+            linkEl.innerText = "Play Recording";
+            linkEl.classList.remove('text-gray-400', 'pointer-events-none');
+            linkEl.classList.add('text-blue-600', 'hover:underline');
+        } else {
+            linkEl.href = "#";
+            linkEl.innerText = "No Link Available";
+            linkEl.classList.add('text-gray-400', 'pointer-events-none');
+            linkEl.classList.remove('text-blue-600', 'hover:underline');
         }
 
-        // --- 5. MODAL LOGIC (UPDATED) ---
-        function openReviewModal(id) {
-            const report = currentReports.find(r => r.id === id);
-            if (!report) return;
-            currentEditingId = id;
+        // Zimmedar Comment (Read Only)
+        // Aap chaho to modal me ek jagah Zimmedar ka comment dikha sakte ho agar wo HTML me add karo
+        // Filhal hum input box me Mufattish ka comment dalenge
+        document.getElementById('modal-comment').value = report.mufattishComment || '';
+        document.getElementById('save-status').classList.add('hidden');
 
-            // Nested Data Access
-            const tadrisData = report.tadrisRecording || {};
-            const recordingUrl = tadrisData.url || tadrisData.link || '#';
-            const existingComment = tadrisData.mufattishComment || '';
+        // Show Modal
+        document.getElementById('review-modal').classList.remove('hidden');
+    }
 
-            // Fill UI
-            document.getElementById('modal-teacher').innerText = report.teacherName || report.teacher || '-';
-            document.getElementById('modal-jamia').innerText = report.jamiaName || report.jamia || '-';
-            document.getElementById('modal-subject').innerText = report.subject || report.kitab || '-';
-            document.getElementById('modal-date').innerText = report.date || '-';
+    function closeModal() {
+        document.getElementById('review-modal').classList.add('hidden');
+        currentEditingDocId = null;
+        currentEditingRecordId = null;
+    }
+
+    // --- 6. SAVE FEEDBACK (Complex Update for Arrays) ---
+    async function saveFeedback() {
+        if (!currentEditingDocId || !currentEditingRecordId) return;
+
+        const comment = document.getElementById('modal-comment').value;
+        const btn = document.querySelector('#review-modal button i.fa-save').parentNode;
+
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        btn.disabled = true;
+
+        try {
+            // 1. Get the Parent Document (Monthly Report)
+            const reportRef = db.collection('monthly_reports').doc(currentEditingDocId);
+            const docSnap = await reportRef.get();
             
-            const linkEl = document.getElementById('modal-link');
-            linkEl.href = recordingUrl;
-            linkEl.innerText = recordingUrl !== '#' ? 'Play Recording' : 'No Recording Link';
-
-            document.getElementById('modal-comment').value = existingComment;
-            document.getElementById('save-status').classList.add('hidden');
-
-            document.getElementById('review-modal').classList.remove('hidden');
-        }
-
-        function closeModal() {
-            document.getElementById('review-modal').classList.add('hidden');
-            currentEditingId = null;
-        }
-
-        // --- 6. SAVE LOGIC (UPDATED: Saves inside tadrisRecording object) ---
-        async function saveFeedback() {
-            if (!currentEditingId) return;
-
-            const comment = document.getElementById('modal-comment').value;
-            const btn = document.querySelector('#review-modal button i.fa-save').parentNode;
-            
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-            btn.disabled = true;
-
-            try {
-                // IMPORTANT: Update using Dot Notation to update nested field
-                const updateData = {};
-                updateData["tadrisRecording.mufattishComment"] = comment;
-                // Optional: Update status to indicate mufattish has checked
-                // updateData["tadrisRecording.status"] = "Checked"; 
-
-                // Collection Name wahi hona chahiye jo fetch me use kiya
-                await db.collection('teacher_submissions').doc(currentEditingId).update(updateData);
-
-                const statusMsg = document.getElementById('save-status');
-                statusMsg.classList.remove('hidden');
-                statusMsg.innerText = "Saved Successfully!";
-                
-                // Local Update for UI refresh
-                const rIndex = currentReports.findIndex(r => r.id === currentEditingId);
-                if(rIndex !== -1) {
-                    if(!currentReports[rIndex].tadrisRecording) currentReports[rIndex].tadrisRecording = {};
-                    currentReports[rIndex].tadrisRecording.mufattishComment = comment;
-                }
-                renderTable(currentReports);
-
-                setTimeout(() => closeModal(), 1000);
-
-            } catch (error) {
-                console.error("Save Error:", error);
-                alert("Error: " + error.message);
-            } finally {
-                btn.innerHTML = '<i class="fas fa-save"></i> Save Comment';
-                btn.disabled = false;
+            if (!docSnap.exists) {
+                throw new Error("Report document not found!");
             }
+
+            const data = docSnap.data();
+            let recordingArray = data.tadrisRecording.data || [];
+
+            // 2. Find the specific recording in the array
+            const recordIndex = recordingArray.findIndex(r => r.id === currentEditingRecordId);
+
+            if (recordIndex === -1) {
+                throw new Error("Recording not found in database array.");
+            }
+
+            // 3. Update the fields locally
+            recordingArray[recordIndex].mufattishComment = comment;
+            recordingArray[recordIndex].checkedByMufattish = true;
+            recordingArray[recordIndex].checkDate = new Date().toISOString();
+
+            // 4. Write the WHOLE array back to Firestore
+            await reportRef.update({
+                "tadrisRecording.data": recordingArray
+            });
+
+            // UI Feedback
+            const statusMsg = document.getElementById('save-status');
+            statusMsg.classList.remove('hidden');
+            statusMsg.innerText = "Saved!";
+            
+            // Update Local Variable so table refreshes without API call
+            const localIndex = flattenedReports.findIndex(r => r.parentDocId === currentEditingDocId && r.recordId === currentEditingRecordId);
+            if (localIndex !== -1) {
+                flattenedReports[localIndex].mufattishComment = comment;
+            }
+            renderTable(flattenedReports);
+
+            setTimeout(() => closeModal(), 1000);
+
+        } catch (error) {
+            console.error("Save Error:", error);
+            alert("Save failed: " + error.message);
+        } finally {
+            btn.innerHTML = '<i class="fas fa-save"></i> Save Comment';
+            btn.disabled = false;
         }
-    </script>
+    }
+</script>
 </body>
 </html>
+
 
 
 
