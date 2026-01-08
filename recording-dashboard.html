@@ -223,389 +223,370 @@
     </div>
 
     <script>
-        // --- CONFIGURATION ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-            authDomain: "data-f15ab.firebaseapp.com",
-            projectId: "data-f15ab",
-            storageBucket: "data-f15ab.firebasestorage.app",
-            messagingSenderId: "449137002393",
-            appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
-            measurementId: "G-1PHNJQWNPZ",
-        };
+        <script>
+    // --- CONFIGURATION ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+        authDomain: "data-f15ab.firebaseapp.com",
+        projectId: "data-f15ab",
+        storageBucket: "data-f15ab.firebasestorage.app",
+        messagingSenderId: "449137002393",
+        appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+        measurementId: "G-1PHNJQWNPZ",
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // --- STATE ---
+    let allReportsData = []; 
+    let filteredReports = []; 
+    let currentEditingDocId = null;
+    let currentEditingIndex = null; // Changed from RecordId to Index
+
+    // --- AUTH ---
+    auth.onAuthStateChanged(user => {
+        if (!user) window.location.href = 'index.html';
+        else {
+            // Auto Set Month & Fetch
+            const d = new Date();
+            const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            document.getElementById('filter-month').value = months[d.getMonth()];
+            document.getElementById('filter-year').value = d.getFullYear();
+            fetchReports();
+        }
+    });
+
+    function logout() { auth.signOut().then(() => window.location.href = 'index.html'); }
+
+    // --- 1. DATA FETCHING ---
+    async function fetchReports() {
+        const monthName = document.getElementById('filter-month').value;
+        const year = document.getElementById('filter-year').value;
+        const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+        const loader = document.getElementById('loader-container');
+        const dashContent = document.getElementById('dashboard-content');
         
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-
-        // --- STATE ---
-        let allReportsData = []; // Full Data
-        let filteredReports = []; // For Display
-        let currentEditingDocId = null;
-        let currentEditingRecordId = null;
-
-        // --- AUTH ---
-        auth.onAuthStateChanged(user => {
-            if (!user) window.location.href = 'index.html';
-            else {
-                // Auto Set Month & Fetch on Load
-                const d = new Date();
-                const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-                document.getElementById('filter-month').value = months[d.getMonth()];
-                document.getElementById('filter-year').value = d.getFullYear();
-                fetchReports();
-            }
-        });
-
-        function logout() { auth.signOut().then(() => window.location.href = 'index.html'); }
-
-        // --- 1. DATA FETCHING ---
-        async function fetchReports() {
-            const monthName = document.getElementById('filter-month').value;
-            const year = document.getElementById('filter-year').value;
-            const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
-            const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
-
-            const loader = document.getElementById('loader-container');
-            const dashContent = document.getElementById('dashboard-content');
-            
-            loader.classList.remove('hidden');
-            dashContent.classList.add('hidden');
-            
-            allReportsData = [];
-
-            try {
-                const snapshot = await db.collection('monthly_reports')
-                    .where('monthKey', '==', monthKey)
-                    .get();
-
-                if (snapshot.empty) {
-                    document.getElementById('reports-table-container').innerHTML = `<div class="p-10 text-center text-gray-400">No data found for ${monthName} ${year}</div>`;
-                    updateStats(); // Clear stats
-                } else {
-                    // Process Data
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        const userName = data.userName || "Unknown Zimmedar"; // Assuming userName exists
-                        const region = data.region || "Unknown"; // Assuming region exists
-
-                        if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
-                            data.tadrisRecording.data.forEach(rec => {
-                                allReportsData.push({
-                                    parentDocId: doc.id,
-                                    recordId: rec.id,
-                                    jamiaName: rec.jamiaName || rec.jamia || 'Unknown',
-                                    teacherName: rec.teacherName || rec.teacher || 'Unknown',
-                                    className: rec.className || rec.class || '-',
-                                    kitabName: rec.kitabName || rec.kitab || '-',
-                                    date: rec.date || '-',
-                                    tasurat: rec.tasurat || '', // The main check field
-                                    tasuratDate: rec.tasuratDate || null, // Date when checked
-                                    recordingLink: rec.url || rec.link || '#',
-                                    zimmedarName: userName, // For filtering
-                                    region: region // For filtering
-                                });
-                            });
-                        }
-                    });
-                }
-
-                // Initial Filter (Show All)
-                filteredReports = [...allReportsData];
-                
-                populateFilters(); // Setup dropdowns
-                updateStats();     // Calculate Counts
-                renderTable();     // Show Table
-                
-                dashContent.classList.remove('hidden');
-
-            } catch (error) {
-                console.error(error);
-                alert("Error loading data: " + error.message);
-            } finally {
-                loader.classList.add('hidden');
-            }
-        }
-
-        // --- 2. FILTERS LOGIC ---
-        function populateFilters() {
-            // Get Unique Zimmedars
-            const zimmedars = [...new Set(allReportsData.map(r => r.zimmedarName))].sort();
-            const zimSelect = document.getElementById('filter-zimmedar');
-            zimSelect.innerHTML = '<option value="">All Zimmedars</option>';
-            zimmedars.forEach(z => {
-                const opt = document.createElement('option');
-                opt.value = z;
-                opt.innerText = z;
-                zimSelect.appendChild(opt);
-            });
-            // Region static hai ya dynamic kar sakte hain same logic se
-        }
-
-        function applyFilters() {
-            const searchJamia = document.getElementById('search-jamia').value.toLowerCase();
-            const filterZim = document.getElementById('filter-zimmedar').value;
-            const filterReg = document.getElementById('filter-region').value;
-
-            filteredReports = allReportsData.filter(r => {
-                const matchJamia = r.jamiaName.toLowerCase().includes(searchJamia);
-                const matchZim = filterZim === "" || r.zimmedarName === filterZim;
-                const matchReg = filterReg === "" || r.region === filterReg;
-                return matchJamia && matchZim && matchReg;
-            });
-
-            renderTable();
-            // Optional: Update stats based on filtered view? 
-            // Usually global stats rehte hain, par filtered stats bhi acche hain.
-            // Let's update stats based on filter
-            updateStatsForFiltered();
-        }
-
-        // --- 3. STATISTICS & ACTIVITY ---
-        function updateStats() {
-            updateStatsLogic(allReportsData);
-        }
+        loader.classList.remove('hidden');
+        dashContent.classList.add('hidden');
         
-        function updateStatsForFiltered() {
-            updateStatsLogic(filteredReports);
-        }
+        allReportsData = [];
 
-        function updateStatsLogic(dataSet) {
-            const total = dataSet.length;
-            const checked = dataSet.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
-            const pending = total - checked;
-            const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+        try {
+            const snapshot = await db.collection('monthly_reports')
+                .where('monthKey', '==', monthKey)
+                .get();
 
-            document.getElementById('stat-total').innerText = total;
-            document.getElementById('stat-checked').innerText = checked;
-            document.getElementById('stat-pending').innerText = pending;
-            document.getElementById('stat-percent').innerText = percent + "%";
-
-            renderDailyActivity(dataSet);
-        }
-
-        function renderDailyActivity(dataSet) {
-            // Count checks per day
-            const dailyCounts = {};
-            dataSet.forEach(r => {
-                if (r.tasuratDate) {
-                    // Extract Date portion (YYYY-MM-DD)
-                    const dateKey = r.tasuratDate.split('T')[0]; 
-                    dailyCounts[dateKey] = (dailyCounts[dateKey] || 0) + 1;
-                }
-            });
-
-            const grid = document.getElementById('activity-grid');
-            grid.innerHTML = '';
-            
-            const dates = Object.keys(dailyCounts).sort();
-            
-            if(dates.length === 0) {
-                grid.innerHTML = '<span class="text-sm text-gray-400 italic">No checking activity recorded yet.</span>';
-                return;
-            }
-
-            dates.forEach(date => {
-                const count = dailyCounts[date];
-                // Simple Date Formatting
-                const dObj = new Date(date);
-                const day = dObj.getDate();
-                const month = dObj.toLocaleString('default', { month: 'short' });
-
-                const item = `
-                    <div class="flex flex-col items-center justify-center bg-teal-50 border border-teal-100 rounded-lg p-2 w-16 text-center shadow-sm">
-                        <span class="text-xs text-gray-500 font-bold">${month}</span>
-                        <span class="text-lg font-bold text-teal-700 leading-none">${day}</span>
-                        <span class="text-[10px] text-teal-600 mt-1 bg-white px-1 rounded border">${count} chk</span>
-                    </div>
-                `;
-                grid.innerHTML += item;
-            });
-        }
-
-        // --- 4. RENDER TABLE (UPDATED) ---
-        function renderTable() {
-            const container = document.getElementById('reports-table-container');
-            
-            if (filteredReports.length === 0) {
-                container.innerHTML = `<div class="p-8 text-center text-gray-500">No records found matching filters.</div>`;
-                return;
-            }
-
-            const rows = filteredReports.map((r, i) => {
-                const isChecked = r.tasurat && r.tasurat.trim() !== "";
-                const badge = isChecked 
-                    ? `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>` 
-                    : `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
-
-                // CHANGE: 'onclick' hata diya hai, ab hum 'check-btn' class use karenge
-                return `
-                <tr class="hover:bg-gray-50 border-b border-gray-100 transition">
-                    <td class="p-3 text-center text-gray-400 text-xs">${i + 1}</td>
-                    <td class="p-3 text-right">
-                        <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
-                        <p class="text-[10px] text-gray-400 mt-1">${r.zimmedarName}</p>
-                    </td>
-                    <td class="p-3 text-right urdu-font text-teal-700 font-semibold text-sm">${r.teacherName}</td>
-                    <td class="p-3 text-center">
-                        <div class="font-medium text-xs text-gray-700">${r.className}</div>
-                        <div class="text-[10px] text-gray-400">${r.kitabName}</div>
-                    </td>
-                    <td class="p-3 text-center text-xs text-gray-500">${r.date}</td>
-                    <td class="p-3 text-center">${badge}</td>
-                    <td class="p-3 text-center">
-                        <button type="button" 
-                            class="check-btn bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-md shadow-sm text-xs font-medium transition flex items-center gap-1 mx-auto"
-                            data-pid="${r.parentDocId}" 
-                            data-rid="${r.recordId}">
-                            <i class="fas fa-edit pointer-events-none"></i> Check
-                        </button>
-                    </td>
-                </tr>
-                `;
-            }).join('');
-
-            container.innerHTML = `
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-800 text-gray-300 uppercase text-[10px] tracking-wider">
-                            <tr>
-                                <th class="p-3 text-center">#</th>
-                                <th class="p-3 text-right">Jamia / Zimmedar</th>
-                                <th class="p-3 text-right">Teacher</th>
-                                <th class="p-3 text-center">Class / Kitab</th>
-                                <th class="p-3 text-center">Date</th>
-                                <th class="p-3 text-center">Status</th>
-                                <th class="p-3 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-100">
-                            ${rows}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        }
-
-        // --- 5. MODAL, AUDIO & SAVE ---
-        function openReviewModal(pId, rId) {
-            const r = allReportsData.find(x => x.parentDocId === pId && x.recordId === rId);
-            if (!r) return;
-
-            currentEditingDocId = pId;
-            currentEditingRecordId = rId;
-
-            document.getElementById('modal-jamia').innerText = r.jamiaName;
-            document.getElementById('modal-teacher').innerText = r.teacherName;
-            document.getElementById('modal-subject').innerText = `${r.className} - ${r.kitabName}`;
-            document.getElementById('modal-date').innerText = r.date;
-            document.getElementById('modal-comment').value = r.tasurat;
-            document.getElementById('save-status').classList.add('hidden');
-
-            // Audio Setup
-            const player = document.getElementById('modal-audio-player');
-            const linkBtn = document.getElementById('modal-link');
-            const container = document.getElementById('audio-container');
-            
-            // Reset Speed
-            player.playbackRate = 1.0;
-            document.getElementById('speed-btn').innerText = "1x";
-
-            if (r.recordingLink && r.recordingLink !== '#' && r.recordingLink.startsWith('http')) {
-                player.src = r.recordingLink;
-                // player.load(); // Optional: Auto load
-                linkBtn.href = r.recordingLink;
-                container.classList.remove('opacity-50', 'pointer-events-none');
+            if (snapshot.empty) {
+                document.getElementById('reports-table-container').innerHTML = `<div class="p-10 text-center text-gray-400">No data found for ${monthName} ${year}</div>`;
+                updateStats();
             } else {
-                player.src = "";
-                linkBtn.href = "#";
-                container.classList.add('opacity-50', 'pointer-events-none');
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const userName = data.userName || "Unknown Zimmedar";
+                    const region = data.region || "Unknown";
+
+                    if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
+                        // Use Index (i) because old records might not have IDs
+                        data.tadrisRecording.data.forEach((rec, i) => {
+                            allReportsData.push({
+                                parentDocId: doc.id,
+                                arrayIndex: i, // Save position index
+                                jamiaName: rec.jamiaName || rec.jamia || 'Unknown',
+                                teacherName: rec.teacherName || rec.teacher || 'Unknown',
+                                className: rec.className || rec.class || '-',
+                                kitabName: rec.kitabName || rec.kitab || '-',
+                                date: rec.date || '-',
+                                tasurat: rec.tasurat || '', 
+                                tasuratDate: rec.tasuratDate || null,
+                                recordingLink: rec.url || rec.link || '#',
+                                zimmedarName: userName,
+                                region: region
+                            });
+                        });
+                    }
+                });
             }
 
-            document.getElementById('review-modal').classList.remove('hidden');
-        }
-
-        function closeModal() {
-            const player = document.getElementById('modal-audio-player');
-            player.pause();
-            player.currentTime = 0;
-            document.getElementById('review-modal').classList.add('hidden');
-        }
-
-        function toggleSpeed() {
-            const p = document.getElementById('modal-audio-player');
-            const b = document.getElementById('speed-btn');
-            if(p.playbackRate === 1.0) { p.playbackRate = 1.5; b.innerText = "1.5x"; }
-            else if(p.playbackRate === 1.5) { p.playbackRate = 2.0; b.innerText = "2x"; }
-            else { p.playbackRate = 1.0; b.innerText = "1x"; }
-        }
-
-        async function saveFeedback() {
-            if (!currentEditingDocId) return;
-            const comment = document.getElementById('modal-comment').value;
-            const btn = document.querySelector('#review-modal button i.fa-save').parentNode;
+            filteredReports = [...allReportsData];
+            populateFilters();
+            updateStats();
+            renderTable();
             
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-            btn.disabled = true;
+            dashContent.classList.remove('hidden');
 
-            try {
-                const reportRef = db.collection('monthly_reports').doc(currentEditingDocId);
-                const docSnap = await reportRef.get();
-                if(!docSnap.exists) throw new Error("Doc not found");
-
-                const data = docSnap.data();
-                let arr = data.tadrisRecording.data || [];
-                const idx = arr.findIndex(x => x.id === currentEditingRecordId);
-                if(idx === -1) throw new Error("Rec not found");
-
-                // Update Fields
-                const now = new Date().toISOString();
-                arr[idx].tasurat = comment;
-                arr[idx].tasuratDate = now; 
-                arr[idx].mufattishComment = comment; // Backup
-
-                await reportRef.update({ "tadrisRecording.data": arr });
-
-                // UI Feedback
-                document.getElementById('save-status').classList.remove('hidden');
-                
-                // Update Local Data
-                const localRec = allReportsData.find(x => x.parentDocId === currentEditingDocId && x.recordId === currentEditingRecordId);
-                if(localRec) {
-                    localRec.tasurat = comment;
-                    localRec.tasuratDate = now;
-                }
-                
-                // Refresh View
-                applyFilters(); // Re-renders table and stats
-                
-                setTimeout(() => closeModal(), 1000);
-
-            } catch(e) {
-                alert("Error: " + e.message);
-            } finally {
-                btn.innerHTML = '<i class="fas fa-save"></i> Save & Close';
-                btn.disabled = false;
-            }
+        } catch (error) {
+            console.error(error);
+            alert("Error loading data: " + error.message);
+        } finally {
+            loader.classList.add('hidden');
         }
-        // --- EVENT LISTENER FOR BUTTON CLICKS (PERMANENT FIX) ---
-        document.addEventListener('click', function(e) {
-            // Check agar click hua element 'check-btn' hai
-            const btn = e.target.closest('.check-btn');
-            
-            if (btn) {
-                // Button mil gaya, ab IDs nikalo aur modal kholo
-                const pid = btn.getAttribute('data-pid');
-                const rid = btn.getAttribute('data-rid');
-                
-                if(pid && rid) {
-                    openReviewModal(pid, rid);
-                } else {
-                    console.error("Error: Button IDs missing", btn);
-                }
+    }
+
+    // --- 2. FILTERS ---
+    function populateFilters() {
+        const zimmedars = [...new Set(allReportsData.map(r => r.zimmedarName))].sort();
+        const zimSelect = document.getElementById('filter-zimmedar');
+        zimSelect.innerHTML = '<option value="">All Zimmedars</option>';
+        zimmedars.forEach(z => {
+            const opt = document.createElement('option');
+            opt.value = z;
+            opt.innerText = z;
+            zimSelect.appendChild(opt);
+        });
+    }
+
+    function applyFilters() {
+        const searchJamia = document.getElementById('search-jamia').value.toLowerCase();
+        const filterZim = document.getElementById('filter-zimmedar').value;
+        const filterReg = document.getElementById('filter-region').value;
+
+        filteredReports = allReportsData.filter(r => {
+            const matchJamia = r.jamiaName.toLowerCase().includes(searchJamia);
+            const matchZim = filterZim === "" || r.zimmedarName === filterZim;
+            const matchReg = filterReg === "" || r.region === filterReg;
+            return matchJamia && matchZim && matchReg;
+        });
+
+        renderTable();
+        updateStatsForFiltered();
+    }
+
+    // --- 3. STATS ---
+    function updateStats() { updateStatsLogic(allReportsData); }
+    function updateStatsForFiltered() { updateStatsLogic(filteredReports); }
+
+    function updateStatsLogic(dataSet) {
+        const total = dataSet.length;
+        const checked = dataSet.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
+        const pending = total - checked;
+        const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+        document.getElementById('stat-total').innerText = total;
+        document.getElementById('stat-checked').innerText = checked;
+        document.getElementById('stat-pending').innerText = pending;
+        document.getElementById('stat-percent').innerText = percent + "%";
+
+        renderDailyActivity(dataSet);
+    }
+
+    function renderDailyActivity(dataSet) {
+        const dailyCounts = {};
+        dataSet.forEach(r => {
+            if (r.tasuratDate) {
+                const dateKey = r.tasuratDate.split('T')[0]; 
+                dailyCounts[dateKey] = (dailyCounts[dateKey] || 0) + 1;
             }
         });
-    </script>
+
+        const grid = document.getElementById('activity-grid');
+        grid.innerHTML = '';
+        const dates = Object.keys(dailyCounts).sort();
+        
+        if(dates.length === 0) {
+            grid.innerHTML = '<span class="text-sm text-gray-400 italic">No checking activity yet.</span>';
+            return;
+        }
+
+        dates.forEach(date => {
+            const dObj = new Date(date);
+            const day = dObj.getDate();
+            const month = dObj.toLocaleString('default', { month: 'short' });
+            
+            grid.innerHTML += `
+                <div class="flex flex-col items-center justify-center bg-teal-50 border border-teal-100 rounded-lg p-2 w-16 text-center shadow-sm">
+                    <span class="text-xs text-gray-500 font-bold">${month}</span>
+                    <span class="text-lg font-bold text-teal-700 leading-none">${day}</span>
+                    <span class="text-[10px] text-teal-600 mt-1 bg-white px-1 rounded border">${dailyCounts[date]} chk</span>
+                </div>`;
+        });
+    }
+
+    // --- 4. RENDER TABLE (FIXED) ---
+    function renderTable() {
+        const container = document.getElementById('reports-table-container');
+        
+        if (filteredReports.length === 0) {
+            container.innerHTML = `<div class="p-8 text-center text-gray-500">No records found.</div>`;
+            return;
+        }
+
+        const rows = filteredReports.map((r, i) => {
+            const isChecked = r.tasurat && r.tasurat.trim() !== "";
+            const badge = isChecked 
+                ? `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>` 
+                : `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+
+            // Using data-idx (Array Index) instead of ID for safety with old data
+            return `
+            <tr class="hover:bg-gray-50 border-b border-gray-100 transition">
+                <td class="p-3 text-center text-gray-400 text-xs">${i + 1}</td>
+                <td class="p-3 text-right">
+                    <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
+                    <p class="text-[10px] text-gray-400 mt-1">${r.zimmedarName}</p>
+                </td>
+                <td class="p-3 text-right urdu-font text-teal-700 font-semibold text-sm">${r.teacherName}</td>
+                <td class="p-3 text-center">
+                    <div class="font-medium text-xs text-gray-700">${r.className}</div>
+                    <div class="text-[10px] text-gray-400">${r.kitabName}</div>
+                </td>
+                <td class="p-3 text-center text-xs text-gray-500">${r.date}</td>
+                <td class="p-3 text-center">${badge}</td>
+                <td class="p-3 text-center">
+                    <button type="button" 
+                        class="check-btn bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-md shadow-sm text-xs font-medium transition flex items-center gap-1 mx-auto"
+                        data-pid="${r.parentDocId}" 
+                        data-idx="${r.arrayIndex}">
+                        <i class="fas fa-edit pointer-events-none"></i> Check
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-800 text-gray-300 uppercase text-[10px] tracking-wider">
+                        <tr>
+                            <th class="p-3 text-center">#</th>
+                            <th class="p-3 text-right">Jamia / Zimmedar</th>
+                            <th class="p-3 text-right">Teacher</th>
+                            <th class="p-3 text-center">Class / Kitab</th>
+                            <th class="p-3 text-center">Date</th>
+                            <th class="p-3 text-center">Status</th>
+                            <th class="p-3 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100">
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    // --- 5. MODAL LOGIC (INDEX BASED) ---
+    function openReviewModal(pId, arrIdx) {
+        // Convert string to number
+        arrIdx = parseInt(arrIdx);
+
+        // Find report using Index
+        const r = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === arrIdx);
+        
+        if (!r) {
+            console.error("Report not found for", pId, arrIdx);
+            return;
+        }
+
+        currentEditingDocId = pId;
+        currentEditingIndex = arrIdx; // Use Index for saving
+
+        document.getElementById('modal-jamia').innerText = r.jamiaName;
+        document.getElementById('modal-teacher').innerText = r.teacherName;
+        document.getElementById('modal-subject').innerText = `${r.className} - ${r.kitabName}`;
+        document.getElementById('modal-date').innerText = r.date;
+        document.getElementById('modal-comment').value = r.tasurat;
+        document.getElementById('save-status').classList.add('hidden');
+
+        // Audio Setup
+        const player = document.getElementById('modal-audio-player');
+        const linkBtn = document.getElementById('modal-link');
+        const container = document.getElementById('audio-container');
+        
+        player.playbackRate = 1.0;
+        document.getElementById('speed-btn').innerText = "1x";
+
+        if (r.recordingLink && r.recordingLink !== '#' && r.recordingLink.startsWith('http')) {
+            player.src = r.recordingLink;
+            linkBtn.href = r.recordingLink;
+            container.classList.remove('opacity-50', 'pointer-events-none');
+        } else {
+            player.src = "";
+            linkBtn.href = "#";
+            container.classList.add('opacity-50', 'pointer-events-none');
+        }
+
+        document.getElementById('review-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        const player = document.getElementById('modal-audio-player');
+        player.pause();
+        player.currentTime = 0;
+        document.getElementById('review-modal').classList.add('hidden');
+    }
+
+    function toggleSpeed() {
+        const p = document.getElementById('modal-audio-player');
+        const b = document.getElementById('speed-btn');
+        if(p.playbackRate === 1.0) { p.playbackRate = 1.5; b.innerText = "1.5x"; }
+        else if(p.playbackRate === 1.5) { p.playbackRate = 2.0; b.innerText = "2x"; }
+        else { p.playbackRate = 1.0; b.innerText = "1x"; }
+    }
+
+    async function saveFeedback() {
+        if (!currentEditingDocId || currentEditingIndex === null) return;
+        
+        const comment = document.getElementById('modal-comment').value;
+        const btn = document.querySelector('#review-modal button i.fa-save').parentNode;
+        
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        btn.disabled = true;
+
+        try {
+            const reportRef = db.collection('monthly_reports').doc(currentEditingDocId);
+            const docSnap = await reportRef.get();
+            if(!docSnap.exists) throw new Error("Doc not found");
+
+            const data = docSnap.data();
+            let arr = data.tadrisRecording.data || [];
+            
+            // DIRECT ARRAY ACCESS (Reliable for old data)
+            if (!arr[currentEditingIndex]) throw new Error("Recording index not found");
+
+            // Update Fields
+            const now = new Date().toISOString();
+            arr[currentEditingIndex].tasurat = comment;
+            arr[currentEditingIndex].tasuratDate = now; 
+            arr[currentEditingIndex].mufattishComment = comment;
+
+            await reportRef.update({ "tadrisRecording.data": arr });
+
+            // UI Feedback
+            document.getElementById('save-status').classList.remove('hidden');
+            
+            // Update Local Data
+            const localRec = allReportsData.find(x => x.parentDocId === currentEditingDocId && x.arrayIndex === currentEditingIndex);
+            if(localRec) {
+                localRec.tasurat = comment;
+                localRec.tasuratDate = now;
+            }
+            
+            applyFilters(); // Refresh UI
+            setTimeout(() => closeModal(), 1000);
+
+        } catch(e) {
+            alert("Error: " + e.message);
+        } finally {
+            btn.innerHTML = '<i class="fas fa-save"></i> Save & Close';
+            btn.disabled = false;
+        }
+    }
+
+    // --- EVENT DELEGATION (Fix for stuck clicks) ---
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.check-btn');
+        if (btn) {
+            const pid = btn.getAttribute('data-pid');
+            const idx = btn.getAttribute('data-idx');
+            if(pid && idx !== null) openReviewModal(pid, idx);
+        }
+    });
+
+</script>
 </body>
 </html>
+
 
