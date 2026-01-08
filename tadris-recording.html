@@ -283,6 +283,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
     // ============================
     // Firebase Config (same as original)
@@ -300,6 +301,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
 
     // ============================
     // DOM Helpers & Globals
@@ -899,6 +901,7 @@ async function saveNewRecordingToReport(payload) {
                   <h3 class="text-sm md:text-base font-semibold text-gray-800 urdu-font mb-1">
                     Nayi Recording Add Karein
                   </h3>
+                  
                   <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
                       <label class="block text-[11px] font-medium text-gray-600 mb-1">Teacher ka Naam</label>
@@ -906,23 +909,39 @@ async function saveNewRecordingToReport(payload) {
                         <option value="">Select Teacher</option>
                       </select>
                     </div>
+                    
                     <div>
                       <label class="block text-[11px] font-medium text-gray-600 mb-1">Class</label>
                       <select class="tadris-class-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" disabled>
                         <option value="">Select Teacher First</option>
                       </select>
                     </div>
+                    
                     <div>
                       <label class="block text-[11px] font-medium text-gray-600 mb-1">Kitab</label>
                       <select class="tadris-kitab-select w-full p-2 border rounded-lg bg-white text-xs urdu-font" disabled>
                         <option value="">Select Class First</option>
                       </select>
                     </div>
+
                     <div>
                       <label class="block text-[11px] font-medium text-gray-600 mb-1">Date</label>
                       <input type="date" class="tadris-date w-full p-2 border rounded-lg text-xs" />
                     </div>
                   </div>
+
+                  <div class="mt-2">
+                     <label class="block text-[11px] font-medium text-gray-600 mb-1">Recording File (MP3/Audio)</label>
+                     <input type="file" accept="audio/*" class="tadris-audio-file w-full text-xs text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-lg file:border-0
+                        file:text-xs file:font-semibold
+                        file:bg-teal-50 file:text-teal-700
+                        hover:file:bg-teal-100
+                     "/>
+                     <p class="text-[10px] text-gray-400 mt-1">Agar file hai to yahan select karein.</p>
+                  </div>
+
                   <div>
                     <label class="block text-[11px] font-medium text-gray-600 mb-1 urdu-font">
                       Recording par Tasurat (Admin ka comment)
@@ -933,6 +952,7 @@ async function saveNewRecordingToReport(payload) {
                       placeholder="Yahan recording par apna comment likhein..."
                     ></textarea>
                   </div>
+
                   <div class="flex flex-col sm:flex-row gap-2 sm:justify-end">
                     <button
                       type="button"
@@ -940,8 +960,8 @@ async function saveNewRecordingToReport(payload) {
                       data-jamia-name="${escapeHtml(jamiaName)}"
                       data-action="add-recording"
                     >
-                      <i class="fas fa-plus mr-1"></i>
-                      Add Recording
+                      <i class="fas fa-cloud-upload-alt mr-1"></i>
+                      Upload & Save
                     </button>
                   </div>
                 </div>
@@ -1460,7 +1480,7 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
     // ============================
     // Delegated Add Recording handler (per-card)
     // ============================
-    (function installDelegatedAddRecordingHandler() {
+        (function installDelegatedAddRecordingHandler() {
       if (window._delegatedAddRecordingInstalled) return;
       window._delegatedAddRecordingInstalled = true;
 
@@ -1469,63 +1489,91 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
         if (!btn) return;
         ev.preventDefault?.();
 
-        // find nearest card container
         const card = btn.closest('.jamia-card') || btn.closest('.accordion-content') || document;
 
-        const jamiaName = btn.dataset.jamiaName || btn.getAttribute('data-jamia-name') || card.querySelector('.jamia-title')?.textContent?.trim() || "";
+        // Elements fetch karein
+        const jamiaName = btn.dataset.jamiaName || "";
         const teacherEl = card.querySelector('select.tadris-teacher-select');
         const classEl = card.querySelector('select.tadris-class-select');
         const kitabEl = card.querySelector('select.tadris-kitab-select');
         const dateEl = card.querySelector('input.tadris-date');
         const tasuratEl = card.querySelector('textarea.tadris-tasurat');
+        const fileEl = card.querySelector('input.tadris-audio-file'); // NEW FILE INPUT
 
         const teacher = teacherEl?.value || "";
         const className = classEl?.value || "";
         const kitab = kitabEl?.value || "";
         const date = dateEl?.value || "";
         const tasurat = tasuratEl?.value || "";
+        const file = fileEl?.files[0]; // File grab karein
 
-        console.log('AddRecording click — found values:', { jamiaName, teacher, className, kitab, date, tasurat });
-
-        if (!jamiaName || !teacher) {
-          alert('Jamia aur Teacher select karen. (Please select Jamia & Teacher)');
-          return;
+        // Validation
+        if (!jamiaName || !teacher || !className || !kitab || !date) {
+            alert('Meherbani karke saari details (Teacher, Class, Kitab, Date) fill karein.');
+            return;
         }
 
-        const payload = {
-          jamiaName: jamiaName,
-          teacherName: teacher,
-          className: className,
-          kitabName: kitab,
-          date: date,
-          tasurat: tasurat,
-          createdBy: currentUser?.uid || null
-        };
+        // File Validation (Optional but recommended)
+        if (!file) {
+            if(!confirm("Aapne koi recording file select nahi ki. Kya bina recording ke save karna chahte hain?")) {
+                return;
+            }
+        }
 
+        // UI Update (Loader start)
+        const originalBtnText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
         showLoader(true);
+
         try {
-          // Attempt save to Firestore (reportRef)
-          try {
-            const saved = await saveNewRecordingToReport(payload);
-            showNotification('Recording server par save ho gayi.');
-            // re-render to show new saved entry
-            // trigger re-render by refetching current doc via onSnapshot already set
-            // but we can also call renderForCurrentMonth to reflect instantly
+            let downloadUrl = "";
+
+            // --- 1. UPLOAD LOGIC ---
+            if (file) {
+                // Unique path banayein: recordings/UserUID/Date_Time_FileName
+                const storagePath = `recordings/${currentUser.uid}/${Date.now()}_${file.name}`;
+                const storageRef = ref(storage, storagePath);
+                
+                // Upload file
+                const snapshot = await uploadBytes(storageRef, file);
+                
+                // Get URL
+                downloadUrl = await getDownloadURL(snapshot.ref);
+                console.log("File uploaded, URL:", downloadUrl);
+            }
+
+            // --- 2. SAVE DATA TO FIRESTORE ---
+            const payload = {
+                jamiaName: jamiaName,
+                teacherName: teacher,
+                className: className,
+                kitabName: kitab,
+                date: date,
+                tasurat: tasurat,
+                createdBy: currentUser?.uid || null,
+                url: downloadUrl, // Link save ho gaya
+                fileName: file ? file.name : "" // File ka naam bhi save kar lein
+            };
+
+            await saveNewRecordingToReport(payload);
+            
+            showNotification('Recording Successfully Uploaded & Saved!');
+            
+            // Inputs clear karein
+            if(tasuratEl) tasuratEl.value = "";
+            if(fileEl) fileEl.value = ""; // File input clear
+            
+            // Refresh List
             setTimeout(() => renderForCurrentMonth(), 800);
-          } catch (err) {
-            console.warn('Firestore save failed, falling back to localStorage:', err);
-            // fallback localStorage
-            const key = 'saved_recordings_demo';
-            const existing = JSON.parse(localStorage.getItem(key) || '[]');
-            existing.push(Object.assign({ id: Date.now() }, payload));
-            localStorage.setItem(key, JSON.stringify(existing));
-            showNotification('Server save available nahi — entry browser me local saved hui.', true);
-          }
+
         } catch (err) {
-          console.error('Add recording handler error:', err);
-          showNotification('Recording save karne me error. Console check karein.', true);
+            console.error('Upload/Save Error:', err);
+            showNotification('Error: ' + err.message, true);
         } finally {
-          showLoader(false);
+            showLoader(false);
+            btn.disabled = false;
+            btn.innerHTML = originalBtnText;
         }
 
       }, { capture: false });
@@ -1593,6 +1641,7 @@ async function saveAdminComment(itemIndex, commentValue, textareaEl = null, moda
   </script>
 </body>
 </html>
+
 
 
 
