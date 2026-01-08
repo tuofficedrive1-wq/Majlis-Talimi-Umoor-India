@@ -163,12 +163,12 @@
         apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
         authDomain: "data-f15ab.firebaseapp.com",
         projectId: "data-f15ab",
-        storageBucket: "data-f15ab.appspot.com",
+        storageBucket: "data-f15ab.firebasestorage.app", // Bucket name fixed
         messagingSenderId: "449137002393",
         appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
         measurementId: "G-1PHNJQWNPZ",
     };
-    // Initialize Firebase
+    
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
     }
@@ -176,17 +176,16 @@
     const db = firebase.firestore();
 
     // --- Global Variables ---
-    let flattenedReports = []; // Table me dikhane ke liye data
-    let currentEditingDocId = null; // Parent Document ID (Monthly Report ID)
-    let currentEditingRecordId = null; // Specific Recording ID (Array ke andar ka ID)
+    let flattenedReports = []; 
+    let currentEditingDocId = null; 
+    let currentEditingRecordId = null;
 
     // --- 2. AUTH CHECK ---
     auth.onAuthStateChanged(async (user) => {
         if (!user) {
             window.location.href = 'index.html';
         } else {
-            console.log("Logged in as:", user.email);
-            // Optional: Check role here if needed
+            console.log("Logged in:", user.email);
         }
     });
 
@@ -194,58 +193,48 @@
         auth.signOut().then(() => window.location.href = 'index.html');
     }
 
-    // --- 3. FETCH DATA (From 'monthly_reports') ---
+    // --- 3. FETCH DATA ---
     async function fetchReports() {
         const monthName = document.getElementById('filter-month').value;
         const year = document.getElementById('filter-year').value;
         
-        // Month Index (Jan=01)
         const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
-        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`; // e.g. "2025-11"
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`; 
 
         const loader = document.getElementById('loader-container');
         const container = document.getElementById('reports-container');
         
         loader.classList.remove('hidden');
         container.innerHTML = '';
-        flattenedReports = []; // Reset
+        flattenedReports = []; 
 
         try {
-            console.log(`Searching in monthly_reports for monthKey: ${monthKey}`);
-
-            // Query: monthly_reports jahan monthKey match ho (e.g. 2025-11)
             const snapshot = await db.collection('monthly_reports')
                 .where('monthKey', '==', monthKey)
                 .get();
 
             if (snapshot.empty) {
-                container.innerHTML = `<div class="p-10 text-center text-red-400">Is mahine (${monthName} ${year}) ki koi report file nahi mili.</div>`;
+                container.innerHTML = `<div class="p-10 text-center text-red-400">Is mahine (${monthName} ${year}) ki koi report nahi mili.</div>`;
                 loader.classList.add('hidden');
                 return;
             }
 
-            // Loop through all users' reports
             snapshot.forEach(doc => {
                 const data = doc.data();
                 const parentId = doc.id;
                 
-                // Check if 'tadrisRecording' exists and has data array
                 if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
-                    
                     data.tadrisRecording.data.forEach(record => {
-                        // Har recording ko ek flat object banayenge taake table me dikha sakein
                         flattenedReports.push({
-                            parentDocId: parentId, // Update karne ke liye zaroori hai
-                            recordId: record.id,   // Array me identify karne ke liye
+                            parentDocId: parentId,
+                            recordId: record.id,
                             jamiaName: record.jamiaName || record.jamia || 'Unknown',
                             teacherName: record.teacherName || record.teacher || 'Unknown',
                             className: record.className || record.class || '-',
                             kitabName: record.kitabName || record.kitab || '-',
                             date: record.date || '-',
-                            // 'tasurat' wo hai jo Zimmedar ne likha
-                            zimmedarComment: record.tasurat || '',
-                            // 'mufattishComment' wo hoga jo AAP (Admin) likhenge
-                            mufattishComment: record.mufattishComment || '',
+                            // IMPORTANT: 'tasurat' field hi read karenge jo user panel me show hota hai
+                            tasurat: record.tasurat || '', 
                             recordingLink: record.url || record.link || '#'
                         });
                     });
@@ -253,13 +242,13 @@
             });
 
             if (flattenedReports.length === 0) {
-                container.innerHTML = `<div class="p-10 text-center text-gray-500">Reports mili hain, lekin unme Tadris ki koi recording save nahi hai.</div>`;
+                container.innerHTML = `<div class="p-10 text-center text-gray-500">No recordings found.</div>`;
             } else {
                 renderTable(flattenedReports);
             }
 
         } catch (error) {
-            console.error("Error fetching reports:", error);
+            console.error("Error:", error);
             container.innerHTML = `<div class="p-10 text-center text-red-500">Error: ${error.message}</div>`;
         } finally {
             loader.classList.add('hidden');
@@ -271,15 +260,12 @@
         const container = document.getElementById('reports-container');
         
         let rows = reports.map((r, index) => {
-            // Status Logic
-            const hasMufattishComment = r.mufattishComment && r.mufattishComment.trim() !== "";
+            // Agar 'tasurat' bhara hua hai to Checked maanein
+            const isChecked = r.tasurat && r.tasurat.trim() !== "";
             
-            let statusBadge;
-            if (hasMufattishComment) {
-                statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Checked</span>`;
-            } else {
-                statusBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span>`;
-            }
+            const statusBadge = isChecked 
+                ? `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Checked</span>` 
+                : `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span>`;
 
             return `
             <tr class="hover:bg-gray-50 border-b transition">
@@ -324,57 +310,57 @@
         `;
     }
 
+    // --- 5. MODAL LOGIC (UPDATED: Audio + Tasurat Fix) ---
     function openReviewModal(parentDocId, recordId) {
-        // Find local data
         const report = flattenedReports.find(r => r.parentDocId === parentDocId && r.recordId === recordId);
         if (!report) return;
 
         currentEditingDocId = parentDocId;
         currentEditingRecordId = recordId;
 
-        // Fill Text Data
         document.getElementById('modal-teacher').innerText = report.teacherName;
         document.getElementById('modal-jamia').innerText = report.jamiaName;
         document.getElementById('modal-subject').innerText = `${report.className} - ${report.kitabName}`;
         document.getElementById('modal-date').innerText = report.date;
         
-        // --- NEW: AUDIO PLAYER LOGIC ---
+        // --- AUDIO PLAYER LOGIC ---
         const audioPlayer = document.getElementById('modal-audio-player');
         const linkEl = document.getElementById('modal-link');
         const audioContainer = document.getElementById('audio-container');
 
         if (report.recordingLink && report.recordingLink !== '#' && report.recordingLink.startsWith('http')) {
-            // Player me URL set karein
             audioPlayer.src = report.recordingLink;
-            audioPlayer.load(); // Player refresh karein
+            audioPlayer.load();
             
-            // Backup link bhi set karein
             linkEl.href = report.recordingLink;
             linkEl.classList.remove('hidden');
             audioContainer.classList.remove('hidden');
         } else {
-            // Agar link nahi hai to player chupayen
             audioPlayer.src = "";
             linkEl.href = "#";
             linkEl.classList.add('hidden');
             audioContainer.classList.add('hidden');
         }
 
-        // Comment Box
-        document.getElementById('modal-comment').value = report.mufattishComment || '';
+        // --- TASURAT FIX ---
+        // Yahan hum 'tasurat' field load kar rahe hain, jo user panel me show hoti hai
+        document.getElementById('modal-comment').value = report.tasurat || '';
         document.getElementById('save-status').classList.add('hidden');
 
-        // Show Modal
         document.getElementById('review-modal').classList.remove('hidden');
     }
 
     function closeModal() {
+        // Stop audio when closing
+        const audioPlayer = document.getElementById('modal-audio-player');
+        if(audioPlayer) { audioPlayer.pause(); audioPlayer.src = ""; }
+
         document.getElementById('review-modal').classList.add('hidden');
         currentEditingDocId = null;
         currentEditingRecordId = null;
     }
 
-    // --- 6. SAVE FEEDBACK (Complex Update for Arrays) ---
+    // --- 6. SAVE FEEDBACK (FIXED: Saves to 'tasurat') ---
     async function saveFeedback() {
         if (!currentEditingDocId || !currentEditingRecordId) return;
 
@@ -385,30 +371,25 @@
         btn.disabled = true;
 
         try {
-            // 1. Get the Parent Document (Monthly Report)
             const reportRef = db.collection('monthly_reports').doc(currentEditingDocId);
             const docSnap = await reportRef.get();
             
-            if (!docSnap.exists) {
-                throw new Error("Report document not found!");
-            }
+            if (!docSnap.exists) throw new Error("Report not found!");
 
             const data = docSnap.data();
             let recordingArray = data.tadrisRecording.data || [];
 
-            // 2. Find the specific recording in the array
             const recordIndex = recordingArray.findIndex(r => r.id === currentEditingRecordId);
+            if (recordIndex === -1) throw new Error("Recording not found in array.");
 
-            if (recordIndex === -1) {
-                throw new Error("Recording not found in database array.");
-            }
-
-            // 3. Update the fields locally
+            // --- IMPORTANT CHANGE ---
+            // Hum seedha 'tasurat' field ko update kar rahe hain
+            // Taake yeh Tadris Recording Panel (User View) me "Admin ka Comment" bankar dikhe
+            recordingArray[recordIndex].tasurat = comment;
+            recordingArray[recordIndex].tasuratDate = new Date().toISOString(); 
+            // Optional: Mufattish field bhi update kar dete hain backup ke liye
             recordingArray[recordIndex].mufattishComment = comment;
-            recordingArray[recordIndex].checkedByMufattish = true;
-            recordingArray[recordIndex].checkDate = new Date().toISOString();
 
-            // 4. Write the WHOLE array back to Firestore
             await reportRef.update({
                 "tadrisRecording.data": recordingArray
             });
@@ -416,12 +397,12 @@
             // UI Feedback
             const statusMsg = document.getElementById('save-status');
             statusMsg.classList.remove('hidden');
-            statusMsg.innerText = "Saved!";
+            statusMsg.innerText = "Saved to Tadris Panel!";
             
-            // Update Local Variable so table refreshes without API call
+            // Update Local Data
             const localIndex = flattenedReports.findIndex(r => r.parentDocId === currentEditingDocId && r.recordId === currentEditingRecordId);
             if (localIndex !== -1) {
-                flattenedReports[localIndex].mufattishComment = comment;
+                flattenedReports[localIndex].tasurat = comment;
             }
             renderTable(flattenedReports);
 
@@ -438,6 +419,7 @@
 </script>
 </body>
 </html>
+
 
 
 
