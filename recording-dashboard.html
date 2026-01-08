@@ -123,11 +123,17 @@
                 <div class="mb-6">
     <label class="block text-sm font-bold text-gray-700 mb-2">Recording Sunnein:</label>
     
-    <div id="audio-container" class="bg-gray-50 p-3 rounded border border-gray-200">
+    <div id="audio-container" class="bg-gray-50 p-2 rounded border border-gray-200 flex items-center gap-2">
+        
         <audio id="modal-audio-player" controls class="w-full h-10">
             <source src="" type="audio/mpeg">
             Your browser does not support the audio element.
         </audio>
+
+        <button id="speed-btn" onclick="toggleSpeed()" type="button" 
+            class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold px-3 py-2 rounded shadow transition w-16 text-center">
+            1x
+        </button>
     </div>
 
     <div class="mt-2 text-right">
@@ -163,7 +169,7 @@
         apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
         authDomain: "data-f15ab.firebaseapp.com",
         projectId: "data-f15ab",
-        storageBucket: "data-f15ab.firebasestorage.app", // Bucket name fixed
+        storageBucket: "data-f15ab.firebasestorage.app",
         messagingSenderId: "449137002393",
         appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
         measurementId: "G-1PHNJQWNPZ",
@@ -233,7 +239,6 @@
                             className: record.className || record.class || '-',
                             kitabName: record.kitabName || record.kitab || '-',
                             date: record.date || '-',
-                            // IMPORTANT: 'tasurat' field hi read karenge jo user panel me show hota hai
                             tasurat: record.tasurat || '', 
                             recordingLink: record.url || record.link || '#'
                         });
@@ -260,9 +265,7 @@
         const container = document.getElementById('reports-container');
         
         let rows = reports.map((r, index) => {
-            // Agar 'tasurat' bhara hua hai to Checked maanein
             const isChecked = r.tasurat && r.tasurat.trim() !== "";
-            
             const statusBadge = isChecked 
                 ? `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Checked</span>` 
                 : `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span>`;
@@ -310,7 +313,7 @@
         `;
     }
 
-    // --- 5. MODAL LOGIC (UPDATED: Audio + Tasurat Fix) ---
+    // --- 5. MODAL & AUDIO LOGIC ---
     function openReviewModal(parentDocId, recordId) {
         const report = flattenedReports.find(r => r.parentDocId === parentDocId && r.recordId === recordId);
         if (!report) return;
@@ -323,14 +326,19 @@
         document.getElementById('modal-subject').innerText = `${report.className} - ${report.kitabName}`;
         document.getElementById('modal-date').innerText = report.date;
         
-        // --- AUDIO PLAYER LOGIC ---
         const audioPlayer = document.getElementById('modal-audio-player');
         const linkEl = document.getElementById('modal-link');
         const audioContainer = document.getElementById('audio-container');
+        const speedBtn = document.getElementById('speed-btn');
+
+        // Reset Speed on Open
+        if(audioPlayer) audioPlayer.playbackRate = 1.0;
+        if(speedBtn) speedBtn.innerText = "1x";
 
         if (report.recordingLink && report.recordingLink !== '#' && report.recordingLink.startsWith('http')) {
             audioPlayer.src = report.recordingLink;
-            audioPlayer.load();
+            // Removed audioPlayer.load() to avoid auto-buffering if not needed immediately, but keeps it ready
+            audioPlayer.load(); 
             
             linkEl.href = report.recordingLink;
             linkEl.classList.remove('hidden');
@@ -342,8 +350,6 @@
             audioContainer.classList.add('hidden');
         }
 
-        // --- TASURAT FIX ---
-        // Yahan hum 'tasurat' field load kar rahe hain, jo user panel me show hoti hai
         document.getElementById('modal-comment').value = report.tasurat || '';
         document.getElementById('save-status').classList.add('hidden');
 
@@ -351,16 +357,40 @@
     }
 
     function closeModal() {
-        // Stop audio when closing
+        // --- STOP AUDIO HERE ---
         const audioPlayer = document.getElementById('modal-audio-player');
-        if(audioPlayer) { audioPlayer.pause(); audioPlayer.src = ""; }
+        if(audioPlayer) { 
+            audioPlayer.pause(); 
+            audioPlayer.currentTime = 0; // Reset to start
+        }
 
         document.getElementById('review-modal').classList.add('hidden');
         currentEditingDocId = null;
         currentEditingRecordId = null;
     }
 
-    // --- 6. SAVE FEEDBACK (FIXED: Saves to 'tasurat') ---
+    // --- NEW: SPEED TOGGLE FUNCTION ---
+    function toggleSpeed() {
+        const player = document.getElementById('modal-audio-player');
+        const btn = document.getElementById('speed-btn');
+        
+        if (!player) return;
+
+        let currentSpeed = player.playbackRate;
+        
+        if (currentSpeed === 1.0) {
+            player.playbackRate = 1.5;
+            btn.innerText = "1.5x";
+        } else if (currentSpeed === 1.5) {
+            player.playbackRate = 2.0;
+            btn.innerText = "2x";
+        } else {
+            player.playbackRate = 1.0;
+            btn.innerText = "1x";
+        }
+    }
+
+    // --- 6. SAVE FEEDBACK ---
     async function saveFeedback() {
         if (!currentEditingDocId || !currentEditingRecordId) return;
 
@@ -382,24 +412,18 @@
             const recordIndex = recordingArray.findIndex(r => r.id === currentEditingRecordId);
             if (recordIndex === -1) throw new Error("Recording not found in array.");
 
-            // --- IMPORTANT CHANGE ---
-            // Hum seedha 'tasurat' field ko update kar rahe hain
-            // Taake yeh Tadris Recording Panel (User View) me "Admin ka Comment" bankar dikhe
             recordingArray[recordIndex].tasurat = comment;
             recordingArray[recordIndex].tasuratDate = new Date().toISOString(); 
-            // Optional: Mufattish field bhi update kar dete hain backup ke liye
             recordingArray[recordIndex].mufattishComment = comment;
 
             await reportRef.update({
                 "tadrisRecording.data": recordingArray
             });
 
-            // UI Feedback
             const statusMsg = document.getElementById('save-status');
             statusMsg.classList.remove('hidden');
             statusMsg.innerText = "Saved to Tadris Panel!";
             
-            // Update Local Data
             const localIndex = flattenedReports.findIndex(r => r.parentDocId === currentEditingDocId && r.recordId === currentEditingRecordId);
             if (localIndex !== -1) {
                 flattenedReports[localIndex].tasurat = comment;
@@ -419,6 +443,7 @@
 </script>
 </body>
 </html>
+
 
 
 
