@@ -291,7 +291,51 @@
       </div>
     </div>
   </div>
+<div id="audio-modal" class="fixed inset-0 z-[110] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-900 bg-opacity-80 transition-opacity backdrop-blur-sm" onclick="closeAudioPlayer()"></div>
 
+    <div class="fixed inset-0 z-10 overflow-y-auto">
+      <div class="flex min-h-full items-center justify-center p-4">
+        
+        <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full max-w-md border border-gray-200">
+          
+          <div class="bg-gradient-to-r from-teal-600 to-emerald-600 p-4 text-white flex justify-between items-start">
+             <div>
+                <h3 id="audio-player-title" class="text-lg font-bold urdu-font">Teacher Name</h3>
+                <p id="audio-player-subtitle" class="text-xs text-emerald-100 opacity-90 urdu-font mt-1">Class - Kitab</p>
+             </div>
+             <button onclick="closeAudioPlayer()" class="text-white hover:text-red-200 transition">
+                <i class="fas fa-times text-xl"></i>
+             </button>
+          </div>
+
+          <div class="p-6 bg-gray-50">
+             
+             <audio id="custom-audio-element"></audio>
+
+             <div class="mb-4">
+               <input type="range" id="audio-progress" value="0" class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-teal-600" oninput="seekAudio()">
+               <div class="flex justify-between text-xs text-gray-500 font-mono mt-1">
+                  <span id="audio-current-time">00:00</span>
+                  <span id="audio-duration">00:00</span>
+               </div>
+             </div>
+
+             <div class="flex justify-center items-center gap-6">
+                <button onclick="skipAudio(-10)" class="text-gray-400 hover:text-teal-600 transition"><i class="fas fa-backward"></i> 10s</button>
+                
+                <button id="play-pause-btn" onclick="toggleAudioPlay()" class="w-14 h-14 rounded-full bg-teal-600 text-white shadow-lg hover:bg-teal-700 hover:scale-105 transition flex items-center justify-center">
+                    <i class="fas fa-play text-xl ml-1"></i>
+                </button>
+                
+                <button onclick="skipAudio(10)" class="text-gray-400 hover:text-teal-600 transition">10s <i class="fas fa-forward"></i></button>
+             </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
   <script type="module">
     // ============================
     // 1. IMPORTS & CONFIG
@@ -773,7 +817,14 @@
         const date = escapeHtml(rec.date);
         const adminComment = escapeHtml(rec.tasurat || "-");
         const zimmedarComment = escapeHtml(rec.adminTasurat || "-");
-        const audioLink = rec.url ? `<a href="${rec.url}" target="_blank" class="text-teal-600 hover:underline"><i class="fas fa-play-circle"></i> Play</a>` : `<span class="text-gray-400">No Audio</span>`;
+        const audioLink = rec.url 
+            ? `<button type="button" 
+                  class="bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white px-3 py-1 rounded-full text-xs font-semibold transition border border-teal-200 flex items-center gap-1 mx-auto"
+                  onclick="openAudioPlayer('${rec.url}', '${encodeURIComponent(rec.teacherName)}', '${encodeURIComponent(rec.className + ' - ' + rec.kitabName)}')"
+               >
+                  <i class="fas fa-play"></i> Play
+               </button>`
+            : `<span class="text-gray-400 text-xs italic">No Audio</span>`;
         
               
         tr.innerHTML = `
@@ -1161,9 +1212,99 @@
             saveBtn.disabled = false;
         }
     });
+    // ============================
+    // CUSTOM AUDIO PLAYER LOGIC
+    // ============================
+    const audioEl = document.getElementById('custom-audio-element');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const progressBar = document.getElementById('audio-progress');
+    const currentTimeEl = document.getElementById('audio-current-time');
+    const durationEl = document.getElementById('audio-duration');
+
+    window.openAudioPlayer = function(url, teacherName, kitabInfo) {
+        if(!url) return;
+
+        // UI Update
+        document.getElementById('audio-player-title').textContent = decodeURIComponent(teacherName);
+        document.getElementById('audio-player-subtitle').textContent = decodeURIComponent(kitabInfo);
+        
+        // Audio Source Set
+        audioEl.src = url;
+        audioEl.load();
+        
+        // Reset Controls
+        playPauseBtn.innerHTML = '<i class="fas fa-play text-xl ml-1"></i>';
+        progressBar.value = 0;
+        currentTimeEl.textContent = "00:00";
+        durationEl.textContent = "Loading...";
+
+        // Show Modal
+        document.getElementById('audio-modal').classList.remove('hidden');
+        
+        // Auto Play (Optional - hata sakte hain agar auto play na chahiye)
+        toggleAudioPlay();
+    };
+
+    window.closeAudioPlayer = function() {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        document.getElementById('audio-modal').classList.add('hidden');
+    };
+
+    window.toggleAudioPlay = function() {
+        if (audioEl.paused) {
+            audioEl.play();
+            playPauseBtn.innerHTML = '<i class="fas fa-pause text-xl"></i>';
+        } else {
+            audioEl.pause();
+            playPauseBtn.innerHTML = '<i class="fas fa-play text-xl ml-1"></i>';
+        }
+    };
+
+    window.seekAudio = function() {
+        const seekTime = (audioEl.duration / 100) * progressBar.value;
+        audioEl.currentTime = seekTime;
+    };
+    
+    window.skipAudio = function(seconds) {
+        audioEl.currentTime += seconds;
+    };
+
+    // Event Listeners for Audio
+    if(audioEl) {
+        // Update Progress Bar automatically
+        audioEl.addEventListener('timeupdate', () => {
+            if(isNaN(audioEl.duration)) return;
+            const progressPercent = (audioEl.currentTime / audioEl.duration) * 100;
+            progressBar.value = progressPercent;
+            
+            // Update Time Text
+            const curMins = Math.floor(audioEl.currentTime / 60);
+            const curSecs = Math.floor(audioEl.currentTime % 60);
+            const durMins = Math.floor(audioEl.duration / 60);
+            const durSecs = Math.floor(audioEl.duration % 60);
+            
+            currentTimeEl.textContent = `${curMins}:${curSecs.toString().padStart(2, '0')}`;
+            durationEl.textContent = `${durMins}:${durSecs.toString().padStart(2, '0')}`;
+        });
+
+        // Reset button when audio ends
+        audioEl.addEventListener('ended', () => {
+            playPauseBtn.innerHTML = '<i class="fas fa-play text-xl ml-1"></i>';
+            progressBar.value = 0;
+        });
+        
+        // Duration loaded
+        audioEl.addEventListener('loadedmetadata', () => {
+             const durMins = Math.floor(audioEl.duration / 60);
+             const durSecs = Math.floor(audioEl.duration % 60);
+             durationEl.textContent = `${durMins}:${durSecs.toString().padStart(2, '0')}`;
+        });
+    }
   </script>
 </body>
 </html>
+
 
 
 
