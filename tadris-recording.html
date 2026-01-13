@@ -264,6 +264,32 @@
     </section>
 
   </div>
+  <div id="comment-modal" class="fixed inset-0 z-[100] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+
+    <div class="fixed inset-0 z-10 overflow-y-auto">
+      <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+        
+        <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+          <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 urdu-font" id="modal-title">Zimmedar Comment Edit Karein</h3>
+                <div class="mt-2">
+                  <p id="modal-recording-info" class="text-xs text-gray-500 mb-2 urdu-font">...</p>
+                  <textarea id="modal-comment-input" rows="4" class="w-full p-2 border border-gray-300 rounded-md text-sm urdu-font focus:ring-teal-500 focus:border-teal-500" placeholder="Apna tabsera yahan likhein..."></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+            <button type="button" id="modal-save-btn" class="inline-flex w-full justify-center rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 sm:ml-3 sm:w-auto">Save Comment</button>
+            <button type="button" onclick="closeCommentModal()" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script type="module">
     // ============================
@@ -755,7 +781,18 @@
             <td class="border px-2 py-2 urdu-font">${teacher}</td>
             <td class="border px-2 py-2 text-xs">${date}</td>
             <td class="border px-2 py-2 text-xs truncate max-w-[120px]" title="${adminComment}">${adminComment}</td>
-            <td class="border px-2 py-2 text-xs truncate max-w-[120px]" title="${zimmedarComment}">${zimmedarComment}</td>
+            <td class="border px-2 py-2 text-center">
+                <div class="flex items-center justify-between gap-1 max-w-[150px] mx-auto">
+                    <span class="text-xs truncate text-gray-700 urdu-font block w-full text-left" title="${zimmedarComment}">
+                        ${zimmedarComment !== '-' ? zimmedarComment : '<span class="text-gray-400 italic">No comment</span>'}
+                    </span>
+                    <button type="button" class="text-teal-600 hover:text-teal-800 p-1 rounded hover:bg-teal-50 transition"
+                        onclick="openCommentModal('${rec.id}', '${encodeURIComponent(rec.jamiaName)}', '${encodeURIComponent(rec.teacherName)}', '${encodeURIComponent(rec.className)}', '${encodeURIComponent(rec.kitabName)}', '${encodeURIComponent(zimmedarComment)}')"
+                        title="Edit Comment">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </div>
+            </td>
             <td class="border px-2 py-2 text-xs text-center">${audioLink}</td>
             <td class="border px-2 py-2 text-center">
                  <button type="button" class="download-tadris-pdf-btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-xs transition"
@@ -1039,10 +1076,90 @@
         const el = document.getElementById(id);
         if(el) el.addEventListener('input', renderSavedTable);
     });
+// ============================
+    // MODAL LOGIC FOR COMMENTS
+    // ============================
+    let currentEditingId = null; // Track karne ke liye ki konsi recording edit ho rahi hai
 
+    window.openCommentModal = function(recId, jamia, teacher, cls, kitab, currentComment) {
+        currentEditingId = recId;
+        
+        // UI Update
+        document.getElementById('modal-recording-info').innerHTML = `
+            <strong>${decodeURIComponent(jamia)}</strong> | ${decodeURIComponent(teacher)} <br>
+            ${decodeURIComponent(cls)} - ${decodeURIComponent(kitab)}
+        `;
+        
+        const decodedComment = decodeURIComponent(currentComment);
+        document.getElementById('modal-comment-input').value = decodedComment === '-' ? '' : decodedComment;
+        
+        // Show Modal
+        document.getElementById('comment-modal').classList.remove('hidden');
+    };
+
+    window.closeCommentModal = function() {
+        document.getElementById('comment-modal').classList.add('hidden');
+        currentEditingId = null;
+    };
+
+    // Save Button Logic
+    document.getElementById('modal-save-btn').addEventListener('click', async function() {
+        const newComment = document.getElementById('modal-comment-input').value.trim();
+        const saveBtn = this;
+        
+        if(!currentEditingId) return;
+
+        // UI Loading State
+        const originalText = saveBtn.innerText;
+        saveBtn.innerText = "Saving...";
+        saveBtn.disabled = true;
+
+        try {
+            // Find the report containing this recording
+            let targetReport = null;
+            let targetIndex = -1;
+
+            // Search in allReports (Local Data)
+            for (let report of allReports) {
+                if (report.tadrisRecording && report.tadrisRecording.data) {
+                    const idx = report.tadrisRecording.data.findIndex(r => r.id === currentEditingId);
+                    if (idx !== -1) {
+                        targetReport = report;
+                        targetIndex = idx;
+                        break;
+                    }
+                }
+            }
+
+            if (targetReport && targetIndex !== -1) {
+                // Update Local Data
+                targetReport.tadrisRecording.data[targetIndex].adminTasurat = newComment; // Zimmedar Comment field update
+
+                // Update Firebase
+                const reportRef = doc(db, "monthly_reports", targetReport.id);
+                await updateDoc(reportRef, {
+                    "tadrisRecording.data": targetReport.tadrisRecording.data
+                });
+
+                showNotification("Comment update ho gaya!");
+                closeCommentModal();
+                renderSavedTable(); // Table refresh
+            } else {
+                showNotification("Recording nahi mili.", true);
+            }
+
+        } catch (error) {
+            console.error("Error saving comment:", error);
+            showNotification("Error: " + error.message, true);
+        } finally {
+            saveBtn.innerText = originalText;
+            saveBtn.disabled = false;
+        }
+    });
   </script>
 </body>
 </html>
+
 
 
 
