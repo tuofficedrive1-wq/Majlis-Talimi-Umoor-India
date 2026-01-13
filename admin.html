@@ -610,6 +610,9 @@
             <button id="btn-generate-analysis" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
                 <i class="fas fa-table mr-2"></i> Show Table
             </button>
+            <button id="btn-download-analysis-excel" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300 ml-2">
+    <i class="fas fa-file-excel mr-2"></i> Download Excel
+</button>
         </div>
     </div>
 
@@ -1225,7 +1228,7 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
         container.innerHTML = '<p class="text-center text-gray-500 py-10">Coming Soon...</p>';
     }
 });
-
+document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
 // --- Render Jaiza Table Function (Jamia-wise Correct Calculation) ---
 const renderAllUsersJaizaTable = () => {
@@ -3561,12 +3564,142 @@ const renderReportCardStatusTable = (allSheets) => {
         </div>
     `;
 };
-        
+    // --- MAIN ANALYSIS EXCEL DOWNLOAD FUNCTION ---
+const handleAnalysisExcelDownload = async () => {
+    const reportType = document.getElementById('analysis-report-type-select').value;
+    
+    if (!reportType) {
+        alert("Pehle koi Report Type select karein aur table generate karein.");
+        return;
+    }
+
+    // Month & Year info
+    const monthName = document.getElementById('admin-month-select').value;
+    const yearVal = document.getElementById('admin-year-select').value;
+    const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+    const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+    if (!confirm(`Kya aap "${reportType.toUpperCase()}" report ki Excel file download karna chahte hain?`)) return;
+
+    showLoader(true);
+    let excelRows = [];
+    let fileName = `Analysis_${reportType}_${monthName}_${yearVal}.xlsx`;
+
+    try {
+        // === CASE 1: REPORT CARD STATUS (Kis Jamia me bana/nahi bana) ===
+        if (reportType === 'report-card-status') {
+            const sheetsRef = collection(db, "monthly_test_sheets");
+            const q = query(sheetsRef, where("month", "==", monthKey));
+            const snapshot = await getDocs(q);
+            const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
+
+            // Logic wahi jo table render mein use ki thi
+            allUsersData.forEach(user => {
+                if (user.id === ADMIN_UID) return;
+                const userJamias = user.jamiaatList || [];
+                
+                userJamias.forEach(jamia => {
+                    const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+                    
+                    // Match check
+                    const relevantSheets = allSheets.filter(s => 
+                        (s.jamiaName || '').trim().toLowerCase().includes(jamiaName.trim().toLowerCase()) ||
+                        jamiaName.trim().toLowerCase().includes((s.jamiaName || '').trim().toLowerCase())
+                    );
+                    
+                    const isDone = relevantSheets.length > 0;
+                    let totalStudents = 0;
+                    
+                    if (isDone) {
+                        relevantSheets.forEach(s => { if(s.students) totalStudents += s.students.length; });
+                    }
+
+                    excelRows.push({
+                        "Jamia Name": jamiaName,
+                        "Zimmedar Name": user.name || user.email,
+                        "Region": user.region || '-',
+                        "Status": isDone ? "Ban Gaya" : "PENDING",
+                        "Total Students": isDone ? totalStudents : 0,
+                        "Check": isDone ? 1 : 0 // Sorting/Counting ke liye asaan
+                    });
+                });
+            });
+
+            // Pending walo ko upar rakhne ke liye sort
+            excelRows.sort((a, b) => a.Check - b.Check);
+        }
+
+        // === CASE 2: JAIZA REPORT ANALYSIS ===
+        else if (reportType === 'jaiza') {
+            // Jaiza data hum 'fetchedAdminReports' se le sakte hain (agar fetch button dabaya ho), 
+            // lekin safety ke liye hum dobara fetch kar lete hain taake data fresh ho.
+            const reportsRef = collection(db, 'monthly_reports');
+            const q = query(reportsRef, where("month", "==", monthName), where("year", "==", parseInt(yearVal)));
+            const snapshot = await getDocs(q);
+            const reports = snapshot.docs.map(doc => ({ userId: doc.data().userId, ...doc.data() }));
+
+            allUsersData.forEach(user => {
+                if (user.id === ADMIN_UID) return;
+                
+                const report = reports.find(r => r.userId === user.id);
+                let uniqueJamias = new Set();
+                let totalClasses = 0;
+                let totalBooks = 0;
+                let jamiaStatsMap = {};
+
+                if (report && report.jaizaReport?.data) {
+                    report.jaizaReport.data.forEach(form => {
+                        const jKey = form.jamiaId || form.jamiaName || form.name;
+                        if (!jKey) return;
+                        
+                        const isDone = (parseInt(form.percentage) > 0 || form.status === 'Done');
+                        if (isDone) {
+                            uniqueJamias.add(jKey);
+                            if (!jamiaStatsMap[jKey]) jamiaStatsMap[jKey] = { c: 0, b: 0 };
+                            jamiaStatsMap[jKey].c = Math.max(jamiaStatsMap[jKey].c, Number(form.totalClasses) || 0);
+                            jamiaStatsMap[jKey].b = Math.max(jamiaStatsMap[jKey].b, Number(form.totalBooks) || 0);
+                        }
+                    });
+                }
+
+                Object.values(jamiaStatsMap).forEach(v => { totalClasses += v.c; totalBooks += v.b; });
+
+                excelRows.push({
+                    "Zimmedar": user.name || 'N/A',
+                    "Region": user.region || '-',
+                    "Total Jamia Target": user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0),
+                    "Jamia Covered": uniqueJamias.size,
+                    "Total Classes Checked": totalClasses,
+                    "Total Books Checked": totalBooks,
+                    "Pending Jamia": Math.max(0, (user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0)) - uniqueJamias.size)
+                });
+            });
+        }
+
+        // === EXCEL GENERATION ===
+        if (excelRows.length === 0) {
+            alert("Download karne ke liye koi data nahi mila.");
+        } else {
+            const worksheet = XLSX.utils.json_to_sheet(excelRows);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Analysis_Report");
+            XLSX.writeFile(workbook, fileName);
+            showNotification("Excel file download ho gayi!");
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Error downloading excel: " + err.message);
+    } finally {
+        showLoader(false);
+    }
+};    
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
