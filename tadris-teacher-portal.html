@@ -157,6 +157,8 @@
         const auth = firebase.auth();
 
         // --- GLOBAL STATE ---
+       // --- GLOBAL STATE ---
+        let globalUserId = null; // <--- YEH ADD KAREIN
         let jamiaData = null;
         let selectedTeacher = null;
         let reportYear = null;
@@ -178,6 +180,8 @@
             const jamiaId = urlParams.get('jamiaId'); // Encoded Jamia Name
             const userId = urlParams.get('userId');
             const activeYear = urlParams.get('activeYear');
+
+            globalUserId = userId;
 
             if (!jamiaId || !userId || !activeYear) {
                 showError("لنک درست نہیں ہے۔ (جامعہ یا سال کی معلومات غائب ہیں)");
@@ -363,7 +367,7 @@
             }
         });
 
-        // --- 6. UPLOAD & SAVE ---
+        // --- 6. UPLOAD & SAVE (UPDATED) ---
         async function uploadAndSave() {
             const btn = document.getElementById('btn-save');
             const status = document.getElementById('status-msg');
@@ -404,44 +408,60 @@
                 const snapshot = await storageRef.put(finalFile);
                 const downloadURL = await snapshot.ref.getDownloadURL();
 
-                // 2. Calculate Month Key for Report
+                // 2. Generate Correct Document ID (Same as Admin Panel)
                 const d = new Date(dateVal);
                 const mNum = d.getMonth(); // 0-11
                 const yNum = d.getFullYear();
                 
-                // Important: MonthKey Format (YYYY-MM) e.g., 2025-01
+                // Admin Panel Logic ke hisab se ID: UserID_Year_Month
+                // Note: monthKey format YYYY-MM rakhenge display ke liye
                 const monthKey = `${yNum}-${String(mNum+1).padStart(2,'0')}`;
-
-                // 3. Save Metadata to Firestore
-                // Hum 'monthly_reports' collection use karenge taake dashboard isay padh sake
-                // ID unique banayenge taake overwrite na ho
                 
-                await db.collection('monthly_reports').add({
-                    monthKey: monthKey,
-                    monthNum: mNum,
-                    year: yNum,
+                // ID Format: "UID_YEAR_MONTHNUM" (Admin panel yahi read karta hai)
+                const reportDocId = `${globalUserId}_${yNum}_${mNum}`;
+
+                // 3. Prepare Entry Object
+                const newEntry = {
+                    id: Date.now().toString(),
                     jamiaName: jamiaData.jamiaName,
                     teacherName: selectedTeacher.name,
-                    userId: "TeacherPortal", // Indicates source
-                    userName: "Teacher Portal Upload",
-                    activeYear: activeYearGlobal,
-                    tadrisRecording: {
-                        status: "Submitted",
-                        data: [{
-                            id: Date.now().toString(),
-                            jamiaName: jamiaData.jamiaName,
-                            teacherName: selectedTeacher.name,
-                            className: className,
-                            kitabName: bookName,
-                            date: dateVal,
-                            url: downloadURL,
-                            fileName: fileName,
-                            tasurat: "",
-                            createdAt: new Date().toISOString()
-                        }]
-                    },
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                    className: className,
+                    kitabName: bookName,
+                    date: dateVal,
+                    url: downloadURL,
+                    fileName: fileName,
+                    tasurat: "",       // Admin bharega
+                    adminTasurat: "",  // Zimmedar bharega
+                    uploadedBy: "TeacherPortal",
+                    createdAt: new Date().toISOString()
+                };
+
+                const reportRef = db.collection('monthly_reports').doc(reportDocId);
+
+                // 4. Save to Firestore (Check if doc exists first)
+                const docSnap = await reportRef.get();
+
+                if (docSnap.exists) {
+                    // Agar Doc hai, to array me naya item JOD dein (ArrayUnion)
+                    await reportRef.update({
+                        "tadrisRecording.data": firebase.firestore.FieldValue.arrayUnion(newEntry)
+                    });
+                } else {
+                    // Agar Doc nahi hai, to naya banayein (Sahi UserID ke saath)
+                    await reportRef.set({
+                        userId: globalUserId, // Admin ka ID
+                        month: d.toLocaleString('default', { month: 'long' }),
+                        monthNum: mNum,
+                        year: yNum,
+                        monthKey: monthKey,
+                        academicYear: activeYearGlobal,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        tadrisRecording: {
+                            status: "Pending",
+                            data: [newEntry]
+                        }
+                    });
+                }
 
                 // Success
                 status.innerText = "✅ ریکارڈنگ کامیابی سے محفوظ ہو گئی!";
@@ -449,7 +469,6 @@
                 btn.innerHTML = '<i class="fas fa-check"></i> محفوظ ہو گیا';
 
                 setTimeout(() => {
-                    // Reset Form
                     resetRecording();
                     fileInput.value = "";
                     btn.innerHTML = '<span>محفوظ کریں (Save)</span> <i class="fas fa-cloud-upload-alt"></i>';
@@ -476,3 +495,4 @@
 </body>
 
 </html>
+
