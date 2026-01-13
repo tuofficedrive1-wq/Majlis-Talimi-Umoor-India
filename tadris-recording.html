@@ -675,6 +675,106 @@
     }
 
     // ============================
+    // NEW FUNCTION: Render Saved Table
+    // ============================
+    function renderSavedTable() {
+      const tbody = document.getElementById("saved-table-body");
+      const jamiaFilterSelect = document.getElementById("filter-jamia");
+      
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      // 1. Saare Reports se data collect karein
+      let allRecordings = [];
+      allReports.forEach(report => {
+        if (report.tadrisRecording && Array.isArray(report.tadrisRecording.data)) {
+          // Har entry me month/year bhi jod dete hain reference ke liye
+          const entries = report.tadrisRecording.data.map(item => ({...item, reportMonth: report.month}));
+          allRecordings = allRecordings.concat(entries);
+        }
+      });
+
+      // 2. Filters ki values lein
+      const filterJamia = jamiaFilterSelect.value;
+      const filterTeacher = document.getElementById("filter-teacher").value.toLowerCase();
+      const filterDateFrom = document.getElementById("filter-date-from").value;
+      const filterDateTo = document.getElementById("filter-date-to").value;
+
+      // 3. Filter Apply karein
+      const filtered = allRecordings.filter(rec => {
+        const jMatch = !filterJamia || rec.jamiaName === filterJamia;
+        const tMatch = !filterTeacher || (rec.teacherName || "").toLowerCase().includes(filterTeacher);
+        
+        let dMatch = true;
+        if (filterDateFrom) dMatch = dMatch && (rec.date >= filterDateFrom);
+        if (filterDateTo) dMatch = dMatch && (rec.date <= filterDateTo);
+        
+        return jMatch && tMatch && dMatch;
+      });
+
+      // 4. Jamia Filter Dropdown ko populate karein (Unique Jamias)
+      // Sirf tab karein agar user ne abhi koi select nahi kiya hai, taaki baar baar reset na ho
+      if(jamiaFilterSelect.options.length <= 1) {
+          const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))].sort();
+          uniqueJamias.forEach(j => {
+              if(j) {
+                  const opt = document.createElement("option");
+                  opt.value = j;
+                  opt.textContent = j;
+                  jamiaFilterSelect.appendChild(opt);
+              }
+          });
+      }
+
+      // 5. Table Rows Render karein
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-500 text-sm">No recordings found.</td></tr>`;
+        return;
+      }
+
+      filtered.forEach(rec => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-gray-50 transition-colors";
+        
+        // Data safe strings
+        const jamia = escapeHtml(rec.jamiaName);
+        const teacher = escapeHtml(rec.teacherName);
+        const cls = escapeHtml(rec.className);
+        const kitab = escapeHtml(rec.kitabName);
+        const date = escapeHtml(rec.date);
+        const adminComment = escapeHtml(rec.tasurat || "-");
+        const zimmedarComment = escapeHtml(rec.adminTasurat || "-");
+        const audioLink = rec.url ? `<a href="${rec.url}" target="_blank" class="text-teal-600 hover:underline"><i class="fas fa-play-circle"></i> Play</a>` : `<span class="text-gray-400">No Audio</span>`;
+        
+        tr.innerHTML = `
+            <td class="border px-2 py-2 urdu-font">${jamia}</td>
+            <td class="border px-2 py-2 urdu-font">${cls}</td>
+            <td class="border px-2 py-2 urdu-font">${kitab}</td>
+            <td class="border px-2 py-2 urdu-font">${teacher}</td>
+            <td class="border px-2 py-2 text-xs">${date}</td>
+            <td class="border px-2 py-2 text-xs truncate max-w-[120px]" title="${adminComment}">${adminComment}</td>
+            <td class="border px-2 py-2 text-xs truncate max-w-[120px]" title="${zimmedarComment}">${zimmedarComment}</td>
+            <td class="border px-2 py-2 text-xs text-center">${audioLink}</td>
+            <td class="border px-2 py-2 text-center">
+                 <button type="button" class="download-tadris-pdf-btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-xs transition"
+                    data-jamia-name="${encodeURIComponent(rec.jamiaName)}" 
+                    data-teacher-name="${encodeURIComponent(rec.teacherName)}" 
+                    data-class-name="${encodeURIComponent(rec.className)}" 
+                    data-kitab-name="${encodeURIComponent(rec.kitabName)}" 
+                    data-date="${rec.date}" 
+                    data-tasurat="${encodeURIComponent(rec.tasurat)}">
+                    <i class="fas fa-file-pdf"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // PDF Listeners re-attach karein (Table buttons ke liye)
+      tbody.querySelectorAll('.download-tadris-pdf-btn').forEach(b => b.addEventListener('click', window.handleDownloadTadrisPDF));
+    }
+
+    // ============================
     // 8. DELEGATED ADD RECORDING HANDLER
     // ============================
     (function installDelegatedAddRecordingHandler() {
@@ -889,3 +989,4 @@
   </script>
 </body>
 </html>
+
