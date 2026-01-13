@@ -645,6 +645,7 @@
           content.querySelectorAll('.download-tadris-pdf-btn').forEach(b => b.addEventListener('click', window.handleDownloadTadrisPDF));
 
         });
+        renderSavedTable();
       } catch (err) { console.error("Error Rendering Jamia:", err); } finally { showLoader(false); }
     };
 
@@ -675,7 +676,7 @@
     }
 
     // ============================
-    // NEW FUNCTION: Render Saved Table
+    // UPDATED FUNCTION: Render Saved Table
     // ============================
     function renderSavedTable() {
       const tbody = document.getElementById("saved-table-body");
@@ -684,23 +685,39 @@
       if (!tbody) return;
       tbody.innerHTML = "";
 
-      // 1. Saare Reports se data collect karein
+      // --- DATA COLLECTION STRATEGY ---
+      // 1. Koshish karein allReports (Query) se data lene ki
+      let sourceData = [];
+      if (allReports && allReports.length > 0) {
+          sourceData = allReports;
+      } 
+      // 2. Agar allReports khali hai (Index issue), to Current Report use karein (jo Accordion me dikh raha hai)
+      else if (currentReport && currentReport.tadrisRecording) {
+          console.log("Using currentReport for table fallback");
+          sourceData = [currentReport];
+      }
+
+      // 3. Flatten data (Reports -> Recordings list)
       let allRecordings = [];
-      allReports.forEach(report => {
+      sourceData.forEach(report => {
         if (report.tadrisRecording && Array.isArray(report.tadrisRecording.data)) {
-          // Har entry me month/year bhi jod dete hain reference ke liye
-          const entries = report.tadrisRecording.data.map(item => ({...item, reportMonth: report.month}));
+          const entries = report.tadrisRecording.data.map(item => ({
+              ...item, 
+              reportMonth: report.month || "Unknown"
+          }));
           allRecordings = allRecordings.concat(entries);
         }
       });
 
-      // 2. Filters ki values lein
-      const filterJamia = jamiaFilterSelect.value;
-      const filterTeacher = document.getElementById("filter-teacher").value.toLowerCase();
+      console.log("Total Recordings Found for Table:", allRecordings.length);
+
+      // --- FILTERING ---
+      const filterJamia = jamiaFilterSelect ? jamiaFilterSelect.value : "";
+      const filterTeacherEl = document.getElementById("filter-teacher");
+      const filterTeacher = filterTeacherEl ? filterTeacherEl.value.toLowerCase() : "";
       const filterDateFrom = document.getElementById("filter-date-from").value;
       const filterDateTo = document.getElementById("filter-date-to").value;
 
-      // 3. Filter Apply karein
       const filtered = allRecordings.filter(rec => {
         const jMatch = !filterJamia || rec.jamiaName === filterJamia;
         const tMatch = !filterTeacher || (rec.teacherName || "").toLowerCase().includes(filterTeacher);
@@ -712,9 +729,8 @@
         return jMatch && tMatch && dMatch;
       });
 
-      // 4. Jamia Filter Dropdown ko populate karein (Unique Jamias)
-      // Sirf tab karein agar user ne abhi koi select nahi kiya hai, taaki baar baar reset na ho
-      if(jamiaFilterSelect.options.length <= 1) {
+      // --- JAMIA DROPDOWN POPULATE ---
+      if(jamiaFilterSelect && jamiaFilterSelect.options.length <= 1) {
           const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))].sort();
           uniqueJamias.forEach(j => {
               if(j) {
@@ -726,7 +742,7 @@
           });
       }
 
-      // 5. Table Rows Render karein
+      // --- RENDER ROWS ---
       if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-500 text-sm">No recordings found.</td></tr>`;
         return;
@@ -736,7 +752,6 @@
         const tr = document.createElement("tr");
         tr.className = "hover:bg-gray-50 transition-colors";
         
-        // Data safe strings
         const jamia = escapeHtml(rec.jamiaName);
         const teacher = escapeHtml(rec.teacherName);
         const cls = escapeHtml(rec.className);
@@ -770,7 +785,7 @@
         tbody.appendChild(tr);
       });
 
-      // PDF Listeners re-attach karein (Table buttons ke liye)
+      // Re-attach PDF listeners
       tbody.querySelectorAll('.download-tadris-pdf-btn').forEach(b => b.addEventListener('click', window.handleDownloadTadrisPDF));
     }
 
@@ -972,7 +987,10 @@
       }
     }
     tabAdd.addEventListener("click", () => setActiveTab(true));
-    tabSaved.addEventListener("click", () => setActiveTab(false));
+    tabSaved.addEventListener("click", () => {
+        setActiveTab(false);
+        renderSavedTable(); // <--- YEH LINE ADD KARNI HAI
+    });
     setActiveTab(true);
 
     // Accordion Toggle
@@ -989,4 +1007,5 @@
   </script>
 </body>
 </html>
+
 
