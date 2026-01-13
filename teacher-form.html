@@ -955,14 +955,15 @@ function escapeHtml(str) {
             e.returnValue = ''; // Standard browser popup trigger karega
         }
     });
-    // --- SHOW PROFILE (FIXED: Shows Admin Data even if ActiveYear is missing) ---
+    // --- SHOW PROFILE (FIXED: Fetches Admin Saved Reports + Teacher Submissions) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
         const profileView = document.getElementById('teacher-profile-view');
         const tableContainer = profileView.querySelector('.overflow-x-auto');
         
-        // URL se Active Year uthayen
+        // URL se Params uthayen
         const urlParams = new URLSearchParams(window.location.search);
         const currentActiveYear = urlParams.get('activeYear');
+        const userId = urlParams.get('userId'); // Admin ka UID zaroori hai reports fetch karne ke liye
 
         tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
         profileView.classList.remove('hidden');
@@ -982,100 +983,85 @@ function escapeHtml(str) {
                 semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
             }
 
+            // Cutoff: Aage ke mahine nahi dikhane (optional, agar poora sem dikhana ho to ye hata dein)
             const cutoffIndex = semMonths.indexOf(mIndex);
             if (cutoffIndex !== -1) {
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
             }
 
-            // 2. Data Fetching
+            // --- DATA FETCHING ---
+            const smartMap = {}; 
+
+            // STEP A: Fetch Teacher Submissions (Raw Input)
             const submissionsRef = db.collection('teacher_submissions');
             const q = submissionsRef
                 .where('jamiaId', '==', jamiaName)
                 .where('teacherId', '==', teacherId);
-                
-            const snap = await q.get();
-            
-            // --- 🛑 DATA PROCESSING ---
-            const rawMap = {}; 
-            
-            snap.forEach(doc => {
+            const subSnap = await q.get();
+
+            subSnap.forEach(doc => {
                 const d = doc.data();
-                
-                // 🛠️ FIX: ACTIVE YEAR FILTER (Soft Check)
-                // Agar record me activeYear hai, aur wo match nahi karta -> tab return karo.
-                // Agar record me activeYear HAI HI NAHI (undefined) -> to usay Jaane do (Show karo).
-                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) {
-                    return; 
-                }
+                if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
 
                 const mid = parseInt(d.submissionMonth, 10);
-                const ts = d.updatedAt ? d.updatedAt.toMillis() : (d.submittedAt ? d.submittedAt.toMillis() : 0);
-
-                // CASE A: ADMIN RECORD (via User Update Role)
-                if (d.role === 'user_update') {
-                    let foundInList = false;
-                    // Check inside list
-                    if (Array.isArray(d.changedValues)) {
-                        d.changedValues.forEach(change => {
-                            if (change.periodId && change.pagesTaught !== undefined && change.pagesTaught !== null) {
-                                const val = parseInt(change.pagesTaught, 10);
-                                if (val > 0) {
-                                    const pId = change.periodId;
-                                    if (!rawMap[pId]) rawMap[pId] = {};
-                                    if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-                                    
-                                    rawMap[pId][mid].adminDocs.push({ val: val, ts: ts });
-                                    foundInList = true;
-                                }
-                            }
-                        });
+                const pId = d.periodId;
+                
+                // Sirf tab count karein agar ye 'user_update' na ho (duplicate se bachne ke liye)
+                // ya fir hum simple logic use karein: Latest data wins.
+                // Filhal hum teacher ka raw data store kar rahe hain.
+                if (pId) {
+                    if (!smartMap[pId]) smartMap[pId] = {};
+                    // Teacher Data ko temporary save karein
+                    if (!smartMap[pId][mid]) {
+                        smartMap[pId][mid] = { pages: parseInt(d.pagesTaught || 0, 10), source: 'teacher' };
+                    } else if (smartMap[pId][mid].source === 'teacher') {
+                         // Aggregate if multiple entries exist (rare)
+                         smartMap[pId][mid].pages += parseInt(d.pagesTaught || 0, 10);
                     }
-                    // Check Root (Agar Admin ne direct fill kiya ho aur list na ho)
-                    if (!foundInList && d.periodId && d.pagesTaught !== undefined) {
-                        const val = parseInt(d.pagesTaught, 10);
-                        if (val > 0) {
-                            const pId = d.periodId;
-                            if (!rawMap[pId]) rawMap[pId] = {};
-                            if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-                            
-                            rawMap[pId][mid].adminDocs.push({ val: val, ts: ts });
-                        }
-                    }
-                } 
-                // CASE B: TEACHER SUBMISSION (Or Simple Admin Fill)
-                else if (d.periodId) {
-                    const pId = d.periodId;
-                    const val = parseInt(d.pagesTaught || 0, 10);
-                    
-                    if (!rawMap[pId]) rawMap[pId] = {};
-                    if (!rawMap[pId][mid]) rawMap[pId][mid] = { adminDocs: [], teacherDocs: [] };
-
-                    // Agar ye 'user_update' nahi hai, to ise hum filhal Teacher Doc mante hain
-                    // Lekin agar Admin panel bina role ke save kar raha hai, to hum ise bhi count karenge
-                    rawMap[pId][mid].teacherDocs.push({ val: val });
                 }
             });
 
-            // --- WINNER DECISION ---
-            const smartMap = {}; 
+            // STEP B: Fetch Admin Monthly Reports (FINAL AUTHORITY)
+            // Ye wo loop hai jo Admin ki saved file check karega
+            if (userId && currentActiveYear) {
+                const [startYear, endYear] = currentActiveYear.split('-').map(Number);
 
-            Object.keys(rawMap).forEach(pId => {
-                smartMap[pId] = {};
-                Object.keys(rawMap[pId]).forEach(mid => {
-                    const slot = rawMap[pId][mid];
+                // Har mahine ke liye Admin Report check karein
+                const adminPromises = semMonths.map(async (m) => {
+                    // Year calculate karein (Apr-Dec = startYear, Jan = endYear)
+                    let reportYear = startYear;
+                    if (m === 0 || m === 1 || m === 2) reportYear = endYear;
+
+                    // Doc ID: userId_activeYear_year_month
+                    // Example: UID_2025-2026_2025_3
+                    const reportId = `${userId}_${currentActiveYear}_${reportYear}_${m}`;
                     
-                    // Priority 1: Admin Data
-                    if (slot.adminDocs.length > 0) {
-                        slot.adminDocs.sort((a, b) => b.ts - a.ts);
-                        smartMap[pId][mid] = { pages: slot.adminDocs[0].val }; 
-                    } 
-                    // Priority 2: Teacher/Standard Data Sum
-                    else {
-                        const sum = slot.teacherDocs.reduce((acc, curr) => acc + curr.val, 0);
-                        smartMap[pId][mid] = { pages: sum };
+                    try {
+                        const reportDoc = await db.collection('monthly_reports').doc(reportId).get();
+                        if (reportDoc.exists) {
+                            const data = reportDoc.data();
+                            const karkardagiData = data.karkardagiReport?.data || [];
+                            
+                            // Filter for THIS teacher inside the big array
+                            const teacherEntries = karkardagiData.filter(item => item.teacherId === teacherId && item.jamiaName === jamiaName);
+                            
+                            teacherEntries.forEach(entry => {
+                                const pId = entry.periodId;
+                                const val = parseInt(entry.pagesTaught || 0, 10);
+                                
+                                if (!smartMap[pId]) smartMap[pId] = {};
+                                
+                                // OVERWRITE teacher data with Admin data
+                                smartMap[pId][m] = { pages: val, source: 'admin' };
+                            });
+                        }
+                    } catch (err) {
+                        console.log(`Report fetch error for month ${m}:`, err);
                     }
                 });
-            });
+
+                await Promise.all(adminPromises);
+            }
 
             // 3. Render Table
             const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
@@ -1142,15 +1128,21 @@ function escapeHtml(str) {
                             monthlyTarget = Math.round(perDayTarget * workingDays);
                         }
 
-                        // Get Data
+                        // Get Data from SmartMap
                         let taught = 0;
+                        let isFromAdmin = false;
+
                         if (smartMap[p.id] && smartMap[p.id][m]) {
                             taught = smartMap[p.id][m].pages;
+                            isFromAdmin = smartMap[p.id][m].source === 'admin';
                         }
                         
                         rowCumulativeTaught += taught;
 
                         let taughtColor = "text-gray-400";
+                        // Agar Admin se data aaya hai to thoda highlight karein (optional visual cue)
+                        const bgClass = isFromAdmin ? "bg-green-50" : "";
+
                         if (taught > 0) {
                             if(taught >= monthlyTarget) taughtColor = "text-green-600 font-bold";
                             else taughtColor = "text-red-500 font-bold";
@@ -1158,7 +1150,10 @@ function escapeHtml(str) {
 
                         tableHtml += `
                             <td class="p-2 border text-gray-500 bg-gray-50">${monthlyTarget}</td>
-                            <td class="p-2 border ${taughtColor}">${taught > 0 ? taught : '-'}</td>
+                            <td class="p-2 border ${taughtColor} ${bgClass}">
+                                ${taught > 0 ? taught : '-'}
+                                ${isFromAdmin ? '<i class="fas fa-check-circle text-[10px] text-green-400 ml-1" title="Verified by Admin"></i>' : ''}
+                            </td>
                         `;
                     });
 
@@ -1198,6 +1193,7 @@ function escapeHtml(str) {
 </script>
 </body>
 </html>
+
 
 
 
