@@ -598,6 +598,7 @@
                 <select id="analysis-report-type-select" class="w-full p-2 border rounded-lg urdu-font bg-gray-50 focus:ring-2 focus:ring-teal-500">
     <option value="">-- Select Report Type --</option>
     <option value="jaiza">Jaiza Report Analysis</option>
+    <option value="report-card-status">Report Card Status (Kis Jamia me bane/nahi bane)</option>
     
     <option value="test-all">Result Summary (All Subjects)</option>
     <option value="test-asri">Result Summary (Asri - Eng & Math)</option>
@@ -1154,26 +1155,42 @@ window.closeReportModal = closeModal;
                  button.removeEventListener('click', handleAdminTabSwitch); 
                  button.addEventListener('click', handleAdminTabSwitch); 
              });
-               // --- BUTTON CLICK HANDLER ---
+              // --- BUTTON CLICK HANDLER (Updated) ---
 document.getElementById('btn-generate-analysis').addEventListener('click', async () => {
-    const reportTypeElement = document.getElementById('analysis-report-type-select');
+    const reportType = document.getElementById('analysis-report-type-select').value;
     const container = document.getElementById('analysis-report-container');
-    const reportType = reportTypeElement.value;
 
-    if (!reportType) {
-        alert("Pehle Report Type select karein.");
-        return;
-    }
+    if (!reportType) { alert("Pehle Report Type select karein."); return; }
 
-    // Loader Show Karein
-    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Data calculate ho raha hai...</p></div>';
+    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Data check ho raha hai...</p></div>';
 
-    // 1. JAIZA REPORT
+    // Month Selection
+    const monthName = document.getElementById('admin-month-select').value;
+    const yearVal = document.getElementById('admin-year-select').value;
+    const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+    const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+    // --- 1. JAIZA REPORT ---
     if (reportType === 'jaiza') {
-        renderAllUsersJaizaTable(); 
-    } 
+        renderAllUsersJaizaTable();
+    }
     
-    // 2. MONTHLY TEST (All Subjects OR Asri)
+    // --- 2. REPORT CARD STATUS (NEW) ---
+    else if (reportType === 'report-card-status') {
+        try {
+            // Sheets fetch karein
+            const sheetsRef = collection(db, "monthly_test_sheets");
+            const q = query(sheetsRef, where("month", "==", monthKey));
+            const snapshot = await getDocs(q);
+            const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            renderReportCardStatusTable(allSheets); // Function Call
+        } catch (err) {
+            container.innerHTML = `<p class="text-red-500 text-center">Error: ${err.message}</p>`;
+        }
+    }
+    
+    // 3. MONTHLY TEST (All Subjects OR Asri)
     else if (reportType === 'test-all' || reportType === 'test-asri') {
         try {
             // Month aur Year select karein
@@ -3423,12 +3440,134 @@ function renderJamiaTags() {
         container.appendChild(tag);
     });
 }
+        // --- NEW FUNCTION: Report Card Status Table ---
+const renderReportCardStatusTable = (allSheets) => {
+    const container = document.getElementById('analysis-report-container');
+    
+    // 1. Data Structure taiyar karein
+    let jamiaStatusList = [];
+
+    // Saare Users aur unki Jamiaat ko loop karein
+    allUsersData.forEach(user => {
+        if (user.id === ADMIN_UID) return; // Admin ko skip karein
+
+        const userJamias = user.jamiaatList || [];
+        
+        // Har Jamia ke liye check karein
+        userJamias.forEach(jamia => {
+            // Jamia name handle karein (kabhi string hota hai, kabhi object)
+            const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+            
+            // Check karein kya is Jamia ka koi bhi report card sheet me hai?
+            // (Matching loose rakhi hai taake spelling ki wajah se miss na ho)
+            const relevantSheets = allSheets.filter(s => 
+                (s.jamiaName || '').trim().toLowerCase().includes(jamiaName.trim().toLowerCase()) ||
+                jamiaName.trim().toLowerCase().includes((s.jamiaName || '').trim().toLowerCase())
+            );
+
+            const isDone = relevantSheets.length > 0;
+            
+            // Agar bana hai to thodi detail le lein
+            let totalStudents = 0;
+            let classesCovered = new Set();
+            
+            if (isDone) {
+                relevantSheets.forEach(s => {
+                    if(s.students) totalStudents += s.students.length;
+                    if(s.className) classesCovered.add(s.className);
+                });
+            }
+
+            jamiaStatusList.push({
+                jamiaName: jamiaName,
+                zimmedar: user.name || user.email,
+                region: user.region || '-',
+                isDone: isDone,
+                totalStudents: totalStudents,
+                totalClasses: classesCovered.size
+            });
+        });
+    });
+
+    // 2. Sorting: Jo "Pending" hain wo upar dikhayein (Red First)
+    jamiaStatusList.sort((a, b) => {
+        if (a.isDone === b.isDone) return a.jamiaName.localeCompare(b.jamiaName);
+        return a.isDone ? 1 : -1; 
+    });
+
+    // 3. Table Render
+    let rowsHtml = '';
+    let pendingCount = 0;
+
+    jamiaStatusList.forEach((item, index) => {
+        if (!item.isDone) pendingCount++;
+
+        const statusBadge = item.isDone 
+            ? `<span class="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded border border-green-200"><i class="fas fa-check-circle mr-1"></i> Ban Gaye</span>`
+            : `<span class="bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded border border-red-200"><i class="fas fa-times-circle mr-1"></i> Pending</span>`;
+
+        const details = item.isDone
+            ? `<span class="text-xs text-gray-600">Students: <b>${item.totalStudents}</b> | Classes: <b>${item.totalClasses}</b></span>`
+            : `<span class="text-xs text-red-400">No data found</span>`;
+
+        const rowBg = item.isDone ? 'bg-white' : 'bg-red-50'; // Pending walo ko highlight karein
+
+        rowsHtml += `
+            <tr class="border-b ${rowBg} hover:bg-gray-50 transition">
+                <td class="p-3 text-gray-500 border-r text-center">${index + 1}</td>
+                <td class="p-3 font-bold urdu-font text-gray-800 border-r">${item.jamiaName}</td>
+                <td class="p-3 urdu-font border-r text-gray-600">
+                    <div>${item.zimmedar}</div>
+                    <div class="text-xs text-gray-400">${item.region}</div>
+                </td>
+                <td class="p-3 border-r text-center">${statusBadge}</td>
+                <td class="p-3 text-center">${details}</td>
+            </tr>
+        `;
+    });
+
+    container.innerHTML = `
+        <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+                <div>
+                    <h4 class="font-bold text-lg text-gray-700">Report Card Submission Status</h4>
+                    <p class="text-sm text-gray-500">Total Jamiaat: <b>${jamiaStatusList.length}</b></p>
+                </div>
+                <div class="flex gap-4">
+                    <div class="bg-green-100 text-green-700 px-3 py-1 rounded font-bold text-sm border border-green-200">
+                        Complete: ${jamiaStatusList.length - pendingCount}
+                    </div>
+                    <div class="bg-red-100 text-red-700 px-3 py-1 rounded font-bold text-sm border border-red-200">
+                        Pending: ${pendingCount}
+                    </div>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead class="bg-gray-800 text-white uppercase text-xs">
+                        <tr>
+                            <th class="p-3 w-12 border-r border-gray-600">#</th>
+                            <th class="p-3 text-left border-r border-gray-600">Jamia Name</th>
+                            <th class="p-3 text-left border-r border-gray-600">Zimmedar / Region</th>
+                            <th class="p-3 text-center border-r border-gray-600">Status</th>
+                            <th class="p-3 text-center">Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        ${rowsHtml || '<tr><td colspan="5" class="p-4 text-center text-gray-500">Koi Jamia nahi mili.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+};
         
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
