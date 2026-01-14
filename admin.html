@@ -1231,7 +1231,7 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
-// --- UPDATED TABLE RENDERER (Nahi Hua = Pending Status + View Button) ---
+// --- UPDATED TABLE RENDERER (Date Column Added) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
@@ -1251,7 +1251,7 @@ const renderAllUsersJaizaTable = () => {
         const userJamias = user.jamiaatList || [];
         if (userJamias.length === 0) return;
 
-        // User ki Monthly Report
+        // 1. User ki Monthly Report dhundein
         const userReport = fetchedAdminReports.find(r => r.userId === user.id);
         const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) 
                              ? userReport.jaizaReport.data 
@@ -1261,21 +1261,22 @@ const renderAllUsersJaizaTable = () => {
             const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
             const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
             
-            // Targets & Actuals
+            // 2. Targets & Actuals Load karein
             const targets = getJamiaTargets(user, jamiaName, monthKey);
             const actuals = getJaizaActuals(user.id, jamiaName);
 
-            // Report Entry dhundein
+            // 3. Find Entry in Monthly Report
             const reportEntry = jaizaEntries.find(entry => {
                 const rName = (entry.name || entry.jamiaName || '').trim().toLowerCase();
                 const jName = jamiaName.trim().toLowerCase();
                 return (jamiaId && entry.jamiaId === jamiaId) || rName === jName;
             });
 
-            // --- STATUS LOGIC ---
+            // --- STATUS & DATE LOGIC ---
             let statusBadge = "";
             let rowClass = "";
             let percentageDisplay = "-";
+            let dateDisplay = `<span class="text-gray-300">-</span>`; // Default Date
             let actionBtn = `<span class="text-gray-300 text-xs">-</span>`;
             let showDetails = false;
 
@@ -1289,33 +1290,38 @@ const renderAllUsersJaizaTable = () => {
                 statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold border border-red-200"><i class="fas fa-clock"></i> Pending</span>`;
                 rowClass = "bg-red-50";
             } 
-            else if (isNahiHua) {
-                // Report aayi hai lekin "Nahi Hua" select kiya hai -> Status Pending (Red) rahega
-                statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold border border-red-200"><i class="fas fa-times-circle"></i> Pending</span>`;
-                rowClass = "bg-red-50"; 
-                percentageDisplay = `<span class="text-xs text-red-400">Nahi Hua</span>`;
-            }
             else {
-                // Done or Visit
-                const isDone = (statusStr === 'done') || (Number(reportEntry.percentage) > 0) || (typeStr === 'jaiza');
+                // Date set karein agar report hai
+                if (reportEntry.date) {
+                    dateDisplay = `<span class="text-gray-700 font-medium text-xs">${reportEntry.date}</span>`;
+                }
 
-                if (isDone) {
-                    statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold border border-green-200"><i class="fas fa-check-circle"></i> Done</span>`;
-                    rowClass = "bg-white";
-                    percentageDisplay = `<span class="font-bold text-teal-700 text-lg">${reportEntry.percentage}%</span>`;
-                    showDetails = true; 
-                } else {
-                    statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold border border-orange-200"><i class="fas fa-walking"></i> Visit Only</span>`;
-                    rowClass = "bg-orange-50";
-                    percentageDisplay = `<span class="text-gray-400 text-xs">N/A</span>`;
+                if (isNahiHua) {
+                    // Report aayi hai lekin "Nahi Hua" select kiya hai
+                    statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold border border-red-200"><i class="fas fa-times-circle"></i> Pending</span>`;
+                    rowClass = "bg-red-50"; 
+                    percentageDisplay = `<span class="text-xs text-red-400">Nahi Hua</span>`;
+                }
+                else {
+                    // Done or Visit
+                    const isDone = (statusStr === 'done') || (Number(reportEntry.percentage) > 0) || (typeStr === 'jaiza');
+
+                    if (isDone) {
+                        statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold border border-green-200"><i class="fas fa-check-circle"></i> Done</span>`;
+                        rowClass = "bg-white";
+                        percentageDisplay = `<span class="font-bold text-teal-700 text-lg">${reportEntry.percentage}%</span>`;
+                        showDetails = true; 
+                    } else {
+                        statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold border border-orange-200"><i class="fas fa-walking"></i> Visit Only</span>`;
+                        rowClass = "bg-orange-50";
+                        percentageDisplay = `<span class="text-gray-400 text-xs">N/A</span>`;
+                    }
                 }
             }
 
-            // --- BUTTON LOGIC (Updated) ---
+            // --- BUTTON LOGIC ---
             // Agar Detailed Form hai YA Monthly Report Entry hai -> Button dikhao
-            // Hum ab seedha userId aur jamiaName bhejenge taake modal khud data dhoond le
             if (actuals.formIds.length > 0 || reportEntry) {
-                // Safe string conversion for function call
                 const safeJamia = jamiaName.replace(/'/g, "\\'");
                 actionBtn = `
                 <button onclick="viewJaizaDetail('${user.id}', '${safeJamia}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition flex items-center gap-1 mx-auto">
@@ -1346,6 +1352,8 @@ const renderAllUsersJaizaTable = () => {
                         <div class="text-[10px] text-gray-500 uppercase">Target: ${targets.teachers || 0}</div>
                         <div class="mt-1">${teacherCountDisplay}</div>
                     </td>
+                    
+                    <td class="p-3 text-center border-r">${dateDisplay}</td>
 
                     <td class="p-3 text-center border-r">${percentageDisplay}</td>
                     <td class="p-3 text-center border-r">${statusBadge}</td>
@@ -1372,13 +1380,13 @@ const renderAllUsersJaizaTable = () => {
                         <th class="p-3 text-center border-r border-teal-600">Classes</th>
                         <th class="p-3 text-center border-r border-teal-600">Books</th>
                         <th class="p-3 text-center border-r border-teal-600">Teachers</th>
-                        <th class="p-3 text-center border-r border-teal-600">Total %</th>
+                        <th class="p-3 text-center border-r border-teal-600">Date</th> <th class="p-3 text-center border-r border-teal-600">Total %</th>
                         <th class="p-3 text-center border-r border-teal-600">Status</th>
                         <th class="p-3 text-center">Jaiza Form</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    ${rowsHtml || '<tr><td colspan="9" class="p-6 text-center text-gray-500">No data found.</td></tr>'}
+                    ${rowsHtml || '<tr><td colspan="10" class="p-6 text-center text-gray-500">No data found.</td></tr>'}
                 </tbody>
             </table>
         </div>
@@ -3974,6 +3982,7 @@ window.viewJaizaDetail = (userId, jamiaName) => {
     </script>
 </body>
 </html>
+
 
 
 
