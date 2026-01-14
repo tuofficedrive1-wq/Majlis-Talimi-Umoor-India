@@ -1231,17 +1231,16 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
-// --- UPDATED TABLE RENDERER ---
+// --- UPDATED TABLE RENDERER (Logic: Based on Monthly Report Submission) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
-    // Month Key calculate karein targets ke liye
+    // Month Key for Targets
     const monthName = document.getElementById('admin-month-select').value;
     const yearVal = document.getElementById('admin-year-select').value;
     const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
     const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-    // Users Filter & Sort
     const users = allUsersData
         .filter(u => u.id !== ADMIN_UID)
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -1251,33 +1250,81 @@ const renderAllUsersJaizaTable = () => {
 
     users.forEach(user => {
         const userJamias = user.jamiaatList || [];
-
         if (userJamias.length === 0) return;
+
+        // 1. User ki Monthly Report dhundein (Status check karne ke liye)
+        const userReport = fetchedAdminReports.find(r => r.userId === user.id);
+        const jaizaEntries = userReport && userReport.jaizaReport ? userReport.jaizaReport.data : [];
 
         userJamias.forEach(jamia => {
             const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+            const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
             
-            // --- CORE LOGIC CALLS ---
-            // 1. Total Targets (Profile se)
+            // --- 2. Targets & Actuals Load karein ---
+            // Targets (Profile se)
             const targets = getJamiaTargets(user, jamiaName, monthKey);
-            
-            // 2. Actual Done (Jaiza Forms se)
+            // Actuals (Detailed Forms se - agar 'View' karna ho to data chahiye)
             const actuals = getJaizaActuals(user.id, jamiaName);
 
-            // Styling Logic
-            const isStarted = actuals.classesChecked > 0;
-            const isCompleted = isStarted && actuals.classesChecked >= targets.classes && targets.classes > 0;
-            
-            let statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold">Pending</span>`;
-            let rowClass = "bg-red-50";
+            // --- 3. STATUS LOGIC (From Monthly Report) ---
+            // Check karein ki Monthly Report me ye Jamia majood hai ya nahi
+            const reportEntry = jaizaEntries.find(entry => {
+                const rName = (entry.name || entry.jamiaName || '').trim().toLowerCase();
+                const jName = jamiaName.trim().toLowerCase();
+                // ID match (priority) or Name match
+                return (jamiaId && entry.jamiaId === jamiaId) || rName === jName;
+            });
 
-            if (isCompleted) {
-                statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-check"></i> Done</span>`;
-                rowClass = "bg-white";
-            } else if (isStarted) {
-                statusBadge = `<span class="bg-yellow-100 text-yellow-700 text-xs px-2 py-1 rounded-full font-bold">Ongoing</span>`;
-                rowClass = "bg-yellow-50";
+            let statusBadge = "";
+            let rowClass = "";
+            let percentageDisplay = "-";
+            let actionBtn = `<span class="text-gray-300 text-xs">-</span>`;
+            let showDetails = false;
+
+            if (!reportEntry) {
+                // CASE 1: PENDING (Report me entry hi nahi hai)
+                statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-clock"></i> Pending</span>`;
+                rowClass = "bg-red-50";
+                showDetails = false; // Pending hai to details 0 dikhayenge
+            } 
+            else {
+                // Entry mil gayi, ab check karein Done hai ya Visit
+                // Aksar 'percentage' string hoti hai, isliye Number() use karein
+                const isDone = (reportEntry.status === 'Done') || (Number(reportEntry.percentage) > 0);
+
+                if (isDone) {
+                    // CASE 2: DONE (Jaiza hua hai)
+                    statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-check-circle"></i> Done</span>`;
+                    rowClass = "bg-white";
+                    percentageDisplay = `<span class="font-bold text-teal-700 text-lg">${reportEntry.percentage}%</span>`;
+                    showDetails = true; // Details show karein
+                } else {
+                    // CASE 3: VISIT ONLY (Report hai, par percentage 0 hai)
+                    statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-walking"></i> Visit Only</span>`;
+                    rowClass = "bg-orange-50";
+                    percentageDisplay = `<span class="text-gray-400 text-xs">N/A</span>`;
+                    showDetails = false; // Visit me classes count dikhana zaroori nahi, par actuals variable me data hoga agar form bhara gaya to
+                }
+
+                // View Button Logic: Agar detailed form (jaiza_forms) available hai to button dikhayein
+                if (actuals.formIds.length > 0) {
+                    actionBtn = `<button onclick="viewJaizaDetail('${actuals.formIds.join(',')}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded shadow transition flex items-center gap-1 mx-auto">
+                        <i class="fas fa-eye"></i> View
+                    </button>`;
+                } else {
+                    actionBtn = `<span class="text-xs text-gray-400">No Form</span>`;
+                }
             }
+
+            // --- 4. Render Counts (Based on Status) ---
+            // Agar Pending ya Visit hai to hum '0' dikhayenge ya Actuals (agar form ghalti se bhar diya ho)
+            // Behtar hai ki Visit/Pending me hum '-' dikhayein taake confusion na ho, 
+            // lekin agar aap chahte hain ki agar form exist karta hai to count dikhe, to hum actuals use karenge.
+            
+            // Logic: Agar Status Done hai to Highlighted Count dikhayein, warna Gray/Zero
+            const classCountDisplay = showDetails ? `<span class="font-bold text-lg text-blue-600">${actuals.classesChecked}</span>` : `<span class="text-gray-400">-</span>`;
+            const bookCountDisplay = showDetails ? `<span class="font-bold text-lg text-purple-600">${actuals.booksChecked}</span>` : `<span class="text-gray-400">-</span>`;
+            const teacherCountDisplay = showDetails ? `<span class="font-bold text-lg text-orange-600">${actuals.teachersChecked}</span>` : `<span class="text-gray-400">-</span>`;
 
             rowsHtml += `
                 <tr class="border-b ${rowClass} hover:bg-gray-50 transition text-sm">
@@ -1286,28 +1333,30 @@ const renderAllUsersJaizaTable = () => {
                     <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
                     
                     <td class="p-3 text-center border-r">
-                        <div class="text-xs text-gray-500 mb-1">Total: ${targets.classes || '-'}</div>
-                        <div class="font-bold text-lg ${actuals.classesChecked > 0 ? 'text-blue-600' : 'text-gray-400'}">
-                            ${actuals.classesChecked}
-                        </div>
+                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Target: ${targets.classes || 0}</div>
+                        <div class="mt-1">${classCountDisplay}</div>
                     </td>
 
                     <td class="p-3 text-center border-r">
-                        <div class="text-xs text-gray-500 mb-1">Total: ${targets.books || '-'}</div>
-                        <div class="font-bold text-lg ${actuals.booksChecked > 0 ? 'text-purple-600' : 'text-gray-400'}">
-                            ${actuals.booksChecked}
-                        </div>
+                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Target: ${targets.books || 0}</div>
+                        <div class="mt-1">${bookCountDisplay}</div>
                     </td>
 
                     <td class="p-3 text-center border-r">
-                        <div class="text-xs text-gray-500 mb-1">Total: ${targets.teachers || '-'}</div>
-                        <div class="font-bold text-lg ${actuals.teachersChecked > 0 ? 'text-orange-600' : 'text-gray-400'}">
-                            ${actuals.teachersChecked}
-                        </div>
+                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Target: ${targets.teachers || 0}</div>
+                        <div class="mt-1">${teacherCountDisplay}</div>
+                    </td>
+
+                    <td class="p-3 text-center border-r">
+                        ${percentageDisplay}
+                    </td>
+
+                    <td class="p-3 text-center border-r">
+                        ${statusBadge}
                     </td>
 
                     <td class="p-3 text-center">
-                        ${statusBadge}
+                        ${actionBtn}
                     </td>
                 </tr>
             `;
@@ -1319,28 +1368,26 @@ const renderAllUsersJaizaTable = () => {
         <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
                 <div>
-                    <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis (Detailed)</h4>
-                    <p class="text-xs text-gray-500">Data source: User Profile (Targets) vs Submitted Jaiza Forms (Actuals)</p>
-                </div>
-                <div class="text-right">
-                    <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Checked (Blue/Big)</span>
-                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded ml-1">Total (Gray/Small)</span>
+                    <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis</h4>
+                    <p class="text-xs text-gray-500 mt-1">Status based on User's Monthly Report Submission</p>
                 </div>
             </div>
             <table class="w-full text-sm text-left border-collapse">
                 <thead class="bg-teal-700 text-white uppercase text-xs">
                     <tr>
-                        <th class="p-3 w-10 border-r border-teal-600">#</th>
+                        <th class="p-3 border-r border-teal-600 w-12 text-center">#</th>
                         <th class="p-3 border-r border-teal-600">Zimmedar</th>
                         <th class="p-3 border-r border-teal-600">Jamia Name</th>
-                        <th class="p-3 text-center border-r border-teal-600 w-32">Classes<br><span class="opacity-75 text-[10px] lowercase">(total / checked)</span></th>
-                        <th class="p-3 text-center border-r border-teal-600 w-32">Books<br><span class="opacity-75 text-[10px] lowercase">(total / checked)</span></th>
-                        <th class="p-3 text-center border-r border-teal-600 w-32">Teachers<br><span class="opacity-75 text-[10px] lowercase">(total / checked)</span></th>
-                        <th class="p-3 text-center w-24">Status</th>
+                        <th class="p-3 text-center border-r border-teal-600">Classes</th>
+                        <th class="p-3 text-center border-r border-teal-600">Books</th>
+                        <th class="p-3 text-center border-r border-teal-600">Teachers</th>
+                        <th class="p-3 text-center border-r border-teal-600">Total %</th>
+                        <th class="p-3 text-center border-r border-teal-600">Status</th>
+                        <th class="p-3 text-center">Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    ${rowsHtml || '<tr><td colspan="7" class="p-6 text-center text-gray-500 italic">No data found for this month.</td></tr>'}
+                    ${rowsHtml || '<tr><td colspan="9" class="p-6 text-center text-gray-500">No data found.</td></tr>'}
                 </tbody>
             </table>
         </div>
@@ -3748,6 +3795,7 @@ const getJaizaActuals = (userId, jamiaName) => {
     </script>
 </body>
 </html>
+
 
 
 
