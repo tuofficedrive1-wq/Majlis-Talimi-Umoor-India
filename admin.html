@@ -1230,139 +1230,123 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
-// --- Render Jaiza Table Function (Jamia-wise Correct Calculation) ---
+// --- UPDATED JAIZA ANALYSIS TABLE (Detailed Jamia-wise) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
-    // Active users filter
+    // Active users filter (Admin ko hatakar)
     const users = allUsersData
         .filter(u => u.id !== ADMIN_UID)
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     let rowsHtml = '';
+    let count = 1;
 
     users.forEach(user => {
+        // User ki report nikalein (selected month ki)
         const report = fetchedAdminReports.find(r => r.userId === user.id);
-        const totalJamiaTarget = user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0);
+        const reportData = report && report.jaizaReport ? report.jaizaReport.data : [];
 
-        // --- COUNTING VARIABLES ---
-        let uniqueJamiasList = new Set();  // Jamia count ke liye (Done)
-        let visitOnlyList = new Set();     // Sirf Visit wali Jamiaat ke liye
-        
-        // Is Map ka kaam hai har Jamia ka Total Class/Book sirf ek baar hold karna
-        // Structure: { 'JamiaID': { classes: 3, books: 9 } }
-        let jamiaStatsMap = {}; 
+        // User ki Jamiaat List (Profile se) - Taake "Total" pata chale
+        const userJamias = user.jamiaatList || [];
 
-        if (report && report.jaizaReport && Array.isArray(report.jaizaReport.data)) {
-            report.jaizaReport.data.forEach(form => {
-                
-                // Jamia ka naam ya ID nikalna zaroori hai grouping ke liye
-                const jamiaKey = form.jamiaId || form.jamiaName || form.name;
-                
-                if (!jamiaKey) return; // Agar naam nahi to skip karein
+        if (userJamias.length === 0) return; // Agar koi jamia assign nahi hai to skip
 
-                // Check: Kya waqai kaam hua hai? (Percentage > 0 ya Status Done)
-                const isWorkDone = (parseInt(form.percentage) > 0 || form.status === 'Done');
+        userJamias.forEach(jamia => {
+            // 1. Basic Info Extract
+            // Jamia ka naam aur ID (Handling object vs string)
+            const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+            const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
 
-                if (isWorkDone) {
-                    // 1. UNIQUE JAMIA DONE COUNT
-                    uniqueJamiasList.add(jamiaKey);
-
-                    // 2. CLASSES & BOOKS LOGIC (Grouping by Jamia)
-                    // Agar ye Jamia pehle map me nahi hai, to initialize karein
-                    if (!jamiaStatsMap[jamiaKey]) {
-                        jamiaStatsMap[jamiaKey] = { classes: 0, books: 0 };
-                    }
-
-                    // Har form me us Jamia ka "Total" likha hota hai.
-                    // Hum MAX value lenge. Is se agar 3 forms hain aur sab me "Total Classes: 3" likha hai,
-                    // to hum usay jodenge nahi, balki sirf '3' hi manenge.
-                    
-                    const savedClasses = Number(form.totalClasses) || 0;
-                    const savedBooks = Number(form.totalBooks) || 0;
-
-                    if (savedClasses > jamiaStatsMap[jamiaKey].classes) {
-                        jamiaStatsMap[jamiaKey].classes = savedClasses;
-                    }
-                    if (savedBooks > jamiaStatsMap[jamiaKey].books) {
-                        jamiaStatsMap[jamiaKey].books = savedBooks;
-                    }
-
-                } else {
-                    // Agar kaam nahi hua, sirf visit hai
-                    // Visit ko bhi set me dalenge taake duplicate visit count na ho
-                    if (!uniqueJamiasList.has(jamiaKey)) {
-                         visitOnlyList.add(jamiaKey);
-                    }
-                }
+            // 2. Profile Stats (Total Teachers, etc.)
+            const totalTeachers = (typeof jamia === 'object' && Array.isArray(jamia.teachers)) ? jamia.teachers.length : 0;
+            // Note: Total Classes/Books usually profile me nahi hote, agar hain to yahan add karein. 
+            // Filhal hum Report se ya '-' show karenge.
+            
+            // 3. Report Data Match karna
+            // Hum check karenge ki kya is Jamia ki koi report aayi hai?
+            const matchedReport = reportData.find(r => {
+                const rName = (r.name || r.jamiaName || '').trim().toLowerCase();
+                const jName = jamiaName.trim().toLowerCase();
+                return rName === jName || (jamiaId && r.jamiaId === jamiaId);
             });
-        }
 
-        // Ab Map se Grand Total nikalein (Sab Jamiaat ka mila kar)
-        let grandTotalClasses = 0;
-        let grandTotalBooks = 0;
+            // 4. Checked Stats (Report se)
+            // Agar report mili to uska data, warna 0
+            const checkedClasses = matchedReport ? (Number(matchedReport.totalClasses) || 0) : 0;
+            const checkedBooks = matchedReport ? (Number(matchedReport.totalBooks) || 0) : 0;
+            
+            // "Checked Teachers" - Agar aapke form me yeh field hai to wahan se lein, 
+            // warna filhal 0 ya report ka koi custom field use karein.
+            // Example assumption: matchedReport.teachersChecked
+            const checkedTeachers = matchedReport ? (Number(matchedReport.teachersChecked) || 0) : 0; 
 
-        Object.values(jamiaStatsMap).forEach(stat => {
-            grandTotalClasses += stat.classes;
-            grandTotalBooks += stat.books;
+            // "Total Classes/Books" - Aksar Report me "Target" field nahi hota.
+            // Agar aapke paas structure me hai to wahan se lein.
+            // Filhal hum isay empty '-' rakhenge agar data nahi hai.
+            const totalClasses = matchedReport ? (matchedReport.totalClassesTarget || '-') : '-';
+            const totalBooks = matchedReport ? (matchedReport.totalBooksTarget || '-') : '-';
+
+            // 5. Status Styling
+            const isDone = !!matchedReport;
+            const rowClass = isDone ? 'bg-white' : 'bg-red-50'; // Pending walo ko halka laal karein
+            const statusIcon = isDone 
+                ? `<span class="text-green-600"><i class="fas fa-check-circle"></i> Done</span>` 
+                : `<span class="text-red-500"><i class="fas fa-times-circle"></i> Pending</span>`;
+
+            // 6. Row HTML Generate
+            rowsHtml += `
+                <tr class="border-b ${rowClass} hover:bg-gray-50 transition text-sm">
+                    <td class="p-3 text-gray-500 border-r text-center">${count++}</td>
+                    <td class="p-3 font-semibold text-gray-700 border-r">${user.name || 'Unknown'}</td>
+                    <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
+                    
+                    <td class="p-3 text-center border-r">
+                        <span class="text-gray-500 text-xs">Total: ${totalClasses}</span><br>
+                        <span class="font-bold text-blue-600 text-lg">${checkedClasses}</span>
+                    </td>
+
+                    <td class="p-3 text-center border-r">
+                        <span class="text-gray-500 text-xs">Total: ${totalBooks}</span><br>
+                        <span class="font-bold text-purple-600 text-lg">${checkedBooks}</span>
+                    </td>
+
+                    <td class="p-3 text-center border-r">
+                        <span class="text-gray-500 text-xs">Total: ${totalTeachers}</span><br>
+                        <span class="font-bold text-orange-600 text-lg">${checkedTeachers}</span>
+                    </td>
+
+                    <td class="p-3 text-center text-xs font-bold">
+                        ${statusIcon}
+                    </td>
+                </tr>
+            `;
         });
-
-        const visitOnlyCount = visitOnlyList.size;
-
-        // Pending = Total Target - Jitni Jamiaat mein kaam hua
-        const pendingCount = Math.max(0, totalJamiaTarget - uniqueJamiasList.size);
-        
-        // Row Styling
-        const rowClass = pendingCount === 0 && totalJamiaTarget > 0 ? 'bg-green-50' : 'hover:bg-gray-50';
-
-        rowsHtml += `
-            <tr class="border-b ${rowClass} transition">
-                <td class="p-3 font-semibold urdu-font text-gray-800 border-r">${user.name || 'N/A'}</td>
-                
-                <td class="p-3 text-center font-bold text-gray-600 border-r">${totalJamiaTarget}</td>
-                
-                <td class="p-3 text-center font-bold text-green-700 bg-green-50 border-r" title="Unique Jamiaat Checked">
-                    ${uniqueJamiasList.size}
-                </td>
-                
-                <td class="p-3 text-center font-bold text-blue-600 border-r" title="Total Classes (Jamia-wise)">
-                    ${grandTotalClasses}
-                </td>
-
-                <td class="p-3 text-center font-bold text-purple-600 border-r" title="Total Books (Jamia-wise)">
-                    ${grandTotalBooks}
-                </td>
-                
-                <td class="p-3 text-center font-bold text-orange-500 border-r">${visitOnlyCount}</td>
-                
-                <td class="p-3 text-center font-bold text-red-500">${pendingCount}</td>
-            </tr>
-        `;
     });
 
-    // Table Structure
+    // Table Structure Update
     container.innerHTML = `
         <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis</h4>
+                <h4 class="font-bold text-lg text-gray-700">Detailed Jaiza Report Analysis</h4>
                 <div class="text-sm text-gray-500">
-                    Calculated Jamia-wise (Total Classes & Books grouped by Jamia)
+                    Har Jamia ka alag status (Total vs Checked)
                 </div>
             </div>
             <table class="w-full text-sm text-left border-collapse">
                 <thead class="bg-teal-600 text-white uppercase text-xs">
                     <tr>
-                        <th class="p-3 rounded-tl-lg border-r border-teal-500">User Name</th>
-                        <th class="p-3 text-center border-r border-teal-500">Total Jamia</th>
-                        <th class="p-3 text-center border-r border-teal-500">Jamia Done</th>
-                        <th class="p-3 text-center border-r border-teal-500">Total Classes</th>
-                        <th class="p-3 text-center border-r border-teal-500">Total Books</th>
-                        <th class="p-3 text-center border-r border-teal-500">Sirf Visit</th>
-                        <th class="p-3 text-center rounded-tr-lg">Pending</th>
+                        <th class="p-3 w-10 border-r border-teal-500">#</th>
+                        <th class="p-3 border-r border-teal-500">Zimmedar</th>
+                        <th class="p-3 border-r border-teal-500">Jamia Name</th>
+                        <th class="p-3 text-center border-r border-teal-500">Classes<br><span class="text-[10px] opacity-75">(Total / Checked)</span></th>
+                        <th class="p-3 text-center border-r border-teal-500">Books<br><span class="text-[10px] opacity-75">(Total / Checked)</span></th>
+                        <th class="p-3 text-center border-r border-teal-500">Teachers<br><span class="text-[10px] opacity-75">(Total / Checked)</span></th>
+                        <th class="p-3 text-center">Status</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    ${rowsHtml || '<tr><td colspan="7" class="p-4 text-center text-gray-500">Koi report data nahi mila.</td></tr>'}
+                    ${rowsHtml || '<tr><td colspan="7" class="p-4 text-center text-gray-500">Koi data nahi mila.</td></tr>'}
                 </tbody>
             </table>
         </div>
@@ -3699,6 +3683,7 @@ const handleAnalysisExcelDownload = async () => {
     </script>
 </body>
 </html>
+
 
 
 
