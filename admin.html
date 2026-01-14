@@ -1231,11 +1231,10 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
-// --- UPDATED TABLE RENDERER (Logic: Based on Monthly Report Submission) ---
+// --- UPDATED TABLE RENDERER (Logic: Monthly Report + Detailed Forms) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
-    // Month Key for Targets
     const monthName = document.getElementById('admin-month-select').value;
     const yearVal = document.getElementById('admin-year-select').value;
     const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
@@ -1254,24 +1253,23 @@ const renderAllUsersJaizaTable = () => {
 
         // 1. User ki Monthly Report dhundein (Status check karne ke liye)
         const userReport = fetchedAdminReports.find(r => r.userId === user.id);
-        const jaizaEntries = userReport && userReport.jaizaReport ? userReport.jaizaReport.data : [];
+        // Safety: Check karein data array hai ya nahi
+        const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) 
+                             ? userReport.jaizaReport.data 
+                             : [];
 
         userJamias.forEach(jamia => {
             const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
             const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
             
-            // --- 2. Targets & Actuals Load karein ---
-            // Targets (Profile se)
+            // 2. Targets & Actuals Load karein
             const targets = getJamiaTargets(user, jamiaName, monthKey);
-            // Actuals (Detailed Forms se - agar 'View' karna ho to data chahiye)
             const actuals = getJaizaActuals(user.id, jamiaName);
 
-            // --- 3. STATUS LOGIC (From Monthly Report) ---
-            // Check karein ki Monthly Report me ye Jamia majood hai ya nahi
+            // 3. STATUS LOGIC (Based on Monthly Report)
             const reportEntry = jaizaEntries.find(entry => {
                 const rName = (entry.name || entry.jamiaName || '').trim().toLowerCase();
                 const jName = jamiaName.trim().toLowerCase();
-                // ID match (priority) or Name match
                 return (jamiaId && entry.jamiaId === jamiaId) || rName === jName;
             });
 
@@ -1279,49 +1277,46 @@ const renderAllUsersJaizaTable = () => {
             let rowClass = "";
             let percentageDisplay = "-";
             let actionBtn = `<span class="text-gray-300 text-xs">-</span>`;
-            let showDetails = false;
+            
+            // Flag: Agar Done hai tabhi details (numbers) dikhayenge
+            let showDetails = false; 
 
             if (!reportEntry) {
-                // CASE 1: PENDING (Report me entry hi nahi hai)
-                statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-clock"></i> Pending</span>`;
+                // CASE A: PENDING (Monthly report mein entry nahi hai)
+                statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold border border-red-200"><i class="fas fa-clock"></i> Pending</span>`;
                 rowClass = "bg-red-50";
-                showDetails = false; // Pending hai to details 0 dikhayenge
+                showDetails = false;
             } 
             else {
-                // Entry mil gayi, ab check karein Done hai ya Visit
-                // Aksar 'percentage' string hoti hai, isliye Number() use karein
+                // CASE B: Entry hai - Check karein Done hai ya Visit
                 const isDone = (reportEntry.status === 'Done') || (Number(reportEntry.percentage) > 0);
 
                 if (isDone) {
-                    // CASE 2: DONE (Jaiza hua hai)
-                    statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-check-circle"></i> Done</span>`;
+                    statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold border border-green-200"><i class="fas fa-check-circle"></i> Done</span>`;
                     rowClass = "bg-white";
                     percentageDisplay = `<span class="font-bold text-teal-700 text-lg">${reportEntry.percentage}%</span>`;
-                    showDetails = true; // Details show karein
+                    showDetails = true; 
                 } else {
-                    // CASE 3: VISIT ONLY (Report hai, par percentage 0 hai)
-                    statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-walking"></i> Visit Only</span>`;
+                    // Visit Only
+                    statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold border border-orange-200"><i class="fas fa-walking"></i> Visit Only</span>`;
                     rowClass = "bg-orange-50";
                     percentageDisplay = `<span class="text-gray-400 text-xs">N/A</span>`;
-                    showDetails = false; // Visit me classes count dikhana zaroori nahi, par actuals variable me data hoga agar form bhara gaya to
-                }
-
-                // View Button Logic: Agar detailed form (jaiza_forms) available hai to button dikhayein
-                if (actuals.formIds.length > 0) {
-                    actionBtn = `<button onclick="viewJaizaDetail('${actuals.formIds.join(',')}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded shadow transition flex items-center gap-1 mx-auto">
-                        <i class="fas fa-eye"></i> View
-                    </button>`;
-                } else {
-                    actionBtn = `<span class="text-xs text-gray-400">No Form</span>`;
+                    showDetails = false; 
                 }
             }
 
-            // --- 4. Render Counts (Based on Status) ---
-            // Agar Pending ya Visit hai to hum '0' dikhayenge ya Actuals (agar form ghalti se bhar diya ho)
-            // Behtar hai ki Visit/Pending me hum '-' dikhayein taake confusion na ho, 
-            // lekin agar aap chahte hain ki agar form exist karta hai to count dikhe, to hum actuals use karenge.
-            
-            // Logic: Agar Status Done hai to Highlighted Count dikhayein, warna Gray/Zero
+            // ACTION BUTTON: Agar Detailed Form (jaiza_forms) database mein hai to View dikhayein
+            // Note: Visit ke case mein bhi agar form bhara hai to View button aayega
+            if (actuals.formIds && actuals.formIds.length > 0) {
+                actionBtn = `<button onclick="viewJaizaDetail('${actuals.formIds.join(',')}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded shadow transition flex items-center gap-1 mx-auto">
+                    <i class="fas fa-eye"></i> View
+                </button>`;
+            } else if (reportEntry) {
+                actionBtn = `<span class="text-xs text-gray-400">Report Submitted (No Details)</span>`;
+            }
+
+            // COUNTS DISPLAY Logic
+            // Agar details show karni hain to actuals dikhayein, warna dash (-)
             const classCountDisplay = showDetails ? `<span class="font-bold text-lg text-blue-600">${actuals.classesChecked}</span>` : `<span class="text-gray-400">-</span>`;
             const bookCountDisplay = showDetails ? `<span class="font-bold text-lg text-purple-600">${actuals.booksChecked}</span>` : `<span class="text-gray-400">-</span>`;
             const teacherCountDisplay = showDetails ? `<span class="font-bold text-lg text-orange-600">${actuals.teachersChecked}</span>` : `<span class="text-gray-400">-</span>`;
@@ -1363,13 +1358,12 @@ const renderAllUsersJaizaTable = () => {
         });
     });
 
-    // Final HTML Render
     container.innerHTML = `
         <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
                 <div>
                     <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis</h4>
-                    <p class="text-xs text-gray-500 mt-1">Status based on User's Monthly Report Submission</p>
+                    <p class="text-xs text-gray-500 mt-1">Status based on Submitted Reports (Visit vs Done)</p>
                 </div>
             </div>
             <table class="w-full text-sm text-left border-collapse">
@@ -3719,36 +3713,39 @@ const handleAnalysisExcelDownload = async () => {
         showLoader(false);
     }
 };
-        // --- HELPER 1: Calculate Totals form User Profile (Structure) ---
+        // --- HELPER 1: Calculate Totals form User Profile (Safe Version) ---
 const getJamiaTargets = (user, jamiaName, monthKey) => {
-    // Default values
     let targets = { classes: 0, books: 0, teachers: 0 };
     
     if (!user || !user.academicYears) return targets;
 
-    // Academic Year nikalna (e.g. 2025-12 hai to '2025-2026')
-    const [y, m] = monthKey.split('-').map(Number);
-    // Agar Mahina March (3) ya us se bada hai, to ye saal start year hai
+    // Year calculate karein
+    const parts = monthKey.split('-');
+    if (parts.length < 2) return targets;
+    const [y, m] = parts.map(Number);
     const acYearKey = (m >= 3) ? `${y}-${y+1}` : `${y-1}-${y}`;
 
     const yearData = user.academicYears[acYearKey];
+    // Safety Check: Agar structure nahi hai to wapas jayein
     if (!yearData || !Array.isArray(yearData.karkardagiStructure)) return targets;
 
-    // Jamia dhundein
     const jamiaStruct = yearData.karkardagiStructure.find(j => 
-        (j.jamiaName || '').trim() === jamiaName.trim()
+        (j.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase()
     );
 
     if (jamiaStruct) {
-        // 1. Total Teachers
-        targets.teachers = (jamiaStruct.teachers || []).length;
+        // Safety: Teachers array check karein
+        const teachersArr = Array.isArray(jamiaStruct.teachers) ? jamiaStruct.teachers : [];
+        targets.teachers = teachersArr.length;
 
-        // 2. Total Classes & Books (Periods se count karein)
         const uniqueClasses = new Set();
         let totalBooksCount = 0;
 
-        (jamiaStruct.teachers || []).forEach(t => {
-            (t.periods || []).forEach(p => {
+        teachersArr.forEach(t => {
+            if (!t) return; // Agar teacher object null hai to skip
+            const periods = Array.isArray(t.periods) ? t.periods : [];
+            
+            periods.forEach(p => {
                 if (p.className) uniqueClasses.add(p.className);
                 if (p.bookName) totalBooksCount++;
             });
@@ -3759,6 +3756,63 @@ const getJamiaTargets = (user, jamiaName, monthKey) => {
     }
 
     return targets;
+};
+
+// --- HELPER 2: Calculate Actuals from Jaiza Forms (Safe Version) ---
+const getJaizaActuals = (userId, jamiaName) => {
+    let actuals = { 
+        classesChecked: 0, 
+        booksChecked: 0, 
+        teachersChecked: 0,
+        hasEntry: false, 
+        jamiaPercentage: 0,
+        formIds: []
+    };
+    
+    // Safety: Global variable check
+    if (typeof fetchedJaizaForms === 'undefined' || !Array.isArray(fetchedJaizaForms)) {
+        return actuals;
+    }
+
+    const userForms = fetchedJaizaForms.filter(f => 
+        f.createdBy === userId && 
+        (f.jamiaId || '').trim().toLowerCase() === jamiaName.trim().toLowerCase()
+    );
+
+    if (userForms.length > 0) {
+        actuals.hasEntry = true;
+        let totalPercentSum = 0;
+        let percentCount = 0;
+        let teachersSet = new Set();
+
+        userForms.forEach(form => {
+            if(form.id) actuals.formIds.push(form.id);
+
+            // Classes Count
+            actuals.classesChecked += 1;
+            
+            // Percentage
+            if (form.classPercentage || form.percentage) {
+                totalPercentSum += Number(form.classPercentage || form.percentage || 0);
+                percentCount++;
+            }
+
+            // Books & Teachers
+            if (Array.isArray(form.books)) {
+                actuals.booksChecked += form.books.length;
+                form.books.forEach(b => { 
+                    if(b && b.teacherName) teachersSet.add(b.teacherName); 
+                });
+            }
+        });
+
+        if (percentCount > 0) {
+            actuals.jamiaPercentage = (totalPercentSum / percentCount).toFixed(1);
+        }
+        actuals.teachersChecked = teachersSet.size;
+    }
+
+    return actuals;
 };
 
 // --- HELPER 2: Calculate Actuals from Jaiza Forms ---
@@ -3792,9 +3846,12 @@ const getJaizaActuals = (userId, jamiaName) => {
 };
         // --- VIEW JAIZA DETAILS MODAL ---
 window.viewJaizaDetail = (formIdsString) => {
+    if (!formIdsString) return;
     const formIds = formIdsString.split(',');
     
-    // Forms ka data dhundein
+    // Safety: Global check
+    if (typeof fetchedJaizaForms === 'undefined') return;
+
     const forms = fetchedJaizaForms.filter(f => formIds.includes(f.id));
     
     if (forms.length === 0) {
@@ -3802,14 +3859,13 @@ window.viewJaizaDetail = (formIdsString) => {
         return;
     }
 
-    // Modal Content Tayyar karein
     let contentHtml = `<div class="space-y-6">`;
 
-    forms.forEach((form, index) => {
+    forms.forEach((form) => {
         contentHtml += `
             <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
                 <h3 class="font-bold text-lg text-teal-800 mb-2 border-b pb-1">
-                    Class: ${form.className || 'Unknown'} 
+                    Class: <span class="urdu-font">${form.className || 'Unknown'}</span> 
                     <span class="text-sm text-gray-500 float-right">Total %: ${form.classPercentage || form.percentage || 0}%</span>
                 </h3>
                 
@@ -3824,7 +3880,7 @@ window.viewJaizaDetail = (formIdsString) => {
                         <div class="bg-white p-2 rounded border text-sm flex justify-between items-center">
                             <span>
                                 <strong class="urdu-font">${b.bookName || '-'}</strong> 
-                                <span class="text-xs text-gray-500">(${b.teacherName || '-'})</span>
+                                <span class="text-xs text-gray-500 urdu-font">(${b.teacherName || '-'})</span>
                             </span>
                             <span class="font-bold text-blue-600">${b.percentage ? b.percentage.toFixed(1) : 0}%</span>
                         </div>
@@ -3841,22 +3897,13 @@ window.viewJaizaDetail = (formIdsString) => {
     });
     contentHtml += `</div>`;
 
-    // Modal Show Karein (Existing Modal reuse kar rahe hain)
     const modalTitle = document.getElementById('modal-title');
-    const modalBody = document.getElementById('modal-content'); // ya jo bhi ID hai aapke modal body ki
-    const modalUser = document.getElementById('modal-user-name'); // Clear kar dein
-
+    const modalBody = document.getElementById('modal-content'); 
+    
     if(modalTitle) modalTitle.textContent = "Jaiza Form Details";
-    if(modalUser) modalUser.textContent = ""; // User name ki zarurat nahi yahan
+    if(modalBody) modalBody.innerHTML = contentHtml;
     
-    // Modal body clean karke naya content dalein
-    // Note: Aapke existing 'report-modal' structure ke hisaab se adjust karein
-    // Hum 'tadris-rows' wali table ko temporarily hide/overwrite kar rahe hain
-    if(modalBody) {
-        modalBody.innerHTML = contentHtml;
-    }
-    
-    // Modal Open
+    // Modal Open Logic
     const modal = document.getElementById('report-modal');
     if(modal) {
         modal.classList.remove('hidden');
@@ -3868,6 +3915,7 @@ window.viewJaizaDetail = (formIdsString) => {
     </script>
 </body>
 </html>
+
 
 
 
