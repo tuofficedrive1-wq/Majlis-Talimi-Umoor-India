@@ -776,25 +776,25 @@ window.saveResult = async (isAutoSave = false) => {
             updatedAt: serverTimestamp()
         });
         
-        // 2. Aggregation Logic (Puri Jamia ka Result Jodna)
+        // 2. Aggregation Logic (Corrected to match Summary)
         let grandTotalStudents = 0; 
         let grandPassedStudents = 0;
         
-        // 🔥 FIX: Ye line missing thi, ise wapas add kiya gaya hai
         const allClasses = Object.keys(classBooksMap);
         
         for (const cls of allClasses) {
             const clsClean = cls.split('_')[0];
             const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
             
-            // Khud ko dubara fetch karne ki bajaye current data use karein agar same class hai
             let sStudents = [];
             let sSubjects = [];
 
+            // Agar current class save ho rahi hai to taza data use karein
             if (cls === rawClass) {
                 sStudents = students;
                 sSubjects = finalSubjectsList;
             } else {
+                // Dusri classes ka data DB se layein
                 const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
                 if (sheetSnap.exists()) {
                     const sData = sheetSnap.data();
@@ -804,32 +804,42 @@ window.saveResult = async (isAutoSave = false) => {
             }
             
             sStudents.forEach(std => {
-                // Check Full Absent
+                // 1. Check Full Absent (All subjects 'A')
                 const subKeys = Object.keys(std.marks);
                 const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
 
                 if (!isFullAbsent) {
-                    grandTotalStudents++; // Sirf hazir bache gino
+                    grandTotalStudents++; // Count as Present
                     
                     let isFail = false;
                     
-                    // 1. Percentage check
+                    // Rule A: Percentage Check (< 40%)
                     if (parseFloat(std.percentage) < 40) isFail = true;
                     
-                    // 2. Partial absent check
+                    // Rule B: Partial Absent (Agar kisi bhi subject me 'A' hai)
                     if (!isFail) {
-                        sSubjects.forEach(sub => { if (std.marks[sub] === 'A') isFail = true; });
+                        // Check if any subject in the subject list is marked 'A'
+                        sSubjects.forEach(sub => {
+                            if (std.marks[sub] === 'A') isFail = true;
+                        });
                     }
                     
-                    // 3. Subject-wise marks check (Agar marks available hain)
+                    // Rule C: Fail Count (Fail in 3 or more subjects)
                     if (!isFail) {
                         let failCount = 0;
-                         sSubjects.forEach(sub => {
-                            let max = (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') ? 25 : 100;
-                            let pass = max * 0.40;
+                        sSubjects.forEach(sub => {
+                            const subLower = sub.toLowerCase();
+                            // Max marks logic fix (Summary jaisa)
+                            let max = (subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab')) ? 25 : 100;
+                            let passMarks = max * 0.40; // 40% passing
+                            
                             let m = std.marks[sub];
-                            if (typeof m === 'number' && m < pass) failCount++;
+                            // Agar marks number hain aur passing se kam hain
+                            if (typeof m === 'number' && m < passMarks) {
+                                failCount++;
+                            }
                         });
+                        
                         if(failCount >= 3) isFail = true;
                     }
 
@@ -2095,6 +2105,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
