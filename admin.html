@@ -3588,7 +3588,7 @@ const renderReportCardStatusTable = (allSheets) => {
         </div>
     `;
 };
-    // --- STYLED EXCEL DOWNLOAD FUNCTION ---
+    // --- UPDATED EXCEL DOWNLOAD FUNCTION (Sr No + Books + Orange Visit Only) ---
 const handleAnalysisExcelDownload = async () => {
     const reportType = document.getElementById('analysis-report-type-select').value;
     
@@ -3609,13 +3609,16 @@ const handleAnalysisExcelDownload = async () => {
     let fileName = `Analysis_${reportType}_${monthName}_${yearVal}.xlsx`;
 
     try {
-        // --- DATA PREPARATION (Wahi purana logic) ---
-        // 1. Report Card Status
+        // ============================================================
+        // CASE 1: REPORT CARD STATUS
+        // ============================================================
         if (reportType === 'report-card-status') {
              const sheetsRef = collection(db, "monthly_test_sheets");
              const q = query(sheetsRef, where("month", "==", monthKey));
              const snapshot = await getDocs(q);
              const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
+
+             let count = 1; // Sr No Counter
 
              allUsersData.forEach(user => {
                 if (user.id === ADMIN_UID) return;
@@ -3631,6 +3634,7 @@ const handleAnalysisExcelDownload = async () => {
                     if (isDone) relevantSheets.forEach(s => { if(s.students) totalStudents += s.students.length; });
 
                     excelRows.push({
+                        "Sr No": count++, // Add Sr No
                         "Jamia Name": jamiaName,
                         "Zimmedar": user.name || user.email,
                         "Region": user.region || '-',
@@ -3642,19 +3646,28 @@ const handleAnalysisExcelDownload = async () => {
             excelRows.sort((a, b) => (a.Status === 'PENDING' ? -1 : 1));
         }
 
-        // 2. Jaiza Report
+        // ============================================================
+        // CASE 2: JAIZA REPORT ANALYSIS (Fix: Books & Sr No)
+        // ============================================================
         else if (reportType === 'jaiza') {
+            let count = 1; // Sr No Counter Initialize
+
             allUsersData.forEach(user => {
                 if (user.id === ADMIN_UID) return;
+                
+                // Fetch Data Helpers
                 const userReport = fetchedAdminReports.find(r => r.userId === user.id);
                 const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) ? userReport.jaizaReport.data : [];
                 const userJamias = user.jamiaatList || [];
 
                 userJamias.forEach(jamia => {
                     const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+                    
+                    // Calculations
                     const targets = getJamiaTargets(user, jamiaName, monthKey);
                     const actuals = getJaizaActuals(user.id, jamiaName);
                     
+                    // Status Find
                     const reportEntry = jaizaEntries.find(entry => (entry.name || entry.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
                     
                     let statusText = "Pending";
@@ -3676,14 +3689,22 @@ const handleAnalysisExcelDownload = async () => {
                         statusText = "Visit Only";
                     }
 
+                    // Push Row with SR NO and BOOKS explicitly
                     excelRows.push({
+                        "Sr No": count++,
                         "Zimmedar": user.name || 'N/A',
                         "Region": user.region || '-',
                         "Jamia Name": jamiaName,
+                        
                         "Target (Class)": targets.classes || 0,
                         "Actual (Class)": actuals.classesChecked || 0,
+                        
+                        "Target (Books)": targets.books || 0,   // Explicitly added
+                        "Actual (Books)": actuals.booksChecked || 0, // Explicitly added
+                        
                         "Target (Teach)": targets.teachers || 0,
                         "Actual (Teach)": actuals.teachersChecked || 0,
+                        
                         "Date": dateDisplay,
                         "Total %": percentageDisplay,
                         "Status": statusText
@@ -3692,13 +3713,14 @@ const handleAnalysisExcelDownload = async () => {
             });
         }
 
-        // 3. Test Summary
+        // ============================================================
+        // CASE 3: MONTHLY TEST SUMMARY
+        // ============================================================
         else if (reportType === 'test-all' || reportType === 'test-asri') {
-            // (Iska data logic same rahega jo pichle code me tha, bas excelRows fill kar rahe hain)
             const sheetsRef = collection(db, "monthly_test_sheets");
             const q = query(sheetsRef, where("month", "==", monthKey));
             const snapshot = await getDocs(q);
-            const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
+            const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const groupedData = {};
 
             allSheets.forEach(sheet => {
@@ -3719,6 +3741,7 @@ const handleAnalysisExcelDownload = async () => {
                          students: 0, pass: 0, fail: 0, absent: 0, marksObt: 0, marksTot: 0
                      };
                  }
+                 // ... (Calculation logic same as before)
                  if (Array.isArray(sheet.students)) {
                      sheet.students.forEach(std => {
                          groupedData[key].students++;
@@ -3736,10 +3759,12 @@ const handleAnalysisExcelDownload = async () => {
                  }
             });
 
-            Object.values(groupedData).forEach(g => {
+            let count = 1;
+            Object.values(groupedData).sort((a,b)=> a.jamia.localeCompare(b.jamia)).forEach(g => {
                 g.pass = g.students - (g.absent + g.fail);
                 let avg = g.marksTot > 0 ? ((g.marksObt / g.marksTot) * 100).toFixed(1) + '%' : '0%';
                 excelRows.push({
+                    "Sr No": count++,
                     "Jamia Name": g.jamia, "Zimmedar": g.zimmedar, "Class": g.class,
                     "Total": g.students, "Pass": g.pass, "Fail": g.fail, "Absent": g.absent, "Avg %": avg
                 });
@@ -3748,15 +3773,15 @@ const handleAnalysisExcelDownload = async () => {
 
         // --- STYLING LOGIC START ---
         if (excelRows.length === 0) {
-            alert("No data found.");
+            alert("No data found to download.");
         } else {
             const worksheet = XLSX.utils.json_to_sheet(excelRows);
             
-            // 1. Column Widths (Design)
-            const colWidths = Object.keys(excelRows[0]).map(key => ({ wch: Math.max(key.length + 5, 15) }));
+            // 1. Column Widths
+            const colWidths = Object.keys(excelRows[0]).map(key => ({ wch: Math.max(key.length + 5, 12) }));
             worksheet['!cols'] = colWidths;
 
-            // 2. Loop through all cells to apply styles
+            // 2. Styling Loop
             const range = XLSX.utils.decode_range(worksheet['!ref']);
             
             for (let R = range.s.r; R <= range.e.r; ++R) {
@@ -3764,7 +3789,6 @@ const handleAnalysisExcelDownload = async () => {
                     const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
                     if (!worksheet[cellAddress]) continue;
 
-                    // Basic Border for ALL cells
                     let cellStyle = {
                         border: {
                             top: { style: "thin", color: { rgb: "000000" } },
@@ -3773,32 +3797,35 @@ const handleAnalysisExcelDownload = async () => {
                             right: { style: "thin", color: { rgb: "000000" } }
                         },
                         alignment: { vertical: "center", horizontal: "center" },
-                        font: { name: "Arial", sz: 11 }
+                        font: { name: "Arial", sz: 10 }
                     };
 
-                    // HEADER STYLING (Row 0)
+                    // Header Style
                     if (R === 0) {
-                        cellStyle.fill = { fgColor: { rgb: "0D9488" } }; // Teal Color
-                        cellStyle.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "FFFFFF" } }; // White Bold Text
+                        cellStyle.fill = { fgColor: { rgb: "0D9488" } }; // Teal
+                        cellStyle.font = { name: "Arial", sz: 11, bold: true, color: { rgb: "FFFFFF" } };
                     } 
-                    // DATA ROWS STYLING
+                    // Data Style
                     else {
-                        // Alternate Row Color (Light Gray) for better reading
-                        if (R % 2 === 0) {
-                            cellStyle.fill = { fgColor: { rgb: "F3F4F6" } };
-                        }
+                        if (R % 2 === 0) cellStyle.fill = { fgColor: { rgb: "F3F4F6" } };
 
-                        // STATUS COLORING (Conditional)
                         const cellVal = worksheet[cellAddress].v;
+                        
+                        // --- COLOR LOGIC ---
                         if (cellVal === 'Pending' || cellVal === 'Nahi Hua' || cellVal === 'Fail') {
-                             cellStyle.font.color = { rgb: "DC2626" }; // Red Text
+                             cellStyle.font.color = { rgb: "DC2626" }; // Red
                              cellStyle.font.bold = true;
-                        } else if (cellVal === 'Done' || cellVal === 'Ban Gaya') {
-                             cellStyle.font.color = { rgb: "16A34A" }; // Green Text
+                        } 
+                        else if (cellVal === 'Done' || cellVal === 'Ban Gaya') {
+                             cellStyle.font.color = { rgb: "16A34A" }; // Green
+                             cellStyle.font.bold = true;
+                        } 
+                        // 👇 ORANGE FOR VISIT ONLY
+                        else if (cellVal === 'Visit Only') {
+                             cellStyle.font.color = { rgb: "EA580C" }; // Orange (Tailwind orange-600)
                              cellStyle.font.bold = true;
                         }
                     }
-
                     worksheet[cellAddress].s = cellStyle;
                 }
             }
@@ -3806,7 +3833,7 @@ const handleAnalysisExcelDownload = async () => {
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Formatted_Report");
             XLSX.writeFile(workbook, fileName);
-            showNotification("Designed Excel downloaded!");
+            showNotification("Designed Excel downloaded with Sr No & Books!");
         }
 
     } catch (err) {
@@ -4068,6 +4095,7 @@ window.viewJaizaDetail = (userId, jamiaName) => {
     </script>
 </body>
 </html>
+
 
 
 
