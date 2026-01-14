@@ -111,17 +111,9 @@
 /*************** Firebase setup ***************/
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import {
-  getFirestore,
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  getDoc,
-  doc,
-  serverTimestamp
+import { 
+  getFirestore, collection, query, where, getDocs, addDoc, deleteDoc, 
+  getDoc, doc, updateDoc, serverTimestamp // updateDoc yahan add kiya hai
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1092,6 +1084,204 @@ window.addEventListener("beforeunload", function (e) {
     // Modern browsers custom message show nahi karte, wo generic warning dete hain.
     // Lekin ye line zaroori hai popup trigger karne ke liye.
     e.returnValue = ""; 
+  }
+});
+  // --- Yahan se Naya Code Copy karein ---
+
+// Helper Function: Dashboard Update karne ke liye
+const updateDashboardReport = async (finalPercent, finalGrade) => {
+  if (!currentUser || !jamiaId || !monthKey) return;
+
+  // 1. Report ID generate karein (Dashboard logic ke mutabiq)
+  const [yStr, mStr] = monthKey.split("-");
+  const yearNum = parseInt(yStr);
+  const monthNum = parseInt(mStr) - 1; // 0-11
+  const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+  
+  // ID format wahi hona chahiye jo index.html me hai
+  const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
+  const reportRef = doc(db, "monthly_reports", reportId);
+
+  try {
+    const reportSnap = await getDoc(reportRef);
+    if (reportSnap.exists()) {
+      const reportData = reportSnap.data();
+      let jaizaData = reportData.jaizaReport?.data || [];
+      const jamiaNameDecoded = decodeURIComponent(jamiaId);
+
+      // Check karein agar ye Jamia pehle se list me hai
+      const index = jaizaData.findIndex(j => j.name === jamiaNameDecoded);
+
+      const newEntry = {
+        name: jamiaNameDecoded,
+        date: new Date().toISOString().split('T')[0], // Aaj ki date
+        type: "Jaiza",
+        percentage: finalPercent, // Updated Percentage (e.g. 69.30)
+      };
+
+      if (index !== -1) {
+        // Agar pehle se hai to update karein (Merge logic)
+        jaizaData[index] = { ...jaizaData[index], ...newEntry };
+      } else {
+        // Agar nahi hai to naya add karein
+        jaizaData.push(newEntry);
+      }
+
+      // Firestore Update
+      await updateDoc(reportRef, {
+        "jaizaReport.data": jaizaData,
+        "jaizaReport.status": "Done"
+      });
+      console.log("Dashboard successfully updated with new %:", finalPercent);
+    }
+  } catch (err) {
+    console.error("Dashboard update failed:", err);
+    // Error ignore kar rahe hain taake user ko pareshani na ho, 
+    // kyunki main data jaiza_forms me save ho chuka hoga.
+  }
+};
+
+// --- Submit Handler (Updated) ---
+formEl.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearError();
+  clearSuccess();
+
+  if (!currentUser) {
+    showError("لاگ اِن نہیں ملا، براہ کرم دوبارہ ڈیش بورڈ سے آئیں۔");
+    return;
+  }
+  if (!jamiaId || !monthKey) {
+    showError("جامعہ یا مہینہ URL میں موجود نہیں، لنک چیک کریں۔");
+    return;
+  }
+
+  const cards = Array.from(classesContainer.querySelectorAll(".class-card"));
+  if (!cards.length) {
+    showError("کم از کم ایک کلاس شامل کریں۔");
+    return;
+  }
+
+  const payloads = [];
+
+  cards.forEach(card => {
+    const className       = card.querySelector(".class-select").value.trim();
+    const totalStudents   = Number(card.querySelector(".total-students")?.value || 0);
+    const presentStudents = Number(card.querySelector(".present-students")?.value || 0);
+
+    const classPercentStr = card.querySelector(".class-percent")?.value || "";
+    let classPercentage = null;
+    if (classPercentStr) {
+      const v = Number(classPercentStr.replace("%","").trim());
+      if (!isNaN(v)) classPercentage = v;
+    }
+
+    const issues      = card.querySelector(".issues").value.trim();
+    const suggestions = card.querySelector(".suggestions").value.trim();
+
+    const books = [];
+    const bookCards = card.querySelectorAll(".book-card");
+    bookCards.forEach(bCard => {
+      const teacherName = bCard.querySelector(".book-teacher").value.trim();
+      const bookName    = bCard.querySelector(".book-name").value.trim();
+      const weakness    = bCard.querySelector(".weakness").value.trim();
+      const percStr     = bCard.querySelector(".book-percent").value;
+      
+      // ... (Baki purana books/questions logic same rahega) ...
+      // Short karne ke liye yahan omit kiya hai, aap apna purana logic use karein
+      // Lekin 'checks' aur 'questions' wala part zaroor rakhein.
+      
+      const qRows = bCard.querySelectorAll(".question-row");
+      const questions = [];
+      qRows.forEach((row, idx) => {
+        const text = row.querySelector(".q-text").value.trim();
+        const corr = Number(row.querySelector(".q-correct").value || 0);
+        if (!text && !corr) return;
+        questions.push({ index: idx+1, text, correctStudents: corr });
+      });
+
+      const checks = {
+        sabaqSunana:  bCard.querySelector(".chk-sabaq-sunana")?.checked || false,
+        sabaqParhana: bCard.querySelector(".chk-sabaq-parhana")?.checked || false,
+        waqtIstemal:  bCard.querySelector(".chk-waqt-istemal")?.checked || false,
+        tiyari:       bCard.querySelector(".chk-tiyari")?.checked || false,
+        takrar:       bCard.querySelector(".chk-takrar")?.checked || false,
+        nizam:        bCard.querySelector(".chk-nizam")?.checked || false,
+      };
+
+      let percentage = null;
+      if (percStr) {
+        const v = Number(percStr.replace("%","").trim());
+        if (!isNaN(v)) percentage = v;
+      }
+
+      // Check if book is empty
+      const allEmptyBook = !teacherName && !bookName && !questions.length && !weakness && !percentage;
+      if (allEmptyBook) return;
+
+      books.push({ teacherName, bookName, questions, percentage, weakness, checks });
+    });
+
+    // Check if class is empty
+    const allEmptyClass = !className && !totalStudents && !presentStudents && !books.length && !issues && !suggestions;
+    if (allEmptyClass) return;
+
+    payloads.push({
+      jamiaId,
+      monthKey,
+      className,
+      totalStudents,
+      presentStudents,
+      classPercentage,
+      grade: classPercentage != null ? getGrade(classPercentage) : "-",
+      books,
+      issues,
+      suggestions,
+      totalClasses: Number(totalClassesEl?.textContent || 0),
+      totalBooks: Number(totalBooksEl?.textContent || 0),
+      createdBy: currentUser.uid,
+      createdAt: serverTimestamp()
+    });
+  });
+
+  if (!payloads.length) {
+    showError("کم از کم ایک کلاس میں کچھ ڈیٹا ضرور بھریں۔");
+    return;
+  }
+
+  showLoader(true);
+  try {
+    // 1. Delete Old Details
+    const qRef = query(
+      collection(db,"jaiza_forms"),
+      where("jamiaId","==",jamiaId),
+      where("monthKey","==",monthKey),
+      where("createdBy","==",currentUser.uid)
+    );
+    const oldSnap = await getDocs(qRef);
+    const delPromises = [];
+    oldSnap.forEach(d => delPromises.push(deleteDoc(d.ref)));
+    await Promise.all(delPromises);
+
+    // 2. Add New Details
+    const addPromises = payloads.map(p => addDoc(collection(db,"jaiza_forms"), p));
+    await Promise.all(addPromises);
+
+    // 3. 🔥 UPDATE DASHBOARD REPORT (Naya Step) 🔥
+    // Header se values uthayen
+    const currentJamiaPercent = jamiaPercEl.textContent || "0"; 
+    const currentJamiaGrade = jamiaGradeEl.textContent || "-";
+    
+    // Dashboard update function call karein
+    await updateDashboardReport(currentJamiaPercent, currentJamiaGrade);
+
+    showSuccess("تعلیمی جائزہ محفوظ ہو گیا اور ڈیش بورڈ اپ ڈیٹ کر دیا گیا۔");
+    isFormDirty = false; 
+  } catch(err) {
+    console.error(err);
+    showError("ڈیٹا محفوظ کرتے وقت مسئلہ آیا۔");
+  } finally {
+    showLoader(false);
   }
 });
 </script>
