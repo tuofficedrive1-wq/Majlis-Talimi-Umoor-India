@@ -1079,8 +1079,11 @@ window.checkExistingForClass = async (clsName) => {
                     const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
                     const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
                     if (!snap.exists()) continue;
+                    
                     const data = snap.data();
                     const students = data.students || [];
+                    const sheetSubjects = data.subjects || []; // Saved subjects list
+                    
                     if (students.length === 0) continue;
 
                     let mTotal = students.length; let mPresent = 0; let mPass = 0; let mFail = 0;
@@ -1088,22 +1091,41 @@ window.checkExistingForClass = async (clsName) => {
                     let hasAsriSubjects = false;
 
                     students.forEach(std => {
-                        // --- Main Calculation ---
-                        const subjects = Object.keys(std.marks);
+                        // --- Main Calculation (Fixed Logic) ---
+                        const marksKeys = Object.keys(std.marks);
                         // Check if ALL subjects are 'A'
-                        const isFullAbsent = subjects.length > 0 && subjects.every(sub => std.marks[sub] === 'A');
+                        const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
 
                         if (!isFullAbsent) {
                             mPresent++;
                             let isFailMain = false;
+                            
+                            // Rule 1: Percentage Check
                             if (parseFloat(std.percentage) < 40) isFailMain = true;
-                            // Check Partial Absent
-                            subjects.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
+                            
+                            // Rule 2: Partial Absent Check
+                            sheetSubjects.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
+                            
+                            // Rule 3: Fail in 3 Subjects Check (Ye missing tha)
+                            if (!isFailMain) {
+                                let subjectFailCount = 0;
+                                sheetSubjects.forEach(sub => {
+                                    const subLow = sub.toLowerCase();
+                                    const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
+                                    const passMarks = max * 0.40;
+                                    const m = std.marks[sub];
+                                    
+                                    if (typeof m === 'number' && m < passMarks) {
+                                        subjectFailCount++;
+                                    }
+                                });
+                                if (subjectFailCount >= 3) isFailMain = true;
+                            }
                             
                             if (isFailMain) mFail++; else mPass++;
                         }
 
-                        // --- Asri Calculation ---
+                        // --- Asri Calculation (Same as before) ---
                         let engMark = std.marks['English'];
                         let mathMark = std.marks['Maths'];
                         if (engMark !== undefined || mathMark !== undefined) {
@@ -2105,6 +2127,7 @@ window.addCustomSubject = () => {
     </script>
 </body>
 </html>
+
 
 
 
