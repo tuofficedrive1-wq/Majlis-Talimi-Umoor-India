@@ -287,21 +287,41 @@
                     const data = doc.data();
                     
                     // FALLBACK LOGIC FOR ZIMMEDAR NAME
-                    // Step 1: Document level zimmedarName check karein
-                    let docZimmedar = data.zimmedarName || data.userName || "";
+                    // --- 1. DATA FETCHING (SORTED) ---
+    async function fetchReports() {
+        const monthName = document.getElementById('filter-month').value;
+        const year = document.getElementById('filter-year').value;
+        const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+        const loader = document.getElementById('loader-container');
+        const dashContent = document.getElementById('dashboard-content');
+        
+        loader.classList.remove('hidden');
+        dashContent.classList.add('hidden');
+        
+        allReportsData = [];
+
+        try {
+            const snapshot = await db.collection('monthly_reports')
+                .where('monthKey', '==', monthKey)
+                .get();
+
+            if (snapshot.empty) {
+                document.getElementById('reports-table-container').innerHTML = `<div class="p-10 text-center text-gray-400">No data found for ${monthName} ${year}</div>`;
+                updateStats();
+            } else {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
                     
-                    // Agar naam "Teacher Portal Upload" hai, to use hatadein
-                    if (docZimmedar === "Teacher Portal Upload") {
-                        docZimmedar = ""; 
-                    }
+                    // Zimmedar Name Logic
+                    let docZimmedar = data.zimmedarName || data.userName || "";
+                    if (docZimmedar === "Teacher Portal Upload") docZimmedar = ""; 
 
                     const region = data.region || "Unknown";
 
                     if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
                         data.tadrisRecording.data.forEach((rec, i) => {
-                            
-                            // Step 2: Recording level pe check karein (sabse priority)
-                            // Agar record ke andar zimmedar ka naam hai to wo lein, warna document wala lein
                             let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
 
                             allReportsData.push({
@@ -311,16 +331,23 @@
                                 teacherName: rec.teacherName || rec.teacher || 'Unknown',
                                 className: rec.className || rec.class || '-',
                                 kitabName: rec.kitabName || rec.kitab || '-',
-                                date: rec.date || '-',
+                                date: rec.date || '-', // Format: YYYY-MM-DD
                                 tasurat: rec.tasurat || '', 
                                 tasuratDate: rec.tasuratDate || null,
                                 recordingLink: rec.url || rec.link || '#',
-                                zimmedarName: finalZimmedarName, // Updated Name Logic
+                                zimmedarName: finalZimmedarName,
                                 region: region
                             });
                         });
                     }
                 });
+
+                // --- SORTING LOGIC ADDED HERE (Purani Upar, Nayi Niche) ---
+                allReportsData.sort((a, b) => {
+                    // Dates ko compare kar rahe hain
+                    return new Date(a.date) - new Date(b.date);
+                });
+                // ----------------------------------------------------------
             }
 
             filteredReports = [...allReportsData];
@@ -604,6 +631,7 @@
 </script>
 </body>
 </html>
+
 
 
 
