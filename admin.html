@@ -3542,7 +3542,7 @@ const renderReportCardStatusTable = (allSheets) => {
         </div>
     `;
 };
-    // --- MAIN ANALYSIS EXCEL DOWNLOAD FUNCTION ---
+    // --- UPDATED EXCEL DOWNLOAD FUNCTION (Detailed Jamia-wise) ---
 const handleAnalysisExcelDownload = async () => {
     const reportType = document.getElementById('analysis-report-type-select').value;
     
@@ -3561,95 +3561,84 @@ const handleAnalysisExcelDownload = async () => {
 
     showLoader(true);
     let excelRows = [];
-    let fileName = `Analysis_${reportType}_${monthName}_${yearVal}.xlsx`;
+    let fileName = `Detailed_Analysis_${reportType}_${monthName}_${yearVal}.xlsx`;
 
     try {
-        // === CASE 1: REPORT CARD STATUS (Kis Jamia me bana/nahi bana) ===
+        // === CASE 1: REPORT CARD STATUS ===
         if (reportType === 'report-card-status') {
-            const sheetsRef = collection(db, "monthly_test_sheets");
-            const q = query(sheetsRef, where("month", "==", monthKey));
-            const snapshot = await getDocs(q);
-            const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
+             // ... (Yeh hissa same rahega agar aapne pehle add kiya tha) ...
+             const sheetsRef = collection(db, "monthly_test_sheets");
+             const q = query(sheetsRef, where("month", "==", monthKey));
+             const snapshot = await getDocs(q);
+             const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
 
-            // Logic wahi jo table render mein use ki thi
-            allUsersData.forEach(user => {
+             allUsersData.forEach(user => {
                 if (user.id === ADMIN_UID) return;
                 const userJamias = user.jamiaatList || [];
-                
                 userJamias.forEach(jamia => {
                     const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
-                    
-                    // Match check
                     const relevantSheets = allSheets.filter(s => 
                         (s.jamiaName || '').trim().toLowerCase().includes(jamiaName.trim().toLowerCase()) ||
                         jamiaName.trim().toLowerCase().includes((s.jamiaName || '').trim().toLowerCase())
                     );
-                    
                     const isDone = relevantSheets.length > 0;
                     let totalStudents = 0;
-                    
-                    if (isDone) {
-                        relevantSheets.forEach(s => { if(s.students) totalStudents += s.students.length; });
-                    }
+                    if (isDone) relevantSheets.forEach(s => { if(s.students) totalStudents += s.students.length; });
 
                     excelRows.push({
                         "Jamia Name": jamiaName,
                         "Zimmedar Name": user.name || user.email,
                         "Region": user.region || '-',
-                        "Status": isDone ? "Ban Gaya" : "PENDING",
-                        "Total Students": isDone ? totalStudents : 0,
-                        "Check": isDone ? 1 : 0 // Sorting/Counting ke liye asaan
+                        "Report Card Status": isDone ? "Ban Gaya" : "PENDING",
+                        "Total Students": isDone ? totalStudents : 0
                     });
                 });
             });
-
-            // Pending walo ko upar rakhne ke liye sort
-            excelRows.sort((a, b) => a.Check - b.Check);
         }
 
-        // === CASE 2: JAIZA REPORT ANALYSIS ===
+        // === CASE 2: JAIZA REPORT ANALYSIS (UPDATED FOR DETAIL) ===
         else if (reportType === 'jaiza') {
-            // Jaiza data hum 'fetchedAdminReports' se le sakte hain (agar fetch button dabaya ho), 
-            // lekin safety ke liye hum dobara fetch kar lete hain taake data fresh ho.
-            const reportsRef = collection(db, 'monthly_reports');
-            const q = query(reportsRef, where("month", "==", monthName), where("year", "==", parseInt(yearVal)));
-            const snapshot = await getDocs(q);
-            const reports = snapshot.docs.map(doc => ({ userId: doc.data().userId, ...doc.data() }));
-
+            // Hum directly 'allUsersData' aur global 'fetchedJaizaForms' use karenge
+            // jo 'fetchAndRenderAdminReports' se fill hua hai.
+            
             allUsersData.forEach(user => {
                 if (user.id === ADMIN_UID) return;
                 
-                const report = reports.find(r => r.userId === user.id);
-                let uniqueJamias = new Set();
-                let totalClasses = 0;
-                let totalBooks = 0;
-                let jamiaStatsMap = {};
+                const userJamias = user.jamiaatList || [];
 
-                if (report && report.jaizaReport?.data) {
-                    report.jaizaReport.data.forEach(form => {
-                        const jKey = form.jamiaId || form.jamiaName || form.name;
-                        if (!jKey) return;
+                userJamias.forEach(jamia => {
+                    const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+                    
+                    // Helpers call karein (Jo table me use kiye the)
+                    const targets = getJamiaTargets(user, jamiaName, monthKey);
+                    const actuals = getJaizaActuals(user.id, jamiaName);
+
+                    // Status Logic
+                    let status = "Pending";
+                    if (actuals.classesChecked > 0) {
+                        status = (actuals.classesChecked >= targets.classes && targets.classes > 0) ? "Done" : "Ongoing";
+                    }
+
+                    // Excel Row Push karein
+                    excelRows.push({
+                        "Zimmedar": user.name || 'N/A',
+                        "Region": user.region || '-',
+                        "Jamia Name": jamiaName,
                         
-                        const isDone = (parseInt(form.percentage) > 0 || form.status === 'Done');
-                        if (isDone) {
-                            uniqueJamias.add(jKey);
-                            if (!jamiaStatsMap[jKey]) jamiaStatsMap[jKey] = { c: 0, b: 0 };
-                            jamiaStatsMap[jKey].c = Math.max(jamiaStatsMap[jKey].c, Number(form.totalClasses) || 0);
-                            jamiaStatsMap[jKey].b = Math.max(jamiaStatsMap[jKey].b, Number(form.totalBooks) || 0);
-                        }
+                        // Classes
+                        "Total Classes (Target)": targets.classes || 0,
+                        "Classes Checked (Actual)": actuals.classesChecked || 0,
+                        
+                        // Books
+                        "Total Books (Target)": targets.books || 0,
+                        "Books Checked (Actual)": actuals.booksChecked || 0,
+                        
+                        // Teachers
+                        "Total Teachers (Target)": targets.teachers || 0,
+                        "Teachers Checked (Actual)": actuals.teachersChecked || 0,
+                        
+                        "Status": status
                     });
-                }
-
-                Object.values(jamiaStatsMap).forEach(v => { totalClasses += v.c; totalBooks += v.b; });
-
-                excelRows.push({
-                    "Zimmedar": user.name || 'N/A',
-                    "Region": user.region || '-',
-                    "Total Jamia Target": user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0),
-                    "Jamia Covered": uniqueJamias.size,
-                    "Total Classes Checked": totalClasses,
-                    "Total Books Checked": totalBooks,
-                    "Pending Jamia": Math.max(0, (user.totalJamia || (user.jamiaatList ? user.jamiaatList.length : 0)) - uniqueJamias.size)
                 });
             });
         }
@@ -3660,9 +3649,20 @@ const handleAnalysisExcelDownload = async () => {
         } else {
             const worksheet = XLSX.utils.json_to_sheet(excelRows);
             const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Analysis_Report");
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Detailed_Report");
+            
+            // Auto-width columns (Optional beauty)
+            const wscols = [
+                {wch: 20}, {wch: 15}, {wch: 25}, // Names
+                {wch: 15}, {wch: 15}, // Classes
+                {wch: 15}, {wch: 15}, // Books
+                {wch: 15}, {wch: 15}, // Teachers
+                {wch: 10} // Status
+            ];
+            worksheet['!cols'] = wscols;
+
             XLSX.writeFile(workbook, fileName);
-            showNotification("Excel file download ho gayi!");
+            showNotification("Detailed Excel file download ho gayi!");
         }
 
     } catch (err) {
@@ -3671,7 +3671,7 @@ const handleAnalysisExcelDownload = async () => {
     } finally {
         showLoader(false);
     }
-};    
+};
         // --- HELPER 1: Calculate Totals form User Profile (Structure) ---
 const getJamiaTargets = (user, jamiaName, monthKey) => {
     // Default values
@@ -3748,6 +3748,7 @@ const getJaizaActuals = (userId, jamiaName) => {
     </script>
 </body>
 </html>
+
 
 
 
