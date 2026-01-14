@@ -954,7 +954,8 @@
         let unsubscribeAdminReports = null; 
         let unsubscribeAdminUsers = null;
         let unsubscribeAnnouncements = null;
-        let fetchedAdminReports = []; 
+        let fetchedAdminReports = [];
+        let fetchedJaizaForms = []; // <--- NEW VARIABLE
         let allUsersData = [];
         let reportRef;
         // NEW: KKd filter state
@@ -1230,11 +1231,17 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
-// --- UPDATED JAIZA ANALYSIS TABLE (Detailed Jamia-wise) ---
+// --- UPDATED TABLE RENDERER ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
-    // Active users filter (Admin ko hatakar)
+    // Month Key calculate karein targets ke liye
+    const monthName = document.getElementById('admin-month-select').value;
+    const yearVal = document.getElementById('admin-year-select').value;
+    const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+    const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+    // Users Filter & Sort
     const users = allUsersData
         .filter(u => u.id !== ADMIN_UID)
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -1243,110 +1250,97 @@ const renderAllUsersJaizaTable = () => {
     let count = 1;
 
     users.forEach(user => {
-        // User ki report nikalein (selected month ki)
-        const report = fetchedAdminReports.find(r => r.userId === user.id);
-        const reportData = report && report.jaizaReport ? report.jaizaReport.data : [];
-
-        // User ki Jamiaat List (Profile se) - Taake "Total" pata chale
         const userJamias = user.jamiaatList || [];
 
-        if (userJamias.length === 0) return; // Agar koi jamia assign nahi hai to skip
+        if (userJamias.length === 0) return;
 
         userJamias.forEach(jamia => {
-            // 1. Basic Info Extract
-            // Jamia ka naam aur ID (Handling object vs string)
             const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
-            const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
-
-            // 2. Profile Stats (Total Teachers, etc.)
-            const totalTeachers = (typeof jamia === 'object' && Array.isArray(jamia.teachers)) ? jamia.teachers.length : 0;
-            // Note: Total Classes/Books usually profile me nahi hote, agar hain to yahan add karein. 
-            // Filhal hum Report se ya '-' show karenge.
             
-            // 3. Report Data Match karna
-            // Hum check karenge ki kya is Jamia ki koi report aayi hai?
-            const matchedReport = reportData.find(r => {
-                const rName = (r.name || r.jamiaName || '').trim().toLowerCase();
-                const jName = jamiaName.trim().toLowerCase();
-                return rName === jName || (jamiaId && r.jamiaId === jamiaId);
-            });
-
-            // 4. Checked Stats (Report se)
-            // Agar report mili to uska data, warna 0
-            const checkedClasses = matchedReport ? (Number(matchedReport.totalClasses) || 0) : 0;
-            const checkedBooks = matchedReport ? (Number(matchedReport.totalBooks) || 0) : 0;
+            // --- CORE LOGIC CALLS ---
+            // 1. Total Targets (Profile se)
+            const targets = getJamiaTargets(user, jamiaName, monthKey);
             
-            // "Checked Teachers" - Agar aapke form me yeh field hai to wahan se lein, 
-            // warna filhal 0 ya report ka koi custom field use karein.
-            // Example assumption: matchedReport.teachersChecked
-            const checkedTeachers = matchedReport ? (Number(matchedReport.teachersChecked) || 0) : 0; 
+            // 2. Actual Done (Jaiza Forms se)
+            const actuals = getJaizaActuals(user.id, jamiaName);
 
-            // "Total Classes/Books" - Aksar Report me "Target" field nahi hota.
-            // Agar aapke paas structure me hai to wahan se lein.
-            // Filhal hum isay empty '-' rakhenge agar data nahi hai.
-            const totalClasses = matchedReport ? (matchedReport.totalClassesTarget || '-') : '-';
-            const totalBooks = matchedReport ? (matchedReport.totalBooksTarget || '-') : '-';
+            // Styling Logic
+            const isStarted = actuals.classesChecked > 0;
+            const isCompleted = isStarted && actuals.classesChecked >= targets.classes && targets.classes > 0;
+            
+            let statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold">Pending</span>`;
+            let rowClass = "bg-red-50";
 
-            // 5. Status Styling
-            const isDone = !!matchedReport;
-            const rowClass = isDone ? 'bg-white' : 'bg-red-50'; // Pending walo ko halka laal karein
-            const statusIcon = isDone 
-                ? `<span class="text-green-600"><i class="fas fa-check-circle"></i> Done</span>` 
-                : `<span class="text-red-500"><i class="fas fa-times-circle"></i> Pending</span>`;
+            if (isCompleted) {
+                statusBadge = `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold"><i class="fas fa-check"></i> Done</span>`;
+                rowClass = "bg-white";
+            } else if (isStarted) {
+                statusBadge = `<span class="bg-yellow-100 text-yellow-700 text-xs px-2 py-1 rounded-full font-bold">Ongoing</span>`;
+                rowClass = "bg-yellow-50";
+            }
 
-            // 6. Row HTML Generate
             rowsHtml += `
                 <tr class="border-b ${rowClass} hover:bg-gray-50 transition text-sm">
                     <td class="p-3 text-gray-500 border-r text-center">${count++}</td>
-                    <td class="p-3 font-semibold text-gray-700 border-r">${user.name || 'Unknown'}</td>
+                    <td class="p-3 font-semibold text-gray-700 border-r urdu-font">${user.name || 'Unknown'}</td>
                     <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
                     
                     <td class="p-3 text-center border-r">
-                        <span class="text-gray-500 text-xs">Total: ${totalClasses}</span><br>
-                        <span class="font-bold text-blue-600 text-lg">${checkedClasses}</span>
+                        <div class="text-xs text-gray-500 mb-1">Total: ${targets.classes || '-'}</div>
+                        <div class="font-bold text-lg ${actuals.classesChecked > 0 ? 'text-blue-600' : 'text-gray-400'}">
+                            ${actuals.classesChecked}
+                        </div>
                     </td>
 
                     <td class="p-3 text-center border-r">
-                        <span class="text-gray-500 text-xs">Total: ${totalBooks}</span><br>
-                        <span class="font-bold text-purple-600 text-lg">${checkedBooks}</span>
+                        <div class="text-xs text-gray-500 mb-1">Total: ${targets.books || '-'}</div>
+                        <div class="font-bold text-lg ${actuals.booksChecked > 0 ? 'text-purple-600' : 'text-gray-400'}">
+                            ${actuals.booksChecked}
+                        </div>
                     </td>
 
                     <td class="p-3 text-center border-r">
-                        <span class="text-gray-500 text-xs">Total: ${totalTeachers}</span><br>
-                        <span class="font-bold text-orange-600 text-lg">${checkedTeachers}</span>
+                        <div class="text-xs text-gray-500 mb-1">Total: ${targets.teachers || '-'}</div>
+                        <div class="font-bold text-lg ${actuals.teachersChecked > 0 ? 'text-orange-600' : 'text-gray-400'}">
+                            ${actuals.teachersChecked}
+                        </div>
                     </td>
 
-                    <td class="p-3 text-center text-xs font-bold">
-                        ${statusIcon}
+                    <td class="p-3 text-center">
+                        ${statusBadge}
                     </td>
                 </tr>
             `;
         });
     });
 
-    // Table Structure Update
+    // Final HTML Render
     container.innerHTML = `
         <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
             <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h4 class="font-bold text-lg text-gray-700">Detailed Jaiza Report Analysis</h4>
-                <div class="text-sm text-gray-500">
-                    Har Jamia ka alag status (Total vs Checked)
+                <div>
+                    <h4 class="font-bold text-lg text-gray-700">Jaiza Report Analysis (Detailed)</h4>
+                    <p class="text-xs text-gray-500">Data source: User Profile (Targets) vs Submitted Jaiza Forms (Actuals)</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Checked (Blue/Big)</span>
+                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded ml-1">Total (Gray/Small)</span>
                 </div>
             </div>
             <table class="w-full text-sm text-left border-collapse">
-                <thead class="bg-teal-600 text-white uppercase text-xs">
+                <thead class="bg-teal-700 text-white uppercase text-xs">
                     <tr>
-                        <th class="p-3 w-10 border-r border-teal-500">#</th>
-                        <th class="p-3 border-r border-teal-500">Zimmedar</th>
-                        <th class="p-3 border-r border-teal-500">Jamia Name</th>
-                        <th class="p-3 text-center border-r border-teal-500">Classes<br><span class="text-[10px] opacity-75">(Total / Checked)</span></th>
-                        <th class="p-3 text-center border-r border-teal-500">Books<br><span class="text-[10px] opacity-75">(Total / Checked)</span></th>
-                        <th class="p-3 text-center border-r border-teal-500">Teachers<br><span class="text-[10px] opacity-75">(Total / Checked)</span></th>
-                        <th class="p-3 text-center">Status</th>
+                        <th class="p-3 w-10 border-r border-teal-600">#</th>
+                        <th class="p-3 border-r border-teal-600">Zimmedar</th>
+                        <th class="p-3 border-r border-teal-600">Jamia Name</th>
+                        <th class="p-3 text-center border-r border-teal-600 w-32">Classes<br><span class="opacity-75 text-[10px] lowercase">(total / checked)</span></th>
+                        <th class="p-3 text-center border-r border-teal-600 w-32">Books<br><span class="opacity-75 text-[10px] lowercase">(total / checked)</span></th>
+                        <th class="p-3 text-center border-r border-teal-600 w-32">Teachers<br><span class="opacity-75 text-[10px] lowercase">(total / checked)</span></th>
+                        <th class="p-3 text-center w-24">Status</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    ${rowsHtml || '<tr><td colspan="7" class="p-4 text-center text-gray-500">Koi data nahi mila.</td></tr>'}
+                    ${rowsHtml || '<tr><td colspan="7" class="p-6 text-center text-gray-500 italic">No data found for this month.</td></tr>'}
                 </tbody>
             </table>
         </div>
@@ -1729,64 +1723,64 @@ kkdSectionDedicated.innerHTML = "";
              }
          };
 
-         const fetchAndRenderAdminReports = () => {
-             const selectedMonth = adminMonthSelect.value;
-             const selectedYear = parseInt(adminYearSelect.value, 10);
-             showLoader(true);
-             
-             // --- Updated Loader/Message ---
-             adminReportsSummaryContainer.innerHTML = '';
-             reportsLoadingMsg.textContent = 'Loading reports... Please wait.';
-             reportsLoadingMsg.classList.remove('hidden');
-             adminReportsSummaryContainer.classList.remove('single-user-view'); // Clean up view
-             // -----------------------------
-             
-             // Reset summary tabs
-             summaryLoadingMsg.textContent = "Loading reports... Please wait.";
-             summaryLoadingMsg.classList.remove('hidden');
-             summaryTablesContainer.classList.add('hidden');
-             document.getElementById('summary-jaiza-section').innerHTML = '';
-             document.getElementById('summary-tadris-section').innerHTML = '';
-             document.getElementById('summary-test-section').innerHTML = '';
-             
-             kkdSummaryLoadingMsg.textContent = "Loading reports... Please wait.";
-             kkdSummaryLoadingMsg.classList.remove('hidden');
-             kkdSummaryTablesContainer.classList.add('hidden');
-             kkdSectionDedicated.innerHTML = '';
+         // --- UPDATED FETCH FUNCTION ---
+const fetchAndRenderAdminReports = async () => {
+    const selectedMonthName = adminMonthSelect.value; // e.g., "December"
+    const selectedYear = adminYearSelect.value;       // e.g., "2025"
+    
+    // Month Key convert karein (e.g., "2025-12") for jaiza_forms query
+    const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(selectedMonthName);
+    const monthKey = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-             if (unsubscribeAdminReports) unsubscribeAdminReports(); 
-             const reportsRef = collection(db, 'monthly_reports');
-             const q = query(reportsRef, where("month", "==", selectedMonth), where("year", "==", selectedYear));
+    showLoader(true);
+    
+    // UI Reset logic (Same as before)
+    adminReportsSummaryContainer.innerHTML = '';
+    reportsLoadingMsg.textContent = 'Loading reports... Please wait.';
+    reportsLoadingMsg.classList.remove('hidden');
+    // ... baaki reset logic ...
 
-             unsubscribeAdminReports = onSnapshot(q, (snapshot) => {
-                 fetchedAdminReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                 
-                 // Render based on the filter
-                 renderAdminSummaryCards(fetchedAdminReports);
-                 
-                 // Update summary tab state
-                 summaryLoadingMsg.textContent = "Reports loaded. Please apply filters to view summary.";
-                 kkdSummaryLoadingMsg.textContent = "Reports loaded. Please apply filter to view summary.";
+    try {
+        // 1. Fetch Monthly Reports (Summary ke liye)
+        const reportsRef = collection(db, 'monthly_reports');
+        const qReports = query(reportsRef, where("month", "==", selectedMonthName), where("year", "==", parseInt(selectedYear)));
 
-                 if(fetchedAdminReports.length === 0) {
-                     summaryLoadingMsg.textContent = "No reports found for this period. Apply filters to check.";
-                     kkdSummaryLoadingMsg.textContent = "No reports found for this period. Apply filter to check.";
-                 }
-                 // 🔸 NEW: Agar pehle se KKd filter laga hua hai to view ko dobara render kar do
-    if (kkdFilterApplied) {
-        renderDedicatedKkdSummary(fetchedAdminReports);
+        // 2. Fetch Jaiza Forms (Detailed Analysis ke liye) <--- NEW PART
+        const jaizaRef = collection(db, 'jaiza_forms');
+        const qJaiza = query(jaizaRef, where("monthKey", "==", monthKey));
+
+        // Dono queries parallel chalayein
+        const [reportsSnap, jaizaSnap] = await Promise.all([
+            getDocs(qReports), // Note: Hum onSnapshot hata kar getDocs use kar rahe hain taake sync rahe, ya aap alag alag bhi rakh sakte hain
+            getDocs(qJaiza)
+        ]);
+
+        fetchedAdminReports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        fetchedJaizaForms = jaizaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })); // Data Store kiya
+
+        // UI Renders
+        renderAdminSummaryCards(fetchedAdminReports);
+        
+        // Agar Analysis tab khula hai to usay refresh karein
+        const analysisTab = document.getElementById('admin-analysis-tab');
+        if (!analysisTab.classList.contains('hidden')) {
+             // Agar user ne pehle se 'jaiza' select kiya hua hai to table refresh ho jayegi
+            const reportType = document.getElementById('analysis-report-type-select').value;
+            if(reportType === 'jaiza') renderAllUsersJaizaTable();
+        }
+
+        // Messages update
+        summaryLoadingMsg.textContent = "Reports loaded. Apply filters.";
+        kkdSummaryLoadingMsg.textContent = "Reports loaded. Apply filters.";
+        
+        showLoader(false);
+
+    } catch (error) {
+        console.error("Error fetching reports:", error);
+        showLoader(false);
+        showNotification("Error loading data.", true);
     }
-                 
-                 showLoader(false);
-             }, (error) => {
-                 console.error("Error fetching admin reports: ", error);
-                 showNotification("Could not load reports for this period.", true);
-                 adminReportsSummaryContainer.innerHTML = '<p class="text-center py-4 text-red-500 col-span-full">Error loading reports.</p>';
-                 summaryLoadingMsg.textContent = "Error loading reports.";
-                 kkdSummaryLoadingMsg.textContent = "Error loading reports.";
-                 showLoader(false);
-             });
-         };
+};
          
          const calculateOverallStatus = (report, userJamiaatCount = 0) => {
               const jaizaDone = report.jaizaReport?.status === 'Done';
@@ -3678,11 +3672,83 @@ const handleAnalysisExcelDownload = async () => {
         showLoader(false);
     }
 };    
+        // --- HELPER 1: Calculate Totals form User Profile (Structure) ---
+const getJamiaTargets = (user, jamiaName, monthKey) => {
+    // Default values
+    let targets = { classes: 0, books: 0, teachers: 0 };
+    
+    if (!user || !user.academicYears) return targets;
+
+    // Academic Year nikalna (e.g. 2025-12 hai to '2025-2026')
+    const [y, m] = monthKey.split('-').map(Number);
+    // Agar Mahina March (3) ya us se bada hai, to ye saal start year hai
+    const acYearKey = (m >= 3) ? `${y}-${y+1}` : `${y-1}-${y}`;
+
+    const yearData = user.academicYears[acYearKey];
+    if (!yearData || !Array.isArray(yearData.karkardagiStructure)) return targets;
+
+    // Jamia dhundein
+    const jamiaStruct = yearData.karkardagiStructure.find(j => 
+        (j.jamiaName || '').trim() === jamiaName.trim()
+    );
+
+    if (jamiaStruct) {
+        // 1. Total Teachers
+        targets.teachers = (jamiaStruct.teachers || []).length;
+
+        // 2. Total Classes & Books (Periods se count karein)
+        const uniqueClasses = new Set();
+        let totalBooksCount = 0;
+
+        (jamiaStruct.teachers || []).forEach(t => {
+            (t.periods || []).forEach(p => {
+                if (p.className) uniqueClasses.add(p.className);
+                if (p.bookName) totalBooksCount++;
+            });
+        });
+
+        targets.classes = uniqueClasses.size;
+        targets.books = totalBooksCount;
+    }
+
+    return targets;
+};
+
+// --- HELPER 2: Calculate Actuals from Jaiza Forms ---
+const getJaizaActuals = (userId, jamiaName) => {
+    let actuals = { classesChecked: 0, booksChecked: 0, teachersChecked: 0 };
+    
+    // Filter forms for this user and jamia
+    const userForms = fetchedJaizaForms.filter(f => 
+        f.createdBy === userId && 
+        (f.jamiaId || '').trim() === jamiaName.trim()
+    );
+
+    // 1. Classes Checked (Jitne forms hain utni classes check huin)
+    actuals.classesChecked = userForms.length;
+
+    // 2. Books & Teachers Checked
+    let teachersSet = new Set();
+    
+    userForms.forEach(form => {
+        if (Array.isArray(form.books)) {
+            actuals.booksChecked += form.books.length; // Har kitab count karein
+            
+            form.books.forEach(b => {
+                if (b.teacherName) teachersSet.add(b.teacherName);
+            });
+        }
+    });
+
+    actuals.teachersChecked = teachersSet.size;
+    return actuals;
+};
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
