@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
     <style>
@@ -3588,121 +3588,30 @@ const renderReportCardStatusTable = (allSheets) => {
         </div>
     `;
 };
-    // --- UPDATED EXCEL DOWNLOAD FUNCTION (Jaiza Table Matches Screen Exactly) ---
+    // --- STYLED EXCEL DOWNLOAD FUNCTION ---
 const handleAnalysisExcelDownload = async () => {
     const reportType = document.getElementById('analysis-report-type-select').value;
     
     if (!reportType) {
-        alert("Pehle koi Report Type select karein aur table generate karein.");
+        alert("Pehle koi Report Type select karein.");
         return;
     }
 
-    // Month & Year info
     const monthName = document.getElementById('admin-month-select').value;
     const yearVal = document.getElementById('admin-year-select').value;
     const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
     const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-    if (!confirm(`Kya aap "${reportType.toUpperCase()}" report ki Excel file download karna chahte hain?`)) return;
+    if (!confirm(`Kya aap "${reportType.toUpperCase()}" report download karna chahte hain?`)) return;
 
     showLoader(true);
     let excelRows = [];
     let fileName = `Analysis_${reportType}_${monthName}_${yearVal}.xlsx`;
 
     try {
-        // ============================================================
-        // CASE 1: JAIZA REPORT ANALYSIS (Strictly Table Based)
-        // ============================================================
-        if (reportType === 'jaiza') {
-            allUsersData.forEach(user => {
-                if (user.id === ADMIN_UID) return;
-                
-                const userJamias = user.jamiaatList || [];
-
-                // User ki Monthly Report dhoondein (Date aur Percentage ke liye)
-                const userReport = fetchedAdminReports.find(r => r.userId === user.id);
-                const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) 
-                                     ? userReport.jaizaReport.data 
-                                     : [];
-
-                userJamias.forEach(jamia => {
-                    const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
-                    const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
-                    
-                    // 1. Targets & Actuals calculate karein
-                    const targets = getJamiaTargets(user, jamiaName, monthKey);
-                    const actuals = getJaizaActuals(user.id, jamiaName);
-
-                    // 2. Report Entry find karein (Status, Date, % ke liye)
-                    const reportEntry = jaizaEntries.find(entry => {
-                        const rName = (entry.name || entry.jamiaName || '').trim().toLowerCase();
-                        const jName = jamiaName.trim().toLowerCase();
-                        return (jamiaId && entry.jamiaId === jamiaId) || rName === jName;
-                    });
-
-                    // 3. Status & Data Logic (Table jaisa same logic)
-                    let statusText = "Pending";
-                    let dateDisplay = "-";
-                    let percentageDisplay = "-";
-
-                    const typeStr = (reportEntry?.type || '').trim().toLowerCase();
-                    const statusStr = (reportEntry?.status || '').trim().toLowerCase();
-                    const isNahiHua = typeStr.includes('nahi hua') || statusStr.includes('nahi hua') || typeStr === 'pending';
-
-                    if (!reportEntry) {
-                         // Pending
-                         statusText = "Pending";
-                    } else {
-                        // Date
-                        if (reportEntry.date) dateDisplay = reportEntry.date;
-
-                        if (isNahiHua) {
-                            statusText = "Nahi Hua";
-                            percentageDisplay = "Nahi Hua";
-                        } else {
-                            // Done or Visit Logic
-                            const isDone = (statusStr === 'done') || (Number(reportEntry.percentage) > 0) || (typeStr === 'jaiza');
-                            if (isDone) {
-                                statusText = "Done";
-                                percentageDisplay = `${reportEntry.percentage}%`;
-                            } else {
-                                statusText = "Visit Only";
-                                percentageDisplay = "N/A";
-                            }
-                        }
-                    }
-
-                    // 4. Row Push Karein (Sare Columns)
-                    excelRows.push({
-                        "Zimmedar": user.name || 'N/A',
-                        "Region": user.region || '-',
-                        "Jamia Name": jamiaName,
-                        
-                        // Classes
-                        "Target (Classes)": targets.classes || 0,
-                        "Actual (Classes)": actuals.classesChecked || 0,
-                        
-                        // Books
-                        "Target (Books)": targets.books || 0,
-                        "Actual (Books)": actuals.booksChecked || 0,
-                        
-                        // Teachers
-                        "Target (Teachers)": targets.teachers || 0,
-                        "Actual (Teachers)": actuals.teachersChecked || 0,
-                        
-                        // Report Data
-                        "Date": dateDisplay,
-                        "Total %": percentageDisplay,
-                        "Status": statusText
-                    });
-                });
-            });
-        }
-
-        // ============================================================
-        // CASE 2: REPORT CARD STATUS
-        // ============================================================
-        else if (reportType === 'report-card-status') {
+        // --- DATA PREPARATION (Wahi purana logic) ---
+        // 1. Report Card Status
+        if (reportType === 'report-card-status') {
              const sheetsRef = collection(db, "monthly_test_sheets");
              const q = query(sheetsRef, where("month", "==", monthKey));
              const snapshot = await getDocs(q);
@@ -3719,125 +3628,190 @@ const handleAnalysisExcelDownload = async () => {
                     );
                     const isDone = relevantSheets.length > 0;
                     let totalStudents = 0;
-                    let uniqueClasses = new Set();
-
-                    if (isDone) relevantSheets.forEach(s => { 
-                        if(s.students) totalStudents += s.students.length; 
-                        if(s.className) uniqueClasses.add(s.className);
-                    });
+                    if (isDone) relevantSheets.forEach(s => { if(s.students) totalStudents += s.students.length; });
 
                     excelRows.push({
                         "Jamia Name": jamiaName,
-                        "Zimmedar Name": user.name || user.email,
+                        "Zimmedar": user.name || user.email,
                         "Region": user.region || '-',
                         "Status": isDone ? "Ban Gaya" : "PENDING",
-                        "Total Students": isDone ? totalStudents : 0,
-                        "Total Classes": isDone ? uniqueClasses.size : 0
+                        "Total Students": isDone ? totalStudents : 0
                     });
                 });
             });
             excelRows.sort((a, b) => (a.Status === 'PENDING' ? -1 : 1));
         }
 
-        // ============================================================
-        // CASE 3: MONTHLY TEST (All / Asri)
-        // ============================================================
+        // 2. Jaiza Report
+        else if (reportType === 'jaiza') {
+            allUsersData.forEach(user => {
+                if (user.id === ADMIN_UID) return;
+                const userReport = fetchedAdminReports.find(r => r.userId === user.id);
+                const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) ? userReport.jaizaReport.data : [];
+                const userJamias = user.jamiaatList || [];
+
+                userJamias.forEach(jamia => {
+                    const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
+                    const targets = getJamiaTargets(user, jamiaName, monthKey);
+                    const actuals = getJaizaActuals(user.id, jamiaName);
+                    
+                    const reportEntry = jaizaEntries.find(entry => (entry.name || entry.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
+                    
+                    let statusText = "Pending";
+                    let percentageDisplay = "-";
+                    let dateDisplay = "-";
+
+                    if (reportEntry) {
+                        dateDisplay = reportEntry.date || "-";
+                        if ((reportEntry.type || '').includes('nahi hua')) {
+                            statusText = "Nahi Hua";
+                            percentageDisplay = "0%";
+                        } else if (reportEntry.status === 'Done' || Number(reportEntry.percentage) > 0) {
+                            statusText = "Done";
+                            percentageDisplay = `${reportEntry.percentage}%`;
+                        } else {
+                            statusText = "Visit Only";
+                        }
+                    } else if (actuals.classesChecked > 0) {
+                        statusText = "Visit Only";
+                    }
+
+                    excelRows.push({
+                        "Zimmedar": user.name || 'N/A',
+                        "Region": user.region || '-',
+                        "Jamia Name": jamiaName,
+                        "Target (Class)": targets.classes || 0,
+                        "Actual (Class)": actuals.classesChecked || 0,
+                        "Target (Teach)": targets.teachers || 0,
+                        "Actual (Teach)": actuals.teachersChecked || 0,
+                        "Date": dateDisplay,
+                        "Total %": percentageDisplay,
+                        "Status": statusText
+                    });
+                });
+            });
+        }
+
+        // 3. Test Summary
         else if (reportType === 'test-all' || reportType === 'test-asri') {
+            // (Iska data logic same rahega jo pichle code me tha, bas excelRows fill kar rahe hain)
             const sheetsRef = collection(db, "monthly_test_sheets");
             const q = query(sheetsRef, where("month", "==", monthKey));
             const snapshot = await getDocs(q);
-            const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
+            const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
             const groupedData = {};
 
             allSheets.forEach(sheet => {
-                const sub = sheet.subject || sheet.sub || sheet.kitab || sheet.book || '';
-                const subLower = sub.toLowerCase();
-                const isAsriSubject = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab') || subLower.includes('science') || subLower.includes('hindi');
-                
-                if (reportType === 'test-asri' && !isAsriSubject) return;
+                 const sub = sheet.subject || sheet.sub || sheet.kitab || '';
+                 const isAsri = sub.toLowerCase().match(/english|math|hisab|science|hindi/);
+                 if (reportType === 'test-asri' && !isAsri) return;
 
-                const jamiaName = (sheet.jamiaName || 'Unknown Jamia').trim();
-                const rawClass = sheet.className || sheet.class || sheet.darja || 'Unknown Class';
-                const className = rawClass.toString().trim();
-                const groupKey = `${jamiaName}_${className}`;
-                
-                const user = allUsersData.find(u => u.id === sheet.adminUid);
-                const zimmedarName = user ? (user.name || user.email) : (sheet.teacherName || 'Unknown');
-
-                if (!groupedData[groupKey]) {
-                    groupedData[groupKey] = {
-                        jamiaName: jamiaName,
-                        zimmedarName: zimmedarName,
-                        className: className,
-                        totalStudents: 0, totalPassed: 0, totalFailed: 0, totalAbsent: 0,
-                        sumObtained: 0, sumTotalMarks: 0
-                    };
-                }
-
-                if (Array.isArray(sheet.students)) {
-                    sheet.students.forEach(std => {
-                        groupedData[groupKey].totalStudents++;
-                        const obt = Number(std.obtainedMarks);
-                        const max = Number(std.totalMarks) || 100;
-                        let isAbsent = false;
-                        const valStr = String(std.obtainedMarks || '').trim().toLowerCase();
-                        if (!std.obtainedMarks && std.obtainedMarks !== 0) isAbsent = true;
-                        if (valStr === 'a' || valStr === 'absent' || valStr === 'ab') isAbsent = true;
-
-                        if (isAbsent) {
-                            groupedData[groupKey].totalAbsent++;
-                        } else {
-                            groupedData[groupKey].sumObtained += (isNaN(obt) ? 0 : obt);
-                            groupedData[groupKey].sumTotalMarks += max;
-                            const percentage = (max > 0) ? (obt / max) * 100 : 0;
-                            if (percentage < 40) groupedData[groupKey].totalFailed++;
-                        }
-                    });
-                }
+                 const jamiaName = (sheet.jamiaName || 'Unknown').trim();
+                 const className = (sheet.className || 'Unknown').toString().trim();
+                 const key = `${jamiaName}_${className}`;
+                 
+                 if (!groupedData[key]) {
+                     const u = allUsersData.find(u => u.id === sheet.adminUid);
+                     groupedData[key] = {
+                         jamia: jamiaName, 
+                         zimmedar: u ? (u.name || u.email) : 'Unknown',
+                         class: className,
+                         students: 0, pass: 0, fail: 0, absent: 0, marksObt: 0, marksTot: 0
+                     };
+                 }
+                 if (Array.isArray(sheet.students)) {
+                     sheet.students.forEach(std => {
+                         groupedData[key].students++;
+                         const obt = Number(std.obtainedMarks) || 0;
+                         const max = Number(std.totalMarks) || 100;
+                         const isAbsent = (!std.obtainedMarks && std.obtainedMarks !== 0) || String(std.obtainedMarks).toLowerCase().includes('a');
+                         
+                         if(isAbsent) groupedData[key].absent++;
+                         else {
+                             groupedData[key].marksObt += obt;
+                             groupedData[key].marksTot += max;
+                             if((obt/max)*100 < 40) groupedData[key].fail++;
+                         }
+                     });
+                 }
             });
 
-            Object.values(groupedData)
-                .sort((a, b) => a.jamiaName.localeCompare(b.jamiaName))
-                .forEach(g => {
-                    g.totalPassed = g.totalStudents - (g.totalAbsent + g.totalFailed);
-                    let avgResult = 0;
-                    if (g.sumTotalMarks > 0) avgResult = ((g.sumObtained / g.sumTotalMarks) * 100).toFixed(1);
-
-                    excelRows.push({
-                        "Jamia Name": g.jamiaName,
-                        "Zimmedar": g.zimmedarName,
-                        "Class": g.className,
-                        "Total Students": g.totalStudents,
-                        "Pass": g.totalPassed,
-                        "Fail": g.totalFailed,
-                        "Absent": g.totalAbsent,
-                        "Avg Percentage (%)": `${avgResult}%`
-                    });
+            Object.values(groupedData).forEach(g => {
+                g.pass = g.students - (g.absent + g.fail);
+                let avg = g.marksTot > 0 ? ((g.marksObt / g.marksTot) * 100).toFixed(1) + '%' : '0%';
+                excelRows.push({
+                    "Jamia Name": g.jamia, "Zimmedar": g.zimmedar, "Class": g.class,
+                    "Total": g.students, "Pass": g.pass, "Fail": g.fail, "Absent": g.absent, "Avg %": avg
                 });
+            });
         }
 
-        // ============================================================
-        // CREATE EXCEL FILE
-        // ============================================================
+        // --- STYLING LOGIC START ---
         if (excelRows.length === 0) {
-            alert("Download karne ke liye koi data nahi mila.");
+            alert("No data found.");
         } else {
             const worksheet = XLSX.utils.json_to_sheet(excelRows);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Analysis_Report");
             
-            // Auto Column Width (Just to make it look nicer)
-            const wscols = Object.keys(excelRows[0] || {}).map(k => ({wch: 18}));
-            worksheet['!cols'] = wscols;
+            // 1. Column Widths (Design)
+            const colWidths = Object.keys(excelRows[0]).map(key => ({ wch: Math.max(key.length + 5, 15) }));
+            worksheet['!cols'] = colWidths;
 
+            // 2. Loop through all cells to apply styles
+            const range = XLSX.utils.decode_range(worksheet['!ref']);
+            
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                    if (!worksheet[cellAddress]) continue;
+
+                    // Basic Border for ALL cells
+                    let cellStyle = {
+                        border: {
+                            top: { style: "thin", color: { rgb: "000000" } },
+                            bottom: { style: "thin", color: { rgb: "000000" } },
+                            left: { style: "thin", color: { rgb: "000000" } },
+                            right: { style: "thin", color: { rgb: "000000" } }
+                        },
+                        alignment: { vertical: "center", horizontal: "center" },
+                        font: { name: "Arial", sz: 11 }
+                    };
+
+                    // HEADER STYLING (Row 0)
+                    if (R === 0) {
+                        cellStyle.fill = { fgColor: { rgb: "0D9488" } }; // Teal Color
+                        cellStyle.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "FFFFFF" } }; // White Bold Text
+                    } 
+                    // DATA ROWS STYLING
+                    else {
+                        // Alternate Row Color (Light Gray) for better reading
+                        if (R % 2 === 0) {
+                            cellStyle.fill = { fgColor: { rgb: "F3F4F6" } };
+                        }
+
+                        // STATUS COLORING (Conditional)
+                        const cellVal = worksheet[cellAddress].v;
+                        if (cellVal === 'Pending' || cellVal === 'Nahi Hua' || cellVal === 'Fail') {
+                             cellStyle.font.color = { rgb: "DC2626" }; // Red Text
+                             cellStyle.font.bold = true;
+                        } else if (cellVal === 'Done' || cellVal === 'Ban Gaya') {
+                             cellStyle.font.color = { rgb: "16A34A" }; // Green Text
+                             cellStyle.font.bold = true;
+                        }
+                    }
+
+                    worksheet[cellAddress].s = cellStyle;
+                }
+            }
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Formatted_Report");
             XLSX.writeFile(workbook, fileName);
-            showNotification("Detailed Excel file download ho gayi!");
+            showNotification("Designed Excel downloaded!");
         }
 
     } catch (err) {
         console.error(err);
-        alert("Error downloading excel: " + err.message);
+        alert("Error: " + err.message);
     } finally {
         showLoader(false);
     }
@@ -4094,6 +4068,7 @@ window.viewJaizaDetail = (userId, jamiaName) => {
     </script>
 </body>
 </html>
+
 
 
 
