@@ -465,7 +465,21 @@
         import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, Timestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
         
-        // --- GLOBAL VARIABLES & CONFIG ---
+               // Global variables ke paas add karein
+const urduMonths = {
+    "January": "جنوری",
+    "February": "فروری",
+    "March": "مارچ",
+    "April": "اپریل",
+    "May": "مئی",
+    "June": "جون",
+    "July": "جولائی",
+    "August": "اگست",
+    "September": "ستمبر",
+    "October": "اکتوبر",
+    "November": "نومبر",
+    "December": "دسمبر"
+};
         // Assuming fixed config for self-contained example:
         const firebaseConfig = {
           apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -3205,179 +3219,167 @@ let rowHtml = `
         };
         
         
-        // NEW FUNCTION: Render Teacher Profile Report (Cumulative)
-        const renderTeacherProfileReport = async (e, isInitial = false) => {
-             if (e) e.preventDefault();
-             
-             const selectedValue = teacherProfileMonthSelect.value; // Get value from hidden input (context)
-             const selectedJamia = teacherProfileJamiaSelect.value;
-             const selectedTeacherId = teacherProfileTeacherSelect.value;
-             
-             if (!selectedValue || !selectedJamia || !selectedTeacherId) {
-                  // Only show error if explicitly clicked or if it's the initial load but no teacher is selected
-                  if(!isInitial || (isInitial && selectedTeacherId)) showNotification("Please select Jamia and Teacher.", true);
-                  
-                  // Keep initial state if no filters are selected
-                  if(teacherProfileJamiaSelect.value === "" || teacherProfileTeacherSelect.value === "") {
-                      teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia and teacher.</p>`;
-                  }
-                  return;
-             }
-             
-             showLoader(true);
-             
-             const [year, monthNumStr] = selectedValue.split('-').map(String);
-             const currentMonthNum = parseInt(monthNumStr, 10);
-             const currentYearNum = parseInt(year, 10);
-             // Determine semester based on the month context from the reporting tab
-             const currentSemester = currentMonthNum >= 3 && currentMonthNum <= 7 ? "1" : "2"; 
-             
-             const yearData = allAcademicYearsData[activeYear];
-             const karkardagiStructure = yearData.karkardagiStructure || [];
-             const jamiaData = karkardagiStructure.find(j => j.jamiaName === selectedJamia);
-             const teacherData = jamiaData?.teachers.find(t => t.id === selectedTeacherId);
-             
-             // FIX APPLIED: Load teacher name from structure, as filter uses ID
-             const teacherName = teacherData?.name || 'N/A';
-             
-             if (!teacherData) {
-                 teacherProfileContainer.innerHTML = `<p class="text-red-500">Teacher data not found in structure.</p>`;
-                 showLoader(false);
-                 return;
-             }
-             
-             const periodsInSemester = (teacherData.periods || []).filter(p => p.semester === currentSemester);
-             
-             if (periodsInSemester.length === 0) {
-                 teacherProfileContainer.innerHTML = `<p class="text-yellow-700">Is Teacher ke liye Semester ${currentSemester} ke koi periods set nahi hain.</p>`;
-                 showLoader(false);
-                 return;
-             }
-             
-             // Get relevant months for the current semester up to the selected month (context)
-             const academicMonthsList = ACADEMIC_MONTHS
-                 .filter(m => {
-                      const isMonthInCurrentSemester = currentSemester === '1' ? (m >= 3 && m <= 7) : (m >= 8 || m === 0);
-                      return isMonthInCurrentSemester;
-                 })
-                 .map(monthNum => {
-                     let reportYear = currentYearNum;
-                     
-                     const academicYearParts = activeYear.split('-');
-                     const academicYearStart = parseInt(academicYearParts[0], 10);
-                     const academicYearEnd = parseInt(academicYearParts[1], 10);
+        // NEW FUNCTION: Render Teacher Profile Report (Urdu Version)
+const renderTeacherProfileReport = async (e, isInitial = false) => {
+    if (e) e.preventDefault();
 
-                     if (currentSemester === '1') {
-                         reportYear = academicYearStart;
-                     } else if (currentSemester === '2') {
-                          reportYear = monthNum >= 8 ? academicYearStart : academicYearEnd;
-                     }
-                      
-                     return { monthNum, year: reportYear };
-                 })
-                 .filter(m => {
-                     // Filter only months up to the selected month/year
-                     if (m.year < currentYearNum) return true;
-                     if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
-                     return false;
-                 })
-                 .sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
-             
-             const semesterTotalDays = currentSemester === '1' ? (yearData.sem1TotalDays || 0) : (yearData.sem2TotalDays || 0);
+    const selectedValue = teacherProfileMonthSelect.value;
+    const selectedJamia = teacherProfileJamiaSelect.value;
+    const selectedTeacherId = teacherProfileTeacherSelect.value;
 
-             if (semesterTotalDays === 0) {
-                 teacherProfileContainer.innerHTML = `<p class="text-red-500">Semester ${currentSemester} ke total days set nahi hain.</p>`;
-                 showLoader(false);
-                 return;
-             }
-             
-             
-             // --- Generate Table HTML ---
-             let html = `
-                 <h5 class="text-lg font-bold urdu-font text-center mb-4">Teacher: ${teacherName} &nbsp;|&nbsp; Jamia: ${selectedJamia} &nbsp;|&nbsp; Semester: ${currentSemester}</h5>
-                 <div class="flex justify-end mb-3">
-                     <button type="button" id="download-teacher-profile-image-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
-                         data-teacher-id="${selectedTeacherId}" data-teacher-name="${teacherName}" data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
-                         <i class="fas fa-image fa-sm"></i> Download Image
-                     </button>
-                 </div>
-                 <div class="overflow-x-auto border rounded-lg shadow-md teacher-profile-table-container">
-                     <table class="min-w-full text-sm bg-white teacher-profile-table">
-                         <thead class="bg-gray-100">
-                             <tr>
-                                 <th class="sticky-col" style="min-width: 150px;">Book/Class</th>
-                                 <th style="min-width: 100px;">Total Pages (Sem)</th>
-                                 <th style="min-width: 100px;">Total Taught (Cumulative)</th>
-                                 <th class="sticky-col-right" style="min-width: 100px; background-color: #fef3c7; color: #ef4444;">Remaining Pages</th>
-             `;
+    if (!selectedValue || !selectedJamia || !selectedTeacherId) {
+        if (!isInitial || (isInitial && selectedTeacherId)) showNotification("Please select Jamia and Teacher.", true);
+        if (teacherProfileJamiaSelect.value === "" || teacherProfileTeacherSelect.value === "") {
+            teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia and teacher.</p>`;
+        }
+        return;
+    }
 
-             // Add monthly columns
-             academicMonthsList.forEach(m => {
-                 const monthName = getMonthName(m.monthNum).substring(0,3);
-                 html += `<th colspan="2" style="min-width: 150px; border-bottom: none;">${monthName} ${m.year % 100}</th>`;
-             });
-             
-             html += `</tr><tr>
-                                 <th class="sticky-col"></th>
-                                 <th></th><th></th><th style="background-color: #fef3c7; color: #ef4444;"></th>`;
+    showLoader(true);
 
-             academicMonthsList.forEach(() => {
-                 html += `<th style="min-width: 75px; color: #3b82f6; border-top: none;">Target</th><th style="min-width: 75px; color: #059669; border-top: none;">Taught</th>`;
-             });
-             
-             html += `</tr></thead><tbody>`;
+    const [year, monthNumStr] = selectedValue.split('-').map(String);
+    const currentMonthNum = parseInt(monthNumStr, 10);
+    const currentYearNum = parseInt(year, 10);
+    const currentSemester = currentMonthNum >= 3 && currentMonthNum <= 7 ? "1" : "2";
 
-             // Populate Rows (one row per period)
-             periodsInSemester.forEach(period => {
-                 const totalPages = period.totalPages;
-                 
-                 // Get Cumulative Taught Pages (up to the selected month)
-                 const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
-                 const remainingPages = totalPages - cumulativeTaught;
-                 
-                 html += `
-                     <tr>
-                         <td class="urdu-font sticky-col">${period.bookName} (${period.className})</td>
-                         <td class="font-bold text-center">${totalPages}</td>
-                         <td class="font-bold text-center text-blue-700">${cumulativeTaught}</td>
-                         <td class="font-bold text-center bg-yellow-100 text-red-700">${remainingPages}</td>
-                 `;
-                 
-                 // Monthly Data Columns
-                 academicMonthsList.forEach(m => {
-                     const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
-                     const daysThisMonth = yearData.academicMonths[m.monthNum] || 0;
-                     
-                     let monthlyTarget = 0;
-                     if (semesterTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
-                         const perDayTarget = totalPages / semesterTotalDays;
-                         monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                     }
-                     
-                     let pagesTaught = '0';
-                     if (monthReport) {
-                         const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
-                         pagesTaught = (periodEntry?.pagesTaught || 0).toString();
-                     }
-                     
-                     html += `
-                         <td class="text-center">${monthlyTarget}</td>
-                         <td class="text-center">${pagesTaught}</td>
-                     `;
-                 });
-                 
-                 html += `</tr>`;
-             });
+    const yearData = allAcademicYearsData[activeYear];
+    const karkardagiStructure = yearData.karkardagiStructure || [];
+    const jamiaData = karkardagiStructure.find(j => j.jamiaName === selectedJamia);
+    const teacherData = jamiaData?.teachers.find(t => t.id === selectedTeacherId);
+    const teacherName = teacherData?.name || 'N/A';
 
-             html += `</tbody></table></div>`;
-             teacherProfileContainer.innerHTML = html;
-             
-             // Attach image download listener (Delegated click event is handled via the button)
-             document.getElementById('download-teacher-profile-image-btn').addEventListener('click', downloadTeacherProfileImage);
-             
-             showLoader(false);
-        };
+    if (!teacherData) {
+        teacherProfileContainer.innerHTML = `<p class="text-red-500">Teacher data not found in structure.</p>`;
+        showLoader(false);
+        return;
+    }
 
+    const periodsInSemester = (teacherData.periods || []).filter(p => p.semester === currentSemester);
+
+    if (periodsInSemester.length === 0) {
+        teacherProfileContainer.innerHTML = `<p class="text-yellow-700">Is Teacher ke liye Semester ${currentSemester} ke koi periods set nahi hain.</p>`;
+        showLoader(false);
+        return;
+    }
+
+    // Get relevant months
+    const academicMonthsList = ACADEMIC_MONTHS
+        .filter(m => {
+            const isMonthInCurrentSemester = currentSemester === '1' ? (m >= 3 && m <= 7) : (m >= 8 || m === 0);
+            return isMonthInCurrentSemester;
+        })
+        .map(monthNum => {
+            let reportYear = currentYearNum;
+            const academicYearParts = activeYear.split('-');
+            const academicYearStart = parseInt(academicYearParts[0], 10);
+            const academicYearEnd = parseInt(academicYearParts[1], 10);
+
+            if (currentSemester === '1') {
+                reportYear = academicYearStart;
+            } else if (currentSemester === '2') {
+                reportYear = monthNum >= 8 ? academicYearStart : academicYearEnd;
+            }
+            return { monthNum, year: reportYear };
+        })
+        .filter(m => {
+            if (m.year < currentYearNum) return true;
+            if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
+            return false;
+        })
+        .sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
+
+    const semesterTotalDays = currentSemester === '1' ? (yearData.sem1TotalDays || 0) : (yearData.sem2TotalDays || 0);
+
+    // --- Generate Table HTML (URDU HEADERS) ---
+    // Note: direction: rtl added via styling class or inline style
+    let html = `
+        <h5 class="text-lg font-bold urdu-font text-center mb-4">
+            استاد: ${teacherName} &nbsp;|&nbsp; جامعہ: ${selectedJamia} &nbsp;|&nbsp; سمسٹر: ${currentSemester}
+        </h5>
+        <div class="flex justify-end mb-3">
+            <button type="button" id="download-teacher-profile-image-btn" 
+                class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
+                data-teacher-id="${selectedTeacherId}" data-teacher-name="${teacherName}" data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
+                <i class="fas fa-image fa-sm"></i> Download Image (Urdu)
+            </button>
+        </div>
+        <div class="overflow-x-auto border rounded-lg shadow-md teacher-profile-table-container">
+            <table class="min-w-full text-sm bg-white teacher-profile-table" style="direction: rtl;">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="sticky-col urdu-font text-right" style="min-width: 150px; text-align: right;">کتاب / درجہ</th>
+                        <th class="urdu-font" style="min-width: 100px;">کل صفحات (سمسٹر)</th>
+                        <th class="urdu-font" style="min-width: 100px;">کل پڑھائے گئے (مجموعی)</th>
+                        <th class="sticky-col-right urdu-font" style="min-width: 100px; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
+    `;
+
+    // Add monthly columns (Urdu Names)
+    academicMonthsList.forEach(m => {
+        const engMonthName = getMonthName(m.monthNum);
+        const urduMonthName = urduMonths[engMonthName] || engMonthName;
+        // Short year for display (e.g. 26 for 2026)
+        const shortYear = m.year % 100;
+        
+        html += `<th colspan="2" class="urdu-font" style="min-width: 150px; border-bottom: none;">${urduMonthName} ${shortYear}</th>`;
+    });
+
+    html += `</tr><tr>
+             <th class="sticky-col"></th>
+             <th></th><th></th><th style="background-color: #fef3c7;"></th>`;
+
+    // Sub-headers (Target/Taught -> Hadaf/Padhaya)
+    academicMonthsList.forEach(() => {
+        html += `<th class="urdu-font" style="min-width: 75px; color: #3b82f6; border-top: none;">ہدف</th>
+                 <th class="urdu-font" style="min-width: 75px; color: #059669; border-top: none;">پڑھایا</th>`;
+    });
+
+    html += `</tr></thead><tbody>`;
+
+    // Populate Rows
+    periodsInSemester.forEach(period => {
+        const totalPages = period.totalPages;
+        const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
+        const remainingPages = totalPages - cumulativeTaught;
+
+        html += `
+            <tr>
+                <td class="urdu-font sticky-col text-right" style="text-align: right;">${period.bookName} <span class="text-xs text-gray-500">(${period.className})</span></td>
+                <td class="font-bold text-center">${totalPages}</td>
+                <td class="font-bold text-center text-blue-700">${cumulativeTaught}</td>
+                <td class="font-bold text-center bg-yellow-100 text-red-700">${remainingPages}</td>
+        `;
+
+        academicMonthsList.forEach(m => {
+            const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
+            const daysThisMonth = yearData.academicMonths[m.monthNum] || 0;
+
+            let monthlyTarget = 0;
+            if (semesterTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
+                const perDayTarget = totalPages / semesterTotalDays;
+                monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+            }
+
+            let pagesTaught = '0';
+            if (monthReport) {
+                const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
+                pagesTaught = (periodEntry?.pagesTaught || 0).toString();
+            }
+
+            html += `
+                <td class="text-center">${monthlyTarget}</td>
+                <td class="text-center">${pagesTaught}</td>
+            `;
+        });
+
+        html += `</tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    teacherProfileContainer.innerHTML = html;
+
+    document.getElementById('download-teacher-profile-image-btn').addEventListener('click', downloadTeacherProfileImage);
+    showLoader(false);
+};
 
         // Master Render function for Summary Tab
         const renderSummaryTab = () => {
@@ -3931,111 +3933,113 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
         };
 
 
-        // NEW FUNCTION: Download Teacher Profile Image (Summary Tab)
-        const downloadTeacherProfileImage = async (e) => {
-            showLoader(true);
-            
-            const button = e.target.closest('#download-teacher-profile-image-btn');
-            const teacherId = button.dataset.teacherId;
-            const teacherName = button.dataset.teacherName;
-            const jamiaName = button.dataset.jamiaName;
-            const semester = button.dataset.semester;
-            
-            const monthName = getMonthName(currentReportPeriod.monthNum);
-            const year = currentReportPeriod.yearNum; 
-            const userName = userProfileData.displayName || currentUser.email; 
+        // NEW FUNCTION: Download Teacher Profile Image (Complete Urdu)
+const downloadTeacherProfileImage = async (e) => {
+    showLoader(true);
 
-            const targetDiv = teacherProfileContainer.querySelector('.teacher-profile-table-container');
-            if (!targetDiv) {
-                 showNotification("Teacher Profile data nahi mila.", true);
-                 showLoader(false);
-                 return;
-            }
+    const button = e.target.closest('#download-teacher-profile-image-btn');
+    const teacherId = button.dataset.teacherId;
+    const teacherName = button.dataset.teacherName;
+    const jamiaName = button.dataset.jamiaName;
+    const semester = button.dataset.semester;
 
-            // Create a temporary div to render the scrollable table content (including header/footer)
-            const tempDiv = document.createElement('div');
-            tempDiv.style.width = '1200px'; // Wide enough for all columns
-            tempDiv.style.backgroundColor = '#ffffff';
-            tempDiv.style.padding = '25px';
-            tempDiv.style.border = '1px solid #ccc';
-            tempDiv.style.fontFamily = "Poppins, sans-serif"; 
-            tempDiv.style.direction = 'rtl'; 
-            
-            const isUrdu = containsUrdu(teacherName);
-            const teacherFontFamily = isUrdu ? "'Jameel Noori Nastaleeq', serif" : "'Poppins', sans-serif";
-            const teacherDirection = isUrdu ? "rtl" : "ltr";
-            
-            // Reconstruct Header
-            const headerHtml = `
-                <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
-                    Semester ${semester} Performance Profile
-                </h1>
-                <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 30px; line-height: 1.2; font-family: ${teacherFontFamily}; direction: ${teacherDirection};">
-                    ${teacherName}
-                </h2>
-                <p style="text-align: center; font-weight: 500; margin-bottom: 15px; font-size: 16px;">Jamia: ${jamiaName} | Report up to ${monthName} ${year}</p>
-            `;
-            
-            // Clone the table and remove sticky/positioning CSS for accurate rendering
-            const tableClone = targetDiv.querySelector('.teacher-profile-table').cloneNode(true);
-            tableClone.style.width = '100%';
-            tableClone.style.position = 'static';
-            tableClone.style.borderCollapse = 'collapse';
-            tableClone.style.tableLayout = 'fixed';
-            tableClone.style.fontSize = '14px';
-            
-            // Remove sticky styles from clone
-            tableClone.querySelectorAll('.sticky-col').forEach(el => {
-                 el.style.position = 'static';
-                 el.style.left = 'auto';
-                 el.style.zIndex = 'auto';
-                 el.style.minWidth = '150px'; 
-            });
-            
-            // Apply Urdu font and right alignment to Book/Class column
-            tableClone.querySelectorAll('tbody tr').forEach(row => {
-                 const firstCell = row.querySelector('td:first-child');
-                 if(firstCell) {
-                     firstCell.style.fontFamily = "'Jameel Noori Nastaleeq', serif";
-                     firstCell.style.textAlign = 'right';
-                 }
-            });
-            
-            const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
+    const engMonthName = getMonthName(currentReportPeriod.monthNum);
+    const urduMonthName = urduMonths[engMonthName] || engMonthName;
+    const year = currentReportPeriod.yearNum;
+    const userName = userProfileData.displayName || currentUser.email;
 
-            tempDiv.innerHTML = headerHtml + tableClone.outerHTML + footerHtml;
-            document.body.appendChild(tempDiv);
+    const targetDiv = teacherProfileContainer.querySelector('.teacher-profile-table-container');
+    if (!targetDiv) {
+        showNotification("Teacher Profile data nahi mila.", true);
+        showLoader(false);
+        return;
+    }
 
-            try {
-                 // Generate Image
-                 const canvas = await html2canvas(tempDiv, { 
-                     scale: 2, 
-                     allowTaint: true,
-                     useCORS: true,
-                     // Important: Ensure the entire width is captured
-                     width: 1200 
-                 });
-                 
-                 // Download
-                 const image = canvas.toDataURL("image/png");
-                 const link = document.createElement('a');
-                 link.href = image;
-                 const fileName = `Teacher_Profile_${teacherName.replace(/ /g, '_')}_Sem${semester}_${year}.png`;
-                 link.download = fileName;
-                 document.body.appendChild(link);
-                 link.click();
-                 document.body.removeChild(link);
-                 
-                 showNotification(`${fileName} Downloaded Successfully!`);
-             } catch (error) {
-                 console.error("Teacher Profile Image generation failed:", error);
-                 showNotification("Teacher Profile Image download karne me error.", true, error.message);
-             } finally {
-                 // Cleanup
-                 document.body.removeChild(tempDiv);
-                 showLoader(false);
-             }
-        };
+    // Temporary Div Setup
+    const tempDiv = document.createElement('div');
+    tempDiv.style.width = '1200px'; 
+    tempDiv.style.backgroundColor = '#ffffff';
+    tempDiv.style.padding = '25px';
+    tempDiv.style.border = '1px solid #ccc';
+    tempDiv.style.fontFamily = "'Jameel Noori Nastaleeq', serif"; // Force Urdu Font
+    tempDiv.style.direction = 'rtl'; // Right to Left layout
+
+    // Construct Header in URDU
+    const headerHtml = `
+        <h1 style="text-align: center; font-size: 28px; margin-bottom: 5px; color: #14b8a6; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', serif;">
+            سمسٹر ${semester} کارکردگی پروفائل
+        </h1>
+        <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 34px; line-height: 1.4; font-family: 'Jameel Noori Nastaleeq', serif;">
+            ${teacherName}
+        </h2>
+        <p style="text-align: center; font-weight: 500; margin-bottom: 15px; font-size: 20px; font-family: 'Jameel Noori Nastaleeq', serif;">
+            جامعہ: ${jamiaName} &nbsp;|&nbsp; رپورٹ برائے: ${urduMonthName} ${year}
+        </p>
+    `;
+
+    // Clone Table
+    const tableClone = targetDiv.querySelector('.teacher-profile-table').cloneNode(true);
+    tableClone.style.width = '100%';
+    tableClone.style.position = 'static';
+    tableClone.style.borderCollapse = 'collapse';
+    tableClone.style.tableLayout = 'fixed';
+    tableClone.style.fontSize = '16px'; // Font size thoda badhaya readable hone ke liye
+
+    // Styling fixes for Image
+    tableClone.querySelectorAll('th, td').forEach(cell => {
+        cell.style.fontFamily = "'Jameel Noori Nastaleeq', serif"; // Ensure font inside table
+        cell.style.border = "1px solid #e5e7eb";
+        cell.style.padding = "8px";
+    });
+
+    // Remove sticky classes impact
+    tableClone.querySelectorAll('.sticky-col').forEach(el => {
+        el.style.position = 'static';
+        el.style.left = 'auto';
+        el.style.zIndex = 'auto';
+        el.style.minWidth = '150px';
+    });
+    
+    // Ensure Right Alignment for Book Column
+    tableClone.querySelectorAll('tbody tr').forEach(row => {
+         const firstCell = row.querySelector('td:first-child');
+         if(firstCell) {
+             firstCell.style.textAlign = 'right';
+         }
+    });
+
+    const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr; font-family: sans-serif;">Report Generated by User: ${userName}</p>`;
+
+    tempDiv.innerHTML = headerHtml + tableClone.outerHTML + footerHtml;
+    document.body.appendChild(tempDiv);
+
+    try {
+        const canvas = await html2canvas(tempDiv, { 
+            scale: 2, 
+            allowTaint: true,
+            useCORS: true,
+            width: 1200 
+        });
+
+        const image = canvas.toDataURL("image/png");
+        const link = document.createElement('a');
+        link.href = image;
+        // Filename
+        const fileName = `Teacher_Profile_${teacherName.replace(/ /g, '_')}_Sem${semester}_${year}.png`;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showNotification(`${fileName} Downloaded Successfully!`);
+    } catch (error) {
+        console.error("Teacher Profile Image generation failed:", error);
+        showNotification("Teacher Profile Image download karne me error.", true, error.message);
+    } finally {
+        document.body.removeChild(tempDiv);
+        showLoader(false);
+    }
+};
 
 
         // --- Tab Switching (Updated for Sub-Tabs) ---
@@ -4211,6 +4215,7 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
     </script>
 </body>
 </html>
+
 
 
 
