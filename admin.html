@@ -1231,7 +1231,7 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
 
-// --- UPDATED TABLE RENDERER (Action -> Jaiza Form Button) ---
+// --- UPDATED TABLE RENDERER (Nahi Hua = Pending Status + View Button) ---
 const renderAllUsersJaizaTable = () => {
     const container = document.getElementById('analysis-report-container');
     
@@ -1251,7 +1251,7 @@ const renderAllUsersJaizaTable = () => {
         const userJamias = user.jamiaatList || [];
         if (userJamias.length === 0) return;
 
-        // 1. User ki Monthly Report dhundein
+        // User ki Monthly Report
         const userReport = fetchedAdminReports.find(r => r.userId === user.id);
         const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) 
                              ? userReport.jaizaReport.data 
@@ -1261,11 +1261,11 @@ const renderAllUsersJaizaTable = () => {
             const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
             const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
             
-            // 2. Targets & Actuals Load karein
+            // Targets & Actuals
             const targets = getJamiaTargets(user, jamiaName, monthKey);
             const actuals = getJaizaActuals(user.id, jamiaName);
 
-            // 3. Find Entry in Monthly Report
+            // Report Entry dhundein
             const reportEntry = jaizaEntries.find(entry => {
                 const rName = (entry.name || entry.jamiaName || '').trim().toLowerCase();
                 const jName = jamiaName.trim().toLowerCase();
@@ -1277,22 +1277,26 @@ const renderAllUsersJaizaTable = () => {
             let rowClass = "";
             let percentageDisplay = "-";
             let actionBtn = `<span class="text-gray-300 text-xs">-</span>`;
-            let showDetails = false; 
+            let showDetails = false;
 
-            // Check: Kya entry me "Nahi Hua" likha hai?
+            // Check: Kya entry "Nahi Hua" hai?
             const typeStr = (reportEntry?.type || '').trim().toLowerCase();
             const statusStr = (reportEntry?.status || '').trim().toLowerCase();
             const isNahiHua = typeStr.includes('nahi hua') || statusStr.includes('nahi hua') || typeStr === 'pending';
 
-            // CASE 1: PENDING (Agar entry nahi hai YA "Nahi Hua" hai)
-            if (!reportEntry || isNahiHua) {
+            if (!reportEntry) {
+                // Bilkul koi report nahi aayi
                 statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold border border-red-200"><i class="fas fa-clock"></i> Pending</span>`;
                 rowClass = "bg-red-50";
-                showDetails = false;
-                percentageDisplay = `<span class="text-red-300 text-xs">Pending</span>`;
             } 
+            else if (isNahiHua) {
+                // Report aayi hai lekin "Nahi Hua" select kiya hai -> Status Pending (Red) rahega
+                statusBadge = `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold border border-red-200"><i class="fas fa-times-circle"></i> Pending</span>`;
+                rowClass = "bg-red-50"; 
+                percentageDisplay = `<span class="text-xs text-red-400">Nahi Hua</span>`;
+            }
             else {
-                // CASE 2 & 3: DONE or VISIT
+                // Done or Visit
                 const isDone = (statusStr === 'done') || (Number(reportEntry.percentage) > 0) || (typeStr === 'jaiza');
 
                 if (isDone) {
@@ -1304,23 +1308,22 @@ const renderAllUsersJaizaTable = () => {
                     statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-bold border border-orange-200"><i class="fas fa-walking"></i> Visit Only</span>`;
                     rowClass = "bg-orange-50";
                     percentageDisplay = `<span class="text-gray-400 text-xs">N/A</span>`;
-                    showDetails = false; 
                 }
             }
 
-            // --- JAIZA FORM BUTTON LOGIC ---
-            // Button tabhi dikhayein agar Detailed Form (jaiza_forms) database mein hai
-            if (actuals.formIds && actuals.formIds.length > 0) {
+            // --- BUTTON LOGIC (Updated) ---
+            // Agar Detailed Form hai YA Monthly Report Entry hai -> Button dikhao
+            // Hum ab seedha userId aur jamiaName bhejenge taake modal khud data dhoond le
+            if (actuals.formIds.length > 0 || reportEntry) {
+                // Safe string conversion for function call
+                const safeJamia = jamiaName.replace(/'/g, "\\'");
                 actionBtn = `
-                <button onclick="viewJaizaDetail('${actuals.formIds.join(',')}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition flex items-center gap-1 mx-auto">
+                <button onclick="viewJaizaDetail('${user.id}', '${safeJamia}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition flex items-center gap-1 mx-auto">
                     <i class="fas fa-file-alt"></i> Jaiza Form
                 </button>`;
-            } else if (reportEntry && !isNahiHua) {
-                // Agar report submit hai par detail form nahi hai
-                actionBtn = `<span class="text-xs text-gray-500 italic">No Form</span>`;
             }
 
-            // COUNTS DISPLAY Logic
+            // Counts
             const classCountDisplay = showDetails ? `<span class="font-bold text-lg text-blue-600">${actuals.classesChecked}</span>` : `<span class="text-gray-400">-</span>`;
             const bookCountDisplay = showDetails ? `<span class="font-bold text-lg text-purple-600">${actuals.booksChecked}</span>` : `<span class="text-gray-400">-</span>`;
             const teacherCountDisplay = showDetails ? `<span class="font-bold text-lg text-orange-600">${actuals.teachersChecked}</span>` : `<span class="text-gray-400">-</span>`;
@@ -1332,31 +1335,21 @@ const renderAllUsersJaizaTable = () => {
                     <td class="p-3 font-bold urdu-font text-teal-800 border-r">${jamiaName}</td>
                     
                     <td class="p-3 text-center border-r">
-                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Target: ${targets.classes || 0}</div>
+                        <div class="text-[10px] text-gray-500 uppercase">Target: ${targets.classes || 0}</div>
                         <div class="mt-1">${classCountDisplay}</div>
                     </td>
-
                     <td class="p-3 text-center border-r">
-                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Target: ${targets.books || 0}</div>
+                        <div class="text-[10px] text-gray-500 uppercase">Target: ${targets.books || 0}</div>
                         <div class="mt-1">${bookCountDisplay}</div>
                     </td>
-
                     <td class="p-3 text-center border-r">
-                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Target: ${targets.teachers || 0}</div>
+                        <div class="text-[10px] text-gray-500 uppercase">Target: ${targets.teachers || 0}</div>
                         <div class="mt-1">${teacherCountDisplay}</div>
                     </td>
 
-                    <td class="p-3 text-center border-r">
-                        ${percentageDisplay}
-                    </td>
-
-                    <td class="p-3 text-center border-r">
-                        ${statusBadge}
-                    </td>
-
-                    <td class="p-3 text-center">
-                        ${actionBtn}
-                    </td>
+                    <td class="p-3 text-center border-r">${percentageDisplay}</td>
+                    <td class="p-3 text-center border-r">${statusBadge}</td>
+                    <td class="p-3 text-center">${actionBtn}</td>
                 </tr>
             `;
         });
@@ -3858,11 +3851,130 @@ window.viewJaizaDetail = (formIdsString) => {
         modal.classList.add('show');
     }
 };
+        // --- VIEW JAIZA FORM MODAL (Smart Logic) ---
+window.viewJaizaDetail = (userId, jamiaName) => {
+    // 1. Data Fetch karein (Global variables se)
+    // Detailed Forms
+    const detailedForms = typeof fetchedJaizaForms !== 'undefined' 
+        ? fetchedJaizaForms.filter(f => f.createdBy === userId && (f.jamiaId || '').trim().toLowerCase() === jamiaName.trim().toLowerCase())
+        : [];
+
+    // Monthly Report Summary
+    const userReport = fetchedAdminReports.find(r => r.userId === userId);
+    const reportEntry = (userReport && userReport.jaizaReport && userReport.jaizaReport.data)
+        ? userReport.jaizaReport.data.find(e => (e.name || e.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase())
+        : null;
+
+    // 2. Content Generate karein
+    let contentHtml = `<div class="space-y-6">`;
+    let titleStatus = "";
+
+    // CASE A: Agar Detailed Forms hain (Jaiza/Visit with form)
+    if (detailedForms.length > 0) {
+        titleStatus = "(Detailed Form)";
+        detailedForms.forEach((form) => {
+            contentHtml += `
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm relative">
+                    <div class="absolute top-0 right-0 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-bl-lg font-bold">
+                        Detailed Form
+                    </div>
+                    <h3 class="font-bold text-lg text-teal-800 mb-2 border-b pb-1">
+                        Class: <span class="urdu-font">${form.className || 'Unknown'}</span> 
+                        <span class="text-sm text-gray-500 float-right mr-8">Total %: ${form.classPercentage || form.percentage || 0}%</span>
+                    </h3>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm mb-3">
+                        <div><strong>Total Students:</strong> ${form.totalStudents || '-'}</div>
+                        <div><strong>Present:</strong> ${form.presentStudents || '-'}</div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <h4 class="font-semibold text-gray-700 text-xs uppercase">Books Checked:</h4>
+                        ${(form.books || []).map(b => `
+                            <div class="bg-white p-2 rounded border text-sm flex justify-between items-center">
+                                <span>
+                                    <strong class="urdu-font">${b.bookName || '-'}</strong> 
+                                    <span class="text-xs text-gray-500 urdu-font">(${b.teacherName || '-'})</span>
+                                </span>
+                                <span class="font-bold text-blue-600">${b.percentage ? b.percentage.toFixed(1) : 0}%</span>
+                            </div>
+                        `).join('')}
+                        ${(!form.books || form.books.length === 0) ? '<p class="text-xs text-orange-500 italic">Sirf Visit (Koi kitab check nahi hui)</p>' : ''}
+                    </div>
+
+                    <div class="mt-3 text-sm bg-white p-2 rounded border border-gray-100">
+                        <p class="mb-1"><strong class="text-red-600">Kamzoriyan:</strong> <span class="urdu-font block mt-1 text-gray-700">${form.issues || 'N/A'}</span></p>
+                        <p><strong class="text-green-600">Tajaveez:</strong> <span class="urdu-font block mt-1 text-gray-700">${form.suggestions || 'N/A'}</span></p>
+                    </div>
+                </div>
+            `;
+        });
+    } 
+    // CASE B: Agar Detailed Form nahi hai, lekin Report Status hai (Nahi Hua / Visit without form)
+    else if (reportEntry) {
+        titleStatus = "(Status Only)";
+        
+        let statusColor = "text-gray-700";
+        let statusBg = "bg-gray-100";
+        const typeStr = (reportEntry.type || '').toLowerCase();
+        
+        if (typeStr.includes('nahi hua') || reportEntry.status === 'Pending') {
+            statusColor = "text-red-700";
+            statusBg = "bg-red-50";
+        } else if (reportEntry.status === 'Done') {
+            statusColor = "text-green-700";
+            statusBg = "bg-green-50";
+        }
+
+        contentHtml += `
+            <div class="bg-white p-6 rounded-lg border border-gray-200 text-center shadow-sm">
+                <div class="mb-4">
+                    <i class="fas fa-info-circle text-4xl text-gray-300"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-2">Detailed Jaiza Form Nahi Mila</h3>
+                <p class="text-sm text-gray-500 mb-6">User ne detailed form fill nahi kiya, lekin Monthly Report mein darj zel status bheja hai:</p>
+                
+                <div class="inline-block text-left bg-gray-50 p-4 rounded border border-gray-200 min-w-[300px]">
+                    <div class="flex justify-between mb-2 pb-2 border-b">
+                        <span class="text-gray-600 font-semibold">Status:</span>
+                        <span class="font-bold ${statusColor} bg-white px-2 py-0.5 rounded border shadow-sm">${reportEntry.type || reportEntry.status || 'N/A'}</span>
+                    </div>
+                    <div class="flex justify-between mb-2">
+                        <span class="text-gray-600 font-semibold">Percentage:</span>
+                        <span class="font-bold text-gray-800">${reportEntry.percentage || '0'}%</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600 font-semibold">Date:</span>
+                        <span class="font-bold text-gray-800">${reportEntry.date || '-'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        contentHtml += `<p class="text-center text-red-500 py-4">Koi record nahi mila.</p>`;
+    }
+    
+    contentHtml += `</div>`;
+
+    // Modal UI Update
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-content'); 
+    
+    if(modalTitle) modalTitle.innerHTML = `Jaiza Form: <span class="urdu-font text-teal-700">${jamiaName}</span> <span class="text-xs text-gray-400">${titleStatus}</span>`;
+    if(modalBody) modalBody.innerHTML = contentHtml;
+    
+    const modal = document.getElementById('report-modal');
+    if(modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('show');
+    }
+};
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
