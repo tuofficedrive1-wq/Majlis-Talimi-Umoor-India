@@ -4522,7 +4522,7 @@ const getAdminGradeColor = (grade) => {
     if (grade === "Maqbul") return "grade-maqbul"; 
     return "grade-nakam"; 
 };
-        // --- RENDER KKD ANALYSIS TABLE (With Smart Class Lookup) ---
+        // --- RENDER KKD ANALYSIS TABLE (With Exact Color/Kaifiyat Logic) ---
 const renderKKdAnalysisTable = () => {
     const container = document.getElementById('analysis-report-container');
     
@@ -4530,7 +4530,14 @@ const renderKKdAnalysisTable = () => {
     const monthName = document.getElementById('admin-month-select').value;
     const yearVal = parseInt(document.getElementById('admin-year-select').value);
 
-    // Filter Reports
+    // 1. Month Index Nikalein (Logic lagane ke liye zaroori hai)
+    const monthsMap = {
+        "January": 0, "February": 1, "March": 2, "April": 3, "May": 4, "June": 5,
+        "July": 6, "August": 7, "September": 8, "October": 9, "November": 10, "December": 11
+    };
+    const currentMonthNum = monthsMap[monthName];
+
+    // 2. Filter Reports
     const filteredReports = fetchedAdminReports.filter(r => 
         r.month === monthName && r.year === yearVal
     );
@@ -4550,40 +4557,77 @@ const renderKKdAnalysisTable = () => {
         const zimmedarName = user ? (user.name || user.email) : 'Unknown';
         const region = user ? (user.region || '-') : '-';
         
-        // Structure for Lookup (Backup agar class name na mile)
+        // Structure Lookup for Class Name (Previous logic)
         const activeYearKey = report.academicYear; 
         const structure = (user && user.academicYears && user.academicYears[activeYearKey]) 
                           ? user.academicYears[activeYearKey].karkardagiStructure 
                           : [];
 
         kkdData.forEach(item => {
-            // --- SMART LOOKUP FOR CLASS NAME ---
+            // Find Class Name if missing
             let finalClassName = item.className || item.class || '-';
-            
-            // Agar report me class name nahi hai, to Period ID se structure me dhoondo
             if ((!finalClassName || finalClassName === '-') && item.periodId && structure.length > 0) {
-                // Find Jamia
                 const jamiaStruct = structure.find(j => j.jamiaName === (item.jamiaName || item.jamiaId));
                 if (jamiaStruct) {
-                    // Find Teacher
                     const teacherStruct = jamiaStruct.teachers?.find(t => t.id === item.teacherId);
                     if (teacherStruct) {
-                        // Find Period
                         const periodStruct = teacherStruct.periods?.find(p => p.id === item.periodId);
-                        if (periodStruct) {
-                            finalClassName = periodStruct.className; // Mil gaya!
-                        }
+                        if (periodStruct) finalClassName = periodStruct.className;
                     }
                 }
             }
-            // -----------------------------------
+
+            // --- EXACT COLOR & KAIFIYAT LOGIC START ---
+            
+            // 1. Determine Semester (1: Apr-Aug, 2: Sep-Jan)
+            const semester = (currentMonthNum >= 3 && currentMonthNum <= 7) ? "1" : "2";
+            
+            // 2. Determine Month Number in Semester (1st, 2nd, 3rd, etc.)
+            const sem1Months = [3, 4, 5, 6, 7]; // Apr to Aug
+            const sem2Months = [8, 9, 10, 11, 0]; // Sep to Jan
+            const monthsList = semester === "1" ? sem1Months : sem2Months;
+            const semMonthIndex = monthsList.indexOf(currentMonthNum) + 1; // 1-based index
+
+            // 3. Calculate Kaifiyat (Based on Teacher File Logic)
+            const achievement = parseFloat(item.achievement || 0);
+            let calculatedKaifiyat = "Munasib";
+            let colorClass = "text-red-600 font-bold"; // Default Red
+
+            // Thresholds Logic
+            if (semMonthIndex === 1) { // Pehla Mahina
+                if (achievement >= 70) calculatedKaifiyat = "Mumtaz";
+                else if (achievement >= 60) calculatedKaifiyat = "Behtar";
+            } else if (semMonthIndex === 2) { // Dusra Mahina
+                if (achievement >= 80) calculatedKaifiyat = "Mumtaz";
+                else if (achievement >= 70) calculatedKaifiyat = "Behtar";
+            } else if (semMonthIndex >= 3 && semMonthIndex < 5) { // Teesra/Chautha
+                if (achievement >= 100) calculatedKaifiyat = "Mumtaz";
+                else if (achievement >= 90) calculatedKaifiyat = "Behtar";
+            } else if (semMonthIndex === 5) { // Aakhri Mahina
+                if (achievement >= 90) calculatedKaifiyat = "Mumtaz";
+                else if (achievement >= 80) calculatedKaifiyat = "Behtar";
+            }
+
+            // Over-achievement Adjustment
+            if (calculatedKaifiyat === "Mumtaz") {
+                if (achievement > 150) calculatedKaifiyat = "Munasib";
+                else if (achievement >= 121) calculatedKaifiyat = "Behtar";
+            }
+
+            // Assign Colors based on Final Kaifiyat
+            if (calculatedKaifiyat === "Mumtaz") colorClass = "text-emerald-600 font-bold"; // Green
+            else if (calculatedKaifiyat === "Behtar") colorClass = "text-blue-600 font-bold"; // Blue
+            else colorClass = "text-red-600 font-bold"; // Red
+
+            // ------------------------------------------
 
             allEntries.push({
                 jamiaName: item.jamiaName || item.jamiaId || 'Unknown',
                 region: region,
                 zimmedar: zimmedarName,
-                className: finalClassName, // Updated Class Name
-                kaifiyat: item.kaifiyat || item.remarks || '-',
+                className: finalClassName,
+                kaifiyat: calculatedKaifiyat, // Computed Kaifiyat
+                colorClass: colorClass,       // Computed Color
                 teacherName: item.teacherName || '-',
                 bookName: item.bookName || '-',
                 target: item.monthlyTarget || 0,
@@ -4603,31 +4647,19 @@ const renderKKdAnalysisTable = () => {
 
     // Generate HTML Rows
     allEntries.forEach((row) => {
-        let achColor = 'text-gray-700';
-        let bgClass = '';
-        const ach = parseFloat(row.achievement);
-        
-        // Kaifiyat Color Logic
-        let kaiColor = 'text-gray-600';
-        if (row.kaifiyat === 'Mumtaz') kaiColor = 'text-green-700 font-bold';
-        if (row.kaifiyat === 'Behtar') kaiColor = 'text-blue-600 font-bold';
-        if (row.kaifiyat === 'Munasib') kaiColor = 'text-red-600 font-bold';
-
-        if (ach >= 100) { achColor = 'text-green-700 font-bold'; bgClass = 'bg-green-50'; }
-        else if (ach >= 80) { achColor = 'text-teal-600 font-bold'; }
-        else if (ach < 50) { achColor = 'text-red-600 font-bold'; bgClass = 'bg-red-50'; }
-
         rowsHtml += `
-            <tr class="border-b hover:bg-gray-50 text-sm ${bgClass}">
+            <tr class="border-b hover:bg-gray-50 text-sm">
                 <td class="p-3 text-gray-500 border-r text-center">${count++}</td>
                 <td class="p-3 font-bold text-teal-800 border-r urdu-font">${row.jamiaName}</td>
                 <td class="p-3 text-gray-600 border-r urdu-font">${row.region}</td>
-                <td class="p-3 text-center font-bold bg-gray-100 border-r urdu-font text-indigo-700">${row.className}</td> <td class="p-3 text-gray-800 border-r urdu-font">${row.teacherName}</td>
+                <td class="p-3 text-center font-bold bg-gray-50 border-r urdu-font text-indigo-700">${row.className}</td>
+                <td class="p-3 text-gray-800 border-r urdu-font">${row.teacherName}</td>
                 <td class="p-3 text-blue-700 border-r font-semibold urdu-font">${row.bookName}</td>
                 <td class="p-3 text-center border-r font-mono">${row.target}</td>
                 <td class="p-3 text-center border-r font-mono">${row.taught}</td>
-                <td class="p-3 text-center border-r ${achColor}">${row.achievement}%</td>
-                <td class="p-3 text-center urdu-font ${kaiColor}">${row.kaifiyat}</td>
+                
+                <td class="p-3 text-center border-r ${row.colorClass}">${row.achievement}%</td>
+                <td class="p-3 text-center urdu-font ${row.colorClass}">${row.kaifiyat}</td>
             </tr>
         `;
     });
@@ -4646,7 +4678,7 @@ const renderKKdAnalysisTable = () => {
                             <th class="p-3 border-r border-teal-600 w-10">#</th>
                             <th class="p-3 border-r border-teal-600 text-left">Jamia Name</th>
                             <th class="p-3 border-r border-teal-600 text-left">Region</th>
-                            <th class="p-3 border-r border-teal-600 text-center bg-teal-800">Class</th>
+                            <th class="p-3 border-r border-teal-600 text-center">Class</th>
                             <th class="p-3 border-r border-teal-600 text-left">Teacher</th>
                             <th class="p-3 border-r border-teal-600 text-left">Kitab (Book)</th>
                             <th class="p-3 border-r border-teal-600 text-center">Target</th>
@@ -4668,6 +4700,7 @@ const renderKKdAnalysisTable = () => {
     </script>
 </body>
 </html>
+
 
 
 
