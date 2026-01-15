@@ -3842,106 +3842,103 @@ const handleAnalysisExcelDownload = async () => {
         // CASE 3: MONTHLY TEST SUMMARY
         // ============================================================
         else if (reportType === 'test-all' || reportType === 'test-asri') {
-            const sheetsRef = collection(db, "monthly_test_sheets");
-            const q = query(sheetsRef, where("month", "==", monthKey));
-            const snapshot = await getDocs(q);
-            const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const groupedData = {};
+    const sheetsRef = collection(db, "monthly_test_sheets");
+    const q = query(sheetsRef, where("month", "==", monthKey));
+    const snapshot = await getDocs(q);
+    const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            allSheets.forEach(sheet => {
-                 const sub = sheet.subject || sheet.sub || sheet.kitab || '';
-                 const isAsri = sub.toLowerCase().match(/english|math|hisab|science|hindi/);
-                 if (reportType === 'test-asri' && !isAsri) return;
-
-                 const jamiaName = (sheet.jamiaName || 'Unknown').trim();
-                 const className = (sheet.className || 'Unknown').toString().trim();
-                 const key = `${jamiaName}_${className}`;
-                 
-                 if (!groupedData[key]) {
-                     const u = allUsersData.find(u => u.id === sheet.adminUid);
-                     groupedData[key] = {
-                         jamia: jamiaName, 
-                         zimmedar: u ? (u.name || u.email) : 'Unknown',
-                         class: className,
-                         students: 0, pass: 0, fail: 0, absent: 0, marksObt: 0, marksTot: 0
-                     };
-                 }
-                 // ... (Calculation logic same as before)
-                 if (Array.isArray(sheet.students)) {
-                     sheet.students.forEach(std => {
-                         groupedData[key].students++;
-                         const obt = Number(std.obtainedMarks) || 0;
-                         const max = Number(std.totalMarks) || 100;
-                         const isAbsent = (!std.obtainedMarks && std.obtainedMarks !== 0) || String(std.obtainedMarks).toLowerCase().includes('a');
-                         
-                         if(isAbsent) groupedData[key].absent++;
-                         else {
-                             groupedData[key].marksObt += obt;
-                             groupedData[key].marksTot += max;
-                             if((obt/max)*100 < 40) groupedData[key].fail++;
-                         }
-                     });
-                 }
-            });
-
-            let count = 1;
-            Object.values(groupedData).sort((a,b)=> a.jamia.localeCompare(b.jamia)).forEach(g => {
-                g.pass = g.students - (g.absent + g.fail);
-                let avg = g.marksTot > 0 ? ((g.marksObt / g.marksTot) * 100).toFixed(1) + '%' : '0%';
-                excelRows.push({
-                    "Sr No": count++,
-                    "Jamia Name": g.jamia, "Zimmedar": g.zimmedar, "Class": g.class,
-                    "Total": g.students, "Pass": g.pass, "Fail": g.fail, "Absent": g.absent, "Avg %": avg
-                });
-            });
+    // Sorting by Jamia then Class
+    allSheets.sort((a, b) => {
+        const jNameA = (a.jamiaName || '').trim();
+        const jNameB = (b.jamiaName || '').trim();
+        if (jNameA === jNameB) {
+            return (a.class || a.className || '').localeCompare(b.class || b.className || '');
         }
-        else if (reportType === 'structure-list') {
-            fileName = `Structure_List_All_Jamia.xlsx`;
-            let count = 1;
+        return jNameA.localeCompare(jNameB);
+    });
 
-            allUsersData.forEach(user => {
-                if (user.id === ADMIN_UID) return;
-                
-                const academicYears = user.academicYears || {};
-                const yearKeys = Object.keys(academicYears).sort().reverse();
-                const currentYearKey = yearKeys[0];
-                if (!currentYearKey) return;
+    let count = 1;
 
-                const structure = academicYears[currentYearKey].karkardagiStructure || [];
+    allSheets.forEach(sheet => {
+        const jamiaName = (sheet.jamiaName || 'Unknown').trim();
+        const className = sheet.class || sheet.className || 'Unknown';
+        const u = allUsersData.find(u => u.id === sheet.adminUid);
+        const zimmedarName = u ? (u.name || u.email) : 'Unknown';
+        const region = u ? (u.region || '-') : '-';
 
-                structure.forEach(jamia => {
-                    const teachers = Array.isArray(jamia.teachers) ? jamia.teachers : [];
-                    if (teachers.length === 0) {
-                        excelRows.push({
-                            "Sr No": count++, "Region": user.region || '-', "Jamia Name": jamia.jamiaName || 'Unknown',
-                            "Zimmedar": user.name || '-', "Teacher": "No Teachers", "Class": "-", "Book": "-"
+        const students = sheet.students || [];
+        if (students.length === 0) return;
+
+        let clsTotal = students.length;
+        let clsPresent = 0, clsPass = 0, clsFail = 0;
+        let includeClass = false;
+
+        students.forEach(std => {
+            const marksKeys = Object.keys(std.marks);
+            const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
+
+            // --- REUSING LOGIC FOR ACCURACY ---
+            if (reportType === 'test-all') {
+                if (!isFullAbsent) {
+                    includeClass = true; clsPresent++;
+                    let isFailMain = false;
+                    if (parseFloat(std.percentage) < 40) isFailMain = true;
+                    if (!isFailMain && (sheet.subjects || []).some(sub => std.marks[sub] === 'A')) isFailMain = true;
+                    if (!isFailMain) {
+                        let subjectFailCount = 0;
+                        (sheet.subjects || []).forEach(sub => {
+                            const subLow = sub.toLowerCase();
+                            const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
+                            const passMarks = max * 0.40;
+                            const m = std.marks[sub];
+                            if (typeof m === 'number' && m < passMarks) subjectFailCount++;
                         });
-                    } else {
-                        teachers.forEach(teacher => {
-                            const periods = Array.isArray(teacher.periods) ? teacher.periods : [];
-                            if (periods.length === 0) {
-                                excelRows.push({
-                                    "Sr No": count++, "Region": user.region || '-', "Jamia Name": jamia.jamiaName || 'Unknown',
-                                    "Zimmedar": user.name || '-', "Teacher": teacher.name || 'Unknown', "Class": "-", "Book": "No Books"
-                                });
-                            } else {
-                                periods.forEach(period => {
-                                    excelRows.push({
-                                        "Sr No": count++,
-                                        "Region": user.region || '-',
-                                        "Jamia Name": jamia.jamiaName || 'Unknown',
-                                        "Zimmedar": user.name || '-',
-                                        "Teacher": teacher.name || 'Unknown',
-                                        "Class": period.className || '-',
-                                        "Book": period.bookName || '-'
-                                    });
-                                });
-                            }
-                        });
+                        if (subjectFailCount >= 3) isFailMain = true;
                     }
-                });
+                    if (isFailMain) clsFail++; else clsPass++;
+                }
+            } 
+            else if (reportType === 'test-asri') {
+                let engMark = std.marks['English'];
+                let mathMark = std.marks['Maths'];
+                if (engMark !== undefined || mathMark !== undefined) {
+                    let asriFullAbsent = false;
+                    if (engMark !== undefined && mathMark !== undefined) {
+                        if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
+                    } else if (engMark === 'A' || mathMark === 'A') asriFullAbsent = true;
+
+                    if (!asriFullAbsent) {
+                        includeClass = true; clsPresent++;
+                        let isFailAsri = false;
+                        if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                        if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                        if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                        if (isFailAsri) clsFail++; else clsPass++;
+                    }
+                }
+            }
+        });
+
+        if (includeClass) {
+            let perc = clsPresent > 0 ? ((clsPass / clsPresent) * 100).toFixed(1) + '%' : "0.0%";
+            let grade = getAdminSummaryGrade(parseFloat(perc));
+
+            excelRows.push({
+                "Sr No": count++,
+                "Jamia Name": jamiaName,
+                "Region": region,
+                "Zimmedar": zimmedarName,
+                "Class": className,
+                "Total Students": clsTotal,
+                "Present": clsPresent,
+                "Pass": clsPass,
+                "Fail": clsFail,
+                "Percentage": perc,
+                "Grade": grade
             });
         }
+    });
+}
 
         // --- STYLING LOGIC START ---
         if (excelRows.length === 0) {
@@ -4262,7 +4259,7 @@ window.viewJaizaDetail = (userId, jamiaName) => {
         modal.classList.add('show');
     }
 };
-        // --- EXACT REPLICA OF TEACHER SUMMARY FOR ADMIN ---
+        // --- EXACT REPLICA OF TEACHER SUMMARY FOR ADMIN (UPDATED) ---
 const renderExactResultSummary = (allSheets, reportType) => {
     const container = document.getElementById('analysis-report-container');
     
@@ -4292,35 +4289,34 @@ const renderExactResultSummary = (allSheets, reportType) => {
         let hasDataForTable = false;
 
         // Sort Classes (Optional)
-        sheets.sort((a, b) => (a.className || '').localeCompare(b.className || ''));
+        // 🟢 FIX 1: Class Name sahi field se uthana (class ya className)
+        sheets.sort((a, b) => (a.class || a.className || '').localeCompare(b.class || b.className || ''));
 
         sheets.forEach(sheet => {
             const students = sheet.students || [];
             if (students.length === 0) return;
+
+            // 🟢 FIX 1: Class Name yahan fix kiya
+            const displayClassName = sheet.class || sheet.className || 'Unknown Class';
 
             let clsTotal = students.length;
             let clsPresent = 0, clsPass = 0, clsFail = 0;
             let includeClass = false;
 
             students.forEach(std => {
-                // --- LOGIC START (Copied from Monthly-Test.html) ---
+                // --- LOGIC START ---
                 const marksKeys = Object.keys(std.marks);
                 const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
 
                 if (reportType === 'test-all') {
-                    // MAIN SUMMARY LOGIC
                     if (!isFullAbsent) {
-                        includeClass = true; // Data hai
+                        includeClass = true; 
                         clsPresent++;
                         let isFailMain = false;
                         
-                        // Rule 1: Percentage < 40
                         if (parseFloat(std.percentage) < 40) isFailMain = true;
-                        
-                        // Rule 2: Partial Absent ('A' in any subject)
                         if (!isFailMain && (sheet.subjects || []).some(sub => std.marks[sub] === 'A')) isFailMain = true;
                         
-                        // Rule 3: Fail in 3 Subjects
                         if (!isFailMain) {
                             let subjectFailCount = 0;
                             (sheet.subjects || []).forEach(sub => {
@@ -4337,17 +4333,14 @@ const renderExactResultSummary = (allSheets, reportType) => {
                     }
                 } 
                 else if (reportType === 'test-asri') {
-                    // ASRI SUMMARY LOGIC
                     let engMark = std.marks['English'];
                     let mathMark = std.marks['Maths'];
                     
-                    // Asri Subject hona zaroori hai
                     if (engMark !== undefined || mathMark !== undefined) {
                         let asriFullAbsent = false;
                         if (engMark !== undefined && mathMark !== undefined) {
                             if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
                         } else if (engMark === 'A' || mathMark === 'A') {
-                             // Agar ek hi hai aur wo absent hai to full absent
                              asriFullAbsent = true; 
                         }
 
@@ -4355,12 +4348,9 @@ const renderExactResultSummary = (allSheets, reportType) => {
                             includeClass = true;
                             clsPresent++;
                             let isFailAsri = false;
-                            
-                            // Asri Rules
                             if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
                             if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
                             if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
-                            
                             if (isFailAsri) clsFail++; else clsPass++;
                         }
                     }
@@ -4373,13 +4363,12 @@ const renderExactResultSummary = (allSheets, reportType) => {
                 let perc = clsPresent > 0 ? ((clsPass / clsPresent) * 100).toFixed(1) : "0.0";
                 let grade = getAdminSummaryGrade(perc);
                 
-                // Add to Grand Totals
                 gTotal += clsTotal; gPresent += clsPresent; gPass += clsPass; gFail += clsFail;
 
                 rowsHtml += `
                     <tr class="border-b hover:bg-gray-50 text-center text-sm">
                         <td class="p-2 border-r">${sn++}</td>
-                        <td class="p-2 border-r text-left font-semibold text-gray-700">${sheet.className || 'Unknown'}</td>
+                        <td class="p-2 border-r text-left font-semibold text-gray-700">${displayClassName}</td>
                         <td class="p-2 border-r">${clsTotal}</td>
                         <td class="p-2 border-r">${clsPresent}</td>
                         <td class="p-2 border-r text-green-700 font-bold bg-green-50">${clsPass}</td>
@@ -4391,7 +4380,6 @@ const renderExactResultSummary = (allSheets, reportType) => {
             }
         });
 
-        // Agar is Jamia ka koi result bana hai to Table dikhayein
         if (hasDataForTable) {
             let gPerc = gPresent > 0 ? ((gPass / gPresent) * 100).toFixed(2) : "0.00";
             
@@ -4460,72 +4448,3 @@ const getAdminGradeColor = (grade) => {
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
