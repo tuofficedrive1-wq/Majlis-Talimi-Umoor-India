@@ -414,6 +414,12 @@
     font-size: 0.8rem;
     margin: 2px;
 }
+        /* Grades Colors for Analysis Table */
+.grade-mumtaz-sharf { background-color: #15803d; color: white; } 
+.grade-mumtaz { background-color: #22c55e; color: white; } 
+.grade-jayyid { background-color: #eab308; color: white; } 
+.grade-maqbul { background-color: #f97316; color: white; } 
+.grade-nakam { background-color: #ef4444; color: white; }
     
     </style>
 </head>
@@ -1197,36 +1203,28 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
         }
     }
     
-    // 3. MONTHLY TEST (All Subjects OR Asri)
+   // 3. MONTHLY TEST (Updated Logic)
     else if (reportType === 'test-all' || reportType === 'test-asri') {
         try {
-            // Month aur Year select karein
             const monthName = document.getElementById('admin-month-select').value;
             const yearVal = document.getElementById('admin-year-select').value;
-            
-            // Month Index nikalein (e.g. January -> 01)
             const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
             const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-            // Database se Sheets layein
             const sheetsRef = collection(db, "monthly_test_sheets");
             const q = query(sheetsRef, where("month", "==", monthKey));
             
             const snapshot = await getDocs(q);
             const allTestSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // --- MAIN POINT: Mode Check ---
-            // Agar dropdown me 'test-asri' select hai to mode 'asri' hoga, warna 'all'
-            const filterMode = (reportType === 'test-asri') ? 'asri' : 'all';
-            
-            // Function call karein (Jo maine pichle jawab me diya tha)
-            renderAllUsersMonthlyTestTable(allTestSheets, filterMode);
+            // NAYA FUNCTION CALL KAREIN
+            renderExactResultSummary(allTestSheets, reportType);
 
         } catch (err) {
             console.error(err);
             container.innerHTML = `<p class="text-center text-red-500 py-10">Error loading test data: ${err.message}</p>`;
         }
-    } 
+    }
         // 👇 YE BLOCK ADD KAREIN 👇
     else if (reportType === 'structure-list') {
         renderAllJamiaStructureList();
@@ -4264,11 +4262,205 @@ window.viewJaizaDetail = (userId, jamiaName) => {
         modal.classList.add('show');
     }
 };
+        // --- EXACT REPLICA OF TEACHER SUMMARY FOR ADMIN ---
+const renderExactResultSummary = (allSheets, reportType) => {
+    const container = document.getElementById('analysis-report-container');
+    
+    if (allSheets.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-10">Is mahine ka koi data nahi mila.</p>`;
+        return;
+    }
+
+    // 1. Group Data by Jamia
+    const jamiaGroups = {};
+    allSheets.forEach(sheet => {
+        const jName = (sheet.jamiaName || 'Unknown').trim();
+        if (!jamiaGroups[jName]) jamiaGroups[jName] = [];
+        jamiaGroups[jName].push(sheet);
+    });
+
+    let finalHtml = '';
+
+    // 2. Loop Through Each Jamia
+    Object.keys(jamiaGroups).sort().forEach(jamiaName => {
+        const sheets = jamiaGroups[jamiaName];
+        
+        let rowsHtml = '';
+        let sn = 1;
+        // Jamia Totals
+        let gTotal = 0, gPresent = 0, gPass = 0, gFail = 0;
+        let hasDataForTable = false;
+
+        // Sort Classes (Optional)
+        sheets.sort((a, b) => (a.className || '').localeCompare(b.className || ''));
+
+        sheets.forEach(sheet => {
+            const students = sheet.students || [];
+            if (students.length === 0) return;
+
+            let clsTotal = students.length;
+            let clsPresent = 0, clsPass = 0, clsFail = 0;
+            let includeClass = false;
+
+            students.forEach(std => {
+                // --- LOGIC START (Copied from Monthly-Test.html) ---
+                const marksKeys = Object.keys(std.marks);
+                const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
+
+                if (reportType === 'test-all') {
+                    // MAIN SUMMARY LOGIC
+                    if (!isFullAbsent) {
+                        includeClass = true; // Data hai
+                        clsPresent++;
+                        let isFailMain = false;
+                        
+                        // Rule 1: Percentage < 40
+                        if (parseFloat(std.percentage) < 40) isFailMain = true;
+                        
+                        // Rule 2: Partial Absent ('A' in any subject)
+                        if (!isFailMain && (sheet.subjects || []).some(sub => std.marks[sub] === 'A')) isFailMain = true;
+                        
+                        // Rule 3: Fail in 3 Subjects
+                        if (!isFailMain) {
+                            let subjectFailCount = 0;
+                            (sheet.subjects || []).forEach(sub => {
+                                const subLow = sub.toLowerCase();
+                                const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
+                                const passMarks = max * 0.40;
+                                const m = std.marks[sub];
+                                if (typeof m === 'number' && m < passMarks) subjectFailCount++;
+                            });
+                            if (subjectFailCount >= 3) isFailMain = true;
+                        }
+                        
+                        if (isFailMain) clsFail++; else clsPass++;
+                    }
+                } 
+                else if (reportType === 'test-asri') {
+                    // ASRI SUMMARY LOGIC
+                    let engMark = std.marks['English'];
+                    let mathMark = std.marks['Maths'];
+                    
+                    // Asri Subject hona zaroori hai
+                    if (engMark !== undefined || mathMark !== undefined) {
+                        let asriFullAbsent = false;
+                        if (engMark !== undefined && mathMark !== undefined) {
+                            if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
+                        } else if (engMark === 'A' || mathMark === 'A') {
+                             // Agar ek hi hai aur wo absent hai to full absent
+                             asriFullAbsent = true; 
+                        }
+
+                        if (!asriFullAbsent) {
+                            includeClass = true;
+                            clsPresent++;
+                            let isFailAsri = false;
+                            
+                            // Asri Rules
+                            if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                            
+                            if (isFailAsri) clsFail++; else clsPass++;
+                        }
+                    }
+                }
+                // --- LOGIC END ---
+            });
+
+            if (includeClass) {
+                hasDataForTable = true;
+                let perc = clsPresent > 0 ? ((clsPass / clsPresent) * 100).toFixed(1) : "0.0";
+                let grade = getAdminSummaryGrade(perc);
+                
+                // Add to Grand Totals
+                gTotal += clsTotal; gPresent += clsPresent; gPass += clsPass; gFail += clsFail;
+
+                rowsHtml += `
+                    <tr class="border-b hover:bg-gray-50 text-center text-sm">
+                        <td class="p-2 border-r">${sn++}</td>
+                        <td class="p-2 border-r text-left font-semibold text-gray-700">${sheet.className || 'Unknown'}</td>
+                        <td class="p-2 border-r">${clsTotal}</td>
+                        <td class="p-2 border-r">${clsPresent}</td>
+                        <td class="p-2 border-r text-green-700 font-bold bg-green-50">${clsPass}</td>
+                        <td class="p-2 border-r text-red-600 font-bold bg-red-50">${clsFail}</td>
+                        <td class="p-2 border-r font-bold">${perc}%</td>
+                        <td class="p-2"><span class="${getAdminGradeColor(grade)} px-2 py-1 rounded text-xs text-white shadow-sm">${grade}</span></td>
+                    </tr>
+                `;
+            }
+        });
+
+        // Agar is Jamia ka koi result bana hai to Table dikhayein
+        if (hasDataForTable) {
+            let gPerc = gPresent > 0 ? ((gPass / gPresent) * 100).toFixed(2) : "0.00";
+            
+            finalHtml += `
+                <div class="bg-white rounded-lg shadow border border-gray-200 mb-8 overflow-hidden">
+                    <div class="bg-teal-700 text-white p-3 flex justify-between items-center">
+                        <h3 class="font-bold text-lg urdu-font">${jamiaName}</h3>
+                        <span class="text-xs bg-teal-800 px-2 py-1 rounded">Overall: ${getAdminSummaryGrade(gPerc)}</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead class="bg-teal-50 text-teal-900 uppercase text-xs font-bold">
+                                <tr>
+                                    <th class="p-2 border w-12">#</th>
+                                    <th class="p-2 border text-left">Class</th>
+                                    <th class="p-2 border">Total</th>
+                                    <th class="p-2 border">Present</th>
+                                    <th class="p-2 border">Pass</th>
+                                    <th class="p-2 border">Fail</th>
+                                    <th class="p-2 border">Percent</th>
+                                    <th class="p-2 border">Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                            <tfoot class="bg-gray-100 font-bold text-sm text-center border-t-2 border-gray-300">
+                                <tr>
+                                    <td colspan="2" class="p-2 border-r text-right">Grand Total</td>
+                                    <td class="p-2 border-r">${gTotal}</td>
+                                    <td class="p-2 border-r">${gPresent}</td>
+                                    <td class="p-2 border-r text-green-700">${gPass}</td>
+                                    <td class="p-2 border-r text-red-600">${gFail}</td>
+                                    <td class="p-2 border-r">${gPerc}%</td>
+                                    <td class="p-2">${getAdminSummaryGrade(gPerc)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    container.innerHTML = finalHtml || '<p class="text-center text-gray-500 py-10">Data mila lekin calculation ke hisab se khali hai.</p>';
+};
+
+// --- HELPER FUNCTIONS (Teacher File Wale) ---
+const getAdminSummaryGrade = (perc) => { 
+    const p = parseFloat(perc); 
+    if (p >= 80) return "Mumtaz"; 
+    if (p >= 70) return "Jayyid Jiddan"; 
+    if (p >= 60) return "Jayyid"; 
+    if (p >= 50) return "Maqbul"; 
+    if (p >= 40) return "Pass"; 
+    return "Kamzoor"; 
+};
+
+const getAdminGradeColor = (grade) => { 
+    if (grade === "Mumtaz") return "grade-mumtaz"; 
+    if (grade === "Jayyid Jiddan") return "grade-mumtaz"; // Using similar green
+    if (grade === "Jayyid") return "grade-jayyid"; 
+    if (grade === "Maqbul") return "grade-maqbul"; 
+    return "grade-nakam"; 
+};
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
