@@ -4522,7 +4522,7 @@ const getAdminGradeColor = (grade) => {
     if (grade === "Maqbul") return "grade-maqbul"; 
     return "grade-nakam"; 
 };
-        // --- RENDER KKD ANALYSIS TABLE (UPDATED WITH CLASS & KAIFIYAT) ---
+        // --- RENDER KKD ANALYSIS TABLE (With Smart Class Lookup) ---
 const renderKKdAnalysisTable = () => {
     const container = document.getElementById('analysis-report-container');
     
@@ -4549,16 +4549,41 @@ const renderKKdAnalysisTable = () => {
         const user = allUsersData.find(u => u.id === report.userId);
         const zimmedarName = user ? (user.name || user.email) : 'Unknown';
         const region = user ? (user.region || '-') : '-';
+        
+        // Structure for Lookup (Backup agar class name na mile)
+        const activeYearKey = report.academicYear; 
+        const structure = (user && user.academicYears && user.academicYears[activeYearKey]) 
+                          ? user.academicYears[activeYearKey].karkardagiStructure 
+                          : [];
 
         kkdData.forEach(item => {
+            // --- SMART LOOKUP FOR CLASS NAME ---
+            let finalClassName = item.className || item.class || '-';
+            
+            // Agar report me class name nahi hai, to Period ID se structure me dhoondo
+            if ((!finalClassName || finalClassName === '-') && item.periodId && structure.length > 0) {
+                // Find Jamia
+                const jamiaStruct = structure.find(j => j.jamiaName === (item.jamiaName || item.jamiaId));
+                if (jamiaStruct) {
+                    // Find Teacher
+                    const teacherStruct = jamiaStruct.teachers?.find(t => t.id === item.teacherId);
+                    if (teacherStruct) {
+                        // Find Period
+                        const periodStruct = teacherStruct.periods?.find(p => p.id === item.periodId);
+                        if (periodStruct) {
+                            finalClassName = periodStruct.className; // Mil gaya!
+                        }
+                    }
+                }
+            }
+            // -----------------------------------
+
             allEntries.push({
                 jamiaName: item.jamiaName || item.jamiaId || 'Unknown',
                 region: region,
                 zimmedar: zimmedarName,
-                // 👇 NEW FIELDS ADDED
-                className: item.className || item.class || '-', 
+                className: finalClassName, // Updated Class Name
                 kaifiyat: item.kaifiyat || item.remarks || '-',
-                
                 teacherName: item.teacherName || '-',
                 bookName: item.bookName || '-',
                 target: item.monthlyTarget || 0,
@@ -4582,6 +4607,12 @@ const renderKKdAnalysisTable = () => {
         let bgClass = '';
         const ach = parseFloat(row.achievement);
         
+        // Kaifiyat Color Logic
+        let kaiColor = 'text-gray-600';
+        if (row.kaifiyat === 'Mumtaz') kaiColor = 'text-green-700 font-bold';
+        if (row.kaifiyat === 'Behtar') kaiColor = 'text-blue-600 font-bold';
+        if (row.kaifiyat === 'Munasib') kaiColor = 'text-red-600 font-bold';
+
         if (ach >= 100) { achColor = 'text-green-700 font-bold'; bgClass = 'bg-green-50'; }
         else if (ach >= 80) { achColor = 'text-teal-600 font-bold'; }
         else if (ach < 50) { achColor = 'text-red-600 font-bold'; bgClass = 'bg-red-50'; }
@@ -4591,12 +4622,13 @@ const renderKKdAnalysisTable = () => {
                 <td class="p-3 text-gray-500 border-r text-center">${count++}</td>
                 <td class="p-3 font-bold text-teal-800 border-r urdu-font">${row.jamiaName}</td>
                 <td class="p-3 text-gray-600 border-r urdu-font">${row.region}</td>
-                <td class="p-3 text-center font-bold bg-gray-50 border-r urdu-font">${row.className}</td> <td class="p-3 text-gray-800 border-r urdu-font">${row.teacherName}</td>
+                <td class="p-3 text-center font-bold bg-gray-100 border-r urdu-font text-indigo-700">${row.className}</td> <td class="p-3 text-gray-800 border-r urdu-font">${row.teacherName}</td>
                 <td class="p-3 text-blue-700 border-r font-semibold urdu-font">${row.bookName}</td>
                 <td class="p-3 text-center border-r font-mono">${row.target}</td>
                 <td class="p-3 text-center border-r font-mono">${row.taught}</td>
                 <td class="p-3 text-center border-r ${achColor}">${row.achievement}%</td>
-                <td class="p-3 text-sm text-gray-600 urdu-font">${row.kaifiyat}</td> </tr>
+                <td class="p-3 text-center urdu-font ${kaiColor}">${row.kaifiyat}</td>
+            </tr>
         `;
     });
 
@@ -4614,12 +4646,14 @@ const renderKKdAnalysisTable = () => {
                             <th class="p-3 border-r border-teal-600 w-10">#</th>
                             <th class="p-3 border-r border-teal-600 text-left">Jamia Name</th>
                             <th class="p-3 border-r border-teal-600 text-left">Region</th>
-                            <th class="p-3 border-r border-teal-600 text-center">Class</th> <th class="p-3 border-r border-teal-600 text-left">Teacher</th>
+                            <th class="p-3 border-r border-teal-600 text-center bg-teal-800">Class</th>
+                            <th class="p-3 border-r border-teal-600 text-left">Teacher</th>
                             <th class="p-3 border-r border-teal-600 text-left">Kitab (Book)</th>
                             <th class="p-3 border-r border-teal-600 text-center">Target</th>
                             <th class="p-3 border-r border-teal-600 text-center">Padhaya</th>
                             <th class="p-3 border-r border-teal-600 text-center">Result (%)</th>
-                            <th class="p-3 text-left">Kaifiyat</th> </tr>
+                            <th class="p-3 text-center">Kaifiyat</th>
+                        </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
                         ${rowsHtml}
@@ -4634,5 +4668,6 @@ const renderKKdAnalysisTable = () => {
     </script>
 </body>
 </html>
+
 
 
