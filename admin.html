@@ -609,9 +609,9 @@
     <option value="test-all">Result Summary (All Subjects)</option>
     <option value="test-asri">Result Summary (Asri - Eng & Math)</option>
     <option value="structure-list">All Jamia Structure (Teachers, Classes & Books)</option>
-    
+    <option value="kkd">Talimi Karkardagi Report (KKd)</option>
+                    
     <option value="tadris" disabled>Tadris Recording (Coming Soon)</option>
-    <option value="kkd" disabled>KKd Report (Coming Soon)</option>
 </select>
             </div>
             <button id="btn-generate-analysis" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
@@ -1228,6 +1228,10 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
         // 👇 YE BLOCK ADD KAREIN 👇
     else if (reportType === 'structure-list') {
         renderAllJamiaStructureList();
+    }
+        // 👇 YE BLOCK ADD KAREIN 👇
+    else if (reportType === 'kkd') {
+        renderKKdAnalysisTable();
     }
     
     else {
@@ -3713,7 +3717,7 @@ const renderReportCardStatusTable = (allSheets) => {
         </div>
     `;
 };
-    // --- UPDATED EXCEL DOWNLOAD FUNCTION (Sr No + Books + Orange Visit Only) ---
+    // --- UPDATED EXCEL DOWNLOAD FUNCTION (Supports All Reports) ---
 const handleAnalysisExcelDownload = async () => {
     const reportType = document.getElementById('analysis-report-type-select').value;
     
@@ -3743,7 +3747,7 @@ const handleAnalysisExcelDownload = async () => {
              const snapshot = await getDocs(q);
              const allSheets = snapshot.docs.map(doc => ({ ...doc.data() }));
 
-             let count = 1; // Sr No Counter
+             let count = 1; 
 
              allUsersData.forEach(user => {
                 if (user.id === ADMIN_UID) return;
@@ -3759,7 +3763,7 @@ const handleAnalysisExcelDownload = async () => {
                     if (isDone) relevantSheets.forEach(s => { if(s.students) totalStudents += s.students.length; });
 
                     excelRows.push({
-                        "Sr No": count++, // Add Sr No
+                        "Sr No": count++, 
                         "Jamia Name": jamiaName,
                         "Zimmedar": user.name || user.email,
                         "Region": user.region || '-',
@@ -3772,15 +3776,14 @@ const handleAnalysisExcelDownload = async () => {
         }
 
         // ============================================================
-        // CASE 2: JAIZA REPORT ANALYSIS (Fix: Books & Sr No)
+        // CASE 2: JAIZA REPORT ANALYSIS
         // ============================================================
         else if (reportType === 'jaiza') {
-            let count = 1; // Sr No Counter Initialize
+            let count = 1; 
 
             allUsersData.forEach(user => {
                 if (user.id === ADMIN_UID) return;
                 
-                // Fetch Data Helpers
                 const userReport = fetchedAdminReports.find(r => r.userId === user.id);
                 const jaizaEntries = (userReport && userReport.jaizaReport && Array.isArray(userReport.jaizaReport.data)) ? userReport.jaizaReport.data : [];
                 const userJamias = user.jamiaatList || [];
@@ -3788,11 +3791,9 @@ const handleAnalysisExcelDownload = async () => {
                 userJamias.forEach(jamia => {
                     const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
                     
-                    // Calculations
                     const targets = getJamiaTargets(user, jamiaName, monthKey);
                     const actuals = getJaizaActuals(user.id, jamiaName);
                     
-                    // Status Find
                     const reportEntry = jaizaEntries.find(entry => (entry.name || entry.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
                     
                     let statusText = "Pending";
@@ -3814,22 +3815,17 @@ const handleAnalysisExcelDownload = async () => {
                         statusText = "Visit Only";
                     }
 
-                    // Push Row with SR NO and BOOKS explicitly
                     excelRows.push({
                         "Sr No": count++,
                         "Zimmedar": user.name || 'N/A',
                         "Region": user.region || '-',
                         "Jamia Name": jamiaName,
-                        
                         "Target (Class)": targets.classes || 0,
                         "Actual (Class)": actuals.classesChecked || 0,
-                        
-                        "Target (Books)": targets.books || 0,   // Explicitly added
-                        "Actual (Books)": actuals.booksChecked || 0, // Explicitly added
-                        
+                        "Target (Books)": targets.books || 0,
+                        "Actual (Books)": actuals.booksChecked || 0,
                         "Target (Teach)": targets.teachers || 0,
                         "Actual (Teach)": actuals.teachersChecked || 0,
-                        
                         "Date": dateDisplay,
                         "Total %": percentageDisplay,
                         "Status": statusText
@@ -3839,118 +3835,205 @@ const handleAnalysisExcelDownload = async () => {
         }
 
         // ============================================================
-        // CASE 3: MONTHLY TEST SUMMARY
+        // CASE 3: MONTHLY TEST SUMMARY (UPDATED FOR EXACT LOGIC)
         // ============================================================
         else if (reportType === 'test-all' || reportType === 'test-asri') {
-    const sheetsRef = collection(db, "monthly_test_sheets");
-    const q = query(sheetsRef, where("month", "==", monthKey));
-    const snapshot = await getDocs(q);
-    const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const sheetsRef = collection(db, "monthly_test_sheets");
+            const q = query(sheetsRef, where("month", "==", monthKey));
+            const snapshot = await getDocs(q);
+            const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // Sorting by Jamia then Class
-    allSheets.sort((a, b) => {
-        const jNameA = (a.jamiaName || '').trim();
-        const jNameB = (b.jamiaName || '').trim();
-        if (jNameA === jNameB) {
-            return (a.class || a.className || '').localeCompare(b.class || b.className || '');
-        }
-        return jNameA.localeCompare(jNameB);
-    });
+            // Sorting
+            allSheets.sort((a, b) => {
+                const jNameA = (a.jamiaName || '').trim();
+                const jNameB = (b.jamiaName || '').trim();
+                if (jNameA === jNameB) return (a.class || a.className || '').localeCompare(b.class || b.className || '');
+                return jNameA.localeCompare(jNameB);
+            });
 
-    let count = 1;
+            let count = 1;
 
-    allSheets.forEach(sheet => {
-        const jamiaName = (sheet.jamiaName || 'Unknown').trim();
-        const className = sheet.class || sheet.className || 'Unknown';
-        const u = allUsersData.find(u => u.id === sheet.adminUid);
-        const zimmedarName = u ? (u.name || u.email) : 'Unknown';
-        const region = u ? (u.region || '-') : '-';
+            allSheets.forEach(sheet => {
+                const jamiaName = (sheet.jamiaName || 'Unknown').trim();
+                const className = sheet.class || sheet.className || 'Unknown';
+                const u = allUsersData.find(u => u.id === sheet.adminUid);
+                const zimmedarName = u ? (u.name || u.email) : 'Unknown';
+                const region = u ? (u.region || '-') : '-';
 
-        const students = sheet.students || [];
-        if (students.length === 0) return;
+                const students = sheet.students || [];
+                if (students.length === 0) return;
 
-        let clsTotal = students.length;
-        let clsPresent = 0, clsPass = 0, clsFail = 0;
-        let includeClass = false;
+                let clsTotal = students.length;
+                let clsPresent = 0, clsPass = 0, clsFail = 0;
+                let includeClass = false;
 
-        students.forEach(std => {
-            const marksKeys = Object.keys(std.marks);
-            const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
+                students.forEach(std => {
+                    const marksKeys = Object.keys(std.marks);
+                    const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
 
-            // --- REUSING LOGIC FOR ACCURACY ---
-            if (reportType === 'test-all') {
-                if (!isFullAbsent) {
-                    includeClass = true; clsPresent++;
-                    let isFailMain = false;
-                    if (parseFloat(std.percentage) < 40) isFailMain = true;
-                    if (!isFailMain && (sheet.subjects || []).some(sub => std.marks[sub] === 'A')) isFailMain = true;
-                    if (!isFailMain) {
-                        let subjectFailCount = 0;
-                        (sheet.subjects || []).forEach(sub => {
-                            const subLow = sub.toLowerCase();
-                            const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
-                            const passMarks = max * 0.40;
-                            const m = std.marks[sub];
-                            if (typeof m === 'number' && m < passMarks) subjectFailCount++;
-                        });
-                        if (subjectFailCount >= 3) isFailMain = true;
+                    if (reportType === 'test-all') {
+                        if (!isFullAbsent) {
+                            includeClass = true; clsPresent++;
+                            let isFailMain = false;
+                            if (parseFloat(std.percentage) < 40) isFailMain = true;
+                            if (!isFailMain && (sheet.subjects || []).some(sub => std.marks[sub] === 'A')) isFailMain = true;
+                            if (!isFailMain) {
+                                let subjectFailCount = 0;
+                                (sheet.subjects || []).forEach(sub => {
+                                    const subLow = sub.toLowerCase();
+                                    const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
+                                    const passMarks = max * 0.40;
+                                    const m = std.marks[sub];
+                                    if (typeof m === 'number' && m < passMarks) subjectFailCount++;
+                                });
+                                if (subjectFailCount >= 3) isFailMain = true;
+                            }
+                            if (isFailMain) clsFail++; else clsPass++;
+                        }
+                    } 
+                    else if (reportType === 'test-asri') {
+                        let engMark = std.marks['English'];
+                        let mathMark = std.marks['Maths'];
+                        if (engMark !== undefined || mathMark !== undefined) {
+                            let asriFullAbsent = false;
+                            if (engMark !== undefined && mathMark !== undefined) {
+                                if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
+                            } else if (engMark === 'A' || mathMark === 'A') asriFullAbsent = true;
+
+                            if (!asriFullAbsent) {
+                                includeClass = true; clsPresent++;
+                                let isFailAsri = false;
+                                if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                                if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                                if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                                if (isFailAsri) clsFail++; else clsPass++;
+                            }
+                        }
                     }
-                    if (isFailMain) clsFail++; else clsPass++;
+                });
+
+                if (includeClass) {
+                    let perc = clsPresent > 0 ? ((clsPass / clsPresent) * 100).toFixed(1) + '%' : "0.0%";
+                    let grade = getAdminSummaryGrade(parseFloat(perc));
+
+                    excelRows.push({
+                        "Sr No": count++,
+                        "Jamia Name": jamiaName,
+                        "Region": region,
+                        "Zimmedar": zimmedarName,
+                        "Class": className,
+                        "Total Students": clsTotal,
+                        "Present": clsPresent,
+                        "Pass": clsPass,
+                        "Fail": clsFail,
+                        "Percentage": perc,
+                        "Grade": grade
+                    });
                 }
-            } 
-            else if (reportType === 'test-asri') {
-                let engMark = std.marks['English'];
-                let mathMark = std.marks['Maths'];
-                if (engMark !== undefined || mathMark !== undefined) {
-                    let asriFullAbsent = false;
-                    if (engMark !== undefined && mathMark !== undefined) {
-                        if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
-                    } else if (engMark === 'A' || mathMark === 'A') asriFullAbsent = true;
-
-                    if (!asriFullAbsent) {
-                        includeClass = true; clsPresent++;
-                        let isFailAsri = false;
-                        if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
-                        if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
-                        if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
-                        if (isFailAsri) clsFail++; else clsPass++;
-                    }
-                }
-            }
-        });
-
-        if (includeClass) {
-            let perc = clsPresent > 0 ? ((clsPass / clsPresent) * 100).toFixed(1) + '%' : "0.0%";
-            let grade = getAdminSummaryGrade(parseFloat(perc));
-
-            excelRows.push({
-                "Sr No": count++,
-                "Jamia Name": jamiaName,
-                "Region": region,
-                "Zimmedar": zimmedarName,
-                "Class": className,
-                "Total Students": clsTotal,
-                "Present": clsPresent,
-                "Pass": clsPass,
-                "Fail": clsFail,
-                "Percentage": perc,
-                "Grade": grade
             });
         }
-    });
-}
 
-        // --- STYLING LOGIC START ---
+        // ============================================================
+        // CASE 4: STRUCTURE LIST (Teachers, Classes, Books)
+        // ============================================================
+        else if (reportType === 'structure-list') {
+            fileName = `Structure_List_All_Jamia.xlsx`;
+            let count = 1;
+
+            allUsersData.forEach(user => {
+                if (user.id === ADMIN_UID) return;
+                
+                const academicYears = user.academicYears || {};
+                const yearKeys = Object.keys(academicYears).sort().reverse();
+                const currentYearKey = yearKeys[0];
+                if (!currentYearKey) return;
+
+                const structure = academicYears[currentYearKey].karkardagiStructure || [];
+
+                structure.forEach(jamia => {
+                    const teachers = Array.isArray(jamia.teachers) ? jamia.teachers : [];
+                    if (teachers.length === 0) {
+                        excelRows.push({
+                            "Sr No": count++, "Region": user.region || '-', "Jamia Name": jamia.jamiaName || 'Unknown',
+                            "Zimmedar": user.name || '-', "Teacher": "No Teachers", "Class": "-", "Book": "-"
+                        });
+                    } else {
+                        teachers.forEach(teacher => {
+                            const periods = Array.isArray(teacher.periods) ? teacher.periods : [];
+                            if (periods.length === 0) {
+                                excelRows.push({
+                                    "Sr No": count++, "Region": user.region || '-', "Jamia Name": jamia.jamiaName || 'Unknown',
+                                    "Zimmedar": user.name || '-', "Teacher": teacher.name || 'Unknown', "Class": "-", "Book": "No Books"
+                                });
+                            } else {
+                                periods.forEach(period => {
+                                    excelRows.push({
+                                        "Sr No": count++,
+                                        "Region": user.region || '-',
+                                        "Jamia Name": jamia.jamiaName || 'Unknown',
+                                        "Zimmedar": user.name || '-',
+                                        "Teacher": teacher.name || 'Unknown',
+                                        "Class": period.className || '-',
+                                        "Book": period.bookName || '-'
+                                    });
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        // ============================================================
+        // CASE 5: KKD REPORT (Talimi Karkardagi)
+        // ============================================================
+        else if (reportType === 'kkd') {
+            fileName = `KKd_Report_${monthName}_${yearVal}.xlsx`;
+
+            // Filter Reports
+            const filteredReports = fetchedAdminReports.filter(r => 
+                r.month === monthName && r.year === parseInt(yearVal)
+            );
+
+            let count = 1;
+            
+            // Loop through reports
+            filteredReports.forEach(report => {
+                const kkdData = report.karkardagiReport?.data || [];
+                const user = allUsersData.find(u => u.id === report.userId);
+                const zimmedarName = user ? (user.name || user.email) : 'Unknown';
+                const region = user ? (user.region || '-') : '-';
+
+                kkdData.forEach(item => {
+                    excelRows.push({
+                        "Sr No": count++,
+                        "Jamia Name": item.jamiaName || item.jamiaId || 'Unknown',
+                        "Region": region,
+                        "Zimmedar": zimmedarName,
+                        "Teacher Name": item.teacherName || '-',
+                        "Kitab (Book)": item.bookName || '-',
+                        "Monthly Target": item.monthlyTarget || 0,
+                        "Pages Taught": item.pagesTaught || 0,
+                        "Achievement (%)": item.achievement || 0
+                    });
+                });
+            });
+
+            // Sorting for Excel
+            excelRows.sort((a, b) => a["Jamia Name"].localeCompare(b["Jamia Name"]));
+        }
+
+        // ============================================================
+        // FINAL STYLING & DOWNLOAD
+        // ============================================================
         if (excelRows.length === 0) {
             alert("No data found to download.");
         } else {
             const worksheet = XLSX.utils.json_to_sheet(excelRows);
             
-            // 1. Column Widths
             const colWidths = Object.keys(excelRows[0]).map(key => ({ wch: Math.max(key.length + 5, 12) }));
             worksheet['!cols'] = colWidths;
 
-            // 2. Styling Loop
             const range = XLSX.utils.decode_range(worksheet['!ref']);
             
             for (let R = range.s.r; R <= range.e.r; ++R) {
@@ -3979,8 +4062,6 @@ const handleAnalysisExcelDownload = async () => {
                         if (R % 2 === 0) cellStyle.fill = { fgColor: { rgb: "F3F4F6" } };
 
                         const cellVal = worksheet[cellAddress].v;
-                        
-                        // --- COLOR LOGIC ---
                         if (cellVal === 'Pending' || cellVal === 'Nahi Hua' || cellVal === 'Fail') {
                              cellStyle.font.color = { rgb: "DC2626" }; // Red
                              cellStyle.font.bold = true;
@@ -3989,11 +4070,10 @@ const handleAnalysisExcelDownload = async () => {
                              cellStyle.font.color = { rgb: "16A34A" }; // Green
                              cellStyle.font.bold = true;
                         } 
-                        // 👇 ORANGE FOR VISIT ONLY
                         else if (cellVal === 'Visit Only') {
-     cellStyle.font.color = { rgb: "2563EB" }; // Royal Blue Color
-     cellStyle.font.bold = true;
-}
+                             cellStyle.font.color = { rgb: "2563EB" }; // Royal Blue
+                             cellStyle.font.bold = true;
+                        }
                     }
                     worksheet[cellAddress].s = cellStyle;
                 }
@@ -4002,7 +4082,7 @@ const handleAnalysisExcelDownload = async () => {
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Formatted_Report");
             XLSX.writeFile(workbook, fileName);
-            showNotification("Designed Excel downloaded with Sr No & Books!");
+            showNotification("Designed Excel downloaded!");
         }
 
     } catch (err) {
@@ -4443,8 +4523,115 @@ const getAdminGradeColor = (grade) => {
     if (grade === "Maqbul") return "grade-maqbul"; 
     return "grade-nakam"; 
 };
+        // --- RENDER KKD ANALYSIS TABLE ---
+const renderKKdAnalysisTable = () => {
+    const container = document.getElementById('analysis-report-container');
+    
+    // Month Filter Logic
+    const monthName = document.getElementById('admin-month-select').value;
+    const yearVal = parseInt(document.getElementById('admin-year-select').value);
+
+    // Filter Reports for selected Month/Year
+    const filteredReports = fetchedAdminReports.filter(r => 
+        r.month === monthName && r.year === yearVal
+    );
+
+    if (filteredReports.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-10">Is mahine (${monthName} ${yearVal}) ka koi KKd data nahi mila.</p>`;
+        return;
+    }
+
+    let rowsHtml = '';
+    let count = 1;
+
+    // Data Extract & Sort
+    let allEntries = [];
+
+    filteredReports.forEach(report => {
+        const kkdData = report.karkardagiReport?.data || [];
+        const user = allUsersData.find(u => u.id === report.userId);
+        const zimmedarName = user ? (user.name || user.email) : 'Unknown';
+        const region = user ? (user.region || '-') : '-';
+
+        kkdData.forEach(item => {
+            allEntries.push({
+                jamiaName: item.jamiaName || item.jamiaId || 'Unknown',
+                region: region,
+                zimmedar: zimmedarName,
+                teacherName: item.teacherName || '-',
+                bookName: item.bookName || '-',
+                target: item.monthlyTarget || 0,
+                taught: item.pagesTaught || 0,
+                achievement: item.achievement || 0
+            });
+        });
+    });
+
+    // Sort by Jamia Name
+    allEntries.sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
+
+    if (allEntries.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-10">Reports mili hain lekin unme KKd ka data khali hai.</p>`;
+        return;
+    }
+
+    // Generate HTML Rows
+    allEntries.forEach((row) => {
+        // Color for Achievement
+        let achColor = 'text-gray-700';
+        let bgClass = '';
+        const ach = parseFloat(row.achievement);
+        
+        if (ach >= 100) { achColor = 'text-green-700 font-bold'; bgClass = 'bg-green-50'; }
+        else if (ach >= 80) { achColor = 'text-teal-600 font-bold'; }
+        else if (ach < 50) { achColor = 'text-red-600 font-bold'; bgClass = 'bg-red-50'; }
+
+        rowsHtml += `
+            <tr class="border-b hover:bg-gray-50 text-sm ${bgClass}">
+                <td class="p-3 text-gray-500 border-r text-center">${count++}</td>
+                <td class="p-3 font-bold text-teal-800 border-r urdu-font">${row.jamiaName}</td>
+                <td class="p-3 text-gray-600 border-r urdu-font">${row.region}</td>
+                <td class="p-3 text-gray-800 border-r urdu-font">${row.teacherName}</td>
+                <td class="p-3 text-blue-700 border-r font-semibold urdu-font">${row.bookName}</td>
+                <td class="p-3 text-center border-r font-mono">${row.target}</td>
+                <td class="p-3 text-center border-r font-mono">${row.taught}</td>
+                <td class="p-3 text-center ${achColor}">${row.achievement}%</td>
+            </tr>
+        `;
+    });
+
+    // Render Container
+    container.innerHTML = `
+        <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                <h4 class="font-bold text-lg text-gray-700">Talimi Karkardagi Report (KKd) Analysis</h4>
+                <p class="text-sm text-gray-500">Total Records: <b>${allEntries.length}</b></p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead class="bg-teal-700 text-white uppercase text-xs">
+                        <tr>
+                            <th class="p-3 border-r border-teal-600 w-10">#</th>
+                            <th class="p-3 border-r border-teal-600 text-left">Jamia Name</th>
+                            <th class="p-3 border-r border-teal-600 text-left">Region</th>
+                            <th class="p-3 border-r border-teal-600 text-left">Teacher</th>
+                            <th class="p-3 border-r border-teal-600 text-left">Kitab (Book)</th>
+                            <th class="p-3 border-r border-teal-600 text-center">Target</th>
+                            <th class="p-3 border-r border-teal-600 text-center">Padhaya</th>
+                            <th class="p-3 text-center">Result (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+};
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
