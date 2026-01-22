@@ -333,47 +333,108 @@
 
         window.calcRow = (inputElement) => {
             const row = inputElement.closest('tr');
-            const inputs = row.querySelectorAll('.subject-mark');
             
-            let obtained = 0;
-            let failCount = 0;
-            let hasEntry = false;
+            // --- Helper Functions ---
+            // Value lene ke liye
+            const getVal = (id) => {
+                const el = row.querySelector(`input[data-id="${id}"]`);
+                // Agar khali hai ya number nahi hai to 0 maano
+                return el && el.value !== "" ? parseFloat(el.value) : 0;
+            };
 
-            inputs.forEach(inp => {
-                const valStr = inp.value;
-                const max = parseInt(inp.dataset.max);
-                const pass = parseInt(inp.dataset.pass);
-
-                if (valStr !== "") {
-                    hasEntry = true;
-                    let val = parseFloat(valStr);
-                    
-                    if (val > max) { val = max; inp.value = max; } 
-                    obtained += val;
-
-                    if (val < pass) {
-                        inp.style.color = "#ef4444"; // Red
-                        inp.style.fontWeight = "bold";
-                        inp.style.backgroundColor = "#fef2f2"; 
-                        failCount++;
-                    } else {
-                        inp.style.color = "#000";
-                        inp.style.fontWeight = "500";
-                        inp.style.backgroundColor = "#f9fafb";
+            // Color set karne ke liye (Pass/Fail)
+            const setStatus = (ids, isFail) => {
+                ids.forEach(id => {
+                    const el = row.querySelector(`input[data-id="${id}"]`);
+                    if(el) {
+                        if(isFail) {
+                            el.style.color = "#ef4444"; // Red
+                            el.style.fontWeight = "bold";
+                            el.style.backgroundColor = "#fef2f2"; // Light Red Bg
+                        } else {
+                            el.style.color = "#000"; // Black
+                            el.style.fontWeight = "500";
+                            el.style.backgroundColor = "#f9fafb"; // Normal Bg
+                        }
                     }
+                });
+            };
+
+            let obtainedTotal = 0;
+            let failCount = 0; // Kitne "Subjects/Groups" me fail hai
+
+            // ==========================================
+            // 1. ENGLISH GROUP CHECK (Total 100, Pass 40)
+            // ==========================================
+            const engWritten = getVal('eng_written');
+            const engOral = getVal('eng_oral');
+            const engTotal = engWritten + engOral;
+
+            if (engTotal < 40) {
+                // Agar dono mila ke 40 se kam hai to FAIL
+                setStatus(['eng_written', 'eng_oral'], true);
+                failCount++; 
+            } else {
+                // Agar 40 ya zyada hai to PASS (Chahe Written me 0 hi kyun na ho)
+                setStatus(['eng_written', 'eng_oral'], false);
+            }
+
+            // ==========================================
+            // 2. URDU GROUP CHECK (Total 100, Pass 40)
+            // ==========================================
+            const urdu = getVal('urdu');
+            const workbook = getVal('workbook');
+            const hamNisabi = getVal('ham_nisabi');
+            const urduTotal = urdu + workbook + hamNisabi;
+
+            if (urduTotal < 40) {
+                // Agar teeno mila ke 40 se kam hai to FAIL
+                setStatus(['urdu', 'workbook', 'ham_nisabi'], true);
+                failCount++;
+            } else {
+                setStatus(['urdu', 'workbook', 'ham_nisabi'], false);
+            }
+
+            // ==========================================
+            // 3. INDEPENDENT SUBJECTS CHECK (Total 100, Pass 40)
+            // ==========================================
+            const singles = ['tajweed', 'imla', 'riyazi'];
+            
+            singles.forEach(sub => {
+                const marks = getVal(sub);
+                if (marks < 40) {
+                    setStatus([sub], true); // Fail
+                    failCount++;
+                } else {
+                    setStatus([sub], false); // Pass
                 }
             });
 
-            if (!hasEntry) return;
+            // ==========================================
+            // 4. TOTAL & PERCENTAGE CALCULATION
+            // ==========================================
+            // Sare inputs ka simple sum (Total marks obtained)
+            row.querySelectorAll('.subject-mark').forEach(inp => {
+                if(inp.value !== "") {
+                    // Limit check (Validation)
+                    const max = parseInt(inp.dataset.max);
+                    if(parseFloat(inp.value) > max) {
+                        inp.value = max; // Auto correct max marks
+                    }
+                    obtainedTotal += parseFloat(inp.value);
+                }
+            });
 
-            const percent = (obtained / TOTAL_MARKS) * 100;
+            const percent = (obtainedTotal / 500) * 100;
 
-            row.querySelector('.cell-obtained').innerText = obtained;
+            // Update UI
+            row.querySelector('.cell-obtained').innerText = obtainedTotal;
             row.querySelector('.cell-percent').innerText = percent.toFixed(2);
             row.querySelector('.cell-fail-count').innerText = failCount;
 
             const statusCell = row.querySelector('.cell-status');
             
+            // Final Status Logic
             if (failCount > 0) {
                 statusCell.innerText = "ناکام";
                 statusCell.className = "cell-status status-fail";
@@ -459,3 +520,4 @@
     </script>
 </body>
 </html>
+
