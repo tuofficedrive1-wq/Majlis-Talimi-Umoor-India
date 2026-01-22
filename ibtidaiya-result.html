@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ibtidaiya Result Entry</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <style>
+        @font-face {
+            font-family: 'Jameel Noori Nastaleeq';
+            src: url('https://cdn.jsdelivr.net/gh/sajjadsaeed/UrduFontsWeb@master/fonts/JameelNooriNastaleeq.woff2') format('woff2');
+            font-display: swap;
+        }
+        body { font-family: 'Poppins', 'Jameel Noori Nastaleeq', sans-serif; background-color: #f0f2f5; }
+        .urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; line-height: 1.8; }
+        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #14b8a6; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="loader" class="fixed top-0 left-0 w-full h-full bg-gray-900 bg-opacity-50 flex justify-center items-center z-[70]">
+        <div class="loader"></div>
+    </div>
+
+    <div id="notification" class="fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] hidden"></div>
+
+    <div class="container mx-auto p-4 max-w-6xl">
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <button onclick="window.location.href='index.html'" class="text-teal-600 font-semibold hover:text-teal-800 flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i> Back to Dashboard
+                </button>
+                <h1 class="text-2xl font-bold text-gray-800">Ibtidaiya Result Entry</h1>
+                <div class="w-24"></div> </div>
+
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-blue-100 rounded-full text-blue-600"><i class="fas fa-calendar-alt text-xl"></i></div>
+                    <div>
+                        <h3 class="font-bold text-blue-900 text-sm uppercase">Result Month/Year</h3>
+                        <p class="text-xs text-blue-700">Jis mahine/saal ka result hai wo select karein.</p>
+                    </div>
+                </div>
+                <input type="month" id="result-month-selector" class="border border-blue-300 rounded-lg p-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+
+            <form id="ibtidaiya-form">
+                <div id="jamia-list-container" class="space-y-4">
+                    <p class="text-center text-gray-500">Loading Jamiaat...</p>
+                </div>
+
+                <div class="mt-6 text-right">
+                    <button type="submit" id="save-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition transform hover:scale-105">
+                        <i class="fas fa-save mr-2"></i> Save All Results
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+
+        // Firebase Configuration (Same as index.html)
+        const firebaseConfig = {
+          apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+          authDomain: "data-f15ab.firebaseapp.com",
+          projectId: "data-f15ab",
+          storageBucket: "data-f15ab.appspot.com", 
+          messagingSenderId: "449137002393",
+          appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // DOM Elements
+        const loader = document.getElementById('loader');
+        const container = document.getElementById('jamia-list-container');
+        const dateInput = document.getElementById('result-month-selector');
+        const saveBtn = document.getElementById('save-btn');
+
+        let currentUser = null;
+        let jamiaatList = [];
+        let existingResults = [];
+
+        // Notification Helper
+        const showNotification = (msg, isError = false) => {
+            const notif = document.getElementById('notification');
+            notif.textContent = msg;
+            notif.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] ${isError ? 'bg-red-500' : 'bg-emerald-600'}`;
+            notif.classList.remove('hidden');
+            setTimeout(() => notif.classList.add('hidden'), 3000);
+        };
+
+        // Set Default Month
+        const now = new Date();
+        const currentMonthVal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        dateInput.value = currentMonthVal;
+
+        // Auth Listener
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadData(currentMonthVal);
+            } else {
+                window.location.href = 'index.html';
+            }
+        });
+
+        // Date Change Listener
+        dateInput.addEventListener('change', (e) => loadData(e.target.value));
+
+        // Load Data (User Profile + Existing Results)
+        async function loadData(selectedMonth) {
+            loader.classList.remove('hidden');
+            container.innerHTML = '';
+
+            try {
+                // 1. Get User Profile for Jamia List
+                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    
+                    // Logic to get Jamia List (Supports new academicYears structure and old list)
+                    jamiaatList = [];
+                    if (userData.academicYears) {
+                        const years = Object.keys(userData.academicYears).sort().reverse();
+                        const structure = userData.academicYears[years[0]]?.karkardagiStructure || [];
+                        jamiaatList = structure.map(j => j.jamiaName).filter(n => n);
+                    } else if (userData.jamiaatList) {
+                        jamiaatList = userData.jamiaatList;
+                    }
+                }
+
+                if (jamiaatList.length === 0) {
+                    container.innerHTML = '<p class="text-center text-red-500">Koi Jamiaat linked nahi hain.</p>';
+                    loader.classList.add('hidden');
+                    return;
+                }
+
+                // 2. Get Existing Results for this month
+                const resultDocId = `${currentUser.uid}_${selectedMonth}`;
+                const resultDoc = await getDoc(doc(db, 'ibtidaiya_results', resultDocId));
+                existingResults = resultDoc.exists() ? resultDoc.data().results || [] : [];
+
+                renderList();
+
+            } catch (error) {
+                console.error(error);
+                showNotification("Error loading data", true);
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        // Render List
+        function renderList() {
+            if (jamiaatList.length === 0) return;
+
+            container.innerHTML = jamiaatList.map((jamia, index) => {
+                const data = existingResults.find(r => r.jamiaName === jamia) || {};
+                
+                return `
+                <div class="result-row bg-white p-4 rounded-lg border shadow-sm grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    
+                    <div class="md:col-span-4">
+                        <h4 class="text-lg font-bold text-gray-800 urdu-font">${jamia}</h4>
+                        <input type="hidden" class="jamia-name" value="${jamia}">
+                    </div>
+
+                    <div class="md:col-span-3">
+                        <label class="block text-xs text-gray-500 mb-1">Status</label>
+                        <select class="status-select w-full p-2 border rounded text-sm bg-gray-50">
+                            <option value="">Select Status</option>
+                            <option value="Result Aaya" ${data.status === 'Result Aaya' ? 'selected' : ''}>Result Aaya</option>
+                            <option value="Abhi Nahi Aaya" ${data.status === 'Abhi Nahi Aaya' ? 'selected' : ''}>Abhi Nahi Aaya</option>
+                        </select>
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-xs text-gray-500 mb-1">Pass % / Marks</label>
+                        <input type="text" class="percentage-input w-full p-2 border rounded text-center font-bold text-teal-700" 
+                            placeholder="e.g. 85%" value="${data.percentage || ''}">
+                    </div>
+
+                    <div class="md:col-span-3">
+                        <label class="block text-xs text-gray-500 mb-1">Kaifiyat / Note</label>
+                        <input type="text" class="note-input w-full p-2 border rounded urdu-font text-sm" 
+                            placeholder="Koi khaas baat..." value="${data.note || ''}">
+                    </div>
+
+                </div>`;
+            }).join('');
+        }
+
+        // Save Function
+        document.getElementById('ibtidaiya-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            loader.classList.remove('hidden');
+
+            const monthKey = dateInput.value;
+            const resultsToSave = [];
+
+            document.querySelectorAll('.result-row').forEach(row => {
+                const jamiaName = row.querySelector('.jamia-name').value;
+                const status = row.querySelector('.status-select').value;
+                const percentage = row.querySelector('.percentage-input').value;
+                const note = row.querySelector('.note-input').value;
+
+                if (status) { // Only save if status is selected
+                    resultsToSave.push({ jamiaName, status, percentage, note });
+                }
+            });
+
+            try {
+                const docId = `${currentUser.uid}_${monthKey}`;
+                await setDoc(doc(db, 'ibtidaiya_results', docId), {
+                    userId: currentUser.uid,
+                    month: monthKey,
+                    results: resultsToSave,
+                    updatedAt: new Date()
+                }, { merge: true });
+
+                showNotification("Ibtidaiya Result saved successfully!");
+            } catch (error) {
+                console.error(error);
+                showNotification("Save karne me error aaya.", true);
+            } finally {
+                loader.classList.add('hidden');
+            }
+        });
+
+    </script>
+</body>
+</html>
