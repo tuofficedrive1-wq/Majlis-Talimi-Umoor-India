@@ -76,30 +76,25 @@
         <div id="main-content" class="p-2 hidden">
             
             <div class="flex flex-col md:flex-row justify-between items-end mb-2 no-print gap-4">
-                
-                <div class="flex gap-2">
-                    <button onclick="calculateRanks()" class="bg-purple-600 text-white px-3 py-1 rounded text-xs hover:bg-purple-700 transition">
-                        <i class="fas fa-sort-numeric-down"></i> Update Ranks
-                    </button>
-                    <button onclick="addStudentRow()" class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 transition">
+                <div>
+                    <button onclick="addStudentRow()" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs hover:bg-blue-700 transition flex items-center gap-2">
                         <i class="fas fa-plus"></i> Add Student
                     </button>
                 </div>
 
-                <div class="flex gap-3 items-center bg-gray-50 p-2 rounded border">
-                    <button onclick="saveResult()" id="btn-save" class="bg-emerald-600 text-white px-4 py-2 rounded text-xs hover:bg-emerald-700 transition font-bold">
+                <div class="flex gap-3 items-center bg-gray-50 p-2 rounded border border-gray-200">
+                    
+                    <label class="flex items-center gap-1 text-xs font-semibold text-gray-700 cursor-pointer select-none border-r pr-3 border-gray-300">
+                        <input type="checkbox" id="chk-allow-dl" class="accent-indigo-600 w-4 h-4 cursor-pointer">
+                        <span>Allow Download PDF</span>
+                    </label>
+
+                    <button onclick="saveResult()" id="btn-save" class="bg-emerald-600 text-white px-4 py-1.5 rounded text-xs hover:bg-emerald-700 transition font-bold flex items-center gap-2">
                         <i class="fas fa-save"></i> Save Record
                     </button>
                     
-                    <div class="h-6 w-px bg-gray-300 mx-1"></div>
-
-                    <label class="flex items-center gap-2 text-xs font-bold text-gray-600 cursor-pointer select-none">
-                        <input type="checkbox" id="chk-enable-dl" onchange="toggleDownload()" class="accent-red-600 w-4 h-4 cursor-pointer">
-                        <span>Enable PDF</span>
-                    </label>
-
-                    <button onclick="downloadPDF()" id="btn-download" disabled 
-                        class="bg-gray-400 text-white px-4 py-2 rounded text-xs font-bold cursor-not-allowed flex items-center gap-2 transition-all">
+                    <button onclick="downloadPDF()" id="btn-download" style="display: none;" 
+                        class="bg-red-700 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-red-800 transition flex items-center gap-2">
                         <i class="fas fa-file-pdf"></i> Download PDF
                     </button>
                 </div>
@@ -199,20 +194,6 @@
             await loadExamData();
         };
 
-        // --- TOGGLE DOWNLOAD BUTTON ---
-        window.toggleDownload = () => {
-            const btn = document.getElementById('btn-download');
-            const chk = document.getElementById('chk-enable-dl');
-            
-            if (chk.checked) {
-                btn.disabled = false;
-                btn.className = "bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded text-xs font-bold flex items-center gap-2 transition-all transform hover:scale-105 shadow-lg cursor-pointer";
-            } else {
-                btn.disabled = true;
-                btn.className = "bg-gray-400 text-white px-4 py-2 rounded text-xs font-bold cursor-not-allowed flex items-center gap-2 transition-all";
-            }
-        };
-
         window.updateHeaders = () => {
             const selector = document.getElementById('exam-selector');
             const yearInput = document.getElementById('academic-year');
@@ -239,6 +220,7 @@
             else { selector.value = "Shashmahi"; }
         }
 
+        // --- UPDATED LOAD DATA: Check Admin Settings ---
         window.loadExamData = async () => {
             document.getElementById('loader').classList.remove('hidden');
             document.getElementById('main-content').classList.add('hidden');
@@ -247,17 +229,36 @@
             globalYear = academicYearVal.replace(/\s/g, '');
             updateHeaders();
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
+            
             try {
                 const docSnap = await getDoc(doc(db, "ibtidaiya_exams", docId));
                 let studentsData = [];
+                let isDownloadAllowed = false; // Default off
+
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data.students) studentsData = data.students;
+                    
+                    // Check if Admin allowed download
+                    if (data.downloadEnabled === true) {
+                        isDownloadAllowed = true;
+                    }
                 }
+
+                // Update UI based on saved setting
+                document.getElementById('chk-allow-dl').checked = isDownloadAllowed;
+                const dlBtn = document.getElementById('btn-download');
+                if(isDownloadAllowed) {
+                    dlBtn.style.display = 'flex';
+                } else {
+                    dlBtn.style.display = 'none';
+                }
+
                 const tbody = document.getElementById('students-body');
                 tbody.innerHTML = '';
                 if(studentsData.length > 0) studentsData.forEach(std => addStudentRow(std));
                 else for(let i=0; i<5; i++) addStudentRow(); 
+                
                 calculateRanks(); 
                 document.getElementById('loader').classList.add('hidden');
                 document.getElementById('main-content').classList.remove('hidden');
@@ -274,6 +275,7 @@
                 const row = btn.closest('tr');
                 row.remove();
                 updateIndices();
+                calculateRanks(); // Update Rank after delete
             }
         };
 
@@ -381,6 +383,9 @@
             } else { grade = "F"; gradeCls = "grade-D"; }
             gradeCell.innerText = grade;
             gradeCell.className = `font-bold text-center p-1 cell-grade text-xs ${gradeCls}`;
+
+            // Auto Update Ranks on Change
+            calculateRanks();
         };
 
         window.calculateRanks = () => {
@@ -396,11 +401,15 @@
             });
         };
 
+        // --- UPDATED SAVE: Saves the download setting ---
         window.saveResult = async () => {
             const btn = document.getElementById('btn-save');
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; btn.disabled = true;
             calculateRanks(); 
+            
             const examType = document.getElementById('exam-selector').value;
+            const downloadSetting = document.getElementById('chk-allow-dl').checked; // Read Setting
+
             const rows = document.querySelectorAll('#students-body tr');
             const studentsToSave = [];
             rows.forEach(row => {
@@ -425,9 +434,25 @@
                 }
             });
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
-            try { await setDoc(doc(db, "ibtidaiya_exams", docId), { adminUid, jamiaName, examType, year: globalYear, students: studentsToSave, updatedAt: serverTimestamp() }); alert("Result Saved Successfully!"); } 
+            try { 
+                await setDoc(doc(db, "ibtidaiya_exams", docId), { 
+                    adminUid, 
+                    jamiaName, 
+                    examType, 
+                    year: globalYear, 
+                    downloadEnabled: downloadSetting, // Saving the setting
+                    students: studentsToSave, 
+                    updatedAt: serverTimestamp() 
+                });
+                
+                // Update UI immediately based on saved setting
+                const dlBtn = document.getElementById('btn-download');
+                dlBtn.style.display = downloadSetting ? 'flex' : 'none';
+
+                alert("Result & Settings Saved Successfully!"); 
+            } 
             catch (error) { console.error(error); alert("Error saving."); } 
-            finally { btn.innerHTML = 'Save Record'; btn.disabled = false; }
+            finally { btn.innerHTML = '<i class="fas fa-save"></i> Save Record'; btn.disabled = false; }
         };
 
         window.downloadPDF = async () => {
@@ -436,7 +461,7 @@
             btn.innerText = "Generating PDF...";
             calculateRanks();
 
-            const rowsPerPage = 20; // 20 Rows per page for full fit
+            const rowsPerPage = 20; 
             const allRows = Array.from(document.querySelectorAll('#students-body tr'));
             const totalPages = Math.ceil(allRows.length / rowsPerPage);
             
@@ -558,7 +583,7 @@
             }
 
             document.body.removeChild(tempContainer);
-            btn.innerText = "Download PDF";
+            btn.innerHTML = '<i class="fas fa-file-pdf"></i> Download PDF';
             pdf.save(`Result_${jamiaName}.pdf`);
         };
     </script>
