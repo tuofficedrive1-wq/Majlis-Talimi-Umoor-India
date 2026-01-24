@@ -36,7 +36,6 @@
             direction: ltr; 
         }
         
-        /* Table Styling */
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.95rem; } 
         th { background-color: #e0e7ff; color: #3730a3; font-weight: bold; padding: 8px; border: 1px solid #c7d2fe; font-family: 'Jameel Noori Nastaleeq'; font-size: 1rem; }
         td { border: 1px solid #e5e7eb; padding: 4px; text-align: center; vertical-align: middle; background-color: white; }
@@ -126,7 +125,7 @@
             
             <div class="flex justify-between items-center mb-4 no-print">
                 <div class="text-sm bg-red-50 text-red-700 px-4 py-2 rounded-lg border border-red-200 font-bold flex items-center gap-2 urdu-font shadow-sm">
-                    <i class="fas fa-exclamation-circle"></i> پاسنگ مارکس: 40% (Total/Group Wise)
+                    <i class="fas fa-exclamation-circle"></i> پاسنگ: انگلش/ریاضی (33)، دیگر (40)
                 </div>
                 <button onclick="addStudentRow()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow-md transition flex items-center gap-2 urdu-font font-bold">
                     <i class="fas fa-plus"></i> طالب علم شامل کریں
@@ -167,8 +166,8 @@
                             <th class="eng-font bg-white text-indigo-700 border-indigo-100">40</th>
                             <th class="eng-font bg-white text-indigo-700 border-indigo-100">20</th>
                             <th class="eng-font bg-white text-indigo-700 border-indigo-100">100</th>
-                            <th class="eng-font bg-white text-indigo-700 border-indigo-100">80</th>
-                            <th class="eng-font bg-white text-indigo-700 border-indigo-100">20</th>
+                            <th class="eng-font bg-white text-indigo-700 border-indigo-100">70</th>
+                            <th class="eng-font bg-white text-indigo-700 border-indigo-100">30</th>
                             <th class="eng-font bg-white text-indigo-700 border-indigo-100">100</th>
                         </tr>
                     </thead>
@@ -214,8 +213,8 @@
             { id: "urdu", name: "اردو", max: 40 },
             { id: "ham_nisabi", name: "ہم نصابی", max: 20 },
             { id: "imla", name: "املا", max: 100 },
-            { id: "eng_written", name: "انگلش (تحریری)", max: 80 },
-            { id: "eng_oral", name: "انگلش (تقریری)", max: 20 },
+            { id: "eng_written", name: "انگلش (تحریری)", max: 70 },
+            { id: "eng_oral", name: "انگلش (تقریری)", max: 30 },
             { id: "riyazi", name: "ریاضی", max: 100 }
         ];
 
@@ -228,8 +227,45 @@
             jamiaName = params.get('jamia');
             if (!adminUid || !jamiaName) { alert("Link Invalid."); return; }
             document.getElementById('display-jamia').textContent = jamiaName;
+            
+            // Check Database for Semester
+            await autoSelectExamType();
+            
             await loadExamData();
         };
+
+        // --- UPDATED LOGIC: CHECK DB STRUCTURE ---
+        async function autoSelectExamType() {
+            const selector = document.getElementById('exam-selector');
+            try {
+                // Fetch Admin User Data
+                const userDoc = await getDoc(doc(db, "users", adminUid));
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    
+                    // Check 'currentSemester' (assuming 1 = Shashmahi, 2 = Salana)
+                    if (data.currentSemester == 1) {
+                        selector.value = "Shashmahi";
+                        console.log("Selected Shashmahi based on DB");
+                        return;
+                    } else if (data.currentSemester == 2) {
+                        selector.value = "Salana";
+                        console.log("Selected Salana based on DB");
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error("Could not fetch user structure:", error);
+            }
+
+            // Fallback: If DB check fails, use Default Month Logic (Standard Madrasa Cycle)
+            // Jan-May = Salana (End of year)
+            // Jun-Dec = Shashmahi (Start of year)
+            const now = new Date();
+            const month = now.getMonth() + 1; 
+            if (month >= 1 && month <= 5) { selector.value = "Salana"; } 
+            else { selector.value = "Shashmahi"; }
+        }
 
         window.loadExamData = async () => {
             const loader = document.getElementById('loader');
@@ -294,28 +330,29 @@
             };
 
             let obtainedTotal = 0; let failCount = 0; 
-            let hasAnyEntry = false; // Check if row is empty
+            let hasAnyEntry = false; 
 
-            // 1. English Group
-            const engWritten = getVal('eng_written'); const engOral = getVal('eng_oral');
-            const engTotal = engWritten + engOral;
-            if (engTotal < 40) { setStatus(['eng_written', 'eng_oral'], true); failCount++; } 
+            // 1. English Check (Total 100, Pass 33)
+            const engTotal = getVal('eng_written') + getVal('eng_oral');
+            if (engTotal < 33) { setStatus(['eng_written', 'eng_oral'], true); failCount++; } 
             else setStatus(['eng_written', 'eng_oral'], false);
 
-            // 2. Urdu Group
-            const urdu = getVal('urdu'); const workbook = getVal('workbook'); const hamNisabi = getVal('ham_nisabi');
-            const urduTotal = urdu + workbook + hamNisabi;
+            // 2. Urdu Check (Total 100, Pass 40)
+            const urduTotal = getVal('urdu') + getVal('workbook') + getVal('ham_nisabi');
             if (urduTotal < 40) { setStatus(['urdu', 'workbook', 'ham_nisabi'], true); failCount++; } 
             else setStatus(['urdu', 'workbook', 'ham_nisabi'], false);
 
-            // 3. Independent
-            ['tajweed', 'imla', 'riyazi'].forEach(sub => {
-                const marks = getVal(sub);
-                if (marks < 40) { setStatus([sub], true); failCount++; } 
-                else setStatus([sub], false);
-            });
+            // 3. Other Subjects
+            const marksTajweed = getVal('tajweed');
+            if (marksTajweed < 40) { setStatus(['tajweed'], true); failCount++; } else setStatus(['tajweed'], false);
 
-            // 4. Totals
+            const marksImla = getVal('imla');
+            if (marksImla < 40) { setStatus(['imla'], true); failCount++; } else setStatus(['imla'], false);
+
+            const marksRiyazi = getVal('riyazi');
+            // Math Passing 33
+            if (marksRiyazi < 33) { setStatus(['riyazi'], true); failCount++; } else setStatus(['riyazi'], false);
+
             row.querySelectorAll('.subject-mark').forEach(inp => {
                 if(inp.value !== "") { hasAnyEntry = true; let max = parseInt(inp.dataset.max); if(parseFloat(inp.value) > max) inp.value = max; obtainedTotal += parseFloat(inp.value); }
             });
@@ -358,7 +395,6 @@
             finally { btn.innerHTML = '<i class="fas fa-save"></i> Save Record'; btn.disabled = false; }
         };
 
-        // --- NEW ROBUST PDF GENERATION ---
         window.downloadPDF = async () => {
             if (!window.html2canvas) { alert("Library missing."); return; }
             const btn = document.getElementById('btn-download');
@@ -368,17 +404,14 @@
             const examType = document.getElementById('exam-selector').value;
             const academicYearVal = document.getElementById('academic-year').value;
             
-            // Temporary Container
             const tempContainer = document.createElement('div');
             tempContainer.style.position = 'absolute'; tempContainer.style.left = '-9999px'; tempContainer.style.top = '0px'; tempContainer.style.width = '1100px';
             document.body.appendChild(tempContainer);
 
-            // Styling Constants
-            const COLOR_DARK = "#312e81"; // Indigo 900
-            const COLOR_LIGHT = "#e0e7ff"; // Indigo 100
+            const COLOR_DARK = "#312e81"; 
+            const COLOR_LIGHT = "#e0e7ff"; 
             const COLOR_BORDER = "#312e81";
 
-            // Helper to Create Page
             function createNewPage() {
                 const pageDiv = document.createElement('div');
                 pageDiv.style.backgroundColor = "white"; pageDiv.style.padding = "20px"; pageDiv.style.width = "100%"; pageDiv.style.boxSizing = "border-box";
@@ -408,8 +441,8 @@
                                 <th style="border: 1px solid #ccc;">اردو<br><span style="font-size:10px; font-family:sans-serif;">/40</span></th>
                                 <th style="border: 1px solid #ccc;">ہم نصابی<br><span style="font-size:10px; font-family:sans-serif;">/20</span></th>
                                 <th style="border: 1px solid #ccc;">املا<br><span style="font-size:10px; font-family:sans-serif;">/100</span></th>
-                                <th style="border: 1px solid #ccc;">انگلش(تحریر)<br><span style="font-size:10px; font-family:sans-serif;">/80</span></th>
-                                <th style="border: 1px solid #ccc;">انگلش(تقریر)<br><span style="font-size:10px; font-family:sans-serif;">/20</span></th>
+                                <th style="border: 1px solid #ccc;">انگلش(تحریر)<br><span style="font-size:10px; font-family:sans-serif;">/70</span></th>
+                                <th style="border: 1px solid #ccc;">انگلش(تقریر)<br><span style="font-size:10px; font-family:sans-serif;">/30</span></th>
                                 <th style="border: 1px solid #ccc;">ریاضی<br><span style="font-size:10px; font-family:sans-serif;">/100</span></th>
                                 <th style="border: 1px solid #ccc; width: 50px;">کل<br>نمبر</th>
                                 <th style="border: 1px solid #ccc; width: 50px;">حاصل<br>کردہ</th>
@@ -427,20 +460,16 @@
 
             try {
                 const originalRows = document.querySelectorAll('#students-body tr');
-                const PAGE_HEIGHT_LIMIT = 720; // Height threshold to split pages
+                const PAGE_HEIGHT_LIMIT = 720; 
                 let currentPage = createNewPage();
                 let currentTbody = currentPage.querySelector('.result-table tbody');
 
                 for (let row of originalRows) {
-                    // Extract Data from Input Fields
                     const index = row.cells[0].innerText;
                     const name = row.querySelector('.name-input').value;
                     const father = row.querySelector('.std-father').value;
                     
-                    // Create new row for PDF
                     const newRow = document.createElement('tr');
-                    
-                    // Inputs convert to text
                     let marksCells = "";
                     row.querySelectorAll('.subject-mark').forEach(inp => {
                         const val = inp.value || '-';
@@ -470,7 +499,6 @@
 
                     currentTbody.appendChild(newRow);
 
-                    // Check Height
                     if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
                         currentTbody.removeChild(newRow);
                         currentPage = createNewPage();
@@ -479,7 +507,6 @@
                     }
                 }
 
-                // Generate PDF
                 const { jsPDF } = window.jspdf;
                 const pdfDoc = new jsPDF('l', 'mm', 'a4');
                 const pages = Array.from(tempContainer.children);
