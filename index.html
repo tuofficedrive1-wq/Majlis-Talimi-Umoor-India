@@ -3638,17 +3638,26 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
 
     try {
         const resultsRef = collection(db, "ibtidaiya_results");
+        
+        // 1. Aapka data "1447H-2026" wale format mein save ho raha hai.
+        // Agar Index file se monthKey (2026-01) aa rahi hai, toh hum sirf saal nikalenge.
+        const currentYear = monthKey.split('-')[0]; // "2026"
+        const hijriYear = "1447H-" + currentYear; // "1447H-2026"
+
+        // 2. Query mein month ki jagah hijriYear ya dono options check karein
         const q = query(
             resultsRef,
             where("adminUid", "==", currentUser.uid),
             where("jamiaName", "==", jamiaName),
-            where("month", "==", monthKey)
+            where("month", "==", hijriYear) // Kyunki aapne globalYear save kiya hai
         );
 
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-            el.innerHTML = `<span class="text-orange-500 text-xs"><i class="fas fa-info-circle"></i> No data yet</span>`;
+            // Debugging ke liye console me check karein
+            console.log("No data for:", jamiaName, hijriYear);
+            el.innerHTML = `<span class="text-orange-500 text-xs"><i class="fas fa-search"></i> No data for ${hijriYear}</span>`;
             return;
         }
 
@@ -3660,13 +3669,15 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
             const data = doc.data();
             if (data.students && Array.isArray(data.students)) {
                 data.students.forEach(st => {
-                    totalStudents++;
-                    // Result logic: 33% pass ya 'Pass' status ke hisab se
-                    const marks = parseFloat(st.totalPercentage) || 0;
-                    if (marks >= 33 || st.result === 'Pass') {
-                        passStudents++;
-                    } else {
-                        failStudents++;
+                    // Sirf unhein ginein jinka data bhara gaya hai
+                    if (st.admissionNo || st.nameUrdu) {
+                        totalStudents++;
+                        // "Kaamyaab" check (Urdu ya English dono check karein)
+                        if (st.kaifiyat === "Kaamyaab" || st.kaifiyat === "کامیاب" || parseFloat(st.totalPercentage) >= 33) {
+                            passStudents++;
+                        } else {
+                            failStudents++;
+                        }
                     }
                 });
             }
@@ -3675,25 +3686,25 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
         const percentage = totalStudents > 0 ? ((passStudents / totalStudents) * 100).toFixed(1) : 0;
 
         el.innerHTML = `
-            <div class="flex flex-wrap items-center gap-2 mt-1">
-                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 text-xs">
-                    Total: <b>${totalStudents}</b>
+            <div class="flex flex-wrap items-center gap-2 mt-2">
+                <span class="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 text-xs font-bold">
+                    Total: ${totalStudents}
                 </span>
-                <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100 text-xs">
-                    Pass: <b>${passStudents}</b>
+                <span class="bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 text-xs font-bold">
+                    Pass: ${passStudents}
                 </span>
-                <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-100 text-xs">
-                    Fail: <b>${failStudents}</b>
+                <span class="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200 text-xs font-bold">
+                    Fail: ${failStudents}
                 </span>
-                <span class="bg-teal-600 text-white px-2 py-0.5 rounded text-xs font-bold">
+                <span class="bg-teal-600 text-white px-2 py-1 rounded text-xs font-bold shadow-sm">
                     ${percentage}%
                 </span>
             </div>
         `;
 
     } catch (error) {
-        console.error("Ibtidaiya stats error:", error);
-        el.innerHTML = `<span class="text-red-400 text-xs">Error loading stats</span>`;
+        console.error("Stats Error:", error);
+        el.innerHTML = `<span class="text-red-500 text-xs">Error!</span>`;
     }
 }
 
@@ -3702,3 +3713,4 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
     </script>
 </body>
 </html>
+
