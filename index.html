@@ -3639,25 +3639,24 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
     try {
         const resultsRef = collection(db, "ibtidaiya_results");
         
-        // 1. Aapka data "1447H-2026" wale format mein save ho raha hai.
-        // Agar Index file se monthKey (2026-01) aa rahi hai, toh hum sirf saal nikalenge.
-        const currentYear = monthKey.split('-')[0]; // "2026"
-        const hijriYear = "1447H-" + currentYear; // "1447H-2026"
+        /* Aapki file ke mutabiq:
+           Agar index file se '2026-01' aa raha hai, 
+           to hum usey '1447H-2026' mein convert karenge jo aapki file save kar rahi hai.
+        */
+        const yearOnly = monthKey.split('-')[0]; // "2026"
+        const hijriYear = `1447H-${yearOnly}`;   // "1447H-2026"
 
-        // 2. Query mein month ki jagah hijriYear ya dono options check karein
         const q = query(
             resultsRef,
             where("adminUid", "==", currentUser.uid),
             where("jamiaName", "==", jamiaName),
-            where("month", "==", hijriYear) // Kyunki aapne globalYear save kiya hai
+            where("month", "==", hijriYear) // matching with your globalYear
         );
 
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-            // Debugging ke liye console me check karein
-            console.log("No data for:", jamiaName, hijriYear);
-            el.innerHTML = `<span class="text-orange-500 text-xs"><i class="fas fa-search"></i> No data for ${hijriYear}</span>`;
+            el.innerHTML = `<span class="text-orange-400 text-xs">No records found</span>`;
             return;
         }
 
@@ -3669,13 +3668,13 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
             const data = doc.data();
             if (data.students && Array.isArray(data.students)) {
                 data.students.forEach(st => {
-                    // Sirf unhein ginein jinka data bhara gaya hai
-                    if (st.admissionNo || st.nameUrdu) {
+                    // Sirf un rows ko ginein jisme naam likha ho
+                    if (st.nameUrdu && st.nameUrdu.trim() !== "") {
                         totalStudents++;
-                        // "Kaamyaab" check (Urdu ya English dono check karein)
-                        if (st.kaifiyat === "Kaamyaab" || st.kaifiyat === "کامیاب" || parseFloat(st.totalPercentage) >= 33) {
+                        // Aapki file 'kaifiyat' save karti hai
+                        if (st.kaifiyat === "کامیاب" || st.kaifiyat === "Kaamyaab" || st.kaifiyat === "Pass") {
                             passStudents++;
-                        } else {
+                        } else if (st.kaifiyat === "ناکام" || st.kaifiyat === "Na-Kaam" || st.kaifiyat === "Fail") {
                             failStudents++;
                         }
                     }
@@ -3683,34 +3682,39 @@ async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
             }
         });
 
-        const percentage = totalStudents > 0 ? ((passStudents / totalStudents) * 100).toFixed(1) : 0;
+        if (totalStudents === 0) {
+            el.innerHTML = `<span class="text-gray-400 text-xs">Rows are empty</span>`;
+            return;
+        }
+
+        const passPercent = ((passStudents / totalStudents) * 100).toFixed(1);
 
         el.innerHTML = `
             <div class="flex flex-wrap items-center gap-2 mt-2">
-                <span class="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 text-xs font-bold">
+                <span class="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 text-[11px] font-bold">
                     Total: ${totalStudents}
                 </span>
-                <span class="bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 text-xs font-bold">
+                <span class="bg-emerald-50 text-emerald-700 px-2 py-1 rounded border border-emerald-100 text-[11px] font-bold">
                     Pass: ${passStudents}
                 </span>
-                <span class="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200 text-xs font-bold">
+                <span class="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 text-[11px] font-bold">
                     Fail: ${failStudents}
                 </span>
-                <span class="bg-teal-600 text-white px-2 py-1 rounded text-xs font-bold shadow-sm">
-                    ${percentage}%
+                <span class="bg-teal-600 text-white px-2 py-1 rounded text-[11px] font-bold shadow-sm">
+                    ${passPercent}%
                 </span>
             </div>
         `;
 
     } catch (error) {
-        console.error("Stats Error:", error);
-        el.innerHTML = `<span class="text-red-500 text-xs">Error!</span>`;
+        console.error("Ibtidaiya Stats Error:", error);
+        el.innerHTML = `<span class="text-red-400 text-xs">Error loading data</span>`;
     }
 }
-
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
