@@ -2785,10 +2785,7 @@ const renderIbtidaiyaTab = () => {
     const container = document.getElementById('ibtidaiya-list-container');
     if (!container) return;
 
-    // Jamiaat ki list User Profile se lein
     const allJamiaat = userProfileData.jamiaatList || [];
-    
-    // Month select karein
     const entrySelector = document.getElementById("entry-month-selector");
     const monthInputFormat = (entrySelector && entrySelector.value) 
                              ? entrySelector.value 
@@ -2800,35 +2797,38 @@ const renderIbtidaiyaTab = () => {
     }
 
     // List Generate Karein
-    container.innerHTML = allJamiaat.map((jamiaName) => {
-        // Base URL banayein
+    container.innerHTML = allJamiaat.map((jamiaName, index) => {
         const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-        
-        // Link banayein (Direct Link for specific Jamia)
         const formUrl = `ibtidaiya-result.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthInputFormat)}&uid=${currentUser.uid}`;
         const fullLink = baseUrl + formUrl;
+        const statsId = `ibt-stats-${index}`;
 
         return `
         <div class="p-4 border rounded-lg bg-white shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 hover:shadow-md transition">
-            
-            <div class="flex-1">
+            <div class="flex-1 w-full">
                 <h4 class="font-bold text-gray-800 urdu-font text-lg">${jamiaName}</h4>
-                <p class="text-xs text-gray-500">Selected Month: ${monthInputFormat}</p>
+                <div id="${statsId}" class="mt-1">
+                    <span class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin"></i> Loading stats...</span>
+                </div>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 shrink-0">
                 <button type="button" onclick="navigator.clipboard.writeText('${fullLink}').then(() => alert('Link Copied!'))" 
-                        class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm border flex items-center transition" title="Copy Link">
-                    <i class="fas fa-link mr-2"></i> Copy Link
+                        class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-xs border flex items-center transition">
+                    <i class="fas fa-link mr-1"></i> Copy
                 </button>
-
                 <a href="${formUrl}" target="_blank" 
-                   class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded text-sm border border-teal-700 flex items-center shadow-sm font-semibold transition" title="Open Form">
-                    <i class="fas fa-external-link-alt mr-2"></i> Open Form
+                   class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded text-xs border border-teal-700 flex items-center shadow-sm font-semibold transition">
+                    <i class="fas fa-external-link-alt mr-1"></i> Open
                 </a>
             </div>
         </div>`;
     }).join('');
+
+    // Har Jamia ke liye stats fetch karein
+    allJamiaat.forEach((jamiaName, index) => {
+        fetchIbtidaiyaStats(jamiaName, monthInputFormat, `ibt-stats-${index}`);
+    });
 };
 
 // --- Helper to Attach Listeners (Clean Code) ---
@@ -3631,93 +3631,74 @@ async function fetchTestStats(jamiaName, monthKey, elementId) {
         el.innerHTML = `<span class="text-red-400 text-xs">Error loading stats</span>`;
     }
 }
+        // 🔹 Ibtidaiya Result ke stats fetch karne ka function
+async function fetchIbtidaiyaStats(jamiaName, monthKey, elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    try {
+        const resultsRef = collection(db, "ibtidaiya_results");
+        const q = query(
+            resultsRef,
+            where("adminUid", "==", currentUser.uid),
+            where("jamiaName", "==", jamiaName),
+            where("month", "==", monthKey)
+        );
+
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            el.innerHTML = `<span class="text-orange-500 text-xs"><i class="fas fa-info-circle"></i> No data yet</span>`;
+            return;
+        }
+
+        let totalStudents = 0;
+        let passStudents = 0;
+        let failStudents = 0;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.students && Array.isArray(data.students)) {
+                data.students.forEach(st => {
+                    totalStudents++;
+                    // Result logic: 33% pass ya 'Pass' status ke hisab se
+                    const marks = parseFloat(st.totalPercentage) || 0;
+                    if (marks >= 33 || st.result === 'Pass') {
+                        passStudents++;
+                    } else {
+                        failStudents++;
+                    }
+                });
+            }
+        });
+
+        const percentage = totalStudents > 0 ? ((passStudents / totalStudents) * 100).toFixed(1) : 0;
+
+        el.innerHTML = `
+            <div class="flex flex-wrap items-center gap-2 mt-1">
+                <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 text-xs">
+                    Total: <b>${totalStudents}</b>
+                </span>
+                <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100 text-xs">
+                    Pass: <b>${passStudents}</b>
+                </span>
+                <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-100 text-xs">
+                    Fail: <b>${failStudents}</b>
+                </span>
+                <span class="bg-teal-600 text-white px-2 py-0.5 rounded text-xs font-bold">
+                    ${percentage}%
+                </span>
+            </div>
+        `;
+
+    } catch (error) {
+        console.error("Ibtidaiya stats error:", error);
+        el.innerHTML = `<span class="text-red-400 text-xs">Error loading stats</span>`;
+    }
+}
 
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
