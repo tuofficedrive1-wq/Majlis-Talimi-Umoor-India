@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style>
         @font-face {
@@ -14,438 +15,305 @@
             src: url('https://cdn.jsdelivr.net/gh/font-to-width/jameel-noori-nastaleeq-regular@1.1/jameel-noori-nastaleeq-regular.woff2') format('woff2');
         }
         body { font-family: 'Poppins', sans-serif; background-color: #f3f4f6; }
-        .urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif; line-height: 1.6; }
+        .urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif; line-height: 1.8; }
         .tab-btn.active { background-color: #0f766e; color: white; border-color: #0f766e; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #0f766e; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @media print {
+            body * { visibility: hidden; }
+            #view-students, #view-students * { visibility: visible; }
+            #view-students { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
+            .print-header { display: block !important; }
+        }
     </style>
 </head>
 <body class="text-gray-800">
 
     <div id="notification" class="hidden fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60]"></div>
+    <div id="loader" class="fixed inset-0 bg-white bg-opacity-90 flex justify-center items-center z-50"><div class="border-4 border-t-teal-600 rounded-full w-12 h-12 animate-spin"></div></div>
 
-    <div id="loader" class="fixed inset-0 bg-white bg-opacity-90 flex justify-center items-center z-50">
-        <div class="loader"></div>
-    </div>
-
-    <header class="bg-teal-800 text-white p-4 shadow-md sticky top-0 z-40">
+    <header class="bg-teal-800 text-white p-4 shadow-md sticky top-0 z-40 no-print">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl md:text-2xl font-bold">Tadrisi Course Admin Panel</h1>
-            <button id="logout-btn" class="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded text-sm font-semibold transition">Logout</button>
+            <h1 class="text-xl font-bold">Tadrisi Admin (4 Rounds System)</h1>
+            <button id="logout-btn" class="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded text-sm font-semibold">Logout</button>
         </div>
     </header>
 
-    <main class="container mx-auto p-4 max-w-6xl">
-        
-        <div class="flex flex-wrap gap-2 mb-6 border-b pb-2">
-            <button onclick="switchTab('groups')" class="tab-btn active px-6 py-2 rounded-t-lg font-medium border border-b-0 hover:bg-teal-50 transition" id="tab-groups">Manage Groups</button>
-            <button onclick="switchTab('students')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border border-b-0 hover:bg-teal-50 transition" id="tab-students">Manage Students</button>
-            <button onclick="switchTab('mufattish')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border border-b-0 hover:bg-teal-50 transition" id="tab-mufattish">Mufattish List</button>
+    <main class="container mx-auto p-4 max-w-[95%]">
+        <div class="flex flex-wrap gap-2 mb-6 border-b pb-2 no-print">
+            <button onclick="switchTab('groups')" class="tab-btn active px-6 py-2 rounded-t-lg font-medium border" id="tab-groups">Manage Groups</button>
+            <button onclick="switchTab('students')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-students">Students & Excel</button>
+            <button onclick="switchTab('mufattish')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-mufattish">Mufattish List</button>
         </div>
 
         <div id="view-groups" class="tab-content">
             <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-teal-600">
-                <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fas fa-layer-group"></i> Create New Group</h3>
-                <div class="flex flex-col md:flex-row gap-4">
-                    <input type="text" id="new-group-name" placeholder="Group Name (e.g. Group A - Hifz)" class="flex-1 p-2 border rounded urdu-font focus:ring-2 focus:ring-teal-500">
-                    
-                    <select id="new-group-mufattish" class="flex-1 p-2 border rounded urdu-font focus:ring-2 focus:ring-teal-500">
-                        <option value="">-- Assign Mufattish --</option>
-                        </select>
-
-                    <button onclick="createGroup()" class="bg-teal-600 text-white px-6 py-2 rounded font-bold hover:bg-teal-700">Create</button>
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2">Create New Group (Assign 4 Rounds)</h3>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1">Group Name</label>
+                    <input type="text" id="new-group-name" placeholder="e.g. Halqa 1" class="w-full p-2 border rounded urdu-font">
                 </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500">Round 1 Mufattish</label>
+                        <select id="mufattish-r1" class="mufattish-select w-full p-2 border rounded bg-gray-50"></select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500">Round 2 Mufattish</label>
+                        <select id="mufattish-r2" class="mufattish-select w-full p-2 border rounded bg-gray-50"></select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500">Round 3 Mufattish</label>
+                        <select id="mufattish-r3" class="mufattish-select w-full p-2 border rounded bg-gray-50"></select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500">Round 4 Mufattish</label>
+                        <select id="mufattish-r4" class="mufattish-select w-full p-2 border rounded bg-gray-50"></select>
+                    </div>
+                </div>
+
+                <button onclick="createGroup()" class="bg-teal-600 text-white px-8 py-2 rounded font-bold hover:bg-teal-700">Create Group</button>
             </div>
-
-            <div id="groups-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                </div>
+            <div id="groups-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
 
         <div id="view-students" class="tab-content hidden">
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-blue-600">
-                <h3 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fas fa-user-graduate"></i> Add Student</h3>
-                
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-blue-600 no-print">
+                <h3 class="text-lg font-bold mb-4">Manage Students</h3>
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Select Group first:</label>
-                    <select id="student-group-select" onchange="loadStudentsForGroup()" class="w-full p-2 border rounded urdu-font bg-gray-50 focus:ring-2 focus:ring-blue-500">
-                        <option value="">-- Select Group --</option>
-                    </select>
+                    <select id="student-group-select" onchange="loadStudentsForGroup()" class="w-full p-2 border rounded urdu-font bg-gray-50 focus:ring-2 focus:ring-blue-500"><option value="">-- Select Group --</option></select>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded border border-blue-100 mb-6">
                     <input type="text" id="new-std-name" placeholder="Student Name" class="p-2 border rounded urdu-font">
                     <input type="text" id="new-std-father" placeholder="Father Name" class="p-2 border rounded urdu-font">
-                    <button onclick="addStudent()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700">Add Student</button>
+                    <button onclick="addStudent()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold">Add Single</button>
+                </div>
+
+                <div class="p-4 bg-green-50 rounded-lg border-2 border-dashed border-green-300">
+                    <h4 class="font-bold text-green-800 mb-2"><i class="fas fa-file-excel"></i> Upload Excel File</h4>
+                    <p class="text-xs text-gray-600 mb-2">Columns: <b>RegNo, StudentName, FatherName, DOB, Gender</b></p>
+                    <div class="flex gap-2">
+                        <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="flex-1 p-1 bg-white border rounded">
+                        <button onclick="processExcelUpload()" id="upload-btn" class="bg-green-600 text-white px-4 py-1 rounded font-bold">Upload</button>
+                    </div>
+                    <div id="upload-status" class="hidden mt-2 text-sm text-green-700 font-bold">Uploading...</div>
                 </div>
             </div>
 
-            <div class="bg-white rounded-lg shadow overflow-hidden">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-100 border-b">
+            <div class="bg-white rounded-lg shadow overflow-hidden border">
+                <table class="w-full text-left border-collapse min-w-[800px]">
+                    <thead class="bg-gray-100 text-gray-700 text-xs text-center border-b-2 border-gray-300">
                         <tr>
-                            <th class="p-3">#</th>
-                            <th class="p-3">Name</th>
-                            <th class="p-3">Father Name</th>
-                            <th class="p-3 text-center">Action</th>
+                            <th class="p-2 w-10">#</th>
+                            <th class="p-2 text-left">Name</th>
+                            <th class="p-2">Round 1</th>
+                            <th class="p-2">Round 2</th>
+                            <th class="p-2">Round 3</th>
+                            <th class="p-2">Round 4</th>
+                            <th class="p-2 no-print">Action</th>
                         </tr>
                     </thead>
-                    <tbody id="students-table-body">
-                        <tr><td colspan="4" class="p-4 text-center text-gray-500">Select a group to view students.</td></tr>
-                    </tbody>
+                    <tbody id="students-table-body" class="divide-y divide-gray-200"></tbody>
                 </table>
             </div>
         </div>
 
         <div id="view-mufattish" class="tab-content hidden">
             <div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-purple-600">
-                <h3 class="text-lg font-bold mb-4">Mufattish (Inspectors) List</h3>
-                <p class="text-sm text-gray-500 mb-4">Ye wo users hain jinka role 'tadrisi_course_mufattish' set hai. Yahan aap unka naam aur details update kar sakte hain.</p>
-                
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-purple-50 text-purple-900">
-                            <tr>
-                                <th class="p-3 border-b">Name</th>
-                                <th class="p-3 border-b">Email</th>
-                                <th class="p-3 border-b">Region / Detail</th>
-                                <th class="p-3 border-b text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="mufattish-table-body">
-                            </tbody>
-                    </table>
-                </div>
+                <h3 class="text-lg font-bold mb-4">Mufattish List</h3>
+                <table class="w-full text-left border-collapse"><tbody id="mufattish-table-body"></tbody></table>
             </div>
         </div>
-
     </main>
-
-    <div id="edit-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
-            <h3 class="text-xl font-bold mb-4">Edit Profile</h3>
-            <input type="hidden" id="edit-uid">
-            <label class="block text-sm mb-1">Name</label>
-            <input type="text" id="edit-name" class="w-full border p-2 rounded mb-3 urdu-font">
-            
-            <label class="block text-sm mb-1">Region / Detail</label>
-            <input type="text" id="edit-region" class="w-full border p-2 rounded mb-4 urdu-font">
-            
-            <div class="flex justify-end gap-2">
-                <button onclick="document.getElementById('edit-modal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-                <button onclick="saveMufattishEdit()" class="px-4 py-2 bg-purple-600 text-white rounded">Save Changes</button>
-            </div>
-        </div>
-    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
-        import { getFirestore, collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, increment, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";   
+        import { getFirestore, collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, getDoc, increment, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";   
 
-        // Firebase Config (Apni config check karein)
-        const firebaseConfig = {
-          apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-          authDomain: "data-f15ab.firebaseapp.com",
-          projectId: "data-f15ab",
-          storageBucket: "data-f15ab.appspot.com", 
-          messagingSenderId: "449137002393",
-          appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
-          measurementId: "G-1PHNJQWNPZ"
-        };
+        const firebaseConfig = { apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508", measurementId: "G-1PHNJQWNPZ" };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // State Variables
-        let allMufattish = [];
-        let allGroups = [];
-        let currentSelectedGroupId = null;
-
-        // UI Helpers
+        let allMufattish = [], allGroups = [], currentSelectedGroupId = null;
         const showLoader = (show) => document.getElementById('loader').classList.toggle('hidden', !show);
-        const showToast = (msg, type='success') => {
-            const el = document.getElementById('notification');
-            el.textContent = msg;
-            el.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] ${type==='error'?'bg-red-500':'bg-emerald-600'}`;
-            el.classList.remove('hidden');
-            setTimeout(() => el.classList.add('hidden'), 3000);
-        };
+        const showToast = (msg, type='success') => { const el = document.getElementById('notification'); el.textContent = msg; el.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg z-[60] ${type==='error'?'bg-red-500':'bg-emerald-600'}`; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),3000); };
 
-        // --- AUTH & INIT (FIXED) ---
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // Check Access
                 const userDoc = await getDoc(doc(db, 'users', user.uid));
                 if(userDoc.exists()) {
-                    const role = userDoc.data().role;
-                    
-                    // 🔥 UPDATED PERMISSION CHECK 🔥
-                    // Yahan humne 'tadrisi_course_admin' bhi add kar diya hai
-                    if(role === 'admin' || role === 'tadrisi_course_management' || role === 'tadrisi_course_admin') {
-                        await initData();
-                    } else {
-                        alert("Access Denied: Aapke paas Tadrisi Admin rights nahi hain.");
-                        window.location.href = 'index.html';
-                    }
+                    const r = userDoc.data().role;
+                    if(r === 'admin' || r === 'tadrisi_course_management' || r === 'tadrisi_course_admin') await initData();
+                    else window.location.href = 'index.html';
                 }
-            } else {
-                window.location.href = 'index.html';
-            }
+            } else window.location.href = 'index.html';
             showLoader(false);
         });
 
         document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+        window.switchTab = (tab) => { document.querySelectorAll('.tab-content').forEach(e=>e.classList.add('hidden')); document.querySelectorAll('.tab-btn').forEach(e=>e.classList.remove('active')); document.getElementById(`view-${tab}`).classList.remove('hidden'); document.getElementById(`tab-${tab}`).classList.add('active'); };
 
-        // --- TAB SWITCHING ---
-        window.switchTab = (tabName) => {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            
-            document.getElementById(`view-${tabName}`).classList.remove('hidden');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-        };
-
-        // --- DATA LOADING ---
-        async function initData() {
-            await fetchMufattishList();
-            await fetchGroupsList();
-        }
+        async function initData() { await fetchMufattishList(); await fetchGroupsList(); }
 
         async function fetchMufattishList() {
             const q = query(collection(db, 'users'), where('role', '==', 'tadrisi_course_mufattish'));
             const snap = await getDocs(q);
-            allMufattish = snap.docs.map(d => ({id: d.id, ...d.data()}));
+            allMufattish = snap.docs.map(d => ({id:d.id, ...d.data()}));
             
-            renderMufattishDropdown();
-            renderMufattishTable();
+            // Populate all 4 dropdowns
+            const options = '<option value="">-- Select --</option>' + allMufattish.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+            ['mufattish-r1', 'mufattish-r2', 'mufattish-r3', 'mufattish-r4'].forEach(id => {
+                document.getElementById(id).innerHTML = options;
+            });
+
+            const tbody = document.getElementById('mufattish-table-body'); tbody.innerHTML='';
+            allMufattish.forEach(m => tbody.innerHTML += `<tr class="border-b"><td class="p-2">${m.name}</td><td class="p-2">${m.email}</td><td class="p-2">${m.region||'-'}</td></tr>`);
         }
 
         async function fetchGroupsList() {
-            const q = query(collection(db, 'tadrisi_groups')); 
+            const q = query(collection(db, 'tadrisi_groups'));
             const snap = await getDocs(q);
-            allGroups = snap.docs.map(d => ({id: d.id, ...d.data()}));
-            
-            renderGroupsList();
-            renderGroupSelectDropdown(); // For Students Tab
-        }
-
-        // --- 1. GROUPS LOGIC ---
-        function renderMufattishDropdown() {
-            const select = document.getElementById('new-group-mufattish');
-            select.innerHTML = '<option value="">-- Assign Mufattish --</option>';
-            allMufattish.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.id;
-                opt.textContent = `${m.name || 'No Name'} (${m.region || '-'})`;
-                select.appendChild(opt);
-            });
-        }
-
-        function renderGroupsList() {
-            const container = document.getElementById('groups-list-container');
-            container.innerHTML = '';
+            allGroups = snap.docs.map(d => ({id:d.id, ...d.data()}));
+            const c = document.getElementById('groups-list-container'); c.innerHTML='';
             
             allGroups.forEach(g => {
-                // Find assigned mufattish name
-                const mufattish = allMufattish.find(m => m.id === g.mufattishId);
-                const mName = mufattish ? mufattish.name : 'Unassigned / Removed User';
-
-                const card = document.createElement('div');
-                card.className = "bg-white p-4 rounded-lg shadow border border-gray-200 relative group";
-                card.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h4 class="text-lg font-bold text-teal-800 urdu-font">${g.groupName}</h4>
-                            <p class="text-sm text-gray-500 mt-1"><i class="fas fa-user-tie"></i> ${mName}</p>
-                            <p class="text-sm text-gray-500"><i class="fas fa-users"></i> Students: <strong>${g.totalStudents || 0}</strong></p>
+                const getMName = (uid) => { const m = allMufattish.find(x => x.id === uid); return m ? m.name : 'Pending'; };
+                
+                c.innerHTML += `
+                    <div class="bg-white p-4 shadow border rounded relative">
+                        <h4 class="font-bold text-lg text-teal-800 mb-2">${g.groupName}</h4>
+                        <div class="text-xs text-gray-600 space-y-1">
+                            <p>R1: ${getMName(g.round_1_uid)}</p>
+                            <p>R2: ${getMName(g.round_2_uid)}</p>
+                            <p>R3: ${getMName(g.round_3_uid)}</p>
+                            <p>R4: ${getMName(g.round_4_uid)}</p>
                         </div>
-                        <button onclick="deleteGroup('${g.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
-                    </div>
-                `;
-                container.appendChild(card);
+                        <button onclick="deleteGroup('${g.id}')" class="absolute top-2 right-2 text-red-400"><i class="fas fa-trash"></i></button>
+                    </div>`;
             });
+
+            const sel = document.getElementById('student-group-select'); sel.innerHTML = '<option value="">-- Select Group --</option>';
+            allGroups.forEach(g => sel.innerHTML += `<option value="${g.id}">${g.groupName}</option>`);
         }
 
         window.createGroup = async () => {
-            const name = document.getElementById('new-group-name').value.trim();
-            const mufattishId = document.getElementById('new-group-mufattish').value;
+            const n = document.getElementById('new-group-name').value; 
+            const r1 = document.getElementById('mufattish-r1').value;
+            const r2 = document.getElementById('mufattish-r2').value;
+            const r3 = document.getElementById('mufattish-r3').value;
+            const r4 = document.getElementById('mufattish-r4').value;
 
-            if(!name || !mufattishId) { showToast('Please enter name and select Mufattish', 'error'); return; }
-
+            if(!n || !r1) return showToast('Name and at least Round 1 is required', 'error');
+            
             showLoader(true);
             try {
-                await addDoc(collection(db, 'tadrisi_groups'), {
-                    groupName: name,
-                    mufattishId: mufattishId,
-                    totalStudents: 0,
-                    createdAt: new Date()
+                await addDoc(collection(db, 'tadrisi_groups'), { 
+                    groupName: n, 
+                    totalStudents: 0, 
+                    round_1_uid: r1, round_2_uid: r2, round_3_uid: r3, round_4_uid: r4,
+                    createdAt: new Date() 
                 });
-                showToast('Group Created!');
-                document.getElementById('new-group-name').value = '';
+                showToast('Group Created with Rounds!');
+                document.getElementById('new-group-name').value=''; 
                 await fetchGroupsList();
-            } catch(e) { console.error(e); showToast('Error creating group', 'error'); }
-            finally { showLoader(false); }
+            } catch(e) { console.error(e); } finally { showLoader(false); }
         };
-
-        window.deleteGroup = async (id) => {
-            if(!confirm('Kya aap waqai is Group ko delete karna chahte hain? Isse students delete nahi honge par wo orphan ho jayenge.')) return;
-            showLoader(true);
-            try {
-                await deleteDoc(doc(db, 'tadrisi_groups', id));
-                showToast('Group Deleted');
-                await fetchGroupsList();
-            } catch(e) { console.error(e); showToast('Delete Failed', 'error'); }
-            finally { showLoader(false); }
-        };
-
-        // --- 2. STUDENTS LOGIC ---
-        function renderGroupSelectDropdown() {
-            const select = document.getElementById('student-group-select');
-            select.innerHTML = '<option value="">-- Select Group to Manage --</option>';
-            allGroups.forEach(g => {
-                const opt = document.createElement('option');
-                opt.value = g.id;
-                opt.textContent = g.groupName;
-                select.appendChild(opt);
-            });
-        }
+        window.deleteGroup = async (id) => { if(confirm('Delete?')) { await deleteDoc(doc(db, 'tadrisi_groups', id)); await fetchGroupsList(); } };
 
         window.loadStudentsForGroup = async () => {
-            const groupId = document.getElementById('student-group-select').value;
-            currentSelectedGroupId = groupId;
+            const gid = document.getElementById('student-group-select').value;
+            currentSelectedGroupId = gid;
             const tbody = document.getElementById('students-table-body');
+            if(!gid) return tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center">Select group</td></tr>';
             
-            if(!groupId) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">Select a group to view students.</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center">Loading...</td></tr>';
-            
-            const q = query(collection(db, 'tadrisi_students'), where('groupId', '==', groupId));
+            const q = query(collection(db, 'tadrisi_students'), where('groupId', '==', gid));
             const snap = await getDocs(q);
-            
-            if(snap.empty) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">No students in this group yet.</td></tr>';
-                return;
-            }
-
             tbody.innerHTML = '';
             let count = 1;
             snap.forEach(d => {
-                const std = d.data();
+                const s = d.data();
+                // Check if result exists for each round
+                const hasR1 = s.marks_r1?.total ? s.marks_r1.total : '-';
+                const hasR2 = s.marks_r2?.total ? s.marks_r2.total : '-';
+                const hasR3 = s.marks_r3?.total ? s.marks_r3.total : '-';
+                const hasR4 = s.marks_r4?.total ? s.marks_r4.total : '-';
+
                 const row = `
                     <tr class="hover:bg-gray-50 border-b">
-                        <td class="p-3 text-gray-500">${count++}</td>
-                        <td class="p-3 font-semibold urdu-font">${std.name}</td>
-                        <td class="p-3 urdu-font">${std.fatherName || '-'}</td>
-                        <td class="p-3 text-center">
-                            <button onclick="deleteStudent('${d.id}')" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-trash-alt"></i></button>
-                        </td>
-                    </tr>
-                `;
+                        <td class="p-2 text-center text-gray-500">${count++}</td>
+                        <td class="p-2 font-bold urdu-font">${s.name}<br><span class="text-xs font-normal text-gray-500">${s.fatherName||''}</span></td>
+                        <td class="p-2 text-center bg-blue-50">${hasR1}</td>
+                        <td class="p-2 text-center bg-green-50">${hasR2}</td>
+                        <td class="p-2 text-center bg-yellow-50">${hasR3}</td>
+                        <td class="p-2 text-center bg-purple-50">${hasR4}</td>
+                        <td class="p-2 text-center no-print"><button onclick="deleteStudent('${d.id}')" class="text-red-500"><i class="fas fa-trash"></i></button></td>
+                    </tr>`;
                 tbody.insertAdjacentHTML('beforeend', row);
             });
         };
 
         window.addStudent = async () => {
-            if(!currentSelectedGroupId) { showToast('Please select a group first', 'error'); return; }
-            
-            const name = document.getElementById('new-std-name').value.trim();
-            const father = document.getElementById('new-std-father').value.trim();
-
-            if(!name) { showToast('Student name is required', 'error'); return; }
-
-            showLoader(true);
-            try {
-                // 1. Add Student
-                await addDoc(collection(db, 'tadrisi_students'), {
-                    name: name,
-                    fatherName: father,
-                    groupId: currentSelectedGroupId,
-                    marks: null // Start empty
-                });
-
-                // 2. Increment Count in Group
-                const groupRef = doc(db, 'tadrisi_groups', currentSelectedGroupId);
-                await updateDoc(groupRef, {
-                    totalStudents: increment(1)
-                });
-
-                showToast('Student Added!');
-                document.getElementById('new-std-name').value = '';
-                document.getElementById('new-std-father').value = '';
-                await loadStudentsForGroup(); // Refresh Table
-                await fetchGroupsList(); // Refresh Group Count on other tab
-            } catch(e) { console.error(e); showToast('Error adding student', 'error'); }
-            finally { showLoader(false); }
+            if(!currentSelectedGroupId) return showToast('Select Group', 'error');
+            const n = document.getElementById('new-std-name').value; const f = document.getElementById('new-std-father').value;
+            if(!n) return;
+            await addDoc(collection(db, 'tadrisi_students'), { name:n, fatherName:f, groupId:currentSelectedGroupId });
+            await updateDoc(doc(db,'tadrisi_groups',currentSelectedGroupId), { totalStudents: increment(1) });
+            document.getElementById('new-std-name').value=''; await loadStudentsForGroup();
         };
 
-        window.deleteStudent = async (stdId) => {
-            if(!confirm('Delete this student?')) return;
-            showLoader(true);
-            try {
-                await deleteDoc(doc(db, 'tadrisi_students', stdId));
-                
-                // Decrement count
-                const groupRef = doc(db, 'tadrisi_groups', currentSelectedGroupId);
-                await updateDoc(groupRef, { totalStudents: increment(-1) });
-
-                showToast('Student Deleted');
+        window.deleteStudent = async (id) => {
+            if(confirm('Delete?')) {
+                await deleteDoc(doc(db,'tadrisi_students', id));
+                await updateDoc(doc(db,'tadrisi_groups',currentSelectedGroupId), { totalStudents: increment(-1) });
                 await loadStudentsForGroup();
-                await fetchGroupsList();
-            } catch(e) { console.error(e); }
-            finally { showLoader(false); }
+            }
         };
 
-        // --- 3. MUFATTISH LIST LOGIC ---
-        function renderMufattishTable() {
-            const tbody = document.getElementById('mufattish-table-body');
-            tbody.innerHTML = '';
-            allMufattish.forEach(m => {
-                const row = `
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="p-3 font-semibold urdu-font">${m.name || 'No Name'}</td>
-                        <td class="p-3 text-sm text-gray-600">${m.email}</td>
-                        <td class="p-3 urdu-font">${m.region || m.zimmedari || '-'}</td>
-                        <td class="p-3 text-center">
-                            <button onclick="openEditModal('${m.id}', '${m.name || ''}', '${m.region || ''}')" class="text-purple-600 hover:text-purple-800 text-sm font-medium">Edit</button>
-                        </td>
-                    </tr>
-                `;
-                tbody.insertAdjacentHTML('beforeend', row);
-            });
-        }
+        // EXCEL UPLOAD LOGIC
+        window.processExcelUpload = async () => {
+            const fileIn = document.getElementById('excel-file-input');
+            const gid = document.getElementById('student-group-select').value;
+            if(!gid) return showToast('Select a Group first!', 'error');
+            if(!fileIn.files.length) return showToast('Select Excel file', 'error');
 
-        window.openEditModal = (id, name, region) => {
-            document.getElementById('edit-uid').value = id;
-            document.getElementById('edit-name').value = name;
-            document.getElementById('edit-region').value = region;
-            document.getElementById('edit-modal').classList.remove('hidden');
+            document.getElementById('upload-status').classList.remove('hidden');
+            document.getElementById('upload-btn').disabled = true;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet);
+
+                if(json.length > 0) {
+                    const batch = writeBatch(db);
+                    json.forEach(row => {
+                        const ref = doc(collection(db, 'tadrisi_students'));
+                        batch.set(ref, {
+                            name: row['StudentName'] || 'Unknown',
+                            fatherName: row['FatherName'] || '',
+                            regNo: row['RegNo'] || '',
+                            groupId: gid,
+                            createdAt: new Date()
+                        });
+                    });
+                    await batch.commit();
+                    await updateDoc(doc(db,'tadrisi_groups',gid), { totalStudents: increment(json.length) });
+                    showToast(`Uploaded ${json.length} Students!`);
+                    await loadStudentsForGroup();
+                }
+                document.getElementById('upload-status').classList.add('hidden');
+                document.getElementById('upload-btn').disabled = false;
+                fileIn.value = '';
+            };
+            reader.readAsArrayBuffer(fileIn.files[0]);
         };
-
-        window.saveMufattishEdit = async () => {
-            const id = document.getElementById('edit-uid').value;
-            const name = document.getElementById('edit-name').value;
-            const region = document.getElementById('edit-region').value;
-
-            showLoader(true);
-            try {
-                await updateDoc(doc(db, 'users', id), {
-                    name: name,
-                    region: region
-                });
-                showToast('Profile Updated');
-                document.getElementById('edit-modal').classList.add('hidden');
-                await fetchMufattishList();
-                await fetchGroupsList(); 
-            } catch(e) { console.error(e); showToast('Update Failed', 'error'); }
-            finally { showLoader(false); }
-        };
-
     </script>
 </body>
-
 </html>
-
