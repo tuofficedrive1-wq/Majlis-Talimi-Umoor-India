@@ -3758,49 +3758,64 @@ async function fetchTestStats(jamiaName, monthKey, elementId) {
         el.innerHTML = `<span class="text-red-400 text-xs">Error loading stats</span>`;
     }
 }
-        const renderAsatizaDetailsTab = () => {
+        // index (1).html ke script section mein ye updated function replace karein
+const renderAsatizaDetailsTab = async () => {
     const container = document.getElementById('asatiza-details-list-container');
     if (!container) return;
 
-    // Naya logic: Agar jamiaatList nahi hai toh profile structure se nikalna
-    let allJamiaat = userProfileData.jamiaatList || [];
+    const allJamiaat = userProfileData.jamiaatList || [];
     
-    // Agar list abhi bhi khali hai toh current structure se loop karein
-    if (allJamiaat.length === 0 && userProfileData.academicYears) {
-        const years = Object.keys(userProfileData.academicYears).sort().reverse();
-        const latestYear = years[0];
-        const structure = userProfileData.academicYears[latestYear].karkardagiStructure || [];
-        allJamiaat = structure.map(j => j.jamiaName);
-    }
-
     if (allJamiaat.length === 0) {
         container.innerHTML = '<p class="text-center text-gray-500">Koi Jamia add nahi hai.</p>';
         return;
     }
 
-    // List rendering logic yahan rahegi...
-    container.innerHTML = allJamiaat.map((jamiaName, index) => {
-        const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-        const formUrl = `asatiza-details.html?jamia=${encodeURIComponent(jamiaName)}&uid=${currentUser.uid}`;
-        const fullLink = baseUrl + formUrl;
+    // Pehle loading state dikhayein
+    container.innerHTML = '<p class="text-center text-gray-500"><i class="fas fa-spinner fa-spin"></i> Loading Counts...</p>';
 
-        return `
-        <div class="p-4 border rounded-lg bg-white shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
-            <div class="flex-1 w-full text-left">
-                <h4 class="font-bold text-gray-800 urdu-font text-lg">${jamiaName}</h4>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-                <button type="button" onclick="navigator.clipboard.writeText('${fullLink}').then(() => alert('Link Copied!'))" 
-                        class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-xs border flex items-center transition">
-                    <i class="fas fa-link mr-1"></i> Copy Link
-                </button>
-                <a href="${formUrl}" target="_blank" 
-                   class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded text-xs border border-indigo-700 flex items-center shadow-sm font-semibold transition">
-                    <i class="fas fa-external-link-alt mr-1"></i> Open
-                </a>
-            </div>
-        </div>`;
-    }).join('');
+    try {
+        // Database se is admin ke saare asatiza records ek baar mein le aayein
+        const q = query(collection(db, "asatiza_details"), where("adminUid", "==", currentUser.uid));
+        const snapshot = await getDocs(q);
+        const allRecords = snapshot.docs.map(doc => doc.data());
+
+        // HTML render karein
+        container.innerHTML = allJamiaat.map((jamiaName, index) => {
+            // Is Jamia ke liye entries count karein
+            const count = allRecords.filter(r => r.jamia === jamiaName).length;
+            
+            const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
+            const userRegion = userProfileData.region || '';
+            const formUrl = `asatiza-details.html?jamia=${encodeURIComponent(jamiaName)}&uid=${currentUser.uid}&region=${encodeURIComponent(userRegion)}`;
+            const fullLink = baseUrl + formUrl;
+
+            return `
+            <div class="p-4 border rounded-lg bg-white shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 hover:shadow-md transition">
+                <div class="flex-1 w-full text-right">
+                    <h4 class="font-bold text-gray-800 urdu-font text-lg">${jamiaName}</h4>
+                    <div class="mt-1">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${count > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                            <i class="fas fa-users mr-1"></i> ${count} Logo ne fill kiya
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" onclick="navigator.clipboard.writeText('${fullLink}').then(() => alert('Link Copied!'))" 
+                            class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-xs border flex items-center transition">
+                        <i class="fas fa-link mr-1"></i> Copy Link
+                    </button>
+                    <a href="${formUrl}" target="_blank" 
+                       class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded text-xs border border-indigo-700 flex items-center shadow-sm font-semibold transition">
+                        <i class="fas fa-external-link-alt mr-1"></i> Open Form
+                    </a>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (error) {
+        console.error("Error fetching counts:", error);
+        container.innerHTML = '<p class="text-center text-red-500">Counts load karne mein masla aaya.</p>';
+    }
 };
         // --- ASATIZA INNER TABS LOGIC ---
 const btnAsatizaLinks = document.getElementById('btn-show-asatiza-links');
@@ -3914,6 +3929,7 @@ window.deleteAsatizaRecord = async (docId) => {
     </script>
 </body>
 </html>
+
 
 
 
