@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style>
         @font-face {
@@ -18,21 +19,15 @@
         .tab-btn.active { background-color: #0f766e; color: white; border-color: #0f766e; }
         .big-checkbox { width: 18px; height: 18px; cursor: pointer; }
 
-        /* Print Settings */
-        @media print {
-            body * { visibility: hidden; }
-            #print-section, #print-section * { visibility: visible; }
-            #print-section { position: absolute; left: 0; top: 0; width: 100%; }
-            .no-print { display: none !important; }
-            .print-header { display: block !important; }
-            /* Force background colors in print */
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
+        /* Status Colors */
+        .status-complete { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .status-pending { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .status-ongoing { background-color: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
 
         /* Result Cell Colors */
-        .bg-fail { background-color: #ef4444 !important; color: white !important; } /* Red for Fail */
-        .bg-pass { background-color: #ecfccb !important; color: #1e293b !important; } /* Greenish for Pass */
-        .bg-header { background-color: #fef3c7 !important; } /* Header Color */
+        .bg-fail { background-color: #ef4444 !important; color: white !important; }
+        .bg-pass { background-color: #ecfccb !important; color: #1e293b !important; }
+        .bg-header { background-color: #fef3c7 !important; }
     </style>
 </head>
 <body class="text-gray-800">
@@ -42,7 +37,7 @@
 
     <header class="bg-teal-800 text-white p-4 shadow-md sticky top-0 z-40 no-print">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold">Tadrisi Admin (Final Results)</h1>
+            <h1 class="text-xl font-bold">Tadrisi Admin System</h1>
             <button id="logout-btn" class="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded text-sm font-semibold">Logout</button>
         </div>
     </header>
@@ -50,103 +45,174 @@
     <main class="container mx-auto p-4 max-w-[98%]">
         
         <div class="flex flex-wrap gap-2 mb-6 border-b pb-2 no-print">
-            <button onclick="switchTab('students')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-students">1. Add & Assign</button>
+            <button onclick="switchTab('students')" class="tab-btn active px-6 py-2 rounded-t-lg font-medium border" id="tab-students">1. Students & Transfer</button>
             <button onclick="switchTab('groups')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-groups">2. Manage Groups</button>
-            <button onclick="switchTab('results')" class="tab-btn active px-6 py-2 rounded-t-lg font-medium border" id="tab-results">3. Final Result Sheet</button>
-            <button onclick="switchTab('mufattish')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-mufattish">4. Mufattish List</button>
+            <button onclick="switchTab('results')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-results">3. Final Result & Excel</button>
+            <button onclick="switchTab('mufattish')" class="tab-btn px-6 py-2 rounded-t-lg font-medium border" id="tab-mufattish">4. Mufattish Status</button>
         </div>
 
-        <div id="view-students" class="tab-content hidden">
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-blue-600">
-                <h3 class="text-lg font-bold mb-2 text-blue-800"><i class="fas fa-paste"></i> Step 1: Add New Students</h3>
-                <textarea id="paste-area" rows="5" class="w-full p-3 border rounded bg-gray-50 font-mono text-sm" placeholder="Paste Excel Data: RegNo | Name | Father | Jamia | Mobile"></textarea>
-                <div class="flex gap-2 mt-3">
-                    <button onclick="previewData()" class="bg-gray-700 text-white px-4 py-2 rounded">Preview</button>
-                    <button onclick="savePastedData()" id="save-btn" class="bg-blue-600 text-white px-6 py-2 rounded font-bold hidden">Save</button>
-                </div>
-                <div id="preview-container" class="hidden mt-4 border rounded overflow-hidden overflow-x-auto">
-                    <table class="w-full text-left text-sm min-w-[800px]"><thead class="bg-blue-50"><tr><th class="p-2">Reg</th><th class="p-2">Name</th><th class="p-2">Father</th><th class="p-2">Jamia</th><th class="p-2">Mobile</th></tr></thead><tbody id="preview-body" class="bg-white"></tbody></table>
-                </div>
-            </div>
-            <div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-orange-500">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-orange-800">Step 2: Assign Group</h3>
-                    <div class="flex gap-2">
-                        <select id="assign-group-select" class="p-2 border rounded w-64"><option value="">Select Group</option></select>
-                        <button onclick="assignSelectedStudents()" class="bg-orange-600 text-white px-4 py-2 rounded font-bold">Assign</button>
+        <div id="view-students" class="tab-content">
+            
+            <div class="bg-white p-4 rounded-lg shadow-md mb-6 border-t-4 border-blue-600">
+                <button onclick="document.getElementById('add-student-area').classList.toggle('hidden')" class="flex justify-between items-center w-full text-left font-bold text-blue-800">
+                    <span><i class="fas fa-user-plus mr-2"></i> Add New Students (Click to Open)</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                
+                <div id="add-student-area" class="hidden mt-4">
+                    <p class="text-xs text-gray-500 mb-2">Excel Format: <b>RegNo [TAB] Name [TAB] FatherName [TAB] Jamia [TAB] Mobile</b></p>
+                    <textarea id="paste-area" rows="5" class="w-full p-3 border rounded bg-gray-50 font-mono text-sm focus:ring-2 focus:ring-blue-500 whitespace-pre" placeholder="Paste data here..."></textarea>
+                    
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="previewData()" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800">Preview</button>
+                        <button onclick="savePastedData()" id="save-btn" class="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 hidden">Save to Database</button>
+                    </div>
+                    <div id="preview-container" class="hidden mt-4 border rounded overflow-hidden overflow-x-auto">
+                        <table class="w-full text-left text-sm min-w-[800px]"><thead class="bg-blue-50"><tr><th class="p-2">Reg No</th><th class="p-2">Name</th><th class="p-2">Father Name</th><th class="p-2">Jamia</th><th class="p-2">Mobile</th></tr></thead><tbody id="preview-body" class="bg-white"></tbody></table>
                     </div>
                 </div>
-                <div class="overflow-x-auto"><table class="w-full text-left border-collapse"><tbody id="unassigned-tbody"></tbody></table></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-orange-500">
+                <h3 class="text-lg font-bold text-orange-800 mb-4"><i class="fas fa-users"></i> All Students List (Group Wise)</h3>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse min-w-[900px]">
+                        <thead class="bg-orange-50 text-orange-900 text-sm">
+                            <tr>
+                                <th class="p-3 border-b w-10">#</th>
+                                <th class="p-3 border-b">Group</th>
+                                <th class="p-3 border-b">Reg No</th>
+                                <th class="p-3 border-b">Name</th>
+                                <th class="p-3 border-b">Father Name</th>
+                                <th class="p-3 border-b">Jamia</th>
+                                <th class="p-3 border-b">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="students-master-tbody">
+                            <tr><td colspan="7" class="p-4 text-center text-gray-400">Loading students...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
         <div id="view-groups" class="tab-content hidden">
             <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-teal-600">
-                <h3 class="text-lg font-bold mb-4">Create Group</h3>
+                <h3 class="text-lg font-bold mb-4">Create New Group</h3>
                 <div class="flex flex-col gap-4">
-                    <input type="text" id="new-group-name" placeholder="Group Name" class="w-full p-2 border rounded">
+                    <input type="text" id="new-group-name" placeholder="Group Name (e.g. Group 1)" class="w-full p-2 border rounded urdu-font">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <select id="mufattish-r1" class="p-2 border rounded text-sm"></select>
-                        <select id="mufattish-r2" class="p-2 border rounded text-sm"></select>
-                        <select id="mufattish-r3" class="p-2 border rounded text-sm"></select>
-                        <select id="mufattish-r4" class="p-2 border rounded text-sm"></select>
+                        <select id="mufattish-r1" class="p-2 border rounded text-sm bg-gray-50"></select>
+                        <select id="mufattish-r2" class="p-2 border rounded text-sm bg-gray-50"></select>
+                        <select id="mufattish-r3" class="p-2 border rounded text-sm bg-gray-50"></select>
+                        <select id="mufattish-r4" class="p-2 border rounded text-sm bg-gray-50"></select>
                     </div>
-                    <button onclick="createGroup()" class="bg-teal-600 text-white px-6 py-2 rounded font-bold self-start">Create</button>
+                    <button onclick="createGroup()" class="bg-teal-600 text-white px-6 py-2 rounded font-bold w-full md:w-auto self-start">Create Group</button>
                 </div>
             </div>
-            <div id="groups-list-container" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+            <div id="groups-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
 
-        <div id="view-results" class="tab-content">
-            <div id="print-section">
-                <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-purple-600 no-print">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-lg font-bold">Final Result Sheet</h3>
-                        <button onclick="window.print()" class="bg-gray-800 text-white px-3 py-1 rounded text-sm"><i class="fas fa-print"></i> Print</button>
-                    </div>
-                    <select id="result-group-select" onchange="loadGroupResults()" class="w-full p-2 border rounded urdu-font bg-gray-50 text-right text-lg"></select>
+        <div id="view-results" class="tab-content hidden">
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6 border-t-4 border-purple-600 no-print">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">Result Filters</h3>
+                    <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold shadow flex items-center">
+                        <i class="fas fa-file-excel mr-2"></i> Download Excel
+                    </button>
                 </div>
-
-                <div class="bg-white rounded-lg shadow overflow-hidden border p-2 min-h-[500px]">
-                    <div class="text-center mb-6">
-                        <h2 class="text-3xl font-bold urdu-font" id="print-title">تدریسی ٹیسٹ کارکردگی فارم</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="text-xs text-gray-500">Group Select</label>
+                        <select id="result-group-select" onchange="loadGroupResults()" class="w-full p-2 border rounded urdu-font bg-gray-50">
+                            <option value="">-- Select Group --</option>
+                        </select>
                     </div>
-                    
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-center border-collapse border border-gray-400 min-w-[1200px]" dir="rtl">
-                            <thead class="bg-orange-100 text-gray-900 font-bold text-base urdu-font">
-                                <tr>
-                                    <th class="p-2 border border-gray-400 w-10">نمبر<br>شمار</th>
-                                    <th class="p-2 border border-gray-400 w-48 text-right pr-4">نام مع ولدیت</th>
-                                    <th class="p-2 border border-gray-400 w-32">جامعہ</th>
-                                    
-                                    <th class="p-2 border border-gray-400 w-16 bg-header">عبارت<br><span class="text-xs font-normal font-sans">(80)</span></th>
-                                    <th class="p-2 border border-gray-400 w-16 bg-header">ترجمہ<br><span class="text-xs font-normal font-sans">(80)</span></th>
-                                    <th class="p-2 border border-gray-400 w-16 bg-header">صرف<br><span class="text-xs font-normal font-sans">(80)</span></th>
-                                    <th class="p-2 border border-gray-400 w-16 bg-header">نحو<br><span class="text-xs font-normal font-sans">(80)</span></th>
-                                    <th class="p-2 border border-gray-400 w-16 bg-header">انداز تفہیم<br><span class="text-xs font-normal font-sans">(80)</span></th>
-
-                                    <th class="p-2 border border-gray-400 w-20 bg-blue-50">حاصل کردہ<br>کل نمبر</th>
-                                    <th class="p-2 border border-gray-400 w-16 bg-blue-50">فیصد</th>
-                                    <th class="p-2 border border-gray-400 w-24 bg-orange-200">کیفیت (رزلٹ)</th>
-                                    <th class="p-2 border border-gray-400 no-print w-10">ایکشن</th>
-                                </tr>
-                            </thead>
-                            <tbody id="results-tbody" class="text-lg urdu-font text-gray-800"></tbody>
-                        </table>
+                    <div>
+                        <label class="text-xs text-gray-500">Month & Year (For Record)</label>
+                        <input type="month" id="result-month-selector" class="w-full p-2 border rounded bg-gray-50" onchange="updateHeaderDate()">
                     </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Filter by Jamia</label>
+                        <select id="filter-jamia" onchange="filterResults()" class="w-full p-2 border rounded urdu-font bg-gray-50">
+                            <option value="all">All Jamiaat</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow overflow-hidden border p-2 min-h-[500px]">
+                <div class="text-center mb-6 pt-4">
+                    <h2 class="text-3xl font-bold urdu-font">تدریسی ٹیسٹ کارکردگی فارم</h2>
+                    <p class="text-gray-600 mt-1" id="result-header-date">Month: -- | Year: --</p>
+                    <h3 class="text-xl text-teal-700 font-bold mt-2" id="result-group-name"></h3>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-center border-collapse border border-gray-400 min-w-[1200px]" dir="rtl" id="result-table">
+                        <thead class="bg-orange-100 text-gray-900 font-bold text-base urdu-font">
+                            <tr>
+                                <th class="p-2 border border-gray-400 w-10">نمبر<br>شمار</th>
+                                <th class="p-2 border border-gray-400 w-48 text-right pr-4">نام مع ولدیت</th>
+                                <th class="p-2 border border-gray-400 w-32">جامعہ</th>
+                                
+                                <th class="p-2 border border-gray-400 w-16 bg-header">عبارت<br><span class="text-xs font-normal font-sans">(80)</span></th>
+                                <th class="p-2 border border-gray-400 w-16 bg-header">ترجمہ<br><span class="text-xs font-normal font-sans">(80)</span></th>
+                                <th class="p-2 border border-gray-400 w-16 bg-header">صرف<br><span class="text-xs font-normal font-sans">(80)</span></th>
+                                <th class="p-2 border border-gray-400 w-16 bg-header">نحو<br><span class="text-xs font-normal font-sans">(80)</span></th>
+                                <th class="p-2 border border-gray-400 w-16 bg-header">انداز تفہیم<br><span class="text-xs font-normal font-sans">(80)</span></th>
+
+                                <th class="p-2 border border-gray-400 w-20 bg-blue-50">حاصل کردہ<br>کل نمبر</th>
+                                <th class="p-2 border border-gray-400 w-16 bg-blue-50">فیصد</th>
+                                <th class="p-2 border border-gray-400 w-24 bg-orange-200">کیفیت</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-tbody" class="text-lg urdu-font text-gray-800">
+                            <tr><td colspan="11" class="p-8 text-gray-400">Please select a Group to view results.</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
         <div id="view-mufattish" class="tab-content hidden">
             <div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-gray-600">
-                <h3 class="text-lg font-bold mb-4">Registered Mufattish</h3>
-                <table class="w-full text-left border-collapse"><tbody id="mufattish-table-body"></tbody></table>
+                <h3 class="text-lg font-bold mb-4">Mufattish Status (Live Tracking)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-100 text-gray-800">
+                            <tr>
+                                <th class="p-3 border-b">Mufattish Name</th>
+                                <th class="p-3 border-b">Region</th>
+                                <th class="p-3 border-b">Assigned Groups & Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mufattish-status-tbody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
     </main>
+
+    <div id="transfer-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg w-96">
+            <h3 class="text-lg font-bold mb-4">Transfer Student</h3>
+            <p id="transfer-student-name" class="mb-4 text-sm text-gray-600"></p>
+            <input type="hidden" id="transfer-student-id">
+            <input type="hidden" id="transfer-old-group-id">
+            
+            <label class="block text-sm mb-1">New Group</label>
+            <select id="transfer-group-select" class="w-full p-2 border rounded mb-4"></select>
+            
+            <div class="flex justify-end gap-2">
+                <button onclick="document.getElementById('transfer-modal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
+                <button onclick="confirmTransfer()" class="px-4 py-2 bg-blue-600 text-white rounded">Transfer</button>
+            </div>
+        </div>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -160,6 +226,8 @@
         const db = getFirestore(app);
 
         let allMufattish = [];
+        let allGroups = [];
+        let allStudents = [];
         let parsedStudents = [];
 
         const showLoader = (show) => document.getElementById('loader').classList.toggle('hidden', !show);
@@ -186,178 +254,305 @@
         async function initData() { 
             await fetchMufattishList(); 
             await fetchGroupsList();
-            await fetchUnassignedStudents(); 
+            await fetchAllStudents();
+            // Populate Transfer & Result dropdowns after groups load
+            populateGroupDropdowns();
+            renderMufattishStatus(); // Call status render after fetching groups/students
         }
 
-        // --- 1. COPY PASTE LOGIC ---
-        window.previewData = () => {
-            const text = document.getElementById('paste-area').value.trim();
-            if(!text) return showToast('Please paste data', 'error');
-            const rows = text.split('\n'); parsedStudents = []; let html = '';
-            rows.forEach(row => {
-                let cols = row.split('\t');
-                let reg = cols[0]?.trim()||'', name = cols[1]?.trim()||'', father = cols[2]?.trim()||'', jamia = cols[3]?.trim()||'', mobile = cols[4]?.trim()||'';
-                if(name) { 
-                    parsedStudents.push({ reg, name, father, jamia, mobile });
-                    html += `<tr class="border-b"><td class="p-2">${reg}</td><td class="p-2 font-bold">${name}</td><td class="p-2">${father}</td><td class="p-2 text-xs">${jamia}</td><td class="p-2 text-xs">${mobile}</td></tr>`;
-                }
-            });
-            document.getElementById('preview-body').innerHTML = html;
-            document.getElementById('preview-container').classList.remove('hidden');
-            if(parsedStudents.length>0) { document.getElementById('save-btn').classList.remove('hidden'); document.getElementById('save-btn').textContent=`Save ${parsedStudents.length}`; }
-        };
-
-        window.savePastedData = async () => {
-            if(parsedStudents.length===0) return; showLoader(true);
-            try {
-                const batch = writeBatch(db);
-                parsedStudents.forEach(s => {
-                    const ref = doc(collection(db, 'tadrisi_students'));
-                    batch.set(ref, { regNo:s.reg, name:s.name, fatherName:s.father, jamia:s.jamia, mobile:s.mobile, groupId:null, createdAt:new Date() });
-                });
-                await batch.commit(); showToast('Saved!');
-                document.getElementById('paste-area').value=''; document.getElementById('preview-container').classList.add('hidden'); document.getElementById('save-btn').classList.add('hidden');
-                await fetchUnassignedStudents(); 
-            } catch(e) { console.error(e); } finally { showLoader(false); }
-        };
-
-        // --- 2. ASSIGNMENT LOGIC ---
-        async function fetchUnassignedStudents() {
-            const tbody = document.getElementById('unassigned-tbody');
-            const q = query(collection(db, 'tadrisi_students'), where('groupId', '==', null));
-            const snap = await getDocs(q);
-            tbody.innerHTML = '';
-            if(snap.empty) { tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No unassigned students.</td></tr>'; return; }
-            snap.forEach(d => {
-                const s = d.data();
-                tbody.innerHTML += `<tr class="border-b text-sm"><td class="p-3 w-10"><input type="checkbox" class="student-checkbox big-checkbox" value="${d.id}"></td><td class="p-3">${s.regNo}</td><td class="p-3 font-bold urdu-font">${s.name}</td><td class="p-3 urdu-font">${s.fatherName}</td><td class="p-3 urdu-font">${s.jamia||'-'}</td></tr>`;
-            });
-        }
-
-        window.assignSelectedStudents = async () => {
-            const gid = document.getElementById('assign-group-select').value;
-            const selected = Array.from(document.querySelectorAll('.student-checkbox:checked')).map(cb => cb.value);
-            if(!gid || selected.length===0) return showToast('Select group and students', 'error');
-            showLoader(true);
-            try {
-                const batch = writeBatch(db);
-                selected.forEach(sid => { const ref = doc(db, 'tadrisi_students', sid); batch.update(ref, { groupId: gid }); });
-                const gRef = doc(db, 'tadrisi_groups', gid); batch.update(gRef, { totalStudents: increment(selected.length) });
-                await batch.commit(); showToast('Assigned!'); await fetchUnassignedStudents(); await fetchGroupsList();
-            } catch(e) { console.error(e); } finally { showLoader(false); }
-        };
-
-        // --- 3. COMMON LOGIC ---
         async function fetchMufattishList() {
             const q = query(collection(db, 'users'), where('role', '==', 'tadrisi_course_mufattish'));
-            const snap = await getDocs(q); allMufattish = snap.docs.map(d => ({id:d.id, ...d.data()}));
-            const opts = '<option value="">-- Assign --</option>' + allMufattish.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+            const snap = await getDocs(q); 
+            allMufattish = snap.docs.map(d => ({id:d.id, ...d.data()}));
+            
+            const opts = '<option value="">-- Select --</option>' + allMufattish.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
             ['mufattish-r1', 'mufattish-r2', 'mufattish-r3', 'mufattish-r4'].forEach(id => document.getElementById(id).innerHTML = opts);
-            document.getElementById('mufattish-table-body').innerHTML = allMufattish.map(m => `<tr class="border-b"><td class="p-2">${m.name}</td><td class="p-2 text-sm">${m.email}</td><td class="p-2 urdu-font">${m.region||'-'}</td></tr>`).join('');
         }
 
         async function fetchGroupsList() {
-            const q = query(collection(db, 'tadrisi_groups')); const snap = await getDocs(q);
-            const groups = snap.docs.map(d => ({id:d.id, ...d.data()}));
-            const opts = '<option value="">-- Select Group --</option>' + groups.map(g => `<option value="${g.id}">${g.groupName} (${g.totalStudents||0})</option>`).join('');
-            document.getElementById('assign-group-select').innerHTML = opts;
-            document.getElementById('result-group-select').innerHTML = opts;
-            document.getElementById('groups-list-container').innerHTML = groups.map(g => `<div class="bg-white p-4 shadow border rounded relative"><h4 class="font-bold text-teal-800">${g.groupName}</h4><p class="text-xs">Students: ${g.totalStudents}</p><button onclick="deleteGroup('${g.id}')" class="absolute top-2 right-2 text-red-400"><i class="fas fa-trash"></i></button></div>`).join('');
+            const q = query(collection(db, 'tadrisi_groups')); 
+            const snap = await getDocs(q);
+            allGroups = snap.docs.map(d => ({id:d.id, ...d.data()}));
+            
+            // SORT GROUPS (e.g., Group 1, Group 2...)
+            allGroups.sort((a, b) => a.groupName.localeCompare(b.groupName, undefined, {numeric: true, sensitivity: 'base'}));
+
+            // Render Manage Groups List
+            document.getElementById('groups-list-container').innerHTML = allGroups.map(g => `
+                <div class="bg-white p-4 shadow border rounded relative">
+                    <h4 class="font-bold text-teal-800">${g.groupName}</h4>
+                    <span class="text-xs bg-gray-100 px-2 py-1 rounded">Students: ${g.totalStudents||0}</span>
+                    <button onclick="deleteGroup('${g.id}')" class="absolute top-2 right-2 text-red-400"><i class="fas fa-trash"></i></button>
+                </div>`).join('');
         }
 
-        window.createGroup = async () => {
+        async function fetchAllStudents() {
+            const q = query(collection(db, 'tadrisi_students'));
+            const snap = await getDocs(q);
+            allStudents = snap.docs.map(d => ({id:d.id, ...d.data()}));
+            renderStudentsMasterList();
+        }
+
+        function populateGroupDropdowns() {
+            const opts = '<option value="">-- Select Group --</option>' + allGroups.map(g => `<option value="${g.id}">${g.groupName}</option>`).join('');
+            document.getElementById('result-group-select').innerHTML = opts;
+            document.getElementById('transfer-group-select').innerHTML = opts;
+        }
+
+        // --- 1. STUDENT MANAGEMENT (Grouping & Transfer) ---
+        function renderStudentsMasterList() {
+            const tbody = document.getElementById('students-master-tbody');
+            tbody.innerHTML = '';
+            
+            // Group by GroupID
+            const grouped = {};
+            allStudents.forEach(s => {
+                const gId = s.groupId || 'unassigned';
+                if(!grouped[gId]) grouped[gId] = [];
+                grouped[gId].push(s);
+            });
+
+            // Render Unassigned First
+            if(grouped['unassigned']) {
+                renderGroupSection(tbody, 'Unassigned Students', grouped['unassigned'], 'bg-red-50 text-red-800');
+            }
+
+            // Render Assigned Groups
+            allGroups.forEach(g => {
+                if(grouped[g.id]) {
+                    renderGroupSection(tbody, g.groupName, grouped[g.id], 'bg-gray-100 text-gray-800');
+                }
+            });
+        }
+
+        function renderGroupSection(tbody, title, students, headerClass) {
+            tbody.innerHTML += `<tr><td colspan="7" class="p-3 font-bold ${headerClass}">${title} (${students.length})</td></tr>`;
+            students.forEach((s, idx) => {
+                tbody.innerHTML += `
+                    <tr class="border-b text-sm hover:bg-gray-50">
+                        <td class="p-3 text-gray-500">${idx+1}</td>
+                        <td class="p-3 text-xs text-gray-500">${title}</td>
+                        <td class="p-3">${s.regNo||'-'}</td>
+                        <td class="p-3 font-bold urdu-font">${s.name}</td>
+                        <td class="p-3 urdu-font">${s.fatherName||'-'}</td>
+                        <td class="p-3 urdu-font">${s.jamia||'-'}</td>
+                        <td class="p-3">
+                            <button onclick="openTransferModal('${s.id}', '${s.name}', '${s.groupId||''}')" class="text-blue-600 hover:underline text-xs"><i class="fas fa-exchange-alt"></i> Transfer</button>
+                            <button onclick="deleteStudent('${s.id}')" class="text-red-500 ml-2"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        // --- TRANSFER LOGIC ---
+        window.openTransferModal = (sid, name, oldGid) => {
+            document.getElementById('transfer-student-name').textContent = `Transferring: ${name}`;
+            document.getElementById('transfer-student-id').value = sid;
+            document.getElementById('transfer-old-group-id').value = oldGid;
+            document.getElementById('transfer-modal').classList.remove('hidden');
+        };
+
+        window.confirmTransfer = async () => {
+            const sid = document.getElementById('transfer-student-id').value;
+            const oldGid = document.getElementById('transfer-old-group-id').value;
+            const newGid = document.getElementById('transfer-group-select').value;
+
+            if(!newGid || newGid === oldGid) return showToast('Select a different group', 'error');
+
+            showLoader(true);
+            try {
+                const batch = writeBatch(db);
+                const sRef = doc(db, 'tadrisi_students', sid);
+                batch.update(sRef, { groupId: newGid });
+
+                // Update Counts
+                if(oldGid && oldGid !== 'unassigned') {
+                    const oldRef = doc(db, 'tadrisi_groups', oldGid);
+                    batch.update(oldRef, { totalStudents: increment(-1) });
+                }
+                const newRef = doc(db, 'tadrisi_groups', newGid);
+                batch.update(newRef, { totalStudents: increment(1) });
+
+                await batch.commit();
+                showToast('Student Transferred!');
+                document.getElementById('transfer-modal').classList.add('hidden');
+                await initData(); // Refresh all
+            } catch(e) { console.error(e); } finally { showLoader(false); }
+        };
+
+        // --- COPY PASTE & SAVE (Same as before) ---
+        window.previewData = () => { /* Same as previous response logic */ 
+            const text = document.getElementById('paste-area').value.trim();
+            const rows = text.split('\n'); parsedStudents = []; let html = '';
+            rows.forEach(row => {
+                let cols = row.split('\t');
+                let reg=cols[0]?.trim(), name=cols[1]?.trim(), father=cols[2]?.trim(), jamia=cols[3]?.trim(), mobile=cols[4]?.trim();
+                if(name) { parsedStudents.push({reg,name,father,jamia,mobile}); html += `<tr class="border-b"><td class="p-2">${reg}</td><td class="p-2">${name}</td><td class="p-2">${father}</td><td class="p-2">${jamia}</td><td class="p-2">${mobile}</td></tr>`; }
+            });
+            document.getElementById('preview-body').innerHTML = html;
+            document.getElementById('preview-container').classList.remove('hidden');
+            if(parsedStudents.length>0) document.getElementById('save-btn').classList.remove('hidden');
+        };
+        window.savePastedData = async () => { /* Same save logic */ 
+             if(parsedStudents.length===0) return; showLoader(true);
+             const batch = writeBatch(db);
+             parsedStudents.forEach(s => { const ref = doc(collection(db, 'tadrisi_students')); batch.set(ref, { ...s, groupId:null, createdAt:new Date() }); });
+             await batch.commit(); showToast('Saved'); await initData(); showLoader(false);
+        };
+
+        // --- 3. RESULT LOGIC (Updated with 80 Marks & Filters) ---
+        window.updateHeaderDate = () => {
+            const val = document.getElementById('result-month-selector').value;
+            document.getElementById('result-header-date').textContent = val ? `Month/Year: ${val}` : 'Month: -- | Year: --';
+        };
+
+        window.loadGroupResults = async () => {
+            const gid = document.getElementById('result-group-select').value;
+            if(!gid) return;
+            const group = allGroups.find(g => g.id === gid);
+            document.getElementById('result-group-name').textContent = group ? group.groupName : '';
+
+            // Filter Students by Group
+            const studentsInGroup = allStudents.filter(s => s.groupId === gid);
+            
+            // Populate Jamia Filter
+            const jamiaSet = new Set(studentsInGroup.map(s => s.jamia).filter(j => j));
+            const jamiaFilter = document.getElementById('filter-jamia');
+            jamiaFilter.innerHTML = '<option value="all">All Jamiaat</option>';
+            jamiaSet.forEach(j => jamiaFilter.innerHTML += `<option value="${j}">${j}</option>`);
+
+            renderResultTable(studentsInGroup);
+        };
+
+        window.filterResults = () => {
+            const gid = document.getElementById('result-group-select').value;
+            const jamia = document.getElementById('filter-jamia').value;
+            let list = allStudents.filter(s => s.groupId === gid);
+            if(jamia !== 'all') list = list.filter(s => s.jamia === jamia);
+            renderResultTable(list);
+        };
+
+        function renderResultTable(list) {
+            const tbody = document.getElementById('results-tbody');
+            tbody.innerHTML = '';
+            
+            // Only show students who have SOME marks in any round
+            const filledList = list.filter(s => s.marks_r1 || s.marks_r2 || s.marks_r3 || s.marks_r4);
+
+            if(filledList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="p-8 text-gray-400">No results found for this selection.</td></tr>';
+                return;
+            }
+
+            let count = 1;
+            filledList.forEach(s => {
+                const getMark = (r, k) => (r && r[k]) ? Number(r[k]) : 0;
+                const r1=s.marks_r1, r2=s.marks_r2, r3=s.marks_r3, r4=s.marks_r4;
+
+                const tIbarat  = getMark(r1,'m1') + getMark(r2,'m1') + getMark(r3,'m1') + getMark(r4,'m1');
+                const tTarjama = getMark(r1,'m2') + getMark(r2,'m2') + getMark(r3,'m2') + getMark(r4,'m2');
+                const tSarf    = getMark(r1,'m3') + getMark(r2,'m3') + getMark(r3,'m3') + getMark(r4,'m3');
+                const tNahw    = getMark(r1,'m4') + getMark(r2,'m4') + getMark(r3,'m4') + getMark(r4,'m4');
+                const tAndaz   = getMark(r1,'m5') + getMark(r2,'m5') + getMark(r3,'m5') + getMark(r4,'m5');
+
+                const grandTotal = tIbarat + tTarjama + tSarf + tNahw + tAndaz;
+                const percentage = (grandTotal / 400) * 100;
+
+                // 80 Marks Logic: Pass = 56
+                const isFail = (tIbarat < 56 || tTarjama < 56 || tSarf < 56 || tNahw < 56 || tAndaz < 56);
+                let resultText = "ناکام", resultClass = "bg-fail";
+
+                if (!isFail) {
+                    if (percentage >= 90) { resultText = "ممتاز"; resultClass = "bg-pass"; }
+                    else if (percentage >= 80) { resultText = "بہتر"; resultClass = "bg-pass"; }
+                    else if (percentage >= 70) { resultText = "مناسب"; resultClass = "bg-pass"; }
+                }
+
+                const cc = (v) => v < 56 ? 'text-red-600 font-bold bg-red-50' : '';
+
+                tbody.innerHTML += `
+                    <tr class="border-b border-gray-300">
+                        <td class="p-2 border border-gray-300 text-sm">${count++}</td>
+                        <td class="p-2 border border-gray-300 text-right pr-4"><div class="font-bold text-lg">${s.name}</div><div class="text-sm text-gray-600">${s.fatherName||''}</div></td>
+                        <td class="p-2 border border-gray-300 text-sm">${s.jamia||'-'}</td>
+                        <td class="p-2 border border-gray-300 font-sans ${cc(tIbarat)}">${tIbarat}</td>
+                        <td class="p-2 border border-gray-300 font-sans ${cc(tTarjama)}">${tTarjama}</td>
+                        <td class="p-2 border border-gray-300 font-sans ${cc(tSarf)}">${tSarf}</td>
+                        <td class="p-2 border border-gray-300 font-sans ${cc(tNahw)}">${tNahw}</td>
+                        <td class="p-2 border border-gray-300 font-sans ${cc(tAndaz)}">${tAndaz}</td>
+                        <td class="p-2 border border-gray-300 font-bold bg-blue-50 font-sans text-xl">${grandTotal}</td>
+                        <td class="p-2 border border-gray-300 font-sans bg-blue-50">${percentage.toFixed(2)}%</td>
+                        <td class="p-2 border border-gray-300 font-bold ${resultClass} text-lg">${resultText}</td>
+                    </tr>`;
+            });
+        }
+
+        window.exportToExcel = () => {
+            const table = document.getElementById('result-table');
+            if(!table) return;
+            const wb = XLSX.utils.table_to_book(table, {sheet: "Result"});
+            // Append Month/Year to filename
+            const dateStr = document.getElementById('result-month-selector').value || 'Result';
+            XLSX.writeFile(wb, `Tadrisi_Result_${dateStr}.xlsx`);
+        };
+
+        // --- 4. MUFATTISH LIVE STATUS ---
+        function renderMufattishStatus() {
+            const tbody = document.getElementById('mufattish-status-tbody');
+            tbody.innerHTML = '';
+
+            allMufattish.forEach(m => {
+                // Find assignments
+                let assignmentsHTML = '';
+                allGroups.forEach(g => {
+                    const rounds = [];
+                    if(g.round_1_uid === m.id) rounds.push(1);
+                    if(g.round_2_uid === m.id) rounds.push(2);
+                    if(g.round_3_uid === m.id) rounds.push(3);
+                    if(g.round_4_uid === m.id) rounds.push(4);
+
+                    rounds.forEach(r => {
+                        // Check Status: Are there students in this group with marks for this round?
+                        const studentsInG = allStudents.filter(s => s.groupId === g.id);
+                        const filledCount = studentsInG.filter(s => s[`marks_r${r}`]).length;
+                        const total = studentsInG.length;
+                        
+                        let statusClass = 'status-pending';
+                        let statusText = 'Pending';
+                        
+                        if(total > 0 && filledCount === total) { statusClass = 'status-complete'; statusText = 'Completed'; }
+                        else if(filledCount > 0) { statusClass = 'status-ongoing'; statusText = `Ongoing (${filledCount}/${total})`; }
+
+                        assignmentsHTML += `
+                            <div class="mb-2 text-sm flex justify-between items-center bg-white p-2 border rounded">
+                                <span><span class="font-bold text-teal-700">${g.groupName}</span> (Sabaq ${r})</span>
+                                <span class="text-xs px-2 py-1 rounded font-bold ${statusClass}">${statusText}</span>
+                            </div>`;
+                    });
+                });
+
+                if(!assignmentsHTML) assignmentsHTML = '<span class="text-gray-400 text-xs">No active assignments</span>';
+
+                tbody.innerHTML += `
+                    <tr class="border-b bg-white">
+                        <td class="p-3 font-bold urdu-font text-lg">${m.name || 'Unknown'}</td>
+                        <td class="p-3 text-sm text-gray-600">${m.region || '-'}</td>
+                        <td class="p-3 bg-gray-50">${assignmentsHTML}</td>
+                    </tr>`;
+            });
+        }
+
+        // Global functions
+        window.createGroup = async () => { /* ... existing logic ... */ 
             const n = document.getElementById('new-group-name').value;
             const r1 = document.getElementById('mufattish-r1').value, r2 = document.getElementById('mufattish-r2').value, r3 = document.getElementById('mufattish-r3').value, r4 = document.getElementById('mufattish-r4').value;
             if(!n) return;
             await addDoc(collection(db, 'tadrisi_groups'), { groupName:n, totalStudents:0, round_1_uid:r1, round_2_uid:r2, round_3_uid:r3, round_4_uid:r4 });
-            document.getElementById('new-group-name').value=''; await fetchGroupsList();
+            document.getElementById('new-group-name').value=''; await fetchGroupsList(); await initData();
         };
-        window.deleteGroup = async (id) => { if(confirm('Delete?')) { await deleteDoc(doc(db,'tadrisi_groups',id)); await fetchGroupsList(); }};
+        window.deleteGroup = async (id) => { if(confirm('Delete?')) { await deleteDoc(doc(db,'tadrisi_groups',id)); await initData(); }};
+        window.deleteStudent = async (id) => { if(confirm('Delete?')) { await deleteDoc(doc(db,'tadrisi_students',id)); await initData(); }};
 
-        // ===============================================
-        // 🔥🔥 FINAL RESULT LOGIC (AGGREGATION) 🔥🔥
-        // ===============================================
-        window.loadGroupResults = async () => {
-            const gid = document.getElementById('result-group-select').value;
-            if(!gid) return;
-            const gText = document.getElementById('result-group-select').options[document.getElementById('result-group-select').selectedIndex].text;
-            document.getElementById('print-title').textContent = gText.split('(')[0] + " - تدریسی ٹیسٹ کارکردگی";
-
-            const q = query(collection(db, 'tadrisi_students'), where('groupId', '==', gid));
-            const snap = await getDocs(q);
-            const tbody = document.getElementById('results-tbody');
-            tbody.innerHTML = '';
-            let count = 1;
-
-            snap.forEach(d => {
-                const s = d.data();
-                
-                // --- 1. AGGREGATE MARKS FROM 4 ROUNDS ---
-                // Har round se subject ke marks nikalein (Agar null hai to 0)
-                // Subjects: m1=Ibarat, m2=Tarjama, m3=Sarf, m4=Nahw, m5=Andaz
-                
-                const getMark = (roundObj, key) => (roundObj && roundObj[key] !== undefined && roundObj[key] !== null) ? Number(roundObj[key]) : 0;
-
-                const r1 = s.marks_r1 || {}, r2 = s.marks_r2 || {}, r3 = s.marks_r3 || {}, r4 = s.marks_r4 || {};
-
-                const totalIbarat  = getMark(r1,'m1') + getMark(r2,'m1') + getMark(r3,'m1') + getMark(r4,'m1');
-                const totalTarjama = getMark(r1,'m2') + getMark(r2,'m2') + getMark(r3,'m2') + getMark(r4,'m2');
-                const totalSarf    = getMark(r1,'m3') + getMark(r2,'m3') + getMark(r3,'m3') + getMark(r4,'m3');
-                const totalNahw    = getMark(r1,'m4') + getMark(r2,'m4') + getMark(r3,'m4') + getMark(r4,'m4');
-                const totalAndaz   = getMark(r1,'m5') + getMark(r2,'m5') + getMark(r3,'m5') + getMark(r4,'m5');
-
-                const grandTotal = totalIbarat + totalTarjama + totalSarf + totalNahw + totalAndaz;
-                const percentage = (grandTotal / 400) * 100;
-
-                // --- 2. LOGIC FOR RESULT (KAIFIYAT) ---
-                // Pass criteria: Each subject must be >= 56
-                const isFailSubject = (totalIbarat < 56 || totalTarjama < 56 || totalSarf < 56 || totalNahw < 56 || totalAndaz < 56);
-                
-                let resultText = "";
-                let resultClass = "";
-
-                if (isFailSubject) {
-                    resultText = "ناکام";
-                    resultClass = "bg-fail"; // Red
-                } else {
-                    // Grading Logic
-                    if (percentage >= 90) { resultText = "ممتاز"; resultClass = "bg-pass"; }
-                    else if (percentage >= 80) { resultText = "بہتر"; resultClass = "bg-pass"; }
-                    else if (percentage >= 70) { resultText = "مناسب"; resultClass = "bg-pass"; }
-                    else { resultText = "ناکام"; resultClass = "bg-fail"; }
-                }
-
-                // Helper for individual cell coloring
-                const cellClass = (val) => val < 56 ? 'text-red-600 font-bold bg-red-50' : '';
-
-                tbody.innerHTML += `
-                    <tr class="border-b border-gray-300">
-                        <td class="p-2 border border-gray-300 font-sans text-sm">${count++}</td>
-                        <td class="p-2 border border-gray-300 text-right pr-4">
-                            <div class="font-bold text-lg">${s.name}</div>
-                            <div class="text-sm text-gray-600">${s.fatherName||''}</div>
-                        </td>
-                        <td class="p-2 border border-gray-300 text-sm">${s.jamia || '-'}</td>
-                        
-                        <td class="p-2 border border-gray-300 font-sans ${cellClass(totalIbarat)}">${totalIbarat}</td>
-                        <td class="p-2 border border-gray-300 font-sans ${cellClass(totalTarjama)}">${totalTarjama}</td>
-                        <td class="p-2 border border-gray-300 font-sans ${cellClass(totalSarf)}">${totalSarf}</td>
-                        <td class="p-2 border border-gray-300 font-sans ${cellClass(totalNahw)}">${totalNahw}</td>
-                        <td class="p-2 border border-gray-300 font-sans ${cellClass(totalAndaz)}">${totalAndaz}</td>
-
-                        <td class="p-2 border border-gray-300 font-sans font-bold bg-blue-50 text-xl">${grandTotal}</td>
-                        <td class="p-2 border border-gray-300 font-sans bg-blue-50">${percentage.toFixed(2)}%</td>
-                        
-                        <td class="p-2 border border-gray-300 font-bold ${resultClass} text-lg">${resultText}</td>
-                        
-                        <td class="p-2 border border-gray-300 no-print">
-                            <button onclick="deleteStudent('${d.id}')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
-                        </td>
-                    </tr>`;
-            });
-        };
-
-        window.deleteStudent = async (id) => { if(confirm('Delete Student?')) { await deleteDoc(doc(db,'tadrisi_students',id)); await fetchUnassignedStudents(); await loadGroupResults(); }};
     </script>
 </body>
 </html>
