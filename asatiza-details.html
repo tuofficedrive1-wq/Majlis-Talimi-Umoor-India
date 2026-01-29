@@ -217,73 +217,108 @@
         classesContainer.appendChild(classDiv);
     });
 
-    // --- Global function for Dropdown ---
-    window.updateBooks = (select, id) => {
-        const selectedClass = select.value;
-        const booksDiv = document.getElementById(`books-list-${id}`);
-        booksDiv.innerHTML = '';
+    // --- Updated Checkbox to Radio Logic (Single Subject) ---
+window.updateBooks = (select, id) => {
+    const selectedClass = select.value;
+    const booksDiv = document.getElementById(`books-list-${id}`);
+    booksDiv.innerHTML = '';
 
-        if (selectedClass && classBooks[selectedClass]) {
-            classBooks[selectedClass].forEach(book => {
-                booksDiv.innerHTML += `
-                    <label class="flex items-center gap-2 bg-white p-3 rounded-lg border border-gray-100 cursor-pointer hover:bg-indigo-50 transition shadow-sm">
-                        <input type="checkbox" name="books-${id}" value="${book}" class="w-4 h-4 text-indigo-600">
-                        <span class="urdu-text text-sm">${book}</span>
-                    </label>
-                `;
-            });
-        }
+    if (selectedClass && classBooks[selectedClass]) {
+        classBooks[selectedClass].forEach(book => {
+            booksDiv.innerHTML += `
+                <label class="flex items-center gap-2 bg-white p-3 rounded-lg border border-gray-100 cursor-pointer hover:bg-indigo-50 transition shadow-sm">
+                    <input type="radio" name="books-${id}" value="${book}" class="w-4 h-4 text-indigo-600" required>
+                    <span class="urdu-text text-sm">${book}</span>
+                </label>
+            `;
+        });
+    }
+};
+
+// --- Updated Submit Handler with Strict Validations ---
+document.getElementById('asatiza-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const ajeerCode = document.getElementById('ajeer-code').value.trim();
+    const mobile = document.getElementById('mobile').value.trim();
+    const photoFile = document.getElementById('photo-file').files[0];
+    const classGroups = document.querySelectorAll('[id^="class-group-"]');
+
+    // 1. Photo Validation
+    if (!photoFile) {
+        alert("Bara-e-karam ustad ki tasveer (Photo) muntakhib karein. Iske bagair save nahi hoga.");
+        return;
+    }
+
+    // 2. Ajeer Code Validation (Exactly 5 digits)
+    if (ajeerCode.length !== 5) {
+        alert("Ajeer Code bilkul 5 hindo (digits) ka hona chahiye.");
+        return;
+    }
+
+    // 3. Mobile Number Validation (Exactly 10 digits)
+    if (mobile.length !== 10) {
+        alert("Mobile number bilkul 10 hindo (digits) ka hona chahiye.");
+        return;
+    }
+
+    // 4. Class Validation
+    if (classGroups.length === 0) {
+        alert("Kam se kam ek class shamil karein.");
+        return;
+    }
+
+    document.getElementById('form-loader').style.display = 'block';
+    const adminUidFromUrl = urlParams.get('uid');
+
+    const teacherData = {
+        adminUid: adminUidFromUrl,
+        jamia: jamiaName,
+        region: document.getElementById('region').value,
+        mansab: document.getElementById('mansab').value,
+        name: document.getElementById('teacher-name').value,
+        ajeerCode: ajeerCode,
+        mobile: mobile,
+        grade: document.getElementById('grade').value,
+        classes: [],
+        createdAt: serverTimestamp()
     };
 
-    // --- Submit Logic ---
-    document.getElementById('asatiza-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        if (!adminUidFromUrl) {
-            alert("Error: Admin ID missing! Please open form from Dashboard.");
-            return;
-        }
+    classGroups.forEach(group => {
+        const className = group.querySelector('.class-selector').value;
+        const sectionName = group.querySelector('.class-section').value.trim();
+        // Radio button se sirf ek selected value uthayenge
+        const selectedBook = group.querySelector(`input[name^="books-"]:checked`);
 
-        document.getElementById('form-loader').style.display = 'block';
-
-        const teacherData = {
-            adminUid: urlParams.get('uid'),
-            jamia: jamiaName,
-            region: document.getElementById('region').value,
-            mansab: document.getElementById('mansab').value,
-            name: document.getElementById('teacher-name').value,
-            ajeerCode: document.getElementById('ajeer-code').value,
-            mobile: document.getElementById('mobile').value,
-            grade: document.getElementById('grade').value,
-            classes: [],
-            createdAt: serverTimestamp()
-        };
-
-        document.querySelectorAll('[id^="class-group-"]').forEach(group => {
-            const className = group.querySelector('.class-selector').value;
-            const sectionName = group.querySelector('.class-section').value.trim();
-            const books = Array.from(group.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-
-            if (className && books.length > 0) {
-                teacherData.classes.push({ className, section: sectionName, books });
-            }
-        });
-
-        try {
-            await addDoc(collection(db, "asatiza_details"), teacherData);
-            document.getElementById('form-loader').style.display = 'none';
-            alert("Data kamyabi se save ho gaya!");
-            document.getElementById('asatiza-form').reset();
-            document.getElementById('classes-container').innerHTML = '';
-        } catch (error) {
-            console.error("Error:", error);
-            document.getElementById('form-loader').style.display = 'none';
-            alert("Data save nahi ho saka.");
+        if (className && selectedBook) {
+            teacherData.classes.push({
+                className: className,
+                section: sectionName,
+                books: [selectedBook.value] // Array format rakha hai taake table logic na toote
+            });
         }
     });
+
+    try {
+        // Yahan aap apna Storage upload logic add kar sakte hain photo ke liye
+        // Filhal hum text data save kar rahe hain
+        await addDoc(collection(db, "asatiza_details"), teacherData);
+        
+        document.getElementById('form-loader').style.display = 'none';
+        alert("Data kamyabi se mahfooz kar liya gaya!");
+        document.getElementById('asatiza-form').reset();
+        document.getElementById('classes-container').innerHTML = '';
+        
+    } catch (error) {
+        console.error("Error:", error);
+        document.getElementById('form-loader').style.display = 'none';
+        alert("Save karne mein masla aaya.");
+    }
+});
 </script>
 </body>
 </html>
+
 
 
 
