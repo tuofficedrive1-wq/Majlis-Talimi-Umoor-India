@@ -3831,16 +3831,14 @@ async function fetchSavedAsatizaData() {
     const tableBody = document.getElementById('asatiza-data-body');
     if (!tableBody) return;
 
-    // Loading state dikhane ke liye
-    tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4">Loading Data...</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="9" class="text-center py-4">Loading Data...</td></tr>`;
 
     try {
-        // Query asatiza_details collection
         const q = query(collection(db, "asatiza_details"), where("adminUid", "==", currentUser.uid));
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-500">Abhi tak koi data save nahi kiya gaya.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-gray-500">Abhi tak koi data save nahi kiya gaya.</td></tr>`;
             return;
         }
 
@@ -3848,13 +3846,11 @@ async function fetchSavedAsatizaData() {
         let counter = 1;
         const zimmedarName = userProfileData.name || 'Admin';
 
-        // ... (Fetch query aur snapshot logic wahi rahega)
-
+        // index (1).html ke fetchSavedAsatizaData function ke loop ke andar:
 snapshot.forEach(docSnap => {
     const data = docSnap.data();
-    
-    // Photo handling: Agar photo nahi hai to default icon dikhayein
-    const userPhoto = data.photoURL || 'https://via.placeholder.com/40'; 
+    const docId = docSnap.id; // Document ID nikalna zaroori hai delete ke liye
+    const userPhoto = data.photoURL || 'https://placehold.co/40x40?text=No+Photo';
 
     if (data.classes && Array.isArray(data.classes)) {
         data.classes.forEach(cls => {
@@ -3862,26 +3858,27 @@ snapshot.forEach(docSnap => {
                 cls.books.forEach(book => {
                     html += `
                         <tr class="hover:bg-gray-50 transition border-b border-gray-200 text-sm">
-                            <td class="px-4 py-3 text-center border-r font-medium text-gray-500">${counter++}</td>
-                            
-                            <td class="px-4 py-3 border-r text-center">
-                                <img src="${userPhoto}" class="w-10 h-10 rounded-full mx-auto object-cover border border-gray-200 shadow-sm" onerror="this.src='https://via.placeholder.com/40'">
+                            <td class="px-2 py-3 text-center border-r font-medium text-gray-500">${counter++}</td>
+                            <td class="px-2 py-3 border-r text-center">
+                                <img src="${userPhoto}" class="w-10 h-10 rounded-full mx-auto object-cover border">
                             </td>
-
                             <td class="px-4 py-3 border-r text-gray-700">${data.region || '-'}</td>
                             <td class="px-4 py-3 border-r font-bold text-teal-700 urdu-font">${data.jamia || '-'}</td>
-                            
                             <td class="px-4 py-3 border-r">
                                 <div class="text-blue-700 font-bold urdu-font">${data.name || '-'}</div>
-                                <div class="text-[11px] text-gray-500 font-sans">${data.mobile || '-'}</div>
+                                <div class="text-[10px] text-gray-500">${data.mobile || '-'}</div>
                             </td>
-
-                            <td class="px-4 py-3 border-r text-center font-bold text-orange-600">${data.grade || '-'}</td>
-
+                            <td class="px-2 py-3 border-r text-center font-bold text-orange-600">${data.grade || '-'}</td>
                             <td class="px-4 py-3 border-r urdu-font font-bold text-gray-800">
                                 ${cls.className} ${cls.section ? `(${cls.section})` : ''}
                             </td>
-                            <td class="px-4 py-3 urdu-font text-purple-700 font-semibold">${book}</td>
+                            <td class="px-4 py-3 border-r urdu-font text-purple-700 font-semibold">${book}</td>
+                            
+                            <td class="px-2 py-3 text-center">
+                                <button onclick="deleteAsatizaRecord('${docId}')" class="text-red-500 hover:text-red-700 p-2">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>
                         </tr>
                     `;
                 });
@@ -3889,50 +3886,35 @@ snapshot.forEach(docSnap => {
         });
     }
 });
+        tableBody.innerHTML = html;
 
-        // Agar nested loops ke baad bhi html khali hai to msg dikhayein
-        tableBody.innerHTML = html || `<tr><td colspan="7" class="text-center py-8 text-gray-500">Data format sahi nahi hai.</td></tr>`;
-        // Loop ke andar table row (tr) mein ye add karein
-html += `
-    <tr class="hover:bg-gray-50 transition border-b border-gray-200 text-sm">
-        <td class="px-4 py-3 text-center border-r urdu-font font-bold text-gray-800">
-            ${cls.className} ${cls.section ? `(${cls.section})` : ''}
-        </td>
-        <td class="px-4 py-3 border-r urdu-font text-purple-700 font-semibold">${book}</td>
-        
-        <td class="px-4 py-3 text-center">
-            <button onclick="deleteAsatizaRecord('${docSnap.id}')" class="text-red-500 hover:text-red-700 transition-colors p-2">
-                <i class="fas fa-trash-alt"></i>
-            </button>
-        </td>
-    </tr>
-`;
-
-// --- DELETE FUNCTION (Isko fetch function ke niche add karein) ---
+    } catch (error) {
+        console.error("Data fetch error:", error);
+        tableBody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-red-500">Data load karne mein masla aaya.</td></tr>`;
+    }
+}
+        // 2. IS DELETE FUNCTION KO FETCH FUNCTION KE BAHAR ADD KAREIN
 window.deleteAsatizaRecord = async (docId) => {
     if (confirm("Kya aap waqayi is record ko delete karna chahte hain?")) {
         try {
-            // Firestore se delete karne ke liye import zaroori hai: deleteDoc, doc
+            // Firestore se delete karne ke liye deleteDoc aur doc ka use
+            const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
             await deleteDoc(doc(db, "asatiza_details", docId));
+            
             alert("Record kamyabi se delete ho gaya.");
-            fetchSavedAsatizaData(); // Table refresh karein
+            fetchSavedAsatizaData(); // Table ko refresh karne ke liye
         } catch (error) {
             console.error("Error deleting document: ", error);
             alert("Delete karne mein masla aaya.");
         }
     }
 };
-
-    } catch (error) {
-        console.error("Data fetch error:", error);
-        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-red-500">Data load karne mein masla aaya. Internet check karein.</td></tr>`;
-    }
-}
         // --- Init ---
         initApp();
     </script>
 </body>
 </html>
+
 
 
 
