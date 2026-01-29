@@ -505,29 +505,23 @@
 
     <div class="flex flex-wrap gap-2 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
     <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md active bg-white shadow text-teal-700" data-role="all">All Users</button>
-    
-    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-white/50" data-role="admin_group">Admins & Recording Mufattish</button>
-    
-    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-white/50" data-role="inspector">Academic Inspectors</button>
-    
-    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-white/50" data-role="standard">Talimi Zimmedar</button>
-    
-    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-white/50" data-role="tadrisi_course_mufattish">Tadrisi Course Mufattish</button>
+    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600" data-role="admin_group">Admins & Recording Mufattish</button>
+    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600" data-role="inspector">Academic Inspectors</button>
+    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600" data-role="standard">Talimi Zimmedar</button>
+    <button class="user-role-filter-btn px-4 py-2 text-sm font-medium rounded-md text-gray-600" data-role="tadrisi_course_mufattish">Tadrisi Course Mufattish</button>
 </div>
 
-    <div class="overflow-x-auto bg-white rounded-lg shadow">
-        <table id="admin-users-table" class="min-w-full divide-y divide-gray-200">
-                                 <thead class="bg-gray-50">
-                                     <tr>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Zimmeadari</th>
-                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Actions</th>
-                                     </tr>
-                                 </thead>
-                                 <tbody id="admin-users-tbody" class="bg-white divide-y divide-gray-200">
-                                     </tbody>
-                             </table>
+<table id="admin-users-table" class="min-w-full divide-y divide-gray-200">
+    <thead class="bg-gray-50">
+        <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Zimmeadari</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+        </tr>
+    </thead>
+    <tbody id="admin-users-tbody" class="bg-white divide-y divide-gray-200"></tbody>
+</table>
                          </div>
                      </div>
                      
@@ -2818,38 +2812,54 @@ const renderDedicatedKkdSummary = (reports) => {
          };
 
 
-         const renderAdminUsersTable = (users) => {
-               if (!adminUsersTbody) return;
-               if (users.length === 0) {
-                 adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No users found.</td></tr>'; 
-                 return;
-             }
-             
-              adminUsersTbody.innerHTML = users
-                .map(user => {
-                    let deadlineText = '';
-                    if (user.gracePeriodOverrideUntil) {
-                        try {
-                             const date = user.gracePeriodOverrideUntil.toDate();
-                             deadlineText = ` <span class="text-xs text-orange-600">(Ext: ${date.toLocaleDateString()})</span>`;
-                        } catch (e) { console.error("Error formatting deadline date", e); } 
-                    }
-                    // Added Region to the row 
-                    const regionText = user.region ? ` | ${user.region}` : ''; 
-                    
-                    return `
-                     <tr class="hover:bg-gray-50">
-                         <td class="whitespace-nowrap urdu-font">${user.name || 'N/A'}</td>
-                         <td class="whitespace-nowrap">${user.email || 'N/A'}</td> 
-                         <td class="whitespace-nowrap text-sm text-gray-500 urdu-font">${user.zimmedari || 'N/A'} ${regionText}</td>
-                         <td class="whitespace-nowrap">
-                             <button class="admin-edit-user-btn text-blue-600 hover:text-blue-800 text-sm font-medium" data-user-id="${user.id}">View/Edit</button>
-                             <button class="admin-set-deadline-btn" data-user-id="${user.id}">Set Deadline</button>
-                             ${deadlineText}
-                         </td>
-                     </tr>
-                    `
-                 }).join('');
+         // 1. Delete User Function
+window.handleDeleteUser = async (userId) => {
+    if (confirm("Kya aap waqai is user ka profile Firestore se delete karna chahte hain?")) {
+        showLoader(true);
+        try {
+            await deleteDoc(doc(db, 'users', userId));
+            showNotification("User profile deleted successfully.");
+        } catch (error) {
+            console.error("Error deleting user:", error);
+            showNotification("Delete karne mein nakam rahe.", true);
+        } finally {
+            showLoader(false);
+        }
+    }
+};
+
+// 2. Updated Table Renderer (Removed Deadline, Fixed Name Display)
+const renderAdminUsersTable = (users) => {
+    if (!adminUsersTbody) return;
+    
+    adminUsersTbody.innerHTML = users.map(user => {
+        // Agar 'name' field khali hai to 'displayName' ya 'email' dikhayein
+        const displayName = user.name || user.displayName || user.email || 'N/A';
+        const regionText = user.region ? ` | ${user.region}` : ''; 
+        
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap urdu-font font-medium">${displayName}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${user.email || 'N/A'}</td> 
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 urdu-font">${user.zimmedari || 'N/A'}${regionText}</td>
+                <td class="px-6 py-4 whitespace-nowrap flex gap-3">
+                    <button class="text-blue-600 hover:text-blue-800 font-bold" onclick="openEditUserModalById('${user.id}')">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="text-red-600 hover:text-red-800 font-bold" onclick="handleDeleteUser('${user.id}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+};
+
+// Helper for Edit button
+window.openEditUserModalById = (id) => {
+    const user = allUsersData.find(u => u.id === id);
+    if(user) openEditUserModal(user);
+};
 
              // FIX 3: Re-attach event listeners for Manage Users buttons
              document.querySelectorAll('.admin-edit-user-btn').forEach(button => {
@@ -4829,6 +4839,7 @@ document.addEventListener('click', function (e) {
     </script>
 </body>
 </html>
+
 
 
 
