@@ -626,6 +626,7 @@
     <option value="test-asri">Result Summary (Asri - Eng & Math)</option>
     <option value="structure-list">All Jamia Structure (Teachers, Classes & Books)</option>
     <option value="kkd">Talimi Karkardagi Report (KKd)</option>
+    <option value="user-teachers">User Teacher Data (Saved Teachers List)</option>
                     
     <option value="tadris" disabled>Tadris Recording (Coming Soon)</option>
 </select>
@@ -1278,46 +1279,13 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
         renderAllJamiaStructureList();
     }
         // 👇 YE BLOCK ADD KAREIN 👇
-    
-    // --- USER TEACHERS DATA ---
-    else if (reportType === 'user-teachers') {
-        renderUserTeachersTable();
-    }
-    
-        // ============================================================
-        // CASE: USER TEACHERS DATA
-        // ============================================================
-        else if (reportType === 'user-teachers') {
-            fileName = `User_Teachers_Detailed_List_${monthName}_${yearVal}.xlsx`;
-            const q = query(collection(db, "asatiza_details"));
-            const snapshot = await getDocs(q);
-            let count = 1;
-
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                if (data.classes && Array.isArray(data.classes)) {
-                    data.classes.forEach(cls => {
-                        const books = Array.isArray(cls.books) ? cls.books : [cls.bookName || '-'];
-                        books.forEach(book => {
-                            excelRows.push({
-                                "#": count++,
-                                "REGION": data.region || '-',
-                                "JAMIA NAME": data.jamia || '-',
-                                "TEACHER NAME": data.name || '-',
-                                "MOBILE": data.mobile || '-',
-                                "GRADE": data.grade || '-',
-                                "SECTION": cls.section || '-',
-                                "CLASS": cls.className || '-',
-                                "BOOK (KITAB)": book
-                            });
-                        });
-                    });
-                }
-            });
-        }
-        else if (reportType === 'kkd') {
+    else if (reportType === 'kkd') {
         renderKKdAnalysisTable();
     }
+        // btn-generate-analysis ke listener ke andar ye logic add karein
+else if (reportType === 'user-teachers') {
+    renderUserTeachersTable();
+}
     
     else {
         container.innerHTML = '<p class="text-center text-gray-500 py-10">Coming Soon...</p>';
@@ -1816,6 +1784,73 @@ const renderAllJamiaStructureList = () => {
             </div>
         </div>
     `;
+};
+
+               const renderUserTeachersTable = async () => {
+    const container = document.getElementById('analysis-report-container');
+    container.innerHTML = '<div class="text-center py-10">Data load ho raha hai...</div>';
+
+    try {
+        const querySnapshot = await getDocs(collection(db, "asatiza_details"));
+        let rowsHtml = '';
+        let count = 1;
+
+        querySnapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            // Photo fix yahan apply kiya
+            const photoSrc = convertGoogleDriveURL(data.photoURL);
+            
+            if (data.classes && Array.isArray(data.classes)) {
+                data.classes.forEach(cls => {
+                    const books = Array.isArray(cls.books) ? cls.books.join(', ') : (cls.bookName || '-');
+                    
+                    rowsHtml += `
+                        <tr class="border-b hover:bg-gray-50 text-center">
+                            <td class="p-3 border-r">${count++}</td>
+                            <td class="p-3 border-r">
+                                <img src="${photoSrc}" class="w-12 h-12 rounded-full mx-auto object-cover border" 
+                                     onerror="this.src='https://placehold.co/40x40?text=Error'">
+                            </td>
+                            <td class="p-3 border-r urdu-font">${data.region || '-'}</td>
+                            <td class="p-3 border-r urdu-font font-bold">${data.jamia || '-'}</td>
+                            <td class="p-3 border-r urdu-font">
+                                ${data.name || '-'} <br> <span class="text-xs text-blue-600">${data.mobile || '-'}</span>
+                            </td>
+                            <td class="p-3 border-r font-bold">${data.grade || '-'}</td>
+                            <td class="p-3 border-r urdu-font">${cls.section || '-'}</td>
+                            <td class="p-3 border-r urdu-font">${cls.className || '-'}</td>
+                            <td class="p-3 border-r urdu-font text-purple-700">${books}</td>
+                            <td class="p-3">N/A</td>
+                        </tr>`;
+                });
+            }
+        });
+
+        // Table header aur structure
+        container.innerHTML = `
+            <div class="overflow-x-auto bg-white rounded-lg shadow">
+                <table class="w-full text-sm border-collapse">
+                    <thead class="bg-gray-800 text-white text-xs uppercase">
+                        <tr>
+                            <th class="p-3 border-r">#</th>
+                            <th class="p-3 border-r">PHOTO</th>
+                            <th class="p-3 border-r">REGION</th>
+                            <th class="p-3 border-r">JAMIA NAME</th>
+                            <th class="p-3 border-r">TEACHER / MOBILE</th>
+                            <th class="p-3 border-r">GRADE</th>
+                            <th class="p-3 border-r">SECTION</th>
+                            <th class="p-3 border-r">CLASS</th>
+                            <th class="p-3 border-r">BOOK</th>
+                            <th class="p-3">ACTION</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml || '<tr><td colspan="10" class="p-5">No Data Found</td></tr>'}</tbody>
+                </table>
+            </div>`;
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = "Error loading data.";
+    }
 };
                
 // 1. Dropdown ko populate karne ka function
@@ -3760,77 +3795,6 @@ const renderReportCardStatusTable = (allSheets) => {
     `;
 };
     // --- UPDATED EXCEL DOWNLOAD FUNCTION (Supports All Reports) ---
-
-const renderUserTeachersTable = async () => {
-    const container = document.getElementById('analysis-report-container');
-    container.innerHTML = '<div class="text-center py-20"><div class="loader mx-auto mb-4"></div><p>Asatiza ka data load ho raha hai...</p></div>';
-
-    try {
-        const querySnapshot = await getDocs(collection(db, "asatiza_details"));
-        let rowsHtml = '';
-        let count = 1;
-
-        querySnapshot.forEach(docSnap => {
-            const data = docSnap.data();
-            const photoSrc = data.photoURL || 'https://placehold.co/40x40?text=No+Photo';
-            
-            if (data.classes && Array.isArray(data.classes)) {
-                data.classes.forEach(cls => {
-                    const books = Array.isArray(cls.books) ? cls.books : [cls.bookName || '-'];
-                    books.forEach(book => {
-                        rowsHtml += `
-                            <tr class="border-b hover:bg-gray-50 text-sm text-center">
-                                <td class="p-3 border-r">${count++}</td>
-                                <td class="p-3 border-r">
-                                    <img src="${photoSrc}" class="w-10 h-10 rounded-full mx-auto object-cover border" onerror="this.src='https://placehold.co/40x40?text=Error'">
-                                </td>
-                                <td class="p-3 border-r urdu-font">${data.region || '-'}</td>
-                                <td class="p-3 border-r urdu-font font-bold text-teal-800">${data.jamia || '-'}</td>
-                                <td class="p-3 border-r urdu-font text-blue-700">
-                                    ${data.name || '-'} / <span class="text-gray-600 font-sans">${data.mobile || '-'}</span>
-                                </td>
-                                <td class="p-3 border-r font-bold text-orange-600">${data.grade || '-'}</td>
-                                <td class="p-3 border-r urdu-font font-bold text-blue-600">${cls.section || '-'}</td>
-                                <td class="p-3 border-r urdu-font font-semibold">${cls.className || '-'}</td>
-                                <td class="p-3 border-r urdu-font text-purple-700">${book}</td>
-                                <td class="p-3 text-gray-400">N/A</td>
-                            </tr>`;
-                    });
-                });
-            }
-        });
-
-        container.innerHTML = `
-            <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                    <h4 class="font-bold text-lg text-gray-700">User Saved Teachers Detailed List</h4>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead class="bg-gray-800 text-white uppercase text-xs">
-                            <tr>
-                                <th class="p-3 border-r border-gray-600">#</th>
-                                <th class="p-3 border-r border-gray-600">PHOTO</th>
-                                <th class="p-3 border-r border-gray-600">REGION</th>
-                                <th class="p-3 border-r border-gray-600">JAMIA NAME</th>
-                                <th class="p-3 border-r border-gray-600">TEACHER / MOBILE</th>
-                                <th class="p-3 border-r border-gray-600">GRADE</th>
-                                <th class="p-3 border-r border-gray-600">SECTION</th>
-                                <th class="p-3 border-r border-gray-600">CLASS</th>
-                                <th class="p-3 border-r border-gray-600">BOOK (KITAB)</th>
-                                <th class="p-3">ACTION</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200">${rowsHtml || '<tr><td colspan="10" class="p-10 text-center text-gray-500">No data found.</td></tr>'}</tbody>
-                    </table>
-                </div>
-            </div>`;
-    } catch (error) {
-        console.error("Error fetching asatiza details:", error);
-        container.innerHTML = '<p class="text-red-500 text-center py-10">Data load karne mein masla aaya.</p>';
-    }
-};
-
 const handleAnalysisExcelDownload = async () => {
     const reportType = document.getElementById('analysis-report-type-select').value;
     
@@ -4100,43 +4064,6 @@ const handleAnalysisExcelDownload = async () => {
         // ============================================================
         // CASE 5: KKD REPORT (UPDATED WITH CLASS & KAIFIYAT)
         // ============================================================
-        
-    // --- USER TEACHERS DATA ---
-    else if (reportType === 'user-teachers') {
-        renderUserTeachersTable();
-    }
-    
-        // ============================================================
-        // CASE: USER TEACHERS DATA
-        // ============================================================
-        else if (reportType === 'user-teachers') {
-            fileName = `User_Teachers_Detailed_List_${monthName}_${yearVal}.xlsx`;
-            const q = query(collection(db, "asatiza_details"));
-            const snapshot = await getDocs(q);
-            let count = 1;
-
-            snapshot.forEach(docSnap => {
-                const data = docSnap.data();
-                if (data.classes && Array.isArray(data.classes)) {
-                    data.classes.forEach(cls => {
-                        const books = Array.isArray(cls.books) ? cls.books : [cls.bookName || '-'];
-                        books.forEach(book => {
-                            excelRows.push({
-                                "#": count++,
-                                "REGION": data.region || '-',
-                                "JAMIA NAME": data.jamia || '-',
-                                "TEACHER NAME": data.name || '-',
-                                "MOBILE": data.mobile || '-',
-                                "GRADE": data.grade || '-',
-                                "SECTION": cls.section || '-',
-                                "CLASS": cls.className || '-',
-                                "BOOK (KITAB)": book
-                            });
-                        });
-                    });
-                }
-            });
-        }
         else if (reportType === 'kkd') {
             fileName = `KKd_Report_${monthName}_${yearVal}.xlsx`;
 
@@ -4172,6 +4099,35 @@ const handleAnalysisExcelDownload = async () => {
             // Sorting
             excelRows.sort((a, b) => a["Jamia Name"].localeCompare(b["Jamia Name"]));
         }
+
+        else if (reportType === 'user-teachers') {
+    fileName = `Teachers_Detailed_List_${monthName}_${yearVal}.xlsx`;
+    let count = 1;
+    allUsersData.forEach(user => {
+        if (user.id === ADMIN_UID) return;
+        const latestYear = Object.keys(user.academicYears || {}).sort().reverse()[0];
+        const structure = latestYear ? (user.academicYears[latestYear].karkardagiStructure || []) : [];
+
+        structure.forEach(jamia => {
+            (jamia.teachers || []).forEach(teacher => {
+                (teacher.periods || []).forEach(period => {
+                    excelRows.push({
+                        "#": count++,
+                        "REGION": user.region || '-',
+                        "JAMIA NAME": jamia.jamiaName || '-',
+                        "TEACHER NAME": teacher.name || '-',
+                        "MOBILE": teacher.mobile || teacher.contact || '-',
+                        "GRADE": period.grade || '-',
+                        "SECTION": period.section || '-',
+                        "CLASS": period.className || '-',
+                        "BOOK (KITAB)": period.bookName || '-'
+                    });
+                });
+            });
+        });
+    });
+}
+        
         // ============================================================
         // FINAL STYLING & DOWNLOAD
         // ============================================================
@@ -4901,6 +4857,9 @@ document.addEventListener('click', function (e) {
     </script>
 </body>
 </html>
+
+
+
 
 
 
