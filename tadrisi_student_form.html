@@ -16,7 +16,6 @@
         body { font-family: 'Jameel Noori Nastaleeq', serif; background-color: #f8fafc; }
         .english-font { font-family: 'Poppins', sans-serif; }
         
-        /* App-like feel */
         .app-container {
             max-width: 480px;
             margin: 0 auto;
@@ -27,13 +26,11 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.05);
         }
         
-        /* Input Styling */
-        input:focus {
+        input:focus, select:focus {
             border-color: #0f766e;
             box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
         }
         
-        /* File Upload Styling */
         .file-upload-wrapper {
             position: relative;
             width: 120px;
@@ -76,21 +73,34 @@
             <form id="student-entry-form" class="space-y-5">
                 
                 <div class="text-center mb-6">
-                    <label for="photo-input" class="file-upload-wrapper block shadow-md group transition hover:border-teal-500">
+                    <label for="photo-input" class="file-upload-wrapper block shadow-md group transition hover:border-teal-500" id="photo-container">
                         <img id="photo-preview" src="https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo" alt="Profile">
                         <div class="file-upload-icon group-hover:bg-teal-600 transition">
                             <i class="fas fa-camera"></i> اپلوڈ
                         </div>
                     </label>
                     <input type="file" id="photo-input" accept="image/*" class="hidden">
-                    <p class="text-xs text-gray-500 mt-2">پاسپورٹ سائز تصویر (Optional)</p>
+                    <p class="text-xs text-red-500 mt-2 font-bold" id="photo-error">* تصویر اپلوڈ کرنا لازمی ہے</p>
                 </div>
 
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-2">
                         <i class="fas fa-mosque text-teal-600"></i> جامعۃ المدینہ کا نام
                     </label>
-                    <input type="text" id="jamia" class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white transition" placeholder="مثال: جامعہ ناگپور..." required>
+                    <select id="jamia-select" class="w-full p-3 border border-gray-300 rounded-xl bg-white focus:bg-white transition" onchange="toggleJamiaInput()">
+                        <option value="">منتخب کریں...</option>
+                        <option value="ناگپور">ناگپور</option>
+                        <option value="ممبئی">ممبئی</option>
+                        <option value="احمدآباد">احمدآباد</option>
+                        <option value="موڈاسہ">موڈاسہ</option>
+                        <option value="آگرہ">آگرہ</option>
+                        <option value="شاہ جہانپور">شاہ جہانپور</option>
+                        <option value="other">دیگر (کوئی اور)</option>
+                    </select>
+                    
+                    <div id="jamia-custom-div" class="hidden mt-2">
+                        <input type="text" id="jamia-custom" class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white transition" placeholder="جامعہ کا نام یہاں لکھیں...">
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-1 gap-4">
@@ -154,22 +164,49 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Config (Apni config yahan update karein agar zaroorat ho)
         const firebaseConfig = { apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508", measurementId: "G-1PHNJQWNPZ" };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --- 1. Auto-fill Jamia from URL ---
+        // --- 1. Jamia Logic (Dropdown + Other) ---
+        window.toggleJamiaInput = () => {
+            const select = document.getElementById('jamia-select');
+            const customDiv = document.getElementById('jamia-custom-div');
+            if (select.value === 'other') {
+                customDiv.classList.remove('hidden');
+                document.getElementById('jamia-custom').required = true;
+            } else {
+                customDiv.classList.add('hidden');
+                document.getElementById('jamia-custom').required = false;
+            }
+        };
+
+        // Check URL for Jamia
         const urlParams = new URLSearchParams(window.location.search);
         const jamiaParam = urlParams.get('jamia');
         if(jamiaParam) {
-            document.getElementById('jamia').value = jamiaParam;
-            document.getElementById('jamia').readOnly = true; 
-            document.getElementById('jamia').classList.add('bg-gray-100', 'text-gray-500');
+            const select = document.getElementById('jamia-select');
+            // Check if jamia exists in dropdown
+            let exists = false;
+            for(let i=0; i<select.options.length; i++){
+                if(select.options[i].value === jamiaParam){
+                    select.selectedIndex = i;
+                    exists = true;
+                    break;
+                }
+            }
+            if(!exists) {
+                select.value = 'other';
+                document.getElementById('jamia-custom-div').classList.remove('hidden');
+                document.getElementById('jamia-custom').value = jamiaParam;
+                document.getElementById('jamia-custom').readOnly = true;
+            } else {
+                select.disabled = true; // Lock dropdown if pre-filled from list
+            }
         }
 
-        // --- 2. Image Preview & Compression Logic ---
+        // --- 2. Image Logic ---
         const photoInput = document.getElementById('photo-input');
         const photoPreview = document.getElementById('photo-preview');
         let photoBase64 = null;
@@ -180,8 +217,10 @@
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     photoPreview.src = e.target.result;
-                    // Store base64 string
                     photoBase64 = e.target.result;
+                    // Hide error if present
+                    document.getElementById('photo-error').style.display = 'none';
+                    document.getElementById('photo-container').style.borderColor = '#e2e8f0';
                 }
                 reader.readAsDataURL(file);
             }
@@ -190,9 +229,8 @@
         // --- 3. Phone Validation ---
         window.validatePhone = (input) => {
             const errorMsg = document.getElementById('phone-error');
-            if (input.value.length > 10) {
-                input.value = input.value.slice(0, 10); // Limit to 10
-            }
+            if (input.value.length > 10) input.value = input.value.slice(0, 10);
+            
             if (input.value.length === 10) {
                 errorMsg.classList.add('hidden');
                 input.classList.remove('border-red-500');
@@ -208,9 +246,29 @@
         document.getElementById('student-entry-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            // Check Image
+            if (!photoBase64) {
+                alert("تصویر اپلوڈ کرنا لازمی ہے!");
+                document.getElementById('photo-error').style.display = 'block';
+                document.getElementById('photo-container').style.borderColor = 'red';
+                document.getElementById('photo-container').scrollIntoView({behavior: 'smooth'});
+                return;
+            }
+
+            // Check Mobile
             const mobile = document.getElementById('mobile').value.trim();
             if (mobile.length !== 10) {
-                alert("موبائل نمبر درست 10 ہندسوں پر مشتمل ہونا چاہیے۔");
+                alert("موبائل نمبر 10 ہندسوں کا ہونا چاہیے۔");
+                return;
+            }
+
+            // Check Jamia
+            let jamiaValue = document.getElementById('jamia-select').value;
+            if (jamiaValue === 'other') {
+                jamiaValue = document.getElementById('jamia-custom').value.trim();
+            }
+            if (!jamiaValue) {
+                alert("جامعہ کا نام منتخب کریں یا لکھیں۔");
                 return;
             }
 
@@ -220,21 +278,17 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...';
 
             try {
-                // Resize image before upload to save space (Simple Canvas compression)
-                let finalPhoto = null;
-                if (photoBase64) {
-                    // Reduce size logic (optional, keeping base64 for simplicity here)
-                    finalPhoto = photoBase64; 
-                }
+                // Resize image (Simple compression)
+                let finalPhoto = photoBase64; 
 
                 await addDoc(collection(db, 'tadrisi_students'), {
-                    jamia: document.getElementById('jamia').value.trim(),
+                    jamia: jamiaValue,
                     regNo: document.getElementById('regNo').value.trim(),
                     mobile: mobile,
                     name: document.getElementById('name').value.trim(),
                     fatherName: document.getElementById('fatherName').value.trim(),
-                    city: document.getElementById('city').value.trim(), // New Field
-                    photoBase64: finalPhoto, // Storing image as Base64 string
+                    city: document.getElementById('city').value.trim(),
+                    photoBase64: finalPhoto,
                     groupId: null, 
                     createdAt: new Date()
                 });
@@ -245,7 +299,7 @@
 
             } catch (error) {
                 console.error(error);
-                alert("ایرر! ڈیٹا محفوظ نہیں ہو سکا۔ انٹرنیٹ چیک کریں۔");
+                alert("ایرر! انٹرنیٹ چیک کریں۔");
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
@@ -253,14 +307,19 @@
         });
 
         window.resetForm = () => {
-            const jamiaVal = document.getElementById('jamia').value;
             document.getElementById('student-entry-form').reset();
-            document.getElementById('jamia').value = jamiaVal; 
             document.getElementById('photo-preview').src = "https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo";
             photoBase64 = null;
+            document.getElementById('jamia-custom-div').classList.add('hidden');
             
-            document.getElementById('success-msg').classList.add('hidden');
-            document.getElementById('student-entry-form').classList.remove('hidden');
+            // Check URL again for Jamia
+            if(jamiaParam) {
+                // (Logic resets to URL param if exists)
+                window.location.reload(); 
+            } else {
+                document.getElementById('success-msg').classList.add('hidden');
+                document.getElementById('student-entry-form').classList.remove('hidden');
+            }
         };
     </script>
 </body>
