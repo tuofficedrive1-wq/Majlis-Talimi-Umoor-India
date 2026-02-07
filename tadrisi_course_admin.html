@@ -326,15 +326,36 @@
         };
 
         function renderStudentsTable(list) {
-            const tbody = document.getElementById('students-master-tbody'); tbody.innerHTML = '';
-            if(list.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="p-4 text-center">No students found.</td></tr>'; return; }
-            list.forEach((s, idx) => {
-                const photoSrc = s.photoBase64 || 'https://placehold.co/100x100/e2e8f0/94a3b8?text=No+Img';
-                const grp = allGroups.find(g => g.id === s.groupId);
-                const grpName = grp ? grp.groupName : '<span class="text-red-500 font-bold bg-red-50 px-2 py-1 rounded text-xs">Unassigned</span>';
-                tbody.innerHTML += `<tr class="border-b text-sm hover:bg-gray-50 align-middle"><td class="p-2 text-center"><input type="checkbox" class="student-checkbox big-checkbox" value="${s.id}" onchange="updateBulkActionUI()"></td><td class="p-2 text-xs">${idx+1}</td><td class="p-2 text-center"><img src="${photoSrc}" class="student-thumb mx-auto" onclick="openImageModal('${photoSrc}')"></td><td class="p-2 font-mono font-bold">${s.regNo||'-'}</td><td class="p-2 font-bold urdu-font text-base">${s.name}<br><span class="text-xs text-gray-500 font-normal">${s.fatherName}</span></td><td class="p-2 urdu-font text-xs">${s.jamia||'-'}<br><span class="text-teal-600">${s.city||'-'}</span></td><td class="p-2 font-mono text-xs">${s.mobile||'-'}</td><td class="p-2 text-xs">${grpName}</td><td class="p-2 flex gap-1"><button onclick="openEditModal('${s.id}')" class="text-teal-600 p-1"><i class="fas fa-edit"></i></button><button onclick="openTransferModal('${s.id}','${s.name}','${s.groupId||''}')" class="text-blue-600 p-1"><i class="fas fa-exchange-alt"></i></button><button onclick="deleteStudent('${s.id}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button></td></tr>`;
-            });
-        }
+    const tbody = document.getElementById('students-master-tbody');
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="p-4 text-center">No students found.</td></tr>';
+        return;
+    }
+
+    let rows = ''; // Ek sath string banayein
+    list.forEach((s, idx) => {
+        const photoSrc = s.photoBase64 || 'https://placehold.co/100x100/e2e8f0/94a3b8?text=No+Img';
+        const grp = allGroups.find(g => g.id === s.groupId);
+        const grpName = grp ? grp.groupName : '<span class="text-red-500 font-bold bg-red-50 px-2 py-1 rounded text-xs">Unassigned</span>';
+        
+        rows += `<tr class="border-b text-sm hover:bg-gray-50 align-middle">
+            <td class="p-2 text-center"><input type="checkbox" class="student-checkbox big-checkbox" value="${s.id}" onchange="updateBulkActionUI()"></td>
+            <td class="p-2 text-xs">${idx + 1}</td>
+            <td class="p-2 text-center"><img src="${photoSrc}" class="student-thumb mx-auto" onclick="openImageModal('${photoSrc}')"></td>
+            <td class="p-2 font-mono font-bold">${s.regNo || '-'}</td>
+            <td class="p-2 font-bold urdu-font text-base">${s.name}<br><span class="text-xs text-gray-500 font-normal">${s.fatherName}</span></td>
+            <td class="p-2 urdu-font text-xs">${s.jamia || '-'}<br><span class="text-teal-600">${s.city || '-'}</span></td>
+            <td class="p-2 font-mono text-xs">${s.mobile || '-'}</td>
+            <td class="p-2 text-xs">${grpName}</td>
+            <td class="p-2 flex gap-1">
+                <button onclick="openEditModal('${s.id}')" class="text-teal-600 p-1"><i class="fas fa-edit"></i></button>
+                <button onclick="openTransferModal('${s.id}','${s.name}','${s.groupId || ''}')" class="text-blue-600 p-1"><i class="fas fa-exchange-alt"></i></button>
+                <button onclick="deleteStudent('${s.id}')" class="text-red-500 p-1"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = rows; // Sirf ek baar update
+}
 
         // --- Result Logic (Optimized) ---
         window.switchResultTab=(t)=>{ document.querySelectorAll('.result-tab-btn').forEach(b=>b.classList.remove('active')); document.getElementById(`rtab-${t}`).classList.add('active'); activeResultTab=t; renderResultTable(currentResultData); };
@@ -401,37 +422,82 @@
 
         // --- Mufattish Status (Optimized) ---
         window.renderMufattishStatus = async () => {
-            const tbody = document.getElementById('mufattish-status-tbody'); tbody.innerHTML = '<tr><td colspan="2" class="p-4">Loading stats...</td></tr>';
+    const tbody = document.getElementById('mufattish-status-tbody');
+    tbody.innerHTML = '<tr><td colspan="3" class="p-8 text-center"><i class="fas fa-spinner animate-spin"></i> Loading Status...</td></tr>';
+    
+    try {
+        // Optimization 1: Sirf zaroori fields fetch karein (ID aur Marks)
+        // Note: Firestore pure document fetch karta hai, lekin hum 'groupId' filter laga kar data kam kar sakte hain
+        const q = query(collection(db, 'tadrisi_students'), where('groupId', '!=', null));
+        const snap = await getDocs(q);
+        const students = snap.docs.map(d => ({
+            groupId: d.data().groupId,
+            marks_r1: d.data().marks_r1,
+            marks_r2: d.data().marks_r2,
+            marks_r3: d.data().marks_r3,
+            marks_r4: d.data().marks_r4
+        }));
+
+        let finalRowsHtml = ''; // Optimization 2: String builder use karein
+
+        allMufattish.forEach(m => {
+            let gridHtml = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">';
             
-            // To make this fast, we need to fetch students ONCE, or use the loaded groups
-            // Since this tab is separate, let's fetch students only if not loaded? 
-            // Better: Fetch just counts if possible, but Firestore doesn't support easy count. 
-            // We will fetch ALL students ONLY when this button is clicked.
-            const q = query(collection(db, 'tadrisi_students'));
-            const snap = await getDocs(q);
-            const students = snap.docs.map(d => d.data());
-            
-            tbody.innerHTML = '';
-            allMufattish.forEach(m => {
-                const roundsData = { 1: [], 2: [], 3: [], 4: [] };
-                allGroups.forEach(g => { [1, 2, 3, 4].forEach(r => { if (g[`round_${r}_uid`] === m.id) { const stu = students.filter(s => s.groupId === g.id); const fill = stu.filter(s => s[`marks_r${r}`] && (s[`marks_r${r}`].m1!==undefined)).length; roundsData[r].push({ name: g.groupName, filled: fill, total: stu.length }); } }); });
-                let gridHtml = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">';
-                [1, 2, 3, 4].forEach(r => {
-                    let list = '';
-                    if (roundsData[r].length > 0) {
-                        roundsData[r].forEach(i => {
-                            let cls = 'text-red-600', txt = 'Pending';
-                            if (i.total > 0 && i.filled === i.total) { cls = 'text-green-600 font-bold'; txt = 'Done'; }
-                            else if (i.filled > 0) { cls = 'text-yellow-600 font-bold'; txt = `${i.filled}/${i.total}`; }
-                            list += `<div class="flex justify-between text-xs bg-white p-1 border mb-1"><span class="font-bold">${i.name}</span><span class="${cls}">${txt}</span></div>`;
-                        });
-                    } else { list = '<div class="text-xs text-gray-300 italic">No Groups</div>'; }
-                    gridHtml += `<div class="bg-gray-50 p-1 rounded border"><div class="font-bold text-xs mb-1 text-center bg-gray-200">Sabaq ${r}</div>${list}</div>`;
+            [1, 2, 3, 4].forEach(r => {
+                // Is Mufattish ko is round mein jo groups mile hain
+                const assignedGroups = allGroups.filter(g => g[`round_${r}_uid`] === m.id);
+                let list = '';
+                
+                assignedGroups.forEach(g => {
+                    const stuInGrp = students.filter(s => s.groupId === g.id);
+                    const total = stuInGrp.length;
+                    const filled = stuInGrp.filter(s => s[`marks_r${r}`] && s[`marks_r${r}`].m1 !== undefined).length;
+                    
+                    let cls = 'text-red-600', txt = 'Pending';
+                    if (total > 0 && filled === total) { 
+                        cls = 'text-green-600 font-bold'; 
+                        txt = '<i class="fas fa-check-circle"></i> Done'; 
+                    } else if (filled > 0) { 
+                        cls = 'text-yellow-600 font-bold'; 
+                        txt = `${filled}/${total}`; 
+                    } else if (total === 0) {
+                        txt = 'No Students';
+                        cls = 'text-gray-400';
+                    }
+                    
+                    list += `
+                        <div class="flex justify-between text-[10px] bg-white p-1 border border-gray-100 mb-1 rounded">
+                            <span class="font-bold truncate w-20" title="${g.groupName}">${g.groupName}</span>
+                            <span class="${cls}">${txt}</span>
+                        </div>`;
                 });
-                gridHtml += '</div>';
-                tbody.innerHTML += `<tr class="border-b bg-white align-top"><td class="p-3 w-48 font-bold text-teal-800">${m.name}<br><span class="text-xs font-normal text-gray-500">${m.region}</span></td><td class="p-3">${gridHtml}</td></tr>`;
+
+                gridHtml += `
+                    <div class="bg-gray-50 p-1 rounded border border-gray-200">
+                        <div class="font-bold text-[11px] mb-1 text-center bg-teal-100 text-teal-800 rounded">Sabaq ${r}</div>
+                        ${list || '<div class="text-[10px] text-gray-300 italic text-center">None</div>'}
+                    </div>`;
             });
-        };
+            
+            gridHtml += '</div>';
+            
+            finalRowsHtml += `
+                <tr class="border-b bg-white hover:bg-gray-50 align-top">
+                    <td class="p-3 w-48 border-r">
+                        <div class="font-bold text-teal-800">${m.name}</div>
+                        <div class="text-xs text-gray-500"><i class="fas fa-map-marker-alt"></i> ${m.region || 'No Region'}</div>
+                    </td>
+                    <td class="p-2">${gridHtml}</td>
+                </tr>`;
+        });
+
+        tbody.innerHTML = finalRowsHtml || '<tr><td colspan="3" class="p-4 text-center">No Mufattish found.</td></tr>';
+        
+    } catch (e) {
+        console.error("Status Error:", e);
+        tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-red-500 text-center">Data load karne mein masla hua.</td></tr>';
+    }
+};
 
         // --- Standard Actions ---
         window.openResultEditModal=(sid)=>{ const s=currentResultData.find(x=>x.id===sid); if(!s)return; document.getElementById('edit-result-student-name').textContent=`${s.name} (${s.regNo})`; document.getElementById('edit-result-id').value=sid; const gr=s.grace_marks||{}; [1,2,3,4,5].forEach(i=>document.getElementById(`grace-m${i}`).value=gr[`m${i}`]||0); document.getElementById('edit-final-remarks').value=s.final_remarks||''; document.getElementById('result-edit-modal').classList.remove('hidden'); };
@@ -462,3 +528,4 @@
     </script>
 </body>
 </html>
+
