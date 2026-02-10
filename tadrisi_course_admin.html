@@ -406,14 +406,14 @@
             });
         }
 
-        // Profile Modal
+        // 🔥 PROFILE MODAL (WITH COLOR CODED GRADING) 🔥
         window.openProfileModal = (sid) => {
             let s = currentResultData.find(x => x.id === sid);
             if(!s) s = filteredList.find(x => x.id === sid);
             if(!s) s = allStudents.find(x => x.id === sid);
             if(!s) return;
 
-            document.getElementById('pm-student-id').value=sid;
+            document.getElementById('pm-student-id').value = sid;
             document.getElementById('pm-image').src = s.photoBase64 || 'https://placehold.co/150x150/e2e8f0/94a3b8?text=No+Img';
             document.getElementById('pm-name').textContent = s.name;
             document.getElementById('pm-father').textContent = s.fatherName;
@@ -422,32 +422,85 @@
             document.getElementById('pm-jamia').textContent = s.jamia || '-';
             
             // Populate Grace & Remarks
-            const gr=s.grace_marks||{}; 
-            [1,2,3,4,5].forEach(i=>document.getElementById(`grace-m${i}`).value=gr[`m${i}`]||'');
+            const gr = s.grace_marks || {}; 
+            [1,2,3,4,5].forEach(i => document.getElementById(`grace-m${i}`).value = gr[`m${i}`] || '');
             document.getElementById('pm-final-remarks').value = s.final_remarks || '';
 
-            const tbody = document.getElementById('pm-marks-body'); tbody.innerHTML = '';
+            const tbody = document.getElementById('pm-marks-body'); 
+            tbody.innerHTML = '';
             const gm = (r, k) => (r && r[k]) ? Number(r[k]) : 0;
             const getName = (uid) => allMufattish.find(m => m.id === uid)?.name || 'Pending';
 
-            let gTotal = 0;
+            // Calculate Subject Totals to check per-subject failure
+            let m1T=0, m2T=0, m3T=0, m4T=0, m5T=0, gTotal=0;
+
             for(let i=1; i<=4; i++) {
                 const r = s[`marks_r${i}`] || {};
                 const checker = s[`checkedBy_r${i}`];
-                const t = gm(r,'m1')+gm(r,'m2')+gm(r,'m3')+gm(r,'m4')+gm(r,'m5');
+                const v1=gm(r,'m1'), v2=gm(r,'m2'), v3=gm(r,'m3'), v4=gm(r,'m4'), v5=gm(r,'m5');
+                
+                m1T+=v1; m2T+=v2; m3T+=v3; m4T+=v4; m5T+=v5;
+                const t = v1+v2+v3+v4+v5;
                 gTotal += t;
-                tbody.innerHTML += `<tr class="bg-white border-b"><td class="text-left p-2"><span class="font-bold text-teal-700">سبق ${i}</span><br><span class="text-sm text-gray-500">${getName(checker)}</span></td><td>${gm(r,'m1')}</td><td>${gm(r,'m2')}</td><td>${gm(r,'m3')}</td><td>${gm(r,'m4')}</td><td>${gm(r,'m5')}</td><td class="font-bold bg-yellow-50 text-xl">${t}</td></tr>`;
+
+                tbody.innerHTML += `
+                    <tr class="bg-white border-b">
+                        <td class="text-left p-2">
+                            <span class="font-bold text-teal-700">سبق ${i}</span><br>
+                            <span class="text-sm text-gray-500">${getName(checker)}</span>
+                        </td>
+                        <td>${v1}</td><td>${v2}</td><td>${v3}</td><td>${v4}</td><td>${v5}</td>
+                        <td class="font-bold bg-yellow-50 text-xl">${t}</td>
+                    </tr>`;
             }
             
+            // Add Grace Marks
             const g1=Number(gr.m1)||0, g2=Number(gr.m2)||0, g3=Number(gr.m3)||0, g4=Number(gr.m4)||0, g5=Number(gr.m5)||0;
-            const graceT = g1+g2+g3+g4+g5; gTotal += graceT;
-            if(graceT > 0) tbody.innerHTML += `<tr class="bg-green-50 font-bold text-green-700"><td class="text-left p-2">Grace</td><td>+${g1}</td><td>+${g2}</td><td>+${g3}</td><td>+${g4}</td><td>+${g5}</td><td>+${graceT}</td></tr>`;
+            const graceT = g1+g2+g3+g4+g5; 
+            
+            // Final Subject Totals with Grace
+            const f1=m1T+g1, f2=m2T+g2, f3=m3T+g3, f4=m4T+g4, f5=m5T+g5;
+            gTotal += graceT;
 
+            if(graceT > 0) {
+                tbody.innerHTML += `
+                    <tr class="bg-green-50 font-bold text-green-700">
+                        <td class="text-left p-2">Grace</td>
+                        <td>+${g1}</td><td>+${g2}</td><td>+${g3}</td><td>+${g4}</td><td>+${g5}</td>
+                        <td>+${graceT}</td>
+                    </tr>`;
+            }
+
+            // --- RESULT LOGIC & COLORING ---
             const pct = (gTotal/400)*100;
+            const isFail = (f1<56 || f2<56 || f3<56 || f4<56 || f5<56); // Fail if ANY subject < 56
             const badge = document.getElementById('pm-result-status');
-            if(gTotal === 0) { badge.textContent="Pending"; badge.className="px-4 py-2 bg-gray-200 text-gray-700 rounded"; }
-            else if (pct >= 70) { badge.textContent=`PASS (${pct.toFixed(1)}%)`; badge.className="px-4 py-2 bg-green-100 text-green-800 rounded border border-green-300 shadow-sm"; }
-            else { badge.textContent=`FAIL (${pct.toFixed(1)}%)`; badge.className="px-4 py-2 bg-red-100 text-red-800 rounded border border-red-300 shadow-sm"; }
+
+            if(gTotal === 0) { 
+                badge.textContent = "Pending"; 
+                badge.className = "px-4 py-2 bg-gray-200 text-gray-700 rounded shadow-sm border border-gray-300"; 
+            }
+            else if (isFail || pct < 70) { 
+                // FAIL STATE (Red)
+                badge.textContent = `FAIL (${pct.toFixed(1)}%)`; 
+                badge.className = "px-4 py-2 bg-red-100 text-red-800 rounded border border-red-300 shadow-sm font-bold"; 
+            }
+            else {
+                // PASS STATES
+                if (pct >= 90) {
+                    // Mumtaz (Gold/Yellow)
+                    badge.textContent = `MUMTAZ (${pct.toFixed(1)}%)`; 
+                    badge.className = "px-4 py-2 bg-yellow-100 text-yellow-800 rounded border border-yellow-400 shadow-sm font-bold";
+                } else if (pct >= 80) {
+                    // Behtar (Green)
+                    badge.textContent = `BEHTAR (${pct.toFixed(1)}%)`; 
+                    badge.className = "px-4 py-2 bg-green-100 text-green-800 rounded border border-green-300 shadow-sm font-bold";
+                } else {
+                    // Munasib (Blue)
+                    badge.textContent = `MUNASIB (${pct.toFixed(1)}%)`; 
+                    badge.className = "px-4 py-2 bg-blue-100 text-blue-800 rounded border border-blue-300 shadow-sm font-bold";
+                }
+            }
 
             document.getElementById('profile-modal').classList.remove('hidden');
         };
@@ -558,6 +611,7 @@
     </script>
 </body>
 </html>
+
 
 
 
