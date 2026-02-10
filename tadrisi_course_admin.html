@@ -162,13 +162,24 @@
 
         <div id="view-mufattish" class="tab-content hidden">
             <div class="bg-white p-6 rounded shadow border-t-4 border-gray-600">
-                <button onclick="renderMufattishStatus()" class="text-blue-600 hover:underline text-lg mb-4 font-bold"><i class="fas fa-sync"></i> Refresh Status</button>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">Mufattish Status (Sabaq Wise)</h3>
+                    <button onclick="renderMufattishStatus()" class="text-blue-600 hover:underline text-sm font-bold"><i class="fas fa-sync"></i> Refresh Status</button>
+                </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse min-w-[900px]">
-                        <thead class="bg-gray-100 text-gray-800 text-lg">
-                            <tr><th class="p-4 border-b w-64">Mufattish Name</th><th class="p-4 border-b">Assigned Groups & Progress</th></tr>
+                    <table class="w-full text-center border-collapse min-w-[1000px]">
+                        <thead class="bg-gray-800 text-white text-sm uppercase">
+                            <tr>
+                                <th class="p-3 border text-left w-48">Mufattish Name</th>
+                                <th class="p-3 border w-1/5">Sabaq 1</th>
+                                <th class="p-3 border w-1/5">Sabaq 2</th>
+                                <th class="p-3 border w-1/5">Sabaq 3</th>
+                                <th class="p-3 border w-1/5">Sabaq 4</th>
+                            </tr>
                         </thead>
-                        <tbody id="mufattish-status-tbody" class="text-base"><tr><td colspan="2" class="p-6 text-center text-xl">Loading...</td></tr></tbody>
+                        <tbody id="mufattish-status-tbody" class="text-sm bg-white">
+                            <tr><td colspan="5" class="p-6 text-center text-gray-400">Loading...</td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -464,11 +475,80 @@
         window.copyLink=()=>{document.getElementById('shareable-link').select();document.execCommand('copy');showToast('Copied');};
         window.exportStudentList=async()=>{if(allStudents.length===0)await window.fetchAllStudents(); const d=allStudents.map(s=>({"Roll":s.regNo,"Name":s.name,"Jamia":s.jamia})); const ws=XLSX.utils.json_to_sheet(d); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Students"); XLSX.writeFile(wb,"List.xlsx");};
         window.exportResultToExcel=()=>{const t=document.getElementById('result-table');if(!t)return;const wb=XLSX.utils.table_to_book(t,{sheet:"Result"});XLSX.writeFile(wb,"Result.xlsx");};
-        window.renderMufattishStatus=()=>{const t=document.getElementById('mufattish-status-tbody');t.innerHTML='';allMufattish.forEach(m=>{let h='';allGroups.forEach(g=>{const st=allStudents.filter(s=>s.groupId===g.id);[1,2,3,4].forEach(r=>{if(g[`round_${r}_uid`]===m.id){const f=st.filter(s=>s[`marks_r${r}`]&&s[`marks_r${r}`].m1).length;h+=`<span class="mr-2 text-sm border px-1 bg-gray-50">${g.groupName}-S${r}: <b>${f}/${st.length}</b></span>`;}});});t.innerHTML+=`<tr class="border-b"><td class="p-4 text-base font-bold text-teal-800">${m.name}<br><span class="text-xs text-gray-500 font-normal">${m.region}</span></td><td class="p-4 text-base">${h||'-'}</td></tr>`;});};
+        // 🔥 NEW COLOR CODED MUFATTISH STATUS 🔥
+        window.renderMufattishStatus = () => {
+            const tbody = document.getElementById('mufattish-status-tbody'); 
+            tbody.innerHTML = ''; 
+            
+            if (allMufattish.length === 0) { 
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">No Mufattish Found</td></tr>'; 
+                return; 
+            }
+
+            allMufattish.forEach(m => {
+                // Prepare 4 cells for Sabaq 1 to 4
+                let cells = { 1: '', 2: '', 3: '', 4: '' };
+
+                allGroups.forEach(g => {
+                    const groupStudents = allStudents.filter(s => s.groupId === g.id);
+                    const total = groupStudents.length;
+
+                    [1, 2, 3, 4].forEach(r => {
+                        if (g[`round_${r}_uid`] === m.id) {
+                            // Check how many have marks entered for this round
+                            const filled = groupStudents.filter(s => s[`marks_r${r}`] && s[`marks_r${r}`].m1 !== undefined).length;
+                            
+                            let statusClass = '';
+                            let icon = '';
+
+                            if (total > 0 && filled === total) {
+                                // COMPLETE (Green)
+                                statusClass = 'bg-green-100 text-green-800 border-green-300';
+                                icon = '<i class="fas fa-check-circle text-green-600"></i>';
+                            } else if (filled > 0) {
+                                // IN PROGRESS (Yellow)
+                                statusClass = 'bg-yellow-100 text-yellow-800 border-yellow-300';
+                                icon = '<i class="fas fa-clock text-yellow-600"></i>';
+                            } else {
+                                // PENDING (Red/Gray)
+                                statusClass = 'bg-red-50 text-red-800 border-red-200';
+                                icon = '<i class="fas fa-hourglass-start text-red-400"></i>';
+                            }
+
+                            // Create the Badge
+                            cells[r] += `
+                                <div class="mb-1 p-1 rounded border ${statusClass} text-xs flex justify-between items-center shadow-sm">
+                                    <span class="font-bold truncate" title="${g.groupName}">${g.groupName}</span>
+                                    <span class="font-mono text-[10px] ml-1 flex items-center gap-1">
+                                        ${filled}/${total} ${icon}
+                                    </span>
+                                </div>`;
+                        }
+                    });
+                });
+
+                // Fill empty cells with dash
+                [1,2,3,4].forEach(i => { if(cells[i] === '') cells[i] = '<span class="text-gray-300 text-lg">-</span>'; });
+
+                // Render Row
+                tbody.innerHTML += `
+                    <tr class="border-b hover:bg-gray-50 align-top">
+                        <td class="p-3 text-left border-r">
+                            <div class="font-bold text-teal-800 text-base">${m.name}</div>
+                            <div class="text-xs text-gray-500">${m.region || ''}</div>
+                        </td>
+                        <td class="p-2 border-r bg-gray-50/30">${cells[1]}</td>
+                        <td class="p-2 border-r bg-white">${cells[2]}</td>
+                        <td class="p-2 border-r bg-gray-50/30">${cells[3]}</td>
+                        <td class="p-2 bg-white">${cells[4]}</td>
+                    </tr>`;
+            });
+        };
         window.openImageModal=(s)=>{if(!s||s.includes('No+Img'))return; document.getElementById('full-image').src=s;document.getElementById('image-modal').classList.remove('hidden');}; window.createGroup=async()=>{const n=document.getElementById('new-group-name').value;if(!n)return;await addDoc(collection(db,'tadrisi_groups'),{groupName:n,totalStudents:0,round_1_uid:document.getElementById('mufattish-r1').value,round_2_uid:document.getElementById('mufattish-r2').value,round_3_uid:document.getElementById('mufattish-r3').value,round_4_uid:document.getElementById('mufattish-r4').value});document.getElementById('new-group-name').value='';await fetchGroupsList();}; window.fixGroupCounts=async()=>{if(!confirm("Scan?"))return;showLoader(true);try{const c={};allGroups.forEach(g=>c[g.id]=0);const q=query(collection(db,'tadrisi_students'));const s=await getDocs(q);s.forEach(d=>{const i=d.data().groupId;if(i&&c[i]!==undefined)c[i]++});const b=writeBatch(db);allGroups.forEach(g=>b.update(doc(db,'tadrisi_groups',g.id),{totalStudents:c[g.id]||0}));await b.commit();await fetchGroupsList();showToast('Fixed');}catch(e){}finally{showLoader(false);}};
         window.saveResultToHistory=async()=>{const g=document.getElementById('result-group-select').value;const d=document.getElementById('result-month-selector').value;if(!g||!d)return showToast('Select Group & Date','error');if(!confirm('Save?'))return;showLoader(true);try{const n=g==='all'?'All Groups':allGroups.find(x=>x.id===g).groupName;await setDoc(doc(db,'tadrisi_history',`${n}_${d}`),{groupId:g,groupName:n,date:d,students:currentResultData});showToast('Saved');await fetchHistoryList();}catch(e){}finally{showLoader(false);}};
         window.loadHistoryRecord=async()=>{const i=document.getElementById('history-select').value;if(!i){loadGroupResults();return;}showLoader(true);try{const s=await getDoc(doc(db,'tadrisi_history',i));if(s.exists()){const d=s.data();document.getElementById('result-group-name').textContent=`${d.groupName} (Archived)`;document.getElementById('result-header-date').textContent=d.date;currentResultData=d.students;renderResultTable(d.students);showToast('Loaded');}}catch(e){}finally{showLoader(false);}};
     </script>
 </body>
 </html>
+
 
