@@ -730,24 +730,25 @@ function renderResultTable(list) {
         window.openImageModal=(s)=>{if(!s||s.includes('No+Img'))return; document.getElementById('full-image').src=s;document.getElementById('image-modal').classList.remove('hidden');}; window.createGroup=async()=>{const n=document.getElementById('new-group-name').value;if(!n)return;await addDoc(collection(db,'tadrisi_groups'),{groupName:n,totalStudents:0,round_1_uid:document.getElementById('mufattish-r1').value,round_2_uid:document.getElementById('mufattish-r2').value,round_3_uid:document.getElementById('mufattish-r3').value,round_4_uid:document.getElementById('mufattish-r4').value});document.getElementById('new-group-name').value='';await fetchGroupsList();}; window.fixGroupCounts=async()=>{if(!confirm("Scan?"))return;showLoader(true);try{const c={};allGroups.forEach(g=>c[g.id]=0);const q=query(collection(db,'tadrisi_students'));const s=await getDocs(q);s.forEach(d=>{const i=d.data().groupId;if(i&&c[i]!==undefined)c[i]++});const b=writeBatch(db);allGroups.forEach(g=>b.update(doc(db,'tadrisi_groups',g.id),{totalStudents:c[g.id]||0}));await b.commit();await fetchGroupsList();showToast('Fixed');}catch(e){}finally{showLoader(false);}};
         window.saveResultToHistory=async()=>{const g=document.getElementById('result-group-select').value;const d=document.getElementById('result-month-selector').value;if(!g||!d)return showToast('Select Group & Date','error');if(!confirm('Save?'))return;showLoader(true);try{const n=g==='all'?'All Groups':allGroups.find(x=>x.id===g).groupName;await setDoc(doc(db,'tadrisi_history',`${n}_${d}`),{groupId:g,groupName:n,date:d,students:currentResultData});showToast('Saved');await fetchHistoryList();}catch(e){}finally{showLoader(false);}};
         window.loadHistoryRecord=async()=>{const i=document.getElementById('history-select').value;if(!i){loadGroupResults();return;}showLoader(true);try{const s=await getDoc(doc(db,'tadrisi_history',i));if(s.exists()){const d=s.data();document.getElementById('result-group-name').textContent=`${d.groupName} (Archived)`;document.getElementById('result-header-date').textContent=d.date;currentResultData=d.students;renderResultTable(d.students);showToast('Loaded');}}catch(e){}finally{showLoader(false);}};
-       let bulkIndex = 0;
-let bulkRows = [];
+       // Variable definition with window taake buttons ko mil sakein
+window.bulkIndex = 0;
+window.bulkRows = [];
 
 window.sendBulkWhatsApp = () => {
-    // Sirf wahi rows uthayega jo screen par filter hain (Pass wali)
     const tbody = document.getElementById('results-tbody');
-    bulkRows = Array.from(tbody.querySelectorAll('tr')).filter(row => row.querySelector('button[onclick^="sendKamyabiMessage"]'));
+    // Sirf wahi rows jo screen par filtered hain
+    window.bulkRows = Array.from(tbody.querySelectorAll('tr')).filter(row => row.querySelector('button[onclick^="sendKamyabiMessage"]'));
 
-    if (bulkRows.length === 0) {
+    if (window.bulkRows.length === 0) {
         showToast('Pehle "Pass Only" filter lagayein!', 'error');
         return;
     }
 
-    if (!confirm(`${bulkRows.length} Students ko message bhejna shuru karein?`)) return;
+    if (!confirm(`${window.bulkRows.length} Students ko message bhejna shuru karein?`)) return;
 
-    bulkIndex = 0;
-    showBulkController(); // Naya Controller khulega
-    processNextStudent();
+    window.bulkIndex = 0;
+    showBulkController(); 
+    window.processNextStudent();
 };
 
 function showBulkController() {
@@ -762,43 +763,44 @@ function showBulkController() {
 }
 
 window.processNextStudent = () => {
-    if (bulkIndex >= bulkRows.length) {
+    if (window.bulkIndex >= window.bulkRows.length) {
         document.getElementById('bulk-controller').innerHTML = `
-            <h4 class="font-bold text-teal-800">Tamam Bhej Diye!</h4>
-            <button onclick="document.getElementById('bulk-controller').classList.add('hidden')" class="mt-2 bg-gray-500 text-white px-3 py-1 rounded text-sm">Close</button>`;
+            <h4 class="font-bold text-teal-800 text-center">Kaam Mukammal!</h4>
+            <button onclick="document.getElementById('bulk-controller').classList.add('hidden')" class="mt-2 w-full bg-gray-500 text-white px-3 py-1 rounded text-sm">Close</button>`;
         return;
     }
 
-    const row = bulkRows[bulkIndex];
+    const row = window.bulkRows[window.bulkIndex];
+    // Student ID nikalna
     const sid = row.querySelector('button[onclick^="sendKamyabiMessage"]').getAttribute('onclick').match(/'([^']+)'/)[1];
     let s = currentResultData.find(x => x.id === sid);
 
-    // Message Formatting (No Icons)
+    // MUKAMMAL SAAF MESSAGE (Bina kisi Icon ke taake ? na bane)
     const message = `السلام علیکم و رحمۃ اللہ و برکاتہ%0A%0A*${s.name} بن ${s.fatherName} صاحب*%0A%0A*ماشاءاللہ عزوجل*%0A%0Aآپ کو یہ اطلاع دیتے ہوئے خوشی ہو رہی ہے کہ آپ تدریسی ٹیسٹ میں کامیاب قرار پائے ہیں۔%0A%0A*نوٹ:* قراءت ٹیسٹ کی تیاری فرما لیجیے، ٹیسٹ کے لئے نیچے دیئے گئے نمبر پر رابطہ فرما لیں ۔%0A%0A*7202999586*%0A%0Aجزاکم اللہ خیراً کثیراً`;
 
     let mobile = s.mobile ? s.mobile.replace(/\D/g, '') : '';
     if (mobile && !mobile.startsWith('91') && !mobile.startsWith('92')) mobile = '91' + mobile;
 
-    // Floating Controller Update
     const ctrl = document.getElementById('bulk-controller');
     ctrl.innerHTML = `
-        <div class="text-sm font-bold mb-2 text-teal-700">Message (${bulkIndex + 1} / ${bulkRows.length})</div>
-        <div class="bg-gray-100 p-2 rounded mb-3 text-sm font-bold urdu-font">${s.name}</div>
-        <div class="flex gap-2">
-            <button onclick="openWATab('${mobile}', '${message}')" class="bg-green-600 text-white flex-1 py-2 rounded font-bold shadow">1. Load Chat</button>
-            <button onclick="bulkIndex++; processNextStudent();" class="bg-blue-600 text-white flex-1 py-2 rounded font-bold shadow">2. Next</button>
+        <div class="text-sm font-bold mb-2 text-teal-700">Student (${window.bulkIndex + 1} / ${window.bulkRows.length})</div>
+        <div class="bg-gray-100 p-2 rounded mb-3 text-sm font-bold urdu-font text-center">${s.name}</div>
+        <div class="flex flex-col gap-2">
+            <button onclick="window.openWATab('${mobile}', '${message}')" class="bg-green-600 text-white py-2 rounded font-bold shadow-md hover:bg-green-700">1. Load Chat</button>
+            <button onclick="window.bulkIndex++; window.processNextStudent();" class="bg-blue-600 text-white py-2 rounded font-bold shadow-md hover:bg-blue-700">2. Next Student</button>
         </div>
-        <p class="text-[10px] mt-2 text-gray-500 italic">*Pehle Load Chat dabayein, phir WhatsApp par Send karke yahan Next dabayein.*</p>
+        <p class="text-[10px] mt-2 text-gray-500 italic text-center">*Pehle Load Chat dabayein, phir Next*</p>
     `;
 };
 
 window.openWATab = (mobile, msg) => {
     const url = `https://web.whatsapp.com/send?phone=${mobile}&text=${msg}`;
-    window.open(url, "wa_share"); // Ek hi tab mein update hoga
+    window.open(url, "wa_share");
 };
     </script>
 </body>
 </html>
+
 
 
 
