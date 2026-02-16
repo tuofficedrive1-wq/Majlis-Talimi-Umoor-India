@@ -129,6 +129,12 @@
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <select id="result-group-select" onchange="loadGroupResults()" class="w-full p-2 border rounded text-base bg-gray-50"><option value="">-- Select Group --</option></select>
                     <select id="filter-jamia" onchange="filterResults()" class="w-full p-2 border rounded urdu-font text-base bg-gray-50"><option value="all">All Jamiaat</option></select>
+                    <select id="filter-status" onchange="filterResults()" class="w-full p-2 border rounded text-base bg-gray-50">
+    <option value="all">All Status</option>
+    <option value="pass">Pass Only</option>
+    <option value="fail">Fail Only</option>
+    <option value="pending">Pending</option>
+</select>
                     <div class="flex gap-2">
                         <select id="history-select" class="p-2 border rounded text-sm bg-yellow-50 border-yellow-300 w-full" onchange="loadHistoryRecord()"><option value="">-- History --</option></select>
                         <input type="month" id="result-month-selector" class="w-32 p-2 border rounded text-sm">
@@ -395,17 +401,53 @@
         // Result Logic
         window.switchResultTab=(t)=>{ document.querySelectorAll('.result-tab-btn').forEach(b=>b.classList.remove('active')); document.getElementById(`rtab-${t}`).classList.add('active'); activeResultTab=t; renderResultTable(currentResultData); };
         window.loadGroupResults = async () => { const gid = document.getElementById('result-group-select').value; if(!gid) return; showLoader(true); try { if(gid==='all') { const q=query(collection(db,'tadrisi_students')); const snap=await getDocs(q); currentResultData=snap.docs.map(d=>({id:d.id, ...d.data()})); document.getElementById('result-group-name').textContent='All Groups'; } else { const q=query(collection(db,'tadrisi_students'), where('groupId','==',gid)); const snap=await getDocs(q); currentResultData=snap.docs.map(d=>({id:d.id, ...d.data()})); const grp=allGroups.find(x=>x.id===gid); document.getElementById('result-group-name').textContent=grp?grp.groupName:''; } const jSet=new Set(currentResultData.map(s=>s.jamia).filter(j=>j)); const jF=document.getElementById('filter-jamia'); jF.innerHTML='<option value="all">All</option>'; jSet.forEach(j=>jF.innerHTML+=`<option value="${j}">${j}</option>`); renderResultTable(currentResultData); } catch(e){console.error(e);} finally{showLoader(false);} };
-        window.filterResults=()=>{ const j=document.getElementById('filter-jamia').value; let l=currentResultData; if(j!=='all') l=l.filter(s=>s.jamia===j); renderResultTable(l); };
+        // Filter Logic: Jamia aur Status (Pass/Fail) ke liye
+window.filterResults = () => {
+    const jamiaFilter = document.getElementById('filter-jamia').value;
+    const statusFilter = document.getElementById('filter-status') ? document.getElementById('filter-status').value : 'all';
+    
+    let list = currentResultData;
 
-        function renderResultTable(list) {
+    // Jamia Filter
+    if (jamiaFilter !== 'all') {
+        list = list.filter(s => s.jamia === jamiaFilter);
+    }
+
+    // Pass/Fail Status Filter
+    if (statusFilter !== 'all') {
+        list = list.filter(s => {
+            const gm = (r, k) => (r && r[k]) ? Number(r[k]) : 0;
+            const gr = s.grace_marks || {};
+            const m1 = gm(s.marks_r1,'m1')+gm(s.marks_r2,'m1')+gm(s.marks_r3,'m1')+gm(s.marks_r4,'m1')+(Number(gr.m1)||0);
+            const m2 = gm(s.marks_r1,'m2')+gm(s.marks_r2,'m2')+gm(s.marks_r3,'m2')+gm(s.marks_r4,'m2')+(Number(gr.m2)||0);
+            const m3 = gm(s.marks_r1,'m3')+gm(s.marks_r2,'m3')+gm(s.marks_r3,'m3')+gm(s.marks_r4,'m3')+(Number(gr.m3)||0);
+            const m4 = gm(s.marks_r1,'m4')+gm(s.marks_r2,'m4')+gm(s.marks_r3,'m4')+gm(s.marks_r4,'m4')+(Number(gr.m4)||0);
+            const m5 = gm(s.marks_r1,'m5')+gm(s.marks_r2,'m5')+gm(s.marks_r3,'m5')+gm(s.marks_r4,'m5')+(Number(gr.m5)||0);
+
+            const total = m1 + m2 + m3 + m4 + m5;
+            const fail = (m1 < 56 || m2 < 56 || m3 < 56 || m4 < 56 || m5 < 56);
+
+            if (statusFilter === 'pass') return !fail && total > 0;
+            if (statusFilter === 'fail') return fail && total > 0;
+            if (statusFilter === 'pending') return total === 0;
+            return true;
+        });
+    }
+    renderResultTable(list);
+};
+
+// Main Table Render Function
+function renderResultTable(list) {
     const thead = document.getElementById('result-thead'); 
     const tbody = document.getElementById('results-tbody'); 
     tbody.innerHTML = '';
     
-    // Header Logic
     let hHtml = `<tr><th class="p-3 border w-10">#</th><th class="p-3 border w-12 text-center">Profile</th><th class="p-3 border w-48 text-right pr-4">نام مع ولدیت</th><th class="p-3 border w-32">جامعہ</th>`;
-    if(activeResultTab === 'final') hHtml += `<th class="p-3 border bg-blue-50">عبارت (80)</th><th class="p-3 border bg-blue-50">ترجمہ (80)</th><th class="p-3 border bg-blue-50">صرف (80)</th><th class="p-3 border bg-blue-50">نحو (80)</th><th class="p-3 border bg-blue-50">انداز (80)</th><th class="p-3 border bg-yellow-100">کل نمبر (400)</th><th class="p-3 border bg-yellow-100">فیصد</th><th class="p-3 border bg-orange-200">کیفiyat</th><th class="p-3 border w-32">تاثرات</th><th class="p-3 border no-print w-10">Edit</th></tr>`;
-    else hHtml += `<th class="p-3 border bg-header">عبارت (20)</th><th class="p-3 border bg-header">ترجمہ (20)</th><th class="p-3 border bg-header">صرف (20)</th><th class="p-3 border bg-header">نحو (20)</th><th class="p-3 border bg-header">انداز (20)</th><th class="p-3 border bg-yellow-100">کل نمبر (100)</th><th class="p-3 border bg-orange-200">تاثرات</th></tr>`;
+    if(activeResultTab === 'final') {
+        hHtml += `<th class="p-3 border bg-blue-50">عبارت (80)</th><th class="p-3 border bg-blue-50">ترجمہ (80)</th><th class="p-3 border bg-blue-50">صرف (80)</th><th class="p-3 border bg-blue-50">نحو (80)</th><th class="p-3 border bg-blue-50">انداز (80)</th><th class="p-3 border bg-yellow-100">کل نمبر (400)</th><th class="p-3 border bg-yellow-100">فیصد</th><th class="p-3 border bg-orange-200">کیفیت</th><th class="p-3 border w-32">تاثرات</th><th class="p-3 border no-print w-24">Action</th></tr>`;
+    } else {
+        hHtml += `<th class="p-3 border bg-header">عبارت (20)</th><th class="p-3 border bg-header">ترجمہ (20)</th><th class="p-3 border bg-header">صرف (20)</th><th class="p-3 border bg-header">نحو (20)</th><th class="p-3 border bg-header">انداز (20)</th><th class="p-3 border bg-yellow-100">کل نمبر (100)</th><th class="p-3 border bg-orange-200">تاثرات</th></tr>`;
+    }
     thead.innerHTML = hHtml;
 
     if(list.length === 0){ 
@@ -413,37 +455,8 @@
         return; 
     }
 
-    // Helper function to calculate total marks for sorting
-    const getGrandTotal = (s) => {
-        const gm = (r, k) => (r && r[k]) ? Number(r[k]) : 0;
-        const gr = s.grace_marks || {};
-        const subjects = ['m1', 'm2', 'm3', 'm4', 'm5'];
-        let total = 0;
-        subjects.forEach((sub, idx) => {
-            const sabaqTotal = gm(s.marks_r1, sub) + gm(s.marks_r2, sub) + gm(s.marks_r3, sub) + gm(s.marks_r4, sub);
-            const grace = Number(gr[`m${idx+1}`]) || 0;
-            total += (sabaqTotal + grace);
-        });
-        return total;
-    };
-
-    // 🔥 SORTING LOGIC: Zyada marks wale upar aayenge
-    let sortedList = [...list];
-    if (activeResultTab === 'final') {
-        sortedList.sort((a, b) => getGrandTotal(b) - getGrandTotal(a));
-    } else {
-        // Sabaq wise sorting (1 to 4)
-        sortedList.sort((a, b) => {
-            const rA = a[`marks_r${activeResultTab}`] || {};
-            const rB = b[`marks_r${activeResultTab}`] || {};
-            const tA = (Number(rA.m1)||0) + (Number(rA.m2)||0) + (Number(rA.m3)||0) + (Number(rA.m4)||0) + (Number(rA.m5)||0);
-            const tB = (Number(rB.m1)||0) + (Number(rB.m2)||0) + (Number(rB.m3)||0) + (Number(rB.m4)||0) + (Number(rB.m5)||0);
-            return tB - tA;
-        });
-    }
-
     let count = 1;
-    sortedList.forEach(s => {
+    list.forEach(s => {
         const gm = (r, k) => (r && r[k]) ? Number(r[k]) : 0;
         let row = `<tr class="border-b hover:bg-gray-50 text-base"><td class="p-2 border text-gray-500">${count++}</td><td class="p-2 border text-center"><button class="bg-teal-100 text-teal-800 px-2 py-1 rounded font-bold text-xs hover:bg-teal-200" onclick="openProfileModal('${s.id}')">View</button></td><td class="p-2 border text-right font-bold text-lg">${s.name}<br><span class="text-sm text-gray-500 font-normal">${s.fatherName}</span></td><td class="p-2 border urdu-font text-lg">${s.jamia}</td>`;
         
@@ -467,18 +480,20 @@
             } 
             if(gt===0){txt="-";cls="";}
             
-            const sc = (v1,v2,v3,v4,g,tot) => `<span class="calc-text">${v1}+${v2}+${v3}+${v4}${g>0?'+('+g+')':''} = </span><span class="total-text ${tot<56?'text-red-600':''}">${tot}</span>`;
+            const sc = (v1,v2,v3,v4,g,tot) => `<div class="flex flex-col"><span class="calc-text">${v1}+${v2}+${v3}+${v4}${g>0?'+('+g+')':''}</span><span class="total-text ${tot<56?'text-red-600':''}">${tot}</span></div>`;
 
-           row += `<td class="p-2 border no-print">
-    <div class="flex items-center justify-center gap-2">
-        <button onclick="sendKamyabiMessage('${s.id}')" class="text-green-600 hover:text-green-800 text-lg" title="Send WhatsApp">
-            <i class="fab fa-whatsapp"></i>
-        </button>
-        <button onclick="openResultEditModal('${s.id}')" class="text-blue-600 hover:text-blue-800 text-lg">
-            <i class="fas fa-edit"></i>
-        </button>
-    </div>
-</td>`;
+            row += `<td class="p-2 border text-center">${sc(gm(s.marks_r1,'m1'),gm(s.marks_r2,'m1'),gm(s.marks_r3,'m1'),gm(s.marks_r4,'m1'),g1,m1)}</td>` +
+                   `<td class="p-2 border text-center">${sc(gm(s.marks_r1,'m2'),gm(s.marks_r2,'m2'),gm(s.marks_r3,'m2'),gm(s.marks_r4,'m2'),g2,m2)}</td>` +
+                   `<td class="p-2 border text-center">${sc(gm(s.marks_r1,'m3'),gm(s.marks_r2,'m3'),gm(s.marks_r3,'m3'),gm(s.marks_r4,'m3'),g3,m3)}</td>` +
+                   `<td class="p-2 border text-center">${sc(gm(s.marks_r1,'m4'),gm(s.marks_r2,'m4'),gm(s.marks_r3,'m4'),gm(s.marks_r4,'m4'),g4,m4)}</td>` +
+                   `<td class="p-2 border text-center">${sc(gm(s.marks_r1,'m5'),gm(s.marks_r2,'m5'),gm(s.marks_r3,'m5'),gm(s.marks_r4,'m5'),g5,m5)}</td>` +
+                   `<td class="p-2 border font-bold bg-yellow-50 text-xl">${gt}</td>` +
+                   `<td class="p-2 border bg-yellow-50">${pct.toFixed(1)}%</td>` +
+                   `<td class="p-2 border font-bold ${cls}">${txt}</td>` +
+                   `<td class="p-2 border text-xs urdu-font">${s.final_remarks||'-'}</td>` +
+                   `<td class="p-2 border no-print"><div class="flex gap-2 justify-center">` +
+                   `<button onclick="sendKamyabiMessage('${s.id}')" class="text-green-600 hover:text-green-800 text-lg"><i class="fab fa-whatsapp"></i></button>` +
+                   `<button onclick="openResultEditModal('${s.id}')" class="text-blue-600 hover:text-blue-800 text-lg"><i class="fas fa-edit"></i></button></div></td>`;
         } else {
             const r = s[`marks_r${activeResultTab}`]||{}; 
             const t = gm(r,'m1')+gm(r,'m2')+gm(r,'m3')+gm(r,'m4')+gm(r,'m5');
@@ -741,6 +756,7 @@
     </script>
 </body>
 </html>
+
 
 
 
