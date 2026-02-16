@@ -730,10 +730,37 @@ function renderResultTable(list) {
         window.openImageModal=(s)=>{if(!s||s.includes('No+Img'))return; document.getElementById('full-image').src=s;document.getElementById('image-modal').classList.remove('hidden');}; window.createGroup=async()=>{const n=document.getElementById('new-group-name').value;if(!n)return;await addDoc(collection(db,'tadrisi_groups'),{groupName:n,totalStudents:0,round_1_uid:document.getElementById('mufattish-r1').value,round_2_uid:document.getElementById('mufattish-r2').value,round_3_uid:document.getElementById('mufattish-r3').value,round_4_uid:document.getElementById('mufattish-r4').value});document.getElementById('new-group-name').value='';await fetchGroupsList();}; window.fixGroupCounts=async()=>{if(!confirm("Scan?"))return;showLoader(true);try{const c={};allGroups.forEach(g=>c[g.id]=0);const q=query(collection(db,'tadrisi_students'));const s=await getDocs(q);s.forEach(d=>{const i=d.data().groupId;if(i&&c[i]!==undefined)c[i]++});const b=writeBatch(db);allGroups.forEach(g=>b.update(doc(db,'tadrisi_groups',g.id),{totalStudents:c[g.id]||0}));await b.commit();await fetchGroupsList();showToast('Fixed');}catch(e){}finally{showLoader(false);}};
         window.saveResultToHistory=async()=>{const g=document.getElementById('result-group-select').value;const d=document.getElementById('result-month-selector').value;if(!g||!d)return showToast('Select Group & Date','error');if(!confirm('Save?'))return;showLoader(true);try{const n=g==='all'?'All Groups':allGroups.find(x=>x.id===g).groupName;await setDoc(doc(db,'tadrisi_history',`${n}_${d}`),{groupId:g,groupName:n,date:d,students:currentResultData});showToast('Saved');await fetchHistoryList();}catch(e){}finally{showLoader(false);}};
         window.loadHistoryRecord=async()=>{const i=document.getElementById('history-select').value;if(!i){loadGroupResults();return;}showLoader(true);try{const s=await getDoc(doc(db,'tadrisi_history',i));if(s.exists()){const d=s.data();document.getElementById('result-group-name').textContent=`${d.groupName} (Archived)`;document.getElementById('result-header-date').textContent=d.date;currentResultData=d.students;renderResultTable(d.students);showToast('Loaded');}}catch(e){}finally{showLoader(false);}};
-       window.sendKamyabiMessage = (sid) => {
-    let s = currentResultData.find(x => x.id === sid);
-    if (!s) return;
+       let bulkIndex = 0;
+let bulkRows = [];
 
+window.sendBulkWhatsApp = () => {
+    const tbody = document.getElementById('results-tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => row.querySelector('button[onclick^="sendKamyabiMessage"]'));
+
+    if (rows.length === 0) {
+        showToast('Pehle "Pass Only" filter lagayein!', 'error');
+        return;
+    }
+
+    if (!confirm(`${rows.length} students ko bari-bari bhejna shuru karein?`)) return;
+
+    bulkRows = rows;
+    bulkIndex = 0;
+    processNextBatch();
+};
+
+window.processNextBatch = () => {
+    if (bulkIndex >= bulkRows.length) {
+        showToast('Tamam messages khatam ho chuke hain!');
+        return;
+    }
+
+    const row = bulkRows[bulkIndex];
+    const sid = row.querySelector('button[onclick^="sendKamyabiMessage"]').getAttribute('onclick').match(/'([^']+)'/)[1];
+    
+    // Student ka data nikalna
+    let s = currentResultData.find(x => x.id === sid);
+    
     const message = `السلام علیکم و رحمۃ اللہ و برکاتہ%0A%0A` +
                     `*${s.name} بن ${s.fatherName} صاحب*%0A%0A` +
                     `*ماشاءاللہ عزوجل*%0A%0A` +
@@ -743,71 +770,25 @@ function renderResultTable(list) {
                     `جزاکم اللہ خیراً کثیراً`;
 
     let mobile = s.mobile ? s.mobile.replace(/\D/g, '') : '';
-    if (mobile && !mobile.startsWith('91') && !mobile.startsWith('92')) {
-        mobile = '91' + mobile; 
-    }
+    if (mobile && !mobile.startsWith('91') && !mobile.startsWith('92')) mobile = '91' + mobile;
 
-    if (!mobile) return showToast('Mobile number missing', 'error');
-
-    // 1. API link badal kar 'web.whatsapp.com/send' use karein
+    // Ek hi window "wa_share" mein load hoga
     const whatsappUrl = `https://web.whatsapp.com/send?phone=${mobile}&text=${message}`;
+    window.open(whatsappUrl, "wa_share");
+
+    bulkIndex++;
     
-    // 2. Window name 'whatsapp_share' rakhein
-    // Isse browser hamesha usi purane tab ko dhoond kar wahan message load karega
-    window.open(whatsappUrl, "whatsapp_share");
-};
-        window.sendBulkWhatsApp = () => {
-    // 1. Table se data uthana
-    const tbody = document.getElementById('results-tbody');
-    const rows = tbody.querySelectorAll('tr');
-
-    // 2. Check karna ke data hai ya nahi
-    if (rows.length === 0 || rows[0].innerText.includes('No results')) {
-        showToast('Pehle "Pass Only" filter lagayein!', 'error');
-        return;
-    }
-
-    if (!confirm(`${rows.length} Kamyab students ko message bhejna shuru karein?`)) return;
-
-    let index = 0;
-    
-    // 3. Loop chalana jo ek ek karke message kholega
-    const sendNext = () => {
-        if (index >= rows.length) {
-            showToast('Tamam messages process ho chuke hain.');
-            return;
+    // Yahan software ka popup nahi hatega, balki "Next" ka intezar karega
+    setTimeout(() => {
+        if(confirm(`Student (${bulkIndex}/${bulkRows.length}): ${s.name}\n\nAgla message load karein?`)) {
+            processNextBatch();
         }
-
-        const row = rows[index];
-        // Row se student ki ID nikalna
-        const btn = row.querySelector('button[onclick^="sendKamyabiMessage"]');
-        
-        if (btn) {
-            const sid = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
-            
-            // Message bhejne ka function call karna
-            sendKamyabiMessage(sid);
-            
-            // Index badhana aur agle student ke liye wait karna
-            index++;
-            
-            // 4 Second ka gap taake browser aur WhatsApp session handle kar sakein
-            setTimeout(() => {
-                if (confirm("Agle student ka message load karein?")) {
-                    sendNext();
-                }
-            }, 4000);
-        } else {
-            index++;
-            sendNext();
-        }
-    };
-
-    sendNext();
+    }, 3000); // 3 second ka waqt loading ke liye
 };
     </script>
 </body>
 </html>
+
 
 
 
