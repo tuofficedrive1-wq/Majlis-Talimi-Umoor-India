@@ -199,6 +199,10 @@
             await autoSelectExamType();
             updateHeaders();
             await loadExamData();
+            // ibtidaiya-result.html ke script mein
+let isLocked = false;
+const params = new URLSearchParams(window.location.search);
+const userRole = params.get('role'); // 'admin' ya 'teacher'
         };
 
         window.toggleDownload = () => {
@@ -249,6 +253,8 @@
                 let isDownloadAllowed = false;
                 if (docSnap.exists()) {
                     const data = docSnap.data();
+                    isLocked = data.isLocked || false;
+                    applySecuritySettings();
                     if (data.students) studentsData = data.students;
                     if (data.downloadEnabled === true) isDownloadAllowed = true;
                 }
@@ -263,7 +269,61 @@
                 document.getElementById('main-content').classList.remove('hidden');
             } catch (error) { console.error("Error:", error); alert("Data load error."); }
         };
+        
+function applySecuritySettings() {
+    const saveBtn = document.getElementById('btn-save');
+    const lockBtn = document.getElementById('btn-lock-toggle');
+    const addRowBtn = document.querySelector('button[onclick="addStudentRow()"]');
+    const pasteBtn = document.querySelector('button[onclick="pasteFromExcel()"]');
 
+    // 1. Admin Control
+    if (userRole === 'admin') {
+        lockBtn.classList.remove('hidden');
+        lockBtn.innerHTML = isLocked ? '<i class="fas fa-unlock"></i> Unlock Result' : '<i class="fas fa-lock"></i> Lock Result';
+    }
+
+    // 2. Teacher/Lock Logic
+    if (isLocked || userRole !== 'admin' && userRole !== 'teacher') {
+        // Agar locked hai ya sirf viewer hai
+        saveBtn.style.display = 'none';
+        if(addRowBtn) addRowBtn.style.display = 'none';
+        if(pasteBtn) pasteBtn.style.display = 'none';
+        
+        // Inputs ko read-only karein
+        setTimeout(() => {
+            document.querySelectorAll('.cell-input').forEach(input => {
+                input.readOnly = true;
+                input.style.pointerEvents = 'none';
+            });
+            document.querySelectorAll('.fa-trash-alt').forEach(i => i.closest('td').style.display = 'none');
+        }, 1000);
+
+        // Download buttons enable rahein (jaisa aapne kaha)
+        document.getElementById('btn-download-list').style.display = 'flex';
+        document.getElementById('btn-download-excel').style.display = 'flex';
+    }
+}
+
+// Lock/Unlock karne ka function (Sirf Admin ke liye)
+window.toggleResultLock = async () => {
+    if (userRole !== 'admin') return;
+    
+    showLoader(true);
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${document.getElementById('exam-selector').value}`;
+    
+    try {
+        await updateDoc(doc(db, "ibtidaiya_exams", docId), {
+            isLocked: !isLocked
+        });
+        isLocked = !isLocked;
+        applySecuritySettings();
+        alert(isLocked ? "Result Locked! Teacher ab edit nahi kar sakega." : "Result Unlocked!");
+    } catch (e) {
+        alert("Permission Denied: Aapke paas ijazat nahi hai.");
+    } finally {
+        showLoader(false);
+    }
+};
         window.updateIndices = () => {
             const rows = document.querySelectorAll('#students-body tr');
             rows.forEach((row, index) => { row.cells[0].innerText = index + 1; });
@@ -758,6 +818,7 @@
     </script>
 </body>
 </html>
+
 
 
 
