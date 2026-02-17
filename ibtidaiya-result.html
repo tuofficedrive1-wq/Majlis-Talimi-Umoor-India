@@ -394,75 +394,74 @@
 
         window.calcRow = (inputElement) => {
     const row = inputElement.closest('tr');
+    const isAbsent = (id) => { 
+        const el = row.querySelector(`input[data-id="${id}"]`); 
+        return el && el.value.trim().toUpperCase() === 'A'; 
+    };
+    const getVal = (id) => { 
+        const el = row.querySelector(`input[data-id="${id}"]`); 
+        if(!el) return 0; 
+        const v = el.value.trim(); 
+        return (v === '' || v.toUpperCase() === 'A') ? 0 : (parseFloat(v) || 0); 
+    };
     
-    // Helper: Sirf calculation ke liye number uthaye (agar value "35+5" ho to sirf 35 le)
-    const getActualVal = (id) => {
-        const el = row.querySelector(`input[data-id="${id}"]`);
-        if (!el) return 0;
-        let v = el.value.trim().toUpperCase();
-        if (v === '' || v === 'A') return 0;
-        // Agar pehle se "+" likha hai to sirf pehla hissa le
-        if (v.includes('+')) v = v.split('+')[0];
-        return parseFloat(v) || 0;
+    const setSubjectStyle = (ids, isFail) => {
+        ids.forEach(id => {
+            const el = row.querySelector(`input[data-id="${id}"]`);
+            if(el) {
+                el.style.color = isFail ? "#ef4444" : "#000";
+                el.style.fontWeight = isFail ? "bold" : "500";
+                el.style.backgroundColor = isFail ? "#fef2f2" : "transparent";
+            }
+        });
     };
 
-    const isAbsent = (id) => {
-        const el = row.querySelector(`input[data-id="${id}"]`);
-        return el && el.value.trim().toUpperCase() === 'A';
-    };
+    let obtainedTotal = 0; let failCount = 0; let hasEntry = false;
 
-    let obtainedTotal = 0;
-    let failSubjects = []; // Fail hone wale subjects ki list
-    let hasEntry = false;
+    // --- Subject Failure Logic ---
+    // English (W + O)
+    const engAbs = isAbsent('eng_written') || isAbsent('eng_oral');
+    const engTotal = getVal('eng_written') + getVal('eng_oral');
+    if (engAbs || engTotal < 33) { setSubjectStyle(['eng_written', 'eng_oral'], true); failCount++; } 
+    else setSubjectStyle(['eng_written', 'eng_oral'], false);
 
-    // 1. Pehle check karein kaunse subjects mein fail hai (Passing: 40, English/Math: 33)
-    subjectsConfig.forEach(sub => {
-        const val = getActualVal(sub.id);
-        const abs = isAbsent(sub.id);
-        const passing = (sub.id === 'riyazi' || sub.id === 'eng_written' || sub.id === 'eng_oral') ? 33 : 40;
+    // Urdu (Urdu + Workbook + Ham Nisabi)
+    const urduAbs = isAbsent('urdu') || isAbsent('workbook') || isAbsent('ham_nisabi');
+    const urduTotal = getVal('urdu') + getVal('workbook') + getVal('ham_nisabi');
+    if (urduAbs || urduTotal < 40) { setSubjectStyle(['urdu', 'workbook', 'ham_nisabi'], true); failCount++; } 
+    else setSubjectStyle(['urdu', 'workbook', 'ham_nisabi'], false);
 
-        if (abs || val < passing) {
-            failSubjects.push({ id: sub.id, val: val, passing: passing, isAbs: abs });
-        }
+    // Tajweed & Imla
+    ['tajweed', 'imla'].forEach(sub => { 
+        if (isAbsent(sub) || getVal(sub) < 40) { setSubjectStyle([sub], true); failCount++; } 
+        else setSubjectStyle([sub], false); 
     });
 
-    // 2. GRACE LOGIC: Agar sirf 1 subject mein fail hai aur marks 35-39 ke beech hain
-    if (failSubjects.length === 1) {
-        let s = failSubjects[0];
-        // Grace sirf tab jab passing 40 ho aur marks >= 35 hon
-        if (!s.isAbs && s.passing === 40 && s.val >= 35 && s.val < 40) {
-            let graceNeed = 40 - s.val;
-            let el = row.querySelector(`input[data-id="${s.id}"]`);
-            el.value = `${s.val}+${graceNeed}`; // Display update: 35+5
-            el.style.color = "#1e40af"; // Blue color for Grace
-            failSubjects = []; // Ab ye fail nahi raha
+    // Riyazi
+    if (isAbsent('riyazi') || getVal('riyazi') < 33) { setSubjectStyle(['riyazi'], true); failCount++; } 
+    else setSubjectStyle(['riyazi'], false);
+
+    // --- Total Calculation ---
+    row.querySelectorAll('.subject-mark').forEach(inp => {
+        const v = inp.value.trim();
+        if(v !== "") { 
+            hasEntry = true; 
+            if(v.toUpperCase() !== 'A') { 
+                let max = parseInt(inp.dataset.max); 
+                let val = parseFloat(v); 
+                if(val > max) { inp.value = max; val = max; } 
+                obtainedTotal += val; 
+            } 
         }
-    }
-
-    // 3. Styling aur Total Calculation
-    subjectsConfig.forEach(sub => {
-        const el = row.querySelector(`input[data-id="${sub.id}"]`);
-        const val = getActualVal(sub.id);
-        const graceVal = el.value.includes('+') ? parseInt(el.value.split('+')[1]) : 0;
-        
-        obtainedTotal += (val + graceVal);
-        if(el.value.trim() !== "") hasEntry = true;
-
-        // Fail subjects ko red dikhayein
-        const isCurrentlyFail = failSubjects.some(f => f.id === sub.id);
-        el.style.color = isCurrentlyFail ? "#ef4444" : (el.value.includes('+') ? "#1e40af" : "#000");
-        el.style.fontWeight = (isCurrentlyFail || el.value.includes('+')) ? "bold" : "500";
     });
 
     if (!hasEntry && !row.querySelector('.name-ur').value) return;
 
-    // Percentage aur Rank calculation (Existing logic)
     const percent = (obtainedTotal / TOTAL_MARKS) * 100;
     row.querySelector('.cell-obtained').innerText = obtainedTotal;
     row.querySelector('.cell-percent').innerText = percent.toFixed(2);
     
-    // Status update logic (Existing: Mumtaz, Jayyid etc.)
-    const failCount = failSubjects.length;
+    // --- Status & Grading Logic (Excel Implementation) ---
     const statusCell = row.querySelector('.cell-status');
     let statusText = ""; 
     
