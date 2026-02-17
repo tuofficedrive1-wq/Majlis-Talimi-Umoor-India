@@ -746,119 +746,125 @@ window.toggleResultLock = async () => {
         };
 
         window.downloadPDF = async () => {
-            if (!window.html2canvas) return;
-            const btn = document.getElementById('btn-download-list');
-            btn.innerText = "Processing...";
-            calculateRanks();
-            const rowsPerPage = 20; 
-            const allRows = Array.from(document.querySelectorAll('#students-body tr'));
-            const totalPages = Math.ceil(allRows.length / rowsPerPage);
-            const pdf = new window.jspdf.jsPDF('l', 'mm', 'a4');
-            const pageWidth = 297; 
-            const examTitle = document.getElementById('sheet-title').innerText;
-            const jamiaTitle = document.getElementById('display-jamia').innerText;
-            const yearTitle = document.getElementById('display-year').value || document.getElementById('display-year').innerText;
-            const tempContainer = document.createElement('div');
-            tempContainer.style.position = 'absolute'; tempContainer.style.top = '-10000px'; tempContainer.style.width = '1400px'; 
-            document.body.appendChild(tempContainer);
+    if (!window.html2canvas) return;
+    const btn = document.getElementById('btn-download-list');
+    const originalBtnText = btn.innerText;
+    btn.innerText = "Processing...";
+    btn.disabled = true;
 
-            const createPageHTML = (rowsSlice) => {
-                let rowsHTML = "";
-                rowsSlice.forEach(row => {
-                    const dakhila = row.querySelector('.dakhila-input').value;
-                    const nameUr = row.querySelector('.name-ur').value;
-                    const nameEn = row.querySelector('.name-en').value;
-                    const fatherUr = row.querySelector('.father-ur').value;
-                    const fatherEn = row.querySelector('.father-en').value;
-                    const dob = row.querySelector('.dob-input').value;
-                    let marksHTML = "";
-                    row.querySelectorAll('.subject-mark').forEach(inp => {
-                        const val = inp.value; const color = inp.style.color; const bg = inp.style.backgroundColor; const weight = inp.style.fontWeight;
-                        marksHTML += `<td style="border:1px solid #ccc; padding:6px; text-align:center; color:${color}; background:${bg}; font-weight:${weight}; font-family:sans-serif; font-size:14px;">${val}</td>`;
-                    });
-                    const total = row.querySelector('.cell-obtained').innerText;
-                    const perc = row.querySelector('.cell-percent').innerText;
-                    const statusCell = row.querySelector('.cell-status');
-                    const statusBg = getComputedStyle(statusCell).backgroundColor;
-                    const statusColor = getComputedStyle(statusCell).color;
-                    const statusText = statusCell.innerText;
-                    const gradeCell = row.querySelector('.cell-grade');
-                    const gradeColor = getComputedStyle(gradeCell).color;
-                    const gradeText = gradeCell.innerText;
-                    const rankText = row.querySelector('.cell-rank').innerText;
-                    const indexText = row.cells[0].innerText;
-                    rowsHTML += `
-                        <tr>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; background:#1e3a8a; color:white;">${indexText}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center;">${dakhila}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:right; font-family:'Jameel Noori Nastaleeq', serif; font-size:18px;">${nameUr}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:left; font-family:sans-serif;">${nameEn}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:right; font-family:'Jameel Noori Nastaleeq', serif; font-size:18px;">${fatherUr}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:left; font-family:sans-serif;">${fatherEn}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center;">${dob}</td>
-                            ${marksHTML}
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; font-weight:bold; background:#f3f4f6;">${TOTAL_MARKS}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; font-weight:bold; color:blue;">${total}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; font-weight:bold; color:#4f46e5;">${perc}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; font-weight:bold; background-color:${statusBg}; color:${statusColor}; font-family:'Jameel Noori Nastaleeq'; font-size:16px;">${statusText}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; font-weight:bold; color:${gradeColor};">${gradeText}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:center; color:gray;">${rankText}</td>
-                        </tr>`;
+    calculateRanks();
+
+    // Settings for layout
+    const rowsPerPage = 18; // Ek page par kitni lines aayengi
+    const allRows = Array.from(document.querySelectorAll('#students-body tr'));
+    const totalPages = Math.ceil(allRows.length / rowsPerPage);
+    
+    // PDF Landscape mode (a4)
+    const pdf = new window.jspdf.jsPDF('l', 'mm', 'a4');
+    const pageWidth = 297; 
+
+    const examTitle = document.getElementById('sheet-title').innerText;
+    const jamiaTitle = document.getElementById('display-jamia').innerText;
+    const yearTitle = document.getElementById('display-year').innerText || document.getElementById('academic-year').value;
+
+    // Temporary container for rendering
+    const tempContainer = document.createElement('div');
+    tempContainer.style.position = 'absolute';
+    tempContainer.style.top = '-10000px';
+    tempContainer.style.width = '1200px'; // Width optimized for A4 Landscape
+    document.body.appendChild(tempContainer);
+
+    try {
+        for (let i = 0; i < totalPages; i++) {
+            if (i > 0) pdf.addPage();
+
+            const rowsSlice = allRows.slice(i * rowsPerPage, (i + 1) * rowsPerPage);
+            
+            // Generate HTML for the current page
+            let rowsHTML = "";
+            rowsSlice.forEach(row => {
+                const cells = Array.from(row.cells);
+                let marksCells = "";
+                
+                // Subject marks columns
+                row.querySelectorAll('.subject-mark').forEach(inp => {
+                    const style = window.getComputedStyle(inp);
+                    marksCells += `<td style="border:1px solid #ccc; padding:4px; text-align:center; color:${style.color}; background-color:${style.backgroundColor}; font-weight:${style.fontWeight}; font-size:12px;">${inp.value || '-'}</td>`;
                 });
-                return `
-                    <div style="background:white; padding:20px; font-family:sans-serif;">
-                        <div style="text-align:center; margin-bottom:15px; border-bottom:2px solid #312e81; padding-bottom:10px;">
-                            <h1 style="font-family:'Jameel Noori Nastaleeq', serif; font-size:36px; color:#312e81; margin:0;">${examTitle}</h1>
-                            <div style="display:flex; justify-content:center; gap:20px; margin-top:10px; font-family:'Jameel Noori Nastaleeq', serif; font-size:18px; color:#333;">
-                                <div><span style="color:#666;">جامعۃ المدینہ:</span> <span style="font-weight:bold; color:#312e81;">${jamiaTitle}</span></div>
-                                <div><span style="color:#666;">درجہ:</span> <span style="font-weight:bold; color:#312e81;">ابتدائیہ</span></div>
-                                <div><span style="color:#666;">تعلیمی سال:</span> <span style="font-weight:bold; color:#312e81; font-family:sans-serif;">${yearTitle}</span></div>
-                            </div>
-                        </div>
-                        <table style="width:100%; border-collapse:collapse; font-size:12px;">
-                    <thead style="background-color: #1e3a8a;">
-    <tr style="color: white !important; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 16px;">
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #1e3a8a; color: white !important;">#</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #1e3a8a; color: white !important;">داخلہ</th>
-        <th style="border: 1px solid #ccc; padding: 8px; width: 120px; background-color: #1e3a8a; color: white !important;">نام</th>
-        <th style="border: 1px solid #ccc; padding: 8px; width: 120px; font-family: sans-serif; background-color: #1e3a8a; color: white !important;">Name</th>
-        <th style="border: 1px solid #ccc; padding: 8px; width: 120px; background-color: #1e3a8a; color: white !important;">ولدیت</th>
-        <th style="border: 1px solid #ccc; padding: 8px; width: 120px; font-family: sans-serif; background-color: #1e3a8a; color: white !important;">Father</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #1e3a8a; color: white !important;">پیدائش</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">تجوید</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">ورک بک</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">اردو</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">ہم نصابی</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">املا</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">انگلش<br>(تحریری)</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">انگلش<br>(تقریری)</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e7ff; color: #3730a3;">ریاضی</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f3f4f6; color: #1f2937;">کل</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f3f4f6; color: #1f2937;">حاصل</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f3f4f6; color: #1f2937;">فیصد</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f3f4f6; color: #1f2937;">کیفیت</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #1e3a8a; color: white !important;">گریڈ</th>
-        <th style="border: 1px solid #ccc; padding: 8px; background-color: #1e3a8a; color: white !important;">رینک</th>
-    </tr>
-</thead>
-                            <tbody>${rowsHTML}</tbody>
-                        </table>
-                    </div>`;
-            };
 
-            for (let i = 0; i < totalPages; i++) {
-                if (i > 0) pdf.addPage();
-                const rowsSlice = allRows.slice(i * rowsPerPage, (i + 1) * rowsPerPage);
-                tempContainer.innerHTML = createPageHTML(rowsSlice);
-                const canvas = await html2canvas(tempContainer, { scale: 1.5, useCORS: true });
-                const imgData = canvas.toDataURL('image/png');
-                const imgWidth = pageWidth; const imgHeight = canvas.height * imgWidth / canvas.width;
-                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-            }
-            document.body.removeChild(tempContainer);
-            btn.innerText = "List PDF";
-            pdf.save(`List_${jamiaName}.pdf`);
-        };
+                rowsHTML += `
+                    <tr style="height:35px;">
+                        <td style="border:1px solid #ccc; text-align:center; background:#f1f5f9;">${cells[0].innerText}</td>
+                        <td style="border:1px solid #ccc; text-align:center;">${row.querySelector('.dakhila-input').value}</td>
+                        <td style="border:1px solid #ccc; text-align:right; font-family:'Jameel Noori Nastaleeq'; font-size:16px; padding-right:5px;">${row.querySelector('.name-ur').value}</td>
+                        <td style="border:1px solid #ccc; text-align:left; font-size:11px; padding-left:5px;">${row.querySelector('.name-en').value}</td>
+                        <td style="border:1px solid #ccc; text-align:right; font-family:'Jameel Noori Nastaleeq'; font-size:16px; padding-right:5px;">${row.querySelector('.father-ur').value}</td>
+                        <td style="border:1px solid #ccc; text-align:left; font-size:11px; padding-left:5px;">${row.querySelector('.father-en').value}</td>
+                        <td style="border:1px solid #ccc; text-align:center; font-size:11px;">${row.querySelector('.dob-input').value}</td>
+                        ${marksCells}
+                        <td style="border:1px solid #ccc; text-align:center; font-weight:bold;">500</td>
+                        <td style="border:1px solid #ccc; text-align:center; font-weight:bold; color:blue;">${row.querySelector('.cell-obtained').innerText}</td>
+                        <td style="border:1px solid #ccc; text-align:center; font-weight:bold; color:indigo;">${row.querySelector('.cell-percent').innerText}</td>
+                        <td style="border:1px solid #ccc; text-align:center; font-family:'Jameel Noori Nastaleeq'; font-size:14px; background-color:${window.getComputedStyle(row.querySelector('.cell-status')).backgroundColor};">${row.querySelector('.cell-status').innerText}</td>
+                        <td style="border:1px solid #ccc; text-align:center; font-weight:bold;">${row.querySelector('.cell-grade').innerText}</td>
+                        <td style="border:1px solid #ccc; text-align:center; color:#666;">${row.querySelector('.cell-rank').innerText}</td>
+                    </tr>`;
+            });
+
+            tempContainer.innerHTML = `
+                <div style="background:white; padding:15px; width:1180px;">
+                    <div style="text-align:center; border-bottom:2px solid #312e81; margin-bottom:10px; padding-bottom:5px;">
+                        <h1 style="font-family:'Jameel Noori Nastaleeq'; font-size:32px; color:#312e81; margin:0;">${examTitle}</h1>
+                        <p style="font-family:'Jameel Noori Nastaleeq'; font-size:18px; margin:5px 0;">
+                            جامعۃ المدینہ: <b>${jamiaTitle}</b> &nbsp; | &nbsp; درجہ: <b>ابتدائیہ</b> &nbsp; | &nbsp; سال: <b>${yearTitle}</b>
+                        </p>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-family:sans-serif;">
+                        <thead>
+                            <tr style="background:#312e81; color:white; font-size:13px;">
+                                <th style="border:1px solid #333; padding:8px;">#</th>
+                                <th style="border:1px solid #333;">داخلہ</th>
+                                <th style="border:1px solid #333; width:130px; font-family:'Jameel Noori Nastaleeq';">نام</th>
+                                <th style="border:1px solid #333; width:130px;">Name</th>
+                                <th style="border:1px solid #333; width:130px; font-family:'Jameel Noori Nastaleeq';">ولدیت</th>
+                                <th style="border:1px solid #333; width:130px;">Father</th>
+                                <th style="border:1px solid #333;">پیدائش</th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81;">تجوید</th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81;">ورک بک</th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81;">اردو</th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81;">ہم نصابی</th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81;">املا</th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81; line-height:1;">انگلش<br><small>(تحریری)</small></th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81; line-height:1;">انگلش<br><small>(تقریری)</small></th>
+                                <th style="border:1px solid #333; background:#e0e7ff; color:#312e81;">ریاضی</th>
+                                <th style="border:1px solid #333; background:#f8fafc; color:#333;">کل</th>
+                                <th style="border:1px solid #333; background:#f8fafc; color:#333;">حاصل</th>
+                                <th style="border:1px solid #333; background:#f8fafc; color:#333;">%</th>
+                                <th style="border:1px solid #333; background:#f8fafc; color:#333; font-family:'Jameel Noori Nastaleeq';">کیفیت</th>
+                                <th style="border:1px solid #333; background:#f8fafc; color:#333;">G</th>
+                                <th style="border:1px solid #333; background:#f8fafc; color:#333;">R</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHTML}</tbody>
+                    </table>
+                    <div style="text-align:left; font-size:10px; color:#999; margin-top:5px;">Page ${i+1} of ${totalPages}</div>
+                </div>`;
+
+            const canvas = await html2canvas(tempContainer, { scale: 2, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            pdf.addImage(imgData, 'PNG', 0, 0, 297, (canvas.height * 297) / canvas.width);
+        }
+
+        pdf.save(`Result_${jamiaName.replace(/\s/g, '_')}.pdf`);
+    } catch (err) {
+        console.error("PDF Error:", err);
+        alert("PDF banane mein masla hua.");
+    } finally {
+        document.body.removeChild(tempContainer);
+        btn.innerText = originalBtnText;
+        btn.disabled = false;
+    }
+};
 
         window.downloadExcel = () => {
             calculateRanks(); 
@@ -890,6 +896,7 @@ window.toggleResultLock = async () => {
     </script>
 </body>
 </html>
+
 
 
 
