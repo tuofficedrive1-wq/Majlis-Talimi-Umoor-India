@@ -98,6 +98,9 @@
                     <button onclick="saveResult()" id="btn-save" class="bg-emerald-600 text-white px-4 py-1.5 rounded text-xs hover:bg-emerald-700 transition font-bold flex items-center gap-2">
                         <i class="fas fa-save"></i> Save
                     </button>
+                    <button id="btn-lock-toggle" onclick="toggleResultLock()" class="hidden bg-red-600 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-red-700 transition flex items-center gap-2">
+    <i class="fas fa-lock"></i> Lock Result
+</button>
                     <button onclick="downloadPDF()" id="btn-download-list" style="display: none;" class="bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-indigo-800 transition flex items-center gap-2">
                         <i class="fas fa-file-pdf"></i> List PDF
                     </button>
@@ -178,10 +181,12 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        let adminUid = "";
-        let jamiaName = "";
-        let globalYear = "1447H-2026"; 
-        const TOTAL_MARKS = 500;
+        let isLocked = false;
+let adminUid = "";
+let jamiaName = "";
+let globalYear = "";
+const params = new URLSearchParams(window.location.search);
+const userRole = params.get('role'); // 'admin' ya 'teacher'
 
         const subjectsConfig = [
             { id: "tajweed", max: 100 }, { id: "workbook", max: 40 },
@@ -191,137 +196,146 @@
         ];
 
         window.onload = async () => {
-            const params = new URLSearchParams(window.location.search);
-            adminUid = params.get('uid') || params.get('id');
-            jamiaName = params.get('jamia');
-            if (!adminUid || !jamiaName) { alert("Link Invalid."); return; }
-            document.getElementById('display-jamia').textContent = jamiaName;
-            await autoSelectExamType();
-            updateHeaders();
-            await loadExamData();
-            // ibtidaiya-result.html ke script mein
-let isLocked = false;
-const params = new URLSearchParams(window.location.search);
-const userRole = params.get('role'); // 'admin' ya 'teacher'
-        };
+    adminUid = params.get('uid') || params.get('id');
+    jamiaName = params.get('jamia');
+    
+    if (!adminUid || !jamiaName) { 
+        alert("Link Invalid."); 
+        return; 
+    }
+    
+    document.getElementById('display-jamia').textContent = jamiaName;
+    
+    // Pehle initial headers set karein
+    await autoSelectExamType();
+    updateHeaders();
+    
+    // Phir data load karein
+    await loadExamData();
+};
 
-        window.toggleDownload = () => {
-            const btnList = document.getElementById('btn-download-list');
-            const btnExcel = document.getElementById('btn-download-excel');
-            const chk = document.getElementById('chk-allow-dl');
-            if (chk.checked) { btnList.style.display = 'flex'; btnExcel.style.display = 'flex'; } 
-            else { btnList.style.display = 'none'; btnExcel.style.display = 'none'; }
-        };
+window.loadExamData = async () => {
+    document.getElementById('loader').classList.remove('hidden');
+    document.getElementById('main-content').classList.add('hidden');
+    
+    const examType = document.getElementById('exam-selector').value; 
+    const academicYearVal = document.getElementById('academic-year').value;
+    globalYear = academicYearVal.replace(/\s/g, '');
+    
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
+    
+    try {
+        const docSnap = await getDoc(doc(db, "ibtidaiya_exams", docId));
+        let studentsData = [];
+        let isDownloadAllowed = false;
 
-        window.updateHeaders = () => {
-            const selector = document.getElementById('exam-selector');
-            const yearInput = document.getElementById('academic-year');
-            const titleEl = document.getElementById('sheet-title');
-            const displayYearEl = document.getElementById('display-year');
-            let examName = selector.value === "Shashmahi" ? "نتیجہ ششماہی امتحان" : "نتیجہ سالانہ امتحان";
-            titleEl.textContent = examName;
-            displayYearEl.textContent = yearInput.value; 
-        };
-
-        async function autoSelectExamType() {
-            const selector = document.getElementById('exam-selector');
-            try {
-                const userDoc = await getDoc(doc(db, "users", adminUid));
-                if (userDoc.exists()) {
-                    const data = userDoc.data();
-                    if (data.currentSemester == 1) { selector.value = "Shashmahi"; return; } 
-                    else if (data.currentSemester == 2) { selector.value = "Salana"; return; }
-                }
-            } catch (error) { console.error(error); }
-            const now = new Date();
-            const month = now.getMonth() + 1; 
-            if (month >= 1 && month <= 5) { selector.value = "Salana"; } 
-            else { selector.value = "Shashmahi"; }
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            isLocked = data.isLocked || false; // Database se lock status lein
+            
+            if (data.students) studentsData = data.students;
+            if (data.downloadEnabled === true) isDownloadAllowed = true;
+        } else {
+            isLocked = false; // Naya document hai toh default unlocked
         }
 
-        window.loadExamData = async () => {
-            document.getElementById('loader').classList.remove('hidden');
-            document.getElementById('main-content').classList.add('hidden');
-            const examType = document.getElementById('exam-selector').value; 
-            const academicYearVal = document.getElementById('academic-year').value;
-            globalYear = academicYearVal.replace(/\s/g, '');
-            updateHeaders();
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
-            try {
-                const docSnap = await getDoc(doc(db, "ibtidaiya_exams", docId));
-                let studentsData = [];
-                let isDownloadAllowed = false;
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    isLocked = data.isLocked || false;
-                    applySecuritySettings();
-                    if (data.students) studentsData = data.students;
-                    if (data.downloadEnabled === true) isDownloadAllowed = true;
-                }
-                document.getElementById('chk-allow-dl').checked = isDownloadAllowed;
-                toggleDownload(); 
-                const tbody = document.getElementById('students-body');
-                tbody.innerHTML = '';
-                if(studentsData.length > 0) studentsData.forEach(std => addStudentRow(std));
-                else for(let i=0; i<5; i++) addStudentRow(); 
-                calculateRanks(); 
-                document.getElementById('loader').classList.add('hidden');
-                document.getElementById('main-content').classList.remove('hidden');
-            } catch (error) { console.error("Error:", error); alert("Data load error."); }
-        };
+        // Security settings apply karein
+        applySecuritySettings();
+
+        document.getElementById('chk-allow-dl').checked = isDownloadAllowed;
+        toggleDownload(); 
         
+        const tbody = document.getElementById('students-body');
+        tbody.innerHTML = '';
+        
+        if(studentsData.length > 0) {
+            studentsData.forEach(std => addStudentRow(std));
+        } else {
+            for(let i=0; i<5; i++) addStudentRow(); 
+        }
+        
+        calculateRanks(); 
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+        
+    } catch (error) { 
+        console.error("Error:", error); 
+        alert("Data load error."); 
+    }
+};
+
 function applySecuritySettings() {
     const saveBtn = document.getElementById('btn-save');
     const lockBtn = document.getElementById('btn-lock-toggle');
     const addRowBtn = document.querySelector('button[onclick="addStudentRow()"]');
     const pasteBtn = document.querySelector('button[onclick="pasteFromExcel()"]');
 
-    // 1. Admin Control
+    // 1. Admin Control - Agar role admin hai toh button dikhayein
     if (userRole === 'admin') {
-        lockBtn.classList.remove('hidden');
-        lockBtn.innerHTML = isLocked ? '<i class="fas fa-unlock"></i> Unlock Result' : '<i class="fas fa-lock"></i> Lock Result';
+        if (lockBtn) {
+            lockBtn.classList.remove('hidden');
+            lockBtn.innerHTML = isLocked ? '<i class="fas fa-unlock"></i> Unlock Result' : '<i class="fas fa-lock"></i> Lock Result';
+            lockBtn.className = isLocked ? "bg-green-600 text-white px-4 py-1.5 rounded text-xs font-bold" : "bg-red-600 text-white px-4 py-1.5 rounded text-xs font-bold";
+        }
+    } else {
+        if (lockBtn) lockBtn.classList.add('hidden');
     }
 
-    // 2. Teacher/Lock Logic
-    if (isLocked || userRole !== 'admin' && userRole !== 'teacher') {
-        // Agar locked hai ya sirf viewer hai
-        saveBtn.style.display = 'none';
-        if(addRowBtn) addRowBtn.style.display = 'none';
-        if(pasteBtn) pasteBtn.style.display = 'none';
+    // 2. Lock Logic - Agar result lock ho chuka hai
+    if (isLocked) {
+        if (saveBtn) saveBtn.style.display = 'none';
+        if (addRowBtn) addRowBtn.style.display = 'none';
+        if (pasteBtn) pasteBtn.style.display = 'none';
         
-        // Inputs ko read-only karein
+        // Inputs ko freeze kar dein
         setTimeout(() => {
             document.querySelectorAll('.cell-input').forEach(input => {
                 input.readOnly = true;
+                input.style.backgroundColor = "#f3f4f6";
                 input.style.pointerEvents = 'none';
             });
-            document.querySelectorAll('.fa-trash-alt').forEach(i => i.closest('td').style.display = 'none');
-        }, 1000);
-
-        // Download buttons enable rahein (jaisa aapne kaha)
-        document.getElementById('btn-download-list').style.display = 'flex';
-        document.getElementById('btn-download-excel').style.display = 'flex';
+            document.querySelectorAll('.fa-trash-alt').forEach(i => {
+                const parentTd = i.closest('td');
+                if (parentTd) parentTd.style.display = 'none';
+            });
+        }, 500);
+    } else {
+        // Agar unlock hai aur role teacher/admin hai toh buttons dikhayein
+        if (saveBtn) saveBtn.style.display = 'flex';
+        if (userRole === 'admin' || userRole === 'teacher') {
+            if (addRowBtn) addRowBtn.style.display = 'flex';
+            if (pasteBtn) pasteBtn.style.display = 'flex';
+        }
     }
 }
 
-// Lock/Unlock karne ka function (Sirf Admin ke liye)
+// Result Lock/Unlock karne ka function (Sirf Admin ke liye)
 window.toggleResultLock = async () => {
-    if (userRole !== 'admin') return;
+    if (userRole !== 'admin') {
+        alert("Aapke paas iski ijazat nahi hai.");
+        return;
+    }
+
+    const examType = document.getElementById('exam-selector').value;
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
     
-    showLoader(true);
-    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${document.getElementById('exam-selector').value}`;
-    
+    if (!confirm(isLocked ? "Kya aap result ko Unlock karna chahte hain?" : "Kya aap result ko Lock karna chahte hain? Lock hone ke baad teacher edit nahi kar sakega.")) {
+        return;
+    }
+
     try {
-        await updateDoc(doc(db, "ibtidaiya_exams", docId), {
+        const docRef = doc(db, "ibtidaiya_exams", docId);
+        await updateDoc(docRef, {
             isLocked: !isLocked
         });
+        
         isLocked = !isLocked;
         applySecuritySettings();
-        alert(isLocked ? "Result Locked! Teacher ab edit nahi kar sakega." : "Result Unlocked!");
-    } catch (e) {
-        alert("Permission Denied: Aapke paas ijazat nahi hai.");
-    } finally {
-        showLoader(false);
+        alert(isLocked ? "Result Locked Successfully!" : "Result Unlocked Successfully!");
+        
+    } catch (error) {
+        console.error("Lock Error:", error);
+        alert("Status update nahi ho saka. Pehle result save karein.");
     }
 };
         window.updateIndices = () => {
@@ -818,6 +832,7 @@ window.toggleResultLock = async () => {
     </script>
 </body>
 </html>
+
 
 
 
