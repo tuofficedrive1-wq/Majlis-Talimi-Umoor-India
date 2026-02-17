@@ -392,10 +392,10 @@
             if (data) calcRow(tr.querySelector('.subject-mark'));
         };
 
-      window.calcRow = (inputElement) => {
+       window.calcRow = (inputElement) => {
     const row = inputElement.closest('tr');
     
-    // Helper: Asal marks nikalne ke liye (agar value "28+5" ho to sirf 28 le)
+    // Helper: Asal marks nikalne ke liye (agar value "35+5" ho to sirf 35 le)
     const getActualVal = (id) => {
         const el = row.querySelector(`input[data-id="${id}"]`);
         if (!el) return 0;
@@ -422,85 +422,111 @@
     };
 
     let obtainedTotal = 0;
-    let initialFailSubjects = []; 
+    let initialFailSubjects = []; // Check karne ke liye ke kitne mein fail hai
     let hasEntry = false;
 
-    // --- 1. Initial Failure Check ---
-    // English (Passing 33 - Total of W+O)
-    const engTotalActual = getActualVal('eng_written') + getActualVal('eng_oral');
-    if (isAbsent('eng_written') || isAbsent('eng_oral') || engTotalActual < 33) {
-        initialFailSubjects.push({ ids: ['eng_written', 'eng_oral'], type: 'english', val: engTotalActual });
+    // 1. Pehle check karein ke student kitne subjects mein fail hai
+    // English (Passing 33)
+    if (isAbsent('eng_written') || isAbsent('eng_oral') || (getActualVal('eng_written') + getActualVal('eng_oral') < 33)) {
+        initialFailSubjects.push(['eng_written', 'eng_oral']);
     }
     // Urdu Group (Passing 40)
-    const urduTotal = getActualVal('urdu') + getActualVal('workbook') + getActualVal('ham_nisabi');
-    if (isAbsent('urdu') || isAbsent('workbook') || isAbsent('ham_nisabi') || urduTotal < 40) {
-        initialFailSubjects.push({ ids: ['urdu', 'workbook', 'ham_nisabi'], type: 'urdu', val: urduTotal });
+    if (isAbsent('urdu') || isAbsent('workbook') || isAbsent('ham_nisabi') || (getActualVal('urdu') + getActualVal('workbook') + getActualVal('ham_nisabi') < 40)) {
+        initialFailSubjects.push(['urdu', 'workbook', 'ham_nisabi']);
     }
     // Individual Subjects (Passing 40)
     ['tajweed', 'imla'].forEach(sub => {
-        const val = getActualVal(sub);
-        if (isAbsent(sub) || val < 40) initialFailSubjects.push({ ids: [sub], type: 'fixed', val: val });
+        if (isAbsent(sub) || getActualVal(sub) < 40) initialFailSubjects.push([sub]);
     });
     // Riyazi (Passing 33)
-    const mathVal = getActualVal('riyazi');
-    if (isAbsent('riyazi') || mathVal < 33) {
-        initialFailSubjects.push({ ids: ['riyazi'], type: 'math', val: mathVal });
-    }
+    if (isAbsent('riyazi') || getActualVal('riyazi') < 33) initialFailSubjects.push(['riyazi']);
 
-    // --- 2. UPDATED GRACE LOGIC (5 Marks Limit) ---
+    // 2. GRACE LOGIC: Agar sirf 1 group/subject mein fail hai aur marks 35-39 hain
     let graceAppliedSubId = null;
     if (initialFailSubjects.length === 1) {
-        let s = initialFailSubjects[0];
-        
-        // Maths Grace (28 to 32)
-        if (s.type === 'math' && s.val >= 28 && s.val < 33) {
-            let grace = 33 - s.val;
-            row.querySelector(`input[data-id="riyazi"]`).value = `${s.val}+${grace}`;
-            graceAppliedSubId = 'riyazi';
-            initialFailSubjects = [];
-        } 
-        // English Grace (Total 28 to 32, add in Written)
-        else if (s.type === 'english' && s.val >= 28 && s.val < 33) {
-            let grace = 33 - s.val;
-            let currentWritten = getActualVal('eng_written');
-            row.querySelector(`input[data-id="eng_written"]`).value = `${currentWritten}+${grace}`;
-            graceAppliedSubId = 'eng_written';
-            initialFailSubjects = [];
-        }
-        // Others (35 to 39)
-        else if (s.val >= 35 && s.val < 40) {
-            let grace = 40 - s.val;
-            let targetId = s.type === 'urdu' ? 'urdu' : s.ids[0];
-            let currentVal = getActualVal(targetId);
-            row.querySelector(`input[data-id="${targetId}"]`).value = `${currentVal}+${grace}`;
-            graceAppliedSubId = targetId;
-            initialFailSubjects = [];
+        let group = initialFailSubjects[0];
+        // Grace sirf Tajweed, Imla ya Urdu group par (jin ka passing 40 hai)
+        if (group.length === 1 && (group[0] === 'tajweed' || group[0] === 'imla')) {
+            let val = getActualVal(group[0]);
+            if (val >= 35 && val < 40) {
+                let grace = 40 - val;
+                row.querySelector(`input[data-id="${group[0]}"]`).value = `${val}+${grace}`;
+                graceAppliedSubId = group[0];
+                initialFailSubjects = []; // Ab fail nahi raha
+            }
+        } else if (group.includes('urdu')) {
+            let totalUrdu = getActualVal('urdu') + getActualVal('workbook') + getActualVal('ham_nisabi');
+            if (totalUrdu >= 35 && totalUrdu < 40) {
+                let grace = 40 - totalUrdu;
+                // Urdu main subject mein grace add kar rahe hain
+                let currentUrdu = getActualVal('urdu');
+                row.querySelector(`input[data-id="urdu"]`).value = `${currentUrdu}+${grace}`;
+                graceAppliedSubId = 'urdu';
+                initialFailSubjects = [];
+            }
         }
     }
 
-    // --- 3. Calculation & Display ---
+    // 3. Final Calculation & Styling
     let failCount = initialFailSubjects.length;
+
+    // Styling update
+    setSubjectStyle(['eng_written', 'eng_oral'], (isAbsent('eng_written') || isAbsent('eng_oral') || (getActualVal('eng_written') + getActualVal('eng_oral') < 33)));
+    setSubjectStyle(['urdu', 'workbook', 'ham_nisabi'], (initialFailSubjects.some(g => g.includes('urdu'))), (graceAppliedSubId === 'urdu'));
+    setSubjectStyle(['tajweed'], (isAbsent('tajweed') || getActualVal('tajweed') < 40), (graceAppliedSubId === 'tajweed'));
+    setSubjectStyle(['imla'], (isAbsent('imla') || getActualVal('imla') < 40), (graceAppliedSubId === 'imla'));
+    setSubjectStyle(['riyazi'], (isAbsent('riyazi') || getActualVal('riyazi') < 33));
 
     // Total marks calculation
     row.querySelectorAll('.subject-mark').forEach(inp => {
-        if(inp.value.trim() !== "") {
+        const v = inp.value.trim();
+        if(v !== "") {
             hasEntry = true;
-            if(inp.value.toUpperCase() !== 'A') {
+            if(v.toUpperCase() !== 'A') {
                 let val = getActualVal(inp.dataset.id);
-                let grace = inp.value.includes('+') ? parseFloat(inp.value.split('+')[1]) : 0;
+                let grace = v.includes('+') ? parseFloat(v.split('+')[1]) : 0;
                 obtainedTotal += (val + grace);
             }
         }
     });
 
-    // Style and Result UI (Same as before)
     if (!hasEntry && !row.querySelector('.name-ur').value) return;
-    const percent = (obtainedTotal / 500) * 100;
+
+    const percent = (obtainedTotal / TOTAL_MARKS) * 100;
     row.querySelector('.cell-obtained').innerText = obtainedTotal;
     row.querySelector('.cell-percent').innerText = percent.toFixed(2);
     
-    // Status & Grade UI
-    window.updateStatusAndGrade(row, failCount, percent);
+    // Status & Grading (Existing logic based on new failCount)
+    const statusCell = row.querySelector('.cell-status');
+    let statusText = ""; 
+    statusCell.className = "text-center p-1 cell-status text-xs";
+
+    if (failCount === 0) { 
+        if (percent >= 85) { statusText = "ممتاز مع الشرف"; statusCell.classList.add('status-mumtaz-sharaf'); }
+        else if (percent >= 70) { statusText = "ممتاز"; statusCell.classList.add('status-mumtaz'); }
+        else if (percent >= 60) { statusText = "جید جدا"; statusCell.classList.add('status-jayyid-jadda'); }
+        else if (percent >= 50) { statusText = "جید"; statusCell.classList.add('status-jayyid'); }
+        else if (percent >= 37.2) { statusText = "مقبول"; statusCell.classList.add('status-maqbool'); }
+        else { statusText = "ناکام"; statusCell.classList.add('status-fail'); }
+    } else if (failCount <= 2) { 
+        statusText = "مجاز ضمنی"; statusCell.classList.add('status-zimni');
+    } else { 
+        statusText = "ناکام"; statusCell.classList.add('status-fail');
+    }
+    statusCell.innerText = statusText;
+
+    const gradeCell = row.querySelector('.cell-grade');
+    let grade = "F"; let gradeCls = "grade-D";
+    if (failCount === 0) {
+        if (percent >= 80) { grade = "A+"; gradeCls = "grade-A-plus"; }
+        else if (percent >= 70) { grade = "A"; gradeCls = "grade-A"; }
+        else if (percent >= 60) { grade = "B"; gradeCls = "grade-B"; }
+        else if (percent >= 50) { grade = "C"; gradeCls = "grade-C"; }
+        else { grade = "D"; gradeCls = "grade-D"; }
+    }
+    gradeCell.innerText = grade;
+    gradeCell.className = `font-bold text-center p-1 cell-grade text-xs ${gradeCls}`;
+    
     calculateRanks();
 };
         
@@ -706,8 +732,6 @@
     </script>
 </body>
 </html>
-
-
 
 
 
