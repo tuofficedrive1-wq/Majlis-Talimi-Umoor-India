@@ -703,47 +703,90 @@ window.toggleResultLock = async () => {
         };
 
         window.saveResult = async () => {
-            const btn = document.getElementById('btn-save');
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; btn.disabled = true;
-            calculateRanks(); 
-            const examType = document.getElementById('exam-selector').value;
-            const downloadSetting = document.getElementById('chk-allow-dl').checked;
-            const rows = document.querySelectorAll('#students-body tr');
-            const studentsToSave = [];
-            rows.forEach(row => {
-                const name = row.querySelector('.name-ur').value.trim();
-                if (name) {
-                    const marks = {};
-                    row.querySelectorAll('.subject-mark').forEach(inp => { let v = inp.value.trim(); if(v.toUpperCase() === 'A') v = 'A'; marks[inp.dataset.id] = v; });
-                    studentsToSave.push({
-                        dakhila: row.querySelector('.dakhila-input').value.trim(),
-                        name: name,
-                        nameEng: row.querySelector('.name-en').value.trim(),
-                        fatherName: row.querySelector('.father-ur').value.trim(),
-                        fatherEng: row.querySelector('.father-en').value.trim(),
-                        dob: row.querySelector('.dob-input').value.trim(),
-                        marks: marks,
-                        obtained: row.querySelector('.cell-obtained').innerText,
-                        percent: row.querySelector('.cell-percent').innerText,
-                        status: row.querySelector('.cell-status').innerText,
-                        grade: row.querySelector('.cell-grade').innerText,
-                        rank: row.querySelector('.cell-rank').innerText
-                    });
-                }
+    const btn = document.getElementById('btn-save');
+    const originalBtnHTML = btn.innerHTML;
+    
+    // Step 1: Loading state
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; 
+    btn.disabled = true;
+
+    // Step 2: Ranks calculate karein taake sahi data save ho
+    calculateRanks(); 
+
+    const examType = document.getElementById('exam-selector').value;
+    const academicYearVal = document.getElementById('academic-year').value;
+    // Year se spaces aur special characters hatayein taake ID saaf rahe
+    const cleanYear = academicYearVal.replace(/[^a-zA-Z0-9]/g, ''); 
+    const downloadSetting = document.getElementById('chk-allow-dl').checked;
+    
+    const rows = document.querySelectorAll('#students-body tr');
+    const studentsToSave = [];
+
+    // Step 3: Data Extract karein
+    rows.forEach(row => {
+        const nameUr = row.querySelector('.name-ur')?.value.trim() || "";
+        const dakhila = row.querySelector('.dakhila-input')?.value.trim() || "";
+
+        // Sirf un rows ko save karein jin mein Naam ya Dakhila maujood ho
+        if (nameUr !== "" || dakhila !== "") {
+            const marks = {};
+            row.querySelectorAll('.subject-mark').forEach(inp => { 
+                let v = inp.value.trim(); 
+                if(v.toUpperCase() === 'A') v = 'A'; 
+                marks[inp.dataset.id] = v; 
             });
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
-            try { 
-                await setDoc(doc(db, "ibtidaiya_exams", docId), { 
-                    adminUid, jamiaName, examType, year: globalYear, 
-                    downloadEnabled: downloadSetting,
-                    students: studentsToSave, updatedAt: serverTimestamp() 
-                });
-                toggleDownload(); 
-                alert("Result & Settings Saved Successfully!"); 
-            } 
-            catch (error) { console.error(error); alert("Error saving."); } 
-            finally { btn.innerHTML = '<i class="fas fa-save"></i> Save'; btn.disabled = false; }
-        };
+
+            studentsToSave.push({
+                dakhila: dakhila,
+                name: nameUr,
+                nameEng: row.querySelector('.name-en')?.value.trim() || "",
+                fatherName: row.querySelector('.father-ur')?.value.trim() || "",
+                fatherEng: row.querySelector('.father-en')?.value.trim() || "",
+                dob: row.querySelector('.dob-input')?.value.trim() || "",
+                marks: marks,
+                obtained: row.querySelector('.cell-obtained').innerText,
+                percent: row.querySelector('.cell-percent').innerText,
+                status: row.querySelector('.cell-status').innerText,
+                grade: row.querySelector('.cell-grade').innerText,
+                rank: row.querySelector('.cell-rank').innerText
+            });
+        }
+    });
+
+    // Step 4: Khali data check (Security)
+    if (studentsToSave.length === 0) {
+        alert("Ghalati: List khali hai! Data save nahi kiya gaya taake purana record mehfooz rahe.");
+        btn.innerHTML = originalBtnHTML;
+        btn.disabled = false;
+        return;
+    }
+
+    // Step 5: Firebase Database ID
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${cleanYear}_${examType}`;
+
+    try { 
+        await setDoc(doc(db, "ibtidaiya_exams", docId), { 
+            adminUid, 
+            jamiaName, 
+            examType, 
+            year: academicYearVal, 
+            downloadEnabled: downloadSetting,
+            isLocked: isLocked, // Maujuda lock status save karein
+            students: studentsToSave, 
+            updatedAt: serverTimestamp() 
+        });
+        
+        alert(`${examType} ka result kamyabi se save ho gaya hai!`); 
+    } 
+    catch (error) { 
+        console.error("Save Error:", error); 
+        alert("Server error: Result save nahi ho saka."); 
+    } 
+    finally { 
+        btn.innerHTML = originalBtnHTML; 
+        btn.disabled = false; 
+    }
+};
 
         window.downloadPDF = async () => {
             if (!window.html2canvas) return;
@@ -890,6 +933,7 @@ window.toggleResultLock = async () => {
     </script>
 </body>
 </html>
+
 
 
 
