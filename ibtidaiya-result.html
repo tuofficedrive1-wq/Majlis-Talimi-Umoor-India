@@ -259,52 +259,59 @@ const userRole = params.get('role'); // 'admin' ya 'teacher'
 };
 
 window.loadExamData = async () => {
-    document.getElementById('loader').classList.remove('hidden');
-    document.getElementById('main-content').classList.add('hidden');
+    const loader = document.getElementById('loader');
+    const mainContent = document.getElementById('main-content');
+    
+    loader.classList.remove('hidden');
+    mainContent.classList.add('hidden');
     
     const examType = document.getElementById('exam-selector').value; 
     const academicYearVal = document.getElementById('academic-year').value;
-    globalYear = academicYearVal.replace(/\s/g, '');
     
-    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${globalYear}_${examType}`;
+    // Step 1: ID Generation (Exactly same as Save logic)
+    // Ye line dashes aur spaces khatam karke "1447H2026" banayegi
+    const cleanYear = academicYearVal.replace(/[^a-zA-Z0-9]/g, ''); 
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${cleanYear}_${examType}`;
     
+    console.log("Loading Document ID:", docId); // Debugging ke liye
+
     try {
         const docSnap = await getDoc(doc(db, "ibtidaiya_exams", docId));
-        let studentsData = [];
-        let isDownloadAllowed = false;
+        const tbody = document.getElementById('students-body');
+        tbody.innerHTML = ''; 
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            isLocked = data.isLocked || false; // Database se lock status lein
+            isLocked = data.isLocked || false;
             
-            if (data.students) studentsData = data.students;
-            if (data.downloadEnabled === true) isDownloadAllowed = true;
-        } else {
-            isLocked = false; // Naya document hai toh default unlocked
-        }
+            // Step 2: Students display logic
+            if(data.students && data.students.length > 0) {
+                data.students.forEach(std => addStudentRow(std));
+                // Sab rows load hone ke baad calculations aur ranks refresh karein
+                setTimeout(() => {
+                    const firstRowInput = document.querySelector('.subject-mark');
+                    if(firstRowInput) calcRow(firstRowInput);
+                    calculateRanks();
+                }, 500);
+            } else {
+                for(let i=0; i<5; i++) addStudentRow(); 
+            }
+            
+            document.getElementById('chk-allow-dl').checked = data.downloadEnabled || false;
+            toggleDownload();
+            applySecuritySettings();
 
-        // Security settings apply karein
-        applySecuritySettings();
-
-        document.getElementById('chk-allow-dl').checked = isDownloadAllowed;
-        toggleDownload(); 
-        
-        const tbody = document.getElementById('students-body');
-        tbody.innerHTML = '';
-        
-        if(studentsData.length > 0) {
-            studentsData.forEach(std => addStudentRow(std));
         } else {
-            for(let i=0; i<5; i++) addStudentRow(); 
+            // Agar data nahi milta to khali rows dikhayein
+            for(let i=0; i<5; i++) addStudentRow();
+            console.warn("No data found for this ID in Firestore.");
         }
-        
-        calculateRanks(); 
-        document.getElementById('loader').classList.add('hidden');
-        document.getElementById('main-content').classList.remove('hidden');
-        
     } catch (error) { 
-        console.error("Error:", error); 
-        alert("Data load error."); 
+        console.error("Firestore Load Error:", error);
+        alert("Internet connection ka masla hai ya server response nahi de raha. Page refresh karein."); 
+    } finally {
+        loader.classList.add('hidden');
+        mainContent.classList.remove('hidden');
     }
 };
 
@@ -933,6 +940,7 @@ window.toggleResultLock = async () => {
     </script>
 </body>
 </html>
+
 
 
 
