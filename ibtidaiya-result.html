@@ -268,15 +268,24 @@ window.loadExamData = async () => {
     const examType = document.getElementById('exam-selector').value; 
     const academicYearVal = document.getElementById('academic-year').value;
     
-    // Step 1: ID Generation (Exactly same as Save logic)
-    // Ye line dashes aur spaces khatam karke "1447H2026" banayegi
+    // 1. Nayi ID (Bina dash wali)
     const cleanYear = academicYearVal.replace(/[^a-zA-Z0-9]/g, ''); 
-    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${cleanYear}_${examType}`;
+    const newDocId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${cleanYear}_${examType}`;
     
-    console.log("Loading Document ID:", docId); // Debugging ke liye
+    // 2. Purani ID (Dash ke saath - jaise pehle save ho raha tha)
+    const oldYear = academicYearVal.replace(/\s/g, ''); 
+    const oldDocId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${oldYear}_${examType}`;
 
     try {
-        const docSnap = await getDoc(doc(db, "ibtidaiya_exams", docId));
+        // Pehle Nayi ID check karte hain
+        let docSnap = await getDoc(doc(db, "ibtidaiya_exams", newDocId));
+        
+        // Agar nahi mila, to Purani ID check karte hain
+        if (!docSnap.exists()) {
+            console.log("Nayi ID nahi mili, Purani ID check kar rahe hain...");
+            docSnap = await getDoc(doc(db, "ibtidaiya_exams", oldDocId));
+        }
+
         const tbody = document.getElementById('students-body');
         tbody.innerHTML = ''; 
 
@@ -284,10 +293,9 @@ window.loadExamData = async () => {
             const data = docSnap.data();
             isLocked = data.isLocked || false;
             
-            // Step 2: Students display logic
             if(data.students && data.students.length > 0) {
                 data.students.forEach(std => addStudentRow(std));
-                // Sab rows load hone ke baad calculations aur ranks refresh karein
+                
                 setTimeout(() => {
                     const firstRowInput = document.querySelector('.subject-mark');
                     if(firstRowInput) calcRow(firstRowInput);
@@ -300,15 +308,15 @@ window.loadExamData = async () => {
             document.getElementById('chk-allow-dl').checked = data.downloadEnabled || false;
             toggleDownload();
             applySecuritySettings();
+            console.log("Data kamyabi se load ho gaya!");
 
         } else {
-            // Agar data nahi milta to khali rows dikhayein
+            console.warn("Dono IDs mein se koi bhi record nahi mila.");
             for(let i=0; i<5; i++) addStudentRow();
-            console.warn("No data found for this ID in Firestore.");
         }
     } catch (error) { 
-        console.error("Firestore Load Error:", error);
-        alert("Internet connection ka masla hai ya server response nahi de raha. Page refresh karein."); 
+        console.error("Load Error:", error);
+        alert("Data load karne mein masla hua. Internet check karein."); 
     } finally {
         loader.classList.add('hidden');
         mainContent.classList.remove('hidden');
@@ -938,6 +946,7 @@ window.toggleResultLock = async () => {
     </script>
 </body>
 </html>
+
 
 
 
