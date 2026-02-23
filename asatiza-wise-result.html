@@ -66,6 +66,12 @@
     </div>
 
     <script>
+        import { getAuth } from "firebase/auth";
+        import { getFirestore, doc, getDoc } from "firebase/firestore";
+
+        const auth = getAuth();
+        const db = getFirestore();
+        
         let teacherCount = 0;
 
        document.addEventListener('DOMContentLoaded', () => {
@@ -88,38 +94,62 @@
 });
 
 // Academic structure se asatiza aur kitabein load karne ka function
-function loadAsatizaFromStructure(jamiaName) {
+async function loadAsatizaFromStructure(jamiaName) {
     const container = document.getElementById('teachers-container');
-    const rawData = localStorage.getItem('academicStructure'); // index.html se save kiya hua data
-    
-    if (!rawData) {
-        // Agar data nahi mila toh purana tarika (3 khali rows)
-        for(let i=0; i<3; i++) addTeacherRow();
-        return;
-    }
+    container.innerHTML = "";
 
-    const allEntries = JSON.parse(rawData);
-    
-    // Sirf is Jamia ka data filter karein
-    const filteredData = allEntries.filter(item => item.jamiaName === jamiaName);
+    const params = new URLSearchParams(window.location.search);
+    const yearKey = params.get('examYear') || "2025-26";
 
-    if (filteredData.length > 0) {
-        container.innerHTML = ""; // Khali rows hatayein
-
-        // Teachers ke hisab se group karein
-        const groupedByTeacher = filteredData.reduce((acc, curr) => {
-            if (!acc[curr.teacherName]) acc[curr.teacherName] = [];
-            acc[curr.teacherName].push(curr);
-            return acc;
-        }, {});
-
-        // Har ustad ke liye card banayein
-        for (const teacherName in groupedByTeacher) {
-            const periods = groupedByTeacher[teacherName];
-            addTeacherWithAcademicData(teacherName, periods);
+    try {
+        const user = auth.currentUser;
+        if (!user) {
+            console.error("User not logged in");
+            addTeacherRow();
+            return;
         }
-    } else {
-        for(let i=0; i<3; i++) addTeacherRow();
+
+        const userDocRef = doc(db, "users", user.uid);
+        const userSnap = await getDoc(userDocRef);
+
+        if (!userSnap.exists()) {
+            addTeacherRow();
+            return;
+        }
+
+        const userData = userSnap.data();
+        const years = userData.academicYears || {};
+        const yearData = years[yearKey];
+
+        if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
+            addTeacherRow();
+            return;
+        }
+
+        // ✅ Jamia filter
+        const jamiaStruct = yearData.karkardagiStructure.find(
+            j => j.jamiaName === jamiaName
+        );
+
+        if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
+            addTeacherRow();
+            return;
+        }
+
+        // ✅ Teachers render
+        jamiaStruct.teachers.forEach(t => {
+            const teacherName = t.name || t.teacherName || t.ustad || "";
+            const periods = (t.periods || []).map(p => ({
+                className: p.className || p.class || p.darja || "",
+                bookName: p.bookName || p.book || p.kitab || p.subject || ""
+            }));
+
+            addTeacherWithAcademicData(teacherName, periods);
+        });
+
+    } catch (err) {
+        console.error("Structure load error:", err);
+        addTeacherRow();
     }
 }
 
@@ -407,6 +437,7 @@ async function loadAsatizaFromFirestore(jamiaId) {
     </script>
 </body>
 </html>
+
 
 
 
