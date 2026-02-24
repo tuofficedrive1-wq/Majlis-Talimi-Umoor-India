@@ -68,7 +68,7 @@
     <script type="module">
         // Firebase SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // Firebase config (Jaiza page jaisa same)
@@ -88,24 +88,29 @@ const auth = getAuth(app);
 const db = getFirestore(app);
                
         let teacherCount = 0;
+        let currentUser = null;
+
+        const pageParams = new URLSearchParams(window.location.search);
+        const pageJamiaName = decodeURIComponent(pageParams.get('jamia') || '') || 'جامعہ کا نام';
+        const pageMonth = pageParams.get('month') || '---';
+        const pageExamType = pageParams.get('examType') || 'Half Yearly';
+        const pageExamYear = pageParams.get('examYear') || '2025-26';
 
        document.addEventListener('DOMContentLoaded', () => {
-    const params = new URLSearchParams(window.location.search);
-    
-    // 1. URL se values hasil karein
-    const jamiaName = params.get('jamia') || 'جامعہ کا نام';
-    const selectedMonth = params.get('month');
-    const selectedType = params.get('examType') || 'Half Yearly';
-    const selectedYear = params.get('examYear') || '2025-26';
+    // UI mein labels set karein (Display Only)
+    const jamiaHead = document.getElementById('jamia-name-head');
+    if (jamiaHead) jamiaHead.innerText = pageJamiaName;
 
-    // 2. UI mein labels set karein (Display Only)
-    document.getElementById('jamia-name-head').innerText = jamiaName;
-    if(document.getElementById('display-month')) document.getElementById('display-month').innerText = selectedMonth;
-    if(document.getElementById('display-type'))  document.getElementById('display-type').innerText = selectedType;
-    if(document.getElementById('display-year'))  document.getElementById('display-year').innerText = selectedYear;
+    const monthEl = document.getElementById('display-month');
+    const typeEl = document.getElementById('display-type');
+    const yearEl = document.getElementById('display-year');
+    if (monthEl) monthEl.innerText = pageMonth;
+    if (typeEl) typeEl.innerText = pageExamType;
+    if (yearEl) yearEl.innerText = pageExamYear;
 
-    // 3. Academic Structure load karein
-    loadAsatizaFromStructure(jamiaName);
+    window.currentMonth = pageMonth;
+    window.currentExamType = pageExamType;
+    window.currentExamYear = pageExamYear;
 });
 
 // Academic structure se asatiza aur kitabein load karne ka function
@@ -114,21 +119,34 @@ async function loadAsatizaFromStructure(jamiaName) {
     container.innerHTML = "";
 teacherCount = 0;
 
-jamiaStruct.teachers.forEach(t => {
-    const teacherName = t.name || t.teacherName || t.ustad || "";
-    const periods = (t.periods || []).map(p => ({
-        className: p.className || p.class || p.darja || "",
-        bookName: p.bookName || p.book || p.kitab || p.subject || ""
-    }));
-
-    addTeacherRowFromStructure(teacherName, periods);
-});
-
-    const params = new URLSearchParams(window.location.search);
-    const yearKey = params.get('examYear') || "2025-26";
-
     try {
-        const user = auth.currentUser;
+        const buildAcademicYearFromMonthKey = (monthKey) => {
+            if (!monthKey) return null;
+            const m = String(monthKey).match(/^(\d{4})-(\d{2})$/);
+            if (!m) return null;
+            const yearNum = parseInt(m[1], 10);
+            const monthNum = parseInt(m[2], 10) - 1; // 0-11
+            if (Number.isNaN(yearNum) || Number.isNaN(monthNum)) return null;
+            return (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+        };
+
+        const expandShortYear = (y) => {
+            const m = String(y).match(/^(\d{4})-(\d{2})$/);
+            if (!m) return null;
+            const start = parseInt(m[1], 10);
+            const end2 = parseInt(m[2], 10);
+            if (Number.isNaN(start) || Number.isNaN(end2)) return null;
+            const century = Math.floor(start / 100) * 100;
+            return `${start}-${century + end2}`;
+        };
+
+        const shortenFullYear = (y) => {
+            const m = String(y).match(/^(\d{4})-(\d{4})$/);
+            if (!m) return null;
+            return `${m[1]}-${m[2].slice(-2)}`;
+        };
+
+        const user = currentUser;
         if (!user) {
             console.error("User not logged in");
             addTeacherRow();
@@ -145,7 +163,23 @@ jamiaStruct.teachers.forEach(t => {
 
         const userData = userSnap.data();
         const years = userData.academicYears || {};
-        const yearData = years[yearKey];
+
+        const yearKeysToTry = [];
+        if (pageExamYear) yearKeysToTry.push(pageExamYear);
+        const expanded = expandShortYear(pageExamYear);
+        if (expanded) yearKeysToTry.push(expanded);
+        const shortened = shortenFullYear(pageExamYear);
+        if (shortened) yearKeysToTry.push(shortened);
+
+        const derivedFromMonth = buildAcademicYearFromMonthKey(pageMonth);
+        if (derivedFromMonth) {
+            yearKeysToTry.push(derivedFromMonth);
+            const derivedShort = shortenFullYear(derivedFromMonth);
+            if (derivedShort) yearKeysToTry.push(derivedShort);
+        }
+
+        const resolvedYearKey = yearKeysToTry.find(k => k && years[k]);
+        const yearData = resolvedYearKey ? years[resolvedYearKey] : null;
 
         if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
             addTeacherRow();
@@ -170,7 +204,7 @@ jamiaStruct.teachers.forEach(t => {
                 bookName: p.bookName || p.book || p.kitab || p.subject || ""
             }));
 
-            addTeacherWithAcademicData(teacherName, periods);
+            addTeacherRowFromStructure(teacherName, periods);
         });
 
     } catch (err) {
@@ -259,6 +293,33 @@ function addTeacherWithAcademicData(teacherName, periods) {
 
     tbody.appendChild(tr);
 }
+
+        function addTeacherRow() {
+            teacherCount++;
+            const tbody = document.getElementById('main-teacher-body');
+
+            const tr = document.createElement('tr');
+            tr.className = "teacher-row border-b border-gray-300";
+
+            tr.innerHTML = `
+                <td class="border p-2">${teacherCount}</td>
+                <td class="border p-2">
+                    <input type="text" placeholder="نام استاد" class="w-full">
+                </td>
+                <td class="border p-2">
+                    <table class="w-full inner-table">
+                        <tbody id="periods-${teacherCount}">
+                            ${createInitialPeriodRows(teacherCount)}
+                        </tbody>
+                    </table>
+                </td>
+                <td class="border p-2">
+                    <div id="total-percent-${teacherCount}">0%</div>
+                </td>
+            `;
+
+            tbody.appendChild(tr);
+        }
 
         function createInitialPeriodRows(tId) {
             let rows = '';
@@ -366,24 +427,24 @@ function addTeacherWithAcademicData(teacherName, periods) {
         }
     }
 }
-        document.addEventListener('DOMContentLoaded', () => {
-    // 1. URL se parameters hasil karna
-    const params = new URLSearchParams(window.location.search);
-    
-    const month = params.get('month');
-    const type = params.get('examType'); // Dashboard se 'examType' bheja tha
-    const year = params.get('examYear'); // Dashboard se 'examYear' bheja tha
+        // Duplicate DOMContentLoaded removed (upar set ho chuka hai)
 
-    // 2. UI mein data set karna
-    if (month) document.getElementById('display-month').innerText = month;
-    if (type)  document.getElementById('display-type').innerText = type;
-    if (year)  document.getElementById('display-year').innerText = year;
+        // inline HTML handlers (onclick/oninput) ke liye module functions ko global expose karna
+        window.addTeacherRow = addTeacherRow;
+        window.addPeriodRow = addPeriodRow;
+        window.calculateTeacher = (tId) => updateStats(tId);
 
-    // 3. Global Variables (Taki jab aap Save button dabayein to ye data sheet me jaye)
-    window.currentMonth = month;
-    window.currentExamType = type;
-    window.currentExamYear = year;
-});
+        // Auth ready hone par hi structure load karein (jaiza-form jaisa)
+        onAuthStateChanged(auth, async (user) => {
+            currentUser = user || null;
+            try {
+                await loadAsatizaFromStructure(pageJamiaName);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                if (teacherCount === 0) addTeacherRow();
+            }
+        });
         // Firebase Firestore se data lene ka function
 async function loadAsatizaFromFirestore(jamiaId) {
     const container = document.getElementById('teachers-container');
