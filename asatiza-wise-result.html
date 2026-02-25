@@ -73,7 +73,7 @@
         class="w-44 bg-teal-600 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-teal-700 shadow transition">
         رزلٹ محفوظ کریں
     </button>
-                <button id="lock-btn" onclick="lockForm()" class="hidden bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold">
+                <button id="lock-btn" onclick="lockForm()" class="hidden bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold shadow-md transition">
     رزلٹ لاک کریں 🔒
 </button>
 
@@ -85,95 +85,68 @@
     <script>
         let teacherCount = 0;
 
-       document.addEventListener('DOMContentLoaded', () => {
-    // 1. URL se saari jankari nikalna
+      document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     
-    // Jamia ka naam nikalne ka sahi tarika
-    const jamiaName = params.get('jamia');
-    const selectedMonth = params.get('month');
-    const selectedType = params.get('examType');
-    const selectedYear = params.get('examYear');
-    const isAdmin = params.get('admin') === 'true';
+    // Ibtidaiya ki tarah role check karna
+    const userRole = params.get('role'); 
+    const isAdmin = (userRole === 'admin');
+    
+    // Check karein kya ye result pehle se locked hai (Jamia ke naam ke hisaab se unique key)
+    const jamiaName = params.get('jamia') || 'default';
+    const lockKey = `locked_asatiza_${jamiaName}`;
+    const isLocked = localStorage.getItem(lockKey) === 'true';
 
-    // 2. Screen par Jamia ka naam aur baqi details dikhana
-    if (jamiaName) {
-        document.getElementById('jamia-name-head').innerText = jamiaName;
-    }
-    if (document.getElementById('display-month')) document.getElementById('display-month').innerText = selectedMonth || "";
-    if (document.getElementById('display-type')) document.getElementById('display-type').innerText = selectedType || "";
-    if (document.getElementById('display-year')) document.getElementById('display-year').innerText = selectedYear || "";
-
-    // 3. Admin check aur Lock Button
     const lockBtn = document.getElementById('lock-btn');
-    const isLocked = localStorage.getItem('isResultLocked') === 'true';
 
+    // Agar role admin hai, toh lock button dikhao
     if (isAdmin && lockBtn) {
         lockBtn.classList.remove('hidden');
         lockBtn.style.display = 'inline-block';
     }
 
-    // 4. Agar result lock hai toh lockdown lagao
+    // Agar locked hai, toh foran lockdown apply karo
     if (isLocked) {
         applyLockdown();
     }
-
-    // 5. Purana data load karna (Agar hai)
-    const savedData = localStorage.getItem('savedAsatizaResult');
-    if (savedData) {
-        loadSavedData(JSON.parse(savedData));
-    } else if (jamiaName) {
-        // Agar naya hai toh default structure load karein
-        loadAsatizaFromStructure(jamiaName);
-    }
 });
 
-// Lockdown function (Taki koi edit na kar sake)
+// Form ko lock karne ka function
+function lockForm() {
+    if (confirm("کیا آپ واقعی اس رزلٹ کو لاک کرنا چاہتے ہیں؟ لاک ہونے کے بعد کوئی تبدیلی نہیں ہو سکے گی۔")) {
+        const params = new URLSearchParams(window.location.search);
+        const jamiaName = params.get('jamia') || 'default';
+        const lockKey = `locked_asatiza_${jamiaName}`;
+        
+        localStorage.setItem(lockKey, 'true');
+        applyLockdown();
+        alert("رزلٹ لاک کر دیا گیا ہے! ✅");
+    }
+}
+
+// Edit band karne ka function (Ibtidaiya style)
 function applyLockdown() {
-    document.querySelectorAll('input').forEach(input => {
-        input.readOnly = true;
-        input.style.backgroundColor = "#f9fafb";
+    // Saare inputs ko readonly/disabled karna
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+        el.readOnly = true;
+        el.disabled = true;
+        el.style.backgroundColor = "#f3f4f6"; // Grey background
     });
+
+    // Add/Delete buttons ko chhupana
     document.querySelectorAll('button').forEach(btn => {
-        if (btn.id !== 'lock-btn' && !btn.innerText.includes("پرنٹ")) {
+        // Print button ko chhor kar baqi sab gayab
+        if (btn.id !== 'lock-btn' && !btn.innerText.includes("پرنٹ") && !btn.innerText.includes("Print")) {
             btn.style.display = "none";
         }
     });
-}
 
-// Academic structure se asatiza aur kitabein load karne ka function
-function loadAsatizaFromStructure(jamiaName) {
-    const container = document.getElementById('teachers-container');
-    const rawData = localStorage.getItem('academicStructure'); // index.html se save kiya hua data
-    
-    if (!rawData) {
-        // Agar data nahi mila toh purana tarika (3 khali rows)
-        for(let i=0; i<3; i++) addTeacherRow();
-        return;
-    }
-
-    const allEntries = JSON.parse(rawData);
-    
-    // Sirf is Jamia ka data filter karein
-    const filteredData = allEntries.filter(item => item.jamiaName === jamiaName);
-
-    if (filteredData.length > 0) {
-        container.innerHTML = ""; // Khali rows hatayein
-
-        // Teachers ke hisab se group karein
-        const groupedByTeacher = filteredData.reduce((acc, curr) => {
-            if (!acc[curr.teacherName]) acc[curr.teacherName] = [];
-            acc[curr.teacherName].push(curr);
-            return acc;
-        }, {});
-
-        // Har ustad ke liye card banayein
-        for (const teacherName in groupedByTeacher) {
-            const periods = groupedByTeacher[teacherName];
-            addTeacherWithAcademicData(teacherName, periods);
-        }
-    } else {
-        for(let i=0; i<3; i++) addTeacherRow();
+    // Lock button ka status badalna
+    const lb = document.getElementById('lock-btn');
+    if(lb) {
+        lb.innerText = "رزلٹ لاک ہے 🔒";
+        lb.disabled = true;
+        lb.classList.replace('bg-red-600', 'bg-gray-500');
     }
 }
 
@@ -723,6 +696,7 @@ function applyLockdown() {
     </script>
 </body>
 </html>
+
 
 
 
