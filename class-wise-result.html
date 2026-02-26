@@ -6,6 +6,9 @@
     <title>Class Wise Result</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <input type="hidden" id="jamiaName">
+    <input type="hidden" id="examType">
+    <input type="hidden" id="examYear">
     <style>
         .grade-input:focus { ring: 2px; outline: none; }
         .bg-mumtaz { border-left: 5px solid #4ade80; } /* Green */
@@ -106,25 +109,113 @@
         </form>
     </div>
 
-    <script>
-        // Simple logic to calculate % automatically
-        const totalInput = document.getElementById('total-std');
-        const passInput = document.getElementById('pass-std');
-        const resultDiv = document.getElementById('res-percent');
+    <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-        function updatePercentage() {
-            const total = parseFloat(totalInput.value) || 0;
-            const pass = parseFloat(passInput.value) || 0;
-            if (total > 0) {
-                const percent = (pass / total) * 100;
-                resultDiv.innerText = percent.toFixed(2) + "%";
-            } else {
-                resultDiv.innerText = "0%";
-            }
-        }
+/* ===== Firebase ===== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+  authDomain: "data-f15ab.firebaseapp.com",
+  projectId: "data-f15ab",
+  storageBucket: "data-f15ab.appspot.com",
+  messagingSenderId: "449137002393",
+  appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
+};
 
-        totalInput.addEventListener('input', updatePercentage);
-        passInput.addEventListener('input', updatePercentage);
-    </script>
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ===== URL params ===== */
+const params = new URLSearchParams(window.location.search);
+const jamiaName = params.get('jamia') || '';
+const examType = params.get('examType') || '';
+const examYear = params.get('examYear') || '';
+
+/* ===== Inputs ===== */
+const totalInput = document.getElementById('total-std');
+const passInput = document.getElementById('pass-std');
+const resultDiv = document.getElementById('res-percent');
+const darjahSelect = document.querySelector('select');
+
+/* ===== % calc ===== */
+function updatePercentage() {
+  const total = parseFloat(totalInput.value) || 0;
+  const pass = parseFloat(passInput.value) || 0;
+  if (total > 0) {
+    const percent = (pass / total) * 100;
+    resultDiv.innerText = percent.toFixed(2) + "%";
+  } else {
+    resultDiv.innerText = "0%";
+  }
+}
+totalInput.addEventListener('input', updatePercentage);
+passInput.addEventListener('input', updatePercentage);
+
+/* ===== SAVE ===== */
+async function saveData(e) {
+  e.preventDefault();
+
+  const data = {
+    jamia: jamiaName,
+    examType: examType,
+    examYear: examYear,
+    darjah: darjahSelect.value,
+    mumtaz: document.querySelectorAll('input')[0].value,
+    jayyidJidda: document.querySelectorAll('input')[1].value,
+    jayyid: document.querySelectorAll('input')[2].value,
+    nakam: document.querySelectorAll('input')[3].value,
+    total: totalInput.value,
+    passed: passInput.value,
+    percent: resultDiv.innerText,
+    timestamp: Date.now()
+  };
+
+  await addDoc(collection(db, "class_wise_results"), data);
+  alert("Result saved ✅");
+}
+
+/* ===== LOAD ===== */
+async function loadData() {
+  if (!jamiaName) return;
+
+  const q = query(
+    collection(db, "class_wise_results"),
+    where("jamia", "==", jamiaName),
+    where("examType", "==", examType),
+    where("examYear", "==", examYear)
+  );
+
+  const snap = await getDocs(q);
+  if (snap.empty) return;
+
+  const d = snap.docs[0].data();
+
+  darjahSelect.value = d.darjah || "";
+  document.querySelectorAll('input')[0].value = d.mumtaz || "";
+  document.querySelectorAll('input')[1].value = d.jayyidJidda || "";
+  document.querySelectorAll('input')[2].value = d.jayyid || "";
+  document.querySelectorAll('input')[3].value = d.nakam || "";
+  totalInput.value = d.total || "";
+  passInput.value = d.passed || "";
+
+  updatePercentage();
+}
+
+/* ===== INIT ===== */
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('jamiaName').value = jamiaName;
+  document.getElementById('examType').value = examType;
+  document.getElementById('examYear').value = examYear;
+
+  document.getElementById('display-type').innerText = decodeURIComponent(examType);
+  document.getElementById('display-year').innerText = decodeURIComponent(examYear);
+
+  loadData();
+
+  document.querySelector('form').addEventListener('submit', saveData);
+});
+</script>
 </body>
 </html>
+
