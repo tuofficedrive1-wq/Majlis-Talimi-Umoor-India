@@ -108,36 +108,57 @@ const examYear = params.get('examYear') || '';
 const isAdmin = params.get('role') === 'admin';
 const lockKey = `locked_asatiza_${jamiaName}`;
 
-async function loadFromFirestore(){
-  const q=query(
-    collection(db,"asatiza_results"),
-    where("jamia","==",jamiaName),
-    where("examYear","==",examYear),
-    where("examType","==",examType)
+async function loadFromFirestore() {
+  // Variables ko yahan read karna zaroori hai
+  const jamiaName = document.getElementById('jamiaName')?.value || "";
+  const examType = document.getElementById('examType')?.value || "";
+  const examYear = document.getElementById('examYear')?.value || "";
+
+  if (!jamiaName) {
+    alert("جامعہ کا نام ضروری ہے۔");
+    return;
+  }
+
+  const q = query(
+    collection(db, "asatiza_results"),
+    where("jamia", "==", jamiaName),
+    where("examYear", "==", examYear),
+    where("examType", "==", examType)
   );
 
-  const snap=await getDocs(q);
-  if(snap.empty) return;
+  try {
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      alert("کوئی ریکارڈ نہیں ملا۔");
+      return;
+    }
 
-  const doc=snap.docs[0].data();
-  doc.data.forEach(t=>addTeacherRow(t.teacher,t.periods));
-}
-  document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('jamia-name-head').innerText = decodeURIComponent(jamiaName);
-  if (examType) document.getElementById('display-type').innerText = decodeURIComponent(examType);
-  if (examYear) document.getElementById('display-year').innerText = decodeURIComponent(examYear);
+    // Purana table saaf karein
+    document.getElementById('main-teacher-body').innerHTML = "";
 
-  const lockBtn = document.getElementById('lock-btn');
-  const isLocked = localStorage.getItem(lockKey) === 'true';
+    const docData = snap.docs[0].data();
+    docData.data.forEach(t => {
+      if (typeof addTeacherRow === 'function') {
+        addTeacherRow(t.teacher, t.periods);
+      }
+    });
 
-  if (isAdmin) {
-    lockBtn.classList.remove('hidden');
-    updateLockButton(isLocked);
+    // 🔄 Data load hone ke baad colors aur totals update karne ke liye
+    setTimeout(() => {
+      document.querySelectorAll('#main-teacher-body .inner-table tbody tr').forEach(tr => {
+        const inputs = tr.querySelectorAll('input');
+        if (inputs[2] && typeof calcRow === 'function') {
+          calcRow(inputs[2]); // Total marks wale input par calculation trigger karein
+        }
+      });
+      alert("ڈیٹا کامیابی سے لوڈ ہو گیا ہے۔ ✅");
+    }, 100);
+
+  } catch (e) {
+    console.error("Load error: ", e);
+    alert("ڈیٹا لوڈ کرنے میں غلطی ہوئی: " + e.message);
   }
-  if (isLocked) applyLockdown();
-
-  loadSaved();
-});
+}
 
 // ===== Lock System =====
 function toggleLock(){
@@ -408,6 +429,7 @@ async function loadFirestore() {
 </script>
 </body>
 </html>
+
 
 
 
