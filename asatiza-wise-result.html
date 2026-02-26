@@ -84,7 +84,22 @@
   </div>
 </div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// 🔴 Firebase config apna lagayein
+const firebaseConfig = {
+  apiKey: "API_KEY",
+  authDomain: "PROJECT.firebaseapp.com",
+  projectId: "PROJECT_ID",
+  storageBucket: "PROJECT.appspot.com",
+  messagingSenderId: "XXXX",
+  appId: "APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 // ===== Params & Header =====
 const params = new URLSearchParams(window.location.search);
 const jamiaName = params.get('jamia') || 'Jamia';
@@ -93,7 +108,21 @@ const examYear = params.get('examYear') || '';
 const isAdmin = params.get('role') === 'admin';
 const lockKey = `locked_asatiza_${jamiaName}`;
 
-document.addEventListener('DOMContentLoaded', () => {
+async function loadFromFirestore(){
+  const q=query(
+    collection(db,"asatiza_results"),
+    where("jamia","==",jamiaName),
+    where("examYear","==",examYear),
+    where("examType","==",examType)
+  );
+
+  const snap=await getDocs(q);
+  if(snap.empty) return;
+
+  const doc=snap.docs[0].data();
+  doc.data.forEach(t=>addTeacherRow(t.teacher,t.periods));
+}
+  document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('jamia-name-head').innerText = decodeURIComponent(jamiaName);
   if (examType) document.getElementById('display-type').innerText = decodeURIComponent(examType);
   if (examYear) document.getElementById('display-year').innerText = decodeURIComponent(examYear);
@@ -275,38 +304,52 @@ function updateTotal(id){
 }
 
 // ===== Save / Load =====
-function saveData(){
-  const data=[];
+async function saveData(){
+
   const teacherRows=document.querySelectorAll('#main-teacher-body > tr');
+  const allTeachers=[];
 
   teacherRows.forEach(tr=>{
-    const nameInput=tr.children[1].querySelector('input');
-    const teacherName=nameInput?nameInput.value:'';
-
+    const teacherName=tr.children[1].querySelector('input').value;
     const periods=[];
-    const pid=tr.querySelector('tbody')?.id; // periods-1 etc
-    if(pid){
-      const rows=document.querySelectorAll(`#${pid} tr`);
-      rows.forEach(r=>{
-        const i=r.querySelectorAll('input');
-        if(i.length>=6){
-          periods.push({
-            class:i[0].value,
-            subject:i[1].value,
-            total:i[2].value,
-            passed:i[3].value,
-            percentage:i[4].value,
-            kaifiyat:i[5].value
-          });
-        }
-      });
-    }
-
-    data.push({teacher:teacherName,periods});
+    tr.querySelectorAll('tbody tr').forEach(r=>{
+      const i=r.querySelectorAll('input');
+      if(i.length>=6){
+        periods.push({
+          class:i[0].value,
+          subject:i[1].value,
+          total:i[2].value,
+          passed:i[3].value,
+          percentage:i[4].value,
+          kaifiyat:i[5].value
+        });
+      }
+    });
+    allTeachers.push({teacher:teacherName,periods});
   });
 
-  localStorage.setItem('asatiza_'+jamiaName,JSON.stringify(data));
-  alert('محفوظ ہوگیا');
+  try{
+    await addDoc(collection(db,"asatiza_results"),{
+      jamia: jamiaName,
+      examType: examType,
+      examYear: examYear,
+      data: allTeachers,
+      timestamp: Date.now()
+    });
+
+    alert("محفوظ ہوگیا ہے۔ ✅");
+  }catch(e){
+    alert("Save error: "+e.message);
+  }
+}
+  
+  // 🔥 Firestore Load
+async function loadFirestore(){
+  const q=query(collection(db,"asatiza_wise_results"),where("jamia","==",jamiaName),where("examType","==",examType),where("examYear","==",examYear));
+  const snap=await getDocs(q);
+  if(snap.empty)return;
+  const doc=snap.docs[0].data();
+  doc.data.forEach(t=>addTeacherRow(t.teacher,t.periods));
 }
 
 function loadSaved(){
@@ -335,6 +378,8 @@ function loadSaved(){
     console.warn('Old data format mismatch');
   }
 }
+  
 </script>
 </body>
 </html>
+
