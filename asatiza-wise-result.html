@@ -304,36 +304,48 @@ function updateTotal(id){
 }
 
 // ===== Save / Load =====
-async function saveData(){
-  
-const jamiaName = document.getElementById('jamiaName').value;
-const examType = document.getElementById('examType').value;
-const examYear = document.getElementById('examYear').value;
-  
-  const teacherRows=document.querySelectorAll('#main-teacher-body > tr');
-  const allTeachers=[];
+// 🔥 Firestore Save (Fixed)
+async function saveData() {
+  // Variables ko function ke andar read karna zaroori hai
+  const jamiaName = document.getElementById('jamiaName').value;
+  const examType = document.getElementById('examType').value;
+  const examYear = document.getElementById('examYear').value;
 
-  teacherRows.forEach(tr=>{
-    const teacherName=tr.children[1].querySelector('input').value;
-    const periods=[];
-    tr.querySelectorAll('tbody tr').forEach(r=>{
-      const i=r.querySelectorAll('input');
-      if(i.length>=6){
+  if (!jamiaName) {
+    alert("براہ کرم جامعہ کا نام درج کریں۔");
+    return;
+  }
+
+  const teacherRows = document.querySelectorAll(".teacher-row"); // Class use karna behtar hai
+  const allTeachers = [];
+
+  teacherRows.forEach(tr => {
+    const teacherInput = tr.querySelector('input[placeholder="استاد کا نام"]');
+    if (!teacherInput) return;
+
+    const teacherName = teacherInput.value;
+    const periods = [];
+    
+    // Sirf is teacher ki apni inner table ke rows nikalna
+    tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
+      const i = r.querySelectorAll('input');
+      if (i.length >= 6) {
         periods.push({
-          class:i[0].value,
-          subject:i[1].value,
-          total:i[2].value,
-          passed:i[3].value,
-          percentage:i[4].value,
-          kaifiyat:i[5].value
+          class: i[0].value,
+          subject: i[1].value,
+          total: i[2].value,
+          passed: i[3].value,
+          percentage: i[4].value,
+          kaifiyat: i[5].value
         });
       }
     });
-    allTeachers.push({teacher:teacherName,periods});
+    allTeachers.push({ teacher: teacherName, periods });
   });
 
-  try{
-    await addDoc(collection(db,"asatiza_results"),{
+  try {
+    // Collection name "asatiza_results" rakha hai
+    await addDoc(collection(db, "asatiza_results"), {
       jamia: jamiaName,
       examType: examType,
       examYear: examYear,
@@ -341,35 +353,49 @@ const examYear = document.getElementById('examYear').value;
       timestamp: Date.now()
     });
 
-    alert("محفوظ ہوگیا ہے۔ ✅");
-  }catch(e){
-    alert("Save error: "+e.message);
+    alert("رزلٹ کامیابی سے محفوظ ہو گیا ہے۔ ✅");
+  } catch (e) {
+    console.error("Error adding document: ", e);
+    alert("Save error: " + e.message);
   }
 }
-  
-  // 🔥 Firestore Load
-async function loadFirestore(){
-  const q=query(collection(db,"asatiza_wise_results"),where("jamia","==",jamiaName),where("examType","==",examType),where("examYear","==",examYear));
-  const snap=await getDocs(q);
-  if(snap.empty)return;
-  const doc=snap.docs[0].data();
-  doc.data.forEach(t=>addTeacherRow(t.teacher,t.periods));
-}
 
-function loadSaved(){
-  // New key (jamia-wise)
-  let raw = localStorage.getItem('asatiza_'+jamiaName);
+// 🔥 Firestore Load (Fixed)
+async function loadFirestore() {
+  const jamiaName = document.getElementById('jamiaName').value;
+  const examType = document.getElementById('examType').value;
+  const examYear = document.getElementById('examYear').value;
 
-  // Old key (previous versions)
-  if(!raw){
-    raw = localStorage.getItem('savedAsatizaResult');
+  if (!jamiaName) {
+    alert("لوڈ کرنے کے لیے جامعہ کا نام ضروری ہے۔");
+    return;
   }
 
-  if(!raw) return;
+  // Collection name wahi hona chahiye jo save me tha: "asatiza_results"
+  const q = query(
+    collection(db, "asatiza_results"), 
+    where("jamia", "==", jamiaName),
+    where("examType", "==", examType),
+    where("examYear", "==", examYear)
+  );
 
-  try{
-    const arr = JSON.parse(raw);
-    arr.forEach(t=>addTeacherRow(t.teacher,t.periods));
+  try {
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      alert("کوئی ریکارڈ نہیں ملا۔");
+      return;
+    }
+    
+    // Purana data saaf karein pehle
+    document.getElementById('main-teacher-body').innerHTML = "";
+    
+    const docData = snap.docs[0].data();
+    docData.data.forEach(t => addTeacherRow(t.teacher, t.periods));
+    alert("ڈیٹا لوڈ ہو گیا ہے۔");
+  } catch (e) {
+    alert("Load error: " + e.message);
+  }
+}
 
     // 🔄 Recalculate colors & totals after load
     setTimeout(()=>{
@@ -386,6 +412,7 @@ function loadSaved(){
 </script>
 </body>
 </html>
+
 
 
 
