@@ -102,29 +102,34 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 // ===== Params & Header =====
 const params = new URLSearchParams(window.location.search);
+
+// URL se data nikalna
 const jamiaName = params.get('jamia') || 'Jamia';
 const examType = params.get('examType') || '';
 const examYear = params.get('examYear') || '';
 const isAdmin = params.get('role') === 'admin';
-const lockKey = `locked_asatiza_${jamiaName}`;
 
+// Unique Lock Key (Exam aur Year ke mutabiq)
+const lockKey = `lock_${jamiaName}_${examType}_${examYear}`;
+
+// 🔥 Firestore Load (Corrected Scope)
 async function loadFromFirestore() {
-  // 1. Variables ko UI se read karna zaroori hai
-  const jamiaName = document.getElementById('jamiaName')?.value || "";
-  const examType = document.getElementById('examType')?.value || "";
-  const examYear = document.getElementById('examYear')?.value || "";
+  // Variables ko function ke andar read karna zaroori hai
+  const jamiaNameVal = document.getElementById('jamiaName')?.value || "";
+  const examTypeVal = document.getElementById('examType')?.value || "";
+  const examYearVal = document.getElementById('examYear')?.value || "";
 
-  if (!jamiaName) {
+  if (!jamiaNameVal) {
     alert("ڈیٹا لوڈ کرنے کے لیے جامعہ کا نام ضروری ہے۔");
     return;
   }
 
-  // 2. Query banana
+  // Query asatiza_results collection
   const q = query(
     collection(db, "asatiza_results"),
-    where("jamia", "==", jamiaName),
-    where("examYear", "==", examYear),
-    where("examType", "==", examType)
+    where("jamia", "==", jamiaNameVal),
+    where("examYear", "==", examYearVal),
+    where("examType", "==", examTypeVal)
   );
 
   try {
@@ -134,27 +139,26 @@ async function loadFromFirestore() {
       return;
     }
 
-    // 3. Purana data saaf karke naya add karna
+    // Purana table saaf karein
     document.getElementById('main-teacher-body').innerHTML = "";
+
     const docData = snap.docs[0].data();
-    
     docData.data.forEach(t => {
       if (typeof addTeacherRow === 'function') {
         addTeacherRow(t.teacher, t.periods);
       }
     });
 
-    // 4. 🔄 Recalculate colors & totals after load
+    // 🔄 Recalculate colors & totals after load
     setTimeout(() => {
       document.querySelectorAll('#main-teacher-body .inner-table tbody tr').forEach(tr => {
         const inputs = tr.querySelectorAll('input');
-        // inputs[2] total marks wala field hai
         if (inputs[2] && typeof calcRow === 'function') {
-          calcRow(inputs[2]);
+          calcRow(inputs[2]); 
         }
       });
       alert("ڈیٹا کامیابی سے لوڈ ہو گیا ہے۔ ✅");
-    }, 100);
+    }, 150);
 
   } catch (e) {
     console.error("Load error: ", e);
@@ -428,35 +432,50 @@ async function loadFirestore() {
   }
 }
 
-  document.addEventListener('DOMContentLoaded', () => {
-  // Header values set karna
-  document.getElementById('jamia-name-head').innerText = decodeURIComponent(jamiaName);
-  if (examType) document.getElementById('display-type').innerText = decodeURIComponent(examType);
-  if (examYear) document.getElementById('display-year').innerText = decodeURIComponent(examYear);
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1. Header display logic
+  const jamiaHead = document.getElementById('jamia-name-head');
+  if (jamiaHead) jamiaHead.innerText = decodeURIComponent(jamiaName);
+  
+  const typeDisp = document.getElementById('display-type');
+  if (typeDisp && examType) typeDisp.innerText = decodeURIComponent(examType);
+  
+  const yearDisp = document.getElementById('display-year');
+  if (yearDisp && examYear) yearDisp.innerText = decodeURIComponent(examYear);
 
-  // Admin lock logic
+  // 2. Admin & Lock logic
   const lockBtn = document.getElementById('lock-btn');
   const isLocked = localStorage.getItem(lockKey) === 'true';
 
-  if (typeof isAdmin !== 'undefined' && isAdmin) {
+  if (typeof isAdmin !== 'undefined' && isAdmin && lockBtn) {
     lockBtn.classList.remove('hidden');
-    if(typeof updateLockButton === 'function') updateLockButton(isLocked);
+    if (typeof updateLockButton === 'function') updateLockButton(isLocked);
   }
-  if (isLocked && typeof applyLockdown === 'function') applyLockdown();
+  
+  if (isLocked && typeof applyLockdown === 'function') {
+    applyLockdown();
+  }
 
-  // Pehle Firestore se check karein, agar wahan nahi to LocalStorage
-  loadFromFirestore().then(() => {
-    // Agar Firestore khali ho to hi loadSaved chalayein (Optional)
+  // 3. Data Loading Strategy (Hybrid)
+  try {
+    await loadFromFirestore();
+    
+    // Check agar Firestore ne table load nahi ki (empty result)
     const tableBody = document.getElementById('main-teacher-body');
-    if (tableBody.children.length === 0) {
+    if (tableBody && tableBody.children.length === 0) {
+      console.log("Firestore empty, checking LocalStorage...");
       loadSaved();
     }
-  });
+  } catch (err) {
+    console.error("Firestore loading failed, falling back to LocalStorage", err);
+    loadSaved();
+  }
 });
   
 </script>
 </body>
 </html>
+
 
 
 
