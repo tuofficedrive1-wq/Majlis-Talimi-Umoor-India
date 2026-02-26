@@ -109,16 +109,17 @@ const isAdmin = params.get('role') === 'admin';
 const lockKey = `locked_asatiza_${jamiaName}`;
 
 async function loadFromFirestore() {
-  // Variables ko yahan read karna zaroori hai
+  // 1. Variables ko UI se read karna zaroori hai
   const jamiaName = document.getElementById('jamiaName')?.value || "";
   const examType = document.getElementById('examType')?.value || "";
   const examYear = document.getElementById('examYear')?.value || "";
 
   if (!jamiaName) {
-    alert("جامعہ کا نام ضروری ہے۔");
+    alert("ڈیٹا لوڈ کرنے کے لیے جامعہ کا نام ضروری ہے۔");
     return;
   }
 
+  // 2. Query banana
   const q = query(
     collection(db, "asatiza_results"),
     where("jamia", "==", jamiaName),
@@ -133,22 +134,23 @@ async function loadFromFirestore() {
       return;
     }
 
-    // Purana table saaf karein
+    // 3. Purana data saaf karke naya add karna
     document.getElementById('main-teacher-body').innerHTML = "";
-
     const docData = snap.docs[0].data();
+    
     docData.data.forEach(t => {
       if (typeof addTeacherRow === 'function') {
         addTeacherRow(t.teacher, t.periods);
       }
     });
 
-    // 🔄 Data load hone ke baad colors aur totals update karne ke liye
+    // 4. 🔄 Recalculate colors & totals after load
     setTimeout(() => {
       document.querySelectorAll('#main-teacher-body .inner-table tbody tr').forEach(tr => {
         const inputs = tr.querySelectorAll('input');
+        // inputs[2] total marks wala field hai
         if (inputs[2] && typeof calcRow === 'function') {
-          calcRow(inputs[2]); // Total marks wale input par calculation trigger karein
+          calcRow(inputs[2]);
         }
       });
       alert("ڈیٹا کامیابی سے لوڈ ہو گیا ہے۔ ✅");
@@ -156,7 +158,7 @@ async function loadFromFirestore() {
 
   } catch (e) {
     console.error("Load error: ", e);
-    alert("ڈیٹا لوڈ کرنے میں غلطی ہوئی: " + e.message);
+    alert("Load error: " + e.message);
   }
 }
 
@@ -425,10 +427,37 @@ async function loadFirestore() {
     alert("Load error: " + e.message);
   }
 }
+
+  document.addEventListener('DOMContentLoaded', () => {
+  // Header values set karna
+  document.getElementById('jamia-name-head').innerText = decodeURIComponent(jamiaName);
+  if (examType) document.getElementById('display-type').innerText = decodeURIComponent(examType);
+  if (examYear) document.getElementById('display-year').innerText = decodeURIComponent(examYear);
+
+  // Admin lock logic
+  const lockBtn = document.getElementById('lock-btn');
+  const isLocked = localStorage.getItem(lockKey) === 'true';
+
+  if (typeof isAdmin !== 'undefined' && isAdmin) {
+    lockBtn.classList.remove('hidden');
+    if(typeof updateLockButton === 'function') updateLockButton(isLocked);
+  }
+  if (isLocked && typeof applyLockdown === 'function') applyLockdown();
+
+  // Pehle Firestore se check karein, agar wahan nahi to LocalStorage
+  loadFromFirestore().then(() => {
+    // Agar Firestore khali ho to hi loadSaved chalayein (Optional)
+    const tableBody = document.getElementById('main-teacher-body');
+    if (tableBody.children.length === 0) {
+      loadSaved();
+    }
+  });
+});
   
 </script>
 </body>
 </html>
+
 
 
 
