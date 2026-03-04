@@ -266,6 +266,17 @@ let completedTest=[];
 let completedTakmeel=[];
 let completedEnrollment=[];
 
+function normalizeJamiaList(rawList){
+if(!Array.isArray(rawList)) return [];
+return rawList.map(item=>{
+if(typeof item==="string") return item.trim();
+if(item && typeof item==="object"){
+return (item.name||item.jamiaName||"").trim();
+}
+return "";
+}).filter(Boolean);
+}
+
 // ===== AUTH =====
 onAuthStateChanged(auth,async user=>{
 if(!user){location.href="index.html";return;}
@@ -278,7 +289,7 @@ async function loadData(){
 const userDoc=await getDoc(doc(db,"users",currentUser.uid));
 if(userDoc.exists()){
 const data=userDoc.data();
-assignedJamiaat=data.assignedJamiaat||[];
+assignedJamiaat=normalizeJamiaList(data.jamiaatList||data.assignedJamiaat||[]);
 document.getElementById("inspector-display-name").textContent=data.name||"Inspector";
 document.getElementById("total-teachers").textContent=data.teachersCount||0;
 if(data.photo) document.getElementById("profile-photo").src=data.photo;
@@ -344,12 +355,33 @@ if(!container)return;
 let html='';
 assignedJamiaat.forEach(j=>{
 const done=doneList.includes(j);
+const baseUrl=window.location.origin+window.location.pathname.replace('academic-inspector.html','');
+const month=document.getElementById("report-month").value||"";
+const urlByTab={
+inspection:`jaiza-form.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(j)}&month=${encodeURIComponent(month)}`,
+recording:`tadris-recording.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(j)}&month=${encodeURIComponent(month)}`,
+'monthly-test':`monthly-test.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(j)}&month=${encodeURIComponent(month)}`,
+'takmeele-nisab':`karkardagi.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(j)}&month=${encodeURIComponent(month)}`,
+'students-enrollment':`teacher-form.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(j)}&month=${encodeURIComponent(month)}`
+};
+const tabKey=(containerId||"").replace("report-tab-","").replace("tab-","");
+const formUrl=urlByTab[tabKey]||urlByTab.inspection;
+const fullLink=baseUrl+formUrl;
 html+=`<div class="card p-4 flex justify-between items-center">
 <div>
 <div class="font-bold text-gray-800">${j}</div>
 <div class="text-sm ${done?'text-green-600':'text-orange-500'} font-medium">${done?'Completed':'Pending'}</div>
 </div>
-<button class="px-4 py-2 rounded-lg text-sm font-semibold ${done?'bg-gray-200 text-gray-600':'bg-teal-600 text-white hover:bg-teal-700'}">${done?'Done':'Start'}</button>
+<div class="flex items-center gap-2">
+<button type="button" onclick="navigator.clipboard.writeText('${fullLink}').then(()=>alert('Link Copied!'))"
+class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-xs border flex items-center transition">
+<i class="fas fa-link mr-1"></i> Copy Link
+</button>
+<a href="${formUrl}" target="_blank"
+class="${done?'bg-gray-200 text-gray-600 border-gray-300':'bg-teal-600 hover:bg-teal-700 text-white border-teal-700'} px-3 py-2 rounded text-xs border flex items-center transition font-semibold">
+<i class="fas fa-external-link-alt mr-1"></i> ${done?'View':'Open Form'}
+</a>
+</div>
 </div>`;
 });
 container.innerHTML=html||'<p class="text-gray-500 text-center py-4">No Jamiaat assigned.</p>';
