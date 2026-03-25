@@ -4903,82 +4903,49 @@ document.addEventListener('click', function (e) {
             });
             renderFinalTable(container, "Class Wise Result Detail", rowsHtml, commonHeaders);
         } 
-        else if (type === 'asatiza-wise') {
+       else if (type === 'asatiza-wise') {
     let rowsHtml = '';
     let counter = 1;
 
-    // 1. Data ko Group karein: User -> Jamia -> Teacher
-    const groupedData = {};
+    // Data ko Teacher Name ke hisab se sort karein taake list tarteeb se ho
+    const sortedData = [...allData].sort((a, b) => (a.teacherName || '').localeCompare(b.teacherName || ''));
 
-    allData.forEach(doc => {
-        const userName = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
-        const jamiaName = doc.jamiaName || 'Unknown Jamia';
-        const teacherName = doc.teacherName || doc.teacher || 'Unknown Teacher';
+    sortedData.forEach((doc) => {
+        // Aapki original file ke mutabiq calculation
+        const stds = doc.students || [];
+        const totalStu = stds.length;
         
-        // Har ustad ke liye ek unique key banayein jo unke Jamia se judi ho
-        const key = `${userName}_${jamiaName}_${teacherName}`;
-
-        if (!groupedData[key]) {
-            groupedData[key] = {
-                user: userName,
-                jamia: jamiaName,
-                teacher: teacherName,
-                rows: [],
-                totalSumPerc: 0
-            };
-        }
+        // Pass count: 40% percentage criteria
+        const passStu = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
+        const failStu = totalStu - passStu;
 
         const subPerc = parseFloat(doc.classPercentage || 0);
-        const stds = doc.students || [];
-        const passCount = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
+        const grade = getAdminSummaryGrade(subPerc); // Mumtaz, Jayyid, etc.
+        
+        // Zimmedar (User) ka naam nikalne ke liye
+        const userName = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
 
-        groupedData[key].rows.push({
-            className: doc.className || doc.class || '-',
-            subject: doc.subject || doc.sub || doc.kitab || '-',
-            total: stds.length,
-            pass: passCount,
-            percent: subPerc
-        });
-        groupedData[key].totalSumPerc += subPerc;
+        rowsHtml += `
+            <tr class="border-b hover:bg-gray-50 text-center text-[13px]">
+                <td class="p-2 border-r">${counter++}</td>
+                <td class="p-2 border-r urdu-font text-left">${userName}</td>
+                <td class="p-2 border-r urdu-font text-left font-bold text-teal-800">${doc.jamiaName || '-'}</td>
+                <td class="p-2 border-r urdu-font text-left font-bold text-purple-900">${doc.teacherName || 'N/A'}</td>
+                <td class="p-2 border-r urdu-font text-blue-800 font-semibold">${doc.className || doc.class || '-'}</td>
+                <td class="p-2 border-r urdu-font text-gray-600">${doc.subject || doc.sub || '-'}</td>
+                <td class="p-2 border-r font-bold">${totalStu}</td>
+                <td class="p-2 border-r text-green-700 font-bold">${passStu}</td>
+                <td class="p-2 border-r text-red-600 font-bold">${failStu}</td>
+                <td class="p-2 border-r font-bold">${subPerc}%</td>
+                <td class="p-2 font-bold">
+                    <span class="${getAdminGradeColor(grade)} px-2 py-0.5 rounded text-[10px] text-white font-bold">${grade}</span>
+                </td>
+            </tr>`;
     });
 
-    // 2. Grouped Data ko Table Rows mein convert karein
-    Object.values(groupedData).forEach(group => {
-        const totalEntries = group.rows.length;
-        const finalAvg = (group.totalSumPerc / totalEntries).toFixed(2);
-        const overallGrade = getAdminSummaryGrade(finalAvg);
-
-        group.rows.forEach((res, idx) => {
-            const grade = getAdminSummaryGrade(res.percent);
-            
-            rowsHtml += `
-                <tr class="border-b hover:bg-gray-50 text-center text-[12px]">
-                    ${idx === 0 ? `
-                        <td class="p-2 border-r bg-gray-50 font-bold" rowspan="${totalEntries}">${counter++}</td>
-                        <td class="p-2 border-r urdu-font text-left" rowspan="${totalEntries}">${group.user}</td>
-                        <td class="p-2 border-r urdu-font text-left font-bold text-teal-800" rowspan="${totalEntries}">${group.jamia}</td>
-                        <td class="p-2 border-r urdu-font text-left font-bold text-purple-900" rowspan="${totalEntries}">${group.teacher}</td>
-                    ` : ''}
-                    <td class="p-2 border-r urdu-font text-blue-800 font-semibold">${res.className}</td>
-                    <td class="p-2 border-r urdu-font text-gray-600">${res.subject}</td>
-                    <td class="p-2 border-r font-bold">${res.total}</td>
-                    <td class="p-2 border-r text-green-700 font-bold">${res.pass}</td>
-                    <td class="p-2 border-r font-bold">${res.percent}%</td>
-                    <td class="p-2 border-r">
-                        <span class="${getAdminGradeColor(grade)} px-2 py-0.5 rounded text-[10px] text-white font-bold">${grade}</span>
-                    </td>
-                    ${idx === 0 ? `
-                        <td class="p-2 font-bold text-indigo-700 bg-indigo-50" rowspan="${totalEntries}">
-                            <div class="text-sm">${finalAvg}%</div>
-                            <div class="text-[9px] uppercase font-black">${overallGrade}</div>
-                        </td>
-                    ` : ''}
-                </tr>`;
-        });
-    });
-
-    const headers = ["#", "User Name", "Jamia Name", "Ustaz Name", "Class", "Sub", "Total", "Pass", "Percent", "Kefiyat", "Total Result"];
-    renderFinalTable(container, "Detailed Asatiza Performance Analysis", rowsHtml, headers);
+    // Heading bilkul aapki file aur screenshot ke mutabiq
+    const headers = ["#", "User Name", "Jamia Name", "Asatiza Name", "Class", "Sub", "Total Stu", "Pass", "Fail", "Result %", "Grade"];
+    renderFinalTable(container, "Asatiza Wise Combined Result Analysis", rowsHtml, headers);
 }
     } catch (err) {
         container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
