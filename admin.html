@@ -4907,92 +4907,97 @@ document.addEventListener('click', function (e) {
     let finalHtml = '';
     let counter = 1;
 
-    // 1. Data ko Group karein: User -> Jamia -> Teacher
-    const teacherGroups = {};
-    allData.forEach(doc => {
-        // Aapke database fields ke mutabiq
-        const ustad = doc.teacherName || doc.teacher || 'N/A';
-        const jamia = doc.jamiaName || '-';
-        const user = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
-        
-        const key = `${user}_${jamia}_${ustad}`;
+    try {
+        // 1. Sahi collection se data mangwana
+        const snapshot = await getDocs(collection(db, "asatiza_wise_results"));
+        const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        if (!teacherGroups[key]) {
-            teacherGroups[key] = { user, jamia, ustad, periods: [], totalSum: 0 };
+        if (allDocs.length === 0) {
+            container.innerHTML = '<p class="text-center py-20 text-gray-500">Database mein "asatiza_wise_results" ka koi data nahi mila.</p>';
+            return;
         }
-        
-        // Har document (entry) ko as a period treat karein
-        const subPerc = parseFloat(doc.classPercentage || 0);
-        const stds = doc.students || [];
-        const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
 
-        teacherGroups[key].periods.push({
-            className: doc.className || doc.class || '-',
-            subject: doc.subject || doc.sub || doc.kitab || '-', // Subject field check
-            total: stds.length,
-            passed: pass,
-            percent: subPerc
-        });
-        teacherGroups[key].totalSum += subPerc;
-    });
+        // 2. Data loop (Har document ek Jamia aur uske saare Teachers ka data hai)
+        allDocs.forEach(doc => {
+            const jamiaName = doc.jamia || '-';
+            const teachersArray = doc.data || []; // Aapka 'data' array
 
-    // 2. Har Teacher ka Box aur Table generate karein
-    Object.values(teacherGroups).forEach(group => {
-        let rowsHtml = '';
-        const avgPerc = (group.totalSum / group.periods.length).toFixed(1);
-        const grandGrade = getKefiyat(avgPerc);
+            teachersArray.forEach(t => {
+                const ustadName = t.teacher || 'N/A';
+                const periods = t.periods || [];
+                let rowsHtml = '';
+                let totalT = 0, totalP = 0;
 
-        group.periods.forEach(p => {
-            const gradeInfo = getKefiyat(p.percent);
-            rowsHtml += `
-                <tr class="border-b text-center text-sm hover:bg-gray-50">
-                    <td class="p-2 border-r urdu-font font-semibold text-blue-700">${p.className}</td>
-                    <td class="p-2 border-r urdu-font text-gray-700">${p.subject}</td>
-                    <td class="p-2 border-r font-bold">${p.total}</td>
-                    <td class="p-2 border-r text-green-600 font-bold">${p.passed}</td>
-                    <td class="p-2 border-r font-black" style="color:${gradeInfo.color}">${p.percent}%</td>
-                    <td class="p-2 font-bold" style="color:${gradeInfo.color}">${gradeInfo.text}</td>
-                </tr>`;
-        });
+                // Har teacher ke andar ke periods (rows)
+                periods.forEach(p => {
+                    const tVal = parseFloat(p.total) || 0;
+                    const pVal = parseFloat(p.passed) || 0;
+                    totalT += tVal;
+                    totalP += pVal;
 
-        finalHtml += `
-            <div class="mb-8 bg-white rounded-xl shadow-lg border-2 border-gray-100 overflow-hidden">
-                <div class="p-4 bg-indigo-900 text-white flex justify-between items-center">
-                    <div class="flex items-center gap-4">
-                        <div class="h-10 w-10 bg-indigo-700 rounded-full flex items-center justify-center font-bold text-lg border border-indigo-500">${counter++}</div>
-                        <div>
-                            <div class="text-[10px] uppercase tracking-widest opacity-70">${group.user} | ${group.jamia}</div>
-                            <div class="text-xl font-bold urdu-font">${group.ustad}</div>
+                    const percVal = tVal > 0 ? (pVal / tVal * 100) : 0;
+                    const gradeInfo = getKefiyat(percVal); // Aapka functions wala logic
+
+                    rowsHtml += `
+                        <tr class="border-b text-center text-sm hover:bg-gray-50 transition">
+                            <td class="p-2 border-r urdu-font font-semibold text-blue-700">${p.class || '-'}</td>
+                            <td class="p-2 border-r urdu-font text-gray-700">${p.subject || '-'}</td>
+                            <td class="p-2 border-r font-bold">${tVal}</td>
+                            <td class="p-2 border-r text-green-600 font-bold">${pVal}</td>
+                            <td class="p-2 border-r font-black" style="color:${gradeInfo.color}">${percVal.toFixed(1)}%</td>
+                            <td class="p-2 font-bold urdu-font" style="color:${gradeInfo.color}">${gradeInfo.text}</td>
+                        </tr>`;
+                });
+
+                // Overall Teacher Result Calculation
+                const grandPerc = totalT > 0 ? (totalP / totalT * 100).toFixed(1) : 0;
+                const grandGrade = getKefiyat(grandPerc);
+
+                // Ek Teacher ka Mukammal Box (Design as per your code)
+                finalHtml += `
+                    <div class="mb-8 bg-white rounded-xl shadow-lg border-2 border-gray-100 overflow-hidden">
+                        <div class="p-4 bg-slate-800 text-white flex justify-between items-center flex-wrap gap-3">
+                            <div class="flex items-center gap-4">
+                                <div class="h-10 w-10 bg-slate-700 rounded-full flex items-center justify-center font-bold border border-slate-600">${counter++}</div>
+                                <div>
+                                    <div class="text-[10px] uppercase tracking-widest opacity-60">${jamiaName}</div>
+                                    <div class="text-xl font-bold urdu-font">${ustadName}</div>
+                                </div>
+                            </div>
+                            <div class="bg-white px-5 py-1 rounded-lg text-center shadow-inner" style="border: 3px solid ${grandGrade.color}">
+                                <div class="text-2xl font-black" style="color:${grandGrade.color}">${grandPerc}%</div>
+                                <div class="text-[11px] font-bold urdu-font uppercase" style="color:${grandGrade.color}">${grandGrade.text}</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="bg-white px-4 py-1 rounded-lg shadow-inner text-center min-w-[100px]" style="border: 2px solid ${grandGrade.color}">
-                        <div class="text-2xl font-black" style="color:${grandGrade.color}">${avgPerc}%</div>
-                        <div class="text-[10px] font-bold urdu-font" style="color:${grandGrade.color}">${grandGrade.text}</div>
-                    </div>
-                </div>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-gray-100 text-[11px] font-bold uppercase text-gray-600 border-b">
-                            <tr>
-                                <th class="p-2 border-r">Class</th>
-                                <th class="p-2 border-r">Subject</th>
-                                <th class="p-2 border-r">Total</th>
-                                <th class="p-2 border-r">Pass</th>
-                                <th class="p-2 border-r">Percent</th>
-                                <th class="p-2">Kefiyat</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHtml}</tbody>
-                    </table>
-                </div>
-            </div>`;
-    });
+                        <div class="overflow-x-auto">
+                            <table class="w-full border-collapse">
+                                <thead class="bg-gray-50 text-[11px] font-bold text-gray-500 border-b uppercase">
+                                    <tr>
+                                        <th class="p-2 border-r">Class</th>
+                                        <th class="p-2 border-r">Subject</th>
+                                        <th class="p-2 border-r">Total</th>
+                                        <th class="p-2 border-r">Pass</th>
+                                        <th class="p-2 border-r">Percent</th>
+                                        <th class="p-2">Kefiyat</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rowsHtml || '<tr><td colspan="6" class="p-5 text-center text-gray-400">No periods found.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </div>`;
+            });
+        });
 
-    container.innerHTML = finalHtml || '<div class="text-center py-20 text-gray-400">Database mein koi record nahi mila.</div>';
+        container.innerHTML = finalHtml || '<p class="text-center py-20 text-gray-400">Records match nahi hue.</p>';
+
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
+    }
 }
 
-// 3. Kefiyat Helper Function (Wahi logic jo aapne diya)
+// Helper Function: Kefiyat (Aapke save code ke mutabiq)
 function getKefiyat(val) {
     let k = '', color = '';
     if (val >= 90) { k = 'ممتاز'; color = '#059669'; }
