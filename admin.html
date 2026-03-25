@@ -1224,84 +1224,71 @@ document.getElementById('btn-generate-analysis').addEventListener('click', async
     const reportType = document.getElementById('analysis-report-type-select').value;
     const container = document.getElementById('analysis-report-container');
 
-    if (!reportType) { alert("Pehle Report Type select karein."); return; }
+    if (!reportType) { 
+        alert("Pehle Report Type select karein."); 
+        return; 
+    }
 
     container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Data check ho raha hai...</p></div>';
 
-    // Month Selection
+    // Month Selection logic
     const monthName = document.getElementById('admin-month-select').value;
     const yearVal = document.getElementById('admin-year-select').value;
     const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
     const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-    // --- 1. JAIZA REPORT ---
-    if (reportType === 'jaiza') {
-        renderAllUsersJaizaTable();
-    }
-    
-    // --- 2. REPORT CARD STATUS (NEW) ---
-    else if (reportType === 'report-card-status') {
-        try {
-            // Sheets fetch karein
-            const sheetsRef = collection(db, "monthly_test_sheets");
-            const q = query(sheetsRef, where("month", "==", monthKey));
-            const snapshot = await getDocs(q);
-            const allSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            renderReportCardStatusTable(allSheets); // Function Call
-        } catch (err) {
-            container.innerHTML = `<p class="text-red-500 text-center">Error: ${err.message}</p>`;
+    try {
+        // --- 1. JAIZA REPORT & STRUCTURE (Inke liye alag functions hain) ---
+        if (reportType === 'jaiza') {
+            renderAllUsersJaizaTable();
+            return;
+        } 
+        else if (reportType === 'structure-list') {
+            renderAllJamiaStructureList();
+            return;
+        } 
+        else if (reportType === 'kkd') {
+            renderKKdAnalysisTable();
+            return;
+        } 
+        else if (reportType === 'user-teachers') {
+            renderUserTeachersTable();
+            return;
         }
-    }
-    
-   // 3. MONTHLY TEST (Updated Logic)
-    else if (reportType === 'test-all' || reportType === 'test-asri') {
-        try {
-            const monthName = document.getElementById('admin-month-select').value;
-            const yearVal = document.getElementById('admin-year-select').value;
-            const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
-            const monthKey = `${yearVal}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-            const sheetsRef = collection(db, "monthly_test_sheets");
-            const q = query(sheetsRef, where("month", "==", monthKey));
-            
-            const snapshot = await getDocs(q);
-            const allTestSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // --- 2. TEST DATA FETCHING (In sab reports ke liye data fetch karna zaroori hai) ---
+        const sheetsRef = collection(db, "monthly_test_sheets");
+        const q = query(sheetsRef, where("month", "==", monthKey));
+        const snapshot = await getDocs(q);
+        
+        // Error fix: allTestSheets ko yahan define kiya taake niche ke sabhi cases ise use kar sakein
+        const allTestSheets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // NAYA FUNCTION CALL KAREIN
+        if (reportType === 'report-card-status') {
+            renderReportCardStatusTable(allTestSheets);
+        }
+        else if (reportType === 'test-all' || reportType === 'test-asri') {
             renderExactResultSummary(allTestSheets, reportType);
-
-        } catch (err) {
-            console.error(err);
-            container.innerHTML = `<p class="text-center text-red-500 py-10">Error loading test data: ${err.message}</p>`;
         }
-    }
-        // 👇 YE BLOCK ADD KAREIN 👇
-    else if (reportType === 'structure-list') {
-        renderAllJamiaStructureList();
-    }
-        // 👇 YE BLOCK ADD KAREIN 👇
-    else if (reportType === 'kkd') {
-        renderKKdAnalysisTable();
-    }
-        // btn-generate-analysis ke listener ke andar ye logic add karein
-else if (reportType === 'user-teachers') {
-    renderUserTeachersTable();
-}
-    else if (reportType === 'test-ibtidaiya-jamia') {
-    // ibtidaiya-result.html ka logic
-    renderIbtidaiyaAnalysis(allTestSheets);
-}
-else if (reportType === 'test-class-wise') {
-    // class-wise-result.html ka logic
-    renderClassWiseAnalysis(allTestSheets);
-}
-else if (reportType === 'test-asatiza-wise') {
-    // asatiza-wise-result.html ka logic
-    renderAsatizaWiseAnalysis(allTestSheets);
-}    
-    else {
-        container.innerHTML = '<p class="text-center text-gray-500 py-10">Coming Soon...</p>';
+        else if (reportType === 'test-ibtidaiya-jamia') {
+            // ibtidaiya-result.html logic
+            renderIbtidaiyaAnalysis(allTestSheets);
+        }
+        else if (reportType === 'test-class-wise') {
+            // class-wise-result (1).html logic
+            renderClassWiseAnalysis(allTestSheets);
+        }
+        else if (reportType === 'test-asatiza-wise') {
+            // asatiza-wise-result.html logic
+            renderAsatizaWiseAnalysis(allTestSheets);
+        }
+        else {
+            container.innerHTML = '<p class="text-center text-gray-500 py-10">Coming Soon...</p>';
+        }
+
+    } catch (err) {
+        console.error("Analysis Error:", err);
+        container.innerHTML = `<p class="text-center text-red-500 py-10">Error loading data: ${err.message}</p>`;
     }
 });
 document.getElementById('btn-download-analysis-excel').addEventListener('click', handleAnalysisExcelDownload);
@@ -4823,7 +4810,7 @@ const renderKKdAnalysisTable = () => {
 };
         const renderIbtidaiyaAnalysis = (allSheets) => {
     const container = document.getElementById('analysis-report-container');
-    const ibtidaiyaSheets = allSheets.filter(s => s.isIbtidaiya); // Sirf ibtidaiya data
+    const ibtidaiyaSheets = allSheets.filter(s => s.isIbtidaiya); // Sirf Ibtidaiya sheets
     
     let rowsHtml = '';
     ibtidaiyaSheets.forEach((sheet, index) => {
@@ -4857,12 +4844,10 @@ const renderKKdAnalysisTable = () => {
         const renderClassWiseAnalysis = (allSheets) => {
     const container = document.getElementById('analysis-report-container');
     let rowsHtml = '';
-    
-    allSheets.sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || '')).forEach((sheet, idx) => {
+    allSheets.forEach((sheet, idx) => {
         const students = sheet.students || [];
         const pass = students.filter(s => parseFloat(s.percentage) >= 40).length;
         const fail = students.length - pass;
-
         rowsHtml += `
             <tr class="border-b hover:bg-gray-50 text-center">
                 <td class="p-2 border-r">${idx + 1}</td>
@@ -4871,20 +4856,10 @@ const renderKKdAnalysisTable = () => {
                 <td class="p-2 border-r">${students.length}</td>
                 <td class="p-2 border-r text-green-700 font-bold">${pass}</td>
                 <td class="p-2 border-r text-red-600 font-bold">${fail}</td>
-                <td class="p-2 font-bold text-gray-800">${sheet.classPercentage}%</td>
+                <td class="p-2 font-bold">${sheet.classPercentage}%</td>
             </tr>`;
     });
-
-    container.innerHTML = `
-        <div class="bg-white rounded-lg shadow border overflow-x-auto">
-            <div class="p-3 bg-indigo-600 text-white font-bold">Class Wise Result Detail</div>
-            <table class="w-full text-sm">
-                <thead class="bg-gray-100 text-xs uppercase">
-                    <tr><th class="p-2 border">#</th><th class="p-2 border">Jamia</th><th class="p-2 border">Class</th><th class="p-2 border">Total</th><th class="p-2 border">Pass</th><th class="p-2 border">Fail</th><th class="p-2 border">%</th></tr>
-                </thead>
-                <tbody>${rowsHtml}</tbody>
-            </table>
-        </div>`;
+    container.innerHTML = `<div class="bg-white rounded-lg shadow border overflow-x-auto"><table class="w-full text-sm">...<tbody>${rowsHtml}</tbody></table></div>`;
 };
         const renderAsatizaWiseAnalysis = (allSheets) => {
     const container = document.getElementById('analysis-report-container');
