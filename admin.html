@@ -4864,10 +4864,9 @@ document.addEventListener('click', function (e) {
 
     if (!type) { alert("Pehle report type select karein."); return; }
 
-    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Pura database load ho raha hai...</p></div>';
+    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Database load ho raha hai...</p></div>';
 
     try {
-        // Bina month filter ke pura data mangwana
         const snapshot = await getDocs(collection(db, "monthly_test_sheets"));
         const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -4877,86 +4876,100 @@ document.addEventListener('click', function (e) {
         }
 
         let rowsHtml = '';
+
+        // 1. Ibtidaiya Result Logic
         if (type === 'ibtidaiya') {
             const filtered = allData.filter(s => s.isIbtidaiya === true);
             filtered.forEach((s, i) => {
                 const stds = s.students || [];
                 const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
-                rowsHtml += renderRowHtml(i, s.jamiaName, s.className || s.class, stds.length, pass, s.classPercentage);
+                const fail = stds.length - pass;
+                const perc = parseFloat(s.classPercentage || 0);
+                const grade = getAdminSummaryGrade(perc);
+
+                rowsHtml += renderUnifiedRow(i, s.jamiaName, s.className || s.class, stds.length, pass, fail, perc, grade);
             });
-            renderFinalTable(container, "Ibtidaiya Result", rowsHtml, ["#", "Jamia", "Class", "Total Stu", "Pass", "Fail", "Result %"]);
+            renderFinalTable(container, "Ibtidaiya Result Summary", rowsHtml, ["#", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"]);
         } 
+
+        // 2. Class Wise Result Logic
         else if (type === 'class-wise') {
             allData.sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || '')).forEach((s, i) => {
                 const stds = s.students || [];
                 const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
-                rowsHtml += renderRowHtml(i, s.jamiaName, s.className || s.class, stds.length, pass, s.classPercentage);
+                const fail = stds.length - pass;
+                const perc = parseFloat(s.classPercentage || 0);
+                const grade = getAdminSummaryGrade(perc);
+
+                rowsHtml += renderUnifiedRow(i, s.jamiaName, s.className || s.class, stds.length, pass, fail, perc, grade);
             });
-            renderFinalTable(container, "Class Wise Detail", rowsHtml, ["#", "Jamia", "Class", "Total", "Pass", "Fail", "%"]);
+            renderFinalTable(container, "Class Wise Result Detail", rowsHtml, ["#", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"]);
         } 
+
+        // 3. Asatiza Wise Result Logic (Sari details ke sath)
         else if (type === 'asatiza-wise') {
-    // Data ko sort karein taake Teacher Name ke hisab se tarteeb mile
-    const sortedData = [...allData].sort((a, b) => (a.teacherName || '').localeCompare(b.teacherName || ''));
+            const sorted = [...allData].sort((a, b) => (a.teacherName || '').localeCompare(b.teacherName || ''));
+            sorted.forEach((s, i) => {
+                const stds = s.students || [];
+                const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
+                const fail = stds.length - pass;
+                const perc = parseFloat(s.classPercentage || 0);
+                const grade = getAdminSummaryGrade(perc);
 
-    sortedData.forEach((s, i) => {
-        const stds = s.students || [];
-        const total = stds.length;
-        
-        // Pass aur Fail logic (40% criteria)
-        const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
-        const fail = total - pass;
-        
-        const perc = parseFloat(s.classPercentage || 0);
-        const grade = getAdminSummaryGrade(perc); // Aapka existing grade function
-
-        rowsHtml += `
-            <tr class="border-b hover:bg-gray-50 text-center text-sm">
-                <td class="p-2 border-r">${i + 1}</td>
-                <td class="p-2 border-r urdu-font text-left font-bold text-purple-900">${s.teacherName || 'N/A'}</td>
-                <td class="p-2 border-r urdu-font text-left">${s.jamiaName || 'N/A'}</td>
-                <td class="p-2 border-r urdu-font font-semibold text-indigo-700">${s.className || s.class || '-'}</td>
-                <td class="p-2 border-r font-bold">${total}</td>
-                <td class="p-2 border-r text-green-600 font-bold">${pass}</td>
-                <td class="p-2 border-r text-red-600 font-bold">${fail}</td>
-                <td class="p-2 border-r font-bold text-teal-700 bg-gray-50">${perc}%</td>
-                <td class="p-2 font-bold">
-                    <span class="${getAdminGradeColor(grade)} px-2 py-1 rounded text-xs text-white shadow-sm">${grade}</span>
-                </td>
-            </tr>`;
-    });
-
-    // Updated Table Headers (Screenshot ke mutabiq)
-    renderFinalTable(container, "Asatiza Wise Result Analysis", rowsHtml, 
-        ["#", "Asatiza Name", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"]
-    );
-}
+                rowsHtml += `
+                    <tr class="border-b hover:bg-gray-50 text-center text-sm">
+                        <td class="p-2 border-r">${i + 1}</td>
+                        <td class="p-2 border-r urdu-font text-left font-bold text-purple-900">${s.teacherName || 'N/A'}</td>
+                        <td class="p-2 border-r urdu-font text-left">${s.jamiaName || 'N/A'}</td>
+                        <td class="p-2 border-r urdu-font font-semibold text-indigo-700">${s.className || s.class || '-'}</td>
+                        <td class="p-2 border-r font-bold">${stds.length}</td>
+                        <td class="p-2 border-r text-green-600 font-bold">${pass}</td>
+                        <td class="p-2 border-r text-red-600 font-bold">${fail}</td>
+                        <td class="p-2 border-r font-bold text-teal-700 bg-gray-50">${perc}%</td>
+                        <td class="p-2 font-bold">
+                            <span class="${getAdminGradeColor(grade)} px-2 py-1 rounded text-xs text-white shadow-sm">${grade}</span>
+                        </td>
+                    </tr>`;
+            });
+            renderFinalTable(container, "Asatiza Wise Result Analysis", rowsHtml, ["#", "Asatiza Name", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"]);
+        }
     } catch (err) {
         container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
     }
 });
 
-function renderRowHtml(i, jamia, cls, total, pass, perc) {
-    return `<tr class="border-b hover:bg-gray-50 text-center text-sm">
-        <td class="p-2 border-r">${i + 1}</td>
-        <td class="p-2 border-r urdu-font font-bold text-left">${jamia || '-'}</td>
-        <td class="p-2 border-r urdu-font text-blue-700">${cls || '-'}</td>
-        <td class="p-2 border-r">${total}</td>
-        <td class="p-2 border-r text-green-600 font-bold">${pass}</td>
-        <td class="p-2 border-r text-red-600 font-bold">${total - pass}</td>
-        <td class="p-2 font-bold bg-gray-50">${perc || 0}%</td>
-    </tr>`;
+// Row rendering helper for Ibtidaiya & Class-wise
+function renderUnifiedRow(i, jamia, cls, total, pass, fail, perc, grade) {
+    return `
+        <tr class="border-b hover:bg-gray-50 text-center text-sm">
+            <td class="p-2 border-r">${i + 1}</td>
+            <td class="p-2 border-r urdu-font font-bold text-left">${jamia || '-'}</td>
+            <td class="p-2 border-r urdu-font text-blue-700 font-semibold">${cls || '-'}</td>
+            <td class="p-2 border-r font-bold">${total}</td>
+            <td class="p-2 border-r text-green-600 font-bold">${pass}</td>
+            <td class="p-2 border-r text-red-600 font-bold">${fail}</td>
+            <td class="p-2 border-r font-bold bg-gray-50">${perc}%</td>
+            <td class="p-2 font-bold">
+                <span class="${getAdminGradeColor(grade)} px-2 py-1 rounded text-xs text-white shadow-sm">${grade}</span>
+            </td>
+        </tr>`;
 }
 
+// Final Table Wrapper (Headers fix ke sath)
 function renderFinalTable(container, title, rows, headers) {
     container.innerHTML = `
         <div class="bg-white rounded-lg shadow border overflow-hidden">
-            <div class="p-3 bg-indigo-800 text-white font-bold">${title}</div>
+            <div class="p-3 bg-indigo-800 text-white font-bold urdu-font">${title}</div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm border-collapse">
                     <thead class="bg-gray-100 uppercase text-xs">
-                        <tr>${headers.map(h => `<th class="p-3 border">${h}</th>`).join('')}</tr>
+                        <tr>
+                            ${headers.map(h => `<th class="p-3 border font-bold text-gray-700">${h}</th>`).join('')}
+                        </tr>
                     </thead>
-                    <tbody>${rows || '<tr><td colspan="'+headers.length+'" class="p-10 text-center text-gray-500">No data found.</td></tr>'}</tbody>
+                    <tbody>
+                        ${rows || `<tr><td colspan="${headers.length}" class="p-10 text-center text-gray-500">No data found for this category.</td></tr>`}
+                    </tbody>
                 </table>
             </div>
         </div>`;
