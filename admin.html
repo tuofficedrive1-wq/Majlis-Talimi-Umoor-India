@@ -4907,54 +4907,57 @@ document.addEventListener('click', function (e) {
     let rowsHtml = '';
     let counter = 1;
 
-    // 1. Data ko Teacher aur Jamia ke hisab se Group karein
-    const teacherGroups = {};
+    // 1. Data ko Group karein: User -> Jamia -> Teacher
+    const groupedData = {};
 
     allData.forEach(doc => {
-        const ustad = doc.teacherName || doc.teacher || 'Unknown Teacher';
-        const jamia = doc.jamiaName || 'Unknown Jamia';
-        const user = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
+        const userName = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
+        const jamiaName = doc.jamiaName || 'Unknown Jamia';
+        const teacherName = doc.teacherName || doc.teacher || 'Unknown Teacher';
         
-        // Unique Key: User + Jamia + Teacher
-        const key = `${user}_${jamia}_${ustad}`;
+        // Har ustad ke liye ek unique key banayein jo unke Jamia se judi ho
+        const key = `${userName}_${jamiaName}_${teacherName}`;
 
-        if (!teacherGroups[key]) {
-            teacherGroups[key] = {
-                userName: user,
-                jamiaName: jamia,
-                teacherName: ustad,
-                results: [],
+        if (!groupedData[key]) {
+            groupedData[key] = {
+                user: userName,
+                jamia: jamiaName,
+                teacher: teacherName,
+                rows: [],
                 totalSumPerc: 0
             };
         }
 
         const subPerc = parseFloat(doc.classPercentage || 0);
-        teacherGroups[key].results.push({
+        const stds = doc.students || [];
+        const passCount = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
+
+        groupedData[key].rows.push({
             className: doc.className || doc.class || '-',
             subject: doc.subject || doc.sub || doc.kitab || '-',
-            total: (doc.students || []).length,
-            pass: (doc.students || []).filter(st => parseFloat(st.percentage || 0) >= 40).length,
+            total: stds.length,
+            pass: passCount,
             percent: subPerc
         });
-        teacherGroups[key].totalSumPerc += subPerc;
+        groupedData[key].totalSumPerc += subPerc;
     });
 
     // 2. Grouped Data ko Table Rows mein convert karein
-    Object.values(teacherGroups).forEach(group => {
-        const totalClasses = group.results.length;
-        const finalAvg = (group.totalSumPerc / totalClasses).toFixed(2);
+    Object.values(groupedData).forEach(group => {
+        const totalEntries = group.rows.length;
+        const finalAvg = (group.totalSumPerc / totalEntries).toFixed(2);
         const overallGrade = getAdminSummaryGrade(finalAvg);
 
-        group.results.forEach((res, idx) => {
+        group.rows.forEach((res, idx) => {
             const grade = getAdminSummaryGrade(res.percent);
             
             rowsHtml += `
                 <tr class="border-b hover:bg-gray-50 text-center text-[12px]">
                     ${idx === 0 ? `
-                        <td class="p-2 border-r bg-gray-50" rowspan="${totalClasses}">${counter++}</td>
-                        <td class="p-2 border-r urdu-font text-left font-medium" rowspan="${totalClasses}">${group.userName}</td>
-                        <td class="p-2 border-r urdu-font text-left font-bold text-teal-800" rowspan="${totalClasses}">${group.jamiaName}</td>
-                        <td class="p-2 border-r urdu-font text-left font-bold text-purple-900" rowspan="${totalClasses}">${group.teacherName}</td>
+                        <td class="p-2 border-r bg-gray-50 font-bold" rowspan="${totalEntries}">${counter++}</td>
+                        <td class="p-2 border-r urdu-font text-left" rowspan="${totalEntries}">${group.user}</td>
+                        <td class="p-2 border-r urdu-font text-left font-bold text-teal-800" rowspan="${totalEntries}">${group.jamia}</td>
+                        <td class="p-2 border-r urdu-font text-left font-bold text-purple-900" rowspan="${totalEntries}">${group.teacher}</td>
                     ` : ''}
                     <td class="p-2 border-r urdu-font text-blue-800 font-semibold">${res.className}</td>
                     <td class="p-2 border-r urdu-font text-gray-600">${res.subject}</td>
@@ -4965,17 +4968,17 @@ document.addEventListener('click', function (e) {
                         <span class="${getAdminGradeColor(grade)} px-2 py-0.5 rounded text-[10px] text-white font-bold">${grade}</span>
                     </td>
                     ${idx === 0 ? `
-                        <td class="p-2 font-bold text-indigo-700 bg-indigo-50" rowspan="${totalClasses}">
+                        <td class="p-2 font-bold text-indigo-700 bg-indigo-50" rowspan="${totalEntries}">
                             <div class="text-sm">${finalAvg}%</div>
-                            <div class="text-[10px] uppercase">${overallGrade}</div>
+                            <div class="text-[9px] uppercase font-black">${overallGrade}</div>
                         </td>
                     ` : ''}
                 </tr>`;
         });
     });
 
-    const asatizaHeaders = ["#", "User Name", "Jamia Name", "Ustaz Name", "Class", "Sub", "Total", "Pass", "Percent", "Kefiyat", "Grand Total %"];
-    renderFinalTable(container, "Detailed Asatiza Performance Analysis (Grouped)", rowsHtml, asatizaHeaders);
+    const headers = ["#", "User Name", "Jamia Name", "Ustaz Name", "Class", "Sub", "Total", "Pass", "Percent", "Kefiyat", "Total Result"];
+    renderFinalTable(container, "Detailed Asatiza Performance Analysis", rowsHtml, headers);
 }
     } catch (err) {
         container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
