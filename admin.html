@@ -4907,49 +4907,75 @@ document.addEventListener('click', function (e) {
     let rowsHtml = '';
     let counter = 1;
 
-    // Sorting: Teacher Name ke hisab se tarteeb dena
-    const sortedData = [...allData].sort((a, b) => (a.teacherName || '').localeCompare(b.teacherName || ''));
+    // 1. Data ko Teacher aur Jamia ke hisab se Group karein
+    const teacherGroups = {};
 
-    sortedData.forEach((doc) => {
-        // Agar aapke database mein 'subjects' ya 'asatiza_results' ka array hai
-        // Hum yahan direct document ke main fields aur students array ka calculation use kar rahe hain
+    allData.forEach(doc => {
+        const ustad = doc.teacherName || doc.teacher || 'Unknown Teacher';
+        const jamia = doc.jamiaName || 'Unknown Jamia';
+        const user = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
         
-        const stds = doc.students || [];
-        const totalStu = stds.length;
-        
-        // Pass count: 40% marks ke mutabiq
-        const passStu = stds.filter(st => {
-            const p = parseFloat(st.percentage || 0);
-            return p >= 40;
-        }).length;
+        // Unique Key: User + Jamia + Teacher
+        const key = `${user}_${jamia}_${ustad}`;
 
-        const teacher = doc.teacherName || doc.teacher || 'N/A';
-        const className = doc.className || doc.class || '-';
-        const subject = doc.subject || doc.sub || doc.kitab || '-';
+        if (!teacherGroups[key]) {
+            teacherGroups[key] = {
+                userName: user,
+                jamiaName: jamia,
+                teacherName: ustad,
+                results: [],
+                totalSumPerc: 0
+            };
+        }
+
         const subPerc = parseFloat(doc.classPercentage || 0);
-        
-        // Kefiyat (Grade) calculation
-        const grade = getAdminSummaryGrade(subPerc); 
-        const totalPerc = parseFloat(doc.overallPercentage || doc.classPercentage || 0);
-
-        rowsHtml += `
-            <tr class="border-b hover:bg-gray-50 text-center text-[13px]">
-                <td class="p-2 border-r">${counter++}</td>
-                <td class="p-2 border-r urdu-font text-left font-bold text-purple-900">${teacher}</td>
-                <td class="p-2 border-r urdu-font text-blue-800 font-semibold">${className}</td>
-                <td class="p-2 border-r urdu-font text-gray-700">${subject}</td>
-                <td class="p-2 border-r font-bold">${totalStu}</td>
-                <td class="p-2 border-r text-green-700 font-bold">${passStu}</td>
-                <td class="p-2 border-r font-bold">${subPerc}%</td>
-                <td class="p-2 border-r">
-                    <span class="${getAdminGradeColor(grade)} px-2 py-0.5 rounded text-[10px] text-white font-bold">${grade}</span>
-                </td>
-                <td class="p-2 font-bold text-teal-700 bg-teal-50">${totalPerc}%</td>
-            </tr>`;
+        teacherGroups[key].results.push({
+            className: doc.className || doc.class || '-',
+            subject: doc.subject || doc.sub || doc.kitab || '-',
+            total: (doc.students || []).length,
+            pass: (doc.students || []).filter(st => parseFloat(st.percentage || 0) >= 40).length,
+            percent: subPerc
+        });
+        teacherGroups[key].totalSumPerc += subPerc;
     });
 
-    const asatizaHeaders = ["#", "Ustaz Name", "Class", "Sub", "Total", "Pass", "Percent", "Kefiyat", "Total Percent"];
-    renderFinalTable(container, "Asatiza Wise Performance Analysis Detail", rowsHtml, asatizaHeaders);
+    // 2. Grouped Data ko Table Rows mein convert karein
+    Object.values(teacherGroups).forEach(group => {
+        const totalClasses = group.results.length;
+        const finalAvg = (group.totalSumPerc / totalClasses).toFixed(2);
+        const overallGrade = getAdminSummaryGrade(finalAvg);
+
+        group.results.forEach((res, idx) => {
+            const grade = getAdminSummaryGrade(res.percent);
+            
+            rowsHtml += `
+                <tr class="border-b hover:bg-gray-50 text-center text-[12px]">
+                    ${idx === 0 ? `
+                        <td class="p-2 border-r bg-gray-50" rowspan="${totalClasses}">${counter++}</td>
+                        <td class="p-2 border-r urdu-font text-left font-medium" rowspan="${totalClasses}">${group.userName}</td>
+                        <td class="p-2 border-r urdu-font text-left font-bold text-teal-800" rowspan="${totalClasses}">${group.jamiaName}</td>
+                        <td class="p-2 border-r urdu-font text-left font-bold text-purple-900" rowspan="${totalClasses}">${group.teacherName}</td>
+                    ` : ''}
+                    <td class="p-2 border-r urdu-font text-blue-800 font-semibold">${res.className}</td>
+                    <td class="p-2 border-r urdu-font text-gray-600">${res.subject}</td>
+                    <td class="p-2 border-r font-bold">${res.total}</td>
+                    <td class="p-2 border-r text-green-700 font-bold">${res.pass}</td>
+                    <td class="p-2 border-r font-bold">${res.percent}%</td>
+                    <td class="p-2 border-r">
+                        <span class="${getAdminGradeColor(grade)} px-2 py-0.5 rounded text-[10px] text-white font-bold">${grade}</span>
+                    </td>
+                    ${idx === 0 ? `
+                        <td class="p-2 font-bold text-indigo-700 bg-indigo-50" rowspan="${totalClasses}">
+                            <div class="text-sm">${finalAvg}%</div>
+                            <div class="text-[10px] uppercase">${overallGrade}</div>
+                        </td>
+                    ` : ''}
+                </tr>`;
+        });
+    });
+
+    const asatizaHeaders = ["#", "User Name", "Jamia Name", "Ustaz Name", "Class", "Sub", "Total", "Pass", "Percent", "Kefiyat", "Grand Total %"];
+    renderFinalTable(container, "Detailed Asatiza Performance Analysis (Grouped)", rowsHtml, asatizaHeaders);
 }
     } catch (err) {
         container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
