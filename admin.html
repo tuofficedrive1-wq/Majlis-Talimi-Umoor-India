@@ -4904,48 +4904,101 @@ document.addEventListener('click', function (e) {
             renderFinalTable(container, "Class Wise Result Detail", rowsHtml, commonHeaders);
         } 
        else if (type === 'asatiza-wise') {
-    let rowsHtml = '';
+    let finalHtml = '';
     let counter = 1;
 
-    // Data ko Teacher Name ke hisab se sort karein taake list tarteeb se ho
-    const sortedData = [...allData].sort((a, b) => (a.teacherName || '').localeCompare(b.teacherName || ''));
+    // 1. Data ko Teacher ke hisab se group karein (Nested Structure)
+    const teacherGroups = {};
+    allData.forEach(doc => {
+        const ustad = doc.teacherName || doc.teacher || 'Unknown';
+        const jamia = doc.jamiaName || '-';
+        const user = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
+        const key = `${user}_${jamia}_${ustad}`;
 
-    sortedData.forEach((doc) => {
-        // Aapki original file ke mutabiq calculation
-        const stds = doc.students || [];
-        const totalStu = stds.length;
+        if (!teacherGroups[key]) {
+            teacherGroups[key] = { user, jamia, ustad, periods: [] };
+        }
         
-        // Pass count: 40% percentage criteria
-        const passStu = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
-        const failStu = totalStu - passStu;
-
-        const subPerc = parseFloat(doc.classPercentage || 0);
-        const grade = getAdminSummaryGrade(subPerc); // Mumtaz, Jayyid, etc.
-        
-        // Zimmedar (User) ka naam nikalne ke liye
-        const userName = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
-
-        rowsHtml += `
-            <tr class="border-b hover:bg-gray-50 text-center text-[13px]">
-                <td class="p-2 border-r">${counter++}</td>
-                <td class="p-2 border-r urdu-font text-left">${userName}</td>
-                <td class="p-2 border-r urdu-font text-left font-bold text-teal-800">${doc.jamiaName || '-'}</td>
-                <td class="p-2 border-r urdu-font text-left font-bold text-purple-900">${doc.teacherName || 'N/A'}</td>
-                <td class="p-2 border-r urdu-font text-blue-800 font-semibold">${doc.className || doc.class || '-'}</td>
-                <td class="p-2 border-r urdu-font text-gray-600">${doc.subject || doc.sub || '-'}</td>
-                <td class="p-2 border-r font-bold">${totalStu}</td>
-                <td class="p-2 border-r text-green-700 font-bold">${passStu}</td>
-                <td class="p-2 border-r text-red-600 font-bold">${failStu}</td>
-                <td class="p-2 border-r font-bold">${subPerc}%</td>
-                <td class="p-2 font-bold">
-                    <span class="${getAdminGradeColor(grade)} px-2 py-0.5 rounded text-[10px] text-white font-bold">${grade}</span>
-                </td>
-            </tr>`;
+        // Har sheet se periods/subjects nikalna
+        teacherGroups[key].periods.push({
+            className: doc.className || doc.class || '-',
+            subject: doc.subject || doc.sub || '-',
+            total: parseInt(doc.students?.length || 0),
+            passed: (doc.students || []).filter(st => parseFloat(st.percentage || 0) >= 40).length,
+            percent: parseFloat(doc.classPercentage || 0)
+        });
     });
 
-    // Heading bilkul aapki file aur screenshot ke mutabiq
-    const headers = ["#", "User Name", "Jamia Name", "Asatiza Name", "Class", "Sub", "Total Stu", "Pass", "Fail", "Result %", "Grade"];
-    renderFinalTable(container, "Asatiza Wise Combined Result Analysis", rowsHtml, headers);
+    // 2. Har Teacher ke liye ek Table Container banana (Jese asatiza-wise file mein hai)
+    Object.values(teacherGroups).forEach(group => {
+        let rowsHtml = '';
+        let totalT = 0, totalP = 0;
+
+        group.periods.forEach(p => {
+            totalT += p.total;
+            totalP += p.passed;
+            const gradeInfo = getKefiyat(p.percent);
+
+            rowsHtml += `
+                <tr class="border-b text-center text-sm">
+                    <td class="p-2 border-r urdu-font text-blue-700">${p.className}</td>
+                    <td class="p-2 border-r urdu-font">${p.subject}</td>
+                    <td class="p-2 border-r font-bold">${p.total}</td>
+                    <td class="p-2 border-r text-green-600">${p.passed}</td>
+                    <td class="p-2 border-r font-bold" style="color:${gradeInfo.color}">${p.percent}%</td>
+                    <td class="p-2 font-bold" style="color:${gradeInfo.color}">${gradeInfo.text}</td>
+                </tr>`;
+        });
+
+        const grandPerc = totalT > 0 ? (totalP / totalT * 100).toFixed(1) : 0;
+        const grandGrade = getKefiyat(grandPerc);
+
+        finalHtml += `
+            <div class="mb-10 bg-white rounded-lg shadow-md border overflow-hidden">
+                <div class="p-3 bg-indigo-900 text-white flex flex-wrap justify-between items-center gap-2">
+                    <div class="flex items-center gap-4">
+                        <span class="bg-indigo-800 px-3 py-1 rounded text-lg font-bold">#${counter++}</span>
+                        <div>
+                            <div class="text-xs opacity-80">${group.user} | ${group.jamia}</div>
+                            <div class="text-lg font-bold urdu-font">${group.ustad}</div>
+                        </div>
+                    </div>
+                    <div class="bg-white text-gray-900 px-4 py-1 rounded text-center border-2" style="border-color:${grandGrade.color}">
+                        <div class="text-xl font-black" style="color:${grandGrade.color}">${grandPerc}%</div>
+                        <div class="text-[10px] font-bold uppercase" style="color:${grandGrade.color}">${grandGrade.text}</div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 text-[11px] font-bold uppercase text-gray-600 border-b">
+                            <tr>
+                                <th class="p-2 border-r">Class</th>
+                                <th class="p-2 border-r">Subject</th>
+                                <th class="p-2 border-r">Total</th>
+                                <th class="p-2 border-r">Pass</th>
+                                <th class="p-2 border-r">Percent</th>
+                                <th class="p-2">Kefiyat</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    });
+
+    container.innerHTML = finalHtml || '<p class="text-center py-20">No data found.</p>';
+}
+
+// 3. Kefiyat Helper Function (Wahi logic jo aapne diya)
+function getKefiyat(val) {
+    let k = '', color = '';
+    if (val >= 90) { k = 'ممتاز'; color = '#059669'; }
+    else if (val >= 70) { k = 'بہتر'; color = '#2563eb'; }
+    else if (val >= 60) { k = 'مناسب'; color = '#d97706'; }
+    else if (val >= 51) { k = 'کمزور'; color = '#7c3aed'; }
+    else { k = 'تشویش ناک'; color = '#dc2626'; }
+    return { text: k, color: color };
 }
     } catch (err) {
         container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
