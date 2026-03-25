@@ -4893,16 +4893,68 @@ document.addEventListener('click', function (e) {
             renderFinalTable(container, "Ibtidaiya Result Summary", rowsHtml, commonHeaders);
         } 
         else if (type === 'class-wise') {
-            allData.sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || '')).forEach((s, i) => {
-                const stds = s.students || [];
-                const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
-                const fail = stds.length - pass;
-                const perc = parseFloat(s.classPercentage || 0);
-                const grade = getAdminSummaryGrade(perc);
-                rowsHtml += renderUnifiedRow(i, s.jamiaName, s.className || s.class, stds.length, pass, fail, perc, grade);
-            });
-            renderFinalTable(container, "Class Wise Result Detail", rowsHtml, commonHeaders);
-        } 
+    let finalHtml = '';
+    let counter = 1;
+
+    try {
+        // 1. Sahi collection (class_wise_results) se data mangwana
+        const snapshot = await getDocs(collection(db, "class_wise_results"));
+        const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        if (allDocs.length === 0) {
+            container.innerHTML = '<p class="text-center py-20 text-gray-500">Database mein "class_wise_results" ka koi data nahi mila.</p>';
+            return;
+        }
+
+        // 2. Data ko Jamia ke hisab se sort karein
+        allDocs.sort((a, b) => (a.jamia || '').localeCompare(b.jamia || ''));
+
+        let rowsHtml = '';
+        allDocs.forEach(doc => {
+            const jamia = doc.jamia || '-';
+            const darjah = doc.darjah || '-';
+            const total = parseFloat(doc.total) || 0;
+            const pass = parseFloat(doc.passed) || 0;
+            const fail = parseFloat(doc.nakam) || 0;
+            const ghaib = parseFloat(doc.ghaib) || 0;
+            
+            // Percentage nikalna (%)
+            const percStr = doc.percent || "0%";
+            const percVal = parseFloat(percStr.replace('%', '')) || 0;
+            
+            // Kefiyat (Kaifiyat) nikalna aapke logic se
+            const gradeInfo = getKefiyatLogic(percVal);
+            
+            // Zimmedar (User) ka naam
+            const userName = allUsersData.find(u => u.id === doc.adminUid)?.name || 'N/A';
+
+            rowsHtml += `
+                <tr class="border-b hover:bg-gray-50 text-center text-[13px]">
+                    <td class="p-2 border-r bg-gray-50">${counter++}</td>
+                    <td class="p-2 border-r urdu-font text-left text-gray-600">${userName}</td>
+                    <td class="p-2 border-r urdu-font text-left font-bold text-teal-800">${jamia}</td>
+                    <td class="p-2 border-r urdu-font text-blue-800 font-bold">${darjah}</td>
+                    <td class="p-2 border-r font-bold">${total}</td>
+                    <td class="p-2 border-r text-green-600 font-bold">${pass}</td>
+                    <td class="p-2 border-r text-red-600 font-bold">${fail}</td>
+                    <td class="p-2 border-r text-gray-500">${ghaib}</td>
+                    <td class="p-2 border-r font-black" style="color:${gradeInfo.color}">${percVal.toFixed(1)}%</td>
+                    <td class="p-2 font-bold urdu-font" style="color:${gradeInfo.color}">
+                        <span class="px-2 py-0.5 rounded text-[10px] text-white" style="background-color:${gradeInfo.color}">
+                            ${gradeInfo.text}
+                        </span>
+                    </td>
+                </tr>`;
+        });
+
+        const headers = ["#", "User Name", "Jamia Name", "Darjah (Class)", "Total", "Pass", "Fail", "Absent", "Percent", "Kefiyat"];
+        renderFinalTable(container, "Class Wise Result Detailed Analysis", rowsHtml, headers);
+
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
+    }
+}
        else if (type === 'asatiza-wise') {
     let finalHtml = '';
     let counter = 1;
