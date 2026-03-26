@@ -3,21 +3,21 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-const getResultGrade = (p) => {
+// Naya Kefiyat Logic jo aapne diya hai
+const getJamiaKefiyat = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
-    if (val >= 90) return "ممتاز";
-    if (val >= 70) return "بہتر";
-    if (val >= 50) return "مناسب";
+    if (val >= 85) return "ممتاز مع شرف";
+    if (val >= 76) return "ممتاز";
+    if (val >= 61) return "بہتر";
+    if (val >= 40) return "مناسب";
     return "کمزور";
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
-    if (!db) return;
+    if (!db || !user) return;
     const container = document.getElementById(containerId);
     if (!container) return;
-
-    // result-analysis.js ke andar is hisse ko update karein:
 
     container.innerHTML = `
       <div class="max-w-4xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
@@ -26,27 +26,28 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
-                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm">
                         <option value="ششماہی امتحان">ششماہی امتحان</option>
                         <option value="سالانہ امتحان">سالانہ امتحان</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
-                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm">
                         <option value="2024-25">2024-25</option>
                         <option value="2025-26" selected>2025-26</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
-                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
                         <option value="">Tamam Jamiaat (All)</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700">
+                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700">
+                        <option value="jamia">Jamia Wise Summary</option>
                         <option value="class">Class Wise Summary</option>
                         <option value="teacher">Asatiza Wise Summary</option>
                     </select>
@@ -76,7 +77,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         </div>
       </div>
     `;
-    
+
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
@@ -101,14 +102,58 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         tbody.innerHTML = '';
 
         try {
-            const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
+            const collectionName = (layoutLevel === 'class' || layoutLevel === 'jamia') ? "class_wise_results" : "asatiza_wise_results"; 
             const colRef = collection(db, collectionName); 
             
-            // Client side filter ke liye hum jamia name ka use karenge
             let q = query(colRef, where("examType", "==", examType), where("examYear", "==", examYear));
             const snap = await getDocs(q);
 
-            if (layoutLevel === 'class') {
+            if (layoutLevel === 'jamia') {
+                // Jamia Wise Logic: Class data ko group karna
+                thead.innerHTML = `
+                    <tr class="bg-gray-200">
+                        <th class="border p-2">#</th>
+                        <th class="border p-2">جامعہ کا نام</th>
+                        <th class="border p-2">کل طلبہ</th>
+                        <th class="border p-2 text-green-700">کامیاب</th>
+                        <th class="border p-2 text-red-600">ناکام</th>
+                        <th class="border p-2">فیصد</th>
+                        <th class="border p-2">کیفیت</th>
+                    </tr>`;
+
+                let jamiaStats = {};
+
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+                        if (!jamiaStats[d.jamia]) {
+                            jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0 };
+                        }
+                        jamiaStats[d.jamia].total += parseInt(d.total) || 0;
+                        jamiaStats[d.jamia].passed += parseInt(d.passed) || 0;
+                        jamiaStats[d.jamia].nakam += parseInt(d.nakam) || 0;
+                    }
+                });
+
+                let idx = 1;
+                for (let jName in jamiaStats) {
+                    const s = jamiaStats[jName];
+                    const perc = s.total > 0 ? ((s.passed / s.total) * 100).toFixed(2) : "0.00";
+                    const kefiyat = getJamiaKefiyat(perc);
+                    
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border p-2">${idx++}</td>
+                            <td class="border p-2 font-bold text-right">${jName}</td>
+                            <td class="border p-2 font-bold">${s.total}</td>
+                            <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
+                            <td class="border p-2 text-red-600 font-bold">${s.nakam}</td>
+                            <td class="border p-2 bg-teal-50 font-black text-teal-800">${perc}%</td>
+                            <td class="border p-2 font-bold">${kefiyat}</td>
+                        </tr>`;
+                }
+            } else if (layoutLevel === 'class') {
+                // Class Wise Logic
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th>
@@ -128,7 +173,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
                 snap.forEach(doc => {
                     const d = doc.data();
-                    // Sirf user ke apne jamiaat ka data filter karein
                     if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
                         tbody.innerHTML += `
                             <tr class="hover:bg-gray-50 border-b">
@@ -149,6 +193,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     }
                 });
             } else {
+                // Asatiza Wise Logic
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th>
@@ -166,7 +211,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     const d = doc.data();
                     if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
                         if (d.data && Array.isArray(d.data)) {
-                            d.data.forEach((tEntry, tIdx) => {
+                            d.data.forEach((tEntry) => {
                                 const tName = tEntry.teacher || "-";
                                 const periodsCount = tEntry.periods?.length || 1;
                                 
@@ -182,7 +227,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                                             <td class="border p-2 text-red-600">${fail}</td>
                                             <td class="border p-2 font-bold">${p.percentage || '0%'}</td>
                                             <td class="border p-2">${p.kaifiyat || '-'}</td>
-                                            ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-black text-teal-800" rowspan="${periodsCount}">${getResultGrade(p.percentage)}</td>` : ''}
+                                            ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-black text-teal-800" rowspan="${periodsCount}">${p.percentage || '0%'}</td>` : ''}
                                         </tr>`;
                                 });
                             });
