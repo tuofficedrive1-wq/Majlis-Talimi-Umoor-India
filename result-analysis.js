@@ -3,7 +3,6 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Grade nikalne ka logic jo aapke forms ke mutabiq hai
 const getResultGrade = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
@@ -14,15 +13,10 @@ const getResultGrade = (p) => {
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
-    if (!db) {
-        console.error("Firestore 'db' instance is missing in initResultAnalysis");
-        return;
-    }
-
+    if (!db) return;
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // --- HTML STRUCTURE ---
     container.innerHTML = `
       <div class="bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
         <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
@@ -30,33 +24,33 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
-                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm">
                         <option value="ششماہی امتحان">ششماہی امتحان</option>
                         <option value="سالانہ امتحان">سالانہ امتحان</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
-                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm">
                         <option value="2024-25">2024-25</option>
                         <option value="2025-26" selected>2025-26</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
-                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
                         <option value="">Tamam Jamiaat (All)</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700">
+                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700">
                         <option value="class">Class Wise Summary</option>
                         <option value="teacher">Asatiza Wise Summary</option>
                     </select>
                 </div>
             </div>
-            <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
+            <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition">
                 <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
             </button>
         </div>
@@ -72,7 +66,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans text-center"></p>
             </div>
             <div class="w-full overflow-x-auto">
-                <table class="w-full min-w-full text-center text-sm border-collapse" dir="rtl">
+                <table class="w-full min-w-full text-center text-[11px] border-collapse" dir="rtl">
                     <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></thead>
                     <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
                 </table>
@@ -81,133 +75,133 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
       </div>
     `;
 
-    // Jamia populate logic
     const jamiaSelect = document.getElementById('ra-jamia-filter');
-    const jamiaat = userProfileData.jamiaatList || [];
-    jamiaat.forEach(j => { 
+    const userJamiaat = userProfileData.jamiaatList || [];
+    userJamiaat.forEach(j => { 
         const opt = document.createElement('option');
         opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
     });
 
-    // --- FETCH FUNCTION ---
     const fetchResultData = async () => {
-    const examType = document.getElementById('ra-exam-type').value;
-    const examYear = document.getElementById('ra-exam-year').value;
-    const jamiaFilter = document.getElementById('ra-jamia-filter').value;
-    const layoutLevel = document.getElementById('ra-layout-level').value;
-    
-    const loader = document.getElementById('ra-loader');
-    const reportArea = document.getElementById('ra-report-area');
-    const thead = document.getElementById('ra-table-head');
-    const tbody = document.getElementById('ra-table-body');
-    const subtitle = document.getElementById('ra-report-subtitle');
-
-    loader.classList.remove('hidden');
-    reportArea.classList.add('hidden');
-    tbody.innerHTML = '';
-
-    try {
-        // Collection selection
-        const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
-        const colRef = collection(db, collectionName); 
+        const examType = document.getElementById('ra-exam-type').value;
+        const examYear = document.getElementById('ra-exam-year').value;
+        const jamiaFilter = document.getElementById('ra-jamia-filter').value;
+        const layoutLevel = document.getElementById('ra-layout-level').value;
         
-        // --- UPDATED QUERY WITH UID FILTER ---
-        // 'user.uid' ka istemal karke user-specific data filter kiya gaya hai
-        let q;
-        if (jamiaFilter) {
-            q = query(
-                colRef, 
-                where("uid", "==", user.uid), 
-                where("jamia", "==", jamiaFilter), 
-                where("examType", "==", examType), 
-                where("examYear", "==", examYear)
-            );
-        } else {
-            q = query(
-                colRef, 
-                where("uid", "==", user.uid), 
-                where("examType", "==", examType), 
-                where("examYear", "==", examYear)
-            );
-        }
+        const loader = document.getElementById('ra-loader');
+        const reportArea = document.getElementById('ra-report-area');
+        const thead = document.getElementById('ra-table-head');
+        const tbody = document.getElementById('ra-table-body');
+        const subtitle = document.getElementById('ra-report-subtitle');
 
-        const snap = await getDocs(q);
-        let rowData = [];
+        loader.classList.remove('hidden');
+        reportArea.classList.add('hidden');
+        tbody.innerHTML = '';
 
-        snap.forEach(doc => {
-            const d = doc.data();
+        try {
+            const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
+            const colRef = collection(db, collectionName); 
+            
+            // Client side filter ke liye hum jamia name ka use karenge
+            let q = query(colRef, where("examType", "==", examType), where("examYear", "==", examYear));
+            const snap = await getDocs(q);
+
             if (layoutLevel === 'class') {
-                rowData.push({
-                    jamia: d.jamia || '-', 
-                    label: d.darjah || '-', 
-                    total: d.total || '0',
-                    pass: d.passed || '0', 
-                    fail: (parseInt(d.total) - parseInt(d.passed)) || '0', 
-                    perc: d.percent || '0%',
-                    grade: d.kaifiyat || getResultGrade(d.percent)
+                thead.innerHTML = `
+                    <tr class="bg-gray-200">
+                        <th class="border p-2">جامعہ</th>
+                        <th class="border p-2">درجہ</th>
+                        <th class="border p-2">ممتاز مع الشرف</th>
+                        <th class="border p-2">ممتاز</th>
+                        <th class="border p-2">جید جدا</th>
+                        <th class="border p-2">جید</th>
+                        <th class="border p-2">مقبول</th>
+                        <th class="border p-2">مجاز ضمنی</th>
+                        <th class="border p-2 text-red-600">ناکام</th>
+                        <th class="border p-2 text-gray-500">غیر حاضر</th>
+                        <th class="border p-2">کل</th>
+                        <th class="border p-2 text-green-700">کامیاب</th>
+                        <th class="border p-2">فیصد</th>
+                    </tr>`;
+
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    // Sirf user ke apne jamiaat ka data filter karein
+                    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+                        tbody.innerHTML += `
+                            <tr class="hover:bg-gray-50 border-b">
+                                <td class="border p-2 font-bold">${d.jamia}</td>
+                                <td class="border p-2">${d.darjah || '-'}</td>
+                                <td class="border p-2">${d.mumtazSharf || '0'}</td>
+                                <td class="border p-2">${d.mumtaz || '0'}</td>
+                                <td class="border p-2">${d.jayyidJidda || '0'}</td>
+                                <td class="border p-2">${d.jayyid || '0'}</td>
+                                <td class="border p-2">${d.maqbool || '0'}</td>
+                                <td class="border p-2">${d.majazZimni || '0'}</td>
+                                <td class="border p-2 text-red-600 font-bold">${d.nakam || '0'}</td>
+                                <td class="border p-2 text-gray-500">${d.ghaib || '0'}</td>
+                                <td class="border p-2 font-bold">${d.total || '0'}</td>
+                                <td class="border p-2 text-green-700 font-bold">${d.passed || '0'}</td>
+                                <td class="border p-2 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
+                            </tr>`;
+                    }
                 });
             } else {
-                if (d.data && Array.isArray(d.data)) {
-                    d.data.forEach(tEntry => {
-                        const tName = tEntry.teacher || "-";
-                        if (tEntry.periods && Array.isArray(tEntry.periods)) {
-                            tEntry.periods.forEach(p => {
-                                rowData.push({
-                                    jamia: d.jamia || '-', 
-                                    label: `${tName} (${p.class || '-'})`,
-                                    total: p.total || '0', 
-                                    pass: p.passed || '0',
-                                    fail: (parseInt(p.total) - parseInt(p.passed)) || '0',
-                                    perc: p.percentage || '0%', 
-                                    grade: p.kaifiyat || getResultGrade(p.percentage)
+                thead.innerHTML = `
+                    <tr class="bg-gray-200">
+                        <th class="border p-2">جامعہ</th>
+                        <th class="border p-2">استاد کا نام</th>
+                        <th class="border p-2">مضمون (درجہ)</th>
+                        <th class="border p-2">کل طلبہ</th>
+                        <th class="border p-2 text-green-700">کامیاب</th>
+                        <th class="border p-2 text-red-600">ناکام</th>
+                        <th class="border p-2">فیصد</th>
+                        <th class="border p-2">کیفیت</th>
+                        <th class="border p-2 bg-teal-100">مجموعی فیصد</th>
+                    </tr>`;
+
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+                        if (d.data && Array.isArray(d.data)) {
+                            d.data.forEach((tEntry, tIdx) => {
+                                const tName = tEntry.teacher || "-";
+                                const periodsCount = tEntry.periods?.length || 1;
+                                
+                                tEntry.periods?.forEach((p, pIdx) => {
+                                    const fail = (parseInt(p.total) - parseInt(p.passed)) || 0;
+                                    tbody.innerHTML += `
+                                        <tr class="hover:bg-gray-50 border-b">
+                                            ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle" rowspan="${periodsCount}">${d.jamia}</td>` : ''}
+                                            ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle text-blue-700" rowspan="${periodsCount}">${tName}</td>` : ''}
+                                            <td class="border p-2 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                            <td class="border p-2">${p.total || '0'}</td>
+                                            <td class="border p-2 text-green-700 font-bold">${p.passed || '0'}</td>
+                                            <td class="border p-2 text-red-600">${fail}</td>
+                                            <td class="border p-2 font-bold">${p.percentage || '0%'}</td>
+                                            <td class="border p-2">${p.kaifiyat || '-'}</td>
+                                            ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-black text-teal-800" rowspan="${periodsCount}">${getResultGrade(p.percentage)}</td>` : ''}
+                                        </tr>`;
                                 });
                             });
                         }
-                    });
-                }
+                    }
+                });
             }
-        });
 
-        if (rowData.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
-        } else {
+            if (tbody.innerHTML === '') {
+                tbody.innerHTML = `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
+            }
+
             subtitle.textContent = `${examType} | سال: ${examYear}`;
-            thead.innerHTML = `
-                <tr>
-                    <th class="px-4 py-3 border-l">#</th>
-                    <th class="px-4 py-3 border-l">جامعہ</th>
-                    <th class="px-4 py-3 border-l">${layoutLevel === 'class' ? 'درجہ' : 'استاذ (درجہ)'}</th>
-                    <th class="px-4 py-3 border-l">کل طلبہ</th>
-                    <th class="px-4 py-3 border-l text-green-700">کامیاب</th>
-                    <th class="px-4 py-3 border-l text-red-700">ناکام</th>
-                    <th class="px-4 py-3 border-l">فیصد (%)</th>
-                    <th class="px-4 py-3">کیفیت</th>
-                </tr>
-            `;
-
-            rowData.forEach((row, index) => {
-                tbody.innerHTML += `
-                    <tr class="hover:bg-indigo-50 border-b">
-                        <td class="px-4 py-3 border-l">${index + 1}</td>
-                        <td class="px-4 py-3 border-l urdu-font text-right">${row.jamia}</td>
-                        <td class="px-4 py-3 border-l urdu-font text-right">${row.label}</td>
-                        <td class="px-4 py-3 border-l font-sans">${row.total}</td>
-                        <td class="px-4 py-3 border-l font-sans text-green-700 font-bold">${row.pass}</td>
-                        <td class="px-4 py-3 border-l font-sans text-red-700">${row.fail}</td>
-                        <td class="px-4 py-3 border-l font-sans font-bold">${row.perc}</td>
-                        <td class="px-4 py-3 font-bold urdu-font">${row.grade}</td>
-                    </tr>
-                `;
-            });
+            loader.classList.add('hidden');
+            reportArea.classList.remove('hidden');
+        } catch (err) {
+            console.error(err);
+            loader.classList.add('hidden');
+            alert("ڈیٹا لوڈ کرنے میں مسئلہ پیش آیا۔");
         }
-        loader.classList.add('hidden');
-        reportArea.classList.remove('hidden');
-    } catch (err) {
-        console.error("Fetch Error:", err);
-        loader.classList.add('hidden');
-        alert("ڈیٹا لوڈ کرنے میں مسئلہ پیش آیا۔");
-    }
-};
+    };
 
     document.getElementById('ra-show-btn').onclick = fetchResultData;
 }
