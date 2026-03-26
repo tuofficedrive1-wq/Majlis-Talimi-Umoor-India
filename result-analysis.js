@@ -1,11 +1,9 @@
 // Filename: result-analysis.js
-// Purpose: Result Summary and Analysis for Class-wise and Asatiza-wise data
-
 import {
-    collection, query, where, getDocs, orderBy
+    collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Helper: Grade Logic for Exam Results
+// Helper: Grade Logic
 const getResultGrade = (p) => {
     if (!p && p !== 0) return "-";
     if (p >= 80) return "ممتاز";
@@ -14,12 +12,11 @@ const getResultGrade = (p) => {
     return "کمزور";
 };
 
-// Main Function
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // --- HTML STRUCTURE ---
+    // --- HTML STRUCTURE (Filters & Full Width Table) ---
     container.innerHTML = `
       <div class="bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
         
@@ -28,14 +25,14 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Imtihan ka Qism (Exam Type)</label>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
                     <select id="ra-exam-type" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
                         <option value="ششماہی امتحان">ششماہی امتحان (Half Yearly)</option>
                         <option value="سالانہ امتحان">سالانہ امتحان (Annual)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal (Year)</label>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
                     <select id="ra-exam-year" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
                         <option value="2024-25">2024-25</option>
                         <option value="2025-26" selected>2025-26</option>
@@ -49,7 +46,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700">
                         <option value="class">Class Wise Summary</option>
                         <option value="teacher">Asatiza Wise Summary</option>
                     </select>
@@ -63,10 +60,10 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
         <div id="ra-loader" class="hidden text-center py-8">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
-            <p class="mt-2 text-indigo-600 font-semibold">Result data analyze ho raha hai...</p>
+            <p class="mt-2 text-indigo-600 font-semibold">Data analyze ho raha hai...</p>
         </div>
 
-        <div id="ra-report-area" class="hidden mt-6 bg-white rounded-lg border border-gray-200 overflow-hidden w-full">
+        <div id="ra-report-area" class="hidden mt-6 bg-white rounded-lg border border-gray-200 w-full overflow-hidden shadow-sm">
             <div class="bg-indigo-700 text-white p-4 text-center border-b-4 border-indigo-900">
                 <h2 id="ra-report-title" class="text-2xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
                 <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans"></p>
@@ -74,7 +71,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
             <div class="w-full overflow-x-auto">
                 <table class="w-full min-w-full text-center text-sm border-collapse" dir="rtl">
-                    <thead id="ra-table-head">
+                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">
                         </thead>
                     <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white">
                         </tbody>
@@ -91,7 +88,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
     });
 
-    // 2. Button Click Event
+    // 2. Click Event
     document.getElementById('ra-show-btn').addEventListener('click', () => fetchResultData(db, user));
 }
 
@@ -112,10 +109,8 @@ async function fetchResultData(db, user) {
     tbody.innerHTML = '';
 
     try {
-        // Query both or specific collections based on layout
-        // Assuming both types are stored in 'class_wise_results' with a flag, 
-        // OR separate collections. Here we use 'class_wise_results' as primary.
-        const collectionName = "class_wise_results"; 
+        // Aapke database collection ka naam
+        const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
         
         const qRef = collection(db, collectionName);
         const q = query(
@@ -127,29 +122,23 @@ async function fetchResultData(db, user) {
 
         const snap = await getDocs(q);
         let results = [];
-        snap.forEach(doc => {
-            const data = doc.data();
-            // Filter based on layout level if needed (e.g., if data has teacherName or className)
-            results.push(data);
-        });
+        snap.forEach(doc => results.push(doc.data()));
 
         if (jamiaFilter) {
             results = results.filter(r => r.jamiaName === jamiaFilter);
         }
 
         if (results.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="10" class="py-10 text-red-500 font-bold bg-white">Is selection ke liye koi data nahi mila. Check karein ke result fill kiya gaya hai ya nahi.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" class="py-10 text-red-500 font-bold bg-white">Is selection ke liye data nahi mila. Collection Name: ${collectionName} check karein.</td></tr>`;
         } else {
-            subtitle.textContent = `${examType} (${layoutLevel === 'class' ? 'Class Wise' : 'Asatiza Wise'}) | Session: ${examYear}`;
+            subtitle.textContent = `${examType} | ${layoutLevel === 'class' ? 'Class Wise' : 'Asatiza Wise'} Summary | Taleemi Saal: ${examYear}`;
             
-            // Dynamic Header based on Filter
             thead.innerHTML = `
-                <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">
+                <tr>
                     <th class="px-4 py-3 border-l border-slate-200">#</th>
                     <th class="px-4 py-3 border-l border-slate-200">جامعہ</th>
                     <th class="px-4 py-3 border-l border-slate-200">${layoutLevel === 'class' ? 'درجہ (Class)' : 'استاذ (Teacher)'}</th>
                     <th class="px-4 py-3 border-l border-slate-200">کل طلبہ</th>
-                    <th class="px-4 py-3 border-l border-slate-200">شریک</th>
                     <th class="px-4 py-3 border-l border-slate-200 text-green-700">کامیاب</th>
                     <th class="px-4 py-3 border-l border-slate-200 text-red-700">ناکام</th>
                     <th class="px-4 py-3 border-l border-slate-200">فیصد (%)</th>
@@ -161,27 +150,25 @@ async function fetchResultData(db, user) {
 
             results.forEach((res, index) => {
                 const total = parseInt(res.totalStudents || 0);
-                const appeared = parseInt(res.appearedStudents || 0);
+                const appeared = parseInt(res.appearedStudents || total); 
                 const pass = parseInt(res.passStudents || 0);
                 const fail = appeared - pass;
                 const perc = appeared > 0 ? ((pass / appeared) * 100).toFixed(1) : 0;
                 const grade = getResultGrade(parseFloat(perc));
                 
-                // Display Class Name or Teacher Name based on layout
-                const secondaryInfo = layoutLevel === 'class' ? (res.className || '-') : (res.teacherName || '-');
+                const levelName = layoutLevel === 'class' ? (res.className || '-') : (res.teacherName || '-');
 
                 let gradeColor = "text-gray-700";
                 if (grade === "ممتاز") gradeColor = "text-emerald-700 font-bold";
                 else if (grade === "بہتر") gradeColor = "text-blue-600 font-bold";
-                else if (grade === "کمzor") gradeColor = "text-red-600 font-bold";
+                else if (grade === "کمزور") gradeColor = "text-red-600 font-bold";
 
                 tbody.innerHTML += `
                     <tr class="hover:bg-indigo-50 border-b border-gray-100 transition-colors">
                         <td class="px-4 py-3 border-l border-gray-100">${index + 1}</td>
                         <td class="px-4 py-3 border-l border-gray-100">${res.jamiaName}</td>
-                        <td class="px-4 py-3 border-l border-gray-100">${secondaryInfo}</td>
+                        <td class="px-4 py-3 border-l border-gray-100">${levelName}</td>
                         <td class="px-4 py-3 border-l border-gray-100 font-sans">${total}</td>
-                        <td class="px-4 py-3 border-l border-gray-100 font-sans">${appeared}</td>
                         <td class="px-4 py-3 border-l border-gray-100 font-sans text-green-700 font-bold">${pass}</td>
                         <td class="px-4 py-3 border-l border-gray-100 font-sans text-red-700">${fail}</td>
                         <td class="px-4 py-3 border-l border-gray-100 font-sans font-bold">${perc}%</td>
@@ -197,6 +184,6 @@ async function fetchResultData(db, user) {
     } catch (err) {
         console.error("Result Analysis Error:", err);
         loader.classList.add('hidden');
-        alert("Result load karne mein masla aaya. Internet check karein.");
+        alert("Data load karne mein masla aaya.");
     }
 }
