@@ -1,9 +1,9 @@
 // Filename: result-analysis.js
 import {
-    collection, query, where, getDocs
+    collection, query, where, getDocs, orderBy
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Jamia Wise Kefiyat Logic jo aapne diya hai
+// Jamia Wise Kefiyat Logic
 const getJamiaKefiyat = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
@@ -19,7 +19,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // --- HTML STRUCTURE (Option Add Kar Diya Gaya Hai) ---
     container.innerHTML = `
       <div class="max-w-4xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
         <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
@@ -79,7 +78,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
       </div>
     `;
 
-    // Dropdown mein Jamiaat list bharna
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
@@ -104,15 +102,35 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         tbody.innerHTML = '';
 
         try {
-            // Collection select karna
             const collectionName = (layoutLevel === 'class' || layoutLevel === 'jamia') ? "class_wise_results" : "asatiza_wise_results"; 
             const colRef = collection(db, collectionName); 
             
-            let q = query(colRef, where("examType", "==", examType), where("examYear", "==", examYear));
+            // Latest entries pehle lane ke liye timestamp se sort kiya
+            let q = query(colRef, 
+                where("examType", "==", examType), 
+                where("examYear", "==", examYear),
+                orderBy("timestamp", "desc")
+            );
+            
             const snap = await getDocs(q);
+            
+            // --- Latest Entry Filter Logic ---
+            let latestDataMap = new Map();
+
+            snap.forEach(doc => {
+                const d = doc.data();
+                if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+                    // Unique Key banayein (Jamia + Darjah/Class)
+                    // Asatiza wise ke liye sirf Jamia key kaafi hai kyunki wo poora array ek doc mein hota hai
+                    const uniqueKey = layoutLevel === 'teacher' ? d.jamia : `${d.jamia}_${d.darjah}`;
+                    
+                    if (!latestDataMap.has(uniqueKey)) {
+                        latestDataMap.set(uniqueKey, d);
+                    }
+                }
+            });
 
             if (layoutLevel === 'jamia') {
-                // Jamia Wise Aggregation Logic
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">#</th>
@@ -125,25 +143,19 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     </tr>`;
 
                 let jamiaStats = {};
-
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                        if (!jamiaStats[d.jamia]) {
-                            jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0 };
-                        }
-                        jamiaStats[d.jamia].total += parseInt(d.total) || 0;
-                        jamiaStats[d.jamia].passed += parseInt(d.passed) || 0;
-                        jamiaStats[d.jamia].nakam += parseInt(d.nakam) || 0;
+                latestDataMap.forEach((d) => {
+                    if (!jamiaStats[d.jamia]) {
+                        jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0 };
                     }
+                    jamiaStats[d.jamia].total += parseInt(d.total) || 0;
+                    jamiaStats[d.jamia].passed += parseInt(d.passed) || 0;
+                    jamiaStats[d.jamia].nakam += parseInt(d.nakam) || 0;
                 });
 
                 let idx = 1;
                 for (let jName in jamiaStats) {
                     const s = jamiaStats[jName];
                     const percNum = s.total > 0 ? (s.passed / s.total) * 100 : 0;
-                    const kefiyat = getJamiaKefiyat(percNum);
-                    
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-50 border-b">
                             <td class="border p-2">${idx++}</td>
@@ -152,89 +164,69 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                             <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
                             <td class="border p-2 text-red-600 font-bold">${s.nakam}</td>
                             <td class="border p-2 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
-                            <td class="border p-2 font-bold">${kefiyat}</td>
+                            <td class="border p-2 font-bold">${getJamiaKefiyat(percNum)}</td>
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
-                // Class Wise Detail
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
-                        <th class="border p-2">جامعہ</th>
-                        <th class="border p-2">درجہ</th>
-                        <th class="border p-2">ممتاز مع الشرف</th>
-                        <th class="border p-2">ممتاز</th>
-                        <th class="border p-2">جید جدا</th>
-                        <th class="border p-2">جید</th>
-                        <th class="border p-2">مقبول</th>
-                        <th class="border p-2">مجاز ضمنی</th>
-                        <th class="border p-2 text-red-600">ناکام</th>
-                        <th class="border p-2 text-gray-500">غیر حاضر</th>
-                        <th class="border p-2">کل</th>
-                        <th class="border p-2 text-green-700">کامیاب</th>
-                        <th class="border p-2">فیصد</th>
+                        <th class="border p-2">جامعہ</th><th class="border p-2">درجہ</th>
+                        <th class="border p-2">ممتاز مع الشرف</th><th class="border p-2">ممتاز</th>
+                        <th class="border p-2">جید جدا</th><th class="border p-2">جید</th>
+                        <th class="border p-2">مقبول</th><th class="border p-2">مجاز ضمنی</th>
+                        <th class="border p-2 text-red-600">ناکام</th><th class="border p-2 text-gray-500">غیر حاضر</th>
+                        <th class="border p-2">کل</th><th class="border p-2 text-green-700">کامیاب</th><th class="border p-2">فیصد</th>
                     </tr>`;
 
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                        tbody.innerHTML += `
-                            <tr class="hover:bg-gray-50 border-b">
-                                <td class="border p-2 font-bold">${d.jamia}</td>
-                                <td class="border p-2">${d.darjah || '-'}</td>
-                                <td class="border p-2">${d.mumtazSharf || '0'}</td>
-                                <td class="border p-2">${d.mumtaz || '0'}</td>
-                                <td class="border p-2">${d.jayyidJidda || '0'}</td>
-                                <td class="border p-2">${d.jayyid || '0'}</td>
-                                <td class="border p-2">${d.maqbool || '0'}</td>
-                                <td class="border p-2">${d.majazZimni || '0'}</td>
-                                <td class="border p-2 text-red-600 font-bold">${d.nakam || '0'}</td>
-                                <td class="border p-2 text-gray-500">${d.ghaib || '0'}</td>
-                                <td class="border p-2 font-bold">${d.total || '0'}</td>
-                                <td class="border p-2 text-green-700 font-bold">${d.passed || '0'}</td>
-                                <td class="border p-2 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
-                            </tr>`;
-                    }
+                latestDataMap.forEach((d) => {
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border p-2 font-bold">${d.jamia}</td>
+                            <td class="border p-2">${d.darjah || '-'}</td>
+                            <td class="border p-2">${d.mumtazSharf || '0'}</td>
+                            <td class="border p-2">${d.mumtaz || '0'}</td>
+                            <td class="border p-2">${d.jayyidJidda || '0'}</td>
+                            <td class="border p-2">${d.jayyid || '0'}</td>
+                            <td class="border p-2">${d.maqbool || '0'}</td>
+                            <td class="border p-2">${d.majazZimni || '0'}</td>
+                            <td class="border p-2 text-red-600 font-bold">${d.nakam || '0'}</td>
+                            <td class="border p-2 text-gray-500">${d.ghaib || '0'}</td>
+                            <td class="border p-2 font-bold">${d.total || '0'}</td>
+                            <td class="border p-2 text-green-700 font-bold">${d.passed || '0'}</td>
+                            <td class="border p-2 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
+                        </tr>`;
                 });
             } else {
-                // Asatiza Wise
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
-                        <th class="border p-2">جامعہ</th>
-                        <th class="border p-2">استاد کا نام</th>
-                        <th class="border p-2">مضمون (درجہ)</th>
-                        <th class="border p-2">کل طلبہ</th>
-                        <th class="border p-2 text-green-700">کامیاب</th>
-                        <th class="border p-2 text-red-600">ناکام</th>
-                        <th class="border p-2">فیصد</th>
-                        <th class="border p-2">کیفیت</th>
+                        <th class="border p-2">جامعہ</th><th class="border p-2">استاد کا نام</th>
+                        <th class="border p-2">مضمون (درجہ)</th><th class="border p-2">کل طلبہ</th>
+                        <th class="border p-2 text-green-700">کامیاب</th><th class="border p-2 text-red-600">ناکام</th>
+                        <th class="border p-2">فیصد</th><th class="border p-2">کیفیت</th>
                         <th class="border p-2 bg-teal-100">کیفیت (استاد)</th>
                     </tr>`;
 
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                        if (d.data && Array.isArray(d.data)) {
-                            d.data.forEach((tEntry) => {
-                                const tName = tEntry.teacher || "-";
-                                const periodsCount = tEntry.periods?.length || 1;
-                                
-                                tEntry.periods?.forEach((p, pIdx) => {
-                                    const fail = (parseInt(p.total) - parseInt(p.passed)) || 0;
-                                    tbody.innerHTML += `
-                                        <tr class="hover:bg-gray-50 border-b">
-                                            ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle" rowspan="${periodsCount}">${d.jamia}</td>` : ''}
-                                            ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle text-blue-700" rowspan="${periodsCount}">${tName}</td>` : ''}
-                                            <td class="border p-2 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-                                            <td class="border p-2">${p.total || '0'}</td>
-                                            <td class="border p-2 text-green-700 font-bold">${p.passed || '0'}</td>
-                                            <td class="border p-2 text-red-600">${fail}</td>
-                                            <td class="border p-2 font-bold">${p.percentage || '0%'}</td>
-                                            <td class="border p-2">${p.kaifiyat || '-'}</td>
-                                            ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-bold text-teal-800" rowspan="${periodsCount}">${getJamiaKefiyat(p.percentage)}</td>` : ''}
-                                        </tr>`;
-                                });
+                latestDataMap.forEach((d) => {
+                    if (d.data && Array.isArray(d.data)) {
+                        d.data.forEach((tEntry) => {
+                            const tName = tEntry.teacher || "-";
+                            const periodsCount = tEntry.periods?.length || 1;
+                            tEntry.periods?.forEach((p, pIdx) => {
+                                const fail = (parseInt(p.total) - parseInt(p.passed)) || 0;
+                                tbody.innerHTML += `
+                                    <tr class="hover:bg-gray-50 border-b">
+                                        ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle" rowspan="${periodsCount}">${d.jamia}</td>` : ''}
+                                        ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle text-blue-700" rowspan="${periodsCount}">${tName}</td>` : ''}
+                                        <td class="border p-2 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                        <td class="border p-2">${p.total || '0'}</td>
+                                        <td class="border p-2 text-green-700 font-bold">${p.passed || '0'}</td>
+                                        <td class="border p-2 text-red-600">${fail}</td>
+                                        <td class="border p-2 font-bold">${p.percentage || '0%'}</td>
+                                        <td class="border p-2">${p.kaifiyat || '-'}</td>
+                                        ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-bold text-teal-800" rowspan="${periodsCount}">${getJamiaKefiyat(p.percentage)}</td>` : ''}
+                                    </tr>`;
                             });
-                        }
+                        });
                     }
                 });
             }
@@ -249,7 +241,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         } catch (err) {
             console.error(err);
             loader.classList.add('hidden');
-            alert("ڈیٹا لوڈ کرنے میں مسئلہ پیش آیا۔");
+            alert("ڈیٹا لوڈ کرنے میں مسئلہ پیش آیا۔ (Check Browser Console for Index Link)");
         }
     };
 
