@@ -3,17 +3,17 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// Grade nikalne ka logic jo aapke forms ke mutabiq hai
 const getResultGrade = (p) => {
-    let val = parseFloat(p);
+    let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
-    if (val >= 80) return "ممتاز";
-    if (val >= 60) return "بہتر";
-    if (val >= 40) return "مناسب";
+    if (val >= 90) return "ممتاز";
+    if (val >= 70) return "بہتر";
+    if (val >= 50) return "مناسب";
     return "کمزور";
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
-    // Check if db is valid
     if (!db) {
         console.error("Firestore 'db' instance is missing in initResultAnalysis");
         return;
@@ -81,7 +81,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
       </div>
     `;
 
-    // Jamia populate
+    // Jamia populate logic
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const jamiaat = userProfileData.jamiaatList || [];
     jamiaat.forEach(j => { 
@@ -89,7 +89,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
     });
 
-    // --- FETCH FUNCTION INSIDE INIT TO CAPTURE DB ---
+    // --- FETCH FUNCTION ---
     const fetchResultData = async () => {
         const examType = document.getElementById('ra-exam-type').value;
         const examYear = document.getElementById('ra-exam-year').value;
@@ -107,9 +107,8 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         tbody.innerHTML = '';
 
         try {
+            // Mapping collection based on your form files
             const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
-            
-            // Explicitly use the db passed to initResultAnalysis
             const colRef = collection(db, collectionName); 
             
             let q;
@@ -125,22 +124,31 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             snap.forEach(doc => {
                 const d = doc.data();
                 if (layoutLevel === 'class') {
+                    // Logic from class-wise-result (1).html
                     rowData.push({
-                        jamia: d.jamia || '-', label: d.darjah || '-', total: d.total || '0',
-                        pass: d.passed || '0', fail: d.nakam || '0', perc: d.percent || '0%',
+                        jamia: d.jamia || '-', 
+                        label: d.darjah || '-', 
+                        total: d.total || '0',
+                        pass: d.passed || '0', 
+                        fail: (parseInt(d.total) - parseInt(d.passed)) || '0', 
+                        perc: d.percent || '0%',
                         grade: d.kaifiyat || getResultGrade(d.percent)
                     });
                 } else {
+                    // Logic from asatiza-wise-result.html
                     if (d.data && Array.isArray(d.data)) {
                         d.data.forEach(tEntry => {
                             const tName = tEntry.teacher || "-";
                             if (tEntry.periods && Array.isArray(tEntry.periods)) {
                                 tEntry.periods.forEach(p => {
                                     rowData.push({
-                                        jamia: d.jamia || '-', label: `${tName} (${p.class || '-'})`,
-                                        total: p.total || '0', pass: p.passed || '0',
+                                        jamia: d.jamia || '-', 
+                                        label: `${tName} (${p.class || '-'})`,
+                                        total: p.total || '0', 
+                                        pass: p.passed || '0',
                                         fail: (parseInt(p.total) - parseInt(p.passed)) || '0',
-                                        perc: p.percentage || '0%', grade: p.kaifiyat || getResultGrade(p.percentage)
+                                        perc: p.percentage || '0%', 
+                                        grade: p.kaifiyat || getResultGrade(p.percentage)
                                     });
                                 });
                             }
