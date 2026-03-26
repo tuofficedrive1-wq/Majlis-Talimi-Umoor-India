@@ -17,40 +17,42 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // result-analysis.js ke andar is hisse ko update karein:
+
     container.innerHTML = `
-      <div class="bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
+      <div class="max-w-4xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
         <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
             <h4 class="text-sm font-bold text-indigo-700 uppercase mb-3 border-b border-indigo-200 pb-1">Result Analysis Filters</h4>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
-                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm">
+                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
                         <option value="ششماہی امتحان">ششماہی امتحان</option>
                         <option value="سالانہ امتحان">سالانہ امتحان</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
-                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm">
+                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
                         <option value="2024-25">2024-25</option>
                         <option value="2025-26" selected>2025-26</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
-                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
+                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-indigo-500">
                         <option value="">Tamam Jamiaat (All)</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700">
+                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-700">
                         <option value="class">Class Wise Summary</option>
                         <option value="teacher">Asatiza Wise Summary</option>
                     </select>
                 </div>
             </div>
-            <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition">
+            <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
                 <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
             </button>
         </div>
@@ -74,7 +76,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         </div>
       </div>
     `;
-
+    
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
