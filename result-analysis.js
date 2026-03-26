@@ -1,13 +1,15 @@
 // Filename: result-analysis.js
 import {
     collection, query, where, getDocs
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// Helper: Grade Logic
 const getResultGrade = (p) => {
-    if (!p && p !== 0) return "-";
-    if (p >= 80) return "ممتاز";
-    if (p >= 60) return "بہتر";
-    if (p >= 40) return "مناسب";
+    let val = parseFloat(p);
+    if (isNaN(val)) return "-";
+    if (val >= 80) return "ممتاز";
+    if (val >= 60) return "بہتر";
+    if (val >= 40) return "مناسب";
     return "کمزور";
 };
 
@@ -61,7 +63,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         <div id="ra-report-area" class="hidden mt-6 bg-white rounded-lg border border-gray-200 w-full overflow-hidden shadow-sm">
             <div class="bg-indigo-700 text-white p-4 text-center border-b-4 border-indigo-900">
                 <h2 id="ra-report-title" class="text-2xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
-                <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans"></p>
+                <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans text-center"></p>
             </div>
             <div class="w-full overflow-x-auto">
                 <table class="w-full min-w-full text-center text-sm border-collapse" dir="rtl">
@@ -97,54 +99,57 @@ async function fetchResultData(db, user) {
     tbody.innerHTML = '';
 
     try {
+        // Correct Collection Selection
         const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
         const qRef = collection(db, collectionName);
         
-        // Query filters (Aapke DB fields se match kiya gaya)
+        // Query construction based on your Firebase screenshots
         const q = query(
             qRef, 
-            where("adminUid", "==", user.uid),
+            where("jamia", "==", jamiaFilter || ""), // Screenshot shows 'jamia' key
             where("examType", "==", examType),
             where("examYear", "==", examYear)
         );
 
-        const snap = await getDocs(q);
+        // If no jamia is selected, we need to query differently or handle manually
+        let finalQuery = q;
+        if (!jamiaFilter) {
+            finalQuery = query(collection(db, collectionName), where("examType", "==", examType), where("examYear", "==", examYear));
+        }
+
+        const snap = await getDocs(finalQuery);
         let rowData = [];
 
         snap.forEach(doc => {
             const d = doc.data();
             
             if (layoutLevel === 'class') {
-                // Class Wise Layout: Fields 'jamia', 'darjah', 'percent', 'passed' etc.
-                if (!jamiaFilter || d.jamia === jamiaFilter) {
-                    rowData.push({
-                        jamia: d.jamia || '-',
-                        label: d.darjah || '-',
-                        total: d.totalStudents || d.kul_talaba || '-',
-                        pass: d.passed || '0',
-                        fail: d.nakam || '0',
-                        perc: d.percent || '0%',
-                        grade: d.kaifiyat || getResultGrade(parseFloat(d.percent))
-                    });
-                }
+                // Class Wise: Uses passed, total, darjah, percent
+                rowData.push({
+                    jamia: d.jamia || '-',
+                    label: d.darjah || '-',
+                    total: d.total || '0',
+                    pass: d.passed || '0',
+                    fail: d.nakam || '0',
+                    perc: d.percent || '0%',
+                    grade: d.kaifiyat || getResultGrade(d.percent)
+                });
             } else {
-                // Asatiza Wise Layout: Data array ke andar 'periods' array hai
+                // Asatiza Wise: Data array -> teacher -> periods array
                 if (d.data && Array.isArray(d.data)) {
-                    d.data.forEach(teacherObj => {
-                        const tName = teacherObj.teacherName || "-";
-                        if (teacherObj.periods && Array.isArray(teacherObj.periods)) {
-                            teacherObj.periods.forEach(p => {
-                                if (!jamiaFilter || d.jamia === jamiaFilter) {
-                                    rowData.push({
-                                        jamia: d.jamia || '-',
-                                        label: `${tName} (${p.class || p.darja || ''})`,
-                                        total: p.total || '0',
-                                        pass: p.passed || '0',
-                                        fail: (parseInt(p.total) - parseInt(p.passed)) || '0',
-                                        perc: p.percentage || '0%',
-                                        grade: p.kaifiyat || getResultGrade(parseFloat(p.percentage))
-                                    });
-                                }
+                    d.data.forEach(tEntry => {
+                        const tName = tEntry.teacher || "-";
+                        if (tEntry.periods && Array.isArray(tEntry.periods)) {
+                            tEntry.periods.forEach(p => {
+                                rowData.push({
+                                    jamia: d.jamia || '-',
+                                    label: `${tName} (${p.class || '-'})`,
+                                    total: p.total || '0',
+                                    pass: p.passed || '0',
+                                    fail: (parseInt(p.total) - parseInt(p.passed)) || '0',
+                                    perc: p.percentage || '0%',
+                                    grade: p.kaifiyat || getResultGrade(p.percentage)
+                                });
                             });
                         }
                     });
@@ -153,12 +158,12 @@ async function fetchResultData(db, user) {
         });
 
         if (rowData.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="10" class="py-10 text-red-500 font-bold bg-white">Koi data nahi mila. DB Fields check karein.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔ براے مہربانی فلٹرز چیک کریں۔</td></tr>`;
         } else {
-            subtitle.textContent = `${examType} | Taleemi Saal: ${examYear}`;
+            subtitle.textContent = `${decodeURIComponent(examType)} | سال: ${decodeURIComponent(examYear)}`;
             thead.innerHTML = `
                 <tr>
-                    <th class="px-4 py-3 border-l">#</th>
+                    <th class="px-4 py-3 border-l">نمبر</th>
                     <th class="px-4 py-3 border-l">جامعہ</th>
                     <th class="px-4 py-3 border-l">${layoutLevel === 'class' ? 'درجہ' : 'استاذ (درجہ)'}</th>
                     <th class="px-4 py-3 border-l">کل طلبہ</th>
@@ -173,13 +178,13 @@ async function fetchResultData(db, user) {
                 tbody.innerHTML += `
                     <tr class="hover:bg-indigo-50 border-b">
                         <td class="px-4 py-3 border-l">${index + 1}</td>
-                        <td class="px-4 py-3 border-l">${row.jamia}</td>
-                        <td class="px-4 py-3 border-l">${row.label}</td>
+                        <td class="px-4 py-3 border-l urdu-font">${row.jamia}</td>
+                        <td class="px-4 py-3 border-l urdu-font">${row.label}</td>
                         <td class="px-4 py-3 border-l font-sans">${row.total}</td>
                         <td class="px-4 py-3 border-l font-sans text-green-700 font-bold">${row.pass}</td>
                         <td class="px-4 py-3 border-l font-sans text-red-700">${row.fail}</td>
                         <td class="px-4 py-3 border-l font-sans font-bold">${row.perc}</td>
-                        <td class="px-4 py-3 font-bold">${row.grade}</td>
+                        <td class="px-4 py-3 font-bold urdu-font">${row.grade}</td>
                     </tr>
                 `;
             });
@@ -189,6 +194,6 @@ async function fetchResultData(db, user) {
     } catch (err) {
         console.error("Fetch Error:", err);
         loader.classList.add('hidden');
-        alert("Data load karne mein masla aaya.");
+        alert("ڈیٹا لوڈ کرنے میں مسئلہ پیش آیا۔ کنکشن چیک کریں۔");
     }
 }
