@@ -1,7 +1,7 @@
 // Filename: result-analysis.js
 import {
     collection, query, where, getDocs
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const getResultGrade = (p) => {
     let val = parseFloat(p);
