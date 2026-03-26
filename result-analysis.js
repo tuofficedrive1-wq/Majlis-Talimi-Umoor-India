@@ -3,7 +3,6 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Helper: Grade Logic
 const getResultGrade = (p) => {
     if (!p && p !== 0) return "-";
     if (p >= 80) return "ممتاز";
@@ -16,19 +15,16 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // --- HTML STRUCTURE (Filters & Full Width Table) ---
     container.innerHTML = `
       <div class="bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
-        
         <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
             <h4 class="text-sm font-bold text-indigo-700 uppercase mb-3 border-b border-indigo-200 pb-1">Result Analysis Filters</h4>
-            
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
                     <select id="ra-exam-type" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
-                        <option value="ششماہی امتحان">ششماہی امتحان (Half Yearly)</option>
-                        <option value="سالانہ امتحان">سالانہ امتحان (Annual)</option>
+                        <option value="ششماہی امتحان">ششماہی امتحان</option>
+                        <option value="سالانہ امتحان">سالانہ امتحان</option>
                     </select>
                 </div>
                 <div>
@@ -52,7 +48,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     </select>
                 </div>
             </div>
-
             <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
                 <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
             </button>
@@ -68,27 +63,20 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 <h2 id="ra-report-title" class="text-2xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
                 <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans"></p>
             </div>
-
             <div class="w-full overflow-x-auto">
                 <table class="w-full min-w-full text-center text-sm border-collapse" dir="rtl">
-                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">
-                        </thead>
-                    <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white">
-                        </tbody>
+                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></thead>
+                    <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
                 </table>
             </div>
         </div>
       </div>
     `;
 
-    // 1. Populate Jamia Dropdown
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const jamiaat = userProfileData.jamiaatList || [];
-    jamiaat.forEach(j => {
-        jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
-    });
+    jamiaat.forEach(j => { jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`; });
 
-    // 2. Click Event
     document.getElementById('ra-show-btn').addEventListener('click', () => fetchResultData(db, user));
 }
 
@@ -109,10 +97,10 @@ async function fetchResultData(db, user) {
     tbody.innerHTML = '';
 
     try {
-        // Aapke database collection ka naam
         const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
-        
         const qRef = collection(db, collectionName);
+        
+        // Query filters (Aapke DB fields se match kiya gaya)
         const q = query(
             qRef, 
             where("adminUid", "==", user.uid),
@@ -121,68 +109,85 @@ async function fetchResultData(db, user) {
         );
 
         const snap = await getDocs(q);
-        let results = [];
-        snap.forEach(doc => results.push(doc.data()));
+        let rowData = [];
 
-        if (jamiaFilter) {
-            results = results.filter(r => r.jamiaName === jamiaFilter);
-        }
-
-        if (results.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="10" class="py-10 text-red-500 font-bold bg-white">Is selection ke liye data nahi mila. Collection Name: ${collectionName} check karein.</td></tr>`;
-        } else {
-            subtitle.textContent = `${examType} | ${layoutLevel === 'class' ? 'Class Wise' : 'Asatiza Wise'} Summary | Taleemi Saal: ${examYear}`;
+        snap.forEach(doc => {
+            const d = doc.data();
             
+            if (layoutLevel === 'class') {
+                // Class Wise Layout: Fields 'jamia', 'darjah', 'percent', 'passed' etc.
+                if (!jamiaFilter || d.jamia === jamiaFilter) {
+                    rowData.push({
+                        jamia: d.jamia || '-',
+                        label: d.darjah || '-',
+                        total: d.totalStudents || d.kul_talaba || '-',
+                        pass: d.passed || '0',
+                        fail: d.nakam || '0',
+                        perc: d.percent || '0%',
+                        grade: d.kaifiyat || getResultGrade(parseFloat(d.percent))
+                    });
+                }
+            } else {
+                // Asatiza Wise Layout: Data array ke andar 'periods' array hai
+                if (d.data && Array.isArray(d.data)) {
+                    d.data.forEach(teacherObj => {
+                        const tName = teacherObj.teacherName || "-";
+                        if (teacherObj.periods && Array.isArray(teacherObj.periods)) {
+                            teacherObj.periods.forEach(p => {
+                                if (!jamiaFilter || d.jamia === jamiaFilter) {
+                                    rowData.push({
+                                        jamia: d.jamia || '-',
+                                        label: `${tName} (${p.class || p.darja || ''})`,
+                                        total: p.total || '0',
+                                        pass: p.passed || '0',
+                                        fail: (parseInt(p.total) - parseInt(p.passed)) || '0',
+                                        perc: p.percentage || '0%',
+                                        grade: p.kaifiyat || getResultGrade(parseFloat(p.percentage))
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+            }
+        });
+
+        if (rowData.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="10" class="py-10 text-red-500 font-bold bg-white">Koi data nahi mila. DB Fields check karein.</td></tr>`;
+        } else {
+            subtitle.textContent = `${examType} | Taleemi Saal: ${examYear}`;
             thead.innerHTML = `
                 <tr>
-                    <th class="px-4 py-3 border-l border-slate-200">#</th>
-                    <th class="px-4 py-3 border-l border-slate-200">جامعہ</th>
-                    <th class="px-4 py-3 border-l border-slate-200">${layoutLevel === 'class' ? 'درجہ (Class)' : 'استاذ (Teacher)'}</th>
-                    <th class="px-4 py-3 border-l border-slate-200">کل طلبہ</th>
-                    <th class="px-4 py-3 border-l border-slate-200 text-green-700">کامیاب</th>
-                    <th class="px-4 py-3 border-l border-slate-200 text-red-700">ناکام</th>
-                    <th class="px-4 py-3 border-l border-slate-200">فیصد (%)</th>
+                    <th class="px-4 py-3 border-l">#</th>
+                    <th class="px-4 py-3 border-l">جامعہ</th>
+                    <th class="px-4 py-3 border-l">${layoutLevel === 'class' ? 'درجہ' : 'استاذ (درجہ)'}</th>
+                    <th class="px-4 py-3 border-l">کل طلبہ</th>
+                    <th class="px-4 py-3 border-l text-green-700">کامیاب</th>
+                    <th class="px-4 py-3 border-l text-red-700">ناکام</th>
+                    <th class="px-4 py-3 border-l">فیصد (%)</th>
                     <th class="px-4 py-3">کیفیت</th>
                 </tr>
             `;
 
-            results.sort((a,b) => a.jamiaName.localeCompare(b.jamiaName));
-
-            results.forEach((res, index) => {
-                const total = parseInt(res.totalStudents || 0);
-                const appeared = parseInt(res.appearedStudents || total); 
-                const pass = parseInt(res.passStudents || 0);
-                const fail = appeared - pass;
-                const perc = appeared > 0 ? ((pass / appeared) * 100).toFixed(1) : 0;
-                const grade = getResultGrade(parseFloat(perc));
-                
-                const levelName = layoutLevel === 'class' ? (res.className || '-') : (res.teacherName || '-');
-
-                let gradeColor = "text-gray-700";
-                if (grade === "ممتاز") gradeColor = "text-emerald-700 font-bold";
-                else if (grade === "بہتر") gradeColor = "text-blue-600 font-bold";
-                else if (grade === "کمزور") gradeColor = "text-red-600 font-bold";
-
+            rowData.forEach((row, index) => {
                 tbody.innerHTML += `
-                    <tr class="hover:bg-indigo-50 border-b border-gray-100 transition-colors">
-                        <td class="px-4 py-3 border-l border-gray-100">${index + 1}</td>
-                        <td class="px-4 py-3 border-l border-gray-100">${res.jamiaName}</td>
-                        <td class="px-4 py-3 border-l border-gray-100">${levelName}</td>
-                        <td class="px-4 py-3 border-l border-gray-100 font-sans">${total}</td>
-                        <td class="px-4 py-3 border-l border-gray-100 font-sans text-green-700 font-bold">${pass}</td>
-                        <td class="px-4 py-3 border-l border-gray-100 font-sans text-red-700">${fail}</td>
-                        <td class="px-4 py-3 border-l border-gray-100 font-sans font-bold">${perc}%</td>
-                        <td class="px-4 py-3 ${gradeColor}">${grade}</td>
+                    <tr class="hover:bg-indigo-50 border-b">
+                        <td class="px-4 py-3 border-l">${index + 1}</td>
+                        <td class="px-4 py-3 border-l">${row.jamia}</td>
+                        <td class="px-4 py-3 border-l">${row.label}</td>
+                        <td class="px-4 py-3 border-l font-sans">${row.total}</td>
+                        <td class="px-4 py-3 border-l font-sans text-green-700 font-bold">${row.pass}</td>
+                        <td class="px-4 py-3 border-l font-sans text-red-700">${row.fail}</td>
+                        <td class="px-4 py-3 border-l font-sans font-bold">${row.perc}</td>
+                        <td class="px-4 py-3 font-bold">${row.grade}</td>
                     </tr>
                 `;
             });
         }
-
         loader.classList.add('hidden');
         reportArea.classList.remove('hidden');
-
     } catch (err) {
-        console.error("Result Analysis Error:", err);
+        console.error("Fetch Error:", err);
         loader.classList.add('hidden');
         alert("Data load karne mein masla aaya.");
     }
