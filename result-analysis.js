@@ -3,7 +3,7 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Naya Kefiyat Logic jo aapne diya hai
+// Jamia Wise Kefiyat Logic jo aapne diya hai
 const getJamiaKefiyat = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
@@ -19,6 +19,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // --- HTML STRUCTURE (Option Add Kar Diya Gaya Hai) ---
     container.innerHTML = `
       <div class="max-w-4xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
         <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
@@ -78,6 +79,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
       </div>
     `;
 
+    // Dropdown mein Jamiaat list bharna
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
@@ -102,6 +104,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         tbody.innerHTML = '';
 
         try {
+            // Collection select karna
             const collectionName = (layoutLevel === 'class' || layoutLevel === 'jamia') ? "class_wise_results" : "asatiza_wise_results"; 
             const colRef = collection(db, collectionName); 
             
@@ -109,7 +112,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             const snap = await getDocs(q);
 
             if (layoutLevel === 'jamia') {
-                // Jamia Wise Logic: Class data ko group karna
+                // Jamia Wise Aggregation Logic
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">#</th>
@@ -138,8 +141,8 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 let idx = 1;
                 for (let jName in jamiaStats) {
                     const s = jamiaStats[jName];
-                    const perc = s.total > 0 ? ((s.passed / s.total) * 100).toFixed(2) : "0.00";
-                    const kefiyat = getJamiaKefiyat(perc);
+                    const percNum = s.total > 0 ? (s.passed / s.total) * 100 : 0;
+                    const kefiyat = getJamiaKefiyat(percNum);
                     
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-50 border-b">
@@ -148,12 +151,12 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                             <td class="border p-2 font-bold">${s.total}</td>
                             <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
                             <td class="border p-2 text-red-600 font-bold">${s.nakam}</td>
-                            <td class="border p-2 bg-teal-50 font-black text-teal-800">${perc}%</td>
+                            <td class="border p-2 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
                             <td class="border p-2 font-bold">${kefiyat}</td>
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
-                // Class Wise Logic
+                // Class Wise Detail
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th>
@@ -193,7 +196,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     }
                 });
             } else {
-                // Asatiza Wise Logic
+                // Asatiza Wise
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th>
@@ -204,7 +207,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         <th class="border p-2 text-red-600">ناکام</th>
                         <th class="border p-2">فیصد</th>
                         <th class="border p-2">کیفیت</th>
-                        <th class="border p-2 bg-teal-100">مجموعی فیصد</th>
+                        <th class="border p-2 bg-teal-100">کیفیت (استاد)</th>
                     </tr>`;
 
                 snap.forEach(doc => {
@@ -227,7 +230,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                                             <td class="border p-2 text-red-600">${fail}</td>
                                             <td class="border p-2 font-bold">${p.percentage || '0%'}</td>
                                             <td class="border p-2">${p.kaifiyat || '-'}</td>
-                                            ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-black text-teal-800" rowspan="${periodsCount}">${p.percentage || '0%'}</td>` : ''}
+                                            ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-bold text-teal-800" rowspan="${periodsCount}">${getJamiaKefiyat(p.percentage)}</td>` : ''}
                                         </tr>`;
                                 });
                             });
