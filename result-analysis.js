@@ -3,7 +3,6 @@ import {
     collection, query, where, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Helper: Grade Logic
 const getResultGrade = (p) => {
     let val = parseFloat(p);
     if (isNaN(val)) return "-";
@@ -14,6 +13,12 @@ const getResultGrade = (p) => {
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
+    // Check if db is valid
+    if (!db) {
+        console.error("Firestore 'db' instance is missing in initResultAnalysis");
+        return;
+    }
+
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -76,17 +81,15 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
       </div>
     `;
 
-    // 1. Populate Jamia Dropdown
+    // Jamia populate
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const jamiaat = userProfileData.jamiaatList || [];
     jamiaat.forEach(j => { 
         const opt = document.createElement('option');
-        opt.value = j;
-        opt.textContent = j;
-        jamiaSelect.appendChild(opt);
+        opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
     });
 
-    // 2. Fetch Data Function (Now inside init to access db and user correctly)
+    // --- FETCH FUNCTION INSIDE INIT TO CAPTURE DB ---
     const fetchResultData = async () => {
         const examType = document.getElementById('ra-exam-type').value;
         const examYear = document.getElementById('ra-exam-year').value;
@@ -106,21 +109,14 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         try {
             const collectionName = layoutLevel === 'class' ? "class_wise_results" : "asatiza_wise_results"; 
             
-            // Query construction based on screenshots
+            // Explicitly use the db passed to initResultAnalysis
+            const colRef = collection(db, collectionName); 
+            
             let q;
             if (jamiaFilter) {
-                q = query(
-                    collection(db, collectionName), 
-                    where("jamia", "==", jamiaFilter),
-                    where("examType", "==", examType),
-                    where("examYear", "==", examYear)
-                );
+                q = query(colRef, where("jamia", "==", jamiaFilter), where("examType", "==", examType), where("examYear", "==", examYear));
             } else {
-                q = query(
-                    collection(db, collectionName),
-                    where("examType", "==", examType),
-                    where("examYear", "==", examYear)
-                );
+                q = query(colRef, where("examType", "==", examType), where("examYear", "==", examYear));
             }
 
             const snap = await getDocs(q);
@@ -130,12 +126,8 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 const d = doc.data();
                 if (layoutLevel === 'class') {
                     rowData.push({
-                        jamia: d.jamia || '-',
-                        label: d.darjah || '-',
-                        total: d.total || '0',
-                        pass: d.passed || '0',
-                        fail: d.nakam || '0',
-                        perc: d.percent || '0%',
+                        jamia: d.jamia || '-', label: d.darjah || '-', total: d.total || '0',
+                        pass: d.passed || '0', fail: d.nakam || '0', perc: d.percent || '0%',
                         grade: d.kaifiyat || getResultGrade(d.percent)
                     });
                 } else {
@@ -145,13 +137,10 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                             if (tEntry.periods && Array.isArray(tEntry.periods)) {
                                 tEntry.periods.forEach(p => {
                                     rowData.push({
-                                        jamia: d.jamia || '-',
-                                        label: `${tName} (${p.class || '-'})`,
-                                        total: p.total || '0',
-                                        pass: p.passed || '0',
+                                        jamia: d.jamia || '-', label: `${tName} (${p.class || '-'})`,
+                                        total: p.total || '0', pass: p.passed || '0',
                                         fail: (parseInt(p.total) - parseInt(p.passed)) || '0',
-                                        perc: p.percentage || '0%',
-                                        grade: p.kaifiyat || getResultGrade(p.percentage)
+                                        perc: p.percentage || '0%', grade: p.kaifiyat || getResultGrade(p.percentage)
                                     });
                                 });
                             }
@@ -161,12 +150,12 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             });
 
             if (rowData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔ براے مہربانی فلٹرز چیک کریں۔</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
             } else {
                 subtitle.textContent = `${examType} | سال: ${examYear}`;
                 thead.innerHTML = `
                     <tr>
-                        <th class="px-4 py-3 border-l">نمبر</th>
+                        <th class="px-4 py-3 border-l">#</th>
                         <th class="px-4 py-3 border-l">جامعہ</th>
                         <th class="px-4 py-3 border-l">${layoutLevel === 'class' ? 'درجہ' : 'استاذ (درجہ)'}</th>
                         <th class="px-4 py-3 border-l">کل طلبہ</th>
@@ -201,6 +190,5 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         }
     };
 
-    // Attach click listener correctly
-    document.getElementById('ra-show-btn').addEventListener('click', fetchResultData);
+    document.getElementById('ra-show-btn').onclick = fetchResultData;
 }
