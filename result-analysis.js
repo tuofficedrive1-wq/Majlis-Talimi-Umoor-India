@@ -29,65 +29,70 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    container.innerHTML = `
-      <div class="max-w-4xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
-        <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
-            <h4 class="text-sm font-bold text-indigo-700 uppercase mb-3 border-b border-indigo-200 pb-1">Result Analysis Filters</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
-                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm">
-                        <option value="ششماہی امتحان">ششماہی امتحان</option>
-                        <option value="سالانہ امتحان">سالانہ امتحان</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
-                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm">
-                        <option value="2024-25">2024-25</option>
-                        <option value="2025-26" selected>2025-26</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
-                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
-                        <option value="">Tamam Jamiaat (All)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700">
-                        <option value="jamia">Jamia Wise Summary</option>
-                        <option value="class">Class Wise Summary</option>
-                        <option value="teacher">Asatiza Wise Summary</option>
-                    </select>
-                </div>
-            </div>
-            <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
-                <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
-            </button>
-        </div>
+    // result-analysis.js ke andar initResultAnalysis function mein ye badlav karein:
 
-        <div id="ra-loader" class="hidden text-center py-8">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
-            <p class="mt-2 text-indigo-600 font-semibold">Data analyze ho raha hai...</p>
-        </div>
-
-        <div id="ra-report-area" class="hidden mt-6 bg-white rounded-lg border border-gray-200 w-full overflow-hidden shadow-sm">
-            <div class="bg-indigo-700 text-white p-4 text-center border-b-4 border-indigo-900">
-                <h2 id="ra-report-title" class="text-2xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
-                <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans text-center"></p>
+container.innerHTML = `
+  <div class="max-w-7xl mx-auto space-y-5 w-full">
+    
+    <div class="bg-indigo-50 p-4 md:p-6 rounded-xl border border-indigo-200 no-print shadow-sm">
+        <h4 class="text-sm font-bold text-indigo-700 uppercase mb-4 border-b border-indigo-200 pb-1 flex items-center">
+            <i class="fas fa-filter mr-2"></i> Result Analysis Filters
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
+                <select id="ra-exam-type" class="w-full p-2 border border-indigo-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="ششماہی امتحان">ششماہی امتحان</option>
+                    <option value="سالانہ امتحان">سالانہ امتحان</option>
+                </select>
             </div>
-            <div class="w-full overflow-x-auto">
-                <table class="w-full min-w-full text-center text-[11px] border-collapse" dir="rtl">
-                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></thead>
-                    <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
-                </table>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
+                <select id="ra-exam-year" class="w-full p-2 border border-indigo-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="2024-25">2024-25</option>
+                    <option value="2025-26" selected>2025-26</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
+                <select id="ra-jamia-filter" class="w-full p-2 border border-indigo-200 rounded-lg text-sm urdu-font focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="">Tamam Jamiaat (All)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
+                <select id="ra-layout-level" class="w-full p-2 border border-indigo-300 rounded-lg text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="jamia">Jamia Wise Summary</option>
+                    <option value="class">Class Wise Summary</option>
+                    <option value="teacher">Asatiza Wise Summary</option>
+                </select>
             </div>
         </div>
-      </div>
-    `;
+        <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center">
+            <i class="fas fa-chart-line mr-2"></i> Result Analysis Show Karein
+        </button>
+    </div>
 
+    <div id="ra-loader" class="hidden text-center py-12">
+        <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"></div>
+        <p class="mt-3 text-indigo-600 font-semibold">Data analyze ho raha hai...</p>
+    </div>
+
+    <div id="ra-report-area" class="hidden mt-6 bg-white rounded-xl border border-gray-200 w-full overflow-hidden shadow-md">
+        <div class="bg-indigo-800 text-white p-5 text-center border-b-4 border-indigo-900">
+            <h2 id="ra-report-title" class="text-3xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
+            <p id="ra-report-subtitle" class="text-sm opacity-90 mt-2 font-sans tracking-wide"></p>
+        </div>
+        <div class="w-full overflow-x-auto">
+            <table class="w-full min-w-full text-center text-xs border-collapse" dir="rtl">
+                <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-300"></thead>
+                <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
+            </table>
+        </div>
+    </div>
+  </div>
+`;
+    
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
