@@ -3,7 +3,7 @@ import {
     collection, query, where, getDocs, orderBy
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Jamia/Ustad Wise Kefiyat Logic jo aapne diya tha
+// Jamia/Ustad Wise Kefiyat Logic
 const getJamiaKefiyat = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
@@ -14,7 +14,7 @@ const getJamiaKefiyat = (p) => {
     return "کمزور";
 };
 
-// Kefiyat ke mutabiq rang (color) nikalne ka logic
+// Kefiyat ke mutabiq color logic
 const getKefiyatColor = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (val >= 85) return "#059669"; // Green
@@ -25,9 +25,9 @@ const getKefiyatColor = (p) => {
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
-    if (!db || !user) return; //
+    if (!db || !user) return;
     const container = document.getElementById(containerId);
-    if (!container) return; //
+    if (!container) return;
 
     container.innerHTML = `
       <div class="max-w-4xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
@@ -89,7 +89,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     `;
 
     const jamiaSelect = document.getElementById('ra-jamia-filter');
-    const userJamiaat = userProfileData.jamiaatList || []; //
+    const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
         const opt = document.createElement('option');
         opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
@@ -135,7 +135,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             });
 
             if (layoutLevel === 'jamia') {
-                // Jamia Wise Logic: Hazir Talaba Column Shamil Kiya Gaya Hai
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">#</th>
@@ -143,6 +142,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         <th class="border p-2">کل طلبہ</th>
                         <th class="border p-2 text-blue-700">حاضر طلبہ</th>
                         <th class="border p-2 text-green-700">کامیاب</th>
+                        <th class="border p-2 text-purple-700">ضمنی</th>
                         <th class="border p-2 text-red-600">ناکام</th>
                         <th class="border p-2">فیصد</th>
                         <th class="border p-2">کیفیت</th>
@@ -151,20 +151,24 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 let jamiaStats = {};
                 latestDataMap.forEach((d) => {
                     if (!jamiaStats[d.jamia]) {
-                        jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0, ghaib: 0 };
+                        jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0, ghaib: 0, majazZimni: 0 };
                     }
                     jamiaStats[d.jamia].total += parseInt(d.total) || 0;
                     jamiaStats[d.jamia].passed += parseInt(d.passed) || 0;
                     jamiaStats[d.jamia].nakam += parseInt(d.nakam) || 0;
-                    jamiaStats[d.jamia].ghaib += parseInt(d.ghaib) || 0; //
+                    jamiaStats[d.jamia].ghaib += parseInt(d.ghaib) || 0;
+                    jamiaStats[d.jamia].majazZimni += parseInt(d.majazZimni) || 0;
                 });
 
                 let idx = 1;
                 for (let jName in jamiaStats) {
                     const s = jamiaStats[jName];
-                    const hazir = s.total - s.ghaib; // Hazir = Total - Ghaib
+                    const hazir = s.total - s.ghaib;
+                    // Zimni ko Nakam me hi count kiya gaya hai jaisa aapne kaha
+                    const totalFail = s.nakam + s.majazZimni; 
                     const percNum = s.total > 0 ? (s.passed / s.total) * 100 : 0;
                     const color = getKefiyatColor(percNum);
+                    
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-50 border-b text-sm">
                             <td class="border p-2">${idx++}</td>
@@ -172,13 +176,13 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                             <td class="border p-2 font-bold">${s.total}</td>
                             <td class="border p-2 text-blue-700 font-bold">${hazir}</td>
                             <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
-                            <td class="border p-2 text-red-600 font-bold">${s.nakam}</td>
+                            <td class="border p-2 text-purple-700 font-bold">${s.majazZimni}</td>
+                            <td class="border p-2 text-red-600 font-bold">${totalFail}</td>
                             <td class="border p-2 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
                             <td class="border p-2 font-bold" style="color:${color}">${getJamiaKefiyat(percNum)}</td>
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
-                // Class Wise Detail
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th><th class="border p-2">درجہ</th>
@@ -208,7 +212,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         </tr>`;
                 });
             } else {
-                // Asatiza Wise
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th><th class="border p-2">استاد کا نام</th>
