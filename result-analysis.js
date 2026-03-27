@@ -14,14 +14,14 @@ const getJamiaKefiyat = (p) => {
     return "کمزور";
 };
 
-// Kefiyat ke mutabiq color logic
+// Kefiyat color logic
 const getKefiyatColor = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
-    if (val >= 85) return "#059669"; // Green
-    if (val >= 70) return "#2563eb"; // Blue
-    if (val >= 60) return "#d97706"; // Amber
-    if (val >= 40) return "#7c3aed"; // Purple
-    return "#dc2626"; // Red
+    if (val >= 85) return "#059669";
+    if (val >= 70) return "#2563eb";
+    if (val >= 60) return "#d97706";
+    if (val >= 40) return "#7c3aed";
+    return "#dc2626";
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
@@ -164,9 +164,8 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 for (let jName in jamiaStats) {
                     const s = jamiaStats[jName];
                     const hazir = s.total - s.ghaib;
-                    // Zimni ko Nakam me hi count kiya gaya hai jaisa aapne kaha
-                    const totalFail = s.nakam + s.majazZimni; 
-                    const percNum = s.total > 0 ? (s.passed / s.total) * 100 : 0;
+                    // Calculation: % sirf Kamyab students par aur Hazir ki buniyad par
+                    const percNum = hazir > 0 ? (s.passed / hazir) * 100 : 0;
                     const color = getKefiyatColor(percNum);
                     
                     tbody.innerHTML += `
@@ -177,12 +176,13 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                             <td class="border p-2 text-blue-700 font-bold">${hazir}</td>
                             <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
                             <td class="border p-2 text-purple-700 font-bold">${s.majazZimni}</td>
-                            <td class="border p-2 text-red-600 font-bold">${totalFail}</td>
+                            <td class="border p-2 text-red-600 font-bold">${s.nakam}</td>
                             <td class="border p-2 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
                             <td class="border p-2 font-bold" style="color:${color}">${getJamiaKefiyat(percNum)}</td>
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
+                // Class wise detail implementation
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th><th class="border p-2">درجہ</th>
@@ -212,6 +212,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         </tr>`;
                 });
             } else {
+                // Teacher wise detail implementation
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th><th class="border p-2">استاد کا نام</th>
