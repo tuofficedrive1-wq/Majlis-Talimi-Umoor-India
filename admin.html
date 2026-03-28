@@ -891,6 +891,26 @@
 
     <script type="module">
 
+        // result-analysis.js ke mutabiq exact logic (Global use ke liye)
+const getJamiaKefiyat = (p) => {
+    let val = parseFloat(String(p).replace('%', ''));
+    if (isNaN(val)) return "-";
+    if (val >= 85) return "ممتاز مع شرف";
+    if (val >= 76) return "ممتاز";
+    if (val >= 61) return "بہتر";
+    if (val >= 40) return "مناسب";
+    return "کمزور";
+};
+
+const getKefiyatColor = (p) => {
+    let val = parseFloat(String(p).replace('%', ''));
+    if (val >= 85) return "#059669"; // Emerald
+    if (val >= 70) return "#2563eb"; // Blue
+    if (val >= 60) return "#d97706"; // Amber
+    if (val >= 40) return "#7c3aed"; // Purple
+    return "#dc2626"; // Red
+};
+        
         function getKefiyatLogic(percent) {
     if (percent >= 90) return { text: "ممتاز مع الشرف", color: "#15803d" };
     if (percent >= 80) return { text: "ممتاز", color: "#22c55e" };
@@ -4924,27 +4944,24 @@ allUsersData.forEach(user => {
         const snapshot = await getDocs(collection(db, "class_wise_results"));
         const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+        // Jamia ke naam se sort taake list tarteeb se dikhe
         allDocs.sort((a, b) => (a.jamia || '').localeCompare(b.jamia || '')).forEach(doc => {
-
-            // ✅ USER DATA (Firebase se)
             const userData = jamiaUserMap[doc.jamia] || {};
-const userName = userData.name || 'N/A';
-const regionName = userData.region || 'N/A';
+            const region = userData.region || '-';
+            const name = userData.name || '-';
 
             const percVal = parseFloat(doc.percent?.replace('%', '')) || 0;
-            const gradeInfo = getKefiyatLogic(percVal);
+            const rowColor = getKefiyatColor(percVal);
+            const kefiyatText = getJamiaKefiyat(percVal);
 
             rowsHtml += `
                 <tr class="border-b hover:bg-gray-50 text-center text-[12px]">
                     <td class="p-2 border-r bg-gray-50">${counter++}</td>
-
-                    <td class="p-2 border-r urdu-font font-bold">${regionName}</td>
-                    <td class="p-2 border-r urdu-font text-left">${userName}</td>
-
+                    <td class="p-2 border-r urdu-font font-bold text-gray-600">${region}</td>
+                    <td class="p-2 border-r urdu-font text-left">${name}</td>
                     <td class="p-2 border-r urdu-font font-bold text-teal-800 text-left">${doc.jamia || '-'}</td>
                     <td class="p-2 border-r urdu-font text-blue-800 font-bold">${doc.darjah || '-'}</td>
-
-                    <!-- ✅ Breakdown columns -->
+                    
                     <td class="p-2 border-r">${doc.mumtazSharf || 0}</td>
                     <td class="p-2 border-r">${doc.mumtaz || 0}</td>
                     <td class="p-2 border-r">${doc.jayyidJidda || 0}</td>
@@ -4952,69 +4969,30 @@ const regionName = userData.region || 'N/A';
                     <td class="p-2 border-r">${doc.maqbool || 0}</td>
                     <td class="p-2 border-r">${doc.majazZimni || 0}</td>
                     <td class="p-2 border-r text-red-600 font-bold">${doc.nakam || 0}</td>
-                    <td class="p-2 border-r">${doc.ghaib || 0}</td>
+                    <td class="p-2 border-r text-gray-400">${doc.ghaib || 0}</td>
 
-                    <!-- Totals -->
                     <td class="p-2 border-r font-bold">${doc.total || 0}</td>
                     <td class="p-2 border-r text-green-600 font-bold">${doc.passed || 0}</td>
-
-                    <!-- Result -->
-                    <td class="p-2 border-r font-black" style="color:${gradeInfo.color}">
-                        ${percVal.toFixed(1)}%
-                    </td>
-                    <td class="p-2 font-bold urdu-font" style="color:${gradeInfo.color}">
-                        ${gradeInfo.text}
-                    </td>
-                </tr>
-            `;
+                    <td class="p-2 border-r font-black" style="color:${rowColor}">${percVal.toFixed(1)}%</td>
+                    <td class="p-2 font-bold urdu-font" style="color:${rowColor}">${kefiyatText}</td>
+                </tr>`;
         });
 
-        const headers = [
-            "#",
-            "Region",
-            "User Name",
-            "Jamia",
-            "Class",
-
-            "Mumtaz Sharf",
-            "Mumtaz",
-            "Jayyid Jidda",
-            "Jayyid",
-            "Maqbool",
-            "Majaz Zimni",
-            "Nakam",
-            "Ghaib",
-
-            "Total",
-            "Passed",
-            "Percent",
-            "Kefiyat"
-        ];
-
-        renderFinalTable(container, "Class Wise Detailed Analysis", rowsHtml, headers);
-
-    } catch (err) {
-        console.error(err);
-    }
+        const headers = ["#", "Region", "User", "Jamia", "Class", "M-Sharf", "Mumtaz", "J-Jidda", "Jayyid", "Maqbool", "Zimni", "Nakam", "Ghaib", "Total", "Pass", "%", "Kefiyat"];
+        renderFinalTable(container, "All Jamiaat: Class Wise Analysis", rowsHtml, headers);
+    } catch (err) { console.error(err); }
 }
-       else if (type === 'asatiza-wise') {
+        else if (type === 'asatiza-wise') {
     let finalHtml = '';
-    let counter = 1;
+    let globalCounter = 1;
 
     try {
-        // 1. Sahi collection se data mangwana
         const snapshot = await getDocs(collection(db, "asatiza_wise_results"));
         const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        if (allDocs.length === 0) {
-            container.innerHTML = '<p class="text-center py-20 text-gray-500">Database mein "asatiza_wise_results" ka koi data nahi mila.</p>';
-            return;
-        }
-
-        // 2. Data loop (Har document ek Jamia aur uske saare Teachers ka data hai)
         allDocs.forEach(doc => {
             const jamiaName = doc.jamia || '-';
-            const teachersArray = doc.data || []; // Aapka 'data' array
+            const teachersArray = doc.data || [];
 
             teachersArray.forEach(t => {
                 const ustadName = t.teacher || 'N/A';
@@ -5022,121 +5000,74 @@ const regionName = userData.region || 'N/A';
                 let rowsHtml = '';
                 let totalT = 0, totalP = 0;
 
-                // Har teacher ke andar ke periods (rows)
                 periods.forEach(p => {
                     const tVal = parseFloat(p.total) || 0;
                     const pVal = parseFloat(p.passed) || 0;
-                    totalT += tVal;
-                    totalP += pVal;
-
-                    const percVal = tVal > 0 ? (pVal / tVal * 100) : 0;
-                    const gradeInfo = getKefiyat(percVal); // Aapka functions wala logic
+                    totalT += tVal; totalP += pVal;
+                    const pPerc = tVal > 0 ? (pVal / tVal * 100) : 0;
 
                     rowsHtml += `
-                        <tr class="border-b text-center text-sm hover:bg-gray-50 transition">
+                        <tr class="border-b text-center text-sm">
                             <td class="p-2 border-r urdu-font font-semibold text-blue-700">${p.class || '-'}</td>
                             <td class="p-2 border-r urdu-font text-gray-700">${p.subject || '-'}</td>
                             <td class="p-2 border-r font-bold">${tVal}</td>
                             <td class="p-2 border-r text-green-600 font-bold">${pVal}</td>
-                            <td class="p-2 border-r font-black" style="color:${gradeInfo.color}">${percVal.toFixed(1)}%</td>
-                            <td class="p-2 font-bold urdu-font" style="color:${gradeInfo.color}">${gradeInfo.text}</td>
+                            <td class="p-2 border-r font-black" style="color:${getKefiyatColor(pPerc)}">${pPerc.toFixed(1)}%</td>
+                            <td class="p-2 font-bold urdu-font" style="color:${getKefiyatColor(pPerc)}">${getJamiaKefiyat(pPerc)}</td>
                         </tr>`;
                 });
 
-                // Overall Teacher Result Calculation
                 const grandPerc = totalT > 0 ? (totalP / totalT * 100).toFixed(1) : 0;
-                const grandGrade = getKefiyat(grandPerc);
+                const grandColor = getKefiyatColor(grandPerc);
 
-                // Ek Teacher ka Mukammal Box (Design as per your code)
                 finalHtml += `
                     <div class="mb-8 bg-white rounded-xl shadow-lg border-2 border-gray-100 overflow-hidden">
-                        <div class="p-4 bg-slate-800 text-white flex justify-between items-center flex-wrap gap-3">
+                        <div class="p-4 bg-slate-800 text-white flex justify-between items-center">
                             <div class="flex items-center gap-4">
-                                <div class="h-10 w-10 bg-slate-700 rounded-full flex items-center justify-center font-bold border border-slate-600">${counter++}</div>
+                                <div class="h-10 w-10 bg-slate-700 rounded-full flex items-center justify-center font-bold border border-slate-600">${globalCounter++}</div>
                                 <div>
-                                    <div class="text-[10px] uppercase tracking-widest opacity-60">${jamiaName}</div>
+                                    <div class="text-[10px] uppercase opacity-60">${jamiaName}</div>
                                     <div class="text-xl font-bold urdu-font">${ustadName}</div>
                                 </div>
                             </div>
-                            <div class="bg-white px-5 py-1 rounded-lg text-center shadow-inner" style="border: 3px solid ${grandGrade.color}">
-                                <div class="text-2xl font-black" style="color:${grandGrade.color}">${grandPerc}%</div>
-                                <div class="text-[11px] font-bold urdu-font uppercase" style="color:${grandGrade.color}">${grandGrade.text}</div>
+                            <div class="bg-white px-4 py-1 rounded-lg text-center" style="border: 3px solid ${grandColor}">
+                                <div class="text-2xl font-black" style="color:${grandColor}">${grandPerc}%</div>
+                                <div class="text-[11px] font-bold urdu-font" style="color:${grandColor}">${getJamiaKefiyat(grandPerc)}</div>
                             </div>
                         </div>
-
-                        <div class="overflow-x-auto">
-                            <table class="w-full border-collapse">
-                                <thead class="bg-gray-50 text-[11px] font-bold text-gray-500 border-b uppercase">
-                                    <tr>
-                                        <th class="p-2 border-r">Class</th>
-                                        <th class="p-2 border-r">Subject</th>
-                                        <th class="p-2 border-r">Total</th>
-                                        <th class="p-2 border-r">Pass</th>
-                                        <th class="p-2 border-r">Percent</th>
-                                        <th class="p-2">Kefiyat</th>
-                                    </tr>
-                                </thead>
-                                <tbody>${rowsHtml || '<tr><td colspan="6" class="p-5 text-center text-gray-400">No periods found.</td></tr>'}</tbody>
-                            </table>
-                        </div>
+                        <table class="w-full border-collapse">
+                            <thead class="bg-gray-50 text-[11px] font-bold text-gray-500 border-b">
+                                <tr>
+                                    <th class="p-2 border-r">Class</th><th class="p-2 border-r">Subject</th>
+                                    <th class="p-2 border-r">Total</th><th class="p-2 border-r">Pass</th>
+                                    <th class="p-2 border-r">Percent</th><th class="p-2">Kefiyat</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
                     </div>`;
             });
         });
-
-        container.innerHTML = finalHtml || '<p class="text-center py-20 text-gray-400">Records match nahi hue.</p>';
-
-    } catch (err) {
-        console.error(err);
-        container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
-    }
-}
-
-// Helper Function: Kefiyat (Aapke save code ke mutabiq)
-function getKefiyat(val) {
-    let k = '', color = '';
-    if (val >= 90) { k = 'ممتاز'; color = '#059669'; }
-    else if (val >= 70) { k = 'بہتر'; color = '#2563eb'; }
-    else if (val >= 60) { k = 'مناسب'; color = '#d97706'; }
-    else if (val >= 51) { k = 'کمزور'; color = '#7c3aed'; }
-    else { k = 'تشویش ناک'; color = '#dc2626'; }
-    return { text: k, color: color };
-}
-    } catch (err) {
-        container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
-    }
-});
-        function renderUnifiedRow(i, jamia, cls, total, pass, fail, perc, grade) {
-    return `
-        <tr class="border-b hover:bg-gray-50 text-center text-sm">
-            <td class="p-2 border-r">${i + 1}</td>
-            <td class="p-2 border-r urdu-font font-bold text-left">${jamia || '-'}</td>
-            <td class="p-2 border-r urdu-font text-blue-700 font-semibold">${cls || '-'}</td>
-            <td class="p-2 border-r font-bold">${total}</td>
-            <td class="p-2 border-r text-green-600 font-bold">${pass}</td>
-            <td class="p-2 border-r text-red-600 font-bold">${fail}</td>
-            <td class="p-2 border-r font-bold bg-gray-50">${perc}%</td>
-            <td class="p-2 font-bold">
-                <span class="${getAdminGradeColor(grade)} px-2 py-1 rounded text-xs text-white shadow-sm">${grade}</span>
-            </td>
-        </tr>`;
+        container.innerHTML = finalHtml || '<p class="text-center py-20">Data nahi mila.</p>';
+    } catch (err) { console.error(err); }
 }
 
 function renderFinalTable(container, title, rows, headers) {
     container.innerHTML = `
-        <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
-            <div class="p-4 bg-indigo-900 text-white font-bold urdu-font flex justify-between items-center">
+        <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden mb-10">
+            <div class="p-4 bg-slate-900 text-white font-bold urdu-font flex justify-between items-center">
                 <span class="text-lg">${title}</span>
-                <span class="text-xs bg-indigo-800 px-3 py-1 rounded-full">Total Rows: ${rows ? (rows.match(/<tr/g) || []).length : 0}</span>
+                <span class="text-xs bg-slate-700 px-3 py-1 rounded-full">Total Jamiaat Data</span>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-sm border-collapse table-auto min-w-[900px]">
-                    <thead class="bg-gray-100 text-[11px] font-bold text-gray-700 border-b-2 border-gray-200 uppercase tracking-wider">
+                <table class="w-full text-[11px] border-collapse table-auto min-w-[1000px]">
+                    <thead class="bg-gray-100 text-gray-700 border-b-2 border-gray-200 uppercase">
                         <tr>
-                            ${headers.map(h => `<th class="p-3 border-r last:border-r-0 whitespace-nowrap text-center">${h}</th>`).join('')}
+                            ${headers.map(h => `<th class="p-2 border-r last:border-r-0 text-center font-bold">${h}</th>`).join('')}
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        ${rows || '<tr><td colspan="'+headers.length+'" class="p-20 text-center text-gray-400">Database mein data sahi format mein nahi mila.</td></tr>'}
+                    <tbody class="divide-y divide-gray-100 urdu-font">
+                        ${rows || '<tr><td colspan="'+headers.length+'" class="p-10 text-center text-gray-400">Data load nahi ho saka.</td></tr>'}
                     </tbody>
                 </table>
             </div>
