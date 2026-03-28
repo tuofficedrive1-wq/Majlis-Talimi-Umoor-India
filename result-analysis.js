@@ -14,7 +14,6 @@ const getJamiaKefiyat = (p) => {
     return "کمزور";
 };
 
-// Kefiyat color logic
 const getKefiyatColor = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (val >= 85) return "#059669";
@@ -29,7 +28,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // UI Structure Updated to max-w-7xl for full width
     container.innerHTML = `
       <div class="max-w-7xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
         <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
@@ -37,27 +35,27 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
-                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm">
+                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="ششماہی امتحان">ششماہی امتحان</option>
                         <option value="سالانہ امتحان">سالانہ امتحان</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
-                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm">
+                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="2024-25">2024-25</option>
                         <option value="2025-26" selected>2025-26</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
-                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
+                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="">Tamam Jamiaat (All)</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700">
+                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="jamia">Jamia Wise Summary</option>
                         <option value="class">Class Wise Summary</option>
                         <option value="teacher">Asatiza Wise Summary</option>
@@ -76,11 +74,12 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
         <div id="ra-report-area" class="hidden mt-6 bg-white rounded-lg border border-gray-200 w-full overflow-hidden shadow-sm">
             <div class="bg-indigo-700 text-white p-4 flex justify-between items-center border-b-4 border-indigo-900">
-                <div class="w-24"></div> <div class="text-center flex-1">
-                    <h2 id="ra-report-title" class="text-2xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
+                <div class="w-24"></div> 
+                <div class="text-center flex-1">
+                    <h2 id="ra-report-title" class="text-3xl font-bold urdu-font">نتیجہ امتحان</h2>
                     <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans text-center"></p>
                 </div>
-                <div class="flex gap-2 no-print">
+                <div class="flex gap-2 no-print" data-html2canvas-ignore="true">
                     <button id="ra-download-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded shadow text-xs flex items-center gap-1">
                         <i class="fas fa-file-excel"></i> Excel
                     </button>
@@ -90,8 +89,8 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 </div>
             </div>
             <div class="w-full overflow-x-auto">
-                <table id="ra-data-table" class="w-full min-w-full text-center text-[11px] border-collapse" dir="rtl">
-                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></thead>
+                <table id="ra-data-table" class="w-full min-w-full text-center text-[13px] border-collapse" dir="rtl">
+                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-300 text-sm"></thead>
                     <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
                 </table>
             </div>
@@ -145,27 +144,20 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 }
             });
 
-            let rowsHtml = ""; // Optimization: String buffer for faster rendering
+            let rowsHtml = "";
 
             if (layoutLevel === 'jamia') {
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
-                        <th class="border p-2">#</th>
-                        <th class="border p-2">جامعہ کا نام</th>
-                        <th class="border p-2">کل طلبہ</th>
-                        <th class="border p-2 text-blue-700">حاضر طلبہ</th>
-                        <th class="border p-2 text-green-700">کامیاب</th>
-                        <th class="border p-2 text-purple-700">ضمنی</th>
-                        <th class="border p-2 text-red-600">ناکام</th>
-                        <th class="border p-2">فیصد</th>
-                        <th class="border p-2">کیفیت</th>
+                        <th class="border p-2">#</th><th class="border p-2">جامعہ کا نام</th>
+                        <th class="border p-2">کل طلبہ</th><th class="border p-2 text-blue-700">حاضر</th>
+                        <th class="border p-2 text-green-700">کامیاب</th><th class="border p-2 text-purple-700">ضمنی</th>
+                        <th class="border p-2 text-red-600">ناکام</th><th class="border p-2">فیصد</th><th class="border p-2">کیفیت</th>
                     </tr>`;
 
                 let jamiaStats = {};
                 latestDataMap.forEach((d) => {
-                    if (!jamiaStats[d.jamia]) {
-                        jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0, ghaib: 0, majazZimni: 0 };
-                    }
+                    if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0, ghaib: 0, majazZimni: 0 };
                     jamiaStats[d.jamia].total += parseInt(d.total) || 0;
                     jamiaStats[d.jamia].passed += parseInt(d.passed) || 0;
                     jamiaStats[d.jamia].nakam += parseInt(d.nakam) || 0;
@@ -179,94 +171,67 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     const hazir = s.total - s.ghaib;
                     const percNum = hazir > 0 ? (s.passed / hazir) * 100 : 0;
                     const color = getKefiyatColor(percNum);
-                    
                     rowsHtml += `
-                        <tr class="hover:bg-gray-50 border-b text-sm">
-                            <td class="border p-2">${idx++}</td>
-                            <td class="border p-2 font-bold text-right">${jName}</td>
-                            <td class="border p-2 font-bold">${s.total}</td>
-                            <td class="border p-2 text-blue-700 font-bold">${hazir}</td>
-                            <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
-                            <td class="border p-2 text-purple-700 font-bold">${s.majazZimni}</td>
-                            <td class="border p-2 text-red-600 font-bold">${s.nakam}</td>
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border p-2">${idx++}</td><td class="border p-2 font-bold text-right">${jName}</td>
+                            <td class="border p-2 font-bold">${s.total}</td><td class="border p-2 text-blue-700">${hazir}</td>
+                            <td class="border p-2 text-green-700">${s.passed}</td><td class="border p-2 text-purple-700">${s.majazZimni}</td>
+                            <td class="border p-2 text-red-600">${s.nakam}</td>
                             <td class="border p-2 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
                             <td class="border p-2 font-bold" style="color:${color}">${getJamiaKefiyat(percNum)}</td>
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
                 thead.innerHTML = `
-                    <tr class="bg-gray-200">
+                    <tr class="bg-gray-200 text-[12px]">
                         <th class="border p-2">جامعہ</th><th class="border p-2">درجہ</th>
-                        <th class="border p-2">ممتاز مع الشرف</th><th class="border p-2">ممتاز</th>
+                        <th class="border p-2">مع الشرف</th><th class="border p-2">ممتاز</th>
                         <th class="border p-2">جید جدا</th><th class="border p-2">جید</th>
-                        <th class="border p-2">مقبول</th><th class="border p-2">مجاز ضمنی</th>
-                        <th class="border p-2 text-red-600">ناکام</th><th class="border p-2 text-gray-500">غیر حاضر</th>
+                        <th class="border p-2">مقبول</th><th class="border p-2">ضمنی</th>
+                        <th class="border p-2 text-red-600">ناکام</th><th class="border p-2">غائب</th>
                         <th class="border p-2">کل</th><th class="border p-2 text-green-700">کامیاب</th><th class="border p-2">فیصد</th>
                     </tr>`;
-
                 latestDataMap.forEach((d) => {
                     rowsHtml += `
-                        <tr class="hover:bg-gray-50 border-b text-sm">
-                            <td class="border p-2 font-bold">${d.jamia}</td>
-                            <td class="border p-2">${d.darjah || '-'}</td>
-                            <td class="border p-2">${d.mumtazSharf || '0'}</td>
-                            <td class="border p-2">${d.mumtaz || '0'}</td>
-                            <td class="border p-2">${d.jayyidJidda || '0'}</td>
-                            <td class="border p-2">${d.jayyid || '0'}</td>
-                            <td class="border p-2">${d.maqbool || '0'}</td>
-                            <td class="border p-2">${d.majazZimni || '0'}</td>
-                            <td class="border p-2 text-red-600 font-bold">${d.nakam || '0'}</td>
-                            <td class="border p-2 text-gray-500">${d.ghaib || '0'}</td>
-                            <td class="border p-2 font-bold">${d.total || '0'}</td>
-                            <td class="border p-2 text-green-700 font-bold">${d.passed || '0'}</td>
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border p-2 font-bold">${d.jamia}</td><td class="border p-2">${d.darjah || '-'}</td>
+                            <td class="border p-2">${d.mumtazSharf || '0'}</td><td class="border p-2">${d.mumtaz || '0'}</td>
+                            <td class="border p-2">${d.jayyidJidda || '0'}</td><td class="border p-2">${d.jayyid || '0'}</td>
+                            <td class="border p-2">${d.maqbool || '0'}</td><td class="border p-2">${d.majazZimni || '0'}</td>
+                            <td class="border p-2 text-red-600">${d.nakam || '0'}</td><td class="border p-2 text-gray-500">${d.ghaib || '0'}</td>
+                            <td class="border p-2 font-bold">${d.total || '0'}</td><td class="border p-2 text-green-700 font-bold">${d.passed || '0'}</td>
                             <td class="border p-2 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
                         </tr>`;
                 });
             } else {
-                // Teacher Wise Detail Implementation - Updated with 2 Columns for Sub/Class
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
-                        <th class="border p-2">جامعہ</th><th class="border p-2">استاد کا نام</th>
+                        <th class="border p-2">جامعہ</th><th class="border p-2">استاد</th>
                         <th class="border p-2">مضمون</th><th class="border p-2">درجہ</th>
-                        <th class="border p-2">کل طلبہ</th>
-                        <th class="border p-2 text-green-700">کامیاب</th><th class="border p-2 text-red-600">ناکام</th>
-                        <th class="border p-2">فیصد</th><th class="border p-2">کیفیت</th>
-                        <th class="border p-2 bg-teal-100">کیفیت (استاد)</th>
+                        <th class="border p-2">کل</th><th class="border p-2 text-green-700">کامیاب</th>
+                        <th class="border p-2 text-red-600">ناکام</th><th class="border p-2">فیصد</th>
+                        <th class="border p-2">کیفیت</th><th class="border p-2 bg-teal-100">مجموعی</th>
                     </tr>`;
-
                 latestDataMap.forEach((d) => {
                     if (d.data && Array.isArray(d.data)) {
                         d.data.forEach((tEntry) => {
-                            const tName = tEntry.teacher || "-";
                             const periods = tEntry.periods || [];
-                            const periodsCount = periods.length || 1;
-                            
-                            let tTotal = 0, tPassed = 0;
-                            periods.forEach(p => {
-                                tTotal += parseInt(p.total) || 0;
-                                tPassed += parseInt(p.passed) || 0;
-                            });
-                            const tPerc = tTotal > 0 ? (tPassed / tTotal) * 100 : 0;
-                            const tColor = getKefiyatColor(tPerc);
-
+                            const pCount = periods.length || 1;
+                            let tT = 0, tP = 0;
+                            periods.forEach(p => { tT += parseInt(p.total) || 0; tP += parseInt(p.passed) || 0; });
+                            const tPer = tT > 0 ? (tP / tT) * 100 : 0;
+                            const tCol = getKefiyatColor(tPer);
                             periods.forEach((p, pIdx) => {
-                                const fail = (parseInt(p.total) - parseInt(p.passed)) || 0;
+                                const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
                                 rowsHtml += `
-                                    <tr class="hover:bg-gray-50 border-b text-sm">
-                                        ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle" rowspan="${periodsCount}">${d.jamia}</td>` : ''}
-                                        ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle text-blue-700" rowspan="${periodsCount}">${tName}</td>` : ''}
-                                        <td class="border p-2 text-right">${p.subject || '-'}</td>
-                                        <td class="border p-2">${p.class || '-'}</td>
-                                        <td class="border p-2">${p.total || '0'}</td>
-                                        <td class="border p-2 text-green-700 font-bold">${p.passed || '0'}</td>
-                                        <td class="border p-2 text-red-600">${fail}</td>
-                                        <td class="border p-2 font-bold">${p.percentage || '0%'}</td>
+                                    <tr class="hover:bg-gray-50 border-b">
+                                        ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle" rowspan="${pCount}">${d.jamia}</td>` : ''}
+                                        ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
+                                        <td class="border p-2 text-right">${p.subject || '-'}</td><td class="border p-2">${p.class || '-'}</td>
+                                        <td class="border p-2">${p.total || '0'}</td><td class="border p-2 text-green-700">${p.passed || '0'}</td>
+                                        <td class="border p-2 text-red-600">${f}</td><td class="border p-2 font-bold">${p.percentage || '0%'}</td>
                                         <td class="border p-2">${p.kaifiyat || '-'}</td>
-                                        ${pIdx === 0 ? `
-                                            <td class="border p-2 bg-teal-50 align-middle font-bold" rowspan="${periodsCount}">
-                                                <div style="font-size: 14px; color:${tColor}">${tPerc.toFixed(1)}%</div>
-                                                <div style="font-size: 10px; color:${tColor}">${getJamiaKefiyat(tPerc)}</div>
-                                            </td>` : ''}
+                                        ${pIdx === 0 ? `<td class="border p-2 bg-teal-50 align-middle font-bold" rowspan="${pCount}"><div style="color:${tCol}">${tPer.toFixed(1)}%</div><div class="text-[10px]" style="color:${tCol}">${getJamiaKefiyat(tPer)}</div></td>` : ''}
                                     </tr>`;
                             });
                         });
@@ -279,7 +244,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             loader.classList.add('hidden');
             reportArea.classList.remove('hidden');
 
-            // --- Download Button Handlers ---
             document.getElementById('ra-download-excel').onclick = () => {
                 let csv = [];
                 const table = document.getElementById('ra-data-table');
@@ -298,20 +262,23 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
             document.getElementById('ra-download-image').onclick = async () => {
                 if(window.html2canvas) {
-                    const canvas = await window.html2canvas(document.getElementById('ra-report-area'), { scale: 2 });
+                    const canvas = await window.html2canvas(document.getElementById('ra-report-area'), { 
+                        scale: 3, // High quality
+                        useCORS: true
+                    });
                     const link = document.createElement("a");
                     link.download = `Result_${layoutLevel}_${examYear}.png`;
                     link.href = canvas.toDataURL();
                     link.click();
                 } else {
-                    alert("Image Download library load nahi hui.");
+                    alert("Download library load nahi hui.");
                 }
             };
 
         } catch (err) {
             console.error(err);
             loader.classList.add('hidden');
-            alert("ڈیٹا لوڈ کرنے میں مسئلہ پیش آیا۔");
+            alert("Masla aaya hai.");
         }
     };
 
