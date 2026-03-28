@@ -29,70 +29,76 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // result-analysis.js ke andar initResultAnalysis function mein ye badlav karein:
+    // UI Structure Updated to max-w-7xl for full width
+    container.innerHTML = `
+      <div class="max-w-7xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
+        <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200 no-print">
+            <h4 class="text-sm font-bold text-indigo-700 uppercase mb-3 border-b border-indigo-200 pb-1">Result Analysis Filters</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
+                    <select id="ra-exam-type" class="w-full p-2 border rounded text-sm">
+                        <option value="ششماہی امتحان">ششماہی امتحان</option>
+                        <option value="سالانہ امتحان">سالانہ امتحان</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
+                    <select id="ra-exam-year" class="w-full p-2 border rounded text-sm">
+                        <option value="2024-25">2024-25</option>
+                        <option value="2025-26" selected>2025-26</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
+                    <select id="ra-jamia-filter" class="w-full p-2 border rounded text-sm urdu-font">
+                        <option value="">Tamam Jamiaat (All)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
+                    <select id="ra-layout-level" class="w-full p-2 border rounded text-sm font-bold text-indigo-700">
+                        <option value="jamia">Jamia Wise Summary</option>
+                        <option value="class">Class Wise Summary</option>
+                        <option value="teacher">Asatiza Wise Summary</option>
+                    </select>
+                </div>
+            </div>
+            <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
+                <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
+            </button>
+        </div>
 
-container.innerHTML = `
-  <div class="max-w-7xl mx-auto space-y-5 w-full">
-    
-    <div class="bg-indigo-50 p-4 md:p-6 rounded-xl border border-indigo-200 no-print shadow-sm">
-        <h4 class="text-sm font-bold text-indigo-700 uppercase mb-4 border-b border-indigo-200 pb-1 flex items-center">
-            <i class="fas fa-filter mr-2"></i> Result Analysis Filters
-        </h4>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">Exam Type</label>
-                <select id="ra-exam-type" class="w-full p-2 border border-indigo-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <option value="ششماہی امتحان">ششماہی امتحان</option>
-                    <option value="سالانہ امتحان">سالانہ امتحان</option>
-                </select>
+        <div id="ra-loader" class="hidden text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
+            <p class="mt-2 text-indigo-600 font-semibold">Data analyze ho raha hai...</p>
+        </div>
+
+        <div id="ra-report-area" class="hidden mt-6 bg-white rounded-lg border border-gray-200 w-full overflow-hidden shadow-sm">
+            <div class="bg-indigo-700 text-white p-4 flex justify-between items-center border-b-4 border-indigo-900">
+                <div class="w-24"></div> <div class="text-center flex-1">
+                    <h2 id="ra-report-title" class="text-2xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
+                    <p id="ra-report-subtitle" class="text-sm opacity-90 mt-1 font-sans text-center"></p>
+                </div>
+                <div class="flex gap-2 no-print">
+                    <button id="ra-download-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded shadow text-xs flex items-center gap-1">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button id="ra-download-image" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded shadow text-xs flex items-center gap-1">
+                        <i class="fas fa-image"></i> Image
+                    </button>
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
-                <select id="ra-exam-year" class="w-full p-2 border border-indigo-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <option value="2024-25">2024-25</option>
-                    <option value="2025-26" selected>2025-26</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
-                <select id="ra-jamia-filter" class="w-full p-2 border border-indigo-200 rounded-lg text-sm urdu-font focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <option value="">Tamam Jamiaat (All)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1">Analysis Level</label>
-                <select id="ra-layout-level" class="w-full p-2 border border-indigo-300 rounded-lg text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <option value="jamia">Jamia Wise Summary</option>
-                    <option value="class">Class Wise Summary</option>
-                    <option value="teacher">Asatiza Wise Summary</option>
-                </select>
+            <div class="w-full overflow-x-auto">
+                <table id="ra-data-table" class="w-full min-w-full text-center text-[11px] border-collapse" dir="rtl">
+                    <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300"></thead>
+                    <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
+                </table>
             </div>
         </div>
-        <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center">
-            <i class="fas fa-chart-line mr-2"></i> Result Analysis Show Karein
-        </button>
-    </div>
+      </div>
+    `;
 
-    <div id="ra-loader" class="hidden text-center py-12">
-        <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent"></div>
-        <p class="mt-3 text-indigo-600 font-semibold">Data analyze ho raha hai...</p>
-    </div>
-
-    <div id="ra-report-area" class="hidden mt-6 bg-white rounded-xl border border-gray-200 w-full overflow-hidden shadow-md">
-        <div class="bg-indigo-800 text-white p-5 text-center border-b-4 border-indigo-900">
-            <h2 id="ra-report-title" class="text-3xl font-bold urdu-font">نتیجہ امتحان (Result Summary)</h2>
-            <p id="ra-report-subtitle" class="text-sm opacity-90 mt-2 font-sans tracking-wide"></p>
-        </div>
-        <div class="w-full overflow-x-auto">
-            <table class="w-full min-w-full text-center text-xs border-collapse" dir="rtl">
-                <thead id="ra-table-head" class="bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-300"></thead>
-                <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
-            </table>
-        </div>
-    </div>
-  </div>
-`;
-    
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
@@ -139,6 +145,8 @@ container.innerHTML = `
                 }
             });
 
+            let rowsHtml = ""; // Optimization: String buffer for faster rendering
+
             if (layoutLevel === 'jamia') {
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
@@ -169,11 +177,10 @@ container.innerHTML = `
                 for (let jName in jamiaStats) {
                     const s = jamiaStats[jName];
                     const hazir = s.total - s.ghaib;
-                    // Calculation: % sirf Kamyab students par aur Hazir ki buniyad par
                     const percNum = hazir > 0 ? (s.passed / hazir) * 100 : 0;
                     const color = getKefiyatColor(percNum);
                     
-                    tbody.innerHTML += `
+                    rowsHtml += `
                         <tr class="hover:bg-gray-50 border-b text-sm">
                             <td class="border p-2">${idx++}</td>
                             <td class="border p-2 font-bold text-right">${jName}</td>
@@ -187,7 +194,6 @@ container.innerHTML = `
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
-                // Class wise detail implementation
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th><th class="border p-2">درجہ</th>
@@ -199,7 +205,7 @@ container.innerHTML = `
                     </tr>`;
 
                 latestDataMap.forEach((d) => {
-                    tbody.innerHTML += `
+                    rowsHtml += `
                         <tr class="hover:bg-gray-50 border-b text-sm">
                             <td class="border p-2 font-bold">${d.jamia}</td>
                             <td class="border p-2">${d.darjah || '-'}</td>
@@ -217,11 +223,12 @@ container.innerHTML = `
                         </tr>`;
                 });
             } else {
-                // Teacher wise detail implementation
+                // Teacher Wise Detail Implementation - Updated with 2 Columns for Sub/Class
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-2">جامعہ</th><th class="border p-2">استاد کا نام</th>
-                        <th class="border p-2">مضمون (درجہ)</th><th class="border p-2">کل طلبہ</th>
+                        <th class="border p-2">مضمون</th><th class="border p-2">درجہ</th>
+                        <th class="border p-2">کل طلبہ</th>
                         <th class="border p-2 text-green-700">کامیاب</th><th class="border p-2 text-red-600">ناکام</th>
                         <th class="border p-2">فیصد</th><th class="border p-2">کیفیت</th>
                         <th class="border p-2 bg-teal-100">کیفیت (استاد)</th>
@@ -231,24 +238,25 @@ container.innerHTML = `
                     if (d.data && Array.isArray(d.data)) {
                         d.data.forEach((tEntry) => {
                             const tName = tEntry.teacher || "-";
-                            const periodsCount = tEntry.periods?.length || 1;
+                            const periods = tEntry.periods || [];
+                            const periodsCount = periods.length || 1;
                             
-                            let teacherTotal = 0;
-                            let teacherPassed = 0;
-                            tEntry.periods?.forEach(p => {
-                                teacherTotal += parseInt(p.total) || 0;
-                                teacherPassed += parseInt(p.passed) || 0;
+                            let tTotal = 0, tPassed = 0;
+                            periods.forEach(p => {
+                                tTotal += parseInt(p.total) || 0;
+                                tPassed += parseInt(p.passed) || 0;
                             });
-                            const teacherPerc = teacherTotal > 0 ? (teacherPassed / teacherTotal) * 100 : 0;
-                            const teacherColor = getKefiyatColor(teacherPerc);
+                            const tPerc = tTotal > 0 ? (tPassed / tTotal) * 100 : 0;
+                            const tColor = getKefiyatColor(tPerc);
 
-                            tEntry.periods?.forEach((p, pIdx) => {
+                            periods.forEach((p, pIdx) => {
                                 const fail = (parseInt(p.total) - parseInt(p.passed)) || 0;
-                                tbody.innerHTML += `
+                                rowsHtml += `
                                     <tr class="hover:bg-gray-50 border-b text-sm">
                                         ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle" rowspan="${periodsCount}">${d.jamia}</td>` : ''}
                                         ${pIdx === 0 ? `<td class="border p-2 font-bold align-middle text-blue-700" rowspan="${periodsCount}">${tName}</td>` : ''}
-                                        <td class="border p-2 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                        <td class="border p-2 text-right">${p.subject || '-'}</td>
+                                        <td class="border p-2">${p.class || '-'}</td>
                                         <td class="border p-2">${p.total || '0'}</td>
                                         <td class="border p-2 text-green-700 font-bold">${p.passed || '0'}</td>
                                         <td class="border p-2 text-red-600">${fail}</td>
@@ -256,8 +264,8 @@ container.innerHTML = `
                                         <td class="border p-2">${p.kaifiyat || '-'}</td>
                                         ${pIdx === 0 ? `
                                             <td class="border p-2 bg-teal-50 align-middle font-bold" rowspan="${periodsCount}">
-                                                <div style="font-size: 14px; color:${teacherColor}">${teacherPerc.toFixed(1)}%</div>
-                                                <div style="font-size: 10px; color:${teacherColor}">${getJamiaKefiyat(teacherPerc)}</div>
+                                                <div style="font-size: 14px; color:${tColor}">${tPerc.toFixed(1)}%</div>
+                                                <div style="font-size: 10px; color:${tColor}">${getJamiaKefiyat(tPerc)}</div>
                                             </td>` : ''}
                                     </tr>`;
                             });
@@ -266,13 +274,40 @@ container.innerHTML = `
                 });
             }
 
-            if (tbody.innerHTML === '') {
-                tbody.innerHTML = `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
-            }
-
+            tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
             subtitle.textContent = `${examType} | سال: ${examYear}`;
             loader.classList.add('hidden');
             reportArea.classList.remove('hidden');
+
+            // --- Download Button Handlers ---
+            document.getElementById('ra-download-excel').onclick = () => {
+                let csv = [];
+                const table = document.getElementById('ra-data-table');
+                const rows = table.querySelectorAll('tr');
+                for (let i = 0; i < rows.length; i++) {
+                    const row = [], cols = rows[i].querySelectorAll('td, th');
+                    for (let j = 0; j < cols.length; j++) row.push('"' + cols[j].innerText.replace(/"/g, '""') + '"');
+                    csv.push(row.join(','));
+                }
+                const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csv.join("\n");
+                const link = document.createElement("a");
+                link.setAttribute("href", encodeURI(csvContent));
+                link.setAttribute("download", `Result_${layoutLevel}_${examYear}.csv`);
+                link.click();
+            };
+
+            document.getElementById('ra-download-image').onclick = async () => {
+                if(window.html2canvas) {
+                    const canvas = await window.html2canvas(document.getElementById('ra-report-area'), { scale: 2 });
+                    const link = document.createElement("a");
+                    link.download = `Result_${layoutLevel}_${examYear}.png`;
+                    link.href = canvas.toDataURL();
+                    link.click();
+                } else {
+                    alert("Image Download library load nahi hui.");
+                }
+            };
+
         } catch (err) {
             console.error(err);
             loader.classList.add('hidden');
