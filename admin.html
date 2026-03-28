@@ -4877,55 +4877,8 @@ document.addEventListener('click', function (e) {
         rows.forEach(row => tbody.appendChild(row));
     }
 });
-        document.getElementById('btn-generate-final-analysis').addEventListener('click', async () => {
-    const type = document.getElementById('final-analysis-type-select').value;
-    const container = document.getElementById('final-analysis-container');
-
-    if (!type) { alert("Pehle report type select karein."); return; }
-
-    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Database load ho raha hai...</p></div>';
-
-    try {
-        const snapshot = await getDocs(collection(db, "monthly_test_sheets"));
-        const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        if (allData.length === 0) {
-            container.innerHTML = '<p class="text-center py-20 text-gray-500">Database mein koi data nahi mila.</p>';
-            return;
-        }
-
-        const jamiaUserMap = {};
-
-allUsersData.forEach(user => {
-    if (Array.isArray(user.jamiaat)) {
-        user.jamiaat.forEach(jamia => {
-            jamiaUserMap[jamia] = {
-                name: user.name,
-                region: user.region
-            };
-        });
-    }
-});
-
-        let rowsHtml = '';
-        // Common Headers for all 3 reports as per your request
-        const commonHeaders = ["#", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"];
-        const asatizaHeaders = ["#", "Asatiza Name", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"];
-
-        if (type === 'ibtidaiya') {
-            const filtered = allData.filter(s => s.isIbtidaiya === true);
-            filtered.forEach((s, i) => {
-                const stds = s.students || [];
-                const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
-                const fail = stds.length - pass;
-                const perc = parseFloat(s.classPercentage || 0);
-                const grade = getAdminSummaryGrade(perc);
-                rowsHtml += renderUnifiedRow(i, s.jamiaName, s.className || s.class, stds.length, pass, fail, perc, grade);
-            });
-            renderFinalTable(container, "Ibtidaiya Result Summary", rowsHtml, commonHeaders);
-        } 
-        
-    function renderFinalTable(container, title, rows, headers) {
+        // --- 1. Helper Function to Render Final Tables ---
+function renderFinalTable(container, title, rows, headers) {
     container.innerHTML = `
         <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden mb-10">
             <div class="p-4 bg-slate-900 text-white font-bold urdu-font flex justify-between items-center">
@@ -4946,128 +4899,165 @@ allUsersData.forEach(user => {
             </div>
         </div>`;
 }
-// --- 2. Final Analysis Button Logic ---
-        document.getElementById('btn-generate-final-analysis').addEventListener('click', async () => {
-            const type = document.getElementById('final-analysis-type-select').value;
-            const container = document.getElementById('final-analysis-container');
 
-            if (!type) { alert("Pehle report type select karein."); return; }
+// --- 2. Final Analysis Button Logic (Unified) ---
+document.getElementById('btn-generate-final-analysis').addEventListener('click', async () => {
+    const type = document.getElementById('final-analysis-type-select').value;
+    const container = document.getElementById('final-analysis-container');
 
-            container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Database load ho raha hai...</p></div>';
+    if (!type) { 
+        alert("Pehle report type select karein."); 
+        return; 
+    }
 
-            try {
-                // Build Jamia User Map for Admin View
-                const jamiaUserMap = {};
-                allUsersData.forEach(user => {
-                    if (Array.isArray(user.jamiaatList)) {
-                        user.jamiaatList.forEach(j => {
-                            const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                            jamiaUserMap[jName] = { name: user.name, region: user.region };
-                        });
-                    }
+    container.innerHTML = '<div class="text-center py-10"><div class="loader mx-auto mb-4"></div><p class="text-gray-500">Database load ho raha hai...</p></div>';
+
+    try {
+        // Build Jamia User Map for Admin View
+        const jamiaUserMap = {};
+        allUsersData.forEach(user => {
+            if (Array.isArray(user.jamiaatList)) {
+                user.jamiaatList.forEach(j => {
+                    const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    jamiaUserMap[jName] = { name: user.name, region: user.region };
                 });
+            }
+        });
 
-                if (type === 'class-wise') {
+        // --- CASE 1: IBTIDAIYA ANALYSIS ---
+        if (type === 'ibtidaiya') {
+            const snapshot = await getDocs(collection(db, "monthly_test_sheets"));
+            const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const filtered = allData.filter(s => s.isIbtidaiya === true);
+            
+            let rowsHtml = '';
+            filtered.forEach((s, i) => {
+                const stds = s.students || [];
+                const pass = stds.filter(st => parseFloat(st.percentage || 0) >= 40).length;
+                const fail = stds.length - pass;
+                const perc = parseFloat(s.classPercentage || 0);
+                const grade = getAdminSummaryGrade(perc);
+                
+                rowsHtml += `
+                    <tr class="border-b text-center">
+                        <td class="p-2 border-r">${i + 1}</td>
+                        <td class="p-2 border-r text-left">${s.jamiaName}</td>
+                        <td class="p-2 border-r">${s.className || s.class}</td>
+                        <td class="p-2 border-r">${stds.length}</td>
+                        <td class="p-2 border-r text-green-600">${pass}</td>
+                        <td class="p-2 border-r text-red-600">${fail}</td>
+                        <td class="p-2 border-r font-bold">${perc}%</td>
+                        <td class="p-2">${grade}</td>
+                    </tr>`;
+            });
+            const headers = ["#", "Jamia Name", "Class", "Total Stu", "Pass", "Fail", "Result %", "Grade"];
+            renderFinalTable(container, "Ibtidaiya Result Summary", rowsHtml, headers);
+
+        } 
+        // --- CASE 2: CLASS-WISE ANALYSIS ---
+        else if (type === 'class-wise') {
+            let rowsHtml = '';
+            let counter = 1;
+            const snapshot = await getDocs(collection(db, "class_wise_results"));
+            const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            allDocs.sort((a, b) => (a.jamia || '').localeCompare(b.jamia || '')).forEach(doc => {
+                const userData = jamiaUserMap[doc.jamia] || {};
+                const percVal = parseFloat(doc.percent?.replace('%', '')) || 0;
+                const rowColor = getKefiyatColor(percVal);
+
+                rowsHtml += `
+                    <tr class="border-b hover:bg-gray-50 text-center text-[12px]">
+                        <td class="p-2 border-r bg-gray-50">${counter++}</td>
+                        <td class="p-2 border-r urdu-font font-bold text-gray-600">${userData.region || '-'}</td>
+                        <td class="p-2 border-r urdu-font text-left">${userData.name || '-'}</td>
+                        <td class="p-2 border-r urdu-font font-bold text-teal-800 text-left">${doc.jamia || '-'}</td>
+                        <td class="p-2 border-r urdu-font text-blue-800 font-bold">${doc.darjah || '-'}</td>
+                        <td class="p-2 border-r">${doc.mumtazSharf || 0}</td>
+                        <td class="p-2 border-r">${doc.mumtaz || 0}</td>
+                        <td class="p-2 border-r">${doc.jayyidJidda || 0}</td>
+                        <td class="p-2 border-r">${doc.jayyid || 0}</td>
+                        <td class="p-2 border-r">${doc.maqbool || 0}</td>
+                        <td class="p-2 border-r">${doc.majazZimni || 0}</td>
+                        <td class="p-2 border-r text-red-600 font-bold">${doc.nakam || 0}</td>
+                        <td class="p-2 border-r text-gray-400">${doc.ghaib || 0}</td>
+                        <td class="p-2 border-r font-bold">${doc.total || 0}</td>
+                        <td class="p-2 border-r text-green-600 font-bold">${doc.passed || 0}</td>
+                        <td class="p-2 border-r font-black" style="color:${rowColor}">${percVal.toFixed(1)}%</td>
+                        <td class="p-2 font-bold urdu-font" style="color:${rowColor}">${getJamiaKefiyat(percVal)}</td>
+                    </tr>`;
+            });
+
+            const headers = ["#", "Region", "User", "Jamia", "Class", "M-Sharf", "Mumtaz", "J-Jidda", "Jayyid", "Maqbool", "Zimni", "Nakam", "Ghaib", "Total", "Pass", "%", "Kefiyat"];
+            renderFinalTable(container, "Class Wise Analysis (All Jamiaat)", rowsHtml, headers);
+
+        } 
+        // --- CASE 3: ASATIZA-WISE ANALYSIS ---
+        else if (type === 'asatiza-wise') {
+            let finalHtml = '';
+            let globalCounter = 1;
+            const snapshot = await getDocs(collection(db, "asatiza_wise_results"));
+            const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            allDocs.forEach(doc => {
+                const teachersArray = doc.data || [];
+                teachersArray.forEach(t => {
                     let rowsHtml = '';
-                    let counter = 1;
-                    const snapshot = await getDocs(collection(db, "class_wise_results"));
-                    const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    allDocs.sort((a, b) => (a.jamia || '').localeCompare(b.jamia || '')).forEach(doc => {
-                        const userData = jamiaUserMap[doc.jamia] || {};
-                        const percVal = parseFloat(doc.percent?.replace('%', '')) || 0;
-                        const rowColor = getKefiyatColor(percVal);
-
+                    let totalT = 0, totalP = 0;
+                    (t.periods || []).forEach(p => {
+                        const tVal = parseFloat(p.total) || 0;
+                        const pVal = parseFloat(p.passed) || 0;
+                        totalT += tVal; totalP += pVal;
+                        const pPerc = tVal > 0 ? (pVal / tVal * 100) : 0;
                         rowsHtml += `
-                            <tr class="border-b hover:bg-gray-50 text-center text-[12px]">
-                                <td class="p-2 border-r bg-gray-50">${counter++}</td>
-                                <td class="p-2 border-r urdu-font font-bold text-gray-600">${userData.region || '-'}</td>
-                                <td class="p-2 border-r urdu-font text-left">${userData.name || '-'}</td>
-                                <td class="p-2 border-r urdu-font font-bold text-teal-800 text-left">${doc.jamia || '-'}</td>
-                                <td class="p-2 border-r urdu-font text-blue-800 font-bold">${doc.darjah || '-'}</td>
-                                <td class="p-2 border-r">${doc.mumtazSharf || 0}</td>
-                                <td class="p-2 border-r">${doc.mumtaz || 0}</td>
-                                <td class="p-2 border-r">${doc.jayyidJidda || 0}</td>
-                                <td class="p-2 border-r">${doc.jayyid || 0}</td>
-                                <td class="p-2 border-r">${doc.maqbool || 0}</td>
-                                <td class="p-2 border-r">${doc.majazZimni || 0}</td>
-                                <td class="p-2 border-r text-red-600 font-bold">${doc.nakam || 0}</td>
-                                <td class="p-2 border-r text-gray-400">${doc.ghaib || 0}</td>
-                                <td class="p-2 border-r font-bold">${doc.total || 0}</td>
-                                <td class="p-2 border-r text-green-600 font-bold">${doc.passed || 0}</td>
-                                <td class="p-2 border-r font-black" style="color:${rowColor}">${percVal.toFixed(1)}%</td>
-                                <td class="p-2 font-bold urdu-font" style="color:${rowColor}">${getJamiaKefiyat(percVal)}</td>
+                            <tr class="border-b text-center text-sm">
+                                <td class="p-2 border-r urdu-font font-semibold text-blue-700">${p.class || '-'}</td>
+                                <td class="p-2 border-r urdu-font text-gray-700">${p.subject || '-'}</td>
+                                <td class="p-2 border-r font-bold">${tVal}</td>
+                                <td class="p-2 border-r text-green-600 font-bold">${pVal}</td>
+                                <td class="p-2 border-r font-black" style="color:${getKefiyatColor(pPerc)}">${pPerc.toFixed(1)}%</td>
+                                <td class="p-2 font-bold urdu-font" style="color:${getKefiyatColor(pPerc)}">${getJamiaKefiyat(pPerc)}</td>
                             </tr>`;
                     });
 
-                    const headers = ["#", "Region", "User", "Jamia", "Class", "M-Sharf", "Mumtaz", "J-Jidda", "Jayyid", "Maqbool", "Zimni", "Nakam", "Ghaib", "Total", "Pass", "%", "Kefiyat"];
-                    renderFinalTable(container, "Class Wise Analysis (All Jamiaat)", rowsHtml, headers);
+                    const grandPerc = totalT > 0 ? (totalP / totalT * 100).toFixed(1) : 0;
+                    const grandColor = getKefiyatColor(grandPerc);
 
-                } else if (type === 'asatiza-wise') {
-                    let finalHtml = '';
-                    let globalCounter = 1;
-                    const snapshot = await getDocs(collection(db, "asatiza_wise_results"));
-                    const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                    allDocs.forEach(doc => {
-                        const teachersArray = doc.data || [];
-                        teachersArray.forEach(t => {
-                            let rowsHtml = '';
-                            let totalT = 0, totalP = 0;
-                            (t.periods || []).forEach(p => {
-                                const tVal = parseFloat(p.total) || 0;
-                                const pVal = parseFloat(p.passed) || 0;
-                                totalT += tVal; totalP += pVal;
-                                const pPerc = tVal > 0 ? (pVal / tVal * 100) : 0;
-                                rowsHtml += `
-                                    <tr class="border-b text-center text-sm">
-                                        <td class="p-2 border-r urdu-font font-semibold text-blue-700">${p.class || '-'}</td>
-                                        <td class="p-2 border-r urdu-font text-gray-700">${p.subject || '-'}</td>
-                                        <td class="p-2 border-r font-bold">${tVal}</td>
-                                        <td class="p-2 border-r text-green-600 font-bold">${pVal}</td>
-                                        <td class="p-2 border-r font-black" style="color:${getKefiyatColor(pPerc)}">${pPerc.toFixed(1)}%</td>
-                                        <td class="p-2 font-bold urdu-font" style="color:${getKefiyatColor(pPerc)}">${getJamiaKefiyat(pPerc)}</td>
-                                    </tr>`;
-                            });
-
-                            const grandPerc = totalT > 0 ? (totalP / totalT * 100).toFixed(1) : 0;
-                            const grandColor = getKefiyatColor(grandPerc);
-
-                            finalHtml += `
-                                <div class="mb-8 bg-white rounded-xl shadow-lg border-2 border-gray-100 overflow-hidden">
-                                    <div class="p-4 bg-slate-800 text-white flex justify-between items-center">
-                                        <div class="flex items-center gap-4">
-                                            <div class="h-10 w-10 bg-slate-700 rounded-full flex items-center justify-center font-bold border border-slate-600">${globalCounter++}</div>
-                                            <div>
-                                                <div class="text-[10px] uppercase opacity-60">${doc.jamia || '-'}</div>
-                                                <div class="text-xl font-bold urdu-font">${t.teacher || 'N/A'}</div>
-                                            </div>
-                                        </div>
-                                        <div class="bg-white px-4 py-1 rounded-lg text-center" style="border: 3px solid ${grandColor}">
-                                            <div class="text-2xl font-black" style="color:${grandColor}">${grandPerc}%</div>
-                                            <div class="text-[11px] font-bold urdu-font" style="color:${grandColor}">${getJamiaKefiyat(grandPerc)}</div>
-                                        </div>
+                    finalHtml += `
+                        <div class="mb-8 bg-white rounded-xl shadow-lg border-2 border-gray-100 overflow-hidden">
+                            <div class="p-4 bg-slate-800 text-white flex justify-between items-center">
+                                <div class="flex items-center gap-4">
+                                    <div class="h-10 w-10 bg-slate-700 rounded-full flex items-center justify-center font-bold border border-slate-600">${globalCounter++}</div>
+                                    <div>
+                                        <div class="text-[10px] uppercase opacity-60">${doc.jamia || '-'}</div>
+                                        <div class="text-xl font-bold urdu-font">${t.teacher || 'N/A'}</div>
                                     </div>
-                                    <table class="w-full border-collapse">
-                                        <thead class="bg-gray-50 text-[11px] font-bold text-gray-700 border-b uppercase">
-                                            <tr>
-                                                <th class="p-2 border-r">Class</th><th class="p-2 border-r">Subject</th>
-                                                <th class="p-2 border-r">Total</th><th class="p-2 border-r">Pass</th>
-                                                <th class="p-2 border-r">Percent</th><th class="p-2">Kefiyat</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>${rowsHtml}</tbody>
-                                    </table>
-                                </div>`;
-                        });
-                    });
-                    container.innerHTML = finalHtml || '<p class="text-center py-20 text-gray-500">Data nahi mila.</p>';
-                }
-            } catch (err) {
-                console.error("Analysis Error:", err);
-                container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
-            }
-        });
+                                </div>
+                                <div class="bg-white px-4 py-1 rounded-lg text-center" style="border: 3px solid ${grandColor}">
+                                    <div class="text-2xl font-black" style="color:${grandColor}">${grandPerc}%</div>
+                                    <div class="text-[11px] font-bold urdu-font" style="color:${grandColor}">${getJamiaKefiyat(grandPerc)}</div>
+                                </div>
+                            </div>
+                            <table class="w-full border-collapse">
+                                <thead class="bg-gray-50 text-[11px] font-bold text-gray-700 border-b uppercase">
+                                    <tr>
+                                        <th class="p-2 border-r">Class</th><th class="p-2 border-r">Subject</th>
+                                        <th class="p-2 border-r">Total</th><th class="p-2 border-r">Pass</th>
+                                        <th class="p-2 border-r">Percent</th><th class="p-2">Kefiyat</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rowsHtml}</tbody>
+                            </table>
+                        </div>`;
+                });
+            });
+            container.innerHTML = finalHtml || '<p class="text-center py-20 text-gray-500">Data nahi mila.</p>';
+        }
+    } catch (err) {
+        console.error("Analysis Error:", err);
+        container.innerHTML = `<p class="text-red-500 text-center py-10">Error: ${err.message}</p>`;
+    }
+});
 
         // --- Init ---
         initApp();
