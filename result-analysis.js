@@ -2,6 +2,8 @@
 import {
     collection, query, where, getDocs, orderBy, deleteDoc, doc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
 
 // Jamia/Ustad Wise Kefiyat Logic
 const getJamiaKefiyat = (p) => {
@@ -120,6 +122,40 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     }
 };
 
+    
+window.editEntry = async (docId) => {
+    try {
+        const docRef = doc(db, "asatiza_wise_results", docId);
+        const snap = await getDoc(docRef);
+
+        if (!snap.exists()) {
+            alert("Record nahi mila");
+            return;
+        }
+
+        const data = snap.data();
+
+        // 🔹 Data ko form me fill karo
+        // (IDs apne form ke hisab se change karo)
+
+        document.getElementById("teacher-name").value = data.teacher || "";
+        document.getElementById("jamia-name").value = data.jamia || "";
+
+        // Agar periods / subjects array hai
+        window.currentEditData = data;
+
+        // 🔹 Save button ko update mode me le aao
+        const saveBtn = document.getElementById("save-btn");
+        saveBtn.textContent = "Update Karein";
+        saveBtn.dataset.editId = docId;
+
+        alert("Edit mode ON ho gaya 👍");
+
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
+};
+    
     window.fetchResultData = async () => {
         const examType = document.getElementById('ra-exam-type').value;
         const examYear = document.getElementById('ra-exam-year').value;
@@ -279,7 +315,14 @@ if (layoutLevel === 'jamia') {
                             <td class="border p-3 text-green-700 font-bold">${passed}</td><td class="border p-3 text-red-600 font-bold">${failed}</td>
                             <td class="border p-3 bg-teal-50 font-bold text-teal-700">${percent.toFixed(2)}%</td>
                             <td class="border p-3 no-print">
-                                <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" class="text-red-600 hover:scale-110"><i class="fas fa-trash-alt"></i></button>
+                            <button onclick="editEntry('${d.docId}')" class="text-blue-600 mr-2">
+    <i class="fas fa-edit"></i>
+</button>
+
+<button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-600">
+    <i class="fas fa-trash-alt"></i>
+</button>
+                                
                             </td>
                         </tr>`;
                 });
