@@ -202,8 +202,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 }
             } else if (layoutLevel === 'class') {
     thead.innerHTML = `
-        thead.innerHTML = `
-<tr class="bg-gray-200 text-sm">
+        <tr class="bg-gray-200 text-sm">
     <th class="border p-3">جامعہ</th>
     <th class="border p-3">درجہ</th>
 
@@ -258,7 +257,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         const percent = hazir > 0 ? (passed / hazir) * 100 : 0;
 
        rowsHtml += `
-<tr class="hover:bg-gray-50 border-b">
+    <tr class="hover:bg-gray-50 border-b">
     <td class="border p-3 font-bold">${d.jamia}</td>
     <td class="border p-3">${d.darjah || '-'}</td>
 
