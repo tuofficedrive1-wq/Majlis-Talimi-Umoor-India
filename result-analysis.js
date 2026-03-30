@@ -162,42 +162,87 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
             let rowsHtml = "";
 
-            if (layoutLevel === 'jamia') {
-                thead.innerHTML = `
-                    <tr class="bg-gray-200">
-                        <th class="border p-3">#</th><th class="border p-3">جامعہ کا نام</th>
-                        <th class="border p-3">کل طلبہ</th><th class="border p-3 text-blue-700">حاضر</th>
-                        <th class="border p-3 text-green-700">کامیاب</th><th class="border p-3 text-purple-700">ضمنی</th>
-                        <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th><th class="border p-3">کیفیت</th>
-                    </tr>`;
+if (layoutLevel === 'jamia') {
+    thead.innerHTML = `
+        <tr class="bg-gray-200">
+            <th class="border p-3">#</th><th class="border p-3">جامعہ کا نام</th>
+            <th class="border p-3">کل طلبہ</th><th class="border p-3 text-blue-700">حاضر</th>
+            <th class="border p-3 text-green-700">کامیاب</th><th class="border p-3 text-purple-700">ضمنی</th>
+            <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th><th class="border p-3">کیفیت</th>
+        </tr>`;
 
-                let jamiaStats = {};
-                latestDataMap.forEach((d) => {
-                    if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0, ghaib: 0, majazZimni: 0 };
-                    jamiaStats[d.jamia].total += parseInt(d.total) || 0;
-                    jamiaStats[d.jamia].passed += parseInt(d.passed) || 0;
-                    jamiaStats[d.jamia].nakam += parseInt(d.nakam) || 0;
-                    jamiaStats[d.jamia].ghaib += parseInt(d.ghaib) || 0;
-                    jamiaStats[d.jamia].majazZimni += parseInt(d.majazZimni) || 0;
-                });
+    let jamiaStats = {};
 
-                let idx = 1;
-                for (let jName in jamiaStats) {
-                    const s = jamiaStats[jName];
-                    const hazir = s.total - s.ghaib;
-                    const percNum = hazir > 0 ? (s.passed / hazir) * 100 : 0;
-                    const color = getKefiyatColor(percNum);
-                    rowsHtml += `
-                        <tr class="hover:bg-gray-50 border-b">
-                            <td class="border p-3">${idx++}</td><td class="border p-3 font-bold text-right">${jName}</td>
-                            <td class="border p-3 font-bold">${s.total}</td><td class="border p-3 text-blue-700">${hazir}</td>
-                            <td class="border p-3 text-green-700">${s.passed}</td><td class="border p-3 text-purple-700">${s.majazZimni}</td>
-                            <td class="border p-3 text-red-600">${s.nakam}</td>
-                            <td class="border p-3 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
-                            <td class="border p-3 font-bold" style="color:${color}">${getJamiaKefiyat(percNum)}</td>
-                        </tr>`;
-                }
-            } else if (layoutLevel === 'class') {
+    latestDataMap.forEach((d) => {
+
+        // 🔹 Class-wise jaisi calculation
+        const total =
+            (parseInt(d.mumtazSharf)||0) +
+            (parseInt(d.mumtaz)||0) +
+            (parseInt(d.jayyidJidda)||0) +
+            (parseInt(d.jayyid)||0) +
+            (parseInt(d.maqbool)||0) +
+            (parseInt(d.majazZimni)||0) +
+            (parseInt(d.nakam)||0) +
+            (parseInt(d.ghaib)||0);
+
+        const passed =
+            (parseInt(d.mumtazSharf)||0) +
+            (parseInt(d.mumtaz)||0) +
+            (parseInt(d.jayyidJidda)||0) +
+            (parseInt(d.jayyid)||0) +
+            (parseInt(d.maqbool)||0);
+
+        const nakam = parseInt(d.nakam) || 0;           // ❗ sirf nakam
+        const zimni = parseInt(d.majazZimni) || 0;      // ❗ alag zimni
+        const ghaib = parseInt(d.ghaib) || 0;
+
+        // 🔹 Initialize
+        if (!jamiaStats[d.jamia]) {
+            jamiaStats[d.jamia] = { total: 0, passed: 0, nakam: 0, ghaib: 0, majazZimni: 0 };
+        }
+
+        // 🔹 Add values
+        jamiaStats[d.jamia].total += total;
+        jamiaStats[d.jamia].passed += passed;
+        jamiaStats[d.jamia].nakam += nakam;
+        jamiaStats[d.jamia].ghaib += ghaib;
+        jamiaStats[d.jamia].majazZimni += zimni;
+
+    });
+
+    let idx = 1;
+
+    for (let jName in jamiaStats) {
+        const s = jamiaStats[jName];
+
+        const hazir = s.total - s.ghaib;
+        const percNum = hazir > 0 ? (s.passed / hazir) * 100 : 0;
+        const color = getKefiyatColor(percNum);
+
+        rowsHtml += `
+            <tr class="hover:bg-gray-50 border-b">
+                <td class="border p-3">${idx++}</td>
+                <td class="border p-3 font-bold text-right">${jName}</td>
+
+                <td class="border p-3 font-bold">${s.total}</td>
+                <td class="border p-3 text-blue-700">${hazir}</td>
+
+                <td class="border p-3 text-green-700">${s.passed}</td>
+                <td class="border p-3 text-purple-700">${s.majazZimni}</td>
+
+                <td class="border p-3 text-red-600">${s.nakam}</td>
+
+                <td class="border p-3 bg-teal-50 font-black text-teal-800">
+                    ${percNum.toFixed(2)}%
+                </td>
+
+                <td class="border p-3 font-bold" style="color:${color}">
+                    ${getJamiaKefiyat(percNum)}
+                </td>
+            </tr>`;
+    }
+} else if (layoutLevel === 'class') {
                 thead.innerHTML = `
                     <tr class="bg-gray-200 text-sm">
                         <th class="border p-3">جامعہ</th><th class="border p-3">درجہ</th>
