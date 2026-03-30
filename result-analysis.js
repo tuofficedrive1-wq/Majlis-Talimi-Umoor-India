@@ -202,19 +202,28 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 }
             } else if (layoutLevel === 'class') {
     thead.innerHTML = `
-        <tr class="bg-gray-200 text-sm">
-            <th class="border p-3">جامعہ</th>
-            <th class="border p-3">درجہ</th>
+        thead.innerHTML = `
+<tr class="bg-gray-200 text-sm">
+    <th class="border p-3">جامعہ</th>
+    <th class="border p-3">درجہ</th>
 
-            <th class="border p-3">کل تعداد</th>
-            <th class="border p-3 text-blue-700">کل حاضر</th>
-            <th class="border p-3 text-green-700">کامیاب</th>
-            <th class="border p-3 text-red-600">ناکام</th>
-            <th class="border p-3">فیصد</th>
+    <th class="border p-3">ممتاز مع الشرف</th>
+    <th class="border p-3">ممتاز</th>
+    <th class="border p-3">جید جدا</th>
+    <th class="border p-3">جید</th>
+    <th class="border p-3">مقبول</th>
+    <th class="border p-3">ضمنی</th>
+    <th class="border p-3 text-red-600">ناکام</th>
+    <th class="border p-3">غیرحاضر</th>
 
-            <th class="border p-3 no-print text-red-600">حذف</th>
-        </tr>`;
+    <th class="border p-3">کل تعداد</th>
+    <th class="border p-3 text-blue-700">کل حاضر</th>
+    <th class="border p-3 text-green-700">کامیاب</th>
+    <th class="border p-3 text-red-600">ناکام</th>
+    <th class="border p-3">فیصد</th>
 
+    <th class="border p-3 no-print text-red-600">حذف</th>
+</tr>`;
     latestDataMap.forEach((d) => {
 
         // 🔢 TOTAL
@@ -248,26 +257,35 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         // 📊 PERCENT
         const percent = hazir > 0 ? (passed / hazir) * 100 : 0;
 
-        rowsHtml += `
-            <tr class="hover:bg-gray-50 border-b">
-                <td class="border p-3 font-bold">${d.jamia}</td>
-                <td class="border p-3">${d.darjah || '-'}</td>
+       rowsHtml += `
+<tr class="hover:bg-gray-50 border-b">
+    <td class="border p-3 font-bold">${d.jamia}</td>
+    <td class="border p-3">${d.darjah || '-'}</td>
 
-                <td class="border p-3 font-bold">${total}</td>
-                <td class="border p-3 text-blue-700 font-bold">${hazir}</td>
-                <td class="border p-3 text-green-700 font-bold">${passed}</td>
-                <td class="border p-3 text-red-600 font-bold">${failed}</td>
-                <td class="border p-3 bg-teal-50 font-bold text-teal-700">
-                    ${percent.toFixed(2)}%
-                </td>
+    <td class="border p-3">${d.mumtazSharf || 0}</td>
+    <td class="border p-3">${d.mumtaz || 0}</td>
+    <td class="border p-3">${d.jayyidJidda || 0}</td>
+    <td class="border p-3">${d.jayyid || 0}</td>
+    <td class="border p-3">${d.maqbool || 0}</td>
+    <td class="border p-3">${d.majazZimni || 0}</td>
+    <td class="border p-3 text-red-600">${d.nakam || 0}</td>
+    <td class="border p-3">${d.ghaib || 0}</td>
 
-                <td class="border p-3 no-print">
-                    <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" 
-                        class="text-red-600 hover:scale-110">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </td>
-            </tr>`;
+    <td class="border p-3 font-bold">${total}</td>
+    <td class="border p-3 text-blue-700 font-bold">${hazir}</td>
+    <td class="border p-3 text-green-700 font-bold">${passed}</td>
+    <td class="border p-3 text-red-600 font-bold">${failed}</td>
+    <td class="border p-3 bg-teal-50 font-bold text-teal-700">
+        ${percent.toFixed(2)}%
+    </td>
+
+    <td class="border p-3 no-print">
+        <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" 
+            class="text-red-600 hover:scale-110">
+            <i class="fas fa-trash-alt"></i>
+        </button>
+    </td>
+</tr>`;
     });
 } else {
                 thead.innerHTML = `
