@@ -106,19 +106,23 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     });
 
     // 🔹 DELETE FUNCTION (Global banaya taake onclick kaam kare)
-    window.deleteEntry = async (docId, collectionName) => {
-        if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
-            try {
-                await deleteDoc(doc(db, collectionName, docId));
-                alert("Record delete ho gaya.");
-                fetchResultData(); // Refresh table
-            } catch (err) {
-                alert("Galti: " + err.message);
-            }
-        }
-    };
+   window.deleteEntry = async (docId, collectionName) => {
+    if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
+        try {
+            await deleteDoc(doc(db, collectionName, docId));
+            alert("Record delete ho gaya.");
 
-    const fetchResultData = async () => {
+            if (window.fetchResultData) {
+                window.fetchResultData(); // ✅ safe call
+            }
+
+        } catch (err) {
+            alert("Galti: " + err.message);
+        }
+    }
+};
+
+    window.fetchResultData = async () => {
         const examType = document.getElementById('ra-exam-type').value;
         const examYear = document.getElementById('ra-exam-year').value;
         const jamiaFilter = document.getElementById('ra-jamia-filter').value;
@@ -310,5 +314,5 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         }
     };
 
-    document.getElementById('ra-show-btn').onclick = fetchResultData;
+    document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
