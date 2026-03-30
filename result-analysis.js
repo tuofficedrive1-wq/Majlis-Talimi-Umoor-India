@@ -105,13 +105,13 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
     });
 
-    // 🔹 DELETE FUNCTION (Global)
+    // 🔹 DELETE FUNCTION (Global banaya taake onclick kaam kare)
     window.deleteEntry = async (docId, collectionName) => {
         if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
             try {
                 await deleteDoc(doc(db, collectionName, docId));
                 alert("Record delete ho gaya.");
-                fetchResultData(); 
+                fetchResultData(); // Refresh table
             } catch (err) {
                 alert("Galti: " + err.message);
             }
@@ -147,10 +147,10 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             const snap = await getDocs(q);
             let latestDataMap = new Map();
 
-            // 🔹 Sahi jagah jahan snap ko use karna hai
+            // 🔹 Data processing with docId
             snap.forEach(docSnap => {
                 const d = docSnap.data();
-                d.docId = docSnap.id; // ID store karna
+                d.docId = docSnap.id; 
                 if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
                     const uniqueKey = layoutLevel === 'teacher' ? d.jamia : `${d.jamia}_${d.darjah}`;
                     if (!latestDataMap.has(uniqueKey)) {
@@ -205,7 +205,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         <th class="border p-3">مقبول</th><th class="border p-3">ضمنی</th>
                         <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">غائب</th>
                         <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th><th class="border p-3">فیصد</th>
-                        <th class="border p-3 no-print text-red-600">Action</th>
+                        <th class="border p-3 no-print text-red-600">حذف</th>
                     </tr>`;
                 latestDataMap.forEach((d) => {
                     rowsHtml += `
@@ -232,7 +232,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
                         <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
                         <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
-                        <th class="border p-3 no-print text-red-600">Action</th>
+                        <th class="border p-3 no-print text-red-600">حذف</th>
                     </tr>`;
                 latestDataMap.forEach((d) => {
                     if (d.data && Array.isArray(d.data)) {
