@@ -148,11 +148,11 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 orderBy("timestamp", "desc")
             );
             
-            const snap = await getDocs(q);
+            const snapshot = await getDocs(q);
             let latestDataMap = new Map();
 
             // 🔹 Data processing with docId
-            snap.forEach(docSnap => {
+            snapshot.forEach(docSnap => {
                 const d = docSnap.data();
                 d.docId = docSnap.id; 
                 if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
