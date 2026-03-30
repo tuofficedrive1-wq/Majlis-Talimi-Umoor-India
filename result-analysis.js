@@ -1,6 +1,6 @@
 // Filename: result-analysis.js
 import {
-    collection, query, where, getDocs, orderBy
+    collection, query, where, getDocs, orderBy, deleteDoc, doc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // Jamia/Ustad Wise Kefiyat Logic
@@ -98,7 +98,32 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         </div>
       </div>
     `;
+    
+// Step A: Map mein ID save karein
+snap.forEach(docSnap => { // 'doc' ko 'docSnap' kar diya taake confusion na ho
+    const d = docSnap.data();
+    d.docId = docSnap.id; // <-- Ye line add karein taake ID mil sake
+    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+        const uniqueKey = layoutLevel === 'teacher' ? d.jamia : `${d.jamia}_${d.darjah}`;
+        if (!latestDataMap.has(uniqueKey)) {
+            latestDataMap.set(uniqueKey, d);
+        }
+    }
+});
 
+// Step B: Delete function (Ise initResultAnalysis ke andar hi kahin bhi rakh dein)
+window.deleteEntry = async (docId, collectionName) => {
+    if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
+        try {
+            await deleteDoc(doc(db, collectionName, docId));
+            alert("Record delete ho gaya.");
+            fetchResultData(); // Table ko refresh karne ke liye
+        } catch (err) {
+            alert("Galti: " + err.message);
+        }
+    }
+};
+    
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
@@ -183,62 +208,74 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
-                thead.innerHTML = `
-                    <tr class="bg-gray-200 text-sm">
-                        <th class="border p-3">جامعہ</th><th class="border p-3">درجہ</th>
-                        <th class="border p-3">مع الشرف</th><th class="border p-3">ممتاز</th>
-                        <th class="border p-3">جید جدا</th><th class="border p-3">جید</th>
-                        <th class="border p-3">مقبول</th><th class="border p-3">ضمنی</th>
-                        <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">غائب</th>
-                        <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th><th class="border p-3">فیصد</th>
-                    </tr>`;
-                latestDataMap.forEach((d) => {
+    thead.innerHTML = `
+        <tr class="bg-gray-200 text-sm">
+            <th class="border p-3">جامعہ</th><th class="border p-3">درجہ</th>
+            <th class="border p-3">مع الشرف</th><th class="border p-3">ممتاز</th>
+            <th class="border p-3">جید جدا</th><th class="border p-3">جید</th>
+            <th class="border p-3">مقبول</th><th class="border p-3">ضمنی</th>
+            <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">غائب</th>
+            <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th><th class="border p-3">فیصد</th>
+            <th class="border p-3 no-print text-red-600">Action</th> 
+        </tr>`;
+    
+    latestDataMap.forEach((d) => {
+        rowsHtml += `
+            <tr class="hover:bg-gray-50 border-b">
+                <td class="border p-3 font-bold">${d.jamia}</td><td class="border p-3">${d.darjah || '-'}</td>
+                <td class="border p-3">${d.mumtazSharf || '0'}</td><td class="border p-3">${d.mumtaz || '0'}</td>
+                <td class="border p-3">${d.jayyidJidda || '0'}</td><td class="border p-3">${d.jayyid || '0'}</td>
+                <td class="border p-3">${d.maqbool || '0'}</td><td class="border p-3">${d.majazZimni || '0'}</td>
+                <td class="border p-3 text-red-600">${d.nakam || '0'}</td><td class="border p-3 text-gray-500">${d.ghaib || '0'}</td>
+                <td class="border p-3 font-bold">${d.total || '0'}</td><td class="border p-3 text-green-700 font-bold">${d.passed || '0'}</td>
+                <td class="border p-3 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
+                <td class="border p-3 no-print">
+                    <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" class="text-red-500 hover:scale-110 transition">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            </tr>`;
+    });
+            } else {
+    thead.innerHTML = `
+        <tr class="bg-gray-200">
+            <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
+            <th class="border p-3">مضمون</th><th class="border p-3">درجہ</th>
+            <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
+            <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
+            <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
+            <th class="border p-3 no-print text-red-600">Action</th>
+        </tr>`;
+    
+    latestDataMap.forEach((d) => {
+        if (d.data && Array.isArray(d.data)) {
+            d.data.forEach((tEntry) => {
+                const periods = tEntry.periods || [];
+                const pCount = periods.length || 1;
+                // ... (percentage calculation logic same rahegi) ...
+                
+                periods.forEach((p, pIdx) => {
+                    const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
                     rowsHtml += `
                         <tr class="hover:bg-gray-50 border-b">
-                            <td class="border p-3 font-bold">${d.jamia}</td><td class="border p-3">${d.darjah || '-'}</td>
-                            <td class="border p-3">${d.mumtazSharf || '0'}</td><td class="border p-3">${d.mumtaz || '0'}</td>
-                            <td class="border p-3">${d.jayyidJidda || '0'}</td><td class="border p-3">${d.jayyid || '0'}</td>
-                            <td class="border p-3">${d.maqbool || '0'}</td><td class="border p-3">${d.majazZimni || '0'}</td>
-                            <td class="border p-3 text-red-600">${d.nakam || '0'}</td><td class="border p-3 text-gray-500">${d.ghaib || '0'}</td>
-                            <td class="border p-3 font-bold">${d.total || '0'}</td><td class="border p-3 text-green-700 font-bold">${d.passed || '0'}</td>
-                            <td class="border p-3 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
+                            ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle" rowspan="${pCount}">${d.jamia}</td>` : ''}
+                            ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
+                            <td class="border p-3 text-right">${p.subject || '-'}</td><td class="border p-3">${p.class || '-'}</td>
+                            <td class="border p-3">${p.total || '0'}</td><td class="border p-3 text-green-700">${p.passed || '0'}</td>
+                            <td class="border p-3 text-red-600">${f}</td><td class="border p-3 font-bold">${p.percentage || '0%'}</td>
+                            <td class="border p-3">${p.kaifiyat || '-'}</td>
+                            ${pIdx === 0 ? `<td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}">${tPer.toFixed(1)}%</td>` : ''}
+                            ${pIdx === 0 ? `<td class="border p-3 align-middle no-print" rowspan="${pCount}">
+                                <button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-500">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>` : ''}
                         </tr>`;
                 });
-            } else {
-                thead.innerHTML = `
-                    <tr class="bg-gray-200">
-                        <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
-                        <th class="border p-3">مضمون</th><th class="border p-3">درجہ</th>
-                        <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
-                        <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
-                        <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
-                    </tr>`;
-                latestDataMap.forEach((d) => {
-                    if (d.data && Array.isArray(d.data)) {
-                        d.data.forEach((tEntry) => {
-                            const periods = tEntry.periods || [];
-                            const pCount = periods.length || 1;
-                            let tT = 0, tP = 0;
-                            periods.forEach(p => { tT += parseInt(p.total) || 0; tP += parseInt(p.passed) || 0; });
-                            const tPer = tT > 0 ? (tP / tT) * 100 : 0;
-                            const tCol = getKefiyatColor(tPer);
-                            periods.forEach((p, pIdx) => {
-                                const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
-                                rowsHtml += `
-                                    <tr class="hover:bg-gray-50 border-b">
-                                        ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle" rowspan="${pCount}">${d.jamia}</td>` : ''}
-                                        ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
-                                        <td class="border p-3 text-right">${p.subject || '-'}</td><td class="border p-3">${p.class || '-'}</td>
-                                        <td class="border p-3">${p.total || '0'}</td><td class="border p-3 text-green-700">${p.passed || '0'}</td>
-                                        <td class="border p-3 text-red-600">${f}</td><td class="border p-3 font-bold">${p.percentage || '0%'}</td>
-                                        <td class="border p-3">${p.kaifiyat || '-'}</td>
-                                        ${pIdx === 0 ? `<td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}"><div style="color:${tCol}">${tPer.toFixed(1)}%</div><div class="text-[11px]" style="color:${tCol}">${getJamiaKefiyat(tPer)}</div></td>` : ''}
-                                    </tr>`;
-                            });
-                        });
-                    }
-                });
-            }
+            });
+        }
+    });
+}
 
             tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
             subtitle.textContent = `${examType} | سال: ${examYear}`;
