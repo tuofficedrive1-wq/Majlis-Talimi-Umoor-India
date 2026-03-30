@@ -106,19 +106,23 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     });
 
     // 🔹 DELETE FUNCTION (Global banaya taake onclick kaam kare)
-    window.deleteEntry = async (docId, collectionName) => {
-        if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
-            try {
-                await deleteDoc(doc(db, collectionName, docId));
-                alert("Record delete ho gaya.");
-                fetchResultData(); // Refresh table
-            } catch (err) {
-                alert("Galti: " + err.message);
-            }
-        }
-    };
+   window.deleteEntry = async (docId, collectionName) => {
+    if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
+        try {
+            await deleteDoc(doc(db, collectionName, docId));
+            alert("Record delete ho gaya.");
 
-    const fetchResultData = async () => {
+            if (window.fetchResultData) {
+                window.fetchResultData(); // ✅ safe call
+            }
+
+        } catch (err) {
+            alert("Galti: " + err.message);
+        }
+    }
+};
+
+    window.fetchResultData = async () => {
         const examType = document.getElementById('ra-exam-type').value;
         const examYear = document.getElementById('ra-exam-year').value;
         const jamiaFilter = document.getElementById('ra-jamia-filter').value;
@@ -197,34 +201,75 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         </tr>`;
                 }
             } else if (layoutLevel === 'class') {
-                thead.innerHTML = `
-                    <tr class="bg-gray-200 text-sm">
-                        <th class="border p-3">جامعہ</th><th class="border p-3">درجہ</th>
-                        <th class="border p-3">مع الشرف</th><th class="border p-3">ممتاز</th>
-                        <th class="border p-3">جید جدا</th><th class="border p-3">جید</th>
-                        <th class="border p-3">مقبول</th><th class="border p-3">ضمنی</th>
-                        <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">غائب</th>
-                        <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th><th class="border p-3">فیصد</th>
-                        <th class="border p-3 no-print text-red-600">حذف</th>
-                    </tr>`;
-                latestDataMap.forEach((d) => {
-                    rowsHtml += `
-                        <tr class="hover:bg-gray-50 border-b">
-                            <td class="border p-3 font-bold">${d.jamia}</td><td class="border p-3">${d.darjah || '-'}</td>
-                            <td class="border p-3">${d.mumtazSharf || '0'}</td><td class="border p-3">${d.mumtaz || '0'}</td>
-                            <td class="border p-3">${d.jayyidJidda || '0'}</td><td class="border p-3">${d.jayyid || '0'}</td>
-                            <td class="border p-3">${d.maqbool || '0'}</td><td class="border p-3">${d.majazZimni || '0'}</td>
-                            <td class="border p-3 text-red-600">${d.nakam || '0'}</td><td class="border p-3 text-gray-500">${d.ghaib || '0'}</td>
-                            <td class="border p-3 font-bold">${d.total || '0'}</td><td class="border p-3 text-green-700 font-bold">${d.passed || '0'}</td>
-                            <td class="border p-3 bg-teal-50 font-bold text-teal-700">${d.percent || '0%'}</td>
-                            <td class="border p-3 no-print">
-                                <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" class="text-red-600 hover:scale-110">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                            </td>
-                        </tr>`;
-                });
-            } else {
+    thead.innerHTML = `
+        <tr class="bg-gray-200 text-sm">
+            <th class="border p-3">جامعہ</th>
+            <th class="border p-3">درجہ</th>
+
+            <th class="border p-3">کل تعداد</th>
+            <th class="border p-3 text-blue-700">کل حاضر</th>
+            <th class="border p-3 text-green-700">کامیاب</th>
+            <th class="border p-3 text-red-600">ناکام</th>
+            <th class="border p-3">فیصد</th>
+
+            <th class="border p-3 no-print text-red-600">حذف</th>
+        </tr>`;
+
+    latestDataMap.forEach((d) => {
+
+        // 🔢 TOTAL
+        const total =
+            (parseInt(d.mumtazSharf)||0) +
+            (parseInt(d.mumtaz)||0) +
+            (parseInt(d.jayyidJidda)||0) +
+            (parseInt(d.jayyid)||0) +
+            (parseInt(d.maqbool)||0) +
+            (parseInt(d.majazZimni)||0) +
+            (parseInt(d.nakam)||0) +
+            (parseInt(d.ghaib)||0);
+
+        // 👥 HAZIR
+        const ghaib = parseInt(d.ghaib) || 0;
+        const hazir = total - ghaib;
+
+        // ✅ PASSED
+        const passed =
+            (parseInt(d.mumtazSharf)||0) +
+            (parseInt(d.mumtaz)||0) +
+            (parseInt(d.jayyidJidda)||0) +
+            (parseInt(d.jayyid)||0) +
+            (parseInt(d.maqbool)||0);
+
+        // ❌ FAILED (nakam + zimni)
+        const failed =
+            (parseInt(d.nakam)||0) +
+            (parseInt(d.majazZimni)||0);
+
+        // 📊 PERCENT
+        const percent = hazir > 0 ? (passed / hazir) * 100 : 0;
+
+        rowsHtml += `
+            <tr class="hover:bg-gray-50 border-b">
+                <td class="border p-3 font-bold">${d.jamia}</td>
+                <td class="border p-3">${d.darjah || '-'}</td>
+
+                <td class="border p-3 font-bold">${total}</td>
+                <td class="border p-3 text-blue-700 font-bold">${hazir}</td>
+                <td class="border p-3 text-green-700 font-bold">${passed}</td>
+                <td class="border p-3 text-red-600 font-bold">${failed}</td>
+                <td class="border p-3 bg-teal-50 font-bold text-teal-700">
+                    ${percent.toFixed(2)}%
+                </td>
+
+                <td class="border p-3 no-print">
+                    <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" 
+                        class="text-red-600 hover:scale-110">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            </tr>`;
+    });
+} else {
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
@@ -310,5 +355,5 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         }
     };
 
-    document.getElementById('ra-show-btn').onclick = fetchResultData;
+    document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
