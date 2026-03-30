@@ -153,7 +153,13 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 const d = docSnap.data();
                 d.docId = docSnap.id; 
                 if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                    const uniqueKey = layoutLevel === 'teacher' ? d.docId : `${d.jamia}_${d.darjah}`;
+                    let uniqueKey;
+
+if (layoutLevel === 'teacher') {
+    uniqueKey = `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}`;
+} else {
+    uniqueKey = `${d.jamia}_${d.darjah}`;
+}
                     if (!latestDataMap.has(uniqueKey)) {
                         latestDataMap.set(uniqueKey, d);
                     }
