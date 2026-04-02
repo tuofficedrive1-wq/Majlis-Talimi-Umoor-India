@@ -177,7 +177,6 @@ const params = new URLSearchParams(window.location.search);
 const jamiaName = params.get('jamia') || '';
 const examType = params.get('examType') || '';
 const examYear = params.get('examYear') || '';
-const userId = params.get('userId') || '';
 
 /* ===== Inputs ===== */
 const totalInput = document.getElementById('total-std');
@@ -202,40 +201,37 @@ passInput.addEventListener('input', updatePercentage);
 
 /* ===== SAVE ===== */
 async function saveData() {
+  // URL se UID nikalne ke liye
+  const params = new URLSearchParams(window.location.search);
+  const userUID = params.get('uid'); 
+
   const selectedClass = darjahSelect.value === "__other__" ? document.getElementById('other-class').value : darjahSelect.value;
   
-  if (!selectedClass) {
-    alert("Please select a class first!");
+  if (!selectedClass || !userUID) {
+    alert("User ID ya Class missing hai!");
     return;
   }
 
-  // Ek unique ID banayein taake naya doc na bane, purana update ho jaye
-  const customId = `${userId}_${jamiaName}_${examYear}_${examType}_${selectedClass}`.replace(/\s+/g, '_');
+  // Naya Unique ID structure (UID + Jamia + Class)
+  const customId = `${userUID}_${jamiaName}_${examYear}_${examType}_${selectedClass}`.replace(/\s+/g, '_');
 
   const data = {
-    userId: userId,
+    uid: userUID, // UID ko data ke andar bhi save karein
     jamia: jamiaName,
     examType: examType,
     examYear: examYear,
     darjah: selectedClass,
-    mumtazSharf: document.getElementById('mumtaz-sharf').value,
-    mumtaz: document.getElementById('mumtaz').value,
-    jayyidJidda: document.getElementById('jayyid-jidda').value,
-    jayyid: document.getElementById('jayyid').value,
-    maqbool: document.getElementById('maqbool').value,
-    majazZimni: document.getElementById('majaz-zimni').value,
-    nakam: document.getElementById('nakam').value,
-    ghaib: document.getElementById('ghaib').value,
-    total: document.getElementById('total-std').value,
-    passed: document.getElementById('pass-std').value,
-    percent: resultDiv.innerText,
+    // ... baqi aapka purana data fields ...
     timestamp: Date.now()
   };
 
   try {
-    // doc(db, collectionName, documentID)
     await setDoc(doc(db, "class_wise_results", customId), data);
     alert("Result Updated Successfully ✅");
+    
+    // Yahan aap Dynamic Link generate kar sakte hain
+    // generateDynamicLink(customId); 
+
     await checkJamiaStatus(); 
   } catch (e) {
     console.error("Error saving: ", e);
@@ -245,59 +241,28 @@ async function saveData() {
 
 /* ===== LOAD ===== */
 async function loadData() {
-  // Yahan check karein ke agar "other" hai to input box ki value le, warna select ki
+  const params = new URLSearchParams(window.location.search);
+  const userUID = params.get('uid'); 
+
   const selectedClass = darjahSelect.value === "__other__" 
     ? document.getElementById('other-class').value 
     : darjahSelect.value;
 
-  if (!selectedClass) {
-    resetFormFields(); // Agar kuch select nahi to form khali kar dein
+  if (!selectedClass || !userUID) {
+    resetFormFields();
     return;
   }
 
-  const q1 = query(
-  collection(db, "class_wise_results"),
-  where("userId", "==", userId),
-  where("jamia", "==", jamiaName),
-  where("examType", "==", examType),
-  where("examYear", "==", examYear),
-  where("darjah", "==", selectedClass)
-);
-
-let snap = await getDocs(q1);
-
-// 👉 Agar naya data nahi mila to purana load karo
-if (snap.empty) {
-  const q2 = query(
+  const q = query(
     collection(db, "class_wise_results"),
+    where("uid", "==", userUID), // Sirf is user ka data mangwayein
     where("jamia", "==", jamiaName),
     where("examType", "==", examType),
     where("examYear", "==", examYear),
     where("darjah", "==", selectedClass)
   );
 
-  snap = await getDocs(q2);
-}
-
-if (snap.empty) {
-  resetFormFields();
-  return;
-}
-
-  let d = null;
-
-// 👉 agar multiple docs hain to latest wala lo
-snap.forEach(docItem => {
-  const data = docItem.data();
-  if (!d || data.timestamp > d.timestamp) {
-    d = data;
-  }
-});
-
-if (!d) {
-  resetFormFields();
-  return;
-}
+  const d = snap.docs[0].data();
 
   // Inputs restore karein
   document.getElementById('mumtaz-sharf').value = d.mumtazSharf || 0;
@@ -337,11 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('display-year').innerText = decodeURIComponent(examYear);
   document.getElementById('jamia-name-head').innerText = decodeURIComponent(jamiaName);
 
-  setTimeout(() => {
-  if (darjahSelect.value) {
-    loadData();
-  }
-}, 300);
+  loadData();
     checkJamiaStatus();
 });
         
@@ -384,7 +345,6 @@ function updateTotalsFromKaifiyat() {
 async function checkJamiaStatus() {
   const q = query(
     collection(db, "class_wise_results"),
-      where("userId", "==", userId),
     where("jamia", "==", jamiaName),
     where("examType", "==", examType),
     where("examYear", "==", examYear)
