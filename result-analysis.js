@@ -319,7 +319,7 @@ if (layoutLevel === 'jamia') {
     <i class="fas fa-edit"></i>
 </button>
 
-<button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-600">
+<button onclick="deleteEntry('${d.docId}', 'class_wise_results')" class="text-red-600">
     <i class="fas fa-trash-alt"></i>
 </button>
                                 
