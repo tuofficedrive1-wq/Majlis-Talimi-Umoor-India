@@ -82,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 /* =========================
-   🔹 JAMIA WISE
+   📊 JAMIA WISE
 ========================= */
 function renderJamiaWise(data) {
 
@@ -107,25 +107,32 @@ function renderJamiaWise(data) {
         stats[d.jamia].passed += passed;
     });
 
-    let html = '<table class="w-full border text-sm">' +
-           '<tr><th>Jamia</th><th>Total</th><th>Passed</th><th>%</th></tr>';
+    // Backticks (`) use kijiye multiple lines ke liye
+    let html = `
+        <table class="w-full border text-sm">
+            <tr>
+                <th>Jamia</th>
+                <th>Total</th>
+                <th>Passed</th>
+                <th>%</th>
+            </tr>`;
 
-for (let j in stats) {
-    let s = stats[j];
-    let p = s.total ? (s.passed/s.total)*100 : 0;
+    for (let j in stats) {
+        let s = stats[j];
+        let p = s.total ? (s.passed / s.total) * 100 : 0;
 
-    html += '<tr>' +
-        '<td>' + j + '</td>' +
-        '<td>' + s.total + '</td>' +
-        '<td>' + s.passed + '</td>' +
-        '<td>' + p.toFixed(1) + '%</td>' +
-    '</tr>';
-}
+        html += `
+            <tr>
+                <td>${j}</td>
+                <td>${s.total}</td>
+                <td>${s.passed}</td>
+                <td>${p.toFixed(1)}%</td>
+            </tr>`;
+    }
 
-html += '</table>';
+    html += '</table>';
     document.getElementById("final-analysis-container").innerHTML = html;
 }
-
 
 /* =========================
    🔹 CLASS WISE
