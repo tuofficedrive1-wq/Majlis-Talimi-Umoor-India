@@ -1,3 +1,4 @@
+```javascript
 // admin-final-result-analysis.js
 
 import {
@@ -18,10 +19,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const db = window.db;
 
-        const type = document.getElementById("final-analysis-type-select").value;
-        const region = document.getElementById("final-filter-region").value;
-        const user = document.getElementById("final-filter-user").value;
-        const jamia = document.getElementById("final-filter-jamia").value;
+        const type = document.getElementById("final-analysis-type-select")?.value;
+        const region = document.getElementById("final-filter-region")?.value;
+        const user = document.getElementById("final-filter-user")?.value;
+        const jamia = document.getElementById("final-filter-jamia")?.value;
 
         if (!db) {
             alert("DB load nahi hua");
@@ -83,23 +84,23 @@ document.addEventListener("DOMContentLoaded", () => {
 /* =========================
    📊 JAMIA WISE
 ========================= */
-function renderJamiaWise(data) {
+function renderJamiaWise(data = []) {
 
     let stats = {};
 
     data.forEach(d => {
 
         const total =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0)+(d.majazZimni||0)+
-            (d.nakam||0)+(d.ghaib||0);
+            (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) +
+            (d.jayyid || 0) + (d.maqbool || 0) + (d.majazZimni || 0) +
+            (d.nakam || 0) + (d.ghaib || 0);
 
         const passed =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0);
+            (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) +
+            (d.jayyid || 0) + (d.maqbool || 0);
 
         if (!stats[d.jamia]) {
-            stats[d.jamia] = { total:0, passed:0 };
+            stats[d.jamia] = { total: 0, passed: 0 };
         }
 
         stats[d.jamia].total += total;
@@ -128,53 +129,68 @@ function renderJamiaWise(data) {
             </tr>`;
     }
 
-    html += '</table>';
+    html += `</table>`;
     document.getElementById("final-analysis-container").innerHTML = html;
 }
 
 
 /* =========================
-   📘 CLASS WISE
+   🔹 CLASS WISE
 ========================= */
-function renderClassWise(data) {
+function renderClassWise(data = []) {
 
-    let html = `<table class="w-full border text-sm">
-    <tr><th>Jamia</th><th>Class</th><th>Total</th><th>Pass</th><th>%</th></tr>`;
+    let html = `
+    <table class="w-full border text-sm">
+    <tr>
+        <th>Jamia</th>
+        <th>Class</th>
+        <th>Total</th>
+        <th>Pass</th>
+        <th>%</th>
+    </tr>`;
 
     data.forEach(d => {
 
         const total =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0)+(d.majazZimni||0)+
-            (d.nakam||0)+(d.ghaib||0);
+            (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) +
+            (d.jayyid || 0) + (d.maqbool || 0) + (d.majazZimni || 0) +
+            (d.nakam || 0) + (d.ghaib || 0);
 
         const passed =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0);
+            (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) +
+            (d.jayyid || 0) + (d.maqbool || 0);
 
-        const percent = total ? (passed/total)*100 : 0;
+        const percent = total ? (passed / total) * 100 : 0;
 
-        html += `<tr>
-            <td>${d.jamia}</td>
-            <td>${d.darjah}</td>
+        html += `
+        <tr>
+            <td>${d.jamia || "-"}</td>
+            <td>${d.darjah || "-"}</td>
             <td>${total}</td>
             <td>${passed}</td>
             <td>${percent.toFixed(1)}%</td>
         </tr>`;
     });
 
-    html += "</table>";
+    html += `</table>`;
     document.getElementById("final-analysis-container").innerHTML = html;
 }
 
 
 /* =========================
-   👨‍🏫 ASATIZA WISE
+   🔹 ASATIZA WISE
 ========================= */
-function renderAsatizaWise(data) {
+function renderAsatizaWise(data = []) {
 
-    let html = `<table class="w-full border text-sm">
-    <tr><th>Jamia</th><th>Teacher</th><th>Total</th><th>Pass</th><th>%</th></tr>`;
+    let html = `
+    <table class="w-full border text-sm">
+    <tr>
+        <th>Jamia</th>
+        <th>Teacher</th>
+        <th>Total</th>
+        <th>Pass</th>
+        <th>%</th>
+    </tr>`;
 
     data.forEach(d => {
 
@@ -190,11 +206,12 @@ function renderAsatizaWise(data) {
                 pass += parseInt(p.passed) || 0;
             });
 
-            let per = total ? (pass/total)*100 : 0;
+            let per = total ? (pass / total) * 100 : 0;
 
-            html += `<tr>
-                <td>${d.jamia}</td>
-                <td>${t.teacher}</td>
+            html += `
+            <tr>
+                <td>${d.jamia || "-"}</td>
+                <td>${t.teacher || "-"}</td>
                 <td>${total}</td>
                 <td>${pass}</td>
                 <td>${per.toFixed(1)}%</td>
@@ -203,75 +220,73 @@ function renderAsatizaWise(data) {
 
     });
 
-    html += "</table>";
+    html += `</table>`;
     document.getElementById("final-analysis-container").innerHTML = html;
 }
 
 
 /* =========================
-   🕌 IBTIDAIYA
+   🔹 IBTIDAIYA
 ========================= */
 async function renderIbtidaiya(db, jamiaFilter) {
 
     const container = document.getElementById("final-analysis-container");
 
-    try {
-        const snapshot = await getDocs(collection(db, "ibtidaiya_exams"));
+    const snapshot = await getDocs(collection(db, "ibtidaiya_exams"));
 
-        let allStudents = [];
+    let allStudents = [];
 
-        snapshot.forEach(doc => {
-            const d = doc.data();
+    snapshot.forEach(doc => {
+        const d = doc.data();
 
-            if (jamiaFilter !== "all" && d.jamiaName !== jamiaFilter) return;
+        if (jamiaFilter !== "all" && d.jamiaName !== jamiaFilter) return;
 
-            if (Array.isArray(d.students)) {
-                d.students.forEach(s => {
-                    allStudents.push({
-                        jamia: d.jamiaName,
-                        ...s
-                    });
+        if (Array.isArray(d.students)) {
+            d.students.forEach(s => {
+                allStudents.push({
+                    jamia: d.jamiaName,
+                    ...s
                 });
-            }
-        });
+            });
+        }
+    });
 
-        let stats = {};
+    let stats = {};
 
-        allStudents.forEach(s => {
-            const percent = parseFloat(s.percent) || 0;
+    allStudents.forEach(s => {
 
-            if (!stats[s.jamia]) {
-                stats[s.jamia] = { students: 0, percent: 0 };
-            }
+        const percent = parseFloat(s.percent) || 0;
 
-            stats[s.jamia].students += 1;
-            stats[s.jamia].percent += percent;
-        });
-
-        let html = `
-        <table class="w-full border text-sm">
-            <tr>
-                <th>Jamia</th>
-                <th>Students</th>
-                <th>Avg %</th>
-            </tr>`;
-
-        for (let j in stats) {
-            let s = stats[j];
-            let avg = s.students ? (s.percent / s.students) : 0;
-
-            html += `<tr>
-                <td>${j}</td>
-                <td>${s.students}</td>
-                <td>${avg.toFixed(1)}%</td>
-            </tr>`;
+        if (!stats[s.jamia]) {
+            stats[s.jamia] = { students: 0, percent: 0 };
         }
 
-        html += "</table>";
-        container.innerHTML = html;
+        stats[s.jamia].students += 1;
+        stats[s.jamia].percent += percent;
+    });
 
-    } catch (err) {
-        console.error("Ibtidaiya loading error:", err);
-        container.innerHTML = "Ibtidaiya data load karne mein masla hua.";
+    let html = `
+    <table class="w-full border text-sm">
+        <tr>
+            <th>Jamia</th>
+            <th>Students</th>
+            <th>Avg %</th>
+        </tr>`;
+
+    for (let j in stats) {
+        let s = stats[j];
+        let avg = s.students ? (s.percent / s.students) : 0;
+
+        html += `
+        <tr>
+            <td>${j}</td>
+            <td>${s.students}</td>
+            <td>${avg.toFixed(1)}%</td>
+        </tr>`;
     }
+
+    html += `</table>`;
+
+    container.innerHTML = html;
 }
+```
