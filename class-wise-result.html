@@ -411,7 +411,7 @@ function updateTotalsFromKaifiyat() {
 /* ===== Sahi Logic: Sirf Latest Result ko count karne ke liye ===== */
 async function checkJamiaStatus() {
   const params = new URLSearchParams(window.location.search);
-  const userUID = params.get('uid'); // URL se UID lena zaroori hai
+  const userUID = params.get('uid'); 
 
   const q = query(
     collection(db, "class_wise_results"),
@@ -426,20 +426,30 @@ async function checkJamiaStatus() {
   let grandTotalPassed = 0;
   let filledClasses = [];
 
+  // Map ka use karenge taake duplicate classes na dikhein
+  let latestDataPerClass = new Map(); 
+
   snap.forEach(docSnap => {
     const d = docSnap.data();
-    
-    // 🔹 FIX: Sirf wahi data dikhao jo delete nahi hua aur jiski UID match hoti hai
-    if (d.uid === userUID) { 
-      filledClasses.push(d.darjah);
-      grandTotalStudents += parseFloat(d.total) || 0;
-      grandTotalPassed += parseFloat(d.passed) || 0;
+    const className = d.darjah;
+
+    // 🔹 Logic: Ya to data is user ka ho, ya phir usme UID ho hi nahi (Purana Data)
+    if (!d.uid || d.uid === userUID) {
+      if (!latestDataPerClass.has(className) || d.timestamp > latestDataPerClass.get(className).timestamp) {
+        latestDataPerClass.set(className, d);
+      }
     }
   });
 
-  // UI ko update karne ka logic
-  const finalGrandPercent = grandTotalStudents > 0 ? (grandTotalPassed / grandTotalStudents) * 100 : 0;
-  
+  latestDataPerClass.forEach((d, className) => {
+    filledClasses.push(className);
+    grandTotalStudents += parseFloat(d.total) || 0;
+    grandTotalPassed += parseFloat(d.passed) || 0;
+  });
+
+  let finalGrandPercent = grandTotalStudents > 0 ? (grandTotalPassed / grandTotalStudents) * 100 : 0;
+
+  // UI ko update karna
   const statusDiv = document.getElementById('jamia-status') || createStatusDiv();
   statusDiv.innerHTML = `
     <div class="mb-2 text-xs font-bold text-gray-500 uppercase italic">Filled Classes:</div>
