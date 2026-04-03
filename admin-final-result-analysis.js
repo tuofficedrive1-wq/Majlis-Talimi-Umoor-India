@@ -308,4 +308,3 @@ async function renderIbtidaiya(db, jamiaFilter) {
 
     container.innerHTML = html;
 }
-```
