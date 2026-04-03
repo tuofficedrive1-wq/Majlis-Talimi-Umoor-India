@@ -1,4 +1,3 @@
-```js
 // admin-final-result-analysis.js
 
 import {
@@ -107,7 +106,6 @@ function renderJamiaWise(data) {
         stats[d.jamia].passed += passed;
     });
 
-    // Backticks (`) use kijiye multiple lines ke liye
     let html = `
         <table class="w-full border text-sm">
             <tr>
@@ -134,8 +132,9 @@ function renderJamiaWise(data) {
     document.getElementById("final-analysis-container").innerHTML = html;
 }
 
+
 /* =========================
-   🔹 CLASS WISE
+   📘 CLASS WISE
 ========================= */
 function renderClassWise(data) {
 
@@ -170,7 +169,7 @@ function renderClassWise(data) {
 
 
 /* =========================
-   🔹 ASATIZA WISE
+   👨‍🏫 ASATIZA WISE
 ========================= */
 function renderAsatizaWise(data) {
 
@@ -210,66 +209,69 @@ function renderAsatizaWise(data) {
 
 
 /* =========================
-   🔹 IBTIDAIYA
+   🕌 IBTIDAIYA
 ========================= */
 async function renderIbtidaiya(db, jamiaFilter) {
 
     const container = document.getElementById("final-analysis-container");
 
-    const snapshot = await getDocs(collection(db, "ibtidaiya_exams"));
+    try {
+        const snapshot = await getDocs(collection(db, "ibtidaiya_exams"));
 
-    let allStudents = [];
+        let allStudents = [];
 
-    snapshot.forEach(doc => {
-        const d = doc.data();
+        snapshot.forEach(doc => {
+            const d = doc.data();
 
-        if (jamiaFilter !== "all" && d.jamiaName !== jamiaFilter) return;
+            if (jamiaFilter !== "all" && d.jamiaName !== jamiaFilter) return;
 
-        if (Array.isArray(d.students)) {
-            d.students.forEach(s => {
-                allStudents.push({
-                    jamia: d.jamiaName,
-                    ...s
+            if (Array.isArray(d.students)) {
+                d.students.forEach(s => {
+                    allStudents.push({
+                        jamia: d.jamiaName,
+                        ...s
+                    });
                 });
-            });
+            }
+        });
+
+        let stats = {};
+
+        allStudents.forEach(s => {
+            const percent = parseFloat(s.percent) || 0;
+
+            if (!stats[s.jamia]) {
+                stats[s.jamia] = { students: 0, percent: 0 };
+            }
+
+            stats[s.jamia].students += 1;
+            stats[s.jamia].percent += percent;
+        });
+
+        let html = `
+        <table class="w-full border text-sm">
+            <tr>
+                <th>Jamia</th>
+                <th>Students</th>
+                <th>Avg %</th>
+            </tr>`;
+
+        for (let j in stats) {
+            let s = stats[j];
+            let avg = s.students ? (s.percent / s.students) : 0;
+
+            html += `<tr>
+                <td>${j}</td>
+                <td>${s.students}</td>
+                <td>${avg.toFixed(1)}%</td>
+            </tr>`;
         }
-    });
 
-    let stats = {};
+        html += "</table>";
+        container.innerHTML = html;
 
-    allStudents.forEach(s => {
-
-        const percent = parseFloat(s.percent) || 0;
-
-        if (!stats[s.jamia]) {
-            stats[s.jamia] = { students: 0, percent: 0 };
-        }
-
-        stats[s.jamia].students += 1;
-        stats[s.jamia].percent += percent;
-    });
-
-    let html = `
-    <table class="w-full border text-sm">
-        <tr>
-            <th>Jamia</th>
-            <th>Students</th>
-            <th>Avg %</th>
-        </tr>`;
-
-    for (let j in stats) {
-        let s = stats[j];
-        let avg = s.students ? (s.percent / s.students) : 0;
-
-        html += `<tr>
-            <td>${j}</td>
-            <td>${s.students}</td>
-            <td>${avg.toFixed(1)}%</td>
-        </tr>`;
+    } catch (err) {
+        console.error("Ibtidaiya loading error:", err);
+        container.innerHTML = "Ibtidaiya data load karne mein masla hua.";
     }
-
-    html += "</table>";
-
-    container.innerHTML = html;
 }
-```
