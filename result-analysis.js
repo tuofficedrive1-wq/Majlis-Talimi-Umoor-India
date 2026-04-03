@@ -176,31 +176,36 @@ window.editEntry = async (docId) => {
             const collectionName = (layoutLevel === 'class' || layoutLevel === 'jamia') ? "class_wise_results" : "asatiza_wise_results"; 
             const colRef = collection(db, collectionName); 
             
-            let q = query(colRef, 
-                where("examType", "==", examType), 
-                where("examYear", "==", examYear),
-                orderBy("timestamp", "desc")
-            );
-            
-            const snapshot = await getDocs(q);
-            let latestDataMap = new Map();
+            // Purana aur naya dono data lane ke liye sirf Jamia par filter karein
+let q = query(colRef, 
+    where("examType", "==", examType), 
+    where("examYear", "==", examYear),
+    orderBy("timestamp", "desc")
+);
 
-            snapshot.forEach(docSnap => {
-                const d = docSnap.data();
-                d.docId = docSnap.id; 
-                if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                    let uniqueKey;
+const snapshot = await getDocs(q);
+let latestDataMap = new Map();
 
-if (layoutLevel === 'teacher') {
-    uniqueKey = `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}`;
-} else {
-    uniqueKey = `${d.jamia}_${d.darjah}`;
-}
-                    if (!latestDataMap.has(uniqueKey)) {
-                        latestDataMap.set(uniqueKey, d);
-                    }
-                }
-            });
+snapshot.forEach(docSnap => {
+    const d = docSnap.data();
+    d.docId = docSnap.id;
+
+    // Filter Logic: 
+    // 1. Jamia match hona chahiye.
+    // 2. Ya to isme 'uid' nahi hai (Purana Data), 
+    // 3. Ya agar 'uid' hai, to wo isi user ki honi chahiye (Naya Data).
+    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+        if (!d.uid || d.uid === user.uid) { // 👈 Ye line purane data ko bachayegi
+            let uniqueKey = layoutLevel === 'teacher' 
+                ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}` 
+                : `${d.jamia}_${d.darjah}`;
+
+            if (!latestDataMap.has(uniqueKey)) {
+                latestDataMap.set(uniqueKey, d);
+            }
+        }
+    }
+});
 
             let rowsHtml = "";
 
