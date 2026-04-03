@@ -1,4 +1,3 @@
-```javascript
 // admin-final-result-analysis.js
 
 import {
