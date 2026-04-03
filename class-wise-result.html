@@ -203,14 +203,53 @@ passInput.addEventListener('input', updatePercentage);
 async function saveData() {
   const params = new URLSearchParams(window.location.search);
   const userUID = params.get('uid'); 
+  const isAdmin = params.get('role') === 'admin';
   const selectedClass = darjahSelect.value === "__other__" ? document.getElementById('other-class').value : darjahSelect.value;
   
-  if (!selectedClass || !userUID) {
-    alert("User ID ya Class missing hai!");
+  if (!userUID) {
+    alert("User ID missing hai!");
     return;
   }
 
-  // Unique ID creation
+  // 🔹 SCENARIO 1: Agar Admin hai aur koi class select nahi ki, to SABHI classes save karo
+  if (isAdmin && !selectedClass) {
+    const confirmBulk = confirm("Aapne koi class select nahi ki hai. Kya aap is Jamia ki sabhi classes ko apne UID par update karna chahte hain?");
+    if (!confirmBulk) return;
+
+    try {
+      const q = query(
+        collection(db, "class_wise_results"),
+        where("jamia", "==", jamiaName),
+        where("examType", "==", examType),
+        where("examYear", "==", examYear)
+      );
+      const snap = await getDocs(q);
+      
+      const promises = snap.docs.map(async (docSnap) => {
+        const d = docSnap.data();
+        const customId = `${userUID}_${jamiaName}_${examYear}_${examType}_${d.darjah}`.replace(/\s+/g, '_');
+        await setDoc(doc(db, "class_wise_results", customId), {
+          ...d,
+          uid: userUID,
+          timestamp: Date.now()
+        });
+      });
+
+      await Promise.all(promises);
+      alert("Mubarak ho! Sabhi classes ka data aapke UID par update ho gaya. ✅");
+      await checkJamiaStatus();
+    } catch (e) {
+      alert("Bulk save mein galti hui: " + e.message);
+    }
+    return; // Bulk save ke baad function yahi khatam
+  }
+
+  // 🔹 SCENARIO 2: Single Class Save (Normal User ya Admin jab class select ho)
+  if (!selectedClass) {
+    alert("Pehle Darjah (Class) muntakhab karein!");
+    return;
+  }
+
   const customId = `${userUID}_${jamiaName}_${examYear}_${examType}_${selectedClass}`.replace(/\s+/g, '_');
 
   const data = {
@@ -219,7 +258,6 @@ async function saveData() {
     examType: examType,
     examYear: examYear,
     darjah: selectedClass,
-    // Sabhi fields yahan add karni hongi:
     mumtazSharf: parseFloat(document.getElementById('mumtaz-sharf').value) || 0,
     mumtaz: parseFloat(document.getElementById('mumtaz').value) || 0,
     jayyidJidda: parseFloat(document.getElementById('jayyid-jidda').value) || 0,
@@ -235,11 +273,10 @@ async function saveData() {
 
   try {
     await setDoc(doc(db, "class_wise_results", customId), data);
-    alert("Result Updated Successfully ✅");
+    alert("Result Mahfooz ho gaya! ✅");
     await checkJamiaStatus(); 
   } catch (e) {
-    console.error("Error saving: ", e);
-    alert("Error saving data!");
+    alert("Save karne mein galti: " + e.message);
   }
 }
 
