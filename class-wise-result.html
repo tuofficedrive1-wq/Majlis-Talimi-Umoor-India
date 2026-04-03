@@ -286,45 +286,67 @@ async function loadData() {
   const userUID = params.get('uid'); 
   const selectedClass = darjahSelect.value === "__other__" ? document.getElementById('other-class').value : darjahSelect.value;
 
-  if (!selectedClass || !userUID) {
+  if (!selectedClass) {
     resetFormFields();
     return;
   }
 
-  // 🔹 FIX: Sirf wahi data load karo jo is user ki UID se match karta ho
-  const q = query(
-    collection(db, "class_wise_results"),
-    where("uid", "==", userUID), // Strict check
-    where("jamia", "==", jamiaName),
-    where("examType", "==", examType),
-    where("examYear", "==", examYear),
-    where("darjah", "==", selectedClass)
-  );
-
   try {
-    const snap = await getDocs(q);
+    // 1. Pehle Naye System (UID) ke saath data dhoondo
+    let q = query(
+      collection(db, "class_wise_results"),
+      where("uid", "==", userUID),
+      where("jamia", "==", jamiaName),
+      where("examType", "==", examType),
+      where("examYear", "==", examYear),
+      where("darjah", "==", selectedClass)
+    );
+
+    let snap = await getDocs(q);
+
+    // 2. Agar UID se nahi mila, to Purana Data (bina UID wala) dhoondo
+    if (snap.empty) {
+      q = query(
+        collection(db, "class_wise_results"),
+        where("jamia", "==", jamiaName),
+        where("examType", "==", examType),
+        where("examYear", "==", examYear),
+        where("darjah", "==", selectedClass)
+      );
+      snap = await getDocs(q);
+      
+      // 🔹 Yahan ek check aur: Sirf wahi doc uthao jisme UID field missing ho
+      // Taaki dusre admin ka data mix na ho
+      const oldDoc = snap.docs.find(doc => !doc.data().uid);
+      if (oldDoc) {
+          fillFormFields(oldDoc.data());
+          return;
+      }
+    }
 
     if (!snap.empty) {
-      const d = snap.docs[0].data();
-      // Fields bharne ka logic
-      document.getElementById('mumtaz-sharf').value = d.mumtazSharf || 0;
-      document.getElementById('mumtaz').value = d.mumtaz || 0;
-      document.getElementById('jayyid-jidda').value = d.jayyidJidda || 0;
-      document.getElementById('jayyid').value = d.jayyid || 0;
-      document.getElementById('maqbool').value = d.maqbool || 0;
-      document.getElementById('majaz-zimni').value = d.majazZimni || 0;
-      document.getElementById('nakam').value = d.nakam || 0;
-      document.getElementById('ghaib').value = d.ghaib || 0;
-      totalInput.value = d.total || 0;
-      passInput.value = d.passed || 0;
-      updatePercentage();
+      fillFormFields(snap.docs[0].data());
     } else {
-      // 🔹 Agar UID ke saath data nahi mila, to form clear kar do
       resetFormFields();
     }
   } catch (e) {
     console.error("Load Error: ", e);
   }
+}
+
+// Data ko form mein bharne ke liye chota function
+function fillFormFields(d) {
+  document.getElementById('mumtaz-sharf').value = d.mumtazSharf || 0;
+  document.getElementById('mumtaz').value = d.mumtaz || 0;
+  document.getElementById('jayyid-jidda').value = d.jayyidJidda || 0;
+  document.getElementById('jayyid').value = d.jayyid || 0;
+  document.getElementById('maqbool').value = d.maqbool || 0;
+  document.getElementById('majaz-zimni').value = d.majazZimni || 0;
+  document.getElementById('nakam').value = d.nakam || 0;
+  document.getElementById('ghaib').value = d.ghaib || 0;
+  totalInput.value = d.total || 0;
+  passInput.value = d.passed || 0;
+  updatePercentage();
 }
 
 // Form ko saaf karne ke liye function
