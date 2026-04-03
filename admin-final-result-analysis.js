@@ -1,35 +1,91 @@
 // admin-final-result-analysis.js
 
-import { initResultAnalysis } from "./result-analysis.js";
+import {
+    collection,
+    query,
+    getDocs,
+    orderBy
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", () => {
 
-    const containerId = "final-analysis-container";
     const btn = document.getElementById("btn-generate-final-analysis");
+    const container = document.getElementById("final-analysis-container");
 
     if (!btn) return;
 
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
 
-        const type = document.getElementById("final-analysis-type-select").value;
-
-        if (!type) {
-            alert("Pehle Report Type select karein");
-            return;
-        }
-
-        // 🔹 GLOBAL VARIABLES (admin file se)
         const db = window.db;
-        const currentUser = window.currentUser;
-        const userProfileData = window.userProfileData || {};
 
-        if (!db || !currentUser) {
-            alert("System load nahi hua, dobara try karein");
+        const region = document.getElementById("final-filter-region").value;
+        const user = document.getElementById("final-filter-user").value;
+        const jamia = document.getElementById("final-filter-jamia").value;
+
+        if (!db) {
+            alert("DB load nahi hua");
             return;
         }
 
-        // 🔥 SAME LOGIC CALL (result-analysis.js se)
-        initResultAnalysis(db, currentUser, containerId, userProfileData);
+        container.innerHTML = "Loading...";
+
+        try {
+
+            const q = query(
+                collection(db, "class_wise_results"),
+                orderBy("timestamp", "desc")
+            );
+
+            const snapshot = await getDocs(q);
+
+            let data = [];
+
+            snapshot.forEach(doc => {
+                const d = doc.data();
+
+                // 🔥 FILTER
+                if (region !== "all" && d.region !== region) return;
+                if (user !== "all" && d.userId !== user) return;
+                if (jamia !== "all" && d.jamia !== jamia) return;
+
+                data.push(d);
+            });
+
+            // 🔥 TABLE
+            let html = `
+                <table class="w-full border text-sm">
+                    <thead class="bg-gray-200">
+                        <tr>
+                            <th class="border p-2">Jamia</th>
+                            <th class="border p-2">Class</th>
+                            <th class="border p-2">Total</th>
+                            <th class="border p-2">Pass</th>
+                            <th class="border p-2">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.forEach(d => {
+                html += `
+                    <tr>
+                        <td class="border p-2">${d.jamia || "-"}</td>
+                        <td class="border p-2">${d.darjah || "-"}</td>
+                        <td class="border p-2">${d.total || 0}</td>
+                        <td class="border p-2">${d.passed || 0}</td>
+                        <td class="border p-2">${d.percent || 0}%</td>
+                    </tr>
+                `;
+            });
+
+            html += "</tbody></table>";
+
+            container.innerHTML = html;
+
+        } catch (err) {
+            console.error(err);
+            container.innerHTML = "Error loading data";
+        }
 
     });
 
