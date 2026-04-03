@@ -395,6 +395,9 @@ function updateTotalsFromKaifiyat() {
         /* ===== Naya Function: Sabhi Filled Classes aur Total % check karne ke liye ===== */
 /* ===== Sahi Logic: Sirf Latest Result ko count karne ke liye ===== */
 async function checkJamiaStatus() {
+  const params = new URLSearchParams(window.location.search);
+  const userUID = params.get('uid'); // URL se UID lena zaroori hai
+
   const q = query(
     collection(db, "class_wise_results"),
     where("jamia", "==", jamiaName),
@@ -404,33 +407,24 @@ async function checkJamiaStatus() {
 
   const snap = await getDocs(q);
   
-  // Ek Map banayenge taake har darjah (class) ka sirf latest data rahe
-  let latestDataPerClass = new Map(); 
-
-  snap.forEach(doc => {
-    const d = doc.data();
-    const className = d.darjah;
-
-    // Agar is class ka data pehle nahi mila, ya ye wala purane wale se zyada naya (timestamp) hai
-    if (!latestDataPerClass.has(className) || d.timestamp > latestDataPerClass.get(className).timestamp) {
-      latestDataPerClass.set(className, d);
-    }
-  });
-
   let grandTotalStudents = 0;
   let grandTotalPassed = 0;
   let filledClasses = [];
 
-  // Ab Map mein se sirf unique aur latest data ko total mein jodna hai
-  latestDataPerClass.forEach((d, className) => {
-    filledClasses.push(className);
-    grandTotalStudents += parseFloat(d.total) || 0;
-    grandTotalPassed += parseFloat(d.passed) || 0;
+  snap.forEach(docSnap => {
+    const d = docSnap.data();
+    
+    // 🔹 FIX: Sirf wahi data dikhao jo delete nahi hua aur jiski UID match hoti hai
+    if (d.uid === userUID) { 
+      filledClasses.push(d.darjah);
+      grandTotalStudents += parseFloat(d.total) || 0;
+      grandTotalPassed += parseFloat(d.passed) || 0;
+    }
   });
 
-  // Calculation: (Total Pass / Total Students) * 100
-  let finalGrandPercent = grandTotalStudents > 0 ? (grandTotalPassed / grandTotalStudents) * 100 : 0;
-
+  // UI ko update karne ka logic
+  const finalGrandPercent = grandTotalStudents > 0 ? (grandTotalPassed / grandTotalStudents) * 100 : 0;
+  
   const statusDiv = document.getElementById('jamia-status') || createStatusDiv();
   statusDiv.innerHTML = `
     <div class="mb-2 text-xs font-bold text-gray-500 uppercase italic">Filled Classes:</div>
@@ -443,11 +437,11 @@ async function checkJamiaStatus() {
     </div>
     <div class="mt-4 pt-3 border-t border-dashed border-gray-200 grid grid-cols-2 gap-4">
       <div>
-        <label class="text-xs font-bold text-gray-400 uppercase">Total Students (Unique)</label>
+        <label class="text-xs font-bold text-gray-400 uppercase">Total Students</label>
         <div class="text-lg font-bold text-gray-700">${grandTotalStudents}</div>
       </div>
       <div>
-        <label class="text-xs font-bold text-gray-400 uppercase">Total Passed (Unique)</label>
+        <label class="text-xs font-bold text-gray-400 uppercase">Total Passed</label>
         <div class="text-lg font-bold text-gray-700">${grandTotalPassed}</div>
       </div>
     </div>
