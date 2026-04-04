@@ -268,7 +268,8 @@ export async function initAdminResultAnalysis(db, containerId) {
             // ==========================================
             // 🔥 LAYOUT: ASATIZA WISE
             // ==========================================
-            else {
+            // 🔥 ASATIZA WISE (Final Updated with Class Fix & Centered English Names)
+else {
     thead.innerHTML = `
     <tr class="bg-gray-800 text-white urdu-font text-[12px]">
         <th class="p-2 border">Region</th>
@@ -285,60 +286,62 @@ export async function initAdminResultAnalysis(db, containerId) {
         <th class="p-2 border bg-emerald-900">مجموعی</th>
     </tr>`;
 
-    latestDataMap.forEach(d => {
-        if (!d.data || !Array.isArray(d.data)) return;
+    latestDataMap.forEach((d) => {
+        if (d.data && Array.isArray(d.data)) {
+            d.data.forEach((tEntry) => {
+                const periods = tEntry.periods || [];
+                const pCount = periods.length || 1;
 
-        d.data.forEach(teacherData => {
-            const periods = teacherData.periods || [];
-            const rowSpan = periods.length || 1;
+                // Teacher overall calculation logic
+                let tT = 0, tP = 0;
+                periods.forEach(p => { 
+                    tT += parseInt(p.total) || 0; 
+                    tP += parseInt(p.passed) || 0; 
+                });
+                const tPer = tT > 0 ? (tP / tT) * 100 : 0;
+                const tKefiyat = getJamiaKefiyat(tPer);
+                const tCol = getKefiyatColor(tPer);
 
-            // Teacher overall calculation
-            let tTotal = 0, tPass = 0;
-            periods.forEach(p => {
-                tTotal += num(p.total);
-                tPass += num(p.passed);
+                periods.forEach((p, pIdx) => {
+                    const subTotal = parseInt(p.total) || 0;
+                    const subPass = parseInt(p.passed) || 0;
+                    const subNakam = Math.max(0, subTotal - subPass);
+                    const subPercent = subTotal > 0 ? (subPass / subTotal) * 100 : 0;
+                    const subKefiyat = p.kaifiyat || getJamiaKefiyat(subPercent);
+
+                    // 🔹 Darja (Class) Name Fix based on your provided snippet
+                    const displayClass = p.class || p['class'] || p.className || p.darjah || d.darjah || '-';
+
+                    rowsHtml += `
+                    <tr class="hover:bg-gray-50 transition text-[12px] text-center border-b">
+                        ${pIdx === 0 ? `
+                            <td class="p-2 border text-gray-500 font-sans align-middle" rowspan="${pCount}">${d.region || '-'}</td>
+                            <td class="p-2 border text-gray-500 font-sans align-middle" rowspan="${pCount}">${d.userName || '-'}</td>
+                            <td class="p-2 border font-bold text-center font-sans text-gray-800 align-middle" rowspan="${pCount}">${d.jamia || '-'}</td>
+                            <td class="p-2 border font-bold text-center font-sans text-blue-700 align-middle" rowspan="${pCount}">${tEntry.teacher || "-"}</td>
+                        ` : ''}
+                        
+                        <td class="p-2 border text-right urdu-font text-gray-600">${p.subject || p.bookName || p.mazmoon || '-'}</td>
+                        <td class="p-2 border text-center urdu-font text-gray-500">${displayClass}</td>
+                        <td class="p-2 border font-bold">${subTotal}</td>
+                        <td class="p-2 border text-emerald-600 font-bold">${subPass}</td>
+                        <td class="p-2 border text-red-500">${subNakam}</td>
+                        <td class="p-2 border font-bold">${subPercent.toFixed(1)}%</td>
+                        <td class="p-2 border urdu-font" style="color:${getKefiyatColor(subPercent)}">${subKefiyat}</td>
+                        
+                        ${pIdx === 0 ? `
+                            <td class="p-2 border bg-emerald-50 align-middle font-bold" rowspan="${pCount}">
+                                <div style="color:${tCol}">${tPer.toFixed(1)}%</div>
+                                <div class="text-[10px] urdu-font" style="color:${tCol}">${tKefiyat}</div>
+                            </td>
+                        ` : ''}
+                    </tr>`;
+                });
             });
-            const tPercent = tTotal ? (tPass / tTotal) * 100 : 0;
-            const tKefiyat = getJamiaKefiyat(tPercent);
-
-            periods.forEach((p, index) => {
-                const subTotal = num(p.total);
-                const subPass = num(p.passed);
-                const subNakam = Math.max(0, subTotal - subPass);
-                const subPercent = subTotal ? (subPass / subTotal) * 100 : 0;
-                const subKefiyat = getJamiaKefiyat(subPercent);
-
-                // 🔹 Class Name logic: period level se pehle check karein
-                const displayClass = p.className || p.darjah || d.darjah || d.darja || '-';
-
-                rowsHtml += `
-                <tr class="hover:bg-gray-50 transition text-[12px] text-center border-b">
-                    ${index === 0 ? `
-                        <td class="p-2 border text-gray-500 font-sans" rowspan="${rowSpan}">${d.region}</td>
-                        <td class="p-2 border text-gray-500 font-sans" rowspan="${rowSpan}">${d.userName}</td>
-                        <td class="p-2 border font-bold text-center font-sans text-gray-800" rowspan="${rowSpan}">${d.jamia}</td>
-                        <td class="p-2 border font-bold text-center font-sans text-blue-700" rowspan="${rowSpan}">${teacherData.teacher}</td>
-                    ` : ''}
-                    <td class="p-2 border text-right urdu-font text-gray-600">${p.bookName || p.subject || p.mazmoon || '-'}</td>
-                    <td class="p-2 border text-center urdu-font text-gray-500">${displayClass}</td>
-                    <td class="p-2 border font-bold">${subTotal}</td>
-                    <td class="p-2 border text-emerald-600 font-bold">${subPass}</td>
-                    <td class="p-2 border text-red-500">${subNakam}</td>
-                    <td class="p-2 border font-bold">${subPercent.toFixed(1)}%</td>
-                    <td class="p-2 border urdu-font" style="color:${getKefiyatColor(subPercent)}">${subKefiyat}</td>
-                    ${index === 0 ? `
-                        <td class="p-2 border bg-emerald-50" rowspan="${rowSpan}">
-                            <div class="font-bold text-teal-700">${tPercent.toFixed(1)}%</div>
-                            <div class="text-[10px] urdu-font" style="color:${getKefiyatColor(tPercent)}">${tKefiyat}</div>
-                        </td>
-                    ` : ''}
-                </tr>`;
-            });
-        });
+        }
     });
     tfoot.innerHTML = ""; 
 }
-
             tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="p-10 text-gray-400">No Data Found</td></tr>`;
             loader.classList.add("hidden"); report.classList.remove("hidden");
             if (rowsHtml) excelBtn.classList.remove("hidden");
