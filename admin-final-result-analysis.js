@@ -1,4 +1,4 @@
-// ✅ UPDATED ADMIN RESULT ANALYSIS (With Global Data & Fuzzy Matching)
+// ✅ UPDATED ADMIN RESULT ANALYSIS (With Region, User & Excel Download)
 
 import {
     collection, query, where, getDocs, orderBy
@@ -27,17 +27,13 @@ export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // 1. Load Global Users Data safely
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
     const usersList = allUsers.map(u => ({ name: u.name || u.email })).sort((a, b) => a.name.localeCompare(b.name));
 
-    // 🔍 Robust Helper: Matching Jamia to User
     const getJamiaContext = (jamiaName) => {
-        if (!jamiaName || allUsers.length === 0) return { userName: 'No Data', region: 'No Data' };
-        
+        if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
         const target = jamiaName.trim().toLowerCase();
-
         const foundUser = allUsers.find(u => {
             const list = u.jamiaatList || [];
             return list.some(j => {
@@ -45,7 +41,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 return jName.trim().toLowerCase() === target;
             });
         });
-
         return {
             userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
             region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
@@ -55,7 +50,13 @@ export async function initAdminResultAnalysis(db, containerId) {
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-4 rounded-xl shadow border">
         <div class="bg-indigo-50 p-4 rounded border mb-4">
-            <h4 class="font-bold text-indigo-700 mb-3 urdu-font text-right">فائنل رزلٹ اینالائسس (ایڈمن)</h4>
+            <div class="flex justify-between items-center mb-3">
+                <button id="admin-excel-btn" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-1 shadow-sm hidden">
+                    <i class="fas fa-file-excel"></i> Excel Download
+                </button>
+                <h4 class="font-bold text-indigo-700 urdu-font text-right flex-1">فائنل رزلٹ اینالائسس (ایڈمن)</h4>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 <select id="admin-exam-type" class="p-2 border rounded urdu-font">
                     <option value="ششماہی امتحان">ششماہی امتحان</option>
@@ -81,14 +82,25 @@ export async function initAdminResultAnalysis(db, containerId) {
             </div>
             <button id="admin-show-btn" class="mt-3 bg-indigo-600 text-white px-4 py-2 rounded w-full font-bold">Show Analysis</button>
         </div>
-        <div id="admin-loader" class="hidden text-center py-6">Loading Data...</div>
+
+        <div id="admin-loader" class="hidden text-center py-6"><i class="fas fa-spinner fa-spin"></i> Loading Data...</div>
         <div id="admin-report" class="hidden overflow-x-auto">
-            <table class="w-full text-center border text-sm">
+            <table class="w-full text-center border text-sm" id="final-analysis-table-to-export">
                 <thead id="admin-head" class="bg-gray-800 text-white"></thead>
                 <tbody id="admin-body" class="divide-y"></tbody>
             </table>
         </div>
     </div>`;
+
+    // 📈 EXCEL DOWNLOAD FUNCTION
+    document.getElementById("admin-excel-btn").onclick = () => {
+        const table = document.getElementById("final-analysis-table-to-export");
+        const examType = document.getElementById("admin-exam-type").value;
+        const layout = document.getElementById("admin-layout").value;
+        
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Final Analysis" });
+        XLSX.writeFile(wb, `Final_Analysis_${layout}_${examType}.xlsx`);
+    };
 
     document.getElementById("admin-show-btn").onclick = async () => {
         const examType = document.getElementById("admin-exam-type").value;
@@ -101,9 +113,11 @@ export async function initAdminResultAnalysis(db, containerId) {
         const report = document.getElementById("admin-report");
         const thead = document.getElementById("admin-head");
         const tbody = document.getElementById("admin-body");
+        const excelBtn = document.getElementById("admin-excel-btn");
 
         loader.classList.remove("hidden");
         report.classList.add("hidden");
+        excelBtn.classList.add("hidden");
 
         try {
             const collectionName = (layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
@@ -167,6 +181,8 @@ export async function initAdminResultAnalysis(db, containerId) {
             tbody.innerHTML = rowsHtml || `<tr><td colspan="9">No Data Found</td></tr>`;
             loader.classList.add("hidden");
             report.classList.remove("hidden");
+            if (rowsHtml) excelBtn.classList.remove("hidden"); // Data aane par Excel button dikhao
+
         } catch (err) {
             console.error(err);
             loader.classList.add("hidden");
