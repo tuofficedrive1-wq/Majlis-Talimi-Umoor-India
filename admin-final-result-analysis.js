@@ -269,30 +269,75 @@ export async function initAdminResultAnalysis(db, containerId) {
             // 🔥 LAYOUT: ASATIZA WISE
             // ==========================================
             else {
-                thead.innerHTML = `<th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border text-right">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border text-right">درجہ</th><th class="p-2 border">کل</th><th class="p-2 border text-emerald-400">کامیاب</th><th class="p-2 border text-red-400">ناکام</th><th class="p-2 border">فیصد</th><th class="p-2 border">کیفیت</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
-                
-                latestDataMap.forEach(d => {
-                    if (!d.data || !Array.isArray(d.data)) return;
-                    d.data.forEach(teacherData => {
-                        const periods = teacherData.periods || [];
-                        const rSpan = periods.length || 1;
-                        let tTot = 0, tPass = 0;
-                        periods.forEach(p => { tTot += num(p.total); tPass += num(p.passed); });
-                        const tPer = tTot ? (tPass / tTot) * 100 : 0;
+    thead.innerHTML = `
+    <tr class="bg-gray-800 text-white urdu-font text-[12px]">
+        <th class="p-2 border">Region</th>
+        <th class="p-2 border">User</th>
+        <th class="p-2 border text-center">جامعہ</th>
+        <th class="p-2 border text-center">استاد</th>
+        <th class="p-2 border text-right">مضمون</th>
+        <th class="p-2 border text-center">درجہ</th>
+        <th class="p-2 border">کل</th>
+        <th class="p-2 border text-emerald-400">کامیاب</th>
+        <th class="p-2 border text-red-400">ناکام</th>
+        <th class="p-2 border">فیصد</th>
+        <th class="p-2 border">کیفیت</th>
+        <th class="p-2 border bg-emerald-900">مجموعی</th>
+    </tr>`;
 
-                        periods.forEach((p, idx) => {
-                            const sTot = num(p.total); const sPass = num(p.passed); const sNak = Math.max(0, sTot - sPass);
-                            const sPer = sTot ? (sPass / sTot) * 100 : 0;
-                            rowsHtml += `<tr class="hover:bg-gray-50 transition text-[12px] text-center border-b">
-                                ${idx === 0 ? `<td class="p-2 border text-gray-500" rowspan="${rSpan}">${d.region}</td><td class="p-2 border text-gray-500" rowspan="${rSpan}">${d.userName}</td><td class="p-2 border font-bold text-right urdu-font" rowspan="${rSpan}">${d.jamia}</td><td class="p-2 border font-bold text-right urdu-font text-blue-700" rowspan="${rSpan}">${teacherData.teacher}</td>` : ''}
-                                <td class="p-2 border text-right urdu-font">${p.bookName || p.subject || '-'}</td><td class="p-2 border text-right urdu-font text-gray-400">${p.className || d.darjah || '-'}</td>
-                                <td class="p-2 border font-bold">${sTot}</td><td class="p-2 border text-emerald-600 font-bold">${sPass}</td><td class="p-2 border text-red-500">${sNak}</td>
-                                <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(sPer)}">${getJamiaKefiyat(sPer)}</td>
-                                ${idx === 0 ? `<td class="p-2 border bg-emerald-50" rowspan="${rSpan}"><div class="font-bold text-teal-700">${tPer.toFixed(1)}%</div><div class="text-[10px] urdu-font" style="color:${getKefiyatColor(tPer)}">${getJamiaKefiyat(tPer)}</div></td>` : ''}</tr>`;
-                        });
-                    });
-                });
-            }
+    latestDataMap.forEach(d => {
+        if (!d.data || !Array.isArray(d.data)) return;
+
+        d.data.forEach(teacherData => {
+            const periods = teacherData.periods || [];
+            const rowSpan = periods.length || 1;
+
+            // Teacher overall calculation
+            let tTotal = 0, tPass = 0;
+            periods.forEach(p => {
+                tTotal += num(p.total);
+                tPass += num(p.passed);
+            });
+            const tPercent = tTotal ? (tPass / tTotal) * 100 : 0;
+            const tKefiyat = getJamiaKefiyat(tPercent);
+
+            periods.forEach((p, index) => {
+                const subTotal = num(p.total);
+                const subPass = num(p.passed);
+                const subNakam = Math.max(0, subTotal - subPass);
+                const subPercent = subTotal ? (subPass / subTotal) * 100 : 0;
+                const subKefiyat = getJamiaKefiyat(subPercent);
+
+                // 🔹 Class Name logic: period level se pehle check karein
+                const displayClass = p.className || p.darjah || d.darjah || d.darja || '-';
+
+                rowsHtml += `
+                <tr class="hover:bg-gray-50 transition text-[12px] text-center border-b">
+                    ${index === 0 ? `
+                        <td class="p-2 border text-gray-500 font-sans" rowspan="${rowSpan}">${d.region}</td>
+                        <td class="p-2 border text-gray-500 font-sans" rowspan="${rowSpan}">${d.userName}</td>
+                        <td class="p-2 border font-bold text-center font-sans text-gray-800" rowspan="${rowSpan}">${d.jamia}</td>
+                        <td class="p-2 border font-bold text-center font-sans text-blue-700" rowspan="${rowSpan}">${teacherData.teacher}</td>
+                    ` : ''}
+                    <td class="p-2 border text-right urdu-font text-gray-600">${p.bookName || p.subject || p.mazmoon || '-'}</td>
+                    <td class="p-2 border text-center urdu-font text-gray-500">${displayClass}</td>
+                    <td class="p-2 border font-bold">${subTotal}</td>
+                    <td class="p-2 border text-emerald-600 font-bold">${subPass}</td>
+                    <td class="p-2 border text-red-500">${subNakam}</td>
+                    <td class="p-2 border font-bold">${subPercent.toFixed(1)}%</td>
+                    <td class="p-2 border urdu-font" style="color:${getKefiyatColor(subPercent)}">${subKefiyat}</td>
+                    ${index === 0 ? `
+                        <td class="p-2 border bg-emerald-50" rowspan="${rowSpan}">
+                            <div class="font-bold text-teal-700">${tPercent.toFixed(1)}%</div>
+                            <div class="text-[10px] urdu-font" style="color:${getKefiyatColor(tPercent)}">${tKefiyat}</div>
+                        </td>
+                    ` : ''}
+                </tr>`;
+            });
+        });
+    });
+    tfoot.innerHTML = ""; 
+}
 
             tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="p-10 text-gray-400">No Data Found</td></tr>`;
             loader.classList.add("hidden"); report.classList.remove("hidden");
