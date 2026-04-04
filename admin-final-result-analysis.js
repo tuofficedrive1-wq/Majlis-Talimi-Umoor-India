@@ -121,56 +121,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
     </div>`;
 
-    // admin-final-result-analysis.js mein is block ko update karein:
-
-document.getElementById("admin-excel-btn").onclick = () => {
-    const table = document.getElementById("final-analysis-table-to-export");
-    const examType = document.getElementById("admin-exam-type").value;
-    const layout = document.getElementById("admin-layout").value;
-    const region = document.getElementById("admin-region-filter").value;
-    const user = document.getElementById("admin-user-filter").value;
-
-    // 1. Dynamic File Name Logic
-    let fileName = `Final_Analysis_${layout}`;
-    if (region !== "all") fileName += `_Region_${region}`;
-    if (user !== "all") fileName += `_User_${user}`;
-    fileName += `_${examType}.xlsx`;
-
-    // 2. Table to Book with Formatting (raw: false taake % dikhe)
-    const wb = XLSX.utils.table_to_book(table, { sheet: "Final Analysis", raw: false });
-    const ws = wb.Sheets["Final Analysis"];
-
-    // 3. Professional Styling logic
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
-            if (!ws[cell_address]) continue;
-
-            ws[cell_address].s = {
-                border: {
-                    top: { style: "thin" }, bottom: { style: "thin" },
-                    left: { style: "thin" }, right: { style: "thin" }
-                },
-                alignment: { vertical: "center", horizontal: "center", wrapText: true },
-                font: { name: "Arial", sz: 10 }
-            };
-
-            // Header Row (Dark Gray Background, White Font)
-            if (R === 0) {
-                ws[cell_address].s.fill = { fgColor: { rgb: "333333" } };
-                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 11 };
-            }
-        }
-    }
-
-    // Column width adjustment
-    ws['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 15 }];
-
-    XLSX.writeFile(wb, fileName);
-};
-
-    // 3. Elements Setup
+        // 3. Elements Setup
     const regionSelect = document.getElementById("admin-region-filter");
     const userSelect = document.getElementById("admin-user-filter");
     const loader = document.getElementById("admin-loader");
@@ -193,12 +144,73 @@ document.getElementById("admin-excel-btn").onclick = () => {
     regionSelect.onchange();
 
     // 📈 Excel Download Logic
-    excelBtn.onclick = () => {
-        const table = document.getElementById("final-analysis-table-to-export");
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Analysis" });
-        XLSX.writeFile(wb, `Final_Analysis_Report.xlsx`);
-    };
+   // 📈 FINAL FIXED EXCEL DOWNLOAD LOGIC
+excelBtn.onclick = () => {
+    // 1. Table ka refernce lein
+    const table = document.getElementById("final-analysis-table-to-export");
+    if (!table) {
+        alert("Table nahi mili!");
+        return;
+    }
 
+    const examType = document.getElementById("admin-exam-type").value;
+    const layout = document.getElementById("admin-layout").value;
+    const region = regionSelect.value;
+    const user = userSelect.value;
+
+    // 2. Dynamic File Name Logic (Fixed)
+    let fileNameParts = ["Final_Analysis", layout];
+    if (region !== "all") fileNameParts.push(`Region_${region}`);
+    if (user !== "all") fileNameParts.push(`User_${user}`);
+    fileNameParts.push(examType);
+    
+    const finalFileName = fileNameParts.join("_") + ".xlsx";
+
+    // 3. Table to Workbook (raw: false taake % aur formatting barkarar rahe)
+    const wb = XLSX.utils.table_to_book(table, { 
+        sheet: "Analysis Report", 
+        raw: false // 🟢 Isse '0.8' ki jagah '80%' aayega
+    });
+    
+    const ws = wb.Sheets["Analysis Report"];
+
+    // 4. Styling (Borders, Header Color, Alignment)
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[cell_address]) continue;
+
+            // Default Cell Style
+            ws[cell_address].s = {
+                border: {
+                    top: { style: "thin" },
+                    bottom: { style: "thin" },
+                    left: { style: "thin" },
+                    right: { style: "thin" }
+                },
+                alignment: { vertical: "center", horizontal: "center", wrapText: true },
+                font: { name: "Arial", sz: 10 }
+            };
+
+            // Header Row (R === 0) Styling
+            if (R === 0) {
+                ws[cell_address].s.fill = { fgColor: { rgb: "1E293B" } }; // Dark Gray/Blue
+                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 11 };
+            }
+        }
+    }
+
+    // 5. Column Widths adjust karein
+    ws['!cols'] = [
+        { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, 
+        { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, 
+        { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 15 }
+    ];
+
+    // 6. Download
+    XLSX.writeFile(wb, finalFileName);
+};
     // 🚀 Execution Logic
     document.getElementById("admin-show-btn").onclick = async () => {
         const examType = document.getElementById("admin-exam-type").value;
