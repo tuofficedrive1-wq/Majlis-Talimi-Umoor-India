@@ -242,7 +242,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         let totals = { hazir: 0, pass: 0 };
 
         if (layout === 'jamia') {
-            thead.innerHTML = `<th class="p-3 border">Region</th><th class="p-3 border">User</th><th class="p-3 border text-right">جامعہ</th><th class="p-3 border">حاضر</th><th class="p-3 border">کامیاب</th><th class="p-3 border">فیصد</th><th class="p-3 border">کیفیت</th>`;
+            thead.innerHTML = `<th class="p-3 border">ریجن</th><th class="p-3 border">تعلیمی ذمہ دار</th><th class="p-3 border text-right">جامعہ</th><th class="p-3 border">حاضر</th><th class="p-3 border">کامیاب</th><th class="p-3 border">فیصد</th><th class="p-3 border">کیفیت</th>`;
             let stats = {};
             data.forEach(d => {
                 const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
@@ -260,7 +260,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             tfoot.innerHTML = `<tr><td colspan="3" class="p-3 text-right">TOTAL</td><td class="p-3">${totals.hazir}</td><td class="p-3">${totals.pass}</td><td class="p-3">${gPer.toFixed(2)}%</td><td class="p-3 urdu-font">${getJamiaKefiyat(gPer)}</td></tr>`;
         } 
         else if (layout === 'class') {
-            thead.innerHTML = `<th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border text-right">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border text-emerald-500">کامیاب</th><th class="p-2 border">فیصد</th>`;
+            thead.innerHTML = `<th class="p-2 border">ریجن</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border text-right">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border text-emerald-500">کامیاب</th><th class="p-2 border">فیصد</th>`;
             data.forEach(d => {
                 const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
                 const pass = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
@@ -272,7 +272,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right">TOTAL</td><td class="p-2 border">${totals.hazir}</td><td class="p-2 border">${totals.pass}</td><td class="p-2 border">${gPer.toFixed(1)}%</td></tr>`;
         }
         else {
-            thead.innerHTML = `<th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border text-center">جامعہ</th><th class="p-2 border text-center">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border text-center">درجہ</th><th class="p-2 border">کل</th><th class="p-2 border text-emerald-400">کامیاب</th><th class="p-2 border">فیصد</th><th class="p-2 border">کیفیت</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
+            thead.innerHTML = `<th class="p-2 border">ریجن</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border text-center">جامعہ</th><th class="p-2 border text-center">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border text-center">درجہ</th><th class="p-2 border">کل</th><th class="p-2 border text-emerald-400">کامیاب</th><th class="p-2 border">فیصد</th><th class="p-2 border">کیفیت</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
             data.forEach(d => {
                 (d.data || []).forEach(tEntry => {
                     const ps = tEntry.periods || []; const rSpan = ps.length || 1;
