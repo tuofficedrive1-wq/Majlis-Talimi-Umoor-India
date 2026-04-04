@@ -1,5 +1,3 @@
-// admin-final-result-analysis.js
-
 import {
     collection,
     query,
@@ -8,52 +6,40 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-
     const btn = document.getElementById("btn-generate-final-analysis");
     const container = document.getElementById("final-analysis-container");
 
     if (!btn || !container) return;
 
+    // Page load hote hi filters ko data se bharne ke liye function call
+    // Hum "class_wise_results" ko base maan kar filters bhar rahe hain
+    initFilters();
+
     btn.addEventListener("click", async () => {
         const db = window.db;
-
-        // Filters ki values lena
         const type = document.getElementById("final-analysis-type-select").value;
         const region = document.getElementById("final-filter-region").value;
         const user = document.getElementById("final-filter-user").value;
         const jamia = document.getElementById("final-filter-jamia").value;
-        
-        // Naye filters (Inki ID HTML mein honi chahiye)
         const year = document.getElementById("final-filter-year")?.value || "all";
         const examType = document.getElementById("final-filter-exam-type")?.value || "all";
 
-        if (!db) {
-            alert("DB load nahi hua");
-            return;
-        }
+        if (!db) { alert("DB load nahi hua"); return; }
+        if (!type) { alert("Report type select karein"); return; }
 
         container.innerHTML = "Loading...";
 
         try {
-            if (type === "ibtidaiya") {
-                await renderIbtidaiya(db, jamia);
-                return;
-            }
-
-            const collectionName = (type === "asatiza-wise") 
-                ? "asatiza_wise_results" 
-                : "class_wise_results";
-
+            const collectionName = (type === "asatiza-wise") ? "asatiza_wise_results" : "class_wise_results";
             const q = query(collection(db, collectionName), orderBy("timestamp", "desc"));
             const snapshot = await getDocs(q);
 
             let data = [];
             snapshot.forEach(doc => {
                 const d = doc.data();
-
-                // Filters Logic
+                // Matching Filters
                 if (region !== "all" && d.region !== region) return;
-                if (user !== "all" && d.userId !== user) return;
+                if (user !== "all" && (d.userName || d.userId) !== user) return;
                 if (jamia !== "all" && d.jamia !== jamia) return;
                 if (year !== "all" && d.year !== year) return;
                 if (examType !== "all" && d.examType !== examType) return;
@@ -64,6 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (type === "jamia-wise") renderJamiaWise(data);
             else if (type === "class-wise") renderClassWise(data);
             else if (type === "asatiza-wise") renderAsatizaWise(data);
+            else if (type === "ibtidaiya") await renderIbtidaiya(db, jamia);
 
         } catch (err) {
             console.error(err);
@@ -73,7 +60,49 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* =========================
-   📊 JAMIA WISE (Custom Table)
+   🔍 AUTO-POPULATE FILTERS
+========================= */
+async function initFilters() {
+    const db = window.db;
+    if (!db) return;
+
+    try {
+        // Class wise results se unique values nikalna
+        const snapshot = await getDocs(collection(db, "class_wise_results"));
+        
+        let regions = new Set();
+        let users = new Set();
+        let jamiaat = new Set();
+
+        snapshot.forEach(doc => {
+            const d = doc.data();
+            if (d.region) regions.add(d.region);
+            if (d.userName || d.userId) users.add(d.userName || d.userId);
+            if (d.jamia) jamiaat.add(d.jamia);
+        });
+
+        updateDropdown("final-filter-region", regions, "All Regions");
+        updateDropdown("final-filter-user", users, "All Users");
+        updateDropdown("final-filter-jamia", jamiaat, "All Jamiaat");
+
+    } catch (err) {
+        console.error("Filter populate error:", err);
+    }
+}
+
+function updateDropdown(id, set, defaultText) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    
+    let html = `<option value="all">${defaultText}</option>`;
+    Array.from(set).sort().forEach(val => {
+        html += `<option value="${val}">${val}</option>`;
+    });
+    select.innerHTML = html;
+}
+
+/* =========================
+   📊 JAMIA WISE TABLE
 ========================= */
 function renderJamiaWise(data) {
     let stats = {};
@@ -83,37 +112,32 @@ function renderJamiaWise(data) {
             stats[d.jamia] = { 
                 region: d.region || "-", 
                 user: d.userName || d.userId || "-",
-                totalStudents: 0, 
-                present: 0, 
-                passed: 0, 
-                zimni: 0, 
-                nakam: 0 
+                totalStudents: 0, present: 0, passed: 0, zimni: 0, nakam: 0 
             };
         }
-
         const s = stats[d.jamia];
         s.totalStudents += (d.totalStudents || 0);
         s.present += (d.totalStudents || 0) - (d.ghaib || 0);
-        s.passed += (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) + (d.jayyid || 0) + (d.maqbool || 0);
+        s.passed += (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+(d.jayyid||0)+(d.maqbool||0);
         s.zimni += (d.majazZimni || 0);
         s.nakam += (d.nakam || 0);
     });
 
     let html = `
-    <table class="w-full border-collapse border text-[12px] text-center">
-        <thead class="bg-slate-100">
+    <table class="w-full border-collapse border text-[12px] text-center bg-white shadow-sm">
+        <thead class="bg-indigo-50">
             <tr>
-                <th class="border p-1">#</th>
-                <th class="border p-1 text-right">Jamia Ka Naam</th>
-                <th class="border p-1">Region</th>
-                <th class="border p-1">User</th>
-                <th class="border p-1">Kul Talaba</th>
-                <th class="border p-1">Hazir</th>
-                <th class="border p-1 text-green-600">Kamyab</th>
-                <th class="border p-1 text-purple-600">Zimni</th>
-                <th class="border p-1 text-red-600">Nakam</th>
-                <th class="border p-1">Faisad (%)</th>
-                <th class="border p-1">Kaifiyat</th>
+                <th class="border p-2">#</th>
+                <th class="border p-2 text-right">Jamia Ka Naam</th>
+                <th class="border p-2">Region</th>
+                <th class="border p-2">User</th>
+                <th class="border p-2">Kul Talaba</th>
+                <th class="border p-2">Hazir</th>
+                <th class="border p-2 text-green-700">Kamyab</th>
+                <th class="border p-2 text-purple-700">Zimni</th>
+                <th class="border p-2 text-red-600">Nakam</th>
+                <th class="border p-2">Faisad (%)</th>
+                <th class="border p-2">Kaifiyat</th>
             </tr>
         </thead>
         <tbody>`;
@@ -123,36 +147,29 @@ function renderJamiaWise(data) {
         let s = stats[j];
         let percent = s.present ? (s.passed / s.present) * 100 : 0;
         
-        // Kaifiyat Logic
-        let kaifiyat = "Kamzor";
-        let color = "text-red-500";
+        let kaifiyat = "Kamzor"; let color = "text-red-500";
         if (percent >= 80) { kaifiyat = "Mumtaz Sharf"; color = "text-green-700 font-bold"; }
         else if (percent >= 70) { kaifiyat = "Behtar"; color = "text-blue-600"; }
         else if (percent >= 50) { kaifiyat = "Munasib"; color = "text-purple-600"; }
 
         html += `
-            <tr>
-                <td class="border p-1">${count++}</td>
-                <td class="border p-1 text-right font-bold">${j}</td>
-                <td class="border p-1">${s.region}</td>
-                <td class="border p-1">${s.user}</td>
-                <td class="border p-1 font-bold">${s.totalStudents}</td>
-                <td class="border p-1 text-blue-700">${s.present}</td>
-                <td class="border p-1 text-green-700 font-bold">${s.passed}</td>
-                <td class="border p-1 text-purple-600">${s.zimni}</td>
-                <td class="border p-1 text-red-600">${s.nakam}</td>
-                <td class="border p-1 font-bold">${percent.toFixed(2)}%</td>
-                <td class="border p-1 ${color}">${kaifiyat}</td>
+            <tr class="hover:bg-gray-50">
+                <td class="border p-2">${count++}</td>
+                <td class="border p-2 text-right font-bold">${j}</td>
+                <td class="border p-2">${s.region}</td>
+                <td class="border p-2 text-xs">${s.user}</td>
+                <td class="border p-2 font-bold">${s.totalStudents}</td>
+                <td class="border p-2 text-blue-700">${s.present}</td>
+                <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
+                <td class="border p-2 text-purple-600">${s.zimni}</td>
+                <td class="border p-2 text-red-600">${s.nakam}</td>
+                <td class="border p-2 font-bold bg-yellow-50">${percent.toFixed(2)}%</td>
+                <td class="border p-2 ${color} text-[11px]">${kaifiyat}</td>
             </tr>`;
     }
-
     html += `</tbody></table>`;
     document.getElementById("final-analysis-container").innerHTML = html;
 }
-
-
-
-
 /* =========================
    🔹 CLASS WISE
 ========================= */
