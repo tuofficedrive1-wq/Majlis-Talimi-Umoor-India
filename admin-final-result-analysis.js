@@ -145,6 +145,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
     // 📈 Excel Download Logic
 
+// 📈 FINAL PERFECTED EXCEL DOWNLOAD LOGIC (Asatiza Wise Fixed)
 excelBtn.onclick = () => {
     const table = document.getElementById("final-analysis-table-to-export");
     if (!table) { alert("Table nahi mili!"); return; }
@@ -154,14 +155,14 @@ excelBtn.onclick = () => {
     const region = regionSelect.value;
     const user = userSelect.value;
 
-    // 1. Dynamic File Name Logic
+    // 1. Dynamic File Name
     let fileNameParts = ["Final_Analysis", layout];
     if (region !== "all") fileNameParts.push(`Region_${region}`);
     if (user !== "all") fileNameParts.push(`User_${user}`);
     fileNameParts.push(examType);
     const finalFileName = fileNameParts.join("_") + ".xlsx";
 
-    // 2. Table to Workbook (raw: false taake % symbol table se hi uthaye)
+    // 2. Table to Workbook (raw: false taake table ka exact data uthaye)
     const wb = XLSX.utils.table_to_book(table, { 
         sheet: "Analysis Report", 
         raw: false 
@@ -169,59 +170,78 @@ excelBtn.onclick = () => {
     
     const ws = wb.Sheets["Analysis Report"];
 
-    // 3. Styling Logic (Nastaleeq Font & Bigger Sizes)
+    // 3. Styling & Logic Adjustments
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let R = range.s.r; R <= range.e.r; ++R) {
         for (let C = range.s.c; C <= range.e.c; ++C) {
             const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
             if (!ws[cell_address]) continue;
 
+            const headerText = String(ws[XLSX.utils.encode_cell({ r: 0, c: C })]?.v || "").trim();
             const cellVal = String(ws[cell_address].v || "");
 
-            // Default Cell Style
+            // --- Styling Object ---
             ws[cell_address].s = {
                 border: {
                     top: { style: "thin" }, bottom: { style: "thin" },
                     left: { style: "thin" }, right: { style: "thin" }
                 },
                 alignment: { vertical: "center", horizontal: "center", wrapText: true },
-                font: { 
-                    name: "Jameel Noori Nastaleeq", // 🟢 Urdu Font Applied
-                    sz: 14 // 🟢 Bada Font Size
-                }
+                font: { name: "Jameel Noori Nastaleeq", sz: 14 } // Default Urdu Font
             };
 
-            // English Fields (Region, User, Jamia) ke liye standard font
+            // English Fields ke liye Font adjust karein
             if (C < 4) {
                 ws[cell_address].s.font.name = "Arial";
                 ws[cell_address].s.font.sz = 12;
             }
 
-            // Header Row (Dark Gray/Blue Background)
+            // --- HEADER STYLING (Urdu font applied) ---
             if (R === 0) {
                 ws[cell_address].s.fill = { fgColor: { rgb: "1E293B" } };
-                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 13, name: "Arial" };
+                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 14, name: "Jameel Noori Nastaleeq" };
             }
 
-            // 🟢 Handle Percentage: Agar cell mein raw number hai (0.9), use % mein badlein
-            if (!isNaN(ws[cell_address].v) && ws[cell_address].v > 0 && ws[cell_address].v <= 1) {
-                ws[cell_address].t = 's';
-                ws[cell_address].v = (parseFloat(ws[cell_address].v) * 100).toFixed(1) + "%";
+            // --- DATA FIXES ---
+            
+            // 🟢 Fix 1: Nakam wale column se % hatana
+            if (headerText === "ناکام") {
+                if (cellVal.includes('%')) {
+                    ws[cell_address].v = cellVal.replace('%', ''); // % Symbol remove kiya
+                    ws[cell_address].t = 'n'; // Number format set kiya
+                }
+            }
+
+            // 🟢 Fix 2: Fisad wale column mein % ensure karna
+            if (headerText === "فیصد") {
+                if (!cellVal.includes('%') && !isNaN(cellVal) && cellVal !== "") {
+                    let numVal = parseFloat(cellVal);
+                    if (numVal <= 1) numVal = numVal * 100;
+                    ws[cell_address].v = numVal.toFixed(1) + "%";
+                    ws[cell_address].t = 's';
+                }
+            }
+
+            // 🟢 Fix 3: Majmu'i Split Logic
+            // XLSX.utils.table_to_book automatic merged cells (rowspan) handle kar leta hai.
+            // Hum sirf ye ensure kar rahe hain ke text Jameel Noori font mein ho.
+            if (headerText === "مجموعی") {
+                ws[cell_address].s.font.bold = true;
+                ws[cell_address].s.fill = { fgColor: { rgb: "F0FDFA" } }; // Light Teal background
             }
         }
     }
 
-    // 4. Majmu'i Split Logic (Agar Majmu'i cell mein '%' aur Urdu text saath hai)
-    // Table to book merged cells handle karta hai, ye column widths fix karega
+    // Column Widths
     ws['!cols'] = [
-        { wch: 15 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, // Region, User, Jamia, Ustad
-        { wch: 25 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, // Mazmoon, Darjah, Kul, Kamyab
-        { wch: 10 }, { wch: 15 }, { wch: 20 }, { wch: 15 }  // Nakam, Fisad, Kefiyat, Majmu'i
+        { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, // Region, User, Jamia, Ustad
+        { wch: 22 }, { wch: 15 }, { wch: 8 }, { wch: 8 },  // Mazmoon, Darjah, Kul, Kamyab
+        { wch: 8 }, { wch: 12 }, { wch: 15 }, { wch: 18 }  // Nakam, Fisad, Kefiyat, Majmu'i
     ];
 
-    // 5. Download
     XLSX.writeFile(wb, finalFileName);
 };
+    
     // 🚀 Execution Logic
     document.getElementById("admin-show-btn").onclick = async () => {
         const examType = document.getElementById("admin-exam-type").value;
