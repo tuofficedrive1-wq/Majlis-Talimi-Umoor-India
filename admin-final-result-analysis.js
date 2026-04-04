@@ -121,6 +121,55 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
     </div>`;
 
+    // admin-final-result-analysis.js mein is block ko update karein:
+
+document.getElementById("admin-excel-btn").onclick = () => {
+    const table = document.getElementById("final-analysis-table-to-export");
+    const examType = document.getElementById("admin-exam-type").value;
+    const layout = document.getElementById("admin-layout").value;
+    const region = document.getElementById("admin-region-filter").value;
+    const user = document.getElementById("admin-user-filter").value;
+
+    // 1. Dynamic File Name Logic
+    let fileName = `Final_Analysis_${layout}`;
+    if (region !== "all") fileName += `_Region_${region}`;
+    if (user !== "all") fileName += `_User_${user}`;
+    fileName += `_${examType}.xlsx`;
+
+    // 2. Table to Book with Formatting (raw: false taake % dikhe)
+    const wb = XLSX.utils.table_to_book(table, { sheet: "Final Analysis", raw: false });
+    const ws = wb.Sheets["Final Analysis"];
+
+    // 3. Professional Styling logic
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[cell_address]) continue;
+
+            ws[cell_address].s = {
+                border: {
+                    top: { style: "thin" }, bottom: { style: "thin" },
+                    left: { style: "thin" }, right: { style: "thin" }
+                },
+                alignment: { vertical: "center", horizontal: "center", wrapText: true },
+                font: { name: "Arial", sz: 10 }
+            };
+
+            // Header Row (Dark Gray Background, White Font)
+            if (R === 0) {
+                ws[cell_address].s.fill = { fgColor: { rgb: "333333" } };
+                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 11 };
+            }
+        }
+    }
+
+    // Column width adjustment
+    ws['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 15 }];
+
+    XLSX.writeFile(wb, fileName);
+};
+
     // 3. Elements Setup
     const regionSelect = document.getElementById("admin-region-filter");
     const userSelect = document.getElementById("admin-user-filter");
