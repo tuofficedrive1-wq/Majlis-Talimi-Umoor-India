@@ -1,9 +1,11 @@
-// ✅ UPDATED ADMIN RESULT ANALYSIS (Dynamic Filters, Image Style Table & Auto-Total Row)
+// ✅ COMPLETE ADMIN RESULT ANALYSIS SYSTEM
+// Includes: Region/User Lookup, Dynamic Filters, Beautiful Tables (Image Style), Auto-Totals, and Excel Export.
 
 import {
     collection, query, where, getDocs, orderBy
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// 🔹 HELPER: Get Status Text (Kefiyat)
 const getJamiaKefiyat = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
@@ -14,25 +16,28 @@ const getJamiaKefiyat = (p) => {
     return "کمزور";
 };
 
+// 🔹 HELPER: Get Status Color
 const getKefiyatColor = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
-    if (val >= 85) return "#059669"; // Green
+    if (val >= 85) return "#059669"; // Emerald
     if (val >= 70) return "#2563eb"; // Blue
     if (val >= 60) return "#d97706"; // Amber
     if (val >= 40) return "#7c3aed"; // Purple
     return "#dc2626"; // Red
 };
 
+// 🚀 MAIN FUNCTION
 export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // 1. Get Global Data for Mapping
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
 
-    // 🔍 Helper: Jamia Context Lookup
+    // 🔍 Context Lookup: Jamia Name se User aur Region nikalna
     const getJamiaContext = (jamiaName) => {
-        if (!jamiaName || allUsers.length === 0) return { userName: 'N/A', region: 'N/A' };
+        if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
         const target = jamiaName.trim().toLowerCase();
         const foundUser = allUsers.find(u => {
             const list = u.jamiaatList || [];
@@ -47,6 +52,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         };
     };
 
+    // 2. Render UI Interface
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border border-gray-100">
         <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
@@ -107,18 +113,25 @@ export async function initAdminResultAnalysis(db, containerId) {
         <div id="admin-report" class="hidden overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
             <table class="w-full text-center border-collapse" id="final-analysis-table-to-export">
                 <thead>
-                    <tr id="admin-head" class="bg-gray-800 text-white urdu-font"></tr>
+                    <tr id="admin-head" class="bg-gray-800 text-white urdu-font text-[13px]"></tr>
                 </thead>
                 <tbody id="admin-body" class="divide-y divide-gray-100 text-gray-700"></tbody>
-                <tfoot id="admin-foot" class="bg-gray-50 font-bold border-t-2 border-gray-300"></tfoot>
+                <tfoot id="admin-foot"></tfoot>
             </table>
         </div>
     </div>`;
 
+    // 3. Elements Setup
     const regionSelect = document.getElementById("admin-region-filter");
     const userSelect = document.getElementById("admin-user-filter");
+    const loader = document.getElementById("admin-loader");
+    const report = document.getElementById("admin-report");
+    const thead = document.getElementById("admin-head");
+    const tbody = document.getElementById("admin-body");
+    const tfoot = document.getElementById("admin-foot");
+    const excelBtn = document.getElementById("admin-excel-btn");
 
-    // 🔄 Dynamic User Filter based on Region
+    // 🔄 Dynamic Filter Sync: Region badalne par users badlein
     regionSelect.onchange = () => {
         const selectedReg = regionSelect.value;
         userSelect.innerHTML = '<option value="all">All Users</option>';
@@ -128,15 +141,16 @@ export async function initAdminResultAnalysis(db, containerId) {
             userSelect.innerHTML += `<option value="${name}">${name}</option>`;
         });
     };
-    regionSelect.onchange(); // Initial Load
+    regionSelect.onchange();
 
-    // 📈 EXCEL DOWNLOAD
-    document.getElementById("admin-excel-btn").onclick = () => {
+    // 📈 Excel Download Logic
+    excelBtn.onclick = () => {
         const table = document.getElementById("final-analysis-table-to-export");
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Final Analysis" });
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Analysis" });
         XLSX.writeFile(wb, `Final_Analysis_Report.xlsx`);
     };
 
+    // 🚀 Execution Logic
     document.getElementById("admin-show-btn").onclick = async () => {
         const examType = document.getElementById("admin-exam-type").value;
         const examYear = document.getElementById("admin-exam-year").value;
@@ -144,20 +158,15 @@ export async function initAdminResultAnalysis(db, containerId) {
         const selRegion = regionSelect.value;
         const selUser = userSelect.value;
 
-        const loader = document.getElementById("admin-loader");
-        const report = document.getElementById("admin-report");
-        const thead = document.getElementById("admin-head");
-        const tbody = document.getElementById("admin-body");
-        const tfoot = document.getElementById("admin-foot");
-        const excelBtn = document.getElementById("admin-excel-btn");
-
         loader.classList.remove("hidden");
         report.classList.add("hidden");
         excelBtn.classList.add("hidden");
+        tbody.innerHTML = "";
+        tfoot.innerHTML = "";
 
         try {
-            const collectionName = (layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
-            const q = query(collection(db, collectionName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
+            const colName = (layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
+            const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
             const snapshot = await getDocs(q);
             
             let latestDataMap = new Map();
@@ -176,93 +185,121 @@ export async function initAdminResultAnalysis(db, containerId) {
             let rowsHtml = "";
             let totals = { kul: 0, hazir: 0, kamyab: 0, zimni: 0, nakam: 0 };
 
+            // ==========================================
+            // 🔥 LAYOUT: JAMIA WISE
+            // ==========================================
             if (layout === 'jamia') {
                 thead.innerHTML = `
-                    <th class="p-3 border">#</th>
-                    <th class="p-3 border">Region</th>
-                    <th class="p-3 border">User</th>
-                    <th class="p-3 border text-right">جامعہ کا نام</th>
-                    <th class="p-3 border">کل طلبہ</th>
-                    <th class="p-3 border">حاضر</th>
-                    <th class="p-3 border">کامیاب</th>
-                    <th class="p-3 border text-purple-600">ضمنی</th>
-                    <th class="p-3 border text-red-600">ناکام</th>
-                    <th class="p-3 border">فیصد</th>
-                    <th class="p-3 border">کیفیت</th>`;
+                    <th class="p-3 border">#</th><th class="p-3 border">Region</th><th class="p-3 border">User</th>
+                    <th class="p-3 border text-right">جامعہ کا نام</th><th class="p-3 border">کل طلبہ</th>
+                    <th class="p-3 border">حاضر</th><th class="p-3 border">کامیاب</th>
+                    <th class="p-3 border text-purple-600">ضمنی</th><th class="p-3 border text-red-600">ناکام</th>
+                    <th class="p-3 border">فیصد</th><th class="p-3 border">کیفیت</th>`;
 
                 let stats = {};
                 latestDataMap.forEach(d => {
                     const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
                     const kamyab = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                    const ghaib = num(d.ghaib);
-                    const hazir = Math.max(0, kul - ghaib);
+                    const hazir = Math.max(0, kul - num(d.ghaib));
 
-                    if (!stats[d.jamia]) stats[d.jamia] = { kul: 0, hazir: 0, kamyab: 0, zimni: 0, nakam: 0, region: d.region, userName: d.userName };
-                    
-                    stats[d.jamia].kul += kul;
-                    stats[d.jamia].hazir += hazir;
-                    stats[d.jamia].kamyab += kamyab;
-                    stats[d.jamia].zimni += num(d.majazZimni);
-                    stats[d.jamia].nakam += num(d.nakam);
+                    if (!stats[d.jamia]) stats[d.jamia] = { kul: 0, hazir: 0, kamyab: 0, zimni: 0, nakam: 0, region: d.region, user: d.userName };
+                    stats[d.jamia].kul += kul; stats[d.jamia].hazir += hazir; stats[d.jamia].kamyab += kamyab;
+                    stats[d.jamia].zimni += num(d.majazZimni); stats[d.jamia].nakam += num(d.nakam);
                 });
 
                 let i = 1;
                 for (let j in stats) {
                     const s = stats[j];
-                    const percent = s.hazir ? (s.kamyab / s.hazir) * 100 : 0;
-                    
+                    const per = s.hazir ? (s.kamyab / s.hazir) * 100 : 0;
                     totals.kul += s.kul; totals.hazir += s.hazir; totals.kamyab += s.kamyab; totals.zimni += s.zimni; totals.nakam += s.nakam;
 
                     rowsHtml += `
-                    <tr class="hover:bg-blue-50 transition">
+                    <tr class="hover:bg-blue-50 transition text-[13px] border-b">
                         <td class="p-2 border text-gray-400">${i++}</td>
                         <td class="p-2 border text-xs text-gray-500">${s.region}</td>
-                        <td class="p-2 border text-xs text-gray-500">${s.userName}</td>
-                        <td class="p-2 border font-bold text-right text-gray-800">${j}</td>
+                        <td class="p-2 border text-xs text-gray-500">${s.user}</td>
+                        <td class="p-2 border font-bold text-right text-gray-800 urdu-font">${j}</td>
                         <td class="p-2 border font-bold">${s.kul}</td>
                         <td class="p-2 border text-blue-600">${s.hazir}</td>
                         <td class="p-2 border text-emerald-600 font-bold">${s.kamyab}</td>
                         <td class="p-2 border text-purple-600">${s.zimni}</td>
                         <td class="p-2 border text-red-500">${s.nakam}</td>
-                        <td class="p-2 border font-bold text-teal-700">${percent.toFixed(2)}%</td>
-                        <td class="p-2 border font-bold urdu-font" style="color:${getKefiyatColor(percent)}">${getJamiaKefiyat(percent)}</td>
+                        <td class="p-2 border font-bold text-teal-700">${per.toFixed(2)}%</td>
+                        <td class="p-2 border font-bold urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td>
                     </tr>`;
                 }
-
-                const grandPercent = totals.hazir ? (totals.kamyab / totals.hazir) * 100 : 0;
-                tfoot.innerHTML = `
-                    <tr class="bg-gray-800 text-white">
-                        <td colspan="4" class="p-3 text-right">TOTAL SUMMARY (AUTO)</td>
-                        <td class="p-3 border">${totals.kul}</td>
-                        <td class="p-3 border">${totals.hazir}</td>
-                        <td class="p-3 border">${totals.kamyab}</td>
-                        <td class="p-3 border">${totals.zimni}</td>
-                        <td class="p-3 border">${totals.nakam}</td>
-                        <td class="p-3 border">${grandPercent.toFixed(2)}%</td>
-                        <td class="p-3 border urdu-font">${getJamiaKefiyat(grandPercent)}</td>
-                    </tr>`;
-            } 
-            // 🔹 Similar Logic for Class & Teacher Wise (Truncated for brevity, but Region/User added)
-            else {
-                thead.innerHTML = `<th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border text-right">Jamia / Details</th><th class="p-2 border">Hazir</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th>`;
-                latestDataMap.forEach(d => {
-                    const hazir = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam);
-                    const pass = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                    const per = hazir ? (pass / hazir) * 100 : 0;
-                    rowsHtml += `<tr><td class="p-2 border">${d.region}</td><td class="p-2 border">${d.userName}</td><td class="p-2 border text-right font-bold urdu-font">${d.jamia} - ${d.darjah || d.teacher || ''}</td><td class="p-2 border">${hazir}</td><td class="p-2 border text-emerald-600">${pass}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td></tr>`;
-                });
-                tfoot.innerHTML = ""; // Foot for class/teacher can be added similarly
+                const gPer = totals.hazir ? (totals.kamyab / totals.hazir) * 100 : 0;
+                tfoot.innerHTML = `<tr class="bg-gray-800 text-white text-[13px] font-bold"><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td class="p-3 border">${totals.kul}</td><td class="p-3 border">${totals.hazir}</td><td class="p-3 border">${totals.kamyab}</td><td class="p-3 border">${totals.zimni}</td><td class="p-3 border">${totals.nakam}</td><td class="p-3 border">${gPer.toFixed(2)}%</td><td class="p-3 border urdu-font">${getJamiaKefiyat(gPer)}</td></tr>`;
             }
 
-            tbody.innerHTML = rowsHtml || `<tr><td colspan="11" class="p-10 text-gray-400">No Data Found</td></tr>`;
-            loader.classList.add("hidden");
-            report.classList.remove("hidden");
+            // ==========================================
+            // 🔥 LAYOUT: CLASS WISE
+            // ==========================================
+            else if (layout === 'class') {
+                thead.innerHTML = `
+                <th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border text-right">درجہ</th>
+                <th class="p-2 border">ممتاز مع الشرف</th><th class="p-2 border">ممتاز</th><th class="p-2 border">جید جدا</th><th class="p-2 border">جید</th>
+                <th class="p-2 border">مقبول</th><th class="p-2 border">ضمنی</th><th class="p-2 border text-red-400">ناکام</th><th class="p-2 border">غیر حاضر</th>
+                <th class="p-2 border bg-gray-700">کل تعداد</th><th class="p-2 border bg-blue-900">کل حاضر</th><th class="p-2 border bg-emerald-700">کامیاب</th>
+                <th class="p-2 border bg-red-900">ناکام</th><th class="p-2 border">فیصد</th>`;
+
+                latestDataMap.forEach(d => {
+                    const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
+                    const hazir = Math.max(0, kul - num(d.ghaib));
+                    const kamyab = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                    const nakam = num(d.majazZimni)+num(d.nakam);
+                    const per = hazir ? (kamyab / hazir) * 100 : 0;
+                    totals.kul += kul; totals.hazir += hazir; totals.kamyab += kamyab; totals.nakam += nakam;
+
+                    rowsHtml += `<tr class="hover:bg-gray-50 transition text-[12px] text-center border-b">
+                        <td class="p-2 border text-gray-500">${d.region}</td><td class="p-2 border text-gray-500">${d.userName}</td>
+                        <td class="p-2 border font-bold text-right urdu-font">${d.jamia}</td><td class="p-2 border text-right urdu-font text-gray-500">${d.darjah}</td>
+                        <td class="p-2 border">${num(d.mumtazSharf)}</td><td class="p-2 border">${num(d.mumtaz)}</td><td class="p-2 border">${num(d.jayyidJidda)}</td>
+                        <td class="p-2 border">${num(d.jayyid)}</td><td class="p-2 border">${num(d.maqbool)}</td><td class="p-2 border text-purple-600">${num(d.majazZimni)}</td>
+                        <td class="p-2 border text-red-500">${num(d.nakam)}</td><td class="p-2 border text-gray-400">${num(d.ghaib)}</td>
+                        <td class="p-2 border font-bold bg-gray-50">${kul}</td><td class="p-2 border font-bold text-blue-700 bg-blue-50">${hazir}</td>
+                        <td class="p-2 border font-bold text-emerald-700 bg-emerald-50">${kamyab}</td><td class="p-2 border font-bold text-red-700 bg-red-50">${nakam}</td>
+                        <td class="p-2 border font-bold text-teal-700">${per.toFixed(2)}%</td></tr>`;
+                });
+                const gPer = totals.hazir ? (totals.kamyab / totals.hazir) * 100 : 0;
+                tfoot.innerHTML = `<tr class="bg-gray-800 text-white text-[12px] font-bold"><td colspan="12" class="p-2 text-right">TOTAL SUMMARY</td><td class="p-2 border">${totals.kul}</td><td class="p-2 border">${totals.hazir}</td><td class="p-2 border">${totals.kamyab}</td><td class="p-2 border">${totals.nakam}</td><td class="p-2 border">${gPer.toFixed(2)}%</td></tr>`;
+            }
+
+            // ==========================================
+            // 🔥 LAYOUT: ASATIZA WISE
+            // ==========================================
+            else {
+                thead.innerHTML = `<th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border text-right">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border text-right">درجہ</th><th class="p-2 border">کل</th><th class="p-2 border text-emerald-400">کامیاب</th><th class="p-2 border text-red-400">ناکام</th><th class="p-2 border">فیصد</th><th class="p-2 border">کیفیت</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
+                
+                latestDataMap.forEach(d => {
+                    if (!d.data || !Array.isArray(d.data)) return;
+                    d.data.forEach(teacherData => {
+                        const periods = teacherData.periods || [];
+                        const rSpan = periods.length || 1;
+                        let tTot = 0, tPass = 0;
+                        periods.forEach(p => { tTot += num(p.total); tPass += num(p.passed); });
+                        const tPer = tTot ? (tPass / tTot) * 100 : 0;
+
+                        periods.forEach((p, idx) => {
+                            const sTot = num(p.total); const sPass = num(p.passed); const sNak = Math.max(0, sTot - sPass);
+                            const sPer = sTot ? (sPass / sTot) * 100 : 0;
+                            rowsHtml += `<tr class="hover:bg-gray-50 transition text-[12px] text-center border-b">
+                                ${idx === 0 ? `<td class="p-2 border text-gray-500" rowspan="${rSpan}">${d.region}</td><td class="p-2 border text-gray-500" rowspan="${rSpan}">${d.userName}</td><td class="p-2 border font-bold text-right urdu-font" rowspan="${rSpan}">${d.jamia}</td><td class="p-2 border font-bold text-right urdu-font text-blue-700" rowspan="${rSpan}">${teacherData.teacher}</td>` : ''}
+                                <td class="p-2 border text-right urdu-font">${p.bookName || p.subject || '-'}</td><td class="p-2 border text-right urdu-font text-gray-400">${p.className || d.darjah || '-'}</td>
+                                <td class="p-2 border font-bold">${sTot}</td><td class="p-2 border text-emerald-600 font-bold">${sPass}</td><td class="p-2 border text-red-500">${sNak}</td>
+                                <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(sPer)}">${getJamiaKefiyat(sPer)}</td>
+                                ${idx === 0 ? `<td class="p-2 border bg-emerald-50" rowspan="${rSpan}"><div class="font-bold text-teal-700">${tPer.toFixed(1)}%</div><div class="text-[10px] urdu-font" style="color:${getKefiyatColor(tPer)}">${getJamiaKefiyat(tPer)}</div></td>` : ''}</tr>`;
+                        });
+                    });
+                });
+            }
+
+            tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="p-10 text-gray-400">No Data Found</td></tr>`;
+            loader.classList.add("hidden"); report.classList.remove("hidden");
             if (rowsHtml) excelBtn.classList.remove("hidden");
 
         } catch (err) {
-            console.error(err);
-            loader.classList.add("hidden");
-            alert("Error: " + err.message);
+            console.error(err); loader.classList.add("hidden"); alert("Error: " + err.message);
         }
     };
 }
