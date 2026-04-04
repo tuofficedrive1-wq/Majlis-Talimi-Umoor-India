@@ -144,71 +144,82 @@ export async function initAdminResultAnalysis(db, containerId) {
     regionSelect.onchange();
 
     // 📈 Excel Download Logic
-   // 📈 FINAL FIXED EXCEL DOWNLOAD LOGIC
+
 excelBtn.onclick = () => {
-    // 1. Table ka refernce lein
     const table = document.getElementById("final-analysis-table-to-export");
-    if (!table) {
-        alert("Table nahi mili!");
-        return;
-    }
+    if (!table) { alert("Table nahi mili!"); return; }
 
     const examType = document.getElementById("admin-exam-type").value;
     const layout = document.getElementById("admin-layout").value;
     const region = regionSelect.value;
     const user = userSelect.value;
 
-    // 2. Dynamic File Name Logic (Fixed)
+    // 1. Dynamic File Name Logic
     let fileNameParts = ["Final_Analysis", layout];
     if (region !== "all") fileNameParts.push(`Region_${region}`);
     if (user !== "all") fileNameParts.push(`User_${user}`);
     fileNameParts.push(examType);
-    
     const finalFileName = fileNameParts.join("_") + ".xlsx";
 
-    // 3. Table to Workbook (raw: false taake % aur formatting barkarar rahe)
+    // 2. Table to Workbook (raw: false taake % symbol table se hi uthaye)
     const wb = XLSX.utils.table_to_book(table, { 
         sheet: "Analysis Report", 
-        raw: false // 🟢 Isse '0.8' ki jagah '80%' aayega
+        raw: false 
     });
     
     const ws = wb.Sheets["Analysis Report"];
 
-    // 4. Styling (Borders, Header Color, Alignment)
+    // 3. Styling Logic (Nastaleeq Font & Bigger Sizes)
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let R = range.s.r; R <= range.e.r; ++R) {
         for (let C = range.s.c; C <= range.e.c; ++C) {
             const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
             if (!ws[cell_address]) continue;
 
+            const cellVal = String(ws[cell_address].v || "");
+
             // Default Cell Style
             ws[cell_address].s = {
                 border: {
-                    top: { style: "thin" },
-                    bottom: { style: "thin" },
-                    left: { style: "thin" },
-                    right: { style: "thin" }
+                    top: { style: "thin" }, bottom: { style: "thin" },
+                    left: { style: "thin" }, right: { style: "thin" }
                 },
                 alignment: { vertical: "center", horizontal: "center", wrapText: true },
-                font: { name: "Arial", sz: 10 }
+                font: { 
+                    name: "Jameel Noori Nastaleeq", // 🟢 Urdu Font Applied
+                    sz: 14 // 🟢 Bada Font Size
+                }
             };
 
-            // Header Row (R === 0) Styling
+            // English Fields (Region, User, Jamia) ke liye standard font
+            if (C < 4) {
+                ws[cell_address].s.font.name = "Arial";
+                ws[cell_address].s.font.sz = 12;
+            }
+
+            // Header Row (Dark Gray/Blue Background)
             if (R === 0) {
-                ws[cell_address].s.fill = { fgColor: { rgb: "1E293B" } }; // Dark Gray/Blue
-                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 11 };
+                ws[cell_address].s.fill = { fgColor: { rgb: "1E293B" } };
+                ws[cell_address].s.font = { color: { rgb: "FFFFFF" }, bold: true, sz: 13, name: "Arial" };
+            }
+
+            // 🟢 Handle Percentage: Agar cell mein raw number hai (0.9), use % mein badlein
+            if (!isNaN(ws[cell_address].v) && ws[cell_address].v > 0 && ws[cell_address].v <= 1) {
+                ws[cell_address].t = 's';
+                ws[cell_address].v = (parseFloat(ws[cell_address].v) * 100).toFixed(1) + "%";
             }
         }
     }
 
-    // 5. Column Widths adjust karein
+    // 4. Majmu'i Split Logic (Agar Majmu'i cell mein '%' aur Urdu text saath hai)
+    // Table to book merged cells handle karta hai, ye column widths fix karega
     ws['!cols'] = [
-        { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, 
-        { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, 
-        { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 15 }
+        { wch: 15 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, // Region, User, Jamia, Ustad
+        { wch: 25 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, // Mazmoon, Darjah, Kul, Kamyab
+        { wch: 10 }, { wch: 15 }, { wch: 20 }, { wch: 15 }  // Nakam, Fisad, Kefiyat, Majmu'i
     ];
 
-    // 6. Download
+    // 5. Download
     XLSX.writeFile(wb, finalFileName);
 };
     // 🚀 Execution Logic
