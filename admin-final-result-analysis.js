@@ -1,4 +1,4 @@
-// ✅ UPDATED ADMIN RESULT ANALYSIS (With Region & User Filters/Columns)
+// ✅ UPDATED ADMIN RESULT ANALYSIS (With Manual Lookup for Region & User)
 
 import {
     collection, query, where, getDocs, orderBy
@@ -30,10 +30,25 @@ export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // 1. Get unique regions and users from global allUsersData (if available)
+    // 1. Get global data for lookups
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
-    const users = allUsers.map(u => ({ id: u.id, name: u.name || u.email })).sort((a, b) => a.name.localeCompare(b.name));
+    const usersList = allUsers.map(u => ({ name: u.name || u.email })).sort((a, b) => a.name.localeCompare(b.name));
+
+    // 🔍 Helper Function: Jamia se User aur Region dhundna
+    const getJamiaContext = (jamiaName) => {
+        const foundUser = allUsers.find(u => {
+            if (!u.jamiaatList) return false;
+            return u.jamiaatList.some(j => {
+                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                return name === jamiaName;
+            });
+        });
+        return {
+            userName: foundUser ? (foundUser.name || foundUser.email) : '-',
+            region: foundUser ? (foundUser.region || '-') : '-'
+        };
+    };
 
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-4 rounded-xl shadow border">
@@ -58,7 +73,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 <select id="admin-user-filter" class="p-2 border rounded">
                     <option value="all">All Users</option>
-                    ${users.map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
+                    ${usersList.map(u => `<option value="${u.name}">${u.name}</option>`).join('')}
                 </select>
 
                 <select id="admin-layout" class="p-2 border rounded">
@@ -73,7 +88,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             </button>
         </div>
 
-        <div id="admin-loader" class="hidden text-center py-6"><div class="loader mx-auto"></div> Loading data...</div>
+        <div id="admin-loader" class="hidden text-center py-6">Loading data...</div>
 
         <div id="admin-report" class="hidden overflow-x-auto">
             <table class="w-full text-center border text-sm" id="admin-table">
@@ -113,17 +128,21 @@ export async function initAdminResultAnalysis(db, containerId) {
 
             snapshot.forEach(docSnap => {
                 const d = docSnap.data();
+                
+                // 🔹 Manual Lookup for Context
+                const context = getJamiaContext(d.jamia);
 
-                // 🔹 Data Filtering (Region & User)
-                if (selectedRegion !== "all" && d.region !== selectedRegion) return;
-                if (selectedUser !== "all" && (d.userName || d.user) !== selectedUser) return;
+                // 🔹 Data Filtering
+                if (selectedRegion !== "all" && context.region !== selectedRegion) return;
+                if (selectedUser !== "all" && context.userName !== selectedUser) return;
 
                 let key = layout === 'teacher'
                     ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}`
                     : `${d.jamia}_${d.darjah}`;
 
                 if (!latestDataMap.has(key)) {
-                    latestDataMap.set(key, d);
+                    // Inject context into data for rendering
+                    latestDataMap.set(key, { ...d, ...context });
                 }
             });
 
@@ -151,7 +170,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const passed = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
 
                     if (!stats[d.jamia]) {
-                        stats[d.jamia] = { total: 0, passed: 0, ghaib: 0, region: d.region || '-', user: d.userName || d.user || '-' };
+                        stats[d.jamia] = { total: 0, passed: 0, ghaib: 0, region: d.region, userName: d.userName };
                     }
                     stats[d.jamia].total += total;
                     stats[d.jamia].passed += passed;
@@ -167,7 +186,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <tr>
                         <td class="p-2 border">${i++}</td>
                         <td class="p-2 border">${s.region}</td>
-                        <td class="p-2 border">${s.user}</td>
+                        <td class="p-2 border">${s.userName}</td>
                         <td class="p-2 border font-bold urdu-font">${j}</td>
                         <td class="p-2 border">${s.total}</td>
                         <td class="p-2 border">${present}</td>
@@ -198,8 +217,8 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     rowsHtml += `
                     <tr>
-                        <td class="p-2 border">${d.region || '-'}</td>
-                        <td class="p-2 border">${d.userName || d.user || '-'}</td>
+                        <td class="p-2 border">${d.region}</td>
+                        <td class="p-2 border">${d.userName}</td>
                         <td class="p-2 border urdu-font">${d.jamia}</td>
                         <td class="p-2 border urdu-font">${d.darjah}</td>
                         <td class="p-2 border">${total}</td>
@@ -224,9 +243,6 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 latestDataMap.forEach(d => {
                     if (!d.data) return;
-                    const region = d.region || '-';
-                    const user = d.userName || d.user || '-';
-
                     d.data.forEach(t => {
                         let total = 0, pass = 0;
                         (t.periods || []).forEach(p => {
@@ -236,8 +252,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let per = total ? (pass / total) * 100 : 0;
                         rowsHtml += `
                         <tr>
-                            <td class="p-2 border">${region}</td>
-                            <td class="p-2 border">${user}</td>
+                            <td class="p-2 border">${d.region}</td>
+                            <td class="p-2 border">${d.userName}</td>
                             <td class="p-2 border urdu-font">${d.jamia}</td>
                             <td class="p-2 border urdu-font">${t.teacher}</td>
                             <td class="p-2 border">${total}</td>
