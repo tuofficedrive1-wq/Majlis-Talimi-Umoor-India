@@ -276,7 +276,7 @@ else {
         <th class="p-2 border">User</th>
         <th class="p-2 border text-center">جامعہ</th>
         <th class="p-2 border text-center">استاد</th>
-        <th class="p-2 border text-right">مضمون</th>
+        <th class="p-2 border text-center">مضمون</th>
         <th class="p-2 border text-center">درجہ</th>
         <th class="p-2 border">کل</th>
         <th class="p-2 border text-emerald-400">کامیاب</th>
