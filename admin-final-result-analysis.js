@@ -58,47 +58,54 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
 
         <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Exam Type</label>
-                    <select id="admin-exam-type" class="w-full p-2.5 border rounded-lg urdu-font">
-                        <option value="ششماہی امتحان">ششماہی امتحان</option>
-                        <option value="سالانہ امتحان">سالانہ امتحان</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Year</label>
-                    <select id="admin-exam-year" class="w-full p-2.5 border rounded-lg">
-                        <option value="2024-25">2024-25</option>
-                        <option value="2025-26" selected>2025-26</option>
-                    </select>
-                </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+    <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Exam Type</label>
+        <select id="admin-exam-type" class="w-full p-2.5 border rounded-lg urdu-font">
+            <option value="ششماہی امتحان">ششماہی امتحان</option>
+            <option value="سالانہ امتحان">سالانہ امتحان</option>
+        </select>
+    </div>
+    <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Year</label>
+        <select id="admin-exam-year" class="w-full p-2.5 border rounded-lg">
+            <option value="2024-25">2024-25</option>
+            <option value="2025-26" selected>2025-26</option>
+        </select>
+    </div>
 
-                <div id="dashboard-filters-div">
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Result Type</label>
-                    <select id="dashboard-result-type" class="w-full p-2.5 border rounded-lg font-bold">
-                        <option value="region-wise">🌍 Region Wise Summary</option>
-                        <option value="user-wise">👨‍💼 User Wise Summary</option>
-                        <option value="submission-status">📋 Submission Status</option>
-                    </select>
-                </div>
+    <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">ریجن (Region)</label>
+        <select id="admin-region-filter" class="w-full p-2.5 border rounded-lg">
+            <option value="all">All Regions</option>
+            ${regions.map(r => `<option value="${r}">${r}</option>`).join('')}
+        </select>
+    </div>
 
-                <div id="reports-user-filter-div" class="hidden">
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Talimi Zimmedar</label>
-                    <select id="admin-user-filter" class="w-full p-2.5 border rounded-lg">
-                        <option value="all">All Users</option>
-                        ${allUsers.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}
-                    </select>
-                </div>
-                <div id="reports-layout-filter-div" class="hidden">
-                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Layout</label>
-                    <select id="admin-layout" class="w-full p-2.5 border rounded-lg">
-                        <option value="jamia">Jamia Wise</option>
-                        <option value="class">Class Wise</option>
-                        <option value="teacher">Asatiza Wise</option>
-                    </select>
-                </div>
-            </div>
+    <div id="dashboard-filters-div">
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Result Type</label>
+        <select id="dashboard-result-type" class="w-full p-2.5 border rounded-lg font-bold">
+            <option value="region-wise">🌍 Region Wise Summary</option>
+            <option value="user-wise">👨‍💼 User Wise Summary</option>
+            <option value="submission-status">📋 Submission Status</option>
+        </select>
+    </div>
+
+    <div id="reports-user-filter-div" class="hidden">
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">تعلیمی ذمہ دار (User)</label>
+        <select id="admin-user-filter" class="w-full p-2.5 border rounded-lg">
+            <option value="all">All Users</option>
+        </select>
+    </div>
+    <div id="reports-layout-filter-div" class="hidden">
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Layout</label>
+        <select id="admin-layout" class="w-full p-2.5 border rounded-lg">
+            <option value="jamia">Jamia Wise</option>
+            <option value="class">Class Wise</option>
+            <option value="teacher">Asatiza Wise</option>
+        </select>
+    </div>
+</div>
             <button id="admin-show-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl w-full font-bold shadow-lg transition">
                 Show Analysis
             </button>
@@ -142,43 +149,60 @@ export async function initAdminResultAnalysis(db, containerId) {
         dashboardFilters.classList.add("hidden");
         reportsUserFilter.classList.remove("hidden"); reportsLayoutFilter.classList.remove("hidden");
     };
+    
+// 🔄 Dynamic Filter Logic: Region ke hisab se User dropdown update karna
+const regionSelect = document.getElementById("admin-region-filter");
+const userSelect = document.getElementById("admin-user-filter");
 
-    // 📊 SHOW ANALYSIS
-    document.getElementById("admin-show-btn").onclick = async () => {
-        const examType = document.getElementById("admin-exam-type").value;
-        const examYear = document.getElementById("admin-exam-year").value;
-        const resType = document.getElementById("dashboard-result-type").value;
-        const selUser = document.getElementById("admin-user-filter").value;
-        const layout = document.getElementById("admin-layout").value;
+regionSelect.onchange = () => {
+    const selectedReg = regionSelect.value;
+    userSelect.innerHTML = '<option value="all">All Users</option>';
+    const filteredUsers = selectedReg === "all" ? allUsers : allUsers.filter(u => u.region === selectedReg);
+    
+    filteredUsers.sort((a,b) => (a.name||'').localeCompare(b.name||'')).forEach(u => {
+        const name = u.name || u.email;
+        userSelect.innerHTML += `<option value="${name}">${name}</option>`;
+    });
+};
+  
+  // 📊 Show Analysis Logic
+document.getElementById("admin-show-btn").onclick = async () => {
+    const examType = document.getElementById("admin-exam-type").value;
+    const examYear = document.getElementById("admin-exam-year").value;
+    const selRegion = regionSelect.value; // Get Region
+    const selUser = userSelect.value;     // Get User
+    const layout = document.getElementById("admin-layout").value;
+    const activeTab = btnDashboard.classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
+
+    loader.classList.remove("hidden");
+    
+    try {
+        const colName = (activeTab === 'reports' && layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
+        const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear));
+        const snapshot = await getDocs(q);
         
-        const loader = document.getElementById("admin-loader");
-        loader.classList.remove("hidden");
+        let dataList = [];
+        snapshot.forEach(doc => {
+            const d = doc.data();
+            const context = getJamiaContext(d.jamia);
 
-        try {
-            const colName = (btnReports.classList.contains("active-sub-tab") && layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
-            const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear));
-            const snapshot = await getDocs(q);
-            
-            let dataList = [];
-            snapshot.forEach(doc => {
-                const d = doc.data();
-                const context = getJamiaContext(d.jamia);
-                // Filter for Detailed Reports Tab
-                if (btnReports.classList.contains("active-sub-tab")) {
-                    if (selUser === "all" || context.userName === selUser) dataList.push({ ...d, ...context });
-                } else {
-                    dataList.push({ ...d, ...context });
-                }
-            });
+            // ✅ Combined Filter: Region AUR User dono check karein
+            const matchRegion = (selRegion === "all" || context.region === selRegion);
+            const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
 
-            if (btnDashboard.classList.contains("active-sub-tab")) {
-                renderDashboard(dataList, resType, allUsers);
-            } else {
-                renderDetailedReports(dataList, layout);
+            if (matchRegion && matchUser) {
+                dataList.push({ ...d, ...context });
             }
-        } catch (e) { alert(e.message); }
-        loader.classList.add("hidden");
-    };
+        });
+
+        if (activeTab === 'dashboard') {
+            renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers, selRegion);
+        } else {
+            renderDetailedReports(dataList, layout);
+        }
+    } catch (e) { console.error(e); }
+    loader.classList.add("hidden");
+};
 
     function renderDashboard(data, type, users) {
         dashboardView.innerHTML = "";
