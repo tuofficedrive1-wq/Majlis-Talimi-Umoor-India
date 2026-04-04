@@ -1,4 +1,4 @@
-// ✅ UPDATED ADMIN RESULT ANALYSIS (With Manual Lookup for Region & User)
+// ✅ UPDATED ADMIN RESULT ANALYSIS (With Robust Lookup & Error Handling)
 
 import {
     collection, query, where, getDocs, orderBy
@@ -26,27 +26,37 @@ const getKefiyatColor = (p) => {
 
 // 🚀 MAIN FUNCTION
 export async function initAdminResultAnalysis(db, containerId) {
-
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // 1. Get global data for lookups
+    // 1. Load Global Users Data
     const allUsers = window.allUsersData || [];
+    
+    if (allUsers.length === 0) {
+        container.innerHTML = `<p class="p-4 text-red-500 bg-red-50 border rounded">Error: Users data (allUsersData) load nahi ho saka. Page refresh karke dobara koshish karein.</p>`;
+        return;
+    }
+
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
     const usersList = allUsers.map(u => ({ name: u.name || u.email })).sort((a, b) => a.name.localeCompare(b.name));
 
-    // 🔍 Helper Function: Jamia se User aur Region dhundna
+    // 🔍 Robust Helper: Jamia se User aur Region dhundna
     const getJamiaContext = (jamiaName) => {
+        if (!jamiaName) return { userName: '-', region: '-' };
+        
+        const targetName = jamiaName.trim().toLowerCase();
+
         const foundUser = allUsers.find(u => {
-            if (!u.jamiaatList) return false;
+            if (!u.jamiaatList || !Array.isArray(u.jamiaatList)) return false;
             return u.jamiaatList.some(j => {
-                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                return name === jamiaName;
+                const jName = (typeof j === 'object' ? (j.name || j.jamiaName) : j) || '';
+                return jName.trim().toLowerCase() === targetName;
             });
         });
+
         return {
-            userName: foundUser ? (foundUser.name || foundUser.email) : '-',
-            region: foundUser ? (foundUser.region || '-') : '-'
+            userName: foundUser ? (foundUser.name || foundUser.email) : 'N/A',
+            region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
         };
     };
 
@@ -128,11 +138,9 @@ export async function initAdminResultAnalysis(db, containerId) {
 
             snapshot.forEach(docSnap => {
                 const d = docSnap.data();
-                
-                // 🔹 Manual Lookup for Context
                 const context = getJamiaContext(d.jamia);
 
-                // 🔹 Data Filtering
+                // Filter logic based on Context
                 if (selectedRegion !== "all" && context.region !== selectedRegion) return;
                 if (selectedUser !== "all" && context.userName !== selectedUser) return;
 
@@ -141,7 +149,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     : `${d.jamia}_${d.darjah}`;
 
                 if (!latestDataMap.has(key)) {
-                    // Inject context into data for rendering
                     latestDataMap.set(key, { ...d, ...context });
                 }
             });
@@ -149,7 +156,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             const num = (v) => parseInt(v) || 0;
             let rowsHtml = "";
 
-            // 🔥 JAMIA WISE
             if (layout === 'jamia') {
                 thead.innerHTML = `
                 <tr>
@@ -158,7 +164,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <th class="p-2 border">User</th>
                     <th class="p-2 border">Jamia</th>
                     <th class="p-2 border">Total</th>
-                    <th class="p-2 border">Present</th>
                     <th class="p-2 border">Pass</th>
                     <th class="p-2 border">%</th>
                     <th class="p-2 border">Status</th>
@@ -189,85 +194,35 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <td class="p-2 border">${s.userName}</td>
                         <td class="p-2 border font-bold urdu-font">${j}</td>
                         <td class="p-2 border">${s.total}</td>
-                        <td class="p-2 border">${present}</td>
                         <td class="p-2 border">${s.passed}</td>
                         <td class="p-2 border font-bold">${percent.toFixed(2)}%</td>
                         <td class="p-2 border font-bold" style="color:${getKefiyatColor(percent)}">${getJamiaKefiyat(percent)}</td>
                     </tr>`;
                 }
-            }
-
-            // 🔥 CLASS WISE
-            else if (layout === 'class') {
-                thead.innerHTML = `
-                <tr>
-                    <th class="p-2 border">Region</th>
-                    <th class="p-2 border">User</th>
-                    <th class="p-2 border">Jamia</th>
-                    <th class="p-2 border">Class</th>
-                    <th class="p-2 border">Total</th>
-                    <th class="p-2 border">Pass</th>
-                    <th class="p-2 border">%</th>
-                </tr>`;
-
+            } else if (layout === 'class') {
+                thead.innerHTML = `<tr><th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border">Jamia</th><th class="p-2 border">Class</th><th class="p-2 border">Total</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th></tr>`;
                 latestDataMap.forEach(d => {
                     const total = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
                     const passed = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                     const percent = total ? (passed / total) * 100 : 0;
-
-                    rowsHtml += `
-                    <tr>
-                        <td class="p-2 border">${d.region}</td>
-                        <td class="p-2 border">${d.userName}</td>
-                        <td class="p-2 border urdu-font">${d.jamia}</td>
-                        <td class="p-2 border urdu-font">${d.darjah}</td>
-                        <td class="p-2 border">${total}</td>
-                        <td class="p-2 border">${passed}</td>
-                        <td class="p-2 border font-bold">${percent.toFixed(1)}%</td>
-                    </tr>`;
+                    rowsHtml += `<tr><td class="p-2 border">${d.region}</td><td class="p-2 border">${d.userName}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font">${d.darjah}</td><td class="p-2 border">${total}</td><td class="p-2 border">${passed}</td><td class="p-2 border font-bold">${percent.toFixed(1)}%</td></tr>`;
                 });
-            }
-
-            // 🔥 ASATIZA WISE
-            else {
-                thead.innerHTML = `
-                <tr>
-                    <th class="p-2 border">Region</th>
-                    <th class="p-2 border">User</th>
-                    <th class="p-2 border">Jamia</th>
-                    <th class="p-2 border">Teacher</th>
-                    <th class="p-2 border">Total</th>
-                    <th class="p-2 border">Pass</th>
-                    <th class="p-2 border">%</th>
-                </tr>`;
-
+            } else {
+                thead.innerHTML = `<tr><th class="p-2 border">Region</th><th class="p-2 border">User</th><th class="p-2 border">Jamia</th><th class="p-2 border">Teacher</th><th class="p-2 border">Total</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th></tr>`;
                 latestDataMap.forEach(d => {
                     if (!d.data) return;
                     d.data.forEach(t => {
                         let total = 0, pass = 0;
-                        (t.periods || []).forEach(p => {
-                            total += num(p.total);
-                            pass += num(p.passed);
-                        });
+                        (t.periods || []).forEach(p => { total += num(p.total); pass += num(p.passed); });
                         let per = total ? (pass / total) * 100 : 0;
-                        rowsHtml += `
-                        <tr>
-                            <td class="p-2 border">${d.region}</td>
-                            <td class="p-2 border">${d.userName}</td>
-                            <td class="p-2 border urdu-font">${d.jamia}</td>
-                            <td class="p-2 border urdu-font">${t.teacher}</td>
-                            <td class="p-2 border">${total}</td>
-                            <td class="p-2 border">${pass}</td>
-                            <td class="p-2 border font-bold">${per.toFixed(1)}%</td>
-                        </tr>`;
+                        rowsHtml += `<tr><td class="p-2 border">${d.region}</td><td class="p-2 border">${d.userName}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font">${t.teacher}</td><td class="p-2 border">${total}</td><td class="p-2 border">${pass}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td></tr>`;
                     });
                 });
             }
 
-            tbody.innerHTML = rowsHtml || `<tr><td colspan="9" class="p-4">No Data Found for selected filters</td></tr>`;
+            tbody.innerHTML = rowsHtml || `<tr><td colspan="9" class="p-4">No Data Found</td></tr>`;
             loader.classList.add("hidden");
             report.classList.remove("hidden");
-
         } catch (err) {
             console.error(err);
             loader.classList.add("hidden");
