@@ -1,265 +1,271 @@
-// ✅ UPDATED ADMIN FINAL RESULT ANALYSIS (MATCHING RESULT-ANALYSIS UI + LOGIC)
+// ✅ FULL ADMIN RESULT ANALYSIS (EXACT SAME AS USER VERSION - ALL USERS DATA)
 
 import {
-    collection,
-    query,
-    getDocs,
-    orderBy
+    collection, query, where, getDocs, orderBy
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 🔥 Kefiyat Logic (same as result-analysis)
+// 🔹 KEFIYAT LOGIC (same)
 const getJamiaKefiyat = (p) => {
-    let val = parseFloat(p);
-    if (val >= 85) return "Mumtaz Sharf";
-    if (val >= 76) return "Mumtaz";
-    if (val >= 61) return "Behtar";
-    if (val >= 40) return "Munasib";
-    return "Kamzor";
+    let val = parseFloat(String(p).replace('%', ''));
+    if (isNaN(val)) return "-";
+    if (val >= 85) return "ممتاز مع شرف";
+    if (val >= 76) return "ممتاز";
+    if (val >= 61) return "بہتر";
+    if (val >= 40) return "مناسب";
+    return "کمزور";
 };
 
 const getKefiyatColor = (p) => {
-    if (p >= 85) return "text-green-700";
-    if (p >= 70) return "text-blue-600";
-    if (p >= 60) return "text-yellow-600";
-    if (p >= 40) return "text-purple-600";
-    return "text-red-600";
+    let val = parseFloat(String(p).replace('%', ''));
+    if (val >= 85) return "#059669";
+    if (val >= 70) return "#2563eb";
+    if (val >= 60) return "#d97706";
+    if (val >= 40) return "#7c3aed";
+    return "#dc2626";
 };
 
+// 🚀 MAIN FUNCTION
+export async function initAdminResultAnalysis(db, containerId) {
 
-// 🚀 MAIN
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
-document.addEventListener("DOMContentLoaded", () => {
+    container.innerHTML = `
+    <div class="max-w-7xl mx-auto bg-white p-4 rounded-xl shadow border">
 
-    const btn = document.getElementById("btn-generate-final-analysis");
-    const container = document.getElementById("final-analysis-container");
+        <div class="bg-indigo-50 p-4 rounded border mb-4">
+            <h4 class="font-bold text-indigo-700 mb-3">Admin Result Analysis</h4>
 
-    if (!btn || !container) return;
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <select id="admin-exam-type" class="p-2 border rounded">
+                    <option value="ششماہی امتحان">ششماہی امتحان</option>
+                    <option value="سالانہ امتحان">سالانہ امتحان</option>
+                </select>
 
-    btn.addEventListener("click", async () => {
+                <select id="admin-exam-year" class="p-2 border rounded">
+                    <option value="2024-25">2024-25</option>
+                    <option value="2025-26" selected>2025-26</option>
+                </select>
 
-        const db = window.db;
+                <select id="admin-layout" class="p-2 border rounded">
+                    <option value="jamia">Jamia Wise</option>
+                    <option value="class">Class Wise</option>
+                    <option value="teacher">Asatiza Wise</option>
+                </select>
+            </div>
 
-        const type = document.getElementById("final-analysis-type-select").value;
-        const region = document.getElementById("final-filter-region").value;
-        const user = document.getElementById("final-filter-user").value;
-        const jamia = document.getElementById("final-filter-jamia").value;
+            <button id="admin-show-btn" class="mt-3 bg-indigo-600 text-white px-4 py-2 rounded w-full">
+                Show Analysis
+            </button>
+        </div>
 
-        if (!db) return alert("DB not loaded");
+        <div id="admin-loader" class="hidden text-center py-6">Loading...</div>
 
-        container.innerHTML = `
-        <div class="bg-white p-4 rounded shadow border">
-            <h2 class="text-lg font-bold text-indigo-700 mb-3">Final Result Analysis</h2>
-            <div id="table-area">Loading...</div>
-        </div>`;
+        <div id="admin-report" class="hidden">
+            <table class="w-full text-center border" id="admin-table">
+                <thead id="admin-head"></thead>
+                <tbody id="admin-body"></tbody>
+            </table>
+        </div>
+
+    </div>`;
+
+    document.getElementById("admin-show-btn").onclick = async () => {
+
+        const examType = document.getElementById("admin-exam-type").value;
+        const examYear = document.getElementById("admin-exam-year").value;
+        const layout = document.getElementById("admin-layout").value;
+
+        const loader = document.getElementById("admin-loader");
+        const report = document.getElementById("admin-report");
+        const thead = document.getElementById("admin-head");
+        const tbody = document.getElementById("admin-body");
+
+        loader.classList.remove("hidden");
+        report.classList.add("hidden");
+        tbody.innerHTML = "";
 
         try {
 
-            const collectionName = (type === "asatiza-wise")
-                ? "asatiza_wise_results"
-                : "class_wise_results";
+            const collectionName = (layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
 
-            const q = query(collection(db, collectionName), orderBy("timestamp", "desc"));
+            const q = query(
+                collection(db, collectionName),
+                where("examType", "==", examType),
+                where("examYear", "==", examYear),
+                orderBy("timestamp", "desc")
+            );
+
             const snapshot = await getDocs(q);
 
-            // 🔥 IMPORTANT: Latest Data System
             let latestDataMap = new Map();
 
-            snapshot.forEach(doc => {
-                const d = doc.data();
+            snapshot.forEach(docSnap => {
+                const d = docSnap.data();
 
-                if (region !== "all" && d.region !== region) return;
-                if (user !== "all" && (d.userName || d.userId) !== user) return;
-                if (jamia !== "all" && d.jamia !== jamia) return;
-
-                let key;
-
-                if (type === "asatiza-wise") {
-                    key = `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}`;
-                } else {
-                    key = `${d.jamia}_${d.darjah}`;
-                }
+                let key = layout === 'teacher'
+                    ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}`
+                    : `${d.jamia}_${d.darjah}`;
 
                 if (!latestDataMap.has(key)) {
                     latestDataMap.set(key, d);
                 }
             });
 
-            const finalData = Array.from(latestDataMap.values());
+            const num = (v) => parseInt(v) || 0;
 
-            if (type === "jamia-wise") renderJamiaWise(finalData);
-            else if (type === "class-wise") renderClassWise(finalData);
-            else if (type === "asatiza-wise") renderAsatizaWise(finalData);
+            let rowsHtml = "";
+
+            // 🔥 JAMIA WISE
+            if (layout === 'jamia') {
+
+                thead.innerHTML = `
+                <tr>
+                    <th>#</th>
+                    <th>Jamia</th>
+                    <th>Total</th>
+                    <th>Present</th>
+                    <th>Pass</th>
+                    <th>Zimni</th>
+                    <th>Nakam</th>
+                    <th>%</th>
+                    <th>Status</th>
+                </tr>`;
+
+                let stats = {};
+
+                latestDataMap.forEach(d => {
+
+                    const total =
+                        num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+
+                        num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+
+                        num(d.nakam)+num(d.ghaib);
+
+                    const passed =
+                        num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+
+                        num(d.jayyid)+num(d.maqbool);
+
+                    if (!stats[d.jamia]) {
+                        stats[d.jamia] = { total: 0, passed: 0, ghaib: 0, nakam: 0, zimni: 0 };
+                    }
+
+                    stats[d.jamia].total += total;
+                    stats[d.jamia].passed += passed;
+                    stats[d.jamia].ghaib += num(d.ghaib);
+                    stats[d.jamia].nakam += num(d.nakam);
+                    stats[d.jamia].zimni += num(d.majazZimni);
+                });
+
+                let i = 1;
+
+                for (let j in stats) {
+
+                    const s = stats[j];
+                    const present = Math.max(0, s.total - s.ghaib);
+                    const percent = present ? (s.passed / present) * 100 : 0;
+
+                    rowsHtml += `
+                    <tr>
+                        <td>${i++}</td>
+                        <td>${j}</td>
+                        <td>${s.total}</td>
+                        <td>${present}</td>
+                        <td>${s.passed}</td>
+                        <td>${s.zimni}</td>
+                        <td>${s.nakam}</td>
+                        <td>${percent.toFixed(2)}%</td>
+                        <td style="color:${getKefiyatColor(percent)}">
+                            ${getJamiaKefiyat(percent)}
+                        </td>
+                    </tr>`;
+                }
+            }
+
+            // 🔥 CLASS WISE
+            else if (layout === 'class') {
+
+                thead.innerHTML = `
+                <tr>
+                    <th>Jamia</th>
+                    <th>Class</th>
+                    <th>Total</th>
+                    <th>Pass</th>
+                    <th>%</th>
+                </tr>`;
+
+                latestDataMap.forEach(d => {
+
+                    const total =
+                        num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+
+                        num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+
+                        num(d.nakam)+num(d.ghaib);
+
+                    const passed =
+                        num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+
+                        num(d.jayyid)+num(d.maqbool);
+
+                    const percent = total ? (passed / total) * 100 : 0;
+
+                    rowsHtml += `
+                    <tr>
+                        <td>${d.jamia}</td>
+                        <td>${d.darjah}</td>
+                        <td>${total}</td>
+                        <td>${passed}</td>
+                        <td>${percent.toFixed(1)}%</td>
+                    </tr>`;
+                });
+            }
+
+            // 🔥 ASATIZA WISE
+            else {
+
+                thead.innerHTML = `
+                <tr>
+                    <th>Jamia</th>
+                    <th>Teacher</th>
+                    <th>Total</th>
+                    <th>Pass</th>
+                    <th>%</th>
+                </tr>`;
+
+                latestDataMap.forEach(d => {
+
+                    if (!d.data) return;
+
+                    d.data.forEach(t => {
+
+                        let total = 0;
+                        let pass = 0;
+
+                        (t.periods || []).forEach(p => {
+                            total += num(p.total);
+                            pass += num(p.passed);
+                        });
+
+                        let per = total ? (pass / total) * 100 : 0;
+
+                        rowsHtml += `
+                        <tr>
+                            <td>${d.jamia}</td>
+                            <td>${t.teacher}</td>
+                            <td>${total}</td>
+                            <td>${pass}</td>
+                            <td>${per.toFixed(1)}%</td>
+                        </tr>`;
+                    });
+                });
+            }
+
+            tbody.innerHTML = rowsHtml || `<tr><td colspan="5">No Data</td></tr>`;
+
+            loader.classList.add("hidden");
+            report.classList.remove("hidden");
 
         } catch (err) {
             console.error(err);
-            document.getElementById("table-area").innerHTML = "Error loading";
+            loader.classList.add("hidden");
+            alert("Error: " + err.message);
         }
-
-    });
-});
-
-
-// ===================== JAMIA WISE =====================
-
-function renderJamiaWise(data) {
-
-    let stats = {};
-
-    data.forEach(d => {
-
-        const total =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0)+(d.majazZimni||0)+
-            (d.nakam||0)+(d.ghaib||0);
-
-        const passed =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0);
-
-        if (!stats[d.jamia]) {
-            stats[d.jamia] = { total: 0, passed: 0, ghaib: 0, nakam: 0, zimni: 0 };
-        }
-
-        stats[d.jamia].total += total;
-        stats[d.jamia].passed += passed;
-        stats[d.jamia].ghaib += (d.ghaib || 0);
-        stats[d.jamia].nakam += (d.nakam || 0);
-        stats[d.jamia].zimni += (d.majazZimni || 0);
-    });
-
-    let html = `
-    <table class="w-full border-collapse text-sm bg-white shadow">
-    <thead class="bg-indigo-100">
-    <tr>
-        <th>#</th>
-        <th>Jamia</th>
-        <th>Total</th>
-        <th>Present</th>
-        <th>Pass</th>
-        <th>Zimni</th>
-        <th>Nakam</th>
-        <th>%</th>
-        <th>Status</th>
-    </tr>
-    </thead><tbody>`;
-
-    let i = 1;
-
-    for (let j in stats) {
-
-        const s = stats[j];
-
-        const present = s.total - s.ghaib;
-        const percent = present ? (s.passed / present) * 100 : 0;
-
-        html += `
-        <tr class="text-center">
-            <td>${i++}</td>
-            <td class="font-bold">${j}</td>
-            <td>${s.total}</td>
-            <td>${present}</td>
-            <td class="text-green-700 font-bold">${s.passed}</td>
-            <td class="text-purple-600">${s.zimni}</td>
-            <td class="text-red-600">${s.nakam}</td>
-            <td class="font-bold">${percent.toFixed(2)}%</td>
-            <td class="${getKefiyatColor(percent)} font-bold">
-                ${getJamiaKefiyat(percent)}
-            </td>
-        </tr>`;
-    }
-
-    html += "</tbody></table>";
-
-    document.getElementById("table-area").innerHTML = html;
-}
-
-
-// ===================== CLASS WISE =====================
-
-function renderClassWise(data) {
-
-    let html = `
-    <table class="w-full border text-sm">
-    <tr>
-        <th>Jamia</th>
-        <th>Class</th>
-        <th>Total</th>
-        <th>Pass</th>
-        <th>%</th>
-    </tr>`;
-
-    data.forEach(d => {
-
-        const total =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0)+(d.majazZimni||0)+
-            (d.nakam||0)+(d.ghaib||0);
-
-        const passed =
-            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
-            (d.jayyid||0)+(d.maqbool||0);
-
-        const percent = total ? (passed / total) * 100 : 0;
-
-        html += `
-        <tr>
-            <td>${d.jamia || "-"}</td>
-            <td>${d.darjah || "-"}</td>
-            <td>${total}</td>
-            <td>${passed}</td>
-            <td>${percent.toFixed(1)}%</td>
-        </tr>`;
-    });
-
-    html += `</table>`;
-
-    document.getElementById("table-area").innerHTML = html;
-}
-
-
-// ===================== ASATIZA =====================
-
-function renderAsatizaWise(data) {
-
-    let html = `
-    <table class="w-full border text-sm">
-    <tr>
-        <th>Jamia</th>
-        <th>Teacher</th>
-        <th>Total</th>
-        <th>Pass</th>
-        <th>%</th>
-    </tr>`;
-
-    data.forEach(d => {
-
-        if (!d.data) return;
-
-        d.data.forEach(t => {
-
-            let total = 0;
-            let pass = 0;
-
-            (t.periods || []).forEach(p => {
-                total += parseInt(p.total) || 0;
-                pass += parseInt(p.passed) || 0;
-            });
-
-            let per = total ? (pass / total) * 100 : 0;
-
-            html += `
-            <tr>
-                <td>${d.jamia}</td>
-                <td>${t.teacher}</td>
-                <td>${total}</td>
-                <td>${pass}</td>
-                <td>${per.toFixed(1)}%</td>
-            </tr>`;
-        });
-
-    });
-
-    html += `</table>`;
-
-    document.getElementById("table-area").innerHTML = html;
+    };
 }
