@@ -1,3 +1,5 @@
+// ✅ UPDATED ADMIN FINAL RESULT ANALYSIS (MATCHING RESULT-ANALYSIS UI + LOGIC)
+
 import {
     collection,
     query,
@@ -5,175 +7,176 @@ import {
     orderBy
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// 🔥 Kefiyat Logic (same as result-analysis)
+const getJamiaKefiyat = (p) => {
+    let val = parseFloat(p);
+    if (val >= 85) return "Mumtaz Sharf";
+    if (val >= 76) return "Mumtaz";
+    if (val >= 61) return "Behtar";
+    if (val >= 40) return "Munasib";
+    return "Kamzor";
+};
+
+const getKefiyatColor = (p) => {
+    if (p >= 85) return "text-green-700";
+    if (p >= 70) return "text-blue-600";
+    if (p >= 60) return "text-yellow-600";
+    if (p >= 40) return "text-purple-600";
+    return "text-red-600";
+};
+
+
+// 🚀 MAIN
+
 document.addEventListener("DOMContentLoaded", () => {
+
     const btn = document.getElementById("btn-generate-final-analysis");
     const container = document.getElementById("final-analysis-container");
 
     if (!btn || !container) return;
 
-    // Page load hote hi filters ko data se bharne ke liye function call
-    // Hum "class_wise_results" ko base maan kar filters bhar rahe hain
-    initFilters();
-
     btn.addEventListener("click", async () => {
+
         const db = window.db;
+
         const type = document.getElementById("final-analysis-type-select").value;
         const region = document.getElementById("final-filter-region").value;
         const user = document.getElementById("final-filter-user").value;
         const jamia = document.getElementById("final-filter-jamia").value;
-        const year = document.getElementById("final-filter-year")?.value || "all";
-        const examType = document.getElementById("final-filter-exam-type")?.value || "all";
 
-        if (!db) { alert("DB load nahi hua"); return; }
-        if (!type) { alert("Report type select karein"); return; }
+        if (!db) return alert("DB not loaded");
 
-        container.innerHTML = "Loading...";
+        container.innerHTML = `
+        <div class="bg-white p-4 rounded shadow border">
+            <h2 class="text-lg font-bold text-indigo-700 mb-3">Final Result Analysis</h2>
+            <div id="table-area">Loading...</div>
+        </div>`;
 
         try {
-            const collectionName = (type === "asatiza-wise") ? "asatiza_wise_results" : "class_wise_results";
+
+            const collectionName = (type === "asatiza-wise")
+                ? "asatiza_wise_results"
+                : "class_wise_results";
+
             const q = query(collection(db, collectionName), orderBy("timestamp", "desc"));
             const snapshot = await getDocs(q);
 
-            let data = [];
+            // 🔥 IMPORTANT: Latest Data System
+            let latestDataMap = new Map();
+
             snapshot.forEach(doc => {
                 const d = doc.data();
-                // Matching Filters
+
                 if (region !== "all" && d.region !== region) return;
                 if (user !== "all" && (d.userName || d.userId) !== user) return;
                 if (jamia !== "all" && d.jamia !== jamia) return;
-                if (year !== "all" && d.year !== year) return;
-                if (examType !== "all" && d.examType !== examType) return;
 
-                data.push(d);
+                let key;
+
+                if (type === "asatiza-wise") {
+                    key = `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}`;
+                } else {
+                    key = `${d.jamia}_${d.darjah}`;
+                }
+
+                if (!latestDataMap.has(key)) {
+                    latestDataMap.set(key, d);
+                }
             });
 
-            if (type === "jamia-wise") renderJamiaWise(data);
-            else if (type === "class-wise") renderClassWise(data);
-            else if (type === "asatiza-wise") renderAsatizaWise(data);
-            else if (type === "ibtidaiya") await renderIbtidaiya(db, jamia);
+            const finalData = Array.from(latestDataMap.values());
+
+            if (type === "jamia-wise") renderJamiaWise(finalData);
+            else if (type === "class-wise") renderClassWise(finalData);
+            else if (type === "asatiza-wise") renderAsatizaWise(finalData);
 
         } catch (err) {
             console.error(err);
-            container.innerHTML = "Error loading data";
+            document.getElementById("table-area").innerHTML = "Error loading";
         }
+
     });
 });
 
-/* =========================
-   🔍 AUTO-POPULATE FILTERS
-========================= */
-async function initFilters() {
-    const db = window.db;
-    if (!db) return;
 
-    try {
-        // Class wise results se unique values nikalna
-        const snapshot = await getDocs(collection(db, "class_wise_results"));
-        
-        let regions = new Set();
-        let users = new Set();
-        let jamiaat = new Set();
+// ===================== JAMIA WISE =====================
 
-        snapshot.forEach(doc => {
-            const d = doc.data();
-            if (d.region) regions.add(d.region);
-            if (d.userName || d.userId) users.add(d.userName || d.userId);
-            if (d.jamia) jamiaat.add(d.jamia);
-        });
-
-        updateDropdown("final-filter-region", regions, "All Regions");
-        updateDropdown("final-filter-user", users, "All Users");
-        updateDropdown("final-filter-jamia", jamiaat, "All Jamiaat");
-
-    } catch (err) {
-        console.error("Filter populate error:", err);
-    }
-}
-
-function updateDropdown(id, set, defaultText) {
-    const select = document.getElementById(id);
-    if (!select) return;
-    
-    let html = `<option value="all">${defaultText}</option>`;
-    Array.from(set).sort().forEach(val => {
-        html += `<option value="${val}">${val}</option>`;
-    });
-    select.innerHTML = html;
-}
-
-/* =========================
-   📊 JAMIA WISE TABLE
-========================= */
 function renderJamiaWise(data) {
+
     let stats = {};
 
     data.forEach(d => {
+
+        const total =
+            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
+            (d.jayyid||0)+(d.maqbool||0)+(d.majazZimni||0)+
+            (d.nakam||0)+(d.ghaib||0);
+
+        const passed =
+            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
+            (d.jayyid||0)+(d.maqbool||0);
+
         if (!stats[d.jamia]) {
-            stats[d.jamia] = { 
-                region: d.region || "-", 
-                user: d.userName || d.userId || "-",
-                totalStudents: 0, present: 0, passed: 0, zimni: 0, nakam: 0 
-            };
+            stats[d.jamia] = { total: 0, passed: 0, ghaib: 0, nakam: 0, zimni: 0 };
         }
-        const s = stats[d.jamia];
-        s.totalStudents += (d.totalStudents || 0);
-        s.present += (d.totalStudents || 0) - (d.ghaib || 0);
-        s.passed += (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+(d.jayyid||0)+(d.maqbool||0);
-        s.zimni += (d.majazZimni || 0);
-        s.nakam += (d.nakam || 0);
+
+        stats[d.jamia].total += total;
+        stats[d.jamia].passed += passed;
+        stats[d.jamia].ghaib += (d.ghaib || 0);
+        stats[d.jamia].nakam += (d.nakam || 0);
+        stats[d.jamia].zimni += (d.majazZimni || 0);
     });
 
     let html = `
-    <table class="w-full border-collapse border text-[12px] text-center bg-white shadow-sm">
-        <thead class="bg-indigo-50">
-            <tr>
-                <th class="border p-2">#</th>
-                <th class="border p-2 text-right">Jamia Ka Naam</th>
-                <th class="border p-2">Region</th>
-                <th class="border p-2">User</th>
-                <th class="border p-2">Kul Talaba</th>
-                <th class="border p-2">Hazir</th>
-                <th class="border p-2 text-green-700">Kamyab</th>
-                <th class="border p-2 text-purple-700">Zimni</th>
-                <th class="border p-2 text-red-600">Nakam</th>
-                <th class="border p-2">Faisad (%)</th>
-                <th class="border p-2">Kaifiyat</th>
-            </tr>
-        </thead>
-        <tbody>`;
+    <table class="w-full border-collapse text-sm bg-white shadow">
+    <thead class="bg-indigo-100">
+    <tr>
+        <th>#</th>
+        <th>Jamia</th>
+        <th>Total</th>
+        <th>Present</th>
+        <th>Pass</th>
+        <th>Zimni</th>
+        <th>Nakam</th>
+        <th>%</th>
+        <th>Status</th>
+    </tr>
+    </thead><tbody>`;
 
-    let count = 1;
+    let i = 1;
+
     for (let j in stats) {
-        let s = stats[j];
-        let percent = s.present ? (s.passed / s.present) * 100 : 0;
-        
-        let kaifiyat = "Kamzor"; let color = "text-red-500";
-        if (percent >= 80) { kaifiyat = "Mumtaz Sharf"; color = "text-green-700 font-bold"; }
-        else if (percent >= 70) { kaifiyat = "Behtar"; color = "text-blue-600"; }
-        else if (percent >= 50) { kaifiyat = "Munasib"; color = "text-purple-600"; }
+
+        const s = stats[j];
+
+        const present = s.total - s.ghaib;
+        const percent = present ? (s.passed / present) * 100 : 0;
 
         html += `
-            <tr class="hover:bg-gray-50">
-                <td class="border p-2">${count++}</td>
-                <td class="border p-2 text-right font-bold">${j}</td>
-                <td class="border p-2">${s.region}</td>
-                <td class="border p-2 text-xs">${s.user}</td>
-                <td class="border p-2 font-bold">${s.totalStudents}</td>
-                <td class="border p-2 text-blue-700">${s.present}</td>
-                <td class="border p-2 text-green-700 font-bold">${s.passed}</td>
-                <td class="border p-2 text-purple-600">${s.zimni}</td>
-                <td class="border p-2 text-red-600">${s.nakam}</td>
-                <td class="border p-2 font-bold bg-yellow-50">${percent.toFixed(2)}%</td>
-                <td class="border p-2 ${color} text-[11px]">${kaifiyat}</td>
-            </tr>`;
+        <tr class="text-center">
+            <td>${i++}</td>
+            <td class="font-bold">${j}</td>
+            <td>${s.total}</td>
+            <td>${present}</td>
+            <td class="text-green-700 font-bold">${s.passed}</td>
+            <td class="text-purple-600">${s.zimni}</td>
+            <td class="text-red-600">${s.nakam}</td>
+            <td class="font-bold">${percent.toFixed(2)}%</td>
+            <td class="${getKefiyatColor(percent)} font-bold">
+                ${getJamiaKefiyat(percent)}
+            </td>
+        </tr>`;
     }
-    html += `</tbody></table>`;
-    document.getElementById("final-analysis-container").innerHTML = html;
+
+    html += "</tbody></table>";
+
+    document.getElementById("table-area").innerHTML = html;
 }
-/* =========================
-   🔹 CLASS WISE
-========================= */
-function renderClassWise(data = []) {
+
+
+// ===================== CLASS WISE =====================
+
+function renderClassWise(data) {
 
     let html = `
     <table class="w-full border text-sm">
@@ -188,13 +191,13 @@ function renderClassWise(data = []) {
     data.forEach(d => {
 
         const total =
-            (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) +
-            (d.jayyid || 0) + (d.maqbool || 0) + (d.majazZimni || 0) +
-            (d.nakam || 0) + (d.ghaib || 0);
+            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
+            (d.jayyid||0)+(d.maqbool||0)+(d.majazZimni||0)+
+            (d.nakam||0)+(d.ghaib||0);
 
         const passed =
-            (d.mumtazSharf || 0) + (d.mumtaz || 0) + (d.jayyidJidda || 0) +
-            (d.jayyid || 0) + (d.maqbool || 0);
+            (d.mumtazSharf||0)+(d.mumtaz||0)+(d.jayyidJidda||0)+
+            (d.jayyid||0)+(d.maqbool||0);
 
         const percent = total ? (passed / total) * 100 : 0;
 
@@ -209,14 +212,14 @@ function renderClassWise(data = []) {
     });
 
     html += `</table>`;
-    document.getElementById("final-analysis-container").innerHTML = html;
+
+    document.getElementById("table-area").innerHTML = html;
 }
 
 
-/* =========================
-   🔹 ASATIZA WISE
-========================= */
-function renderAsatizaWise(data = []) {
+// ===================== ASATIZA =====================
+
+function renderAsatizaWise(data) {
 
     let html = `
     <table class="w-full border text-sm">
@@ -246,8 +249,8 @@ function renderAsatizaWise(data = []) {
 
             html += `
             <tr>
-                <td>${d.jamia || "-"}</td>
-                <td>${t.teacher || "-"}</td>
+                <td>${d.jamia}</td>
+                <td>${t.teacher}</td>
                 <td>${total}</td>
                 <td>${pass}</td>
                 <td>${per.toFixed(1)}%</td>
@@ -257,71 +260,6 @@ function renderAsatizaWise(data = []) {
     });
 
     html += `</table>`;
-    document.getElementById("final-analysis-container").innerHTML = html;
-}
 
-
-/* =========================
-   🔹 IBTIDAIYA
-========================= */
-async function renderIbtidaiya(db, jamiaFilter) {
-
-    const container = document.getElementById("final-analysis-container");
-
-    const snapshot = await getDocs(collection(db, "ibtidaiya_exams"));
-
-    let allStudents = [];
-
-    snapshot.forEach(doc => {
-        const d = doc.data();
-
-        if (jamiaFilter !== "all" && d.jamiaName !== jamiaFilter) return;
-
-        if (Array.isArray(d.students)) {
-            d.students.forEach(s => {
-                allStudents.push({
-                    jamia: d.jamiaName,
-                    ...s
-                });
-            });
-        }
-    });
-
-    let stats = {};
-
-    allStudents.forEach(s => {
-
-        const percent = parseFloat(s.percent) || 0;
-
-        if (!stats[s.jamia]) {
-            stats[s.jamia] = { students: 0, percent: 0 };
-        }
-
-        stats[s.jamia].students += 1;
-        stats[s.jamia].percent += percent;
-    });
-
-    let html = `
-    <table class="w-full border text-sm">
-        <tr>
-            <th>Jamia</th>
-            <th>Students</th>
-            <th>Avg %</th>
-        </tr>`;
-
-    for (let j in stats) {
-        let s = stats[j];
-        let avg = s.students ? (s.percent / s.students) : 0;
-
-        html += `
-        <tr>
-            <td>${j}</td>
-            <td>${s.students}</td>
-            <td>${avg.toFixed(1)}%</td>
-        </tr>`;
-    }
-
-    html += `</table>`;
-
-    container.innerHTML = html;
+    document.getElementById("table-area").innerHTML = html;
 }
