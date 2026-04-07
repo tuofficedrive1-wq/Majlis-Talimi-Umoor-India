@@ -341,11 +341,16 @@ window.editEntry = async (docId) => {
             loader.classList.add('hidden');
             reportArea.classList.remove('hidden');
 
-            document.getElementById('ra-download-excel').onclick = () => {
-                const table = document.getElementById('ra-data-table');
-                const wb = XLSX.utils.table_to_book(table, { sheet: "Analysis" });
-                XLSX.writeFile(wb, `Result_${layoutLevel}_${examYear}.xlsx`);
-            };
+           document.getElementById('ra-download-excel').onclick = () => {
+    // Check karein ke XLSX library load hui hai ya nahi
+    if (window.XLSX) {
+        const table = document.getElementById('ra-data-table');
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Analysis" });
+        XLSX.writeFile(wb, `Result_${layoutLevel}_${examYear}.xlsx`);
+    } else {
+        alert("Excel library (SheetJS) load nahi hui. Internet connection check karein.");
+    }
+};
 
             document.getElementById('ra-download-image').onclick = async () => {
                 if(window.html2canvas) {
