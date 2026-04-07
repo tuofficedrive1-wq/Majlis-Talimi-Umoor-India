@@ -131,9 +131,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         .active-sub-tab { border-bottom: 4px solid #4f46e5; color: #4f46e5 !important; background: white; }
     </style>`;
     
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-
-    const btnDashboard = document.getElementById("tab-dashboard");
+       const btnDashboard = document.getElementById("tab-dashboard");
     const btnReports = document.getElementById("tab-reports");
     const dashboardView = document.getElementById("dashboard-view");
     const reportsView = document.getElementById("reports-view");
