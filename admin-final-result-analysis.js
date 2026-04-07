@@ -109,7 +109,11 @@ export async function initAdminResultAnalysis(db, containerId) {
             <button id="admin-show-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl w-full font-bold shadow-lg transition">
                 Show Analysis
             </button>
+            <button id="admin-export-btn" class="hidden bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl w-full font-bold shadow-lg transition mt-3">
+    📥 Download Excel Report
+</button>
         </div>
+        
 
         <div id="admin-loader" class="hidden text-center py-12"><div class="loader mx-auto"></div><p>Loading Data...</p></div>
 
@@ -126,6 +130,8 @@ export async function initAdminResultAnalysis(db, containerId) {
     <style>
         .active-sub-tab { border-bottom: 4px solid #4f46e5; color: #4f46e5 !important; background: white; }
     </style>`;
+    
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
     const btnDashboard = document.getElementById("tab-dashboard");
     const btnReports = document.getElementById("tab-reports");
@@ -164,44 +170,77 @@ regionSelect.onchange = () => {
         userSelect.innerHTML += `<option value="${name}">${name}</option>`;
     });
 };
+    document.getElementById("admin-export-btn").onclick = () => {
+    const table = document.getElementById("final-analysis-table-to-export");
+    const workbook = XLSX.utils.table_to_book(table);
+    XLSX.writeFile(workbook, `Result_Report_${new Date().toLocaleDateString()}.xlsx`);
+};
   
   // 📊 Show Analysis Logic
+const exportBtn = document.getElementById("admin-export-btn");
+
 document.getElementById("admin-show-btn").onclick = async () => {
     const examType = document.getElementById("admin-exam-type").value;
     const examYear = document.getElementById("admin-exam-year").value;
-    const selRegion = regionSelect.value; // Get Region
-    const selUser = userSelect.value;     // Get User
+    const selRegion = document.getElementById("admin-region-filter").value;
+    const selUser = document.getElementById("admin-user-filter").value;
     const layout = document.getElementById("admin-layout").value;
-    const activeTab = btnDashboard.classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
+    const activeTab = document.getElementById("tab-dashboard").classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
 
+    const loader = document.getElementById("admin-loader");
     loader.classList.remove("hidden");
     
     try {
         const colName = (activeTab === 'reports' && layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
-        const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear));
-        const snapshot = await getDocs(q);
         
+        // 1. Query with Timestamp Descending (Latest First)
+        const q = query(
+            collection(db, colName), 
+            where("examType", "==", examType), 
+            where("examYear", "==", examYear),
+            orderBy("timestamp", "desc")
+        );
+        
+        const snapshot = await getDocs(q);
         let dataList = [];
+        let uniqueKeys = new Set(); // Latest entry track karne ke liye
+
         snapshot.forEach(doc => {
             const d = doc.data();
             const context = getJamiaContext(d.jamia);
 
-            // ✅ Combined Filter: Region AUR User dono check karein
+            // 2. Filter logic
             const matchRegion = (selRegion === "all" || context.region === selRegion);
             const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
 
-            if (matchRegion && matchUser) {
+            // 3. Unique ID (Jamia + Class/Teacher) - Taaki purana data ignore ho jaye
+            const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
+
+            if (matchRegion && matchUser && !uniqueKeys.has(uniqueId)) {
                 dataList.push({ ...d, ...context });
+                uniqueKeys.add(uniqueId);
             }
         });
 
         if (activeTab === 'dashboard') {
-            renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers, selRegion);
+            renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers);
+            exportBtn.classList.add("hidden"); 
         } else {
             renderDetailedReports(dataList, layout);
+            exportBtn.classList.remove("hidden"); // Report tab me button show hoga
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Firestore Error:", e);
+        alert("Data load nahi ho saka. Shayad Firestore Index ki zaroorat hai.");
+    }
     loader.classList.add("hidden");
+};
+
+// ✅ EXCEL DOWNLOAD TRIGGER
+exportBtn.onclick = () => {
+    const table = document.getElementById("final-analysis-table-to-export");
+    const wb = XLSX.utils.table_to_book(table);
+    XLSX.writeFile(wb, `Talimi_Umoor_Result_${new Date().toLocaleDateString()}.xlsx`);
 };
 
     function renderDashboard(data, type, users) {
