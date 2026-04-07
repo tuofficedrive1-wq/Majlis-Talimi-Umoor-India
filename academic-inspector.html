@@ -41,9 +41,13 @@
             
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-8 flex flex-col lg:flex-row items-center justify-between gap-8">
                 <div class="flex flex-col md:flex-row items-center gap-6">
-                    <div class="relative group">
-                        <img id="profile-photo" src="https://placehold.co/150x150" class="w-28 h-28 rounded-2xl object-cover border-4 border-white shadow-lg">
-                    </div>
+                    <div class="relative group cursor-pointer" onclick="document.getElementById('photo-input').click()">
+    <img id="profile-photo" src="https://placehold.co/150x150" class="w-28 h-28 rounded-2xl object-cover border-4 border-white shadow-lg">
+    <div class="absolute inset-0 bg-black/40 rounded-2xl flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity">
+        <i class="fas fa-camera text-white text-xl"></i>
+    </div>
+    <input type="file" id="photo-input" class="hidden" accept="image/*">
+</div>
                     <div class="text-center md:text-left">
                         <h2 class="text-2xl font-bold text-slate-800">Assalamu Alaikum, <span id="inspector-name" class="text-indigo-600">Inspector</span></h2>
                         <p class="text-slate-500 font-medium">Jamiaat Oversight & Academic Quality Control</p>
@@ -172,9 +176,28 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-        import { getFirestore, doc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { 
+    getFirestore, 
+    doc, 
+    getDoc, 
+    updateDoc, // Profile URL update karne ke liye
+    collection, 
+    query, 
+    where, 
+    getDocs, 
+    setDoc, 
+    serverTimestamp 
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
+// Image upload karne ke liye ye naya import zaroori hai
+import { 
+    getStorage, 
+    ref, 
+    uploadBytes, 
+    getDownloadURL 
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
+        
         const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
             authDomain: "data-f15ab.firebaseapp.com",
@@ -184,6 +207,7 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const storage = getStorage(app);
 
         let currentUser = null;
         let assignedJamiaat = [];
@@ -341,6 +365,39 @@
                 options: { cutout: '80%', plugins: { legend: { position: 'bottom' } } }
             });
         }
+
+        document.getElementById('photo-input').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+        showLoader(true);
+        
+        // Firebase Storage me path set karein (User ID ke naam se save hogi)
+        const storageRef = ref(storage, `profile_photos/${currentUser.uid}`);
+        
+        // Upload karein
+        await uploadBytes(storageRef, file);
+        
+        // Download URL lein
+        const photoURL = await getDownloadURL(storageRef);
+        
+        // Firestore me update karein taaki hamesha save rahe
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            photoURL: photoURL
+        });
+
+        // UI par image show karein
+        document.getElementById('profile-photo').src = photoURL;
+        
+        alert("Profile photo updated successfully!");
+    } catch (error) {
+        console.error("Upload error:", error);
+        alert("Photo upload fail ho gayi.");
+    } finally {
+        showLoader(false);
+    }
+};
     </script>
 </body>
 </html>
