@@ -57,7 +57,17 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="form-${jamia.replace(/\s+/g, '')}">
                                     <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name Of Teacher" class="p-2.5 border rounded-xl text-sm outline-none">
                                     <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code (Login Code)" class="p-2.5 border rounded-xl text-sm font-bold" maxlength="6">
-                                    <input type="text" id="t-subject-${jamia.replace(/\s+/g, '')}" placeholder="Teaching Subject" class="p-2.5 border rounded-xl text-sm outline-none">
+                                    <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact No." class="p-2.5 border rounded-xl text-sm outline-none">
+
+<input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level Qualified" class="p-2.5 border rounded-xl text-sm outline-none">
+<input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qualification" class="p-2.5 border rounded-xl text-sm outline-none">
+<input type="email" id="mail-${jamia.replace(/\s+/g, '')}" placeholder="Mail ID" class="p-2.5 border rounded-xl text-sm outline-none">
+
+<input type="text" id="exp-${jamia.replace(/\s+/g, '')}" placeholder="Experience in Jamiatul Madina" class="p-2.5 border rounded-xl text-sm outline-none">
+<input type="text" id="spec-${jamia.replace(/\s+/g, '')}" placeholder="Subject Specialization" class="p-2.5 border rounded-xl text-sm outline-none">
+<input type="text" id="t-period-${jamia.replace(/\s+/g, '')}" placeholder="Total Teaching Period" class="p-2.5 border rounded-xl text-sm outline-none">
+
+<input type="text" id="ijara-${jamia.replace(/\s+/g, '')}" placeholder="Ijara Status" class="p-2.5 border rounded-xl text-sm outline-none">
                                 </div>
                                 <button class="save-teacher-btn w-full mt-4 bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all" data-jamia-name="${jamia}">Save Teacher</button>
                             </div>
@@ -91,28 +101,63 @@ const setupStructureEvents = (container, db, currentUser) => {
             const safeId = jamiaName.replace(/\s+/g, '');
             const name = document.getElementById(`name-${safeId}`).value.trim();
             const ajeer = document.getElementById(`ajeer-${safeId}`).value.trim();
-            const subject = document.getElementById(`t-subject-${safeId}`).value.trim();
+                        const contact = document.getElementById(`contact-${safeId}`).value.trim();
+const level = document.getElementById(`level-${safeId}`).value.trim();
+const hQual = document.getElementById(`h-qual-${safeId}`).value.trim();
+const mail = document.getElementById(`mail-${safeId}`).value.trim();
+const exp = document.getElementById(`exp-${safeId}`).value.trim();
+const spec = document.getElementById(`spec-${safeId}`).value.trim();
+const tPeriod = document.getElementById(`t-period-${safeId}`).value.trim();
+const ijara = document.getElementById(`ijara-${safeId}`).value.trim();
 
             if (!name || !ajeer) return alert("Fill Name and Ajeer Code.");
 
             btn.disabled = true;
             try {
-                const userRef = doc(db, "users", currentUser.uid);
-                const userSnap = await getDoc(userRef);
-                let academicYears = userSnap.data().academicYears || {};
-                const activeYear = "2025-2026";
-                if (!academicYears[activeYear]) academicYears[activeYear] = { karkardagiStructure: [] };
-                
-                let structure = academicYears[activeYear].karkardagiStructure;
-                let jamiaData = structure.find(j => j.jamiaName === jamiaName);
-                if (!jamiaData) { jamiaData = { jamiaName: jamiaName, teachers: [] }; structure.push(jamiaData); }
+    const userRef = doc(db, "users", currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    let academicYears = userSnap.data().academicYears || {};
+    const activeYear = "2025-2026"; 
+    
+    if (!academicYears[activeYear]) academicYears[activeYear] = { karkardagiStructure: [] };
+    let structure = academicYears[activeYear].karkardagiStructure;
+    let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+    
+    if (!jamiaData) {
+        jamiaData = { jamiaName: jamiaName, teachers: [] };
+        structure.push(jamiaData);
+    }
 
-                jamiaData.teachers.push({ id: `t-${Date.now()}`, name, loginCode: ajeer, teachingSubject: subject, periods: [] });
-                await updateDoc(userRef, { academicYears });
-                alert("Teacher Saved!");
-                loadAllTeachers([jamiaName], db, currentUser);
-            } catch (e) { alert("Error: " + e.message); }
-            btn.disabled = false;
+    // Aapne jo variables upar banaye hain, unhe yahan map karein
+    const newTeacher = {
+        id: `t-${Date.now()}`,
+        name: name,
+        loginCode: ajeer,
+        contact: contact,
+        levelQualified: level,       // Aapka variable
+        highestQualification: hQual, // Aapka variable
+        mailId: mail,               // Aapka variable
+        experience: exp,            // Aapka variable
+        specialization: spec,       // Aapka variable
+        teachingPeriod: tPeriod,    // Aapka variable
+        ijaraStatus: ijara,         // Aapka variable
+        periods: []                 // Khali array periods ke liye
+    };
+
+    jamiaData.teachers.push(newTeacher);
+    await updateDoc(userRef, { academicYears: academicYears });
+    
+    alert("Full Teacher Profile Saved!");
+    
+    // Inputs clear karne ke liye
+    document.querySelectorAll(`#form-${safeId} input`).forEach(inp => inp.value = "");
+    loadAllTeachers([jamiaName], db, currentUser);
+
+} catch (e) {
+    alert("Error saving: " + e.message);
+} finally {
+    btn.disabled = false;
+}
         };
     });
 };
