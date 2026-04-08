@@ -89,14 +89,57 @@ const renderSubTabContent = (tabName, assignedJamiaat, currentUser, db) => {
                 <p class="text-xs text-indigo-500 mt-1">Is mahine ki reporting ka majmua (overview) yahan nazar aayega.</p>
             </div>`;
 
-    } else if (tabName === 'structure') {
-        // --- STRUCTURE LOGIC ---
+    }  else if (tabName === 'structure') {
+        // --- STRUCTURE LOGIC (English Version) ---
+        if (!assignedJamiaat || assignedJamiaat.length === 0) {
+            contentArea.innerHTML = `<p class="text-center text-slate-400 p-10">No Jamiaat assigned to your profile.</p>`;
+            return;
+        }
+
+        // 1. Main Accordion Container for Jamiaat
         contentArea.innerHTML = `
-            <div class="bg-slate-50 p-6 rounded-3xl border border-slate-200 text-center">
-                <i class="fas fa-sitemap text-slate-400 text-4xl mb-3"></i>
-                <p class="text-slate-700 font-bold">Academic Structure</p>
-                <p class="text-xs text-slate-500 mt-1">Institutes ka setup aur grading criteria yahan check karein.</p>
-            </div>`;
+            <div id="structure-accordion" class="space-y-4">
+                ${assignedJamiaat.map(jamia => `
+                    <div class="border border-slate-200 rounded-2xl bg-white overflow-hidden" data-jamia="${jamia}">
+                        <button class="jamia-toggle w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100 transition-all font-bold text-slate-700">
+                            <span>${jamia}</span>
+                            <i class="fas fa-chevron-down transition-transform"></i>
+                        </button>
+                        <div class="jamia-content hidden p-4 border-t border-slate-100">
+                            
+                            <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-6">
+                                <h4 class="text-xs font-bold text-indigo-600 uppercase mb-3">Add New Teacher</h4>
+                                <div class="flex flex-col md:flex-row gap-3">
+                                    <input type="text" placeholder="Teacher Name" class="t-name w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <input type="text" placeholder="Teacher Code (5 Digits)" class="t-code w-full md:w-48 p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" maxlength="5">
+                                    <button class="add-t-btn bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all">Add Teacher</button>
+                                </div>
+                            </div>
+
+                            <div class="teacher-list space-y-3">
+                                <p class="text-center text-slate-400 text-xs py-4">No teachers added yet.</p>
+                            </div>
+
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        // 2. Event Listeners for Jamia Accordions
+        const accordion = contentArea.querySelector('#structure-accordion');
+        accordion.querySelectorAll('.jamia-toggle').forEach(btn => {
+            btn.onclick = () => {
+                const content = btn.nextElementSibling;
+                const icon = btn.querySelector('i');
+                content.classList.toggle('hidden');
+                icon.classList.toggle('rotate-180');
+            };
+        });
+
+        // 3. Logic for Adding Teachers and Periods (Similar to Karkardagi Logic)
+        // Note: Yahan aapko apne 'db' instance aur Firestore logic ko integrate karna hoga 
+        // bilkul wese hi jese aapne main dashboard me kiya hai.
     }
 };
 
