@@ -1414,103 +1414,108 @@ if (editTeacherForm) {
         };
 
         const loadUserData = async (isInitialLoad = false) => {
-            if (!currentUser) { return; }
-            showLoader(true);
-            
-            try {
-                // 1. Data Fetching (Ensure data is loaded)
-                // Agar profile data khali hai to dobara fetch karein
-                if (!userProfileData || Object.keys(userProfileData).length === 0 || !userProfileData.academicYears) {
-                    const userDocRef = doc(db, 'users', currentUser.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists()) {
-                        userProfileData = userDocSnap.data(); 
-                    } else { 
-                        console.warn("User profile not found in DB.");
-                    }
-                }
-                
-                allAcademicYearsData = userProfileData.academicYears || {};
-                
-                // 2. AUTO-SELECT YEAR (Database se)
-                const yearKeys = Object.keys(allAcademicYearsData).sort().reverse();
-                
-                if (!activeYear && yearKeys.length > 0) {
-                    activeYear = yearKeys[0]; // Latest saal utha lo
-                }
-
-                // 3. FALLBACK: Agar DB mein koi saal nahi (New User), to Current Year khud bana lo
-                if (!activeYear) {
-                    const today = new Date();
-                    const month = today.getMonth(); // 0-11
-                    const year = today.getFullYear();
-                    // Agar April (3) ya uske baad hai to "2025-2026", warna "2024-2025"
-                    if (month >= 3) {
-                        activeYear = `${year}-${year + 1}`;
-                    } else {
-                        activeYear = `${year - 1}-${year}`;
-                    }
-                    console.log("Auto-Generated Active Year (Fallback):", activeYear);
-                    
-                    // User ko message dikhayein ke setup karein
-                    if (reportingContainer) {
-                        reportingContainer.innerHTML = `
-                            <div class="text-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
-                                <p class="text-yellow-800 font-bold">نیا تعلیمی سال (${activeYear}) منتخب کیا گیا ہے۔</p>
-                                <p class="text-sm text-yellow-700">براہ کرم "Setup Structure" میں جا کر اس سال کا سیٹ اپ مکمل کریں۔</p>
-                            </div>`;
-                    }
-                }
-
-                // 4. Dropdown Update
-                populateYearSelector(); 
-                if (activeYear && activeYearSelect) {
-                    // Agar dropdown mein ye saal nahi hai, to temporary option add karein
-                    if (!activeYearSelect.querySelector(`option[value="${activeYear}"]`)) {
-                        const opt = document.createElement('option');
-                        opt.value = activeYear;
-                        opt.textContent = activeYear;
-                        activeYearSelect.prepend(opt);
-                    }
-                    activeYearSelect.value = activeYear;
-                }
-
-                // 5. Logic Execution (Ab crash nahi hoga)
-                // --- FIX START: Safety Check ---
-                if (!activeYear) {
-                    console.warn("Active Year set nahi hai, process roka ja raha hai.");
-                    showLoader(false);
-                    return; 
-                }
-                // --- FIX END ---
-
-                const academicYearParts = activeYear.split('-');
-                 const academicYearStart = parseInt(academicYearParts[0], 10);
-                 const academicYearEnd = parseInt(academicYearParts[1], 10);
-                 
-                 let reportingYearNum;
-                 if (currentReportPeriod.monthNum >= 3 && currentReportPeriod.monthNum <= 11) {
-                     reportingYearNum = academicYearStart;
-                 } else if (currentReportPeriod.monthNum === 0) {
-                     reportingYearNum = academicYearEnd;
-                 } else {
-                     reportingYearNum = currentReportPeriod.yearNum || academicYearStart;
-                 }
-                 
-                 currentReportPeriod.yearNum = reportingYearNum;
-                 updateReportPeriod({}); 
-                
-                                // 6. Report Load (first time hamesha fresh)
-                await loadMonthlyReportData(true); 
-                refreshFullUI();
-
-            } catch (error) {
-                console.error("Load User Data Error:", error);
-                showNotification("Data load error. Refreshing...", true);
-            } finally {
-                showLoader(false);
+    if (!currentUser) { return; }
+    showLoader(true);
+    
+    try {
+        // --- STEP 1: ADMIN KI CENTRAL CONFIG LOAD KAREIN ---
+        let adminConfig = null;
+        try {
+            const globalConfigRef = doc(db, "settings", "academic_config");
+            const globalSnap = await getDoc(globalConfigRef);
+            if (globalSnap.exists()) {
+                adminConfig = globalSnap.data();
+                console.log("Admin Setup Found:", adminConfig);
             }
-        };
+        } catch (e) {
+            console.error("Admin Config Fetch Error:", e);
+        }
+
+        // --- STEP 2: USER PROFILE DATA FETCH ---
+        if (!userProfileData || Object.keys(userProfileData).length === 0 || !userProfileData.academicYears) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+                userProfileData = userDocSnap.data(); 
+            }
+        }
+        
+        allAcademicYearsData = userProfileData.academicYears || {};
+
+        // --- STEP 3: PRIORITY ASSIGNMENT (Admin vs User) ---
+        // Agar Admin ne setup kiya hai, to wahi activeYear hoga
+        if (adminConfig && adminConfig.activeYear) {
+            activeYear = adminConfig.activeYear;
+            
+            // User ke data mein Admin ki settings inject karein (taake calculations sahi hon)
+            if (!allAcademicYearsData[activeYear]) {
+                allAcademicYearsData[activeYear] = {};
+            }
+            allAcademicYearsData[activeYear].academicMonths = adminConfig.academicMonths;
+            allAcademicYearsData[activeYear].sem1TotalDays = adminConfig.sem1TotalDays;
+            allAcademicYearsData[activeYear].sem2TotalDays = adminConfig.sem2TotalDays;
+            
+            console.log("Using Admin's Academic Year:", activeYear);
+        } 
+        // Agar Admin ne setup nahi kiya, to purana logic (User's choice)
+        else if (!activeYear) {
+            const yearKeys = Object.keys(allAcademicYearsData).sort().reverse();
+            if (yearKeys.length > 0) {
+                activeYear = yearKeys[0];
+            } else {
+                // Bilkul naya user aur Admin settings bhi nahi hain (Fallback)
+                const today = new Date();
+                const month = today.getMonth();
+                const year = today.getFullYear();
+                activeYear = (month >= 3) ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+            }
+        }
+
+        // --- STEP 4: UI UPDATES ---
+        populateYearSelector(); 
+        if (activeYear && activeYearSelect) {
+            if (!activeYearSelect.querySelector(`option[value="${activeYear}"]`)) {
+                const opt = document.createElement('option');
+                opt.value = activeYear;
+                opt.textContent = activeYear;
+                activeYearSelect.prepend(opt);
+            }
+            activeYearSelect.value = activeYear;
+        }
+
+        // --- STEP 5: LOGIC EXECUTION ---
+        if (!activeYear) {
+            showLoader(false);
+            return; 
+        }
+
+        const academicYearParts = activeYear.split('-');
+        const academicYearStart = parseInt(academicYearParts[0], 10);
+        const academicYearEnd = parseInt(academicYearParts[1], 10);
+        
+        let reportingYearNum;
+        if (currentReportPeriod.monthNum >= 3 && currentReportPeriod.monthNum <= 11) {
+            reportingYearNum = academicYearStart;
+        } else if (currentReportPeriod.monthNum === 0) {
+            reportingYearNum = academicYearEnd;
+        } else {
+            reportingYearNum = currentReportPeriod.yearNum || academicYearStart;
+        }
+        
+        currentReportPeriod.yearNum = reportingYearNum;
+        updateReportPeriod({}); 
+        
+        // Final Load
+        await loadMonthlyReportData(true); 
+        refreshFullUI();
+
+    } catch (error) {
+        console.error("Load User Data Error:", error);
+        showNotification("Data load error.", true);
+    } finally {
+        showLoader(false);
+    }
+};
         
                 const loadMonthlyReportData = async (forceReload = false) => {
             if (!currentUser || !currentUser.uid) return;
