@@ -1,3 +1,7 @@
+/**
+ * Monthly Performance Module - Structure Tab (Firestore Enabled)
+ */
+
 import { 
     doc, 
     setDoc, 
@@ -42,56 +46,132 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             <div id="structure-accordion" class="space-y-4">
                 ${assignedJamiaat.map(jamia => `
                     <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
-                        <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
+                        <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700 transition-all">
                             <span>${jamia}</span>
                             <i class="fas fa-chevron-down transition-transform"></i>
                         </button>
                         <div class="jamia-content hidden p-6 border-t border-slate-100">
                             <div class="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 mb-6">
-                                <h4 class="text-sm font-bold text-indigo-600 uppercase mb-4">Add New Teacher</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="form-${jamia.replace(/\s+/g, '')}">
-                                    <input type="text" placeholder="Name Of Teacher" class="t-name p-2.5 border rounded-xl text-sm">
-                                    <input type="text" placeholder="Ajeer Code" class="t-ajeer p-2.5 border rounded-xl text-sm">
-                                    <input type="text" placeholder="Teacher Code (5 Digits)" class="t-login-code p-2.5 border rounded-xl text-sm font-bold" maxlength="5">
-                                    </div>
-                                <button class="add-t-btn w-full mt-4 bg-indigo-600 text-white py-3 rounded-2xl font-bold">Save Teacher</button>
+                                <h4 class="text-sm font-bold text-indigo-600 uppercase mb-4 flex items-center gap-2">
+                                    <i class="fas fa-user-plus"></i> Register New Teacher
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name Of Teacher" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code (Login Code)" class="p-2.5 border rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" maxlength="6">
+                                    <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact No." class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                </div>
+                                <button class="save-teacher-btn w-full mt-4 bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all" data-jamia-name="${jamia}">
+                                    Save Teacher Profile
+                                </button>
                             </div>
-                            <div class="teacher-list space-y-4"></div>
+                            <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}">
+                                <p class="text-center text-slate-400 text-xs py-4">Loading Teachers...</p>
+                            </div>
                         </div>
                     </div>
                 `).join('')}
             </div>
         `;
         setupStructureEvents(contentArea, db, currentUser);
+        loadAllTeachers(assignedJamiaat, db, currentUser);
     } else {
-        contentArea.innerHTML = `<p class="p-10 text-center text-slate-400">${tabName.toUpperCase()} section coming soon...</p>`;
+        contentArea.innerHTML = `<p class="p-10 text-center text-slate-400">Loading ${tabName.toUpperCase()} section...</p>`;
     }
 };
 
-// --- YEH HAI WOH FUNCTION JO MISSING THA ---
 const setupStructureEvents = (container, db, currentUser) => {
-    // Dropdown toggle logic
     container.querySelectorAll('.jamia-toggle').forEach(btn => {
         btn.onclick = () => {
             const content = btn.nextElementSibling;
-            const icon = btn.querySelector('i');
+            btn.querySelector('i').classList.toggle('rotate-180');
             content.classList.toggle('hidden');
-            icon.classList.toggle('rotate-180');
         };
     });
 
-    // Add Teacher logic (Placeholder for your backend)
-    container.querySelectorAll('.add-t-btn').forEach(btn => {
-        btn.onclick = () => {
-            alert("Teacher data captured. Integrating with Firestore...");
-            // Yahan aap Firestore save logic add karenge
+    container.querySelectorAll('.save-teacher-btn').forEach(btn => {
+        btn.onclick = async () => {
+            const jamiaName = btn.dataset.jamiaName;
+            const safeId = jamiaName.replace(/\s+/g, '');
+            const name = document.getElementById(`name-${safeId}`).value.trim();
+            const ajeerCode = document.getElementById(`ajeer-${safeId}`).value.trim();
+            const contact = document.getElementById(`contact-${safeId}`).value.trim();
+
+            if (!name || !ajeerCode) {
+                alert("Please fill Name and Ajeer Code.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Saving...";
+
+            try {
+                const userRef = doc(db, "users", currentUser.uid);
+                const userSnap = await getDoc(userRef);
+                let academicYears = userSnap.data().academicYears || {};
+                
+                // Hum current active year (2025-2026) use karenge
+                const activeYear = "2025-2026"; 
+                if (!academicYears[activeYear]) academicYears[activeYear] = { karkardagiStructure: [] };
+                
+                let structure = academicYears[activeYear].karkardagiStructure;
+                let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+                
+                if (!jamiaData) {
+                    jamiaData = { jamiaName: jamiaName, teachers: [] };
+                    structure.push(jamiaData);
+                }
+
+                const newTeacher = {
+                    id: `t-${Date.now()}`,
+                    name: name,
+                    loginCode: ajeerCode, // Merged
+                    contact: contact,
+                    periods: []
+                };
+
+                jamiaData.teachers.push(newTeacher);
+                await updateDoc(userRef, { academicYears: academicYears });
+
+                alert("Teacher Saved Successfully!");
+                document.getElementById(`name-${safeId}`).value = "";
+                document.getElementById(`ajeer-${safeId}`).value = "";
+                loadAllTeachers([jamiaName], db, currentUser);
+            } catch (e) {
+                console.error(e);
+                alert("Error saving: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Save Teacher Profile";
+            }
         };
     });
 };
 
-window.openPerformanceForm = (id, name) => {
-    const monthInput = document.getElementById('report-month');
-    const month = monthInput ? monthInput.value : new Date().toISOString().slice(0, 7);
-    const url = `academic-monthly-performance.html?jamiaId=${id}&jamiaName=${encodeURIComponent(name)}&month=${month}`;
-    window.open(url, '_blank');
+const loadAllTeachers = async (jamiaat, db, currentUser) => {
+    const userRef = doc(db, "users", currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const academicYears = userSnap.data().academicYears || {};
+    const activeYear = "2025-2026";
+    const structure = academicYears[activeYear]?.karkardagiStructure || [];
+
+    jamiaat.forEach(jamia => {
+        const safeId = jamia.replace(/\s+/g, '');
+        const listDiv = document.getElementById(`list-${safeId}`);
+        const jamiaData = structure.find(j => j.jamiaName === jamia);
+
+        if (!jamiaData || !jamiaData.teachers || jamiaData.teachers.length === 0) {
+            listDiv.innerHTML = `<p class="text-center text-slate-400 text-xs py-4">No teachers registered yet.</p>`;
+            return;
+        }
+
+        listDiv.innerHTML = jamiaData.teachers.map(t => `
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center group hover:border-indigo-300 transition-all">
+                <div>
+                    <p class="font-bold text-slate-700">${t.name}</p>
+                    <p class="text-[10px] text-slate-400 font-mono uppercase">Code: ${t.loginCode}</p>
+                </div>
+                <button class="text-indigo-600 hover:text-indigo-800"><i class="fas fa-edit"></i></button>
+            </div>
+        `).join('');
+    });
 };
