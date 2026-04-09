@@ -89,100 +89,167 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-        // Firebase Config (Same as your dashboard)
-        const firebaseConfig = {
-            apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-            authDomain: "data-f15ab.firebaseapp.com",
-            projectId: "data-f15ab",
-            storageBucket: "data-f15ab.firebasestorage.app"
-        };
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+    const firebaseConfig = {
+        apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+        authDomain: "data-f15ab.firebaseapp.com",
+        projectId: "data-f15ab",
+        storageBucket: "data-f15ab.firebasestorage.app"
+    };
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const jamiaName = urlParams.get('jamia');
-        document.getElementById('jamia-title').textContent = jamiaName;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
-        // 1. Data Loading from Monthly Performance logic
-        async function loadPerformanceData() {
-            // Yahan hum aapke 'classes' aur 'teachers' ka data fetch karenge
-            // Demo ke liye static list de raha hoon, aap isse Firestore se connect kar sakte hain
-            const classes = ["Ibtidaiya 1", "Ibtidaiya 2", "Saniya", "Salisa"];
-            const classDropdown = document.getElementById('class-select');
-            classDropdown.innerHTML = '<option value="">Select Class</option>' + 
-                classes.map(c => `<option value="${c}">${c}</option>`).join('');
+    const urlParams = new URLSearchParams(window.location.search);
+    const jamiaName = urlParams.get('jamia');
+    document.getElementById('jamia-title').textContent = jamiaName;
+
+    let currentUser = null;
+    let fullStructure = []; // Firestore se aaya hua data
+
+    // 1. Auth & Data Loading
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            currentUser = user;
+            await loadJamiaStructure();
+        } else {
+            window.location.href = "index.html";
         }
+    });
 
-        // 2. Dynamic Questions Logic
-        function renderQuestions() {
-            const subject = document.getElementById('subject-select').value;
-            const container = document.getElementById('questions-body');
-            let html = '';
-
-            if (subject === 'English') {
-                // 3 Fixed Questions
-                const fixed = ['Reading', 'Writing', 'Translation'];
-                fixed.forEach((q, i) => {
-                    html += createRow(q, false);
-                });
-                // 3 Blank Questions
-                for(let i=1; i<=3; i++) {
-                    html += createRow('', true);
-                }
-            } else {
-                // Only 3 Blank Questions for other subjects
-                for(let i=1; i<=3; i++) {
-                    html += createRow('', true);
-                }
-            }
-            container.innerHTML = html;
-        }
-
-        function createRow(val, isBlank) {
-            return `
-                <tr class="q-row border-b border-slate-50">
-                    <td class="p-4">
-                        ${isBlank ? 
-                            `<input type="text" placeholder="Enter Question Here..." class="w-full bg-indigo-50/50 p-2 rounded-lg border-none outline-none text-slate-700 font-medium">` : 
-                            `<span class="font-semibold text-slate-700">${val}</span>`}
-                    </td>
-                    <td class="p-4">
-                        <input type="number" oninput="calculateTotal()" class="q-input w-full text-center font-bold text-indigo-600 bg-slate-50 p-2 rounded-lg border-none outline-none" placeholder="0">
-                    </td>
-                </tr>`;
-        }
-
-        window.calculateTotal = () => {
-            const present = parseFloat(document.getElementById('present-count').value) || 0;
-            const inputs = document.querySelectorAll('.q-input');
-            let total = 0;
-            let count = 0;
-
-            inputs.forEach(input => {
-                if(input.value !== "") {
-                    total += parseFloat(input.value) || 0;
-                    count++;
-                }
-            });
-
-            const avgSahi = count > 0 ? total / count : 0;
-            const percent = present > 0 ? ((avgSahi / present) * 100).toFixed(1) : 0;
-            
-            const display = document.getElementById('final-percent');
-            display.textContent = percent + '%';
-            display.className = `text-lg font-black ${percent > 70 ? 'text-emerald-500' : 'text-indigo-600'}`;
-        };
-
-        // Event Listeners
-        document.getElementById('subject-select').onchange = renderQuestions;
+    async function loadJamiaStructure() {
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userRef);
         
-        // Init
-        loadPerformanceData();
-        renderQuestions();
+        if (userSnap.exists()) {
+            // monthly-performance.js ke mutabiq path
+            const academicData = userSnap.data().academicYears?.["2025-2026"]?.karkardagiStructure || [];
+            const jamiaData = academicData.find(j => j.jamiaName === jamiaName);
+            
+            if (jamiaData) {
+                fullStructure = jamiaData.teachers;
+                populateClasses();
+            } else {
+                alert("Is Jamia ka koi structure nahi mila.");
+            }
+        }
+    }
 
-    </script>
+    // 2. Populate Class Dropdown
+    function populateClasses() {
+        const classSelect = document.getElementById('class-select');
+        const classes = new Set();
+        
+        fullStructure.forEach(teacher => {
+            teacher.periods?.forEach(p => classes.add(p.className));
+        });
+
+        classSelect.innerHTML = '<option value="">Select Class</option>' + 
+            Array.from(classes).map(c => `<option value="${c}">${c}</option>`).join('');
+            
+        classSelect.onchange = populateTeachers;
+    }
+
+    // 3. Populate Teacher Dropdown based on Class
+    function populateTeachers() {
+        const selectedClass = document.getElementById('class-select').value;
+        const teacherSelect = document.getElementById('teacher-select');
+        
+        const filteredTeachers = fullStructure.filter(t => 
+            t.periods?.some(p => p.className === selectedClass)
+        );
+
+        teacherSelect.innerHTML = '<option value="">Select Teacher</option>' + 
+            filteredTeachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+            
+        teacherSelect.onchange = populateSubjects;
+    }
+
+    // 4. Populate Subject Dropdown based on Class & Teacher
+    function populateSubjects() {
+        const selectedClass = document.getElementById('class-select').value;
+        const selectedTeacherId = document.getElementById('teacher-select').value;
+        const subjectSelect = document.getElementById('subject-select');
+        
+        const teacher = fullStructure.find(t => t.id === selectedTeacherId);
+        const subjects = teacher?.periods?.filter(p => p.className === selectedClass) || [];
+
+        subjectSelect.innerHTML = subjects.map(s => `<option value="${s.bookName}">${s.bookName}</option>`).join('');
+        
+        // Subject change hone par questions refresh karein
+        renderQuestions();
+    }
+
+    document.getElementById('subject-select').onchange = renderQuestions;
+
+    // 5. Dynamic Questions Logic
+    function renderQuestions() {
+        const subject = document.getElementById('subject-select').value.toLowerCase();
+        const container = document.getElementById('questions-body');
+        let html = '';
+
+        // English check logic
+        if (subject.includes('english')) {
+            const fixed = ['Reading', 'Writing', 'Translation'];
+            fixed.forEach(q => html += createRow(q, false));
+            for(let i=1; i<=3; i++) html += createRow('', true); // 3 blank
+        } else {
+            for(let i=1; i<=3; i++) html += createRow('', true); // Only 3 blank for others
+        }
+        container.innerHTML = html;
+        calculateTotal();
+    }
+
+    function createRow(val, isBlank) {
+        return `
+            <tr class="q-row border-b border-slate-50">
+                <td class="p-4">
+                    ${isBlank ? 
+                        `<input type="text" placeholder="Sawwal likhein..." class="q-title-input w-full bg-indigo-50/50 p-2 rounded-lg outline-none text-slate-700 font-medium">` : 
+                        `<span class="q-title-fixed font-semibold text-slate-700">${val}</span>`}
+                </td>
+                <td class="p-4 text-center">
+                    <input type="number" oninput="calculateTotal()" class="q-input w-24 text-center font-bold text-indigo-600 bg-slate-50 p-2 rounded-lg outline-none" placeholder="0">
+                </td>
+            </tr>`;
+    }
+
+    window.calculateTotal = () => {
+        const present = parseFloat(document.getElementById('present-count').value) || 0;
+        const inputs = document.querySelectorAll('.q-input');
+        let total = 0;
+        let count = 0;
+
+        inputs.forEach(input => {
+            if(input.value !== "") {
+                total += parseFloat(input.value) || 0;
+                count++;
+            }
+        });
+
+        const avgSahi = count > 0 ? total / count : 0;
+        const percent = present > 0 ? ((avgSahi / present) * 100).toFixed(1) : 0;
+        
+        const display = document.getElementById('final-percent');
+        display.textContent = percent + '%';
+        display.className = `text-lg font-black ${percent > 70 ? 'text-emerald-500' : 'text-indigo-600'}`;
+    };
+
+    // 6. Save Data to Firestore
+    document.getElementById('save-btn').onclick = async () => {
+        const selectedClass = document.getElementById('class-select').value;
+        const selectedSubject = document.getElementById('subject-select').value;
+        if (!selectedClass || !selectedSubject) return alert("Class aur Subject select karna zaroori hai.");
+
+        const reportId = `${jamiaName}_${Date.now()}`;
+        // Yahan aap apna data object bana kar Firestore ke 'academic_inspections' collection mein save kar sakte hain.
+        alert("Report ready for: " + selectedSubject);
+    };
+
+</script>
 </body>
 </html>
