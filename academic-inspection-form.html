@@ -127,13 +127,11 @@
 
     let currentUser = null;
     let fullStructure = []; 
-    let currentClassReports = []; // Temporary storage for subjects
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUser = user;
             await loadJamiaStructure();
-            initAppLogic(); // Buttons ko activate karne wala function
         } else {
             window.location.href = "index.html";
         }
@@ -147,252 +145,127 @@
             const jamiaData = academicData.find(j => j.jamiaName === jamiaName);
             if (jamiaData) {
                 fullStructure = jamiaData.teachers;
-                populateClasses();
+                console.log("Structure Loaded");
             }
         }
     }
 
-    function populateClasses() {
-        const classSelect = document.getElementById('class-select');
-        const classes = new Set();
-        fullStructure.forEach(teacher => {
-            teacher.periods?.forEach(p => classes.add(p.className));
-        });
-        classSelect.innerHTML = '<option value="">Select Class</option>' + 
-            Array.from(classes).map(c => `<option value="${c}">${c}</option>`).join('');
-        classSelect.onchange = populateTeachers;
-    }
+    // --- Dynamic UI Logic ---
 
-    function populateTeachers() {
-        const selectedClass = document.getElementById('class-select').value;
-        const teacherSelect = document.getElementById('teacher-select');
-        const filteredTeachers = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
-        teacherSelect.innerHTML = '<option value="">Select Teacher</option>' + 
-            filteredTeachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-        teacherSelect.onchange = populateSubjects;
-    }
+    document.getElementById('add-class-btn').onclick = () => {
+        const classId = Date.now();
+        
+        // Extract unique classes from fullStructure
+        const classes = [...new Set(fullStructure.flatMap(t => t.periods?.map(p => p.className) || []))];
+        const classOptions = classes.map(c => `<option value="${c}">${c}</option>`).join('');
 
-    function populateSubjects() {
-        const selectedClass = document.getElementById('class-select').value;
-        const selectedTeacherId = document.getElementById('teacher-select').value;
-        const subjectSelect = document.getElementById('subject-select');
-        const teacher = fullStructure.find(t => t.id === selectedTeacherId);
-        const subjects = teacher?.periods?.filter(p => p.className === selectedClass) || [];
-        subjectSelect.innerHTML = subjects.map(s => `<option value="${s.bookName}">${s.bookName}</option>`).join('');
-        renderQuestions();
-    }
-
-    document.getElementById('subject-select').onchange = renderQuestions;
-
-    function renderQuestions() {
-        const subject = document.getElementById('subject-select').value.toLowerCase();
-        const container = document.getElementById('questions-body');
-        let html = '';
-        if (subject.includes('english')) {
-            ['Reading', 'Writing', 'Translation'].forEach(q => html += createRow(q, false));
-        }
-        for(let i=1; i<=3; i++) html += createRow('', true);
-        container.innerHTML = html;
-        window.calculateTotal();
-    }
-
-    function createRow(val, isBlank) {
-        return `<tr class="q-row border-b border-slate-50">
-                <td class="p-4">${isBlank ? `<input type="text" placeholder="Sawwal..." class="q-title-input w-full bg-indigo-50/50 p-2 rounded-lg outline-none">` : `<span class="q-title-fixed font-semibold">${val}</span>`}</td>
-                <td class="p-4 text-center"><input type="number" oninput="window.calculateTotal()" class="q-input w-24 text-center font-bold text-indigo-600 bg-slate-50 p-2 rounded-lg outline-none" placeholder="0"></td>
-            </tr>`;
-    }
-
-    window.calculateTotal = () => {
-        const present = parseFloat(document.getElementById('present-count').value) || 0;
-        const inputs = document.querySelectorAll('.q-input');
-        let total = 0, count = 0;
-        inputs.forEach(input => { if(input.value !== "") { total += parseFloat(input.value) || 0; count++; } });
-        const avgSahi = count > 0 ? total / count : 0;
-        const percent = present > 0 ? ((avgSahi / present) * 100).toFixed(1) : 0;
-        const display = document.getElementById('final-percent');
-        display.textContent = percent + '%';
-        display.className = `text-lg font-black ${percent > 70 ? 'text-emerald-500' : 'text-indigo-600'}`;
+        const classTemplate = `
+            <div class="class-card bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden mb-6" id="class-${classId}">
+                <div class="bg-slate-50 p-5 border-b flex justify-between items-center">
+                    <div class="flex gap-4 items-center">
+                        <button onclick="document.getElementById('class-${classId}').remove(); updateCalculations();" class="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-200">Remove</button>
+                        <select class="class-select p-2 font-bold text-indigo-800 outline-none bg-transparent border-b-2 border-indigo-200" onchange="updateTeachers(this, ${classId})">
+                            <option value="">Select Class</option>
+                            ${classOptions}
+                        </select>
+                    </div>
+                    <div class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">Class Score: <span class="class-avg">0%</span></div>
+                </div>
+                <div class="p-8">
+                    <div class="grid grid-cols-2 gap-8 mb-8 bg-indigo-50/30 p-6 rounded-2xl">
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase">Total Students</label>
+                        <input type="number" class="total-students w-full p-3 bg-white border rounded-xl font-bold" oninput="updateCalculations()"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase">Present Students</label>
+                        <input type="number" class="present-students w-full p-3 bg-white border rounded-xl font-bold" oninput="updateCalculations()"></div>
+                    </div>
+                    <div class="books-container space-y-4"></div>
+                    <button onclick="addBookRow(${classId})" class="mt-6 bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-bold">+ Add Subject</button>
+                </div>
+            </div>`;
+        
+        document.getElementById('classes-list').insertAdjacentHTML('beforeend', classTemplate);
+        updateCalculations();
     };
 
-    // --- ASLI LOGIC START ---
-    function initAppLogic() {
-        // 1. ADD SUBJECT BUTTON
-        document.getElementById('add-subject-btn').onclick = () => {
-            const subject = document.getElementById('subject-select').value;
-            const present = document.getElementById('present-count').value;
-            if (!subject || present == "0") return alert("Subject aur Present count zaroori hai!");
+    window.updateTeachers = (selectElem, classId) => {
+        const selectedClass = selectElem.value;
+        const card = document.getElementById(`class-${classId}`);
+        card.dataset.selectedClass = selectedClass;
+        // Reset books if class changes
+        card.querySelector('.books-container').innerHTML = '';
+        addBookRow(classId);
+    };
 
-            const questions = [];
-            document.querySelectorAll('.q-row').forEach(row => {
-                const title = row.querySelector('.q-title-fixed')?.textContent || row.querySelector('.q-title-input')?.value;
-                const score = row.querySelector('.q-input').value;
-                if(title && score !== "") questions.push({ title, score });
-            });
+    window.addBookRow = (classId) => {
+        const card = document.getElementById(`class-${classId}`);
+        const selectedClass = card.dataset.selectedClass;
+        if(!selectedClass) return alert("Please select a class first!");
 
-            currentClassReports.push({
-                subject,
-                teacher: document.getElementById('teacher-select').options[document.getElementById('teacher-select').selectedIndex].text,
-                present,
-                percentage: document.getElementById('final-percent').textContent,
-                questions
-            });
+        const bookId = Date.now();
+        const teachersInClass = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
+        const teacherOptions = teachersInClass.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
 
-            // UI Reset for next subject
-            document.getElementById('present-count').value = 0;
-            renderQuestions();
-            alert(`${subject} add ho gaya!`);
-        };
-
-        // 2. SAVE CLASS BUTTON
-        document.getElementById('save-class-btn').onclick = async () => {
-            const className = document.getElementById('class-select').value;
-            if (currentClassReports.length === 0) return alert("Pehle Add Subject karein!");
-
-            try {
-                const reportId = `${jamiaName}_${className}_${Date.now()}`;
-                await setDoc(doc(db, "academic_inspections", reportId), {
-                    jamia: jamiaName,
-                    className,
-                    subjects: currentClassReports,
-                    timestamp: serverTimestamp(),
-                    inspector: currentUser.uid
-                });
-
-                alert("Poori class ka data save ho gaya!");
-                currentClassReports = []; // Clear temp data
-                document.getElementById('class-select').selectedIndex = 0;
-                renderQuestions();
-            } catch (e) {
-                alert("Error saving: " + e.message);
-            }
-        };
-    }
-
-       let jamiaData = [];
-
-// 1. Add New Class Section
-document.getElementById('add-class-btn').onclick = () => {
-    const classId = Date.now();
-    const classTemplate = `
-        <div class="class-card bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden" id="class-${classId}">
-            <div class="bg-slate-50 p-5 border-b flex justify-between items-center">
-                <div class="flex gap-4 items-center">
-                    <button onclick="removeClass(${classId})" class="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-200 transition-all">
-                        <i class="fas fa-trash-alt mr-1"></i> Remove Class
-                    </button>
-                    <select class="class-name-select p-2 bg-transparent border-b-2 border-indigo-200 font-bold text-indigo-800 outline-none">
-                        <option value="">Select Class</option>
-                        <option>Class 1</option><option>Class 2</option><option>Class 3</option>
+        const bookRow = `
+            <div class="book-row grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100" id="book-${bookId}">
+                <div class="col-span-1 text-center"><button onclick="this.closest('.book-row').remove(); updateCalculations();" class="text-slate-300 hover:text-red-500">×</button></div>
+                <div class="col-span-3">
+                    <select class="teacher-select w-full p-2 border-b outline-none text-sm" onchange="updateBooks(this, ${bookId}, '${selectedClass}')">
+                        <option value="">Select Teacher</option>${teacherOptions}
                     </select>
                 </div>
-                <div class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold shadow-sm">
-                    Class Score: <span class="class-avg">0%</span>
+                <div class="col-span-3">
+                    <select class="book-select w-full p-2 border-b outline-none text-sm font-medium">
+                        <option value="">Select Subject</option>
+                    </select>
                 </div>
-            </div>
-
-            <div class="p-8">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 bg-indigo-50/30 p-6 rounded-2xl border border-indigo-50">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Total Students (Enrolled)</label>
-                        <input type="number" class="total-students w-full p-3 bg-white border rounded-xl font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. 30" oninput="updateCalculations()">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Present Students (On-site)</label>
-                        <input type="number" class="present-students w-full p-3 bg-white border rounded-xl font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. 25" oninput="updateCalculations()">
-                    </div>
+                <div class="col-span-3">
+                    <input type="number" class="avg-correct w-full p-2 bg-indigo-50/50 rounded-lg text-center font-bold text-indigo-700" placeholder="Avg Correct" oninput="updateCalculations()">
                 </div>
+                <div class="col-span-2 text-center text-lg font-black text-slate-300 book-percent">0%</div>
+            </div>`;
+        
+        card.querySelector('.books-container').insertAdjacentHTML('beforeend', bookRow);
+    };
 
-                <div class="hidden md:grid grid-cols-12 gap-4 mb-4 px-2 text-[10px] font-black text-slate-400 uppercase">
-                    <div class="col-span-1">Action</div>
-                    <div class="col-span-3">Teacher / Period</div>
-                    <div class="col-span-3">Subject / Book</div>
-                    <div class="col-span-3 text-center">Avg. Correct Responses</div>
-                    <div class="col-span-2 text-center">Score %</div>
-                </div>
+    window.updateBooks = (teacherSelect, bookRowId, className) => {
+        const teacherId = teacherSelect.value;
+        const teacher = fullStructure.find(t => t.id === teacherId);
+        const books = teacher?.periods?.filter(p => p.className === className) || [];
+        const bookSelect = document.querySelector(`#book-${bookRowId} .book-select`);
+        bookSelect.innerHTML = '<option value="">Select Subject</option>' + 
+            books.map(b => `<option value="${b.bookName}">${b.bookName}</option>`).join('');
+    };
 
-                <div class="books-container space-y-4">
-                    </div>
+    window.updateCalculations = () => {
+        let jamiaTotalPerc = 0;
+        const classes = document.querySelectorAll('.class-card');
+        let totalBooks = 0;
 
-                <button onclick="addBook(${classId})" class="mt-6 bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-black transition-all">
-                    <i class="fas fa-book-open mr-2"></i> Add New Subject
-                </button>
-            </div>
-        </div>
-    `;
-    document.getElementById('classes-list').insertAdjacentHTML('beforeend', classTemplate);
-    addBook(classId); // Add first subject by default
-    updateCalculations();
-};
+        classes.forEach(card => {
+            const present = parseFloat(card.querySelector('.present-students').value) || 0;
+            let classSum = 0;
+            const books = card.querySelectorAll('.book-row');
+            totalBooks += books.length;
 
-// 2. Add Subject Row to a Class
-window.addBook = (classId) => {
-    const bookId = Date.now();
-    const bookRow = `
-        <div class="book-row grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-all shadow-sm" id="book-${bookId}">
-            <div class="col-span-1 flex justify-center">
-                <button onclick="removeBook(${bookId})" class="text-slate-300 hover:text-red-500 transition-colors"><i class="fas fa-times-circle text-xl"></i></button>
-            </div>
-            <div class="col-span-3">
-                <input type="text" class="w-full p-2 text-sm border-b outline-none" placeholder="Teacher Name">
-            </div>
-            <div class="col-span-3">
-                <input type="text" class="w-full p-2 text-sm border-b outline-none font-medium" placeholder="Subject Name">
-            </div>
-            <div class="col-span-3">
-                <input type="number" class="avg-correct w-full p-2 bg-indigo-50/50 rounded-lg text-center font-bold text-indigo-700 outline-none" placeholder="0" oninput="updateCalculations()">
-            </div>
-            <div class="col-span-2 text-center">
-                <span class="book-percent text-lg font-black text-slate-300">0%</span>
-            </div>
-        </div>
-    `;
-    document.querySelector(`#class-${classId} .books-container`).insertAdjacentHTML('beforeend', bookRow);
-};
+            books.forEach(row => {
+                const correct = parseFloat(row.querySelector('.avg-correct').value) || 0;
+                const perc = present > 0 ? (correct / present) * 100 : 0;
+                const display = row.querySelector('.book-percent');
+                display.textContent = Math.min(perc, 100).toFixed(1) + '%';
+                display.className = `col-span-2 text-center text-lg font-black ${perc > 0 ? 'text-indigo-600' : 'text-slate-300'} book-percent`;
+                classSum += perc;
+            });
 
-// 3. Calculation Engine
-window.updateCalculations = () => {
-    let jamiaTotalPerc = 0;
-    let totalClasses = document.querySelectorAll('.class-card').length;
-    let totalBooksCount = 0;
-
-    document.querySelectorAll('.class-card').forEach(classCard => {
-        let present = parseFloat(classCard.querySelector('.present-students').value) || 0;
-        let classTotalPerc = 0;
-        let booksInClass = classCard.querySelectorAll('.book-row');
-        totalBooksCount += booksInClass.length;
-
-        booksInClass.forEach(bookRow => {
-            let correct = parseFloat(bookRow.querySelector('.avg-correct').value) || 0;
-            let bookPerc = (present > 0 && correct > 0) ? (correct / present) * 100 : 0;
-            
-            // Limit percentage to 100%
-            if(bookPerc > 100) bookPerc = 100;
-
-            const percDisplay = bookRow.querySelector('.book-percent');
-            percDisplay.textContent = bookPerc.toFixed(1) + '%';
-            percDisplay.className = `book-percent text-lg font-black ${bookPerc > 0 ? 'text-indigo-600' : 'text-slate-300'}`;
-            
-            classTotalPerc += bookPerc;
+            const classAvg = books.length > 0 ? classSum / books.length : 0;
+            card.querySelector('.class-avg').textContent = Math.min(classAvg, 100).toFixed(1) + '%';
+            jamiaTotalPerc += classAvg;
         });
 
-        let classAvg = booksInClass.length > 0 ? (classTotalPerc / booksInClass.length) : 0;
-        classCard.querySelector('.class-avg').textContent = classAvg.toFixed(1) + '%';
-        jamiaTotalPerc += classAvg;
-    });
-
-    let jamiaAvg = totalClasses > 0 ? (jamiaTotalPerc / totalClasses) : 0;
-    
-    // Update Header
-    document.getElementById('jamia-total-percent').textContent = jamiaAvg.toFixed(1) + '%';
-    document.getElementById('total-classes-count').textContent = totalClasses;
-    document.getElementById('total-books-count').textContent = totalBooksCount;
-};
-
-// 4. Remove Helpers
-window.removeClass = (id) => { if(confirm('Remove this class?')) { document.getElementById(`class-${id}`).remove(); updateCalculations(); } };
-window.removeBook = (id) => { document.getElementById(`book-${id}`).remove(); updateCalculations(); };
-        
+        const jamiaAvg = classes.length > 0 ? jamiaTotalPerc / classes.length : 0;
+        document.getElementById('jamia-total-percent').textContent = Math.min(jamiaAvg, 100).toFixed(1) + '%';
+        document.getElementById('total-classes-count').textContent = classes.length;
+        document.getElementById('total-books-count').textContent = totalBooks;
+    };
 </script>
 </body>
 </html>
