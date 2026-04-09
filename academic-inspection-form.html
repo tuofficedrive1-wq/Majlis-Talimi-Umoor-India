@@ -116,13 +116,14 @@
     document.getElementById('jamia-title').textContent = jamiaName;
 
     let currentUser = null;
-    let fullStructure = []; // Firestore se aaya hua data
+    let fullStructure = []; 
+    let currentClassReports = []; // Temporary storage for subjects
 
-    // 1. Auth & Data Loading
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUser = user;
             await loadJamiaStructure();
+            initAppLogic(); // Buttons ko activate karne wala function
         } else {
             window.location.href = "index.html";
         }
@@ -131,215 +132,132 @@
     async function loadJamiaStructure() {
         const userRef = doc(db, "users", currentUser.uid);
         const userSnap = await getDoc(userRef);
-        
         if (userSnap.exists()) {
-            // monthly-performance.js ke mutabiq path
             const academicData = userSnap.data().academicYears?.["2025-2026"]?.karkardagiStructure || [];
             const jamiaData = academicData.find(j => j.jamiaName === jamiaName);
-            
             if (jamiaData) {
                 fullStructure = jamiaData.teachers;
                 populateClasses();
-            } else {
-                alert("Is Jamia ka koi structure nahi mila.");
             }
         }
     }
 
-    // 2. Populate Class Dropdown
     function populateClasses() {
         const classSelect = document.getElementById('class-select');
         const classes = new Set();
-        
         fullStructure.forEach(teacher => {
             teacher.periods?.forEach(p => classes.add(p.className));
         });
-
         classSelect.innerHTML = '<option value="">Select Class</option>' + 
             Array.from(classes).map(c => `<option value="${c}">${c}</option>`).join('');
-            
         classSelect.onchange = populateTeachers;
     }
 
-    // 3. Populate Teacher Dropdown based on Class
     function populateTeachers() {
         const selectedClass = document.getElementById('class-select').value;
         const teacherSelect = document.getElementById('teacher-select');
-        
-        const filteredTeachers = fullStructure.filter(t => 
-            t.periods?.some(p => p.className === selectedClass)
-        );
-
+        const filteredTeachers = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
         teacherSelect.innerHTML = '<option value="">Select Teacher</option>' + 
             filteredTeachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-            
         teacherSelect.onchange = populateSubjects;
     }
 
-    // 4. Populate Subject Dropdown based on Class & Teacher
     function populateSubjects() {
         const selectedClass = document.getElementById('class-select').value;
         const selectedTeacherId = document.getElementById('teacher-select').value;
         const subjectSelect = document.getElementById('subject-select');
-        
         const teacher = fullStructure.find(t => t.id === selectedTeacherId);
         const subjects = teacher?.periods?.filter(p => p.className === selectedClass) || [];
-
         subjectSelect.innerHTML = subjects.map(s => `<option value="${s.bookName}">${s.bookName}</option>`).join('');
-        
-        // Subject change hone par questions refresh karein
         renderQuestions();
     }
 
     document.getElementById('subject-select').onchange = renderQuestions;
 
-    // 5. Dynamic Questions Logic
     function renderQuestions() {
         const subject = document.getElementById('subject-select').value.toLowerCase();
         const container = document.getElementById('questions-body');
         let html = '';
-
-        // English check logic
         if (subject.includes('english')) {
-            const fixed = ['Reading', 'Writing', 'Translation'];
-            fixed.forEach(q => html += createRow(q, false));
-            for(let i=1; i<=3; i++) html += createRow('', true); // 3 blank
-        } else {
-            for(let i=1; i<=3; i++) html += createRow('', true); // Only 3 blank for others
+            ['Reading', 'Writing', 'Translation'].forEach(q => html += createRow(q, false));
         }
+        for(let i=1; i<=3; i++) html += createRow('', true);
         container.innerHTML = html;
-        calculateTotal();
+        window.calculateTotal();
     }
 
     function createRow(val, isBlank) {
-        return `
-            <tr class="q-row border-b border-slate-50">
-                <td class="p-4">
-                    ${isBlank ? 
-                        `<input type="text" placeholder="Sawwal likhein..." class="q-title-input w-full bg-indigo-50/50 p-2 rounded-lg outline-none text-slate-700 font-medium">` : 
-                        `<span class="q-title-fixed font-semibold text-slate-700">${val}</span>`}
-                </td>
-                <td class="p-4 text-center">
-                    <input type="number" oninput="calculateTotal()" class="q-input w-24 text-center font-bold text-indigo-600 bg-slate-50 p-2 rounded-lg outline-none" placeholder="0">
-                </td>
+        return `<tr class="q-row border-b border-slate-50">
+                <td class="p-4">${isBlank ? `<input type="text" placeholder="Sawwal..." class="q-title-input w-full bg-indigo-50/50 p-2 rounded-lg outline-none">` : `<span class="q-title-fixed font-semibold">${val}</span>`}</td>
+                <td class="p-4 text-center"><input type="number" oninput="window.calculateTotal()" class="q-input w-24 text-center font-bold text-indigo-600 bg-slate-50 p-2 rounded-lg outline-none" placeholder="0"></td>
             </tr>`;
     }
 
     window.calculateTotal = () => {
         const present = parseFloat(document.getElementById('present-count').value) || 0;
         const inputs = document.querySelectorAll('.q-input');
-        let total = 0;
-        let count = 0;
-
-        inputs.forEach(input => {
-            if(input.value !== "") {
-                total += parseFloat(input.value) || 0;
-                count++;
-            }
-        });
-
+        let total = 0, count = 0;
+        inputs.forEach(input => { if(input.value !== "") { total += parseFloat(input.value) || 0; count++; } });
         const avgSahi = count > 0 ? total / count : 0;
         const percent = present > 0 ? ((avgSahi / present) * 100).toFixed(1) : 0;
-        
         const display = document.getElementById('final-percent');
         display.textContent = percent + '%';
         display.className = `text-lg font-black ${percent > 70 ? 'text-emerald-500' : 'text-indigo-600'}`;
     };
 
-            // 1. Global Variable
-let currentClassReports = []; 
+    // --- ASLI LOGIC START ---
+    function initAppLogic() {
+        // 1. ADD SUBJECT BUTTON
+        document.getElementById('add-subject-btn').onclick = () => {
+            const subject = document.getElementById('subject-select').value;
+            const present = document.getElementById('present-count').value;
+            if (!subject || present == "0") return alert("Subject aur Present count zaroori hai!");
 
-// 2. Add Subject Button Logic
-document.getElementById('add-subject-btn').onclick = () => {
-    const subject = document.getElementById('subject-select').value;
-    const present = document.getElementById('present-count').value;
-    const percentage = document.getElementById('final-percent').textContent;
+            const questions = [];
+            document.querySelectorAll('.q-row').forEach(row => {
+                const title = row.querySelector('.q-title-fixed')?.textContent || row.querySelector('.q-title-input')?.value;
+                const score = row.querySelector('.q-input').value;
+                if(title && score !== "") questions.push({ title, score });
+            });
 
-    if (!subject || present == "0") {
-        alert("Pehle Subject select karein aur Students ki tadaad likhein!");
-        return;
-    }
+            currentClassReports.push({
+                subject,
+                teacher: document.getElementById('teacher-select').options[document.getElementById('teacher-select').selectedIndex].text,
+                present,
+                percentage: document.getElementById('final-percent').textContent,
+                questions
+            });
 
-    const questions = [];
-    document.querySelectorAll('.q-row').forEach(row => {
-        const title = row.querySelector('.q-title-fixed')?.textContent || row.querySelector('.q-title-input')?.value;
-        const score = row.querySelector('.q-input').value;
-        if(title) questions.push({ title, score });
-    });
+            // UI Reset for next subject
+            document.getElementById('present-count').value = 0;
+            renderQuestions();
+            alert(`${subject} add ho gaya!`);
+        };
 
-    currentClassReports.push({
-        subject: subject,
-        presentStudents: present,
-        performance: percentage,
-        details: questions
-    });
+        // 2. SAVE CLASS BUTTON
+        document.getElementById('save-class-btn').onclick = async () => {
+            const className = document.getElementById('class-select').value;
+            if (currentClassReports.length === 0) return alert("Pehle Add Subject karein!");
 
-    // Reset for next subject in SAME class
-    document.getElementById('subject-select').selectedIndex = 0;
-    document.getElementById('present-count').value = 0;
-    renderQuestions(); 
-    
-    alert(`${subject} add ho gaya! Ab isi class ka doosra subject add karein ya 'Submit' dabayein.`);
-};
+            try {
+                const reportId = `${jamiaName}_${className}_${Date.now()}`;
+                await setDoc(doc(db, "academic_inspections", reportId), {
+                    jamia: jamiaName,
+                    className,
+                    subjects: currentClassReports,
+                    timestamp: serverTimestamp(),
+                    inspector: currentUser.uid
+                });
 
-// 3. Save Class & Submit Logic
-document.getElementById('save-class-btn').onclick = async () => {
-    const className = document.getElementById('class-select').value;
-
-    if (currentClassReports.length === 0) {
-        alert("Pehle 'Add Subject' button se kam se kam ek subject add karein!");
-        return;
-    }
-
-    const finalData = {
-        jamia: jamiaName,
-        className: className,
-        inspectionDate: serverTimestamp(),
-        subjects: currentClassReports,
-        inspectedBy: currentUser.uid
-    };
-
-    try {
-        const reportId = `${jamiaName}_${className}_${Date.now()}`;
-        await setDoc(doc(db, "academic_inspections", reportId), finalData);
-        
-        alert(`Mubarak! Class ${className} ki poori report save ho gayi.`);
-        
-        // Full Reset for NEXT class
-        currentClassReports = [];
-        document.getElementById('class-select').selectedIndex = 0;
-        document.getElementById('teacher-select').innerHTML = '<option>Select Class First</option>';
-        renderQuestions();
-        
-    } catch (error) {
-        console.error("Error:", error);
-        alert("Data save nahi ho saka. Console check karein.");
-    }
-};
-
-        // Script ke bilkul end mein, saare imports ke baad
-const setupButtons = () => {
-    const addSubBtn = document.getElementById('add-subject-btn');
-    const saveClsBtn = document.getElementById('save-class-btn');
-
-    if (addSubBtn) {
-        addSubBtn.onclick = () => {
-            console.log("Add Subject Clicked");
-            // Yahan Add Subject wala logic likhein
+                alert("Poori class ka data save ho gaya!");
+                currentClassReports = []; // Clear temp data
+                document.getElementById('class-select').selectedIndex = 0;
+                renderQuestions();
+            } catch (e) {
+                alert("Error saving: " + e.message);
+            }
         };
     }
-
-    if (saveClsBtn) {
-        saveClsBtn.onclick = async () => {
-            console.log("Save Class Clicked");
-            // Yahan Save Class wala logic likhein
-        };
-    }
-};
-
-// Ise call karein
-setupButtons();
-
 </script>
 </body>
 </html>
