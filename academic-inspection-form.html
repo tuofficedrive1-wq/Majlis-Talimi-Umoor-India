@@ -82,13 +82,14 @@
     let fullStructure = []; 
 
     onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            currentUser = user;
-            await loadJamiaStructure();
-        } else {
-            window.location.href = "index.html";
-        }
-    });
+    if (user) {
+        currentUser = user;
+        await loadJamiaStructure();
+        await loadExistingReport(); // Yeh line ensure karegi ke data load ho
+    } else {
+        window.location.href = "index.html";
+    }
+});
 
     async function loadJamiaStructure() {
         const userRef = doc(db, "users", currentUser.uid);
@@ -312,13 +313,11 @@ function createQuestionInput(val, isBlank) {
 };
         document.getElementById('final-save-btn').onclick = async () => {
     const classes = document.querySelectorAll('.class-card');
-    
-    if (classes.length === 0) {
-        alert("Please add at least one class before saving!");
-        return;
-    }
+    if (classes.length === 0) return alert("Please add at least one class!");
 
-    // Poora data structure taiyar karna
+    // Fixed ID: REP_JamiaName (taki hamesha isi document me update ho)
+    const reportId = `REP_${jamiaName.replace(/\s+/g, '_')}`;
+
     const finalReport = {
         jamiaName: jamiaName,
         inspectorId: currentUser.uid,
@@ -326,7 +325,7 @@ function createQuestionInput(val, isBlank) {
         overallPercentage: document.getElementById('jamia-total-percent').textContent,
         totalClasses: document.getElementById('total-classes-count').textContent,
         totalBooks: document.getElementById('total-books-count').textContent,
-        data: []
+        classes: [] // Note: Iska naam 'classes' rakhein taki loading logic se match kare
     };
 
     classes.forEach(card => {
@@ -338,13 +337,10 @@ function createQuestionInput(val, isBlank) {
             subjects: []
         };
 
-        const books = card.querySelectorAll('.book-row');
-        books.forEach(row => {
+        card.querySelectorAll('.book-row').forEach(row => {
             const questions = [];
             row.querySelectorAll('.q-score-input').forEach(qInput => {
-                questions.push({
-                    score: qInput.value || 0
-                });
+                questions.push({ score: qInput.value || 0 });
             });
 
             classData.subjects.push({
@@ -354,19 +350,15 @@ function createQuestionInput(val, isBlank) {
                 evaluations: questions
             });
         });
-
-        finalReport.data.push(classData);
+        finalReport.classes.push(classData);
     });
 
     try {
-        const reportId = `REP_${jamiaName}_${Date.now()}`;
         await setDoc(doc(db, "academic_inspections", reportId), finalReport);
-        
-        alert("All inspections have been saved successfully!");
-        // Optional: window.location.reload(); 
+        alert("Report updated successfully!");
     } catch (error) {
-        console.error("Error saving report:", error);
-        alert("Failed to save report. Check console for details.");
+        console.error("Error:", error);
+        alert("Save failed!");
     }
 };
 
