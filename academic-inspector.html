@@ -254,30 +254,60 @@ import {
             showLoader(false);
         }
 
-        // LOAD STATS & PROGRESS
-        async function loadStats() {
-            const month = document.getElementById('report-month').value;
-            // Fetch current report
-            const reportId = `${currentUser.uid}_${month}`;
-            const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
-            reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
+            // academic-inspector.html ke andar loadStats function ko replace karein
+async function loadStats() {
+    const month = document.getElementById('report-month').value;
+    const reportId = `${currentUser.uid}_${month}`;
+    const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
+    reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
 
-            const total = assignedJamiaat.length;
-            const updateUI = (prefix, count) => {
-                const percent = total > 0 ? Math.round((count / total) * 100) : 0;
-                document.getElementById(`prog-${prefix}-percent`).textContent = `${percent}%`;
-                document.getElementById(`prog-${prefix}-bar`).style.width = `${percent}%`;
-                document.getElementById(`prog-${prefix}-text`).textContent = percent === 100 ? "Completed" : (percent > 0 ? "In Progress" : "Pending");
-                document.getElementById(`prog-${prefix}-text`).className = `text-lg font-bold mt-1 ${percent === 100 ? 'text-emerald-600' : (percent > 0 ? 'text-indigo-600' : 'text-slate-400')}`;
-            };
+    // --- NAYA LOGIC: Academic Inspections se data fetch karna ---
+    for (let jamia of assignedJamiaat) {
+        // Hum check karenge ke kya is mahine is Jamia ki koi detailed inspection hui hai?
+        // Idhar hum REP_JamiaName format use kar rahe hain jo aapne save ke waqt rakha tha
+        const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}`;
+        const detailSnap = await getDoc(doc(db, "academic_inspections", inspectionId));
 
-            updateUI('jaiza', (reportsData.jaiza || []).length);
-            updateUI('rec', (reportsData.recordings || []).length);
-            updateUI('test', (reportsData.tests || []).length);
-            updateUI('enroll', (reportsData.enroll || []).length);
-
-            renderMainCharts();
+        if (detailSnap.exists()) {
+            const detailData = detailSnap.data();
+            
+            // Agar pehle se inspector_reports me entry nahi hai to auto-fill entry banayein
+            let existingJaiza = reportsData.jaiza.find(j => j.name === jamia);
+            
+            if (existingJaiza) {
+                // Form se aayi hui values ko priority dena
+                existingJaiza.score = detailData.overallPercentage.replace('%', '');
+                // Date agar Firestore serverTimestamp hai to convert karein warna string use karein
+                if(detailData.inspectionDate) {
+                    const d = detailData.inspectionDate.toDate();
+                    existingJaiza.date = d.toISOString().split('T')[0];
+                }
+                existingJaiza.type = "Inspection"; // Auto-set to Inspection
+            } else {
+                // Nayi entry add karna agar bilkul khali hai
+                reportsData.jaiza.push({
+                    name: jamia,
+                    score: detailData.overallPercentage.replace('%', ''),
+                    type: "Inspection",
+                    date: detailData.inspectionDate ? detailData.inspectionDate.toDate().toISOString().split('T')[0] : ""
+                });
+            }
         }
+    }
+
+    // Baaki UI update logic (same rahega)
+    const total = assignedJamiaat.length;
+    const updateUI = (prefix, count) => {
+        const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+        const displayPercent = document.getElementById(`prog-${prefix}-percent`);
+        const bar = document.getElementById(`prog-${prefix}-bar`);
+        if(displayPercent) displayPercent.textContent = `${percent}%`;
+        if(bar) bar.style.width = `${percent}%`;
+    };
+
+    updateUI('jaiza', (reportsData.jaiza || []).length);
+    renderMainCharts();
+}
 
         // 1. Chart Download Function
 window.downloadChart = (chartId, fileName) => {
