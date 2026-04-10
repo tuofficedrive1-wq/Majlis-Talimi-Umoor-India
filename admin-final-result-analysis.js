@@ -1,4 +1,4 @@
-// ✅ UPDATED ADMIN FINAL ANALYSIS WITH DYNAMIC DASHBOARD & USER FILTERS
+// ✅ UPDATED ADMIN FINAL ANALYSIS WITH SEARCH, STATS & OPTIMIZATION
 
 import {
     collection, query, where, getDocs, orderBy
@@ -24,7 +24,6 @@ const getKefiyatColor = (p) => {
     return "#dc2626";
 };
 
-// 🚀 MAIN EXPORT FUNCTION
 export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -32,7 +31,6 @@ export async function initAdminResultAnalysis(db, containerId) {
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
 
-    // 🔍 Lookup: Jamia se User aur Region nikalna
     const getJamiaContext = (jamiaName) => {
         if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
         const target = jamiaName.trim().toLowerCase();
@@ -49,7 +47,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         };
     };
 
-    // 🏗️ UI STRUCTURE
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
         <div class="flex border-b mb-6 bg-gray-50 rounded-t-lg overflow-hidden">
@@ -58,62 +55,67 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
 
         <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-    <div>
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Exam Type</label>
-        <select id="admin-exam-type" class="w-full p-2.5 border rounded-lg urdu-font">
-            <option value="ششماہی امتحان">ششماہی امتحان</option>
-            <option value="سالانہ امتحان">سالانہ امتحان</option>
-        </select>
-    </div>
-    <div>
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Year</label>
-        <select id="admin-exam-year" class="w-full p-2.5 border rounded-lg">
-            <option value="2024-25">2024-25</option>
-            <option value="2025-26" selected>2025-26</option>
-        </select>
-    </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Exam & Year</label>
+                    <div class="flex gap-1">
+                        <select id="admin-exam-type" class="w-full p-2 border rounded-lg text-sm urdu-font">
+                            <option value="ششماہی امتحان">ششماہی امتحان</option>
+                            <option value="سالانہ امتحان">سالانہ امتحان</option>
+                        </select>
+                        <select id="admin-exam-year" class="w-full p-2 border rounded-lg text-sm">
+                            <option value="2024-25">24-25</option>
+                            <option value="2025-26" selected>25-26</option>
+                        </select>
+                    </div>
+                </div>
 
-    <div>
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">ریجن (Region)</label>
-        <select id="admin-region-filter" class="w-full p-2.5 border rounded-lg">
-            <option value="all">All Regions</option>
-            ${regions.map(r => `<option value="${r}">${r}</option>`).join('')}
-        </select>
-    </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label>
+                    <select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm">
+                        <option value="all">All Regions</option>
+                        ${regions.map(r => `<option value="${r}">${r}</option>`).join('')}
+                    </select>
+                </div>
 
-    <div id="dashboard-filters-div">
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Result Type</label>
-        <select id="dashboard-result-type" class="w-full p-2.5 border rounded-lg font-bold">
-            <option value="region-wise">🌍 Region Wise Summary</option>
-            <option value="user-wise">👨‍💼 User Wise Summary</option>
-            <option value="submission-status">📋 Submission Status</option>
-        </select>
-    </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Search Jamia</label>
+                    <input type="text" id="admin-jamia-search" placeholder="Naam likhein..." class="w-full p-2 border rounded-lg text-sm urdu-font">
+                </div>
 
-    <div id="reports-user-filter-div" class="hidden">
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">تعلیمی ذمہ دار (User)</label>
-        <select id="admin-user-filter" class="w-full p-2.5 border rounded-lg">
-            <option value="all">All Users</option>
-        </select>
-    </div>
-    <div id="reports-layout-filter-div" class="hidden">
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Layout</label>
-        <select id="admin-layout" class="w-full p-2.5 border rounded-lg">
-            <option value="jamia">Jamia Wise</option>
-            <option value="class">Class Wise</option>
-            <option value="teacher">Asatiza Wise</option>
-        </select>
-    </div>
-</div>
-            <button id="admin-show-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl w-full font-bold shadow-lg transition">
-                Show Analysis
-            </button>
-            <button id="admin-export-btn" class="hidden bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl w-full font-bold shadow-lg transition mt-3">
-    📥 Download Excel Report
-</button>
+                <div id="dashboard-filters-div">
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Result Type</label>
+                    <select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold">
+                        <option value="region-wise">🌍 Region Summary</option>
+                        <option value="user-wise">👨‍💼 User Summary</option>
+                        <option value="submission-status">📋 Submission Status</option>
+                    </select>
+                </div>
+
+                <div id="reports-user-filter-div" class="hidden">
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label>
+                    <select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm">
+                        <option value="all">All Users</option>
+                    </select>
+                </div>
+
+                <div id="reports-layout-filter-div" class="hidden">
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Layout</label>
+                    <select id="admin-layout" class="w-full p-2 border rounded-lg text-sm">
+                        <option value="jamia">Jamia Wise</option>
+                        <option value="class">Class Wise</option>
+                        <option value="teacher">Asatiza Wise</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="admin-show-btn" class="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Show Analysis</button>
+                <button id="admin-export-btn" class="hidden flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg transition">📥 Excel</button>
+            </div>
         </div>
-        
+
+        <div id="stats-summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
 
         <div id="admin-loader" class="hidden text-center py-12"><div class="loader mx-auto"></div><p>Loading Data...</p></div>
 
@@ -125,172 +127,169 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <tfoot id="admin-foot" class="bg-gray-800 text-white font-bold"></tfoot>
             </table>
         </div>
-    </div>
+    </div>`;
 
-    <style>
-        .active-sub-tab { border-bottom: 4px solid #4f46e5; color: #4f46e5 !important; background: white; }
-    </style>`;
-    
-       const btnDashboard = document.getElementById("tab-dashboard");
-    const btnReports = document.getElementById("tab-reports");
-    const dashboardView = document.getElementById("dashboard-view");
-    const reportsView = document.getElementById("reports-view");
-    const dashboardFilters = document.getElementById("dashboard-filters-div");
-    const reportsUserFilter = document.getElementById("reports-user-filter-div");
-    const reportsLayoutFilter = document.getElementById("reports-layout-filter-div");
+    // Internal State Management
+    const elements = {
+        btnDashboard: document.getElementById("tab-dashboard"),
+        btnReports: document.getElementById("tab-reports"),
+        dashboardView: document.getElementById("dashboard-view"),
+        reportsView: document.getElementById("reports-view"),
+        dashboardFilters: document.getElementById("dashboard-filters-div"),
+        reportsUserFilter: document.getElementById("reports-user-filter-div"),
+        reportsLayoutFilter: document.getElementById("reports-layout-filter-div"),
+        statsContainer: document.getElementById("stats-summary"),
+        exportBtn: document.getElementById("admin-export-btn"),
+        jamiaSearch: document.getElementById("admin-jamia-search")
+    };
 
     // 🎮 TAB SWITCHING
-    btnDashboard.onclick = () => {
-        btnDashboard.classList.add("active-sub-tab"); btnReports.classList.remove("active-sub-tab");
-        dashboardView.classList.remove("hidden"); reportsView.classList.add("hidden");
-        dashboardFilters.classList.remove("hidden");
-        reportsUserFilter.classList.add("hidden"); reportsLayoutFilter.classList.add("hidden");
+    elements.btnDashboard.onclick = () => {
+        elements.btnDashboard.classList.add("active-sub-tab"); elements.btnReports.classList.remove("active-sub-tab");
+        elements.dashboardView.classList.remove("hidden"); elements.reportsView.classList.add("hidden");
+        elements.dashboardFilters.classList.remove("hidden");
+        elements.reportsUserFilter.classList.add("hidden"); elements.reportsLayoutFilter.classList.add("hidden");
+        elements.statsContainer.classList.remove("hidden");
     };
 
-    btnReports.onclick = () => {
-        btnReports.classList.add("active-sub-tab"); btnDashboard.classList.remove("active-sub-tab");
-        reportsView.classList.remove("hidden"); dashboardView.classList.add("hidden");
-        dashboardFilters.classList.add("hidden");
-        reportsUserFilter.classList.remove("hidden"); reportsLayoutFilter.classList.remove("hidden");
+    elements.btnReports.onclick = () => {
+        elements.btnReports.classList.add("active-sub-tab"); elements.btnDashboard.classList.remove("active-sub-tab");
+        elements.reportsView.classList.remove("hidden"); elements.dashboardView.classList.add("hidden");
+        elements.dashboardFilters.classList.add("hidden");
+        elements.reportsUserFilter.classList.remove("hidden"); elements.reportsLayoutFilter.classList.remove("hidden");
+        elements.statsContainer.classList.add("hidden"); // Reports me hide kar sakte hain agar space chahiye
     };
-    
-// 🔄 Dynamic Filter Logic: Region ke hisab se User dropdown update karna
-const regionSelect = document.getElementById("admin-region-filter");
-const userSelect = document.getElementById("admin-user-filter");
 
-regionSelect.onchange = () => {
-    const selectedReg = regionSelect.value;
-    userSelect.innerHTML = '<option value="all">All Users</option>';
-    const filteredUsers = selectedReg === "all" ? allUsers : allUsers.filter(u => u.region === selectedReg);
-    
-    filteredUsers.sort((a,b) => (a.name||'').localeCompare(b.name||'')).forEach(u => {
-        const name = u.name || u.email;
-        userSelect.innerHTML += `<option value="${name}">${name}</option>`;
-    });
-};
-    document.getElementById("admin-export-btn").onclick = () => {
-    const table = document.getElementById("final-analysis-table-to-export");
-    const workbook = XLSX.utils.table_to_book(table);
-    XLSX.writeFile(workbook, `Result_Report_${new Date().toLocaleDateString()}.xlsx`);
-};
-  
-  // 📊 Show Analysis Logic
-const exportBtn = document.getElementById("admin-export-btn");
-
-document.getElementById("admin-show-btn").onclick = async () => {
-    const examType = document.getElementById("admin-exam-type").value;
-    const examYear = document.getElementById("admin-exam-year").value;
-    const selRegion = document.getElementById("admin-region-filter").value;
-    const selUser = document.getElementById("admin-user-filter").value;
-    const layout = document.getElementById("admin-layout").value;
-    const activeTab = document.getElementById("tab-dashboard").classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
-
-    const loader = document.getElementById("admin-loader");
-    loader.classList.remove("hidden");
-    
-    try {
-        const colName = (activeTab === 'reports' && layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
-        
-        // 1. Query with Timestamp Descending (Latest First)
-        const q = query(
-            collection(db, colName), 
-            where("examType", "==", examType), 
-            where("examYear", "==", examYear),
-            orderBy("timestamp", "desc")
-        );
-        
-        const snapshot = await getDocs(q);
-        let dataList = [];
-        let uniqueKeys = new Set(); // Latest entry track karne ke liye
-
-        snapshot.forEach(doc => {
-            const d = doc.data();
-            const context = getJamiaContext(d.jamia);
-
-            // 2. Filter logic
-            const matchRegion = (selRegion === "all" || context.region === selRegion);
-            const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
-
-            // 3. Unique ID (Jamia + Class/Teacher) - Taaki purana data ignore ho jaye
-            const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
-
-            if (matchRegion && matchUser && !uniqueKeys.has(uniqueId)) {
-                dataList.push({ ...d, ...context });
-                uniqueKeys.add(uniqueId);
-            }
+    // 🔄 Region-User Sync
+    document.getElementById("admin-region-filter").onchange = (e) => {
+        const selReg = e.target.value;
+        const userSelect = document.getElementById("admin-user-filter");
+        userSelect.innerHTML = '<option value="all">All Users</option>';
+        const filtered = selReg === "all" ? allUsers : allUsers.filter(u => u.region === selReg);
+        filtered.sort((a,b) => (a.name||'').localeCompare(b.name||'')).forEach(u => {
+            const n = u.name || u.email;
+            userSelect.innerHTML += `<option value="${n}">${n}</option>`;
         });
+    };
 
-        if (activeTab === 'dashboard') {
-            renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers);
-            exportBtn.classList.add("hidden"); 
-        } else {
-            renderDetailedReports(dataList, layout);
-            exportBtn.classList.remove("hidden"); // Report tab me button show hoga
+    // 📊 Show Analysis Logic
+    document.getElementById("admin-show-btn").onclick = async () => {
+        const examType = document.getElementById("admin-exam-type").value;
+        const examYear = document.getElementById("admin-exam-year").value;
+        const selRegion = document.getElementById("admin-region-filter").value;
+        const selUser = document.getElementById("admin-user-filter").value;
+        const layout = document.getElementById("admin-layout").value;
+        const searchVal = elements.jamiaSearch.value.trim().toLowerCase();
+        const activeTab = elements.btnDashboard.classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
+
+        const loader = document.getElementById("admin-loader");
+        loader.classList.remove("hidden");
+        
+        try {
+            const colName = (activeTab === 'reports' && layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
+            const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
+            
+            const snapshot = await getDocs(q);
+            let dataList = [];
+            let uniqueKeys = new Set();
+            let totalStudents = 0, passedStudents = 0, jamiaCount = new Set();
+
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                const context = getJamiaContext(d.jamia);
+
+                const matchRegion = (selRegion === "all" || context.region === selRegion);
+                const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
+                const matchSearch = (!searchVal || d.jamia.toLowerCase().includes(searchVal));
+
+                const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
+
+                if (matchRegion && matchUser && matchSearch && !uniqueKeys.has(uniqueId)) {
+                    dataList.push({ ...d, ...context });
+                    uniqueKeys.add(uniqueId);
+                    
+                    // Global Stats Calculation
+                    const num = (v) => parseInt(v) || 0;
+                    const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
+                    const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                    totalStudents += h; passedStudents += p;
+                    jamiaCount.add(d.jamia);
+                }
+            });
+
+            // Update Top Stats
+            const overallPer = totalStudents ? (passedStudents/totalStudents)*100 : 0;
+            elements.statsContainer.innerHTML = `
+                <div class="bg-white p-4 rounded-xl border-l-4 border-indigo-500 shadow-sm">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase">Total Jamiaat</p>
+                    <p class="text-xl font-black">${jamiaCount.size}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border-l-4 border-blue-500 shadow-sm">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase">Hazir Students</p>
+                    <p class="text-xl font-black">${totalStudents}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border-l-4 border-green-500 shadow-sm">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase">Total Pass</p>
+                    <p class="text-xl font-black">${passedStudents}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border-l-4 border-orange-500 shadow-sm">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase">Overall %</p>
+                    <p class="text-xl font-black">${overallPer.toFixed(1)}%</p>
+                </div>
+            `;
+
+            if (activeTab === 'dashboard') {
+                renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers);
+                elements.exportBtn.classList.add("hidden"); 
+            } else {
+                renderDetailedReports(dataList, layout);
+                elements.exportBtn.classList.remove("hidden");
+            }
+        } catch (e) { 
+            console.error(e); alert("Error loading data.");
         }
-    } catch (e) { 
-        console.error("Firestore Error:", e);
-        alert("Data load nahi ho saka. Shayad Firestore Index ki zaroorat hai.");
-    }
-    loader.classList.add("hidden");
-};
+        loader.classList.add("hidden");
+    };
 
-// ✅ EXCEL DOWNLOAD TRIGGER
-exportBtn.onclick = () => {
-    const table = document.getElementById("final-analysis-table-to-export");
-    const wb = XLSX.utils.table_to_book(table);
-    XLSX.writeFile(wb, `Talimi_Umoor_Result_${new Date().toLocaleDateString()}.xlsx`);
-};
+    // Excel Export
+    elements.exportBtn.onclick = () => {
+        const table = document.getElementById("final-analysis-table-to-export");
+        const wb = XLSX.utils.table_to_book(table);
+        XLSX.writeFile(wb, `Result_Report_${new Date().toLocaleDateString()}.xlsx`);
+    };
 
+    // Render Functions (Dashboard & Reports) - Yeh aapka purana logic hai optimized version mein
     function renderDashboard(data, type, users) {
-        dashboardView.innerHTML = "";
+        elements.dashboardView.innerHTML = "";
         const num = (v) => parseInt(v) || 0;
-
         if (type === 'region-wise' || type === 'user-wise') {
             let stats = {};
             const keyField = type === 'region-wise' ? 'region' : 'userName';
-            
             data.forEach(d => {
                 const key = d[keyField] || 'Unknown';
-                if (!stats[key]) stats[key] = { kul: 0, pass: 0, hazir: 0 };
-                const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
-                const pass = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                const hazir = Math.max(0, kul - num(d.ghaib));
-                stats[key].kul += kul; stats[key].pass += pass; stats[key].hazir += hazir;
+                if (!stats[key]) stats[key] = { h: 0, p: 0 };
+                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
+                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                stats[key].h += h; stats[key].p += p;
             });
-
-            let rows = "";
-            let totals = { h: 0, p: 0 };
-            for (let k in stats) {
-                const s = stats[k]; const per = s.hazir ? (s.pass/s.hazir)*100 : 0;
-                totals.h += s.hazir; totals.p += s.pass;
-                rows += `<tr><td class="p-2 border font-bold text-right">${k}</td><td class="p-2 border">${s.hazir}</td><td class="p-2 border text-green-600 font-bold">${s.pass}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td></tr>`;
-            }
-            const grandPer = totals.h ? (totals.p/totals.h)*100 : 0;
-
-            dashboardView.innerHTML = `
-                <div class="bg-white p-5 rounded-xl border shadow-sm max-w-2xl mx-auto">
-                    <h4 class="font-bold text-gray-700 mb-4 border-b pb-2 text-center uppercase">${type.replace('-',' ')}</h4>
-                    <table class="w-full text-sm text-center">
-                        <thead class="bg-gray-100"><tr><th class="p-2 border">${type === 'region-wise' ? 'Region' : 'Zimmedar'}</th><th class="p-2 border">Hazir</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th></tr></thead>
-                        <tbody>${rows}</tbody>
-                        <tfoot class="bg-gray-800 text-white font-bold">
-                            <tr><td class="p-2 border text-right">GRAND TOTAL</td><td class="p-2 border">${totals.h}</td><td class="p-2 border">${totals.p}</td><td class="p-2 border">${grandPer.toFixed(1)}%</td></tr>
-                        </tfoot>
-                    </table>
-                </div>`;
+            let rows = Object.entries(stats).map(([k, s]) => {
+                const per = s.h ? (s.p/s.h)*100 : 0;
+                return `<tr><td class="p-2 border font-bold text-right">${k}</td><td class="p-2 border">${s.h}</td><td class="p-2 border text-green-600 font-bold">${s.p}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td></tr>`;
+            }).join('');
+            elements.dashboardView.innerHTML = `<div class="bg-white p-5 rounded-xl border shadow-sm max-w-2xl mx-auto overflow-hidden"><table class="w-full text-sm text-center"><thead class="bg-gray-100"><tr><th class="p-2 border">Category</th><th class="p-2 border">Hazir</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         } else {
-            // Submission Status Logic
+            // Submission Status
             let submissionHtml = users.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => {
                 const userJamiaat = u.jamiaatList || [];
                 if (userJamiaat.length === 0) return "";
                 const jamiaRows = userJamiaat.map(j => {
                     const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
                     const isSub = data.some(d => d.jamia.trim().toLowerCase() === jName.trim().toLowerCase());
-                    return `<div class="flex justify-between p-2 border-b text-sm"><span class="urdu-font">${jName}</span>${isSub ? '<span class="text-green-600 font-bold">✅ Received</span>' : '<span class="text-red-500 font-bold">❌ Missing</span>'}</div>`;
+                    return `<div class="flex justify-between p-2 border-b text-xs"><span class="urdu-font">${jName}</span>${isSub ? '<span class="text-green-600">✅ Received</span>' : '<span class="text-red-500">❌ Missing</span>'}</div>`;
                 }).join('');
-                return `<div class="bg-white p-4 rounded-lg border shadow-sm"><h5 class="font-bold text-indigo-700 border-b pb-2 mb-2">${u.name || u.email}</h5>${jamiaRows}</div>`;
+                return `<div class="bg-white p-4 rounded-lg border shadow-sm"><h5 class="font-bold text-indigo-700 border-b pb-2 mb-2 text-sm">${u.name || u.email}</h5>${jamiaRows}</div>`;
             }).join('');
-            dashboardView.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${submissionHtml}</div>`;
+            elements.dashboardView.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-4">${submissionHtml}</div>`;
         }
     }
 
@@ -300,40 +299,38 @@ exportBtn.onclick = () => {
         const tfoot = document.getElementById("admin-foot");
         tbody.innerHTML = ""; tfoot.innerHTML = "";
         const num = (v) => parseInt(v) || 0;
-        let totals = { hazir: 0, pass: 0 };
+
+        // Optimization: Agar teacher data bohot zyada hai to limit karein
+        if(layout === 'teacher' && data.length > 100) {
+            alert("Data bohot zyada hai, loading slow ho sakti hai. Search use karke filter karein.");
+        }
 
         if (layout === 'jamia') {
-            thead.innerHTML = `<th class="p-3 border">ریجن</th><th class="p-3 border">تعلیمی ذمہ دار</th><th class="p-3 border text-right">جامعہ</th><th class="p-3 border">حاضر</th><th class="p-3 border">کامیاب</th><th class="p-3 border">فیصد</th><th class="p-3 border">کیفیت</th>`;
+            thead.innerHTML = `<th class="p-3 border">ریجن</th><th class="p-3 border">ذمہ دار</th><th class="p-3 border text-right">جامعہ</th><th class="p-3 border">حاضر</th><th class="p-3 border text-green-400">کامیاب</th><th class="p-3 border">فیصد</th><th class="p-3 border">کیفیت</th>`;
             let stats = {};
             data.forEach(d => {
-                const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
-                const pass = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                const hazir = Math.max(0, kul - num(d.ghaib));
+                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
+                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                 if (!stats[d.jamia]) stats[d.jamia] = { h:0, p:0, r:d.region, u:d.userName };
-                stats[d.jamia].h += hazir; stats[d.jamia].p += pass;
+                stats[d.jamia].h += h; stats[d.jamia].p += p;
             });
-            for (let j in stats) {
-                const s = stats[j]; const per = s.h ? (s.p/s.h)*100 : 0;
-                totals.hazir += s.h; totals.pass += s.p;
-                tbody.innerHTML += `<tr class="hover:bg-blue-50 transition"><td class="p-2 border text-xs text-gray-500">${s.r}</td><td class="p-2 border text-xs text-gray-500">${s.u}</td><td class="p-2 border font-bold text-right urdu-font">${j}</td><td class="p-2 border">${s.h}</td><td class="p-2 border text-green-600 font-bold">${s.p}</td><td class="p-2 border font-bold">${per.toFixed(2)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td></tr>`;
-            }
-            const gPer = totals.hazir ? (totals.pass/totals.hazir)*100 : 0;
-            tfoot.innerHTML = `<tr><td colspan="3" class="p-3 text-right">TOTAL</td><td class="p-3">${totals.hazir}</td><td class="p-3">${totals.pass}</td><td class="p-3">${gPer.toFixed(2)}%</td><td class="p-3 urdu-font">${getJamiaKefiyat(gPer)}</td></tr>`;
+            Object.entries(stats).forEach(([j, s]) => {
+                const per = s.h ? (s.p/s.h)*100 : 0;
+                tbody.innerHTML += `<tr class="hover:bg-blue-50"><td class="p-2 border text-xs">${s.r}</td><td class="p-2 border text-xs">${s.u}</td><td class="p-2 border font-bold text-right urdu-font">${j}</td><td class="p-2 border">${s.h}</td><td class="p-2 border text-green-600 font-bold">${s.p}</td><td class="p-2 border font-bold">${per.toFixed(2)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td></tr>`;
+            });
         } 
         else if (layout === 'class') {
-            thead.innerHTML = `<th class="p-2 border">ریجن</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border text-right">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border text-emerald-500">کامیاب</th><th class="p-2 border">فیصد</th>`;
+            thead.innerHTML = `<th class="p-2 border">ریجن</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th>`;
             data.forEach(d => {
-                const kul = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib);
-                const pass = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                const hazir = kul - num(d.ghaib); const per = hazir ? (pass/hazir)*100 : 0;
-                totals.hazir += hazir; totals.pass += pass;
-                tbody.innerHTML += `<tr class="text-sm border-b hover:bg-gray-50"><td class="p-2 border text-gray-500">${d.region}</td><td class="p-2 border text-gray-500">${d.userName}</td><td class="p-2 border urdu-font text-right">${d.jamia}</td><td class="p-2 border urdu-font text-right">${d.darjah}</td><td class="p-2 border">${hazir}</td><td class="p-2 border text-emerald-600 font-bold">${pass}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td></tr>`;
+                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
+                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                const per = h ? (p/h)*100 : 0;
+                tbody.innerHTML += `<tr class="text-sm"><td class="p-2 border text-gray-400">${d.region}</td><td class="p-2 border urdu-font text-right">${d.jamia}</td><td class="p-2 border urdu-font">${d.darjah}</td><td class="p-2 border">${h}</td><td class="p-2 border font-bold">${p}</td><td class="p-2 border">${per.toFixed(1)}%</td></tr>`;
             });
-            const gPer = totals.hazir ? (totals.pass/totals.hazir)*100 : 0;
-            tfoot.innerHTML = `<tr><td colspan="4" class="p-2 text-right">TOTAL</td><td class="p-2 border">${totals.hazir}</td><td class="p-2 border">${totals.pass}</td><td class="p-2 border">${gPer.toFixed(1)}%</td></tr>`;
         }
         else {
-            thead.innerHTML = `<th class="p-2 border">ریجن</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border text-center">جامعہ</th><th class="p-2 border text-center">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border text-center">درجہ</th><th class="p-2 border">کل</th><th class="p-2 border text-emerald-400">کامیاب</th><th class="p-2 border">فیصد</th><th class="p-2 border">کیفیت</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
+            // Asatiza Layout (Keep original logic but ensure performance)
+            thead.innerHTML = `<th class="p-2 border">جامعہ</th><th class="p-2 border">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border">کل</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
             data.forEach(d => {
                 (d.data || []).forEach(tEntry => {
                     const ps = tEntry.periods || []; const rSpan = ps.length || 1;
@@ -341,10 +338,10 @@ exportBtn.onclick = () => {
                     const tPer = tT ? (tP/tT)*100 : 0;
                     ps.forEach((p, idx) => {
                         const sPer = num(p.total) ? (num(p.passed)/num(p.total))*100 : 0;
-                        tbody.innerHTML += `<tr class="hover:bg-gray-50 text-center text-[15px] border-b">
-                            ${idx === 0 ? `<td class="p-2 border text-gray-500" rowspan="${rSpan}">${d.region}</td><td class="p-2 border text-gray-500" rowspan="${rSpan}">${d.userName}</td><td class="p-2 border font-bold text-center font-sans text-gray-800" rowspan="${rSpan}">${d.jamia}</td><td class="p-2 border font-bold text-center font-sans text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>` : ''}
-                            <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td><td class="p-2 border text-center urdu-font">${p.class || p['class'] || '-'}</td><td class="p-2 border">${num(p.total)}</td><td class="p-2 border text-emerald-600">${num(p.passed)}</td><td class="p-2 border">${sPer.toFixed(1)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(sPer)}">${getJamiaKefiyat(sPer)}</td>
-                            ${idx === 0 ? `<td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}"><div style="color:${getKefiyatColor(tPer)}">${tPer.toFixed(1)}%</div><div class="text-[12px] urdu-font" style="color:${getKefiyatColor(tPer)}">${getJamiaKefiyat(tPer)}</div></td>` : ''}</tr>`;
+                        tbody.innerHTML += `<tr class="text-center border-b">
+                            ${idx === 0 ? `<td class="p-2 border font-bold text-center urdu-font" rowspan="${rSpan}">${d.jamia}</td><td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>` : ''}
+                            <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td><td class="p-2 border">${num(p.total)}</td><td class="p-2 border">${num(p.passed)}</td><td class="p-2 border">${sPer.toFixed(1)}%</td>
+                            ${idx === 0 ? `<td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>` : ''}</tr>`;
                     });
                 });
             });
