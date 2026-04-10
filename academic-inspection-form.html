@@ -311,11 +311,10 @@ function createQuestionInput(val, isBlank) {
     document.getElementById('total-classes-count').textContent = classes.length;
     document.getElementById('total-books-count').textContent = totalBooks;
 };
-        document.getElementById('final-save-btn').onclick = async () => {
+       document.getElementById('final-save-btn').onclick = async () => {
     const classes = document.querySelectorAll('.class-card');
     if (classes.length === 0) return alert("Please add at least one class!");
 
-    // Fixed ID: REP_JamiaName (taki hamesha isi document me update ho)
     const reportId = `REP_${jamiaName.replace(/\s+/g, '_')}`;
 
     const finalReport = {
@@ -325,9 +324,10 @@ function createQuestionInput(val, isBlank) {
         overallPercentage: document.getElementById('jamia-total-percent').textContent,
         totalClasses: document.getElementById('total-classes-count').textContent,
         totalBooks: document.getElementById('total-books-count').textContent,
-        classes: [] // Note: Iska naam 'classes' rakhein taki loading logic se match kare
+        classes: [] 
     };
 
+    // ... (Aapka purana classes.forEach wala logic yahan rahega) ...
     classes.forEach(card => {
         const classData = {
             className: card.querySelector('.class-select').value,
@@ -336,13 +336,11 @@ function createQuestionInput(val, isBlank) {
             classScore: card.querySelector('.class-avg').textContent,
             subjects: []
         };
-
         card.querySelectorAll('.book-row').forEach(row => {
             const questions = [];
             row.querySelectorAll('.q-score-input').forEach(qInput => {
                 questions.push({ score: qInput.value || 0 });
             });
-
             classData.subjects.push({
                 teacherId: row.querySelector('.teacher-select').value,
                 subjectName: row.querySelector('.book-select').value,
@@ -354,8 +352,33 @@ function createQuestionInput(val, isBlank) {
     });
 
     try {
+        // 1. Detailed Inspection Document Save Karein
         await setDoc(doc(db, "academic_inspections", reportId), finalReport);
-        alert("Report updated successfully!");
+
+        // 2. DASHBOARD SUMMARY UPDATE LOGIC (Naya Part)
+        // Current month nikalna (e.g., "2026-04")
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const dashReportId = `${currentUser.uid}_${monthKey}`;
+        
+        const dashRef = doc(db, "inspector_reports", dashReportId);
+        const dashSnap = await getDoc(dashRef);
+        
+        let currentJaiza = dashSnap.exists() ? (dashSnap.data().jaiza || []) : [];
+
+        // Purani entry agar hai to use hatayein aur nayi updated entry add karein
+        currentJaiza = currentJaiza.filter(j => j.name !== jamiaName);
+        currentJaiza.push({
+            name: jamiaName,
+            score: finalReport.overallPercentage.replace('%', ''), // Sirf number (e.g., 85.5)
+            type: "Inspection",
+            date: now.toISOString().split('T')[0] // Aaj ki date (YYYY-MM-DD)
+        });
+
+        // Dashboard document update karein
+        await setDoc(dashRef, { jaiza: currentJaiza }, { merge: true });
+        
+        alert("Report saved and Dashboard updated!");
     } catch (error) {
         console.error("Error:", error);
         alert("Save failed!");
