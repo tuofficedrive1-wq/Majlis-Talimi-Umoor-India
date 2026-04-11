@@ -6,120 +6,131 @@ export async function initAcademicYearSetup(db, containerId) {
     if (!container) return;
 
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-xl shadow-md border border-indigo-100">
-            <h3 class="text-xl font-bold text-indigo-800 mb-6 border-b pb-2">Central Academic Year Setup</h3>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div class="p-4 bg-indigo-50 rounded-lg">
-                    <label class="block text-sm font-bold mb-2">Active Academic Year</label>
-                    <input type="text" id="admin-active-year" placeholder="e.g. 2025-2026" class="w-full p-2 border rounded font-bold text-center">
+        <div class="bg-gray-50 p-4 rounded-xl shadow-inner border border-gray-200">
+            <div class="flex flex-wrap justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border-l-4 border-indigo-600">
+                <div>
+                    <h3 class="text-lg font-extrabold text-indigo-900 uppercase tracking-tight">Academic Structure Setup</h3>
+                    <p class="text-xs text-gray-500">Configure years, semesters, and bilingual classes.</p>
                 </div>
-                <div class="p-4 bg-indigo-50 rounded-lg text-center">
-                    <label class="block text-sm font-bold mb-2">Semesters Total Days</label>
-                    <div class="flex gap-4">
-                        <div class="flex-1 bg-white p-2 border rounded">
-                            <span class="text-xs text-gray-500 uppercase">Sem 1</span>
-                            <div id="admin-sem1-days" class="text-xl font-black text-indigo-600">0</div>
-                        </div>
-                        <div class="flex-1 bg-white p-2 border rounded">
-                            <span class="text-xs text-gray-500 uppercase">Sem 2</span>
-                            <div id="admin-sem2-days" class="text-xl font-black text-indigo-600">0</div>
-                        </div>
+                <div class="flex items-center gap-4 mt-2 md:mt-0">
+                    <div class="text-right">
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase">Active Year</label>
+                        <input type="text" id="admin-active-year" placeholder="2025-26" class="p-1 border-b-2 border-indigo-200 focus:border-indigo-500 outline-none font-bold text-center w-24">
                     </div>
                 </div>
             </div>
 
-            <h4 class="font-bold text-gray-700 mb-4 border-l-4 border-indigo-500 pl-2">Configure Months (Split Semesters)</h4>
-            <div id="admin-months-config" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8"></div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                <div class="lg:col-span-1 bg-indigo-900 text-white p-4 rounded-xl shadow-lg flex flex-col justify-center">
+                    <h4 class="text-xs font-bold opacity-70 mb-3 uppercase tracking-widest text-center">Total Working Days</h4>
+                    <div class="flex justify-around items-center">
+                        <div class="text-center">
+                            <span class="block text-2xl font-black" id="admin-sem1-days">0</span>
+                            <span class="text-[10px] opacity-60 uppercase font-bold">Semester 1</span>
+                        </div>
+                        <div class="h-10 w-px bg-indigo-700"></div>
+                        <div class="text-center">
+                            <span class="block text-2xl font-black" id="admin-sem2-days">0</span>
+                            <span class="text-[10px] opacity-60 uppercase font-bold">Semester 2</span>
+                        </div>
+                    </div>
+                </div>
 
-            <div class="mt-8 p-6 bg-gray-50 rounded-xl border border-indigo-200">
-                <h4 class="font-bold text-indigo-700 mb-4">Manage Classes & Subjects</h4>
-                <div id="class-list-container" class="space-y-6 mb-6"></div>
-                <button id="add-new-class-btn" class="bg-indigo-600 text-white px-6 py-2 rounded-full font-bold text-sm hover:bg-indigo-700 transition">
-                    <i class="fas fa-plus mr-1"></i> Add New Class
-                </button>
+                <div id="admin-months-config" class="lg:col-span-2 grid grid-cols-3 md:grid-cols-6 gap-2 bg-white p-3 rounded-xl border">
+                    </div>
             </div>
 
-            <button id="save-central-config" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg w-full transition shadow-lg text-lg">
-                <i class="fas fa-save mr-2"></i> Save Global Structure
-            </button>
+            <div class="bg-white p-4 rounded-xl border shadow-sm">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h4 class="font-bold text-gray-700 uppercase text-sm"><i class="fas fa-school mr-2 text-indigo-500"></i>Classes & Subjects</h4>
+                    <button id="add-new-class-btn" class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-1 rounded-md text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all">
+                        <i class="fas fa-plus mr-1"></i> Add Class
+                    </button>
+                </div>
+                
+                <div id="class-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    </div>
+            </div>
+
+            <div class="mt-6">
+                <button id="save-central-config" class="bg-green-600 hover:bg-green-700 text-white font-black py-3 px-8 rounded-xl w-full transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fas fa-cloud-upload-alt"></i> SAVE GLOBAL CONFIGURATION
+                </button>
+            </div>
         </div>
+
+        <style>
+            .compact-input { @apply p-1 border rounded text-xs w-full text-center focus:ring-1 focus:ring-indigo-400 outline-none; }
+            .font-urdu { font-family: 'Noto Nastaliq Urdu', 'Urdu Typesetting', serif; }
+            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        </style>
     `;
 
     const months = [
-        { name: "April", idx: 3 }, { name: "May", idx: 4 }, { name: "June", idx: 5 },
-        { name: "July", idx: 6 }, { name: "August", idx: 7 }, { name: "September", idx: 8 },
-        { name: "October", idx: 9 }, { name: "November", idx: 10 }, { name: "December", idx: 11 },
-        { name: "January", idx: 0 }, { name: "February", idx: 1 }, { name: "March", idx: 2 }
+        { name: "Apr", idx: 3 }, { name: "May", idx: 4 }, { name: "Jun", idx: 5 },
+        { name: "Jul", idx: 6 }, { name: "Aug", idx: 7 }, { name: "Sep", idx: 8 },
+        { name: "Oct", idx: 9 }, { name: "Nov", idx: 10 }, { name: "Dec", idx: 11 },
+        { name: "Jan", idx: 0 }, { name: "Feb", idx: 1 }, { name: "Mar", idx: 2 }
     ];
 
     const monthsContainer = document.getElementById('admin-months-config');
     monthsContainer.innerHTML = months.map(m => `
-        <div class="p-3 border rounded-lg bg-white shadow-sm month-card" data-idx="${m.idx}">
-            <label class="block text-sm font-bold text-indigo-900 mb-2 border-b">${m.name}</label>
-            <div class="grid grid-cols-2 gap-2">
-                <div>
-                    <span class="text-[10px] text-gray-500 font-bold">SEM 1 DAYS</span>
-                    <input type="number" class="sem1-days w-full p-1 border rounded text-sm text-center" value="0">
-                </div>
-                <div>
-                    <span class="text-[10px] text-gray-500 font-bold">SEM 2 DAYS</span>
-                    <input type="number" class="sem2-days w-full p-1 border rounded text-sm text-center" value="0">
-                </div>
+        <div class="p-2 border rounded-md bg-gray-50 text-center month-card" data-idx="${m.idx}">
+            <div class="text-[10px] font-bold text-indigo-900 mb-1 border-b">${m.name}</div>
+            <div class="flex flex-col gap-1">
+                <input type="number" placeholder="S1" class="sem1-days p-1 border rounded text-[10px] w-full text-center" title="Sem 1 Days">
+                <input type="number" placeholder="S2" class="sem2-days p-1 border rounded text-[10px] w-full text-center" title="Sem 2 Days">
             </div>
         </div>
     `).join('');
 
     function calculateTotals() {
-        let sem1Sum = 0, sem2Sum = 0;
-        document.querySelectorAll('.month-card').forEach(card => {
-            sem1Sum += parseInt(card.querySelector('.sem1-days').value) || 0;
-            sem2Sum += parseInt(card.querySelector('.sem2-days').value) || 0;
+        let s1 = 0, s2 = 0;
+        document.querySelectorAll('.month-card').forEach(c => {
+            s1 += parseInt(c.querySelector('.sem1-days').value) || 0;
+            s2 += parseInt(c.querySelector('.sem2-days').value) || 0;
         });
-        document.getElementById('admin-sem1-days').innerText = sem1Sum;
-        document.getElementById('admin-sem2-days').innerText = sem2Sum;
+        document.getElementById('admin-sem1-days').innerText = s1;
+        document.getElementById('admin-sem2-days').innerText = s2;
     }
 
     container.addEventListener('input', (e) => {
-        if (e.target.classList.contains('sem1-days') || e.target.classList.contains('sem2-days')) {
-            calculateTotals();
-        }
+        if (e.target.matches('.sem1-days, .sem2-days')) calculateTotals();
     });
 
     const classContainer = document.getElementById('class-list-container');
 
-    function createSubjectRow(parentContainer, subData = { eng: '', urdu: '' }) {
+    function createSubjectRow(listTarget, subData = { eng: '', urdu: '' }) {
         const div = document.createElement('div');
-        div.className = "flex gap-2 mb-2 bg-gray-50 p-2 rounded border border-dashed subject-row";
+        div.className = "flex gap-1 mb-1 items-center subject-row group";
         div.innerHTML = `
-            <input type="text" placeholder="English Name" class="sub-eng-name p-2 border rounded w-1/2 text-sm" value="${subData.eng}">
-            <input type="text" dir="rtl" placeholder="Urdu Name" class="sub-urdu-name p-2 border rounded w-1/2 text-sm font-urdu" value="${subData.urdu}">
-            <button class="remove-sub-btn text-red-400 hover:text-red-600 px-2"><i class="fas fa-times"></i></button>
+            <input type="text" placeholder="Eng" class="sub-eng-name p-1 border rounded text-[11px] w-1/2" value="${subData.eng}">
+            <input type="text" dir="rtl" placeholder="اردو" class="sub-urdu-name p-1 border rounded text-[11px] w-1/2 font-urdu" value="${subData.urdu}">
+            <button class="remove-sub-btn text-gray-300 hover:text-red-500 px-1 text-[10px] transition-colors"><i class="fas fa-times"></i></button>
         `;
         div.querySelector('.remove-sub-btn').onclick = () => div.remove();
-        parentContainer.appendChild(div);
+        listTarget.appendChild(div);
     }
 
     function createClassRow(classData = { eng: '', urdu: '', subjects: [] }) {
         const div = document.createElement('div');
-        div.className = "bg-white p-4 rounded-lg border-2 border-indigo-50 class-block relative shadow-sm";
+        div.className = "bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-indigo-300 transition-all class-block flex flex-col h-64";
         div.innerHTML = `
-            <button class="remove-class-btn absolute top-2 right-2 text-red-500 hover:bg-red-50 p-2 rounded-full"><i class="fas fa-trash-alt"></i></button>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                    <label class="text-xs font-bold text-gray-500">CLASS NAME (ENG)</label>
-                    <input type="text" placeholder="e.g. Class 1" class="class-eng-name w-full p-2 border rounded font-bold" value="${classData.eng}">
+            <div class="flex justify-between items-start mb-2 bg-indigo-50 p-2 rounded">
+                <div class="flex-1 space-y-1">
+                    <input type="text" placeholder="Class (Eng)" class="class-eng-name w-full p-1 border rounded text-xs font-bold" value="${classData.eng}">
+                    <input type="text" dir="rtl" placeholder="درجہ (اردو)" class="class-urdu-name w-full p-1 border rounded text-xs font-bold font-urdu" value="${classData.urdu}">
                 </div>
-                <div>
-                    <label class="text-xs font-bold text-gray-500">CLASS NAME (URDU)</label>
-                    <input type="text" dir="rtl" placeholder="مثلاً اول" class="class-urdu-name w-full p-2 border rounded font-bold" value="${classData.urdu}">
+                <button class="remove-class-btn text-red-300 hover:text-red-600 ml-2 p-1"><i class="fas fa-trash-alt text-xs"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto custom-scrollbar pr-1 mb-2 subs-list">
                 </div>
-            </div>
-            <div class="subjects-wrapper ml-4">
-                <label class="text-xs font-bold text-indigo-600 block mb-2 underline">SUBJECTS LIST</label>
-                <div class="subs-list"></div>
-                <button class="add-sub-btn mt-2 text-indigo-600 text-xs font-bold hover:underline"><i class="fas fa-plus-circle"></i> Add Subject</button>
-            </div>
+
+            <button class="add-sub-btn w-full py-1 border-2 border-dashed border-gray-200 text-gray-400 rounded text-[10px] font-bold hover:border-indigo-300 hover:text-indigo-500 transition-all">
+                <i class="fas fa-plus mr-1"></i> ADD SUBJECT
+            </button>
         `;
 
         const subsList = div.querySelector('.subs-list');
@@ -129,7 +140,7 @@ export async function initAcademicYearSetup(db, containerId) {
         if (classData.subjects.length > 0) {
             classData.subjects.forEach(s => createSubjectRow(subsList, s));
         } else {
-            createSubjectRow(subsList); // Default one row
+            createSubjectRow(subsList);
         }
         
         classContainer.appendChild(div);
@@ -137,56 +148,49 @@ export async function initAcademicYearSetup(db, containerId) {
 
     document.getElementById('add-new-class-btn').onclick = () => createClassRow();
 
-    // --- Loading & Saving Logic remains similar but with updated structure ---
+    // --- Data Handlers ---
     const configRef = doc(db, "settings", "academic_config");
     const snap = await getDoc(configRef);
     if (snap.exists()) {
-        const data = snap.data();
-        document.getElementById('admin-active-year').value = data.activeYear || '';
+        const d = snap.data();
+        document.getElementById('admin-active-year').value = d.activeYear || '';
         document.querySelectorAll('.month-card').forEach(card => {
             const idx = card.dataset.idx;
-            card.querySelector('.sem1-days').value = data.monthDetails?.[idx]?.sem1 || 0;
-            card.querySelector('.sem2-days').value = data.monthDetails?.[idx]?.sem2 || 0;
+            card.querySelector('.sem1-days').value = d.monthDetails?.[idx]?.sem1 || 0;
+            card.querySelector('.sem2-days').value = d.monthDetails?.[idx]?.sem2 || 0;
         });
-        if (data.classes) {
-            data.classes.forEach(c => createClassRow({ eng: c.classNameEng, urdu: c.classNameUrdu, subjects: c.subjects }));
-        }
+        if (d.classes) d.classes.forEach(c => createClassRow({ eng: c.classNameEng, urdu: c.classNameUrdu, subjects: c.subjects }));
         calculateTotals();
     }
 
     document.getElementById('save-central-config').onclick = async () => {
-        const activeYear = document.getElementById('admin-active-year').value;
         const monthDetails = {};
-        document.querySelectorAll('.month-card').forEach(card => {
-            monthDetails[card.dataset.idx] = {
-                sem1: parseInt(card.querySelector('.sem1-days').value) || 0,
-                sem2: parseInt(card.querySelector('.sem2-days').value) || 0
+        document.querySelectorAll('.month-card').forEach(c => {
+            monthDetails[c.dataset.idx] = {
+                sem1: parseInt(c.querySelector('.sem1-days').value) || 0,
+                sem2: parseInt(c.querySelector('.sem2-days').value) || 0
             };
         });
 
         const classes = [];
-        document.querySelectorAll('.class-block').forEach(block => {
-            const classNameEng = block.querySelector('.class-eng-name').value.trim();
-            const classNameUrdu = block.querySelector('.class-urdu-name').value.trim();
-            const subjects = [];
-            block.querySelectorAll('.subject-row').forEach(sRow => {
-                const eng = sRow.querySelector('.sub-eng-name').value.trim();
-                const urdu = sRow.querySelector('.sub-urdu-name').value.trim();
-                if (eng || urdu) subjects.push({ eng, urdu });
-            });
-            if (classNameEng || classNameUrdu) classes.push({ classNameEng, classNameUrdu, subjects });
+        document.querySelectorAll('.class-block').forEach(b => {
+            const cEng = b.querySelector('.class-eng-name').value.trim();
+            const cUrdu = b.querySelector('.class-urdu-name').value.trim();
+            const subs = Array.from(b.querySelectorAll('.subject-row')).map(sr => ({
+                eng: sr.querySelector('.sub-eng-name').value.trim(),
+                urdu: sr.querySelector('.sub-urdu-name').value.trim()
+            })).filter(s => s.eng || s.urdu);
+            if (cEng || cUrdu) classes.push({ classNameEng: cEng, classNameUrdu: cUrdu, subjects: subs });
         });
 
         try {
             await setDoc(configRef, {
-                activeYear,
+                activeYear: document.getElementById('admin-active-year').value,
                 sem1TotalDays: parseInt(document.getElementById('admin-sem1-days').innerText),
                 sem2TotalDays: parseInt(document.getElementById('admin-sem2-days').innerText),
-                monthDetails,
-                classes,
-                lastUpdated: new Date()
+                monthDetails, classes, lastUpdated: new Date()
             });
-            alert("Structure saved successfully!");
+            alert("Configuration Saved!");
         } catch (e) { alert("Error: " + e.message); }
     };
 }
