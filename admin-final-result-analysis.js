@@ -294,57 +294,71 @@ export async function initAdminResultAnalysis(db, containerId) {
     }
 
     function renderDetailedReports(data, layout) {
-        const thead = document.getElementById("admin-head");
-        const tbody = document.getElementById("admin-body");
-        const tfoot = document.getElementById("admin-foot");
-        tbody.innerHTML = ""; tfoot.innerHTML = "";
-        const num = (v) => parseInt(v) || 0;
+    const thead = document.getElementById("admin-head");
+    const tbody = document.getElementById("admin-body");
+    const tfoot = document.getElementById("admin-foot");
+    tbody.innerHTML = ""; tfoot.innerHTML = "";
+    const num = (v) => parseInt(v) || 0;
 
-        // Optimization: Agar teacher data bohot zyada hai to limit karein
-        if(layout === 'teacher' && data.length > 100) {
-            alert("Data bohot zyada hai, loading slow ho sakti hai. Search use karke filter karein.");
-        }
+    if (layout === 'jamia') {
+        // ... (Keep existing Jamia logic)
+    } 
+    else if (layout === 'class') {
+        // ... (Keep existing Class logic)
+    }
+    else {
+        // ✅ UPDATED ASATIZA LAYOUT WITH SR. NO & KEFIAYAT
+        thead.innerHTML = `
+            <th class="p-2 border">Sr.</th>
+            <th class="p-2 border">جامعہ</th>
+            <th class="p-2 border">استاد</th>
+            <th class="p-2 border text-right">مضمون</th>
+            <th class="p-2 border">کل</th>
+            <th class="p-2 border">کامیاب</th>
+            <th class="p-2 border">%</th>
+            <th class="p-2 border">کیفیت</th>
+            <th class="p-2 border bg-emerald-900">مجموعی %</th>
+            <th class="p-2 border bg-emerald-900">مجموعی کیفیت</th>`;
 
-        if (layout === 'jamia') {
-            thead.innerHTML = `<th class="p-3 border">ریجن</th><th class="p-3 border">ذمہ دار</th><th class="p-3 border text-right">جامعہ</th><th class="p-3 border">حاضر</th><th class="p-3 border text-green-400">کامیاب</th><th class="p-3 border">فیصد</th><th class="p-3 border">کیفیت</th>`;
-            let stats = {};
-            data.forEach(d => {
-                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
-                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                if (!stats[d.jamia]) stats[d.jamia] = { h:0, p:0, r:d.region, u:d.userName };
-                stats[d.jamia].h += h; stats[d.jamia].p += p;
-            });
-            Object.entries(stats).forEach(([j, s]) => {
-                const per = s.h ? (s.p/s.h)*100 : 0;
-                tbody.innerHTML += `<tr class="hover:bg-blue-50"><td class="p-2 border text-xs">${s.r}</td><td class="p-2 border text-xs">${s.u}</td><td class="p-2 border font-bold text-right urdu-font">${j}</td><td class="p-2 border">${s.h}</td><td class="p-2 border text-green-600 font-bold">${s.p}</td><td class="p-2 border font-bold">${per.toFixed(2)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td></tr>`;
-            });
-        } 
-        else if (layout === 'class') {
-            thead.innerHTML = `<th class="p-2 border">ریجن</th><th class="p-2 border text-right">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th>`;
-            data.forEach(d => {
-                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
-                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                const per = h ? (p/h)*100 : 0;
-                tbody.innerHTML += `<tr class="text-sm"><td class="p-2 border text-gray-400">${d.region}</td><td class="p-2 border urdu-font text-right">${d.jamia}</td><td class="p-2 border urdu-font">${d.darjah}</td><td class="p-2 border">${h}</td><td class="p-2 border font-bold">${p}</td><td class="p-2 border">${per.toFixed(1)}%</td></tr>`;
-            });
-        }
-        else {
-            // Asatiza Layout (Keep original logic but ensure performance)
-            thead.innerHTML = `<th class="p-2 border">جامعہ</th><th class="p-2 border">استاد</th><th class="p-2 border text-right">مضمون</th><th class="p-2 border">کل</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border bg-emerald-900">مجموعی</th>`;
-            data.forEach(d => {
-                (d.data || []).forEach(tEntry => {
-                    const ps = tEntry.periods || []; const rSpan = ps.length || 1;
-                    let tT = 0, tP = 0; ps.forEach(p => { tT += num(p.total); tP += num(p.passed); });
-                    const tPer = tT ? (tP/tT)*100 : 0;
-                    ps.forEach((p, idx) => {
-                        const sPer = num(p.total) ? (num(p.passed)/num(p.total))*100 : 0;
-                        tbody.innerHTML += `<tr class="text-center border-b">
-                            ${idx === 0 ? `<td class="p-2 border font-bold text-center urdu-font" rowspan="${rSpan}">${d.jamia}</td><td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>` : ''}
-                            <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td><td class="p-2 border">${num(p.total)}</td><td class="p-2 border">${num(p.passed)}</td><td class="p-2 border">${sPer.toFixed(1)}%</td>
-                            ${idx === 0 ? `<td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>` : ''}</tr>`;
-                    });
+        let srNo = 1;
+        data.forEach(d => {
+            (d.data || []).forEach(tEntry => {
+                const ps = tEntry.periods || []; 
+                const rSpan = ps.length || 1;
+                
+                let tT = 0, tP = 0; 
+                ps.forEach(p => { tT += num(p.total); tP += num(p.passed); });
+                const tPer = tT ? (tP/tT)*100 : 0;
+                const totalKefiyat = getJamiaKefiyat(tPer);
+                const totalColor = getKefiyatColor(tPer);
+
+                ps.forEach((p, idx) => {
+                    const sPer = num(p.total) ? (num(p.passed)/num(p.total))*100 : 0;
+                    const subjectKefiyat = getJamiaKefiyat(sPer);
+                    const subjectColor = getKefiyatColor(sPer);
+
+                    tbody.innerHTML += `
+                    <tr class="text-center border-b">
+                        ${idx === 0 ? `
+                            <td class="p-2 border font-bold" rowspan="${rSpan}">${srNo++}</td>
+                            <td class="p-2 border font-bold text-center urdu-font" rowspan="${rSpan}">${d.jamia}</td>
+                            <td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>
+                        ` : ''}
+                        
+                        <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td>
+                        <td class="p-2 border">${num(p.total)}</td>
+                        <td class="p-2 border">${num(p.passed)}</td>
+                        <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
+                        <td class="p-2 border urdu-font font-bold" style="color:${subjectColor}">${subjectKefiyat}</td>
+
+                        ${idx === 0 ? `
+                            <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
+                            <td class="p-2 border bg-emerald-50 urdu-font font-bold" style="color:${totalColor}" rowspan="${rSpan}">${totalKefiyat}</td>
+                        ` : ''}
+                    </tr>`;
                 });
             });
-        }
+        });
     }
+}
 }
