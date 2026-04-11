@@ -6,81 +6,70 @@ export async function initAcademicYearSetup(db, containerId) {
     if (!container) return;
 
     container.innerHTML = `
-        <div class="bg-gray-50 p-4 rounded-xl shadow-inner border border-gray-200">
-            <div class="flex flex-wrap justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border-l-4 border-indigo-600">
-                <div>
-                    <h3 class="text-lg font-extrabold text-indigo-900 uppercase tracking-tight">Academic Structure Setup</h3>
-                    <p class="text-xs text-gray-500">Configure years, semesters, and bilingual classes.</p>
+        <div class="bg-white p-6 rounded-xl shadow-md border border-indigo-100 max-w-5xl mx-auto">
+            <h3 class="text-xl font-bold text-indigo-800 mb-6 border-b-2 border-indigo-500 pb-2">Academic Central Control</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <label class="block text-sm font-bold mb-1 text-indigo-900">Active Academic Year</label>
+                    <input type="text" id="admin-active-year" placeholder="2025-2026" class="w-full p-2 border rounded font-bold text-lg">
                 </div>
-                <div class="flex items-center gap-4 mt-2 md:mt-0">
-                    <div class="text-right">
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase">Active Year</label>
-                        <input type="text" id="admin-active-year" placeholder="2025-26" class="p-1 border-b-2 border-indigo-200 focus:border-indigo-500 outline-none font-bold text-center w-24">
-                    </div>
+                <div class="p-4 bg-green-50 rounded-lg border border-green-100 text-center">
+                    <span class="block text-xs font-bold text-green-700 uppercase">Sem 1 Total Days</span>
+                    <span id="admin-sem1-days" class="text-2xl font-black text-green-800">0</span>
+                </div>
+                <div class="p-4 bg-orange-50 rounded-lg border border-orange-100 text-center">
+                    <span class="block text-xs font-bold text-orange-700 uppercase">Sem 2 Total Days</span>
+                    <span id="admin-sem2-days" class="text-2xl font-black text-orange-800">0</span>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                <div class="lg:col-span-1 bg-indigo-900 text-white p-4 rounded-xl shadow-lg flex flex-col justify-center">
-                    <h4 class="text-xs font-bold opacity-70 mb-3 uppercase tracking-widest text-center">Total Working Days</h4>
-                    <div class="flex justify-around items-center">
-                        <div class="text-center">
-                            <span class="block text-2xl font-black" id="admin-sem1-days">0</span>
-                            <span class="text-[10px] opacity-60 uppercase font-bold">Semester 1</span>
-                        </div>
-                        <div class="h-10 w-px bg-indigo-700"></div>
-                        <div class="text-center">
-                            <span class="block text-2xl font-black" id="admin-sem2-days">0</span>
-                            <span class="text-[10px] opacity-60 uppercase font-bold">Semester 2</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="admin-months-config" class="lg:col-span-2 grid grid-cols-3 md:grid-cols-6 gap-2 bg-white p-3 rounded-xl border">
+            <div class="mb-6 border rounded-lg overflow-hidden">
+                <button onclick="document.getElementById('months-body').classList.toggle('hidden')" class="w-full p-4 bg-gray-100 hover:bg-gray-200 flex justify-between items-center font-bold text-gray-700">
+                    <span><i class="fas fa-calendar-alt mr-2 text-indigo-600"></i> CONFIGURE MONTHS & WORKING DAYS</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div id="months-body" class="hidden p-4 bg-white grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     </div>
             </div>
 
-            <div class="bg-white p-4 rounded-xl border shadow-sm">
-                <div class="flex justify-between items-center mb-4 border-b pb-2">
-                    <h4 class="font-bold text-gray-700 uppercase text-sm"><i class="fas fa-school mr-2 text-indigo-500"></i>Classes & Subjects</h4>
-                    <button id="add-new-class-btn" class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-1 rounded-md text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all">
-                        <i class="fas fa-plus mr-1"></i> Add Class
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h4 class="font-bold text-indigo-900"><i class="fas fa-graduation-cap mr-2"></i> CLASSES & SUBJECTS SETUP</h4>
+                    <button id="add-new-class-btn" class="bg-indigo-600 text-white px-4 py-2 rounded shadow hover:bg-indigo-700 font-bold transition">
+                        <i class="fas fa-plus mr-1"></i> Add New Class
                     </button>
                 </div>
-                
-                <div id="class-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div id="class-list-container" class="space-y-3">
                     </div>
             </div>
 
-            <div class="mt-6">
-                <button id="save-central-config" class="bg-green-600 hover:bg-green-700 text-white font-black py-3 px-8 rounded-xl w-full transition shadow-lg flex items-center justify-center gap-2">
-                    <i class="fas fa-cloud-upload-alt"></i> SAVE GLOBAL CONFIGURATION
-                </button>
-            </div>
+            <button id="save-central-config" class="mt-10 bg-green-600 hover:bg-green-700 text-white font-black py-4 px-8 rounded-xl w-full transition shadow-xl text-lg tracking-wide uppercase">
+                <i class="fas fa-save mr-2"></i> Save Global Structure
+            </button>
         </div>
 
         <style>
-            .compact-input { @apply p-1 border rounded text-xs w-full text-center focus:ring-1 focus:ring-indigo-400 outline-none; }
-            .font-urdu { font-family: 'Noto Nastaliq Urdu', 'Urdu Typesetting', serif; }
-            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-            .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+            .font-urdu { font-family: 'Noto Nastaliq Urdu', serif; }
+            .class-card.active { border-color: #4f46e5; ring: 2px; ring-color: #c7d2fe; }
         </style>
     `;
 
     const months = [
-        { name: "Apr", idx: 3 }, { name: "May", idx: 4 }, { name: "Jun", idx: 5 },
-        { name: "Jul", idx: 6 }, { name: "Aug", idx: 7 }, { name: "Sep", idx: 8 },
-        { name: "Oct", idx: 9 }, { name: "Nov", idx: 10 }, { name: "Dec", idx: 11 },
-        { name: "Jan", idx: 0 }, { name: "Feb", idx: 1 }, { name: "Mar", idx: 2 }
+        { name: "April", idx: 3 }, { name: "May", idx: 4 }, { name: "June", idx: 5 },
+        { name: "July", idx: 6 }, { name: "August", idx: 7 }, { name: "September", idx: 8 },
+        { name: "October", idx: 9 }, { name: "November", idx: 10 }, { name: "December", idx: 11 },
+        { name: "January", idx: 0 }, { name: "February", idx: 1 }, { name: "March", idx: 2 }
     ];
 
-    const monthsContainer = document.getElementById('admin-months-config');
+    // Inject Months
+    const monthsContainer = document.getElementById('months-body');
     monthsContainer.innerHTML = months.map(m => `
-        <div class="p-2 border rounded-md bg-gray-50 text-center month-card" data-idx="${m.idx}">
-            <div class="text-[10px] font-bold text-indigo-900 mb-1 border-b">${m.name}</div>
-            <div class="flex flex-col gap-1">
-                <input type="number" placeholder="S1" class="sem1-days p-1 border rounded text-[10px] w-full text-center" title="Sem 1 Days">
-                <input type="number" placeholder="S2" class="sem2-days p-1 border rounded text-[10px] w-full text-center" title="Sem 2 Days">
+        <div class="p-3 border rounded bg-indigo-50/50 month-card" data-idx="${m.idx}">
+            <label class="block text-xs font-bold text-indigo-800 mb-2 uppercase">${m.name}</label>
+            <div class="grid grid-cols-2 gap-2">
+                <input type="number" placeholder="S1 Days" class="sem1-days w-full p-2 border rounded text-sm text-center bg-white" title="Semester 1 Days">
+                <input type="number" placeholder="S2 Days" class="sem2-days w-full p-2 border rounded text-sm text-center bg-white" title="Semester 2 Days">
             </div>
         </div>
     `).join('');
@@ -99,51 +88,72 @@ export async function initAcademicYearSetup(db, containerId) {
         if (e.target.matches('.sem1-days, .sem2-days')) calculateTotals();
     });
 
-    const classContainer = document.getElementById('class-list-container');
-
-    function createSubjectRow(listTarget, subData = { eng: '', urdu: '' }) {
+    // Subject Row
+    function createSubjectRow(target, data = { eng: '', urdu: '' }) {
         const div = document.createElement('div');
-        div.className = "flex gap-1 mb-1 items-center subject-row group";
+        div.className = "flex gap-2 items-center bg-gray-50 p-2 rounded border border-dashed mb-2";
         div.innerHTML = `
-            <input type="text" placeholder="Eng" class="sub-eng-name p-1 border rounded text-[11px] w-1/2" value="${subData.eng}">
-            <input type="text" dir="rtl" placeholder="اردو" class="sub-urdu-name p-1 border rounded text-[11px] w-1/2 font-urdu" value="${subData.urdu}">
-            <button class="remove-sub-btn text-gray-300 hover:text-red-500 px-1 text-[10px] transition-colors"><i class="fas fa-times"></i></button>
+            <input type="text" placeholder="Subject (English)" class="sub-eng-name p-2 border rounded w-1/2" value="${data.eng}">
+            <input type="text" dir="rtl" placeholder="مضمون (اردو)" class="sub-urdu-name p-2 border rounded w-1/2 font-urdu" value="${data.urdu}">
+            <button class="remove-sub-btn text-red-500 hover:bg-red-100 p-2 rounded"><i class="fas fa-trash"></i></button>
         `;
         div.querySelector('.remove-sub-btn').onclick = () => div.remove();
-        listTarget.appendChild(div);
+        target.appendChild(div);
     }
 
-    function createClassRow(classData = { eng: '', urdu: '', subjects: [] }) {
+    // Class Row (Accordion Style)
+    function createClassRow(data = { eng: '', urdu: '', subjects: [] }) {
+        const classId = 'class-' + Math.random().toString(36).substr(2, 9);
         const div = document.createElement('div');
-        div.className = "bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:border-indigo-300 transition-all class-block flex flex-col h-64";
+        div.className = "border rounded-lg bg-white shadow-sm class-block overflow-hidden";
         div.innerHTML = `
-            <div class="flex justify-between items-start mb-2 bg-indigo-50 p-2 rounded">
-                <div class="flex-1 space-y-1">
-                    <input type="text" placeholder="Class (Eng)" class="class-eng-name w-full p-1 border rounded text-xs font-bold" value="${classData.eng}">
-                    <input type="text" dir="rtl" placeholder="درجہ (اردو)" class="class-urdu-name w-full p-1 border rounded text-xs font-bold font-urdu" value="${classData.urdu}">
+            <div class="flex items-center justify-between p-3 bg-white border-b hover:bg-gray-50 cursor-pointer" onclick="document.getElementById('${classId}').classList.toggle('hidden')">
+                <div class="flex gap-4 items-center">
+                    <i class="fas fa-chevron-right text-xs text-gray-400"></i>
+                    <span class="font-bold text-indigo-700 class-label-display">${data.eng || 'New Class'} ${data.urdu ? ' / ' + data.urdu : ''}</span>
                 </div>
-                <button class="remove-class-btn text-red-300 hover:text-red-600 ml-2 p-1"><i class="fas fa-trash-alt text-xs"></i></button>
+                <button class="remove-class-btn text-red-400 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button>
             </div>
             
-            <div class="flex-1 overflow-y-auto custom-scrollbar pr-1 mb-2 subs-list">
+            <div id="${classId}" class="hidden p-5 bg-indigo-50/30">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Class Name (English)</label>
+                        <input type="text" placeholder="e.g. Class 1" class="class-eng-name w-full p-2 border rounded mt-1 bg-white font-bold" value="${data.eng}">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Class Name (Urdu)</label>
+                        <input type="text" dir="rtl" placeholder="مثلاً اول" class="class-urdu-name w-full p-2 border rounded mt-1 bg-white font-bold font-urdu" value="${data.urdu}">
+                    </div>
                 </div>
-
-            <button class="add-sub-btn w-full py-1 border-2 border-dashed border-gray-200 text-gray-400 rounded text-[10px] font-bold hover:border-indigo-300 hover:text-indigo-500 transition-all">
-                <i class="fas fa-plus mr-1"></i> ADD SUBJECT
-            </button>
+                
+                <div class="bg-white p-4 rounded border">
+                    <h5 class="text-sm font-bold text-gray-600 mb-3 border-b pb-1">Manage Subjects</h5>
+                    <div class="subs-list"></div>
+                    <button class="add-sub-btn mt-3 text-indigo-600 font-bold text-sm hover:underline"><i class="fas fa-plus-circle mr-1"></i> Add Subject</button>
+                </div>
+            </div>
         `;
 
         const subsList = div.querySelector('.subs-list');
-        div.querySelector('.add-sub-btn').onclick = () => createSubjectRow(subsList);
-        div.querySelector('.remove-class-btn').onclick = () => div.remove();
+        div.querySelector('.add-sub-btn').onclick = (e) => { e.stopPropagation(); createSubjectRow(subsList); };
+        div.querySelector('.remove-class-btn').onclick = (e) => { e.stopPropagation(); div.remove(); };
         
-        if (classData.subjects.length > 0) {
-            classData.subjects.forEach(s => createSubjectRow(subsList, s));
+        // Update label on type
+        div.querySelector('.class-eng-name').oninput = (e) => {
+            div.querySelector('.class-label-display').innerText = e.target.value + ' / ' + div.querySelector('.class-urdu-name').value;
+        };
+        div.querySelector('.class-urdu-name').oninput = (e) => {
+            div.querySelector('.class-label-display').innerText = div.querySelector('.class-eng-name').value + ' / ' + e.target.value;
+        };
+
+        if (data.subjects.length > 0) {
+            data.subjects.forEach(s => createSubjectRow(subsList, s));
         } else {
             createSubjectRow(subsList);
         }
         
-        classContainer.appendChild(div);
+        document.getElementById('class-list-container').appendChild(div);
     }
 
     document.getElementById('add-new-class-btn').onclick = () => createClassRow();
