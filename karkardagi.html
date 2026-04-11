@@ -2511,36 +2511,53 @@ const handleUpdateTeacherName = async (e) => {
 };
 
         
-        const handleDeleteTeacher = (e) => {
-            e.preventDefault(); // Ensure the form doesn't submit
-            if (!activeYear) return;
-            
-            // Capture state before any data modification that leads to re-render
-            captureAccordionState();
-            
-            const button = e.target.closest('.delete-teacher-btn');
-            const teacherDiv = button.closest('.border.rounded-lg[data-teacher-id]');
-            const teacherId = teacherDiv?.dataset.teacherId; 
-            const jamiaDiv = button.closest('.border.rounded-lg[data-jamia-name]');
-            const jamiaName = jamiaDiv?.dataset.jamiaName; 
+        const handleDeleteTeacher = async (e) => {
+    e.preventDefault();
+    if (!activeYear || !currentUser) return;
 
-            if (!teacherId || !jamiaName) return; 
+    captureAccordionState();
+
+    const button = e.target.closest('.delete-teacher-btn');
+    const teacherDiv = button.closest('[data-teacher-id]');
+    const teacherId = teacherDiv?.dataset.teacherId;
+    const jamiaDiv = button.closest('[data-jamia-name]');
+    const jamiaName = jamiaDiv?.dataset.jamiaName;
+
+    if (!teacherId || !jamiaName) return;
+
+    if (!confirm(`Kya aap waqai "${jamiaName}" ke is teacher ko delete karna chahte hain?`)) return;
+
+    showLoader(true);
+    try {
+        // Local state se filter karein
+        let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
+        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+
+        if (jamiaData) {
+            jamiaData.teachers = jamiaData.teachers.filter(t => t.id !== teacherId);
+
+            // Firebase update
+            const userRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userRef, {
+                [`academicYears.${activeYear}.karkardagiStructure`]: currentStructure,
+                lastUpdated: serverTimestamp()
+            });
+
+            // Local variable sync
+            allAcademicYearsData[activeYear].karkardagiStructure = currentStructure;
             
-            // Using confirm() for simplicity, though a custom modal is recommended for production.
-            const isConfirmed = confirm("Kya aap waqai is teacher ko delete karna chahte hain? Inke saare periods bhi delete ho jayenge.");
-            if (!isConfirmed) return;
-            
-            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
-            let jamiaData = karkardagiStructure?.find(j => j.jamiaName === jamiaName);
-            if (jamiaData && jamiaData.teachers) {
-                 jamiaData.teachers = jamiaData.teachers.filter(t => t.id !== teacherId);
-                 saveActiveYearStructure(async () => { 
-                    renderSetupTab();
-                    renderReportingTab(); 
-                    populateTeacherProfileFilters(); // Update Teacher Profile filter list
-                 });
-            }
-        };
+            showNotification("Teacher delete ho gaya.");
+            renderSetupTab();
+            renderReportingTab();
+            populateTeacherProfileFilters();
+        }
+    } catch (error) {
+        console.error("Delete Teacher Error:", error);
+        showNotification("Delete karne mein error aayi.", true);
+    } finally {
+        showLoader(false);
+    }
+};
 
         const handleAddPeriod = async (e) => {
     e.preventDefault();
@@ -2607,37 +2624,55 @@ const handleUpdateTeacherName = async (e) => {
     }
 };
         
-        const handleDeletePeriod = (e) => {
-            if (!activeYear) return;
+        const handleDeletePeriod = async (e) => {
+    if (!activeYear || !currentUser) return;
 
-            // Capture state before any data modification that leads to re-render
-            captureAccordionState();
+    const button = e.target.closest('.delete-period-btn');
+    const periodRow = button.closest('tr[data-period-id]');
+    const periodId = periodRow?.dataset.periodId;
+    const teacherDiv = button.closest('[data-teacher-id]');
+    const teacherId = teacherDiv?.dataset.teacherId;
+    const jamiaDiv = button.closest('[data-jamia-name]');
+    const jamiaName = jamiaDiv?.dataset.jamiaName;
 
-            const button = e.target.closest('.delete-period-btn');
-            const periodRow = button.closest('tr[data-period-id]');
-            const periodId = periodRow?.dataset.periodId; 
-            const teacherDiv = button.closest('.border.rounded-lg[data-teacher-id]');
-            const teacherId = teacherDiv?.dataset.teacherId; 
-            const jamiaDiv = button.closest('.border.rounded-lg[data-jamia-name]');
-            const jamiaName = jamiaDiv?.dataset.jamiaName; 
+    if (!periodId || !teacherId || !jamiaName) return;
 
-             if (!periodId || !teacherId || !jamiaName) return; 
-             
-             const isConfirmed = confirm("Kya aap waqai is period ko delete karna chahte hain?");
-             if (!isConfirmed) return;
+    if (!confirm("Kya aap is period ko delete karna chahte hain?")) return;
 
-            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
-            let jamiaData = karkardagiStructure?.find(j => j.jamiaName === jamiaName);
-            let teacherData = jamiaData?.teachers?.find(t => t.id === teacherId);
-            
-            if (teacherData && teacherData.periods) {
-                 teacherData.periods = teacherData.periods.filter(p => p.id !== periodId);
-                 saveActiveYearStructure(async () => { 
-                    renderSetupTab();
-                    renderReportingTab(); 
-                 });
-            }
-        };
+    showLoader(true);
+    try {
+        let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
+        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+
+        if (teacherData && teacherData.periods) {
+            teacherData.periods = teacherData.periods.filter(p => p.id !== periodId);
+
+            // Firebase update
+            const userRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userRef, {
+                [`academicYears.${activeYear}.karkardagiStructure`]: currentStructure,
+                lastUpdated: serverTimestamp()
+            });
+
+            // Local variable sync
+            allAcademicYearsData[activeYear].karkardagiStructure = currentStructure;
+
+            // Accordion open rakhein
+            openAccordionIds.add(jamiaName);
+            openAccordionIds.add(teacherId);
+
+            showNotification("Period delete ho gaya.");
+            renderSetupTab();
+            renderReportingTab();
+        }
+    } catch (error) {
+        console.error("Delete Period Error:", error);
+        showNotification("Delete karne mein error aayi.", true);
+    } finally {
+        showLoader(false);
+    }
+};
         
         const handleEditPeriod = (e) => {
              const row = e.target.closest('tr[data-period-id]');
