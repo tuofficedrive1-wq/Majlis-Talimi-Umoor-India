@@ -88,18 +88,19 @@ export async function initAcademicYearSetup(db, containerId) {
         if (e.target.matches('.sem1-days, .sem2-days')) calculateTotals();
     });
 
-    // Subject Row
-    function createSubjectRow(target, data = { eng: '', urdu: '' }) {
-        const div = document.createElement('div');
-        div.className = "flex gap-2 items-center bg-gray-50 p-2 rounded border border-dashed mb-2";
-        div.innerHTML = `
-            <input type="text" placeholder="Subject (English)" class="sub-eng-name p-2 border rounded w-1/2" value="${data.eng}">
-            <input type="text" dir="rtl" placeholder="مضمون (اردو)" class="sub-urdu-name p-2 border rounded w-1/2 font-urdu" value="${data.urdu}">
-            <button class="remove-sub-btn text-red-500 hover:bg-red-100 p-2 rounded"><i class="fas fa-trash"></i></button>
-        `;
-        div.querySelector('.remove-sub-btn').onclick = () => div.remove();
-        target.appendChild(div);
-    }
+// 1. Subject Row function mein class add karein:
+function createSubjectRow(target, data = { eng: '', urdu: '' }) {
+    const div = document.createElement('div');
+    // 'subject-row' class yahan add ki gayi hai (Zaroori)
+    div.className = "subject-row flex gap-2 items-center bg-gray-50 p-2 rounded border border-dashed mb-2";
+    div.innerHTML = `
+        <input type="text" placeholder="Subject (English)" class="sub-eng-name p-2 border rounded w-1/2" value="${data.eng}">
+        <input type="text" dir="rtl" placeholder="مضمون (اردو)" class="sub-urdu-name p-2 border rounded w-1/2 font-urdu" value="${data.urdu}">
+        <button class="remove-sub-btn text-red-500 hover:bg-red-100 p-2 rounded"><i class="fas fa-trash"></i></button>
+    `;
+    div.querySelector('.remove-sub-btn').onclick = () => div.remove();
+    target.appendChild(div);
+}
 
     // Class Row (Accordion Style)
     function createClassRow(data = { eng: '', urdu: '', subjects: [] }) {
