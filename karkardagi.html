@@ -2576,52 +2576,70 @@ const handleUpdateTeacherName = async (e) => {
             }
         };
 
-        const handleAddPeriod = (e) => {
-            e.preventDefault();
-            if (!activeYear) return;
+        const handleAddPeriod = async (e) => {
+    e.preventDefault();
+    if (!activeYear || !currentUser) return;
 
-            // Capture state before any data modification that leads to re-render
-            captureAccordionState();
-            
-            const form = e.target; 
-            const jamiaName = form.querySelector('.hidden-jamia-name')?.value;
-            const teacherId = form.querySelector('.hidden-teacher-id')?.value;
-            
-            if (!teacherId || !jamiaName) return; 
+    // Accordion ki halat yaad rakhein
+    captureAccordionState();
+    
+    const form = e.target; 
+    const jamiaName = form.querySelector('.hidden-jamia-name')?.value;
+    const teacherId = form.querySelector('.hidden-teacher-id')?.value;
+    
+    if (!teacherId || !jamiaName) return; 
 
-            const classInput = form.querySelector('.period-class-input');
-            const bookInput = form.querySelector('.period-book-input');
-            const semesterSelect = form.querySelector('.period-semester-select');
-            const totalPagesInput = form.querySelector('.period-total-pages-input');
+    const classInput = form.querySelector('.period-class-input');
+    const bookInput = form.querySelector('.period-book-input');
+    const semesterSelect = form.querySelector('.period-semester-select');
+    const totalPagesInput = form.querySelector('.period-total-pages-input');
 
-            const newPeriod = {
-                id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
-                className: classInput.value.trim(), bookName: bookInput.value.trim(),
-                semester: semesterSelect.value, totalPages: parseInt(totalPagesInput.value, 10) || 0,
-            };
+    const newPeriod = {
+        id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
+        className: classInput.value.trim(), 
+        bookName: bookInput.value.trim(),
+        semester: semesterSelect.value, 
+        totalPages: parseInt(totalPagesInput.value, 10) || 0,
+    };
+    
+    if (!newPeriod.className || !newPeriod.bookName || newPeriod.totalPages <= 0) {
+         showNotification("Sabhi fields sahi se bharein.", true); 
+         return;
+    }
+    
+    showLoader(true);
+    try {
+        // 1. Local structure update karein
+        let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+        let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
+        let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+        
+        if (teacherData) {
+            if (!teacherData.periods) teacherData.periods = []; 
+            teacherData.periods.push(newPeriod); 
             
-            if (!newPeriod.className || !newPeriod.bookName || newPeriod.totalPages <= 0) {
-                 showNotification("Sabhi fields sahi se bharein.", true); return;
-            }
+            // 2. Firebase mein save karein
+            const userRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userRef, {
+                [`academicYears.${activeYear}.karkardagiStructure`]: karkardagiStructure,
+                lastUpdated: serverTimestamp()
+            });
+
+            // 3. UI Refresh
+            openAccordionIds.add(jamiaName);
+            openAccordionIds.add(teacherId);
             
-            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
-            let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
-            let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
-            
-            if (teacherData) {
-                if (!teacherData.periods) teacherData.periods = []; 
-                teacherData.periods.push(newPeriod); 
-                
-                saveActiveYearStructure(async () => { 
-                    // Add the Jamia and Teacher ID to the set to ensure both remain open
-                    openAccordionIds.add(jamiaName);
-                    openAccordionIds.add(teacherId);
-                    
-                    renderSetupTab(); // Re-render the whole setup to update the table
-                    renderReportingTab(); 
-                });
-            }
-        };
+            showNotification("Period kamyabi se add ho gaya!");
+            renderSetupTab();
+            renderReportingTab();
+        }
+    } catch (error) {
+        console.error("Error adding period:", error);
+        showNotification("Period save karne mein error aayi.", true);
+    } finally {
+        showLoader(false);
+    }
+};
         
         const handleDeletePeriod = (e) => {
             if (!activeYear) return;
