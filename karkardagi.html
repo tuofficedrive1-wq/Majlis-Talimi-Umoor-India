@@ -1543,107 +1543,56 @@ if (editTeacherForm) {
             });
         };
 
-        const loadUserData = async (isInitialLoad = false) => {
-    if (!currentUser) { return; }
+       const loadUserData = async (isInitialLoad = false) => {
+    if (!currentUser) return;
     showLoader(true);
     
     try {
-        // --- STEP 1: ADMIN KI CENTRAL CONFIG LOAD KAREIN ---
+        // 1. Admin ki Central Config ko hamesha pehle load karein
+        const globalConfigRef = doc(db, "settings", "academic_config");
+        const globalSnap = await getDoc(globalConfigRef);
+        
         let adminConfig = null;
-        try {
-            const globalConfigRef = doc(db, "settings", "academic_config");
-            const globalSnap = await getDoc(globalConfigRef);
-            if (globalSnap.exists()) {
-                adminConfig = globalSnap.data();
-                console.log("Admin Setup Found:", adminConfig);
-            }
-        } catch (e) {
-            console.error("Admin Config Fetch Error:", e);
+        if (globalSnap.exists()) {
+            adminConfig = globalSnap.data();
+            // Admin settings ko global variable mein save karein
+            window.adminAcademicConfig = adminConfig; 
         }
 
-        // --- STEP 2: USER PROFILE DATA FETCH ---
-        if (!userProfileData || Object.keys(userProfileData).length === 0 || !userProfileData.academicYears) {
-            const userDocRef = doc(db, 'users', currentUser.uid);
-            const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
-                userProfileData = userDocSnap.data(); 
-            }
+        // 2. User Profile Data
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+            userProfileData = userDocSnap.data(); 
         }
         
         allAcademicYearsData = userProfileData.academicYears || {};
 
-        // --- STEP 3: PRIORITY ASSIGNMENT (Admin vs User) ---
-        // Agar Admin ne setup kiya hai, to wahi activeYear hoga
+        // 3. ADMIN SETTINGS KO PRIORITY DEIN
         if (adminConfig && adminConfig.activeYear) {
             activeYear = adminConfig.activeYear;
             
-            // User ke data mein Admin ki settings inject karein (taake calculations sahi hon)
+            // User ke local data mein admin ki configuration inject karein
             if (!allAcademicYearsData[activeYear]) {
                 allAcademicYearsData[activeYear] = {};
             }
-            allAcademicYearsData[activeYear].academicMonths = adminConfig.academicMonths;
-            allAcademicYearsData[activeYear].sem1TotalDays = adminConfig.sem1TotalDays;
-            allAcademicYearsData[activeYear].sem2TotalDays = adminConfig.sem2TotalDays;
-            
-            console.log("Using Admin's Academic Year:", activeYear);
-        } 
-        // Agar Admin ne setup nahi kiya, to purana logic (User's choice)
-        else if (!activeYear) {
-            const yearKeys = Object.keys(allAcademicYearsData).sort().reverse();
-            if (yearKeys.length > 0) {
-                activeYear = yearKeys[0];
-            } else {
-                // Bilkul naya user aur Admin settings bhi nahi hain (Fallback)
-                const today = new Date();
-                const month = today.getMonth();
-                const year = today.getFullYear();
-                activeYear = (month >= 3) ? `${year}-${year + 1}` : `${year - 1}-${year}`;
-            }
+            allAcademicYearsData[activeYear].academicMonths = adminConfig.academicMonths || {};
+            allAcademicYearsData[activeYear].sem1TotalDays = adminConfig.sem1TotalDays || 0;
+            allAcademicYearsData[activeYear].sem2TotalDays = adminConfig.sem2TotalDays || 0;
         }
 
-        // --- STEP 4: UI UPDATES ---
-        populateYearSelector(); 
-        if (activeYear && activeYearSelect) {
-            if (!activeYearSelect.querySelector(`option[value="${activeYear}"]`)) {
-                const opt = document.createElement('option');
-                opt.value = activeYear;
-                opt.textContent = activeYear;
-                activeYearSelect.prepend(opt);
-            }
+        // 4. UI aur Data Reload
+        populateYearSelector();
+        if (activeYear) {
             activeYearSelect.value = activeYear;
+            // Forcefully load monthly report data with fresh state
+            await loadMonthlyReportData(true); 
+            refreshFullUI();
         }
-
-        // --- STEP 5: LOGIC EXECUTION ---
-        if (!activeYear) {
-            showLoader(false);
-            return; 
-        }
-
-        karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-
-        const academicYearParts = activeYear.split('-');
-        const academicYearStart = parseInt(academicYearParts[0], 10);
-        const academicYearEnd = parseInt(academicYearParts[1], 10);
-        
-        let reportingYearNum;
-        if (currentReportPeriod.monthNum >= 3 && currentReportPeriod.monthNum <= 11) {
-            reportingYearNum = academicYearStart;
-        } else if (currentReportPeriod.monthNum === 0) {
-            reportingYearNum = academicYearEnd;
-        } else {
-            reportingYearNum = currentReportPeriod.yearNum || academicYearStart;
-        }
-        
-        currentReportPeriod.yearNum = reportingYearNum;
-        updateReportPeriod({}); 
-        
-        // Final Load
-        await loadMonthlyReportData(true); 
-        refreshFullUI();
 
     } catch (error) {
-        console.error("Load User Data Error:", error);
-        showNotification("Data load error.", true);
+        console.error("Critical Load Error:", error);
+        showNotification("Settings sync karne mein masla aaya.", true);
     } finally {
         showLoader(false);
     }
