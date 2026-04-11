@@ -463,7 +463,12 @@
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, Timestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+        import { getFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc, writeBatch, serverTimestamp, Timestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Pehle se maujood imports ke saath ise bhi jodein
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// Global variable file ke top par rakhein
+let adminAcademicConfig = null;
         
                // Global variables ke paas add karein
 const urduMonths = {
@@ -930,8 +935,44 @@ const handleCreateReportLink = (jamiaName) => {
 });
         
         // --- MAIN APP LOGIC ---
-        const initApp = () => {
-             showLoader(true);
+      const initApp = async () => { // async yahan zaroori hai
+    showLoader(true);
+
+    // 1. Function Define kiya
+    async function loadAdminSettings(db) {
+        const configRef = doc(db, "settings", "academic_config");
+        const snap = await getDoc(configRef);
+        if (snap.exists()) {
+            adminAcademicConfig = snap.data();
+            console.log("Admin Settings Loaded", adminAcademicConfig);
+        } else {
+            alert("Pehle Admin Setup mein jaakar classes aur mahine set karein!");
+        }
+    }
+
+          // Class change hone par subjects update karne ka logic
+document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('period-class-input')) {
+        const selectedClass = e.target.value;
+        const container = e.target.closest('.grid'); // Aapke inputs ka parent div
+        const bookDropdown = container.querySelector('.period-book-input');
+
+        if (!selectedClass) {
+            bookDropdown.innerHTML = '<option value="">Pehle Class Chunein</option>';
+            bookDropdown.disabled = true;
+            return;
+        }
+
+        // Admin config se selected class ka data nikaalein
+        const classData = adminAcademicConfig.classes.find(c => c.className === selectedClass);
+
+        if (classData && classData.subjects) {
+            bookDropdown.innerHTML = '<option value="">Book/Subject Chunein</option>' + 
+                classData.subjects.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+            bookDropdown.disabled = false;
+        }
+    }
+});
 
             const handleSaveMonthlyReport = async () => {
                 if (!activeYear) return;
@@ -2100,9 +2141,17 @@ if (editTeacherForm) {
                              <input type="hidden" class="hidden-teacher-id" value="${teacherId}">
                              
                              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <input type="text" placeholder="Class ka Naam" class="period-class-input w-full p-2 border rounded-lg urdu-font" required>
-                                <input type="text" placeholder="Book ka Naam" class="period-book-input w-full p-2 border rounded-lg urdu-font" required>
-                             </div>
+    <select class="period-class-input w-full p-2 border rounded-lg urdu-font font-bold" required>
+        <option value="">Class Chunein</option>
+        ${adminAcademicConfig?.classes ? adminAcademicConfig.classes.map(c => 
+            `<option value="${c.className}">${c.className}</option>`
+        ).join('') : ''}
+    </select>
+
+    <select class="period-book-input w-full p-2 border rounded-lg urdu-font" required disabled>
+        <option value="">Pehle Class Chunein</option>
+    </select>
+</div>
                              <div class="border-t pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700">Semester</label>
