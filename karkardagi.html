@@ -655,17 +655,24 @@ const urduMonths = {
         
         // Helper function to map Month Index to Semester Month Number (1st, 2nd, 3rd, Last)
         const getSemesterMonthNumber = (monthNum, semester) => {
-            const sem1Months = [3, 4, 5, 6, 7]; // April, May, June, July, August (0=Jan, 3=Apr)
-            const sem2Months = [8, 9, 10, 11, 0]; // September, October, November, December, January
-            
-            const months = semester === "1" ? sem1Months : sem2Months;
-            const index = months.indexOf(monthNum);
-            
-            if (index === -1) return null; // Month is not in this semester
-            
-            // Month is at index 0 (1st month), 1 (2nd month), 2 (3rd month), 3 (4th month), 4 (Last month)
-            return index + 1;
-        };
+    if (!adminAcademicConfig || !adminAcademicConfig.monthDetails) return null;
+
+    // Admin ki setting se wo mahine nikaalein jo is semester (sem1 ya sem2) ke hain
+    const semesterMonths = Object.keys(adminAcademicConfig.monthDetails)
+        .filter(idx => {
+            const detail = adminAcademicConfig.monthDetails[idx];
+            return semester === "1" ? (detail.sem1 > 0) : (detail.sem2 > 0);
+        })
+        .map(Number)
+        .sort((a, b) => {
+            // Sorting logic (April=3 se shuru ho kar March=2 par khatam)
+            const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+            return order.indexOf(a) - order.indexOf(b);
+        });
+
+    const index = semesterMonths.indexOf(Number(monthNum));
+    return index === -1 ? null : index + 1;
+};
 
         // Calculate Kaifiyat (Status) and determine color class
         const calculateKaifiyatAndStyle = (achievement, monthNum, periodSemester) => {
@@ -1004,6 +1011,47 @@ document.addEventListener('change', (e) => {
     }
 });
 
+          const handleSaveStructure = async () => {
+        if (!currentUser || !activeYear) return;
+        showLoader(true);
+
+        try {
+            const userRef = doc(db, 'users', currentUser.uid);
+            
+            // --- Naya compatibility logic ---
+            const academicMonthsCompatibility = {};
+            if (adminAcademicConfig?.monthDetails) {
+                Object.keys(adminAcademicConfig.monthDetails).forEach(idx => {
+                    const detail = adminAcademicConfig.monthDetails[idx];
+                    // 'undefined' se bachne ke liye 0 use karein
+                    academicMonthsCompatibility[idx] = (detail.sem1 || 0) + (detail.sem2 || 0);
+                });
+            }
+
+            const updateData = {
+                [`academicYears.${activeYear}.academicMonths`]: academicMonthsCompatibility,
+                [`academicYears.${activeYear}.sem1TotalDays`]: adminAcademicConfig?.sem1TotalDays || 0,
+                [`academicYears.${activeYear}.sem2TotalDays`]: adminAcademicConfig?.sem2TotalDays || 0,
+                [`academicYears.${activeYear}.jamia`]: karkardagiStructure, // Teacher/Period data
+                lastUpdated: serverTimestamp()
+            };
+
+            await updateDoc(userRef, updateData);
+            showNotification("Structure kamyabi se save ho gaya!");
+        } catch (error) {
+            showNotification(`Structure save karne me error: ${error.message}`, true);
+            console.error("Save Error:", error);
+        } finally {
+            showLoader(false);
+        }
+    };
+
+    // 2. Button ke saath link karein
+    const saveStructureBtn = document.getElementById('save-structure-btn'); // Jo bhi aapki button ID ho
+    if (saveStructureBtn) {
+        saveStructureBtn.onclick = handleSaveStructure;
+    }
+          
             const handleSaveMonthlyReport = async () => {
                 if (!activeYear) return;
                 showLoader(true);
