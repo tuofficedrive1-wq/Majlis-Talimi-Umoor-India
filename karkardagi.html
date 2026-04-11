@@ -2316,68 +2316,85 @@ function generateTeacherLoginCode(existingTeachers = []) {
     return code;
 }
         
-        const handleAddTeacher = (e) => {
+       const handleAddTeacher = async (e) => {
     e.preventDefault();
-    if (!activeYear) return;
+    if (!activeYear || !currentUser) return;
 
-    // Capture state before any data modification that leads to re-render
+    // UI ki current state (open accordions) ko save karein
     captureAccordionState();
 
     const form = e.currentTarget;
     const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
     const jamiaName = jamiaDiv?.dataset.jamiaName;
     const teacherNameInput = form.querySelector('.teacher-name-input');
-    const teacherCodeInput = form.querySelector('.teacher-code-input');   // 🔹 NEW
+    const teacherCodeInput = form.querySelector('.teacher-code-input');
+    
     const teacherName = teacherNameInput.value.trim();
-    const typedCodeRaw = (teacherCodeInput?.value || '').trim();         // 🔹 NEW
+    const typedCodeRaw = (teacherCodeInput?.value || '').trim();
 
-    if (!jamiaName || !teacherName) { return; }
+    if (!jamiaName || !teacherName) return;
 
-    let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
-    if (!karkardagiStructure) karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure = [];
-    let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
-    if (!jamiaData) { jamiaData = { jamiaName: jamiaName, teachers: [] }; karkardagiStructure.push(jamiaData); }
+    // Local copy nikaalein update karne ke liye
+    let currentStructure = [...(allAcademicYearsData[activeYear].karkardagiStructure || [])];
+    let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+    
+    if (!jamiaData) {
+        jamiaData = { jamiaName: jamiaName, teachers: [] };
+        currentStructure.push(jamiaData);
+    }
     if (!jamiaData.teachers) jamiaData.teachers = [];
 
+    // Duplicate check
     if (jamiaData.teachers.some(t => t.name === teacherName)) {
-        showNotification("Is naam ka teacher pehle se add hai.", true);
+        showNotification("Yeh teacher pehle se add hai.", true);
         return;
     }
 
-    // 🔹 loginCode decide karein (typed ya auto-generate)
-    let loginCode;
-    if (typedCodeRaw) {
-        if (!/^\d{5}$/.test(typedCodeRaw)) {
-            showNotification("Teacher code sirf 5 digits ka hona chahiye.", true);
-            return;
-        }
-        if (jamiaData.teachers.some(t => String(t.loginCode) === typedCodeRaw)) {
-            showNotification("Ye code kisi aur teacher ko diya ja chuka hai.", true);
-            return;
-        }
-        loginCode = typedCodeRaw;
-    } else {
-        loginCode = generateTeacherLoginCode(jamiaData.teachers || []);
-    }
-
+    // Code logic
+    let loginCode = typedCodeRaw || generateTeacherLoginCode(jamiaData.teachers);
+    
     const newTeacher = {
         id: `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: teacherName,
-        loginCode: loginCode,   // ✅ ab ya to typed hoga ya auto
+        loginCode: loginCode,
         periods: []
     };
 
     jamiaData.teachers.push(newTeacher);
+    
+    showLoader(true);
+    try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        
+        // Firebase mein direct update karein
+        await updateDoc(userRef, {
+            [`academicYears.${activeYear}.karkardagiStructure`]: currentStructure,
+            lastUpdated: serverTimestamp()
+        });
 
-    // Add the new teacher's ID to the set so it opens automatically
-    openAccordionIds.add(newTeacher.id);
+        // Local state update karein taake UI refresh ho sake
+        allAcademicYearsData[activeYear].karkardagiStructure = currentStructure;
+        
+        // Naye teacher ka accordion open rakhein
+        openAccordionIds.add(jamiaName);
+        openAccordionIds.add(newTeacher.id);
 
-    saveActiveYearStructure(async () => {
+        // Inputs saaf karein
         teacherNameInput.value = '';
-        if (teacherCodeInput) teacherCodeInput.value = '';   // 🔹 clear code box
+        if (teacherCodeInput) teacherCodeInput.value = '';
+
+        showNotification(`${teacherName} add ho gaya!`);
+        
+        // UI REFRESH: Yeh sabse zaroori hai
         renderSetupTab();
         populateTeacherProfileFilters();
-    });
+
+    } catch (error) {
+        console.error("Add Teacher Error:", error);
+        showNotification("Teacher save nahi ho saka.", true);
+    } finally {
+        showLoader(false);
+    }
 };
         
         // Edit Teacher Modal kholna
