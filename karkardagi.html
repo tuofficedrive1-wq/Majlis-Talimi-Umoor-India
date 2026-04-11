@@ -2301,22 +2301,41 @@ if (editTeacherForm) {
         
         // --- Setup Tab Event Handlers (Unchanged) ---
 
-        const saveActiveYearStructure = async (callback) => {
-             if (!currentUser || !activeYear || !allAcademicYearsData[activeYear]) return; 
-             showLoader(true);
-             const userDocRef = doc(db, 'users', currentUser.uid);
-             try {
-                 await updateDoc(userDocRef, {
-                     academicYears: allAcademicYearsData 
-                 });
-                 showNotification("Structure saved successfully!");
-                 if (callback) await callback(); 
-             } catch (error) {
-                 showNotification("Structure save karne me error.", true, error.message);
-             } finally {
-                 showLoader(false);
-             }
+        const saveActiveYearStructure = async () => {
+    if (!currentUser || !activeYear) return;
+
+    try {
+        const userRef = doc(db, 'users', currentUser.uid);
+
+        // --- ERROR FIX START ---
+        // Admin config se mahino ka data nikaalein
+        const academicMonthsMap = {};
+        if (adminAcademicConfig && adminAcademicConfig.monthDetails) {
+            Object.keys(adminAcademicConfig.monthDetails).forEach(idx => {
+                const m = adminAcademicConfig.monthDetails[idx];
+                // Sem 1 aur Sem 2 ke dino ko plus karke total academicMonths banayein
+                // Agar data na ho toh default 0 rakhein taake undefined na ho
+                academicMonthsMap[idx] = (m.sem1 || 0) + (m.sem2 || 0);
+            });
+        }
+        // --- ERROR FIX END ---
+
+        const updateData = {
+            // academicMonths ko 'undefined' hone se bachane ke liye academicMonthsMap use karein
+            [`academicYears.${activeYear}.academicMonths`]: academicMonthsMap,
+            [`academicYears.${activeYear}.sem1TotalDays`]: adminAcademicConfig?.sem1TotalDays || 0,
+            [`academicYears.${activeYear}.sem2TotalDays`]: adminAcademicConfig?.sem2TotalDays || 0,
+            [`academicYears.${activeYear}.jamia`]: karkardagiStructure,
+            lastUpdated: serverTimestamp()
         };
+
+        await updateDoc(userRef, updateData);
+        showNotification("Structure successfully save ho gaya!");
+    } catch (error) {
+        console.error("Save Error:", error);
+        showNotification("Save karne me masla aaya: " + error.message, true);
+    }
+};
         
 // Har teacher ke liye unique 5-digit login code (Jamia ke andar)
 function generateTeacherLoginCode(existingTeachers = []) {
