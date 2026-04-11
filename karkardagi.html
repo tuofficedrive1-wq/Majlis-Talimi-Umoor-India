@@ -987,37 +987,37 @@ const handleCreateReportLink = (jamiaName) => {
 
 // karkardagi.html ke script tag ke andar is listener ko update karein:
 
-document.addEventListener('change', (e) => {
+// Is listener ko apne script mein update karein
+document.addEventListener('input', (e) => {
     if (e.target.classList.contains('period-class-input')) {
-        const selectedClassEng = e.target.value; 
-        const container = e.target.closest('form'); 
+        const userInput = e.target.value.trim();
+        const container = e.target.closest('form');
         const bookDropdown = container.querySelector('.period-book-input');
 
-        if (!selectedClassEng) {
+        if (!userInput) {
             bookDropdown.innerHTML = '<option value="">کتاب منتخب کریں</option>';
             bookDropdown.disabled = true;
             return;
         }
 
-        // Global admin config check
-        const config = window.adminAcademicConfig;
-        if (!config || !config.classes) {
-            console.error("Admin config not loaded properly");
-            return;
-        }
-
-        // Sahi class dhoondna
-        const classData = config.classes.find(c => c.classNameEng === selectedClassEng);
+        // Admin config se matching class dhoondna (Base Class check)
+        const classData = adminAcademicConfig.classes.find(c => {
+            // Agar user ne "اول اے" likha hai to wo Admin ki class "اول" se match ho jayega
+            const matchUrdu = c.classNameUrdu && userInput.includes(c.classNameUrdu);
+            const matchEng = c.classNameEng && userInput.toLowerCase().includes(c.classNameEng.toLowerCase());
+            return matchUrdu || matchEng;
+        });
 
         if (classData && classData.subjects && classData.subjects.length > 0) {
             bookDropdown.innerHTML = '<option value="">کتاب منتخب کریں</option>' + 
                 classData.subjects.map(sub => {
+                    // Sirf Urdu naam dikhayenge, agar na ho to English
                     const nameToShow = sub.urdu || sub.eng;
                     return `<option value="${sub.eng}">${nameToShow}</option>`;
                 }).join('');
             bookDropdown.disabled = false;
         } else {
-            bookDropdown.innerHTML = '<option value="">Is class mein koi kitab nahi mili</option>';
+            bookDropdown.innerHTML = '<option value="">کتابیں نہیں ملیں</option>';
             bookDropdown.disabled = true;
         }
     }
@@ -2192,18 +2192,21 @@ if (editTeacherForm) {
                              <input type="hidden" class="hidden-teacher-id" value="${teacherId}">
                              
                              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-  <select class="period-class-input w-full p-2 border rounded-lg urdu-font font-bold text-right" required>
-    <option value="">کلاس منتخب کریں</option>
-    ${adminAcademicConfig?.classes ? adminAcademicConfig.classes.map(c => {
-        // Bahar Urdu naam dikhega
-        const displayName = c.classNameUrdu || c.classNameEng;
-        // Value system ke liye English rahegi
-        return `<option value="${c.classNameEng}">${displayName}</option>`;
-    }).join('') : ''}
-</select>
+    <input type="text" 
+           list="admin-classes-list" 
+           class="period-class-input w-full p-2 border rounded-lg urdu-font font-bold text-right" 
+           placeholder="درجہ لکھیں (مثلاً اول اے)" 
+           required>
+    
+    <datalist id="admin-classes-list">
+        ${adminAcademicConfig?.classes ? adminAcademicConfig.classes.map(c => `
+            <option value="${c.classNameUrdu}">
+            <option value="${c.classNameEng}">
+        `).join('') : ''}
+    </datalist>
 
-    <select class="period-book-input w-full p-2 border rounded-lg urdu-font" required disabled>
-        <option value="">Pehle Class Chunein</option>
+    <select class="period-book-input w-full p-2 border rounded-lg urdu-font text-right" required disabled>
+        <option value="">کتاب منتخب کریں</option>
     </select>
 </div>
                              <div class="border-t pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2582,15 +2585,16 @@ const handleUpdateTeacherName = async (e) => {
     
     if (!teacherId || !jamiaName) return; 
 
-    const classInput = form.querySelector('.period-class-input');
+  const classInput = form.querySelector('.period-class-input');
 const bookInput = form.querySelector('.period-book-input');
 const semesterSelect = form.querySelector('.period-semester-select');
 const totalPagesInput = form.querySelector('.period-total-pages-input');
 
 const newPeriod = {
     id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
-    // Yahan variable names (classInput/bookInput) ko upar se match kar diya gaya hai
-    className: classInput.options[classInput.selectedIndex].text, 
+    // className ab direct input ki value se aayega (e.g. "اول اے")
+    className: classInput.value.trim(), 
+    // bookName dropdown se hi aayega kyunki wo abhi bhi select hi hai
     bookName: bookInput.options[bookInput.selectedIndex].text,
     semester: semesterSelect.value, 
     totalPages: parseInt(totalPagesInput.value, 10) || 0,
