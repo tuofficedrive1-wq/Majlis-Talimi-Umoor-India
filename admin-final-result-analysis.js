@@ -1,4 +1,4 @@
-// ✅ UPDATED ADMIN FINAL ANALYSIS WITH SEARCH, STATS & OPTIMIZATION
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS
 
 import {
     collection, query, where, getDocs, orderBy
@@ -31,7 +31,22 @@ export async function initAdminResultAnalysis(db, containerId) {
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
 
-    // --- NEW: Jamia Dropdown Filter UI ---
+    const getJamiaContext = (jamiaName) => {
+        if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
+        const target = jamiaName.trim().toLowerCase();
+        const foundUser = allUsers.find(u => {
+            const list = u.jamiaatList || [];
+            return list.some(j => {
+                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                return (name || '').trim().toLowerCase() === target;
+            });
+        });
+        return {
+            userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
+            region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
+        };
+    };
+
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
         <div class="flex border-b mb-6 bg-gray-50 rounded-t-lg overflow-hidden">
@@ -115,18 +130,19 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
     </div>`;
 
-    // Internal State Management
+    // Internal State Management - Elements Fix
     const elements = {
         btnDashboard: document.getElementById("tab-dashboard"),
         btnReports: document.getElementById("tab-reports"),
         dashboardView: document.getElementById("dashboard-view"),
         reportsView: document.getElementById("reports-view"),
         dashboardFilters: document.getElementById("dashboard-filters-div"),
-        reportsUserFilter: document.getElementById("reports-user-filter-div"),
         reportsLayoutFilter: document.getElementById("reports-layout-filter-div"),
         statsContainer: document.getElementById("stats-summary"),
         exportBtn: document.getElementById("admin-export-btn"),
-        jamiaSearch: document.getElementById("admin-jamia-search")
+        regionFilter: document.getElementById("admin-region-filter"),
+        userFilter: document.getElementById("admin-user-filter"),
+        jamiaSelect: document.getElementById("admin-jamia-select")
     };
 
     const updateJamiaList = () => {
@@ -156,7 +172,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         elements.btnDashboard.classList.add("active-sub-tab"); elements.btnReports.classList.remove("active-sub-tab");
         elements.dashboardView.classList.remove("hidden"); elements.reportsView.classList.add("hidden");
         elements.dashboardFilters.classList.remove("hidden");
-        elements.reportsUserFilter.classList.add("hidden"); elements.reportsLayoutFilter.classList.add("hidden");
+        elements.reportsLayoutFilter.classList.add("hidden");
         elements.statsContainer.classList.remove("hidden");
     };
 
@@ -164,13 +180,12 @@ export async function initAdminResultAnalysis(db, containerId) {
         elements.btnReports.classList.add("active-sub-tab"); elements.btnDashboard.classList.remove("active-sub-tab");
         elements.reportsView.classList.remove("hidden"); elements.dashboardView.classList.add("hidden");
         elements.dashboardFilters.classList.add("hidden");
-        elements.reportsUserFilter.classList.remove("hidden"); elements.reportsLayoutFilter.classList.remove("hidden");
-        elements.statsContainer.classList.add("hidden"); // Reports me hide kar sakte hain agar space chahiye
+        elements.reportsLayoutFilter.classList.remove("hidden");
+        elements.statsContainer.classList.add("hidden");
     };
 
-    // 🔄 Region-User Sync
-   elements.regionFilter.onchange = () => {
-        // Update user list based on region
+    // 🔄 Region-User-Jamia Sync
+    elements.regionFilter.onchange = () => {
         const selReg = elements.regionFilter.value;
         elements.userFilter.innerHTML = '<option value="all">All Users</option>';
         const filtered = selReg === "all" ? allUsers : allUsers.filter(u => u.region === selReg);
@@ -187,10 +202,10 @@ export async function initAdminResultAnalysis(db, containerId) {
     document.getElementById("admin-show-btn").onclick = async () => {
         const examType = document.getElementById("admin-exam-type").value;
         const examYear = document.getElementById("admin-exam-year").value;
-        const selRegion = document.getElementById("admin-region-filter").value;
-        const selUser = document.getElementById("admin-user-filter").value;
+        const selRegion = elements.regionFilter.value;
+        const selUser = elements.userFilter.value;
+        const selJamia = elements.jamiaSelect.value.toLowerCase();
         const layout = document.getElementById("admin-layout").value;
-        const searchVal = elements.jamiaSearch.value.trim().toLowerCase();
         const activeTab = elements.btnDashboard.classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
 
         const loader = document.getElementById("admin-loader");
@@ -211,15 +226,14 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 const matchRegion = (selRegion === "all" || context.region === selRegion);
                 const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
-                const matchSearch = (!searchVal || d.jamia.toLowerCase().includes(searchVal));
+                const matchJamia = (selJamia === "all" || d.jamia.toLowerCase().includes(selJamia));
 
                 const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
 
-                if (matchRegion && matchUser && matchSearch && !uniqueKeys.has(uniqueId)) {
+                if (matchRegion && matchUser && matchJamia && !uniqueKeys.has(uniqueId)) {
                     dataList.push({ ...d, ...context });
                     uniqueKeys.add(uniqueId);
                     
-                    // Global Stats Calculation
                     const num = (v) => parseInt(v) || 0;
                     const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                     const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
@@ -269,7 +283,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         XLSX.writeFile(wb, `Result_Report_${new Date().toLocaleDateString()}.xlsx`);
     };
 
-    // Render Functions (Dashboard & Reports) - Yeh aapka purana logic hai optimized version mein
     function renderDashboard(data, type, users) {
         elements.dashboardView.innerHTML = "";
         const num = (v) => parseInt(v) || 0;
@@ -289,7 +302,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             }).join('');
             elements.dashboardView.innerHTML = `<div class="bg-white p-5 rounded-xl border shadow-sm max-w-2xl mx-auto overflow-hidden"><table class="w-full text-sm text-center"><thead class="bg-gray-100"><tr><th class="p-2 border">Category</th><th class="p-2 border">Hazir</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         } else {
-            // Submission Status
             let submissionHtml = users.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => {
                 const userJamiaat = u.jamiaatList || [];
                 if (userJamiaat.length === 0) return "";
@@ -304,7 +316,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     }
 
-   function renderDetailedReports(data, layout) {
+    function renderDetailedReports(data, layout) {
         const thead = document.getElementById("admin-head");
         const tbody = document.getElementById("admin-body");
         const tfoot = document.getElementById("admin-foot");
@@ -329,59 +341,55 @@ export async function initAdminResultAnalysis(db, containerId) {
                 tbody.innerHTML += `<tr><td class="p-2 border">${i+1}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td><td class="p-2 border">${h}</td><td class="p-2 border">${p}</td><td class="p-2 border">${per.toFixed(1)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td></tr>`;
             });
         }
-    else {
-        // ✅ UPDATED ASATIZA LAYOUT WITH SR. NO & KEFIAYAT
-        thead.innerHTML = `
-            <th class="p-2 border">Sr.</th>
-            <th class="p-2 border">جامعہ</th>
-            <th class="p-2 border">استاد</th>
-            <th class="p-2 border text-right">مضمون</th>
-            <th class="p-2 border">کل</th>
-            <th class="p-2 border">کامیاب</th>
-            <th class="p-2 border">%</th>
-            <th class="p-2 border">کیفیت</th>
-            <th class="p-2 border bg-emerald-900">مجموعی %</th>
-            <th class="p-2 border bg-emerald-900">مجموعی کیفیت</th>`;
+        else {
+            thead.innerHTML = `
+                <th class="p-2 border">Sr.</th>
+                <th class="p-2 border">جامعہ</th>
+                <th class="p-2 border">استاد</th>
+                <th class="p-2 border text-right">مضمون</th>
+                <th class="p-2 border">کل</th>
+                <th class="p-2 border">کامیاب</th>
+                <th class="p-2 border">%</th>
+                <th class="p-2 border">کیفیت</th>
+                <th class="p-2 border bg-emerald-900">مجموعی %</th>
+                <th class="p-2 border bg-emerald-900">مجموعی کیفیت</th>`;
 
-        let srNo = 1;
-        data.forEach(d => {
-            (d.data || []).forEach(tEntry => {
-                const ps = tEntry.periods || []; 
-                const rSpan = ps.length || 1;
-                
-                let tT = 0, tP = 0; 
-                ps.forEach(p => { tT += num(p.total); tP += num(p.passed); });
-                const tPer = tT ? (tP/tT)*100 : 0;
-                const totalKefiyat = getJamiaKefiyat(tPer);
-                const totalColor = getKefiyatColor(tPer);
+            let srNo = 1;
+            data.forEach(d => {
+                (d.data || []).forEach(tEntry => {
+                    const ps = tEntry.periods || []; 
+                    const rSpan = ps.length || 1;
+                    let tT = 0, tP = 0; 
+                    ps.forEach(p => { tT += num(p.total); tP += num(p.passed); });
+                    const tPer = tT ? (tP/tT)*100 : 0;
+                    const totalKefiyat = getJamiaKefiyat(tPer);
+                    const totalColor = getKefiyatColor(tPer);
 
-                ps.forEach((p, idx) => {
-                    const sPer = num(p.total) ? (num(p.passed)/num(p.total))*100 : 0;
-                    const subjectKefiyat = getJamiaKefiyat(sPer);
-                    const subjectColor = getKefiyatColor(sPer);
+                    ps.forEach((p, idx) => {
+                        const sPer = num(p.total) ? (num(p.passed)/num(p.total))*100 : 0;
+                        const subjectKefiyat = getJamiaKefiyat(sPer);
+                        const subjectColor = getKefiyatColor(sPer);
 
-                    tbody.innerHTML += `
-                    <tr class="text-center border-b">
-                        ${idx === 0 ? `
-                            <td class="p-2 border font-bold" rowspan="${rSpan}">${srNo++}</td>
-                            <td class="p-2 border font-bold text-center urdu-font" rowspan="${rSpan}">${d.jamia}</td>
-                            <td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>
-                        ` : ''}
-                        
-                        <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td>
-                        <td class="p-2 border">${num(p.total)}</td>
-                        <td class="p-2 border">${num(p.passed)}</td>
-                        <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
-                        <td class="p-2 border urdu-font font-bold" style="color:${subjectColor}">${subjectKefiyat}</td>
-
-                        ${idx === 0 ? `
-                            <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
-                            <td class="p-2 border bg-emerald-50 urdu-font font-bold" style="color:${totalColor}" rowspan="${rSpan}">${totalKefiyat}</td>
-                        ` : ''}
-                    </tr>`;
+                        tbody.innerHTML += `
+                        <tr class="text-center border-b">
+                            ${idx === 0 ? `
+                                <td class="p-2 border font-bold" rowspan="${rSpan}">${srNo++}</td>
+                                <td class="p-2 border font-bold text-center urdu-font" rowspan="${rSpan}">${d.jamia}</td>
+                                <td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>
+                            ` : ''}
+                            <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td>
+                            <td class="p-2 border">${num(p.total)}</td>
+                            <td class="p-2 border">${num(p.passed)}</td>
+                            <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border urdu-font font-bold" style="color:${subjectColor}">${subjectKefiyat}</td>
+                            ${idx === 0 ? `
+                                <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
+                                <td class="p-2 border bg-emerald-50 urdu-font font-bold" style="color:${totalColor}" rowspan="${rSpan}">${totalKefiyat}</td>
+                            ` : ''}
+                        </tr>`;
+                    });
                 });
             });
-        });
+        }
     }
-}
 }
