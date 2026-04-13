@@ -31,22 +31,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
 
-    const getJamiaContext = (jamiaName) => {
-        if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
-        const target = jamiaName.trim().toLowerCase();
-        const foundUser = allUsers.find(u => {
-            const list = u.jamiaatList || [];
-            return list.some(j => {
-                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                return (name || '').trim().toLowerCase() === target;
-            });
-        });
-        return {
-            userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
-            region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
-        };
-    };
-
+    // --- NEW: Jamia Dropdown Filter UI ---
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
         <div class="flex border-b mb-6 bg-gray-50 rounded-t-lg overflow-hidden">
@@ -79,12 +64,22 @@ export async function initAdminResultAnalysis(db, containerId) {
                 </div>
 
                 <div>
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Search Jamia</label>
-                    <input type="text" id="admin-jamia-search" placeholder="Naam likhein..." class="w-full p-2 border rounded-lg text-sm urdu-font">
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label>
+                    <select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm">
+                        <option value="all">All Users</option>
+                        ${allUsers.map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label>
+                    <select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font">
+                        <option value="all">All Jamiaat</option>
+                    </select>
                 </div>
 
                 <div id="dashboard-filters-div">
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Result Type</label>
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Dashboard Type</label>
                     <select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold">
                         <option value="region-wise">🌍 Region Summary</option>
                         <option value="user-wise">👨‍💼 User Summary</option>
@@ -92,15 +87,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                     </select>
                 </div>
 
-                <div id="reports-user-filter-div" class="hidden">
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label>
-                    <select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm">
-                        <option value="all">All Users</option>
-                    </select>
-                </div>
-
                 <div id="reports-layout-filter-div" class="hidden">
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Layout</label>
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Report Layout</label>
                     <select id="admin-layout" class="w-full p-2 border rounded-lg text-sm">
                         <option value="jamia">Jamia Wise</option>
                         <option value="class">Class Wise</option>
@@ -116,9 +104,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
 
         <div id="stats-summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
-
         <div id="admin-loader" class="hidden text-center py-12"><div class="loader mx-auto"></div><p>Loading Data...</p></div>
-
         <div id="dashboard-view" class="space-y-6"></div>
         <div id="reports-view" class="hidden overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
              <table class="w-full text-center border-collapse" id="final-analysis-table-to-export">
@@ -143,6 +129,28 @@ export async function initAdminResultAnalysis(db, containerId) {
         jamiaSearch: document.getElementById("admin-jamia-search")
     };
 
+    const updateJamiaList = () => {
+        const selUser = elements.userFilter.value;
+        const selReg = elements.regionFilter.value;
+        elements.jamiaSelect.innerHTML = '<option value="all">All Jamiaat</option>';
+
+        let filteredUsers = allUsers;
+        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => u.region === selReg);
+        if (selUser !== "all") filteredUsers = filteredUsers.filter(u => (u.name || u.email) === selUser);
+
+        let jamiaSet = new Set();
+        filteredUsers.forEach(u => {
+            (u.jamiaatList || []).forEach(j => {
+                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if (name) jamiaSet.add(name.trim());
+            });
+        });
+
+        [...jamiaSet].sort().forEach(j => {
+            elements.jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
+        });
+    };
+
     // 🎮 TAB SWITCHING
     elements.btnDashboard.onclick = () => {
         elements.btnDashboard.classList.add("active-sub-tab"); elements.btnReports.classList.remove("active-sub-tab");
@@ -161,16 +169,19 @@ export async function initAdminResultAnalysis(db, containerId) {
     };
 
     // 🔄 Region-User Sync
-    document.getElementById("admin-region-filter").onchange = (e) => {
-        const selReg = e.target.value;
-        const userSelect = document.getElementById("admin-user-filter");
-        userSelect.innerHTML = '<option value="all">All Users</option>';
+   elements.regionFilter.onchange = () => {
+        // Update user list based on region
+        const selReg = elements.regionFilter.value;
+        elements.userFilter.innerHTML = '<option value="all">All Users</option>';
         const filtered = selReg === "all" ? allUsers : allUsers.filter(u => u.region === selReg);
-        filtered.sort((a,b) => (a.name||'').localeCompare(b.name||'')).forEach(u => {
+        filtered.forEach(u => {
             const n = u.name || u.email;
-            userSelect.innerHTML += `<option value="${n}">${n}</option>`;
+            elements.userFilter.innerHTML += `<option value="${n}">${n}</option>`;
         });
+        updateJamiaList();
     };
+
+    elements.userFilter.onchange = updateJamiaList;
 
     // 📊 Show Analysis Logic
     document.getElementById("admin-show-btn").onclick = async () => {
@@ -293,19 +304,31 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     }
 
-    function renderDetailedReports(data, layout) {
-    const thead = document.getElementById("admin-head");
-    const tbody = document.getElementById("admin-body");
-    const tfoot = document.getElementById("admin-foot");
-    tbody.innerHTML = ""; tfoot.innerHTML = "";
-    const num = (v) => parseInt(v) || 0;
+   function renderDetailedReports(data, layout) {
+        const thead = document.getElementById("admin-head");
+        const tbody = document.getElementById("admin-body");
+        const tfoot = document.getElementById("admin-foot");
+        tbody.innerHTML = ""; tfoot.innerHTML = "";
+        const num = (v) => parseInt(v) || 0;
 
-    if (layout === 'jamia') {
-        // ... (Keep existing Jamia logic)
-    } 
-    else if (layout === 'class') {
-        // ... (Keep existing Class logic)
-    }
+        if (layout === 'jamia') {
+            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+            data.forEach((d, i) => {
+                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
+                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                const per = h ? (p/h)*100 : 0;
+                tbody.innerHTML += `<tr><td class="p-2 border">${i+1}</td><td class="p-2 border urdu-font font-bold">${d.jamia}</td><td class="p-2 border">${h}</td><td class="p-2 border">${p}</td><td class="p-2 border">${per.toFixed(1)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td></tr>`;
+            });
+        } 
+        else if (layout === 'class') {
+            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+            data.forEach((d, i) => {
+                const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
+                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                const per = h ? (p/h)*100 : 0;
+                tbody.innerHTML += `<tr><td class="p-2 border">${i+1}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td><td class="p-2 border">${h}</td><td class="p-2 border">${p}</td><td class="p-2 border">${per.toFixed(1)}%</td><td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td></tr>`;
+            });
+        }
     else {
         // ✅ UPDATED ASATIZA LAYOUT WITH SR. NO & KEFIAYAT
         thead.innerHTML = `
