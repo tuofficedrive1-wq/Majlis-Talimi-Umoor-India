@@ -2445,15 +2445,16 @@ const handleUpdateTeacherName = async (e) => {
     const jamiaName = modalEditJamiaName.value;
     const teacherId = modalEditTeacherId.value;
     const newTeacherName = modalNewTeacherNameInput.value.trim();
-    const newTeacherCodeRaw = (modalTeacherCodeInput.value || '').trim(); // 5-digit code
+    const newTeacherCodeRaw = (modalTeacherCodeInput.value || '').trim();
 
     if (!newTeacherName) {
         showNotification("Naya naam khali nahi ho sakta.", true);
         return;
     }
 
-    const structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-    const jamiaData = structure.find(j => j.jamiaName === jamiaName);
+    // 1. Local State Update Logic (Sabse pehle local data badlein)
+    let structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
+    let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
     if (!jamiaData || !Array.isArray(jamiaData.teachers)) {
         showNotification("Teacher data structure me nahi mila.", true);
@@ -2462,63 +2463,42 @@ const handleUpdateTeacherName = async (e) => {
 
     const teacherData = jamiaData.teachers.find(t => t.id === teacherId);
     if (!teacherData) {
-        showNotification("Teacher data structure me nahi mila.", true);
+        showNotification("Teacher nahi mila.", true);
         return;
     }
 
-    // --- Code validate / set ---
-    if (newTeacherCodeRaw) {
-        // 5 digit check
-        if (!/^\d{5}$/.test(newTeacherCodeRaw)) {
-            showNotification("Teacher code sirf 5 digits ka hona chahiye.", true);
-            return;
-        }
-        // Duplicate check (same Jamia ke andar)
-        const codeTaken = jamiaData.teachers.some(
-            t => t.id !== teacherId && String(t.loginCode || '') === newTeacherCodeRaw
-        );
-        if (codeTaken) {
-            showNotification("Ye code isi Jamia me kisi aur teacher ko diya ja chuka hai.", true);
-            return;
-        }
-        teacherData.loginCode = newTeacherCodeRaw;
-    } else if (!teacherData.loginCode) {
-        // Agar pehle bhi code nahi tha aur aap blank chhod den to auto-generate
-        teacherData.loginCode = generateTeacherLoginCode(jamiaData.teachers || []);
-    }
-
     const oldTeacherName = teacherData.name;
+    
+    // Update local values
     teacherData.name = newTeacherName;
+    if (newTeacherCodeRaw) teacherData.loginCode = newTeacherCodeRaw;
 
+    showLoader(true);
     try {
-        await saveActiveYearStructure(async () => {
-            editTeacherModal.classList.add('hidden');
-
-            // current month ke local data me naam sync
-            monthlyReportData.forEach(entry => {
-                if (entry.teacherId === teacherId) {
-                    entry.teacherName = newTeacherName;
-                }
-            });
-
-            // purane reports me bhi naam update
-            allYearReportsData.forEach(report => {
-                report.karkardagiReport?.data?.forEach(entry => {
-                    if (entry.teacherId === teacherId && entry.teacherName === oldTeacherName) {
-                        entry.teacherName = newTeacherName;
-                    }
-                });
-            });
-
-            renderSetupTab();
-            renderReportingTab();
-            populateTeacherProfileFilters();
-
-            showNotification(`Teacher "${newTeacherName}" ki detail update ho gayi hai!`);
+        // 2. Firestore mein save karein
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+            [`academicYears.${activeYear}.karkardagiStructure`]: structure,
+            lastUpdated: serverTimestamp()
         });
-    } catch (err) {
-        console.error("Teacher update failed:", err);
-        showNotification("Teacher update karne me error aayi.", true);
+
+        // 3. Modal band karein
+        editTeacherModal.classList.add('hidden');
+
+        // 4. UI Refresh (Yeh zaroori hai list mein naya naam dikhane ke liye)
+        renderSetupTab(); // Setup list refresh karein
+        renderReportingTab(); // Reporting table refresh karein
+        populateTeacherProfileFilters(); // Summary tab ke filters refresh karein
+
+        showNotification(`Teacher "${newTeacherName}" ki detail update ho gayi hai!`);
+    } catch (error) {
+        console.error("Teacher update failed:", error);
+        showNotification("Update karne me error aayi.", true);
+        
+        // Error ki surat mein purana naam wapas set kardein (Rollback)
+        teacherData.name = oldTeacherName;
+    } finally {
+        showLoader(false);
     }
 };
 
