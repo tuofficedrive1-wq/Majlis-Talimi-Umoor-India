@@ -344,7 +344,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     const num = (v) => parseInt(v) || 0;
 
     if (layout === 'jamia') {
-        // ✅ JAMIA WISE: Grouping data by Jamia Name
+        // ✅ JAMIA WISE: Consolidated Grouping
         thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
         
         let jamiaStats = {};
@@ -352,29 +352,33 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { h: 0, p: 0 };
             const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
             const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-            jamiaStats[d.jamia].h += h;
-            jamiaStats[d.jamia].p += p;
+            jamiaStats[d.jamia].h += h; jamiaStats[d.jamia].p += p;
         });
 
         Object.entries(jamiaStats).forEach(([name, s], i) => {
             const per = s.h ? (s.p / s.h) * 100 : 0;
+            // Level 'jamia' pass kiya gaya hai
+            const kefiyat = getJamiaKefiyat(per, 'jamia');
+            const color = getKefiyatColor(per, 'jamia');
+
             tbody.innerHTML += `<tr>
                 <td class="p-2 border">${i + 1}</td>
                 <td class="p-2 border urdu-font font-bold">${name}</td>
                 <td class="p-2 border">${s.h}</td>
-                <td class="p-2 border">${s.p}</td>
+                <td class="p-2 border text-green-700 font-bold">${s.p}</td>
                 <td class="p-2 border font-bold">${per.toFixed(1)}%</td>
-                <td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td>
+                <td class="p-2 border urdu-font font-bold" style="color:${color}">${kefiyat}</td>
             </tr>`;
         });
     } 
     else if (layout === 'class') {
-        // ✅ CLASS WISE: Shows each class separately
+        // ✅ CLASS WISE: Level 'class'
         thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
         data.forEach((d, i) => {
             const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
             const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
             const per = h ? (p / h) * 100 : 0;
+            
             tbody.innerHTML += `<tr>
                 <td class="p-2 border">${i + 1}</td>
                 <td class="p-2 border urdu-font">${d.jamia}</td>
@@ -382,23 +386,16 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <td class="p-2 border">${h}</td>
                 <td class="p-2 border">${p}</td>
                 <td class="p-2 border font-bold">${per.toFixed(1)}%</td>
-                <td class="p-2 border urdu-font" style="color:${getKefiyatColor(per)}">${getJamiaKefiyat(per)}</td>
+                <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'class')}">${getJamiaKefiyat(per, 'class')}</td>
             </tr>`;
         });
     }
     else {
-        // ✅ ASATIZA WISE: Detailed Teacher & Subject Logic
+        // ✅ ASATIZA WISE: Level 'teacher' (Strict Logic)
         thead.innerHTML = `
-            <th class="p-2 border">Sr.</th>
-            <th class="p-2 border">جامعہ</th>
-            <th class="p-2 border">استاد</th>
-            <th class="p-2 border text-right">مضمون</th>
-            <th class="p-2 border">کل</th>
-            <th class="p-2 border">کامیاب</th>
-            <th class="p-2 border">%</th>
-            <th class="p-2 border">کیفیت</th>
-            <th class="p-2 border bg-emerald-900">مجموعی %</th>
-            <th class="p-2 border bg-emerald-900">مجموعی کیفیت</th>`;
+            <th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">استاد</th><th class="p-2 border">مضمون</th>
+            <th class="p-2 border">کل</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>
+            <th class="p-2 border bg-emerald-900">مجموعی %</th><th class="p-2 border bg-emerald-900">مجموعی کیفیت</th>`;
 
         let srNo = 1;
         data.forEach(d => {
@@ -422,10 +419,10 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <td class="p-2 border">${num(p.total)}</td>
                         <td class="p-2 border">${num(p.passed)}</td>
                         <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
-                        <td class="p-2 border urdu-font" style="color:${getKefiyatColor(sPer)}">${getJamiaKefiyat(sPer)}</td>
+                        <td class="p-2 border urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
                         ${idx === 0 ? `
                             <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
-                            <td class="p-2 border bg-emerald-50 urdu-font" style="color:${getKefiyatColor(tPer)}" rowspan="${rSpan}">${getJamiaKefiyat(tPer)}</td>
+                            <td class="p-2 border bg-emerald-50 urdu-font font-bold" style="color:${getKefiyatColor(tPer, 'teacher')}" rowspan="${rSpan}">${getJamiaKefiyat(tPer, 'teacher')}</td>
                         ` : ''}
                     </tr>`;
                 });
