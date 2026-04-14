@@ -338,30 +338,48 @@ window.editEntry = async (docId) => {
                 tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
             }
             if (layoutLevel === 'wazahat') {
-    thead.innerHTML = `<tr class="bg-red-50">
-        <th class="border p-2">Ustaz/Jamia</th>
-        <th class="border p-2">Sbj/Darjah</th>
-        <th class="border p-2">Result</th>
-        <th class="border p-2">Wazahat (Explanation)</th>
-        <th class="border p-2 no-print">Action</th>
-    </tr>`;
+                thead.innerHTML = `
+                    <tr class="bg-red-50 text-red-900">
+                        <th class="border p-3">استاد / جامعہ</th>
+                        <th class="border p-3">مضمون / درجہ</th>
+                        <th class="border p-3">فیصد</th>
+                        <th class="border p-3">کیفیت</th>
+                        <th class="border p-3">وضاحت (Explanation)</th>
+                        <th class="border p-3 no-print">ایکشن</th>
+                    </tr>`;
 
-    // Data loop ke andar ye check lagayein:
-    let percVal = parseFloat(String(item.percentage).replace('%', ''));
-    if (percVal < 60) { 
-        rowsHtml += `<tr>
-            <td class="border p-2">${item.teacher}</td>
-            <td class="border p-2">${item.subject}</td>
-            <td class="border p-2">${percVal}%</td>
-            <td class="border p-2 italic text-sm">${item.wazahat || 'Wazahat nahi mili'}</td>
-            <td class="border p-2 no-print">
-                <button onclick="sendWazahatLink('${item.docId}', '${item.teacher}', '${item.subject}')" class="bg-green-500 text-white p-1 rounded">
-                    WhatsApp Link
-                </button>
-            </td>
-        </tr>`;
-    }
-}
+                latestDataMap.forEach((d) => {
+                    // Asatiza wise results mein entries 'data' array mein hoti hain
+                    if (d.data && Array.isArray(d.data)) {
+                        d.data.forEach((tEntry) => {
+                            const periods = tEntry.periods || [];
+                            periods.forEach((p) => {
+                                let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
+                                
+                                // Sirf 60% se kam (Kamzor/Tashweesh nak) wale
+                                if (percVal < 60) {
+                                    rowsHtml += `
+                                        <tr class="hover:bg-red-50 border-b border-red-100">
+                                            <td class="border p-3 font-bold">${tEntry.teacher || d.jamia}</td>
+                                            <td class="border p-3">${p.subject || d.darjah || '-'}</td>
+                                            <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+                                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal)}">${getJamiaKefiyat(percVal)}</td>
+                                            <td class="border p-3 text-sm italic text-gray-600">
+                                                ${d.wazahat || '<span class="text-gray-400">Wazahat nahi mili</span>'}
+                                            </td>
+                                            <td class="border p-3 no-print text-center">
+                                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher || d.jamia}', '${p.subject || d.darjah}')" 
+                                                        class="bg-green-600 text-white px-3 py-1 rounded-md text-xs hover:bg-green-700 shadow-sm transition">
+                                                    WhatsApp Link
+                                                </button>
+                                            </td>
+                                        </tr>`;
+                                }
+                            });
+                        });
+                    }
+                });
+            }
 
             tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
             subtitle.textContent = `${examType} | سال: ${examYear}`;
