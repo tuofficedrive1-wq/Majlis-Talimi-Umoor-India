@@ -6,20 +6,21 @@ import { getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-fires
 
 
 // Jamia/Ustad Wise Kefiyat Logic
-// Updated Logic to match asatiza-wise-result.html
-const getKefiyat = (p, type = 'teacher') => {
+// 1. Grading Logic (Split: Jamia/Class vs Teacher)
+const getKefiyat = (p, level) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
     
-    if (type === 'jamia') {
-        // Jamia Wise Logic (Excel formula based)
+    // Jamia aur Class Wise ke liye same logic (Excel based)
+    if (level === 'jamia' || level === 'class') {
         if (val >= 85) return "ممتاز مع شرف";
         if (val >= 76) return "ممتاز";
         if (val >= 61) return "بہتر";
         if (val >= 40) return "مناسب";
         return "کمزور";
-    } else {
-        // Teacher/Class Wise Logic (Strict)
+    } 
+    // Sirf Asatiza Wise aur Wazahat ke liye alag logic
+    else {
         if (val >= 90) return "ممتاز";
         if (val >= 70) return "بہتر";
         if (val >= 60) return "مناسب";
@@ -28,14 +29,14 @@ const getKefiyat = (p, type = 'teacher') => {
     }
 };
 
-const getKefiyatColor = (p, type = 'teacher') => {
+const getKefiyatColor = (p, level) => {
     let val = parseFloat(String(p).replace('%', ''));
-    if (type === 'jamia') {
-        if (val >= 85) return "#059669"; // Green
-        if (val >= 76) return "#2563eb"; // Blue
-        if (val >= 61) return "#d97706"; // Orange
-        if (val >= 40) return "#7c3aed"; // Purple
-        return "#dc2626";                // Red
+    if (level === 'jamia' || level === 'class') {
+        if (val >= 85) return "#059669";
+        if (val >= 70) return "#2563eb";
+        if (val >= 60) return "#d97706";
+        if (val >= 40) return "#7c3aed";
+        return "#dc2626";
     } else {
         if (val >= 90) return "#059669";
         if (val >= 70) return "#2563eb";
@@ -44,7 +45,6 @@ const getKefiyatColor = (p, type = 'teacher') => {
         return "#dc2626";
     }
 };
-
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
     if (!db || !user) return;
     const container = document.getElementById(containerId);
