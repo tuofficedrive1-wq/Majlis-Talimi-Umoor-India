@@ -335,7 +335,7 @@ window.editEntry = async (docId) => {
                             </td>
                             <td class="no-print">-</td>
                         </tr>`;
-            } else {
+            } else if (layoutLevel === 'teacher') {
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
                         <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
@@ -380,7 +380,7 @@ window.editEntry = async (docId) => {
                 const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
                 tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
             }
-                       if (layoutLevel === 'wazahat') {
+                       else if (layoutLevel === 'wazahat') {
                 // Headers ko sahi sequence mein rakhein (Symmetry ke liye)
                 thead.innerHTML = `
                     <tr class="bg-red-50 text-red-900">
