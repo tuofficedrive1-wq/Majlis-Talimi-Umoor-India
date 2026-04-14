@@ -7,23 +7,42 @@ import { getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-fires
 
 // Jamia/Ustad Wise Kefiyat Logic
 // Updated Logic to match asatiza-wise-result.html
-const getJamiaKefiyat = (p) => {
+const getKefiyat = (p, type = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
-    if (val >= 90) return "ممتاز";        // 90% or above
-    if (val >= 70) return "بہتر";        // 70% to 89%
-    if (val >= 60) return "مناسب";      // 60% to 69%
-    if (val >= 51) return "کمزور";      // 51% to 59%
-    return "تشویش ناک";                 // Below 51%
+    
+    if (type === 'jamia') {
+        // Jamia Wise Logic (Excel formula based)
+        if (val >= 85) return "ممتاز مع شرف";
+        if (val >= 76) return "ممتاز";
+        if (val >= 61) return "بہتر";
+        if (val >= 40) return "مناسب";
+        return "کمزور";
+    } else {
+        // Teacher/Class Wise Logic (Strict)
+        if (val >= 90) return "ممتاز";
+        if (val >= 70) return "بہتر";
+        if (val >= 60) return "مناسب";
+        if (val >= 51) return "کمزور";
+        return "تشویش ناک";
+    }
 };
 
-const getKefiyatColor = (p) => {
+const getKefiyatColor = (p, type = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
-    if (val >= 90) return "#059669"; // Green
-    if (val >= 70) return "#2563eb"; // Blue
-    if (val >= 60) return "#d97706"; // Orange
-    if (val >= 51) return "#7c3aed"; // Purple
-    return "#dc2626";                // Red
+    if (type === 'jamia') {
+        if (val >= 85) return "#059669"; // Green
+        if (val >= 76) return "#2563eb"; // Blue
+        if (val >= 61) return "#d97706"; // Orange
+        if (val >= 40) return "#7c3aed"; // Purple
+        return "#dc2626";                // Red
+    } else {
+        if (val >= 90) return "#059669";
+        if (val >= 70) return "#2563eb";
+        if (val >= 60) return "#d97706";
+        if (val >= 51) return "#7c3aed";
+        return "#dc2626";
+    }
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
