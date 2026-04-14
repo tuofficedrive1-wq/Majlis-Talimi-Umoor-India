@@ -9,7 +9,6 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
     
-    // Jamia aur Class Wise ke liye 85% wala logic
     if (level === 'jamia' || level === 'class') {
         if (val >= 85) return "ممتاز مع شرف";
         if (val >= 76) return "ممتاز";
@@ -17,12 +16,12 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
         if (val >= 40) return "مناسب";
         return "کمزور";
     } 
-    // Asatiza Wise ke liye strict logic
     else {
+        // Asatiza Wise Strict Logic
         if (val >= 90) return "ممتاز";
         if (val >= 70) return "بہتر";
         if (val >= 60) return "مناسب";
-        if (val >= 51) return "کمزور";
+        if (val >= 51) return "کمزور"; // Screenshot me 54.5% par yahi aana chahiye
         return "تشویش ناک";
     }
 };
@@ -30,16 +29,16 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
 const getKefiyatColor = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (level === 'jamia' || level === 'class') {
-        if (val >= 85) return "#059669"; // Green
-        if (val >= 76) return "#2563eb"; // Blue
-        if (val >= 61) return "#d97706"; // Orange
-        if (val >= 40) return "#7c3aed"; // Purple
-        return "#dc2626";                // Red
+        if (val >= 85) return "#059669"; 
+        if (val >= 76) return "#2563eb"; 
+        if (val >= 61) return "#d97706"; 
+        if (val >= 40) return "#7c3aed"; 
+        return "#dc2626";
     } else {
         if (val >= 90) return "#059669";
         if (val >= 70) return "#2563eb";
         if (val >= 60) return "#d97706";
-        if (val >= 51) return "#7c3aed";
+        if (val >= 51) return "#7c3aed"; // Kamzor ke liye Purple/Violet
         return "#dc2626";
     }
 };
@@ -357,7 +356,6 @@ export async function initAdminResultAnalysis(db, containerId) {
 
         Object.entries(jamiaStats).forEach(([name, s], i) => {
             const per = s.h ? (s.p / s.h) * 100 : 0;
-            // Level 'jamia' pass kiya gaya hai
             const kefiyat = getJamiaKefiyat(per, 'jamia');
             const color = getKefiyatColor(per, 'jamia');
 
@@ -408,6 +406,9 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 ps.forEach((p, idx) => {
                     const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
+                    const sKefiyat = getJamiaKefiyat(sPer, 'teacher'); 
+                    const sColor = getKefiyatColor(sPer, 'teacher');
+
                     tbody.innerHTML += `
                     <tr class="text-center border-b">
                         ${idx === 0 ? `
@@ -419,15 +420,17 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <td class="p-2 border">${num(p.total)}</td>
                         <td class="p-2 border">${num(p.passed)}</td>
                         <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
-                        <td class="p-2 border urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                        <td class="p-2 border urdu-font font-bold" style="color:${sColor}">${sKefiyat}</td>
                         ${idx === 0 ? `
                             <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
-                            <td class="p-2 border bg-emerald-50 urdu-font font-bold" style="color:${getKefiyatColor(tPer, 'teacher')}" rowspan="${rSpan}">${getJamiaKefiyat(tPer, 'teacher')}</td>
+                            <td class="p-2 border bg-emerald-50 urdu-font font-bold" 
+                                style="color:${getKefiyatColor(tPer, 'teacher')}" rowspan="${rSpan}">
+                                ${getJamiaKefiyat(tPer, 'teacher')}
+                            </td>
                         ` : ''}
                     </tr>`;
                 });
             });
         });
     }
-}
 }
