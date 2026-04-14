@@ -380,40 +380,45 @@ window.editEntry = async (docId) => {
                 const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
                 tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
             }
-            if (layoutLevel === 'wazahat') {
+                       if (layoutLevel === 'wazahat') {
+                // Headers ko sahi sequence mein rakhein (Symmetry ke liye)
                 thead.innerHTML = `
                     <tr class="bg-red-50 text-red-900">
-                        <th class="border p-3">استاد / جامعہ</th>
+                        <th class="border p-3">جامعہ</th>
+                        <th class="border p-3">استاد</th>
                         <th class="border p-3">مضمون / درجہ</th>
                         <th class="border p-3">فیصد</th>
                         <th class="border p-3">کیفیت</th>
                         <th class="border p-3">وضاحت (Explanation)</th>
                         <th class="border p-3 no-print">ایکشن</th>
                     </tr>`;
-
+            
                 latestDataMap.forEach((d) => {
-                    // Asatiza wise results mein entries 'data' array mein hoti hain
                     if (d.data && Array.isArray(d.data)) {
                         d.data.forEach((tEntry) => {
                             const periods = tEntry.periods || [];
                             periods.forEach((p) => {
+                                // Percentage nikalna (Strictly handle strings with %)
                                 let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
                                 
-                                // Sirf 60% se kam (Kamzor/Tashweesh nak) wale
+                                // 🔴 CRITICAL FILTER: Sirf 60% se kam wale show honge
                                 if (percVal < 60) {
                                     rowsHtml += `
-                                        <tr class="hover:bg-red-50 border-b border-red-100">
-                                            <td class="border p-3 font-bold">${tEntry.teacher || d.jamia}</td>
-                                            <td class="border p-3">${p.subject || d.darjah || '-'}</td>
+                                        <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                                            <td class="border p-3 font-bold text-right">${d.jamia}</td>
+                                            <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+                                            <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
                                             <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-                                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal)}">${getJamiaKefiyat(percVal)}</td>
-                                            <td class="border p-3 text-sm italic text-gray-600">
-                                                ${d.wazahat || '<span class="text-gray-400">Wazahat nahi mili</span>'}
+                                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                                ${getJamiaKefiyat(percVal, 'teacher')}
                                             </td>
-                                            <td class="border p-3 no-print text-center">
-                                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher || d.jamia}', '${p.subject || d.darjah}')" 
-                                                        class="bg-green-600 text-white px-3 py-1 rounded-md text-xs hover:bg-green-700 shadow-sm transition">
-                                                    WhatsApp Link
+                                            <td class="border p-3 text-sm italic text-gray-700 bg-yellow-50">
+                                                ${d.wazahat || '<span class="text-gray-400">Wazahat pending...</span>'}
+                                            </td>
+                                            <td class="border p-3 no-print">
+                                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher || d.jamia}', '${p.subject}')" 
+                                                        class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded shadow-md transition">
+                                                    <i class="fab fa-whatsapp"></i> WhatsApp Link
                                                 </button>
                                             </td>
                                         </tr>`;
