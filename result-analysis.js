@@ -464,16 +464,23 @@ window.editEntry = async (docId) => {
 }
 // result-analysis.js ke aakhir mein add karein
 window.sendWazahatLink = (docId, teacherName, subject) => {
-    // Jahan aapne teacher-wazahat.html file rakhi hai uska URL yahan likhein
+    // Aapki website ka link
     const baseUrl = window.location.origin + "/teacher-wazahat.html";
     
-    // Link generate karein
+    // Link generate karein parameters ke saath
     const fullLink = `${baseUrl}?id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}`;
     
-    // WhatsApp ka message taiyar karein
-    const message = `Assalam-o-Alaikum,\n\nAapka subject (${subject}) ka result kamzor raha hai. Bara-e-karam niche diye gaye link par click karke apni wazahat (explanation) darj karein:\n\n${fullLink}`;
+    // 🟢 URDU MESSAGE
+    const message = `السلام علیکم ورحمتہ اللہ وبرکاتہ\n\n` +
+                    `محترم ${teacherName} صاحب،\n` +
+                    `امتحانی نتیجے کے تجزیے کے مطابق آپ کے مضمون (${subject}) کا رزلٹ کمزور رہا ہے۔\n\n` +
+                    `براہِ کرم نیچے دیے گئے لنک پر کلک کر کے اس کی وجوہات اور وضاحت (Explanation) درج کریں تاکہ ریکارڈ مکمل کیا جا سکے۔\n\n` +
+                    `لنک یہ ہے:\n${fullLink}\n\n` +
+                    `جزاک اللہ خیرا۔`;
     
-    // WhatsApp par bhej dein
+    // WhatsApp URL taiyar karein
     const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    
+    // Nayi window mein kholein
     window.open(waUrl, '_blank');
 };
