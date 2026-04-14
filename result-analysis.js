@@ -5,14 +5,13 @@ import {
 import { getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 
-// Jamia/Ustad Wise Kefiyat Logic
 // 1. Grading Logic (Split: Jamia/Class vs Teacher)
-
+// Humne naam wapas getJamiaKefiyat rakha hai taake ReferenceError khatam ho jaye
 const getJamiaKefiyat = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
     
-    // Jamia aur Class Wise ke liye same logic (Excel based)
+    // Jamia aur Class Wise ke liye Excel formula based logic
     if (level === 'jamia' || level === 'class') {
         if (val >= 85) return "ممتاز مع شرف";
         if (val >= 76) return "ممتاز";
@@ -20,7 +19,7 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
         if (val >= 40) return "مناسب";
         return "کمزور";
     } 
-    // Sirf Asatiza Wise aur Wazahat ke liye alag logic
+    // Sirf Asatiza Wise aur Wazahat ke liye strict logic
     else {
         if (val >= 90) return "ممتاز";
         if (val >= 70) return "بہتر";
