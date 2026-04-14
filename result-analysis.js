@@ -381,51 +381,57 @@ window.editEntry = async (docId) => {
                 tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
             }
                        else if (layoutLevel === 'wazahat') {
-                // Headers ko sahi sequence mein rakhein (Symmetry ke liye)
-                thead.innerHTML = `
-                    <tr class="bg-red-50 text-red-900">
-                        <th class="border p-3">جامعہ</th>
-                        <th class="border p-3">استاد</th>
-                        <th class="border p-3">مضمون / درجہ</th>
-                        <th class="border p-3">فیصد</th>
-                        <th class="border p-3">کیفیت</th>
-                        <th class="border p-3">وضاحت (Explanation)</th>
-                        <th class="border p-3 no-print">ایکشن</th>
-                    </tr>`;
-            
-                latestDataMap.forEach((d) => {
-                    if (d.data && Array.isArray(d.data)) {
-                        d.data.forEach((tEntry) => {
-                            const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
-const specificWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]) 
-                        ? d.wazahat_map[subjectKeyForDisplay] 
-                        : '<span class="text-gray-400">Wazahat pending...</span>';
+    thead.innerHTML = `
+        <tr class="bg-red-50 text-red-900">
+            <th class="border p-3">جامعہ</th>
+            <th class="border p-3">استاد</th>
+            <th class="border p-3">مضمون / درجہ</th>
+            <th class="border p-3">فیصد</th>
+            <th class="border p-3">کیفیت</th>
+            <th class="border p-3">وضاحت (Explanation)</th>
+            <th class="border p-3 no-print">ایکشن</th>
+        </tr>`;
 
-rowsHtml += `
-    <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-        <td class="border p-3 font-bold text-right">${d.jamia}</td>
-        <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-        <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-        <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-        <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
-            ${getJamiaKefiyat(percVal, 'teacher')}
-        </td>
-        <td class="border p-3 text-sm italic text-gray-700 bg-yellow-50">
-            ${specificWazahat} 
-        </td>
-        <td class="border p-3 no-print">
-            <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                    class="bg-green-600 text-white px-3 py-1 rounded">
-                WhatsApp Link
-            </button>
-        </td>
-    </tr>`;
-                                }
-                            });
-                        });
+    latestDataMap.forEach((d) => {
+        if (d.data && Array.isArray(d.data)) {
+            d.data.forEach((tEntry) => {
+                const periods = tEntry.periods || [];
+                periods.forEach((p) => {
+                    // Percentage nikalna
+                    let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
+                    
+                    // 🔴 CRITICAL FILTER: Sirf 60% se kam wale
+                    if (percVal < 60) {
+                        const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
+                        const specificWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]) 
+                                                ? d.wazahat_map[subjectKeyForDisplay] 
+                                                : '<span class="text-gray-400">Wazahat pending...</span>';
+
+                        rowsHtml += `
+                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                                <td class="border p-3 font-bold text-right">${d.jamia}</td>
+                                <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+                                <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+                                <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                    ${getJamiaKefiyat(percVal, 'teacher')}
+                                </td>
+                                <td class="border p-3 text-sm italic text-gray-700 bg-yellow-50">
+                                    ${specificWazahat} 
+                                </td>
+                                <td class="border p-3 no-print">
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                            class="bg-green-600 text-white px-3 py-1 rounded">
+                                        WhatsApp Link
+                                    </button>
+                                </td>
+                            </tr>`;
                     }
-                });
-            }
+                }); // End of periods.forEach
+            }); // End of d.data.forEach
+        }
+    }); // End of latestDataMap.forEach
+}
 
             tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
             subtitle.textContent = `${examType} | سال: ${examYear}`;
