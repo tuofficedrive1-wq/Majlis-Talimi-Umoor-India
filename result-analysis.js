@@ -396,31 +396,30 @@ window.editEntry = async (docId) => {
                 latestDataMap.forEach((d) => {
                     if (d.data && Array.isArray(d.data)) {
                         d.data.forEach((tEntry) => {
-                            const periods = tEntry.periods || [];
-                            periods.forEach((p) => {
-                                // Percentage nikalna (Strictly handle strings with %)
-                                let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
-                                
-                                // 🔴 CRITICAL FILTER: Sirf 60% se kam wale show honge
-                                if (percVal < 60) {
-                                    rowsHtml += `
-                                        <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                                            <td class="border p-3 font-bold text-right">${d.jamia}</td>
-                                            <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-                                            <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-                                            <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-                                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
-                                                ${getJamiaKefiyat(percVal, 'teacher')}
-                                           <td class="border p-3 text-sm italic text-gray-700 bg-yellow-50">
-                                                ${d.wazahat || '<span class="text-gray-400">Wazahat pending...</span>'}
-                                            </td>
-                                            <td class="border p-3 no-print">
-                                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                                                        class="bg-green-600 text-white px-3 py-1 rounded">
-                                                    WhatsApp Link
-                                                </button>
-                                            </td>
-                                        </tr>`;
+                            const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
+const specificWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]) 
+                        ? d.wazahat_map[subjectKeyForDisplay] 
+                        : '<span class="text-gray-400">Wazahat pending...</span>';
+
+rowsHtml += `
+    <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+        <td class="border p-3 font-bold text-right">${d.jamia}</td>
+        <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+        <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+        <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+        <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+            ${getJamiaKefiyat(percVal, 'teacher')}
+        </td>
+        <td class="border p-3 text-sm italic text-gray-700 bg-yellow-50">
+            ${specificWazahat} 
+        </td>
+        <td class="border p-3 no-print">
+            <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                    class="bg-green-600 text-white px-3 py-1 rounded">
+                WhatsApp Link
+            </button>
+        </td>
+    </tr>`;
                                 }
                             });
                         });
