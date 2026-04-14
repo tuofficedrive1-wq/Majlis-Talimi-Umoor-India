@@ -9,6 +9,7 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
     
+    // Jamia aur Class Wise ke liye 85% wala logic
     if (level === 'jamia' || level === 'class') {
         if (val >= 85) return "ممتاز مع شرف";
         if (val >= 76) return "ممتاز";
@@ -16,12 +17,12 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
         if (val >= 40) return "مناسب";
         return "کمزور";
     } 
+    // Asatiza Wise ke liye strict logic
     else {
-        // Asatiza Wise Strict Logic
         if (val >= 90) return "ممتاز";
         if (val >= 70) return "بہتر";
         if (val >= 60) return "مناسب";
-        if (val >= 51) return "کمزور"; // Screenshot me 54.5% par yahi aana chahiye
+        if (val >= 51) return "کمزور";
         return "تشویش ناک";
     }
 };
@@ -29,16 +30,16 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
 const getKefiyatColor = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (level === 'jamia' || level === 'class') {
-        if (val >= 85) return "#059669"; 
-        if (val >= 76) return "#2563eb"; 
-        if (val >= 61) return "#d97706"; 
-        if (val >= 40) return "#7c3aed"; 
-        return "#dc2626";
+        if (val >= 85) return "#059669"; // Green
+        if (val >= 76) return "#2563eb"; // Blue
+        if (val >= 61) return "#d97706"; // Orange
+        if (val >= 40) return "#7c3aed"; // Purple
+        return "#dc2626";                // Red
     } else {
         if (val >= 90) return "#059669";
         if (val >= 70) return "#2563eb";
         if (val >= 60) return "#d97706";
-        if (val >= 51) return "#7c3aed"; // Kamzor ke liye Purple/Violet
+        if (val >= 51) return "#7c3aed";
         return "#dc2626";
     }
 };
@@ -433,4 +434,5 @@ export async function initAdminResultAnalysis(db, containerId) {
             });
         });
     }
+}
 }
