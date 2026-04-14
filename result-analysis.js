@@ -463,13 +463,17 @@ window.editEntry = async (docId) => {
 
     document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
-// result-analysis.js ke aakhir mein add karein
 window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat) => {
-    // Aapka live link yahan set karein
-    const baseUrl = "https://tuofficedrive1-wq.github.io/teacher-wazahat.html";
+    // 1. Aapki repository ka sahi naam yahan set kar diya hai
+    const repoName = "Majlis-Talimi-Umoor-India";
     
-    // Sabhi parameters ko encode karke link taiyar karein
+    // 2. Base URL ko repository name ke saath joda gaya hai
+    const baseUrl = `https://tuofficedrive1-wq.github.io/${repoName}/teacher-wazahat.html`;
+    
+    // 3. Parameters taiyar karein
     const params = `id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}&perc=${encodeURIComponent(percentage)}&kef=${encodeURIComponent(kefiyat)}`;
+    
+    // 4. Full Link
     const fullLink = `${baseUrl}?${params}`;
     
     // WhatsApp Message
