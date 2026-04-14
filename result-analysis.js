@@ -416,11 +416,10 @@ window.editEntry = async (docId) => {
                                                 ${d.wazahat || '<span class="text-gray-400">Wazahat pending...</span>'}
                                             </td>
                                             <td class="border p-3 no-print">
-                                               // result-analysis.js ke loop mein button call
-<button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-        class="bg-green-600 text-white px-3 py-1 rounded">
-    WhatsApp Link
-</button>
+                                              <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                                    class="bg-green-600 text-white px-3 py-1 rounded">
+                                                WhatsApp Link
+                                            </button>
                                             </td>
                                         </tr>`;
                                 }
