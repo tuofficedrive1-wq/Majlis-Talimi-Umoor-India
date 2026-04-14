@@ -416,10 +416,10 @@ window.editEntry = async (docId) => {
                                                 ${d.wazahat || '<span class="text-gray-400">Wazahat pending...</span>'}
                                             </td>
                                             <td class="border p-3 no-print">
-                                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher || d.jamia}', '${p.subject}')" 
-                                                        class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded shadow-md transition">
-                                                    <i class="fab fa-whatsapp"></i> WhatsApp Link
-                                                </button>
+                                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}%', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                                    class="bg-green-600 text-white px-3 py-1 rounded">
+                                                WhatsApp Link
+                                            </button>
                                             </td>
                                         </tr>`;
                                 }
@@ -463,24 +463,23 @@ window.editEntry = async (docId) => {
     document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
 // result-analysis.js ke aakhir mein add karein
-window.sendWazahatLink = (docId, teacherName, subject) => {
-    // Aapki website ka link
-    const baseUrl = window.location.origin + "/teacher-wazahat.html";
+window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat) => {
+    // Aapka live link yahan set karein
+    const baseUrl = "https://tuofficedrive1-wq.github.io/teacher-wazahat.html";
     
-    // Link generate karein parameters ke saath
-    const fullLink = `${baseUrl}?id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}`;
+    // Sabhi parameters ko encode karke link taiyar karein
+    const params = `id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}&perc=${encodeURIComponent(percentage)}&kef=${encodeURIComponent(kefiyat)}`;
+    const fullLink = `${baseUrl}?${params}`;
     
-    // 🟢 URDU MESSAGE
-    const message = `السلام علیکم ورحمتہ اللہ وبرکاتہ\n\n` +
+    // WhatsApp Message
+    const message = `*نوٹس برائے وضاحت (Official Notification)*\n\n` +
                     `محترم ${teacherName} صاحب،\n` +
-                    `امتحانی نتیجے کے تجزیے کے مطابق آپ کے مضمون (${subject}) کا رزلٹ کمزور رہا ہے۔\n\n` +
-                    `براہِ کرم نیچے دیے گئے لنک پر کلک کر کے اس کی وجوہات اور وضاحت (Explanation) درج کریں تاکہ ریکارڈ مکمل کیا جا سکے۔\n\n` +
-                    `لنک یہ ہے:\n${fullLink}\n\n` +
-                    `جزاک اللہ خیرا۔`;
+                    `آپ کے مضمون *(${subject})* کا رزلٹ کمزور پایا گیا ہے۔\n\n` +
+                    `*تفصیلات:*\n` +
+                    `فیصد: *${percentage}*\n` +
+                    `کیفیت: *${kefiyat}*\n\n` +
+                    `براہِ کرم اس لنک پر کلک کرکے اپنی وضاحت جمع کرائیں:\n${fullLink}\n\n` +
+                    `شکریہ۔`;
     
-    // WhatsApp URL taiyar karein
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    
-    // Nayi window mein kholein
-    window.open(waUrl, '_blank');
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
 };
