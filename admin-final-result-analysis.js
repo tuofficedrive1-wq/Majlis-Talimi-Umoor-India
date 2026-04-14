@@ -344,35 +344,55 @@ export async function initAdminResultAnalysis(db, containerId) {
     const num = (v) => parseInt(v) || 0;
 
     if (layout === 'jamia') {
-        // ✅ JAMIA WISE: Consolidated Grouping
-        thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+        // ✅ JAMIA WISE: Region aur User ke saath
+        thead.innerHTML = `
+            <th class="p-2 border">Sr.</th>
+            <th class="p-2 border">Region</th>
+            <th class="p-2 border">تعلیمی ذمہ دار</th>
+            <th class="p-2 border">جامعہ</th>
+            <th class="p-2 border">حاضر</th>
+            <th class="p-2 border">کامیاب</th>
+            <th class="p-2 border">%</th>
+            <th class="p-2 border">کیفیت</th>`;
         
         let jamiaStats = {};
         data.forEach(d => {
-            if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { h: 0, p: 0 };
+            if (!jamiaStats[d.jamia]) {
+                jamiaStats[d.jamia] = { h: 0, p: 0, region: d.region || '-', user: d.userName || '-' };
+            }
             const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
             const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-            jamiaStats[d.jamia].h += h; jamiaStats[d.jamia].p += p;
+            jamiaStats[d.jamia].h += h; 
+            jamiaStats[d.jamia].p += p;
         });
 
         Object.entries(jamiaStats).forEach(([name, s], i) => {
             const per = s.h ? (s.p / s.h) * 100 : 0;
-            const kefiyat = getJamiaKefiyat(per, 'jamia');
-            const color = getKefiyatColor(per, 'jamia');
-
             tbody.innerHTML += `<tr>
                 <td class="p-2 border">${i + 1}</td>
+                <td class="p-2 border font-bold">${s.region}</td>
+                <td class="p-2 border urdu-font">${s.user}</td>
                 <td class="p-2 border urdu-font font-bold">${name}</td>
                 <td class="p-2 border">${s.h}</td>
                 <td class="p-2 border text-green-700 font-bold">${s.p}</td>
                 <td class="p-2 border font-bold">${per.toFixed(1)}%</td>
-                <td class="p-2 border urdu-font font-bold" style="color:${color}">${kefiyat}</td>
+                <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'jamia')}">${getJamiaKefiyat(per, 'jamia')}</td>
             </tr>`;
         });
     } 
     else if (layout === 'class') {
-        // ✅ CLASS WISE: Level 'class'
-        thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+        // ✅ CLASS WISE: Region aur User ke saath
+        thead.innerHTML = `
+            <th class="p-2 border">Sr.</th>
+            <th class="p-2 border">Region</th>
+            <th class="p-2 border">تعلیمی ذمہ دار</th>
+            <th class="p-2 border">جامعہ</th>
+            <th class="p-2 border">درجہ</th>
+            <th class="p-2 border">حاضر</th>
+            <th class="p-2 border">کامیاب</th>
+            <th class="p-2 border">%</th>
+            <th class="p-2 border">کیفیت</th>`;
+        
         data.forEach((d, i) => {
             const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
             const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
@@ -380,6 +400,8 @@ export async function initAdminResultAnalysis(db, containerId) {
             
             tbody.innerHTML += `<tr>
                 <td class="p-2 border">${i + 1}</td>
+                <td class="p-2 border font-bold">${d.region || '-'}</td>
+                <td class="p-2 border urdu-font">${d.userName || '-'}</td>
                 <td class="p-2 border urdu-font">${d.jamia}</td>
                 <td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td>
                 <td class="p-2 border">${h}</td>
@@ -390,14 +412,26 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     }
     else {
-        // ✅ ASATIZA WISE: Level 'teacher' (Strict Logic)
+        // ✅ ASATIZA WISE: Region aur User ke saath
         thead.innerHTML = `
-            <th class="p-2 border">Sr.</th><th class="p-2 border">جامعہ</th><th class="p-2 border">استاد</th><th class="p-2 border">مضمون</th>
-            <th class="p-2 border">کل</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>
-            <th class="p-2 border bg-emerald-900">مجموعی %</th><th class="p-2 border bg-emerald-900">مجموعی کیفیت</th>`;
+            <th class="p-2 border">Sr.</th>
+            <th class="p-2 border">Region</th>
+            <th class="p-2 border">تعلیمی ذمہ دار</th>
+            <th class="p-2 border">جامعہ</th>
+            <th class="p-2 border">استاد</th>
+            <th class="p-2 border">مضمون</th>
+            <th class="p-2 border">کل</th>
+            <th class="p-2 border">کامیاب</th>
+            <th class="p-2 border">%</th>
+            <th class="p-2 border">کیفیت</th>
+            <th class="p-2 border bg-emerald-900 text-white">مجموعی %</th>
+            <th class="p-2 border bg-emerald-900 text-white">مجموعی کیفیت</th>`;
 
         let srNo = 1;
         data.forEach(d => {
+            const region = d.region || '-';
+            const userName = d.userName || '-';
+
             (d.data || []).forEach(tEntry => {
                 const ps = tEntry.periods || []; 
                 const rSpan = ps.length || 1;
@@ -407,13 +441,12 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 ps.forEach((p, idx) => {
                     const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                    const sKefiyat = getJamiaKefiyat(sPer, 'teacher'); 
-                    const sColor = getKefiyatColor(sPer, 'teacher');
-
                     tbody.innerHTML += `
                     <tr class="text-center border-b">
                         ${idx === 0 ? `
                             <td class="p-2 border font-bold" rowspan="${rSpan}">${srNo++}</td>
+                            <td class="p-2 border font-bold" rowspan="${rSpan}">${region}</td>
+                            <td class="p-2 border urdu-font" rowspan="${rSpan}">${userName}</td>
                             <td class="p-2 border urdu-font" rowspan="${rSpan}">${d.jamia}</td>
                             <td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>
                         ` : ''}
@@ -421,7 +454,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <td class="p-2 border">${num(p.total)}</td>
                         <td class="p-2 border">${num(p.passed)}</td>
                         <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
-                        <td class="p-2 border urdu-font font-bold" style="color:${sColor}">${sKefiyat}</td>
+                        <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
                         ${idx === 0 ? `
                             <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
                             <td class="p-2 border bg-emerald-50 urdu-font font-bold" 
