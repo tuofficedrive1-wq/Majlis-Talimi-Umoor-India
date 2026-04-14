@@ -62,6 +62,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         <option value="jamia">Jamia Wise Summary</option>
                         <option value="class">Class Wise Summary</option>
                         <option value="teacher">Asatiza Wise Summary</option>
+                        <option value="wazahat">Kamzor Result (Wazahat)</option>
                     </select>
                 </div>
             </div>
@@ -336,6 +337,31 @@ window.editEntry = async (docId) => {
                 const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
                 tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
             }
+            if (layoutLevel === 'wazahat') {
+    thead.innerHTML = `<tr class="bg-red-50">
+        <th class="border p-2">Ustaz/Jamia</th>
+        <th class="border p-2">Sbj/Darjah</th>
+        <th class="border p-2">Result</th>
+        <th class="border p-2">Wazahat (Explanation)</th>
+        <th class="border p-2 no-print">Action</th>
+    </tr>`;
+
+    // Data loop ke andar ye check lagayein:
+    let percVal = parseFloat(String(item.percentage).replace('%', ''));
+    if (percVal < 60) { 
+        rowsHtml += `<tr>
+            <td class="border p-2">${item.teacher}</td>
+            <td class="border p-2">${item.subject}</td>
+            <td class="border p-2">${percVal}%</td>
+            <td class="border p-2 italic text-sm">${item.wazahat || 'Wazahat nahi mili'}</td>
+            <td class="border p-2 no-print">
+                <button onclick="sendWazahatLink('${item.docId}', '${item.teacher}', '${item.subject}')" class="bg-green-500 text-white p-1 rounded">
+                    WhatsApp Link
+                </button>
+            </td>
+        </tr>`;
+    }
+}
 
             tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
             subtitle.textContent = `${examType} | سال: ${examYear}`;
@@ -370,3 +396,18 @@ window.editEntry = async (docId) => {
 
     document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
+// result-analysis.js ke aakhir mein add karein
+window.sendWazahatLink = (docId, teacherName, subject) => {
+    // Jahan aapne teacher-wazahat.html file rakhi hai uska URL yahan likhein
+    const baseUrl = window.location.origin + "/teacher-wazahat.html";
+    
+    // Link generate karein
+    const fullLink = `${baseUrl}?id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}`;
+    
+    // WhatsApp ka message taiyar karein
+    const message = `Assalam-o-Alaikum,\n\nAapka subject (${subject}) ka result kamzor raha hai. Bara-e-karam niche diye gaye link par click karke apni wazahat (explanation) darj karein:\n\n${fullLink}`;
+    
+    // WhatsApp par bhej dein
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
+};
