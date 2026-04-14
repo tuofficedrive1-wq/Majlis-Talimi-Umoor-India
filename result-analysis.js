@@ -6,23 +6,24 @@ import { getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-fires
 
 
 // Jamia/Ustad Wise Kefiyat Logic
+// Updated Logic to match asatiza-wise-result.html
 const getJamiaKefiyat = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
-    if (val >= 85) return "ممتاز مع شرف";
-    if (val >= 76) return "ممتاز";
-    if (val >= 61) return "بہتر";
-    if (val >= 40) return "مناسب";
-    return "کمزور";
+    if (val >= 90) return "ممتاز";        // 90% or above
+    if (val >= 70) return "بہتر";        // 70% to 89%
+    if (val >= 60) return "مناسب";      // 60% to 69%
+    if (val >= 51) return "کمزور";      // 51% to 59%
+    return "تشویش ناک";                 // Below 51%
 };
 
 const getKefiyatColor = (p) => {
     let val = parseFloat(String(p).replace('%', ''));
-    if (val >= 85) return "#059669";
-    if (val >= 70) return "#2563eb";
-    if (val >= 60) return "#d97706";
-    if (val >= 40) return "#7c3aed";
-    return "#dc2626";
+    if (val >= 90) return "#059669"; // Green
+    if (val >= 70) return "#2563eb"; // Blue
+    if (val >= 60) return "#d97706"; // Orange
+    if (val >= 51) return "#7c3aed"; // Purple
+    return "#dc2626";                // Red
 };
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
