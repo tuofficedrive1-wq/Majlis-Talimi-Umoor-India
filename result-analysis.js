@@ -11,7 +11,7 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
     
-    // Jamia aur Class Wise ke liye Excel formula based logic
+    // Jamia aur Class Wise ke liye 85% wala logic
     if (level === 'jamia' || level === 'class') {
         if (val >= 85) return "ممتاز مع شرف";
         if (val >= 76) return "ممتاز";
@@ -19,7 +19,7 @@ const getJamiaKefiyat = (p, level = 'teacher') => {
         if (val >= 40) return "مناسب";
         return "کمزور";
     } 
-    // Sirf Asatiza Wise aur Wazahat ke liye strict logic
+    // Asatiza Wise ke liye strict logic
     else {
         if (val >= 90) return "ممتاز";
         if (val >= 70) return "بہتر";
@@ -265,7 +265,9 @@ window.editEntry = async (docId) => {
                             <td class="border p-3 text-purple-700">${s.majazZimni}</td>
                             <td class="border p-3 text-red-600">${s.nakam}</td>
                             <td class="border p-3 bg-teal-50 font-black text-teal-800">${percNum.toFixed(2)}%</td>
-                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percNum)}">${getJamiaKefiyat(percNum)}</td>
+                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percNum, 'jamia')}">
+                                ${getJamiaKefiyat(percNum, 'jamia')} 
+                            </td>
                         </tr>`;
                 }
                 const overallPerc = totals.hazir > 0 ? (totals.passed / totals.hazir) * 100 : 0;
@@ -294,24 +296,45 @@ window.editEntry = async (docId) => {
                     totals.kul += total; totals.hazir += hazir; totals.passed += passed; totals.nakam += failed;
 
                     rowsHtml += `
-                        <tr class="hover:bg-gray-50 border-b">
-                            <td class="border p-3 font-bold text-right">${d.jamia}</td><td class="border p-3">${d.darjah || '-'}</td>
-                            <td class="border p-3">${d.mumtazSharf || 0}</td><td class="border p-3">${d.mumtaz || 0}</td>
-                            <td class="border p-3">${d.jayyidJidda || 0}</td><td class="border p-3">${d.jayyid || 0}</td>
-                            <td class="border p-3">${d.maqbool || 0}</td><td class="border p-3">${d.majazZimni || 0}</td>
-                            <td class="border p-3 text-red-600">${d.nakam || 0}</td><td class="border p-3">${d.ghaib || 0}</td>
-                            <td class="border p-3 font-bold">${total}</td><td class="border p-3 text-blue-700 font-bold">${hazir}</td>
-                            <td class="border p-3 text-green-700 font-bold">${passed}</td><td class="border p-3 text-red-600 font-bold">${failed}</td>
-                            <td class="border p-3 bg-teal-50 font-bold text-teal-700">${percent.toFixed(2)}%</td>
-                            <td class="border p-3 no-print">
-                                <button onclick="editEntry('${d.docId}')" class="text-blue-600 mr-2"><i class="fas fa-edit"></i></button>
-                                <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" class="text-red-600"><i class="fas fa-trash-alt"></i></button>
-                            </td>
-                        </tr>`;
+                                <tr class="hover:bg-gray-50 border-b text-center">
+                                    <td class="border p-3 font-bold text-right">${d.jamia}</td>
+                                    <td class="border p-3">${d.darjah || '-'}</td>
+                                    <td class="border p-3">${d.mumtazSharf || 0}</td>
+                                    <td class="border p-3">${d.mumtaz || 0}</td>
+                                    <td class="border p-3">${d.jayyidJidda || 0}</td>
+                                    <td class="border p-3">${d.jayyid || 0}</td>
+                                    <td class="border p-3">${d.maqbool || 0}</td>
+                                    <td class="border p-3">${d.majazZimni || 0}</td>
+                                    <td class="border p-3 text-red-600">${d.nakam || 0}</td>
+                                    <td class="border p-3">${d.ghaib || 0}</td>
+                                    <td class="border p-3 font-bold">${total}</td>
+                                    <td class="border p-3 text-blue-700 font-bold">${hazir}</td>
+                                    <td class="border p-3 text-green-700 font-bold">${passed}</td>
+                                    <td class="border p-3 text-red-600 font-bold">${failed}</td>
+                                    <td class="border p-3 bg-teal-50 font-bold text-teal-700">${percent.toFixed(2)}%</td>
+                                    <td class="border p-3 font-bold" style="color:${getKefiyatColor(percent, 'class')}">
+                                        ${getJamiaKefiyat(percent, 'class')}
+                                    </td>
+                                    <td class="border p-3 no-print">
+                                        <button onclick="editEntry('${d.docId}')" class="text-blue-600 mr-2"><i class="fas fa-edit"></i></button>
+                                        <button onclick="deleteEntry('${d.docId}', 'class_wise_results')" class="text-red-600"><i class="fas fa-trash-alt"></i></button>
+                                    </td>
+                                </tr>`;
                 });
                 const overallPerc = totals.hazir > 0 ? (totals.passed / totals.hazir) * 100 : 0;
-                tfoot.innerHTML = `<tr><td colspan="10" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.hazir}</td><td>${totals.passed}</td><td>${totals.nakam}</td><td>${overallPerc.toFixed(2)}%</td><td>-</td></tr>`;
-
+                    tfoot.innerHTML = `
+                        <tr>
+                            <td colspan="10" class="p-3 text-right">TOTAL SUMMARY</td>
+                            <td>${totals.kul}</td>
+                            <td>${totals.hazir}</td>
+                            <td>${totals.passed}</td>
+                            <td>${totals.nakam}</td>
+                            <td>${overallPerc.toFixed(2)}%</td>
+                            <td class="font-bold" style="color:${getKefiyatColor(overallPerc, 'class')}">
+                                ${getJamiaKefiyat(overallPerc, 'class')}
+                            </td>
+                            <td class="no-print">-</td>
+                        </tr>`;
             } else {
                 thead.innerHTML = `
                     <tr class="bg-gray-200">
