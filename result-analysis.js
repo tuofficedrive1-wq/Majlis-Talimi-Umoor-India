@@ -48,8 +48,63 @@ const getKefiyatColor = (p, level = 'teacher') => {
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
     if (!db || !user) return;
+    window.db = db;
     const container = document.getElementById(containerId);
     if (!container) return;
+
+    window.deleteEntry = async (docId, collectionName) => {
+        if (confirm("Kya aap waqai is poore record ko delete karna chahte hain?")) {
+            try {
+                // window.db ka istemal karein
+                const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                await deleteDoc(doc(window.db, collectionName, docId));
+                
+                alert("Record delete ho gaya.");
+                
+                // Table refresh karne ke liye
+                if (window.fetchResultData) {
+                    await window.fetchResultData(); 
+                }
+            } catch (err) {
+                alert("Galti: " + err.message);
+            }
+        }
+    };
+
+    // --- GLOBAL DELETE SUBJECT (Sirf ek row) ---
+    window.deleteSubjectRow = async (docId, teacherIdx, periodIdx) => {
+        if (confirm("Kya aap sirf is subject/row ko delete karna chahte hain?")) {
+            try {
+                const { updateDoc, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const docRef = doc(window.db, "asatiza_wise_results", docId);
+                const snap = await getDoc(docRef);
+                
+                if (snap.exists()) {
+                    let fullData = snap.data().data;
+                    
+                    // Specific subject array se nikalna
+                    fullData[teacherIdx].periods.splice(periodIdx, 1);
+                    
+                    // Agar us teacher ke saare subjects delete ho gaye to teacher ko bhi hata dein
+                    if (fullData[teacherIdx].periods.length === 0) {
+                        fullData.splice(teacherIdx, 1);
+                    }
+                    
+                    // Firestore update karein
+                    await updateDoc(docRef, { data: fullData });
+                    
+                    alert("Subject delete ho gaya.");
+                    
+                    // Table refresh karein
+                    if (window.fetchResultData) {
+                        await window.fetchResultData();
+                    }
+                }
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+    };
 
     container.innerHTML = `
       <div class="max-w-7xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
@@ -130,46 +185,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
     });
 
-    // 🔹 DELETE FUNCTION
-   // Is function ko initResultAnalysis ke bahar ya shuru mein rakhein
-window.deleteEntry = async (docId, collectionName) => {
-    if (confirm("Kya aap waqai is poore record ko delete karna chahte hain?")) {
-        try {
-            // Firestore se pura document delete karne ke liye
-            const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-            await deleteDoc(doc(db, collectionName, docId));
-            alert("Record delete ho gaya.");
-            if (window.fetchResultData) window.fetchResultData(); 
-        } catch (err) {
-            alert("Galti: " + err.message);
-        }
-    }
-};
-    
-window.editEntry = async (docId) => {
-    try {
-        const docRef = doc(db, "asatiza_wise_results", docId);
-        const snap = await getDoc(docRef);
-
-        if (!snap.exists()) {
-            alert("Record nahi mila");
-            return;
-        }
-
-        const data = snap.data();
-        document.getElementById("teacher-name").value = data.teacher || "";
-        document.getElementById("jamia-name").value = data.jamia || "";
-        window.currentEditData = data;
-        const saveBtn = document.getElementById("save-btn");
-        saveBtn.textContent = "Update Karein";
-        saveBtn.dataset.editId = docId;
-        alert("Edit mode ON ho gaya 👍");
-    } catch (err) {
-        alert("Error: " + err.message);
-    }
-};
-    
-    window.fetchResultData = async () => {
+            window.fetchResultData = async () => {
         const examType = document.getElementById('ra-exam-type').value;
         const examYear = document.getElementById('ra-exam-year').value;
         const jamiaFilter = document.getElementById('ra-jamia-filter').value;
@@ -513,30 +529,4 @@ window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat) => {
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
 };
 
-window.deleteSubjectRow = async (docId, teacherIndex, periodIndex) => {
-    if (confirm("Kya aap sirf is subject ka record delete karna chahte hain?")) {
-        try {
-            const { updateDoc, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-            const docRef = doc(db, "asatiza_wise_results", docId);
-            const snap = await getDoc(docRef);
-            
-            if (snap.exists()) {
-                let currentData = snap.data().data; // Array of teachers
-                
-                // Sirf us khass period (subject) ko remove karna
-                currentData[teacherIndex].periods.splice(periodIndex, 1);
-                
-                // Agar teacher ke saare periods khatam ho jayein to teacher ko hi remove kar dein
-                if (currentData[teacherIndex].periods.length === 0) {
-                    currentData.splice(teacherIndex, 1);
-                }
 
-                await updateDoc(docRef, { data: currentData });
-                alert("Subject delete ho gaya.");
-                window.fetchResultData();
-            }
-        } catch (err) {
-            alert("Error: " + err.message);
-        }
-    }
-};
