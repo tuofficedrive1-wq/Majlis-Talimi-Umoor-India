@@ -131,20 +131,20 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     });
 
     // 🔹 DELETE FUNCTION
-   window.deleteEntry = async (docId, collectionName) => {
-    if (confirm("Kya aap waqai is record ko delete karna chahte hain?")) {
+   // Is function ko initResultAnalysis ke bahar ya shuru mein rakhein
+window.deleteEntry = async (docId, collectionName) => {
+    if (confirm("Kya aap waqai is poore record ko delete karna chahte hain?")) {
         try {
+            // Firestore se pura document delete karne ke liye
+            const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
             await deleteDoc(doc(db, collectionName, docId));
             alert("Record delete ho gaya.");
-            if (window.fetchResultData) {
-                window.fetchResultData(); 
-            }
+            if (window.fetchResultData) window.fetchResultData(); 
         } catch (err) {
             alert("Galti: " + err.message);
         }
     }
 };
-
     
 window.editEntry = async (docId) => {
     try {
@@ -347,8 +347,8 @@ window.editEntry = async (docId) => {
                     </tr>`;
                 latestDataMap.forEach((d) => {
                     if (d.data && Array.isArray(d.data)) {
-                        d.data.forEach((tEntry) => {
-                            const periods = tEntry.periods || [];
+        d.data.forEach((tEntry, tIdx) => { // tIdx added here
+            const periods = tEntry.periods || [];
                             const pCount = periods.length || 1;
                             let tT = 0, tP = 0;
                             periods.forEach(p => { tT += parseInt(p.total) || 0; tP += parseInt(p.passed) || 0; });
@@ -370,6 +370,9 @@ window.editEntry = async (docId) => {
                                         <td class="border p-3">${p.kaifiyat || '-'}</td>
                                         ${pIdx === 0 ? `<td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}"><div style="color:${tCol}">${tPer.toFixed(1)}%</div><div class="text-[11px]" style="color:${tCol}">${getJamiaKefiyat(tPer)}</div></td>` : ''}
                                         ${pIdx === 0 ? `<td class="border p-3 align-middle no-print" rowspan="${pCount}">
+                                        `<button onclick="deleteSubjectRow('${d.docId}', ${tIdx}, ${pIdx})" class="text-orange-600 ml-2" title="Sirf ye subject delete karein">
+                                        <i class="fas fa-minus-circle"></i>
+                                        </button>`
                                             <button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-600"><i class="fas fa-trash-alt"></i></button>
                                         </td>` : ''}
                                     </tr>`;
@@ -490,4 +493,32 @@ window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat) => {
                     `شکریہ۔`;
     
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+};
+
+window.deleteSubjectRow = async (docId, teacherIndex, periodIndex) => {
+    if (confirm("Kya aap sirf is subject ka record delete karna chahte hain?")) {
+        try {
+            const { updateDoc, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const docRef = doc(db, "asatiza_wise_results", docId);
+            const snap = await getDoc(docRef);
+            
+            if (snap.exists()) {
+                let currentData = snap.data().data; // Array of teachers
+                
+                // Sirf us khass period (subject) ko remove karna
+                currentData[teacherIndex].periods.splice(periodIndex, 1);
+                
+                // Agar teacher ke saare periods khatam ho jayein to teacher ko hi remove kar dein
+                if (currentData[teacherIndex].periods.length === 0) {
+                    currentData.splice(teacherIndex, 1);
+                }
+
+                await updateDoc(docRef, { data: currentData });
+                alert("Subject delete ho gaya.");
+                window.fetchResultData();
+            }
+        } catch (err) {
+            alert("Error: " + err.message);
+        }
+    }
 };
