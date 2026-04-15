@@ -336,53 +336,71 @@ window.editEntry = async (docId) => {
                             <td class="no-print">-</td>
                         </tr>`;
             } else if (layoutLevel === 'teacher') {
-                thead.innerHTML = `
-                    <tr class="bg-gray-200">
-                        <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
-                        <th class="border p-3">مضمون</th><th class="border p-3">درجہ</th>
-                        <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
-                        <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
-                        <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
-                        <th class="border p-3 no-print text-red-600">حذف</th>
-                    </tr>`;
-                latestDataMap.forEach((d) => {
-                    if (d.data && Array.isArray(d.data)) {
-        d.data.forEach((tEntry, tIdx) => { // tIdx added here
-            const periods = tEntry.periods || [];
-                            const pCount = periods.length || 1;
-                            let tT = 0, tP = 0;
-                            periods.forEach(p => { tT += parseInt(p.total) || 0; tP += parseInt(p.passed) || 0; });
-                            const tPer = tT > 0 ? (tP / tT) * 100 : 0;
-                            const tCol = getKefiyatColor(tPer);
+    thead.innerHTML = `
+        <tr class="bg-gray-200">
+            <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
+            <th class="border p-3">مضمون</th><th class="border p-3">درجہ</th>
+            <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
+            <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
+            <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
+            <th class="border p-3 no-print text-red-600">حذف</th>
+        </tr>`;
 
-                            totals.kul += tT; totals.passed += tP; // General totals for foot
-
-                            periods.forEach((p, pIdx) => {
-                                const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
-                                rowsHtml += `
-                                    <tr class="hover:bg-gray-50 border-b text-center">
-                                        ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-right" rowspan="${pCount}">${d.jamia}</td>` : ''}
-                                        ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
-                                        <td class="border p-3 text-right">${p.subject || '-'}</td>
-                                        <td class="border p-3">${p.class || p['class'] || '-'}</td>
-                                        <td class="border p-3">${p.total || '0'}</td><td class="border p-3 text-green-700">${p.passed || '0'}</td>
-                                        <td class="border p-3 text-red-600">${f}</td><td class="border p-3 font-bold">${p.percentage || '0%'}</td>
-                                        <td class="border p-3">${p.kaifiyat || '-'}</td>
-                                        ${pIdx === 0 ? `<td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}"><div style="color:${tCol}">${tPer.toFixed(1)}%</div><div class="text-[11px]" style="color:${tCol}">${getJamiaKefiyat(tPer)}</div></td>` : ''}
-                                        ${pIdx === 0 ? `<td class="border p-3 align-middle no-print" rowspan="${pCount}">
-                                        `<button onclick="deleteSubjectRow('${d.docId}', ${tIdx}, ${pIdx})" class="text-orange-600 ml-2" title="Sirf ye subject delete karein">
-                                        <i class="fas fa-minus-circle"></i>
-                                        </button>`
-                                            <button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-600"><i class="fas fa-trash-alt"></i></button>
-                                        </td>` : ''}
-                                    </tr>`;
-                            });
-                        });
-                    }
+    latestDataMap.forEach((d) => {
+        if (d.data && Array.isArray(d.data)) {
+            d.data.forEach((tEntry, tIdx) => {
+                const periods = tEntry.periods || [];
+                const pCount = periods.length || 1;
+                let tT = 0, tP = 0;
+                
+                periods.forEach(p => { 
+                    tT += parseInt(p.total) || 0; 
+                    tP += parseInt(p.passed) || 0; 
                 });
-                const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
-                tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
-            }
+                
+                const tPer = tT > 0 ? (tP / tT) * 100 : 0;
+                const tCol = getKefiyatColor(tPer);
+
+                totals.kul += tT; 
+                totals.passed += tP;
+
+                periods.forEach((p, pIdx) => {
+                    const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
+                    
+                    rowsHtml += `
+                        <tr class="hover:bg-gray-50 border-b text-center">
+                            ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-right" rowspan="${pCount}">${d.jamia}</td>` : ''}
+                            ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
+                            <td class="border p-3 text-right">${p.subject || '-'}</td>
+                            <td class="border p-3">${p.class || p['class'] || '-'}</td>
+                            <td class="border p-3">${p.total || '0'}</td>
+                            <td class="border p-3 text-green-700">${p.passed || '0'}</td>
+                            <td class="border p-3 text-red-600">${f}</td>
+                            <td class="border p-3 font-bold">${p.percentage || '0%'}</td>
+                            <td class="border p-3">${p.kaifiyat || '-'}</td>
+                            ${pIdx === 0 ? `
+                                <td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}">
+                                    <div style="color:${tCol}">${tPer.toFixed(1)}%</div>
+                                    <div class="text-[11px]" style="color:${tCol}">${getJamiaKefiyat(tPer)}</div>
+                                </td>` : ''}
+                            <td class="border p-3 align-middle no-print">
+                                <button onclick="deleteSubjectRow('${d.docId}', ${tIdx}, ${pIdx})" class="text-orange-600 hover:text-orange-800 p-1" title="Sirf ye subject delete karein">
+                                    <i class="fas fa-minus-circle"></i>
+                                </button>
+                                
+                                ${pIdx === 0 ? `
+                                <button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-600 hover:text-red-800 p-1 ml-1" title="Pura record delete karein">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>` : ''}
+                            </td>
+                        </tr>`;
+                });
+            });
+        }
+    });
+    const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
+    tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
+}
                        else if (layoutLevel === 'wazahat') {
     thead.innerHTML = `
         <tr class="bg-red-50 text-red-900">
