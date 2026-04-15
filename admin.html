@@ -488,6 +488,7 @@
     
     <button type="button" class="admin-tab-btn active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex-shrink-0" data-admin-tab="reports">Monthly Reports Summary</button>
     <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex-shrink-0" data-admin-tab="users">Manage Users</button>
+    <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 flex-shrink-0" data-admin-tab="transfer">Transfer Jamia</button>
     <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex-shrink-0" data-admin-tab="summary">Report Details Summary</button>
     <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex-shrink-0" data-admin-tab="kkd-summary">KKd Summary</button>
     <button type="button" class="admin-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 flex-shrink-0" data-admin-tab="final-analysis">Final Exam Analysis</button>
@@ -831,6 +832,47 @@
              </form>
          </div>
     </div>
+
+    <div id="admin-transfer-tab" class="admin-tab-content hidden">
+    <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md border border-gray-100">
+        <h3 class="text-xl font-bold text-gray-800 mb-6 text-center">Transfer Jamia & Data History</h3>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Select Jamia (Jo Transfer karna hai)</label>
+                <select id="transfer-jamia-select" class="w-full p-2 border rounded-lg urdu-font bg-gray-50">
+                    <option value="">-- Jamia Select Karein --</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Purana User (Current Owner)</label>
+                    <input type="text" id="transfer-old-user-name" class="w-full p-2 border rounded-lg bg-gray-100 urdu-font" readonly placeholder="Jamia select karte hi aa jayega">
+                    <input type="hidden" id="transfer-old-user-id">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Naya User (Target)</label>
+                    <select id="transfer-new-user-select" class="w-full p-2 border rounded-lg urdu-font bg-white border-teal-500">
+                        <option value="">-- Naya User Select Karein --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-blue-50 p-4 rounded-lg mt-6">
+                <p class="text-sm text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i> 
+                    <strong>Note:</strong> Transfer ke baad purana data (Monthly Reports) naye user ke dashboard par **History** ke taur par nazar aane lagega. Purani reports mein user ID badalne ki zaroorat nahi hai.
+                </p>
+            </div>
+
+            <button id="btn-execute-transfer" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-lg transition duration-300 mt-4">
+                Confirm & Transfer Record
+            </button>
+        </div>
+    </div>
+</div>
     
  <script>
     
@@ -5036,6 +5078,74 @@ window.runAdminFinalAnalysis = function () {
 
     };
 };
+        // 1. Transfer Tab open hote hi Dropdowns bharna
+const initTransferTab = () => {
+    const jamiaSelect = document.getElementById('transfer-jamia-select');
+    const newUserSelect = document.getElementById('transfer-new-user-select');
+    
+    // Jamiaat ki list nikalna sab users se
+    let allJamias = [];
+    allUsersData.forEach(u => {
+        if(u.jamiaatList) {
+            u.jamiaatList.forEach(j => {
+                const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if(jName) allJamias.push({ name: jName, userId: u.id, userName: u.name });
+            });
+        }
+    });
+
+    jamiaSelect.innerHTML = '<option value="">-- Jamia Select Karein --</option>' + 
+        allJamias.map(j => `<option value="${j.name}" data-uid="${j.userId}" data-uname="${j.userName}">${j.name} (${j.userName})</option>`).join('');
+
+    newUserSelect.innerHTML = '<option value="">-- Naya User Select Karein --</option>' + 
+        allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
+};
+
+// 2. Jamia select karne par purana user auto-fill hona
+document.getElementById('transfer-jamia-select').addEventListener('change', (e) => {
+    const selected = e.target.options[e.target.selectedIndex];
+    document.getElementById('transfer-old-user-name').value = selected.dataset.uname || '';
+    document.getElementById('transfer-old-user-id').value = selected.dataset.uid || '';
+});
+
+// 3. Transfer Execute Karna
+document.getElementById('btn-execute-transfer').addEventListener('click', async () => {
+    const jamiaName = document.getElementById('transfer-jamia-select').value;
+    const oldUserId = document.getElementById('transfer-old-user-id').value;
+    const newUserId = document.getElementById('transfer-new-user-select').value;
+
+    if(!jamiaName || !newUserId) { alert("Tamam malumat select karein."); return; }
+    if(oldUserId === newUserId) { alert("Purana aur naya user same nahi ho sakte."); return; }
+
+    if(!confirm(`Kya aap waqai ${jamiaName} ko naye user ko dena chahte hain? Purana record naye user ko shift ho jayega.`)) return;
+
+    showLoader(true);
+    try {
+        const batch = writeBatch(db);
+        
+        // Old User se Jamia hatana
+        const oldUserRef = doc(db, 'users', oldUserId);
+        const oldU = allUsersData.find(u => u.id === oldUserId);
+        const updatedOldList = (oldU.jamiaatList || []).filter(j => (typeof j === 'object' ? j.name : j) !== jamiaName);
+        batch.update(oldUserRef, { jamiaatList: updatedOldList });
+
+        // New User mein Jamia jodna
+        const newUserRef = doc(db, 'users', newUserId);
+        const newU = allUsersData.find(u => u.id === newUserId);
+        let updatedNewList = [...(newU.jamiaatList || [])];
+        if(!updatedNewList.includes(jamiaName)) updatedNewList.push(jamiaName);
+        batch.update(newUserRef, { jamiaatList: updatedNewList });
+
+        await batch.commit();
+        showNotification("Jamia aur History successfully transfer ho gayi!");
+        initTransferTab(); // Reset dropdowns
+    } catch (err) {
+        console.error(err);
+        showNotification("Transfer fail ho gaya.", true);
+    } finally {
+        showLoader(false);
+    }
+});
        // --- Init ---
         initApp();
     </script>
