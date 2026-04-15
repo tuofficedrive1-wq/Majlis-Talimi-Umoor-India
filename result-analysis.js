@@ -401,7 +401,7 @@ window.editEntry = async (docId) => {
                     let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
                     
                     // 🔴 CRITICAL FILTER: Sirf 60% se kam wale
-                    if (percVal < 60) {
+                    if (percVal < 70) {
                         const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
                         const specificWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]) 
                                                 ? d.wazahat_map[subjectKeyForDisplay] 
