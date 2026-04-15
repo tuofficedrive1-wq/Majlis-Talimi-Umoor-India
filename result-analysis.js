@@ -48,63 +48,70 @@ const getKefiyatColor = (p, level = 'teacher') => {
 
 export async function initResultAnalysis(db, user, containerId, userProfileData) {
     if (!db || !user) return;
-    window.db = db;
+    window.db = db; // Global reference confirm karein
+
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // --- 1. FULL RECORD DELETE ---
     window.deleteEntry = async (docId, collectionName) => {
-        if (confirm("Kya aap waqai is poore record ko delete karna chahte hain?")) {
-            try {
-                // window.db ka istemal karein
-                const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                await deleteDoc(doc(window.db, collectionName, docId));
-                
-                alert("Record delete ho gaya.");
-                
-                // Table refresh karne ke liye
-                if (window.fetchResultData) {
-                    await window.fetchResultData(); 
-                }
-            } catch (err) {
-                alert("Galti: " + err.message);
+        if (!confirm("Kya aap waqai is poore record ko delete karna chahte hain?")) return;
+        
+        try {
+            // Firestore se direct import aur execution
+            const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const docRef = doc(window.db, collectionName, docId);
+            
+            await deleteDoc(docRef);
+            alert("Record delete ho gaya.");
+
+            // Force Refresh: Table ko saaf karke dobara fetch karein
+            if (window.fetchResultData) {
+                document.getElementById('ra-table-body').innerHTML = ''; // Pehle list clear karein
+                await window.fetchResultData(); 
             }
+        } catch (err) {
+            alert("Galti: " + err.message);
         }
     };
 
-    // --- GLOBAL DELETE SUBJECT (Sirf ek row) ---
+    // --- 2. SINGLE SUBJECT DELETE (Row Delete) ---
     window.deleteSubjectRow = async (docId, teacherIdx, periodIdx) => {
-        if (confirm("Kya aap sirf is subject/row ko delete karna chahte hain?")) {
-            try {
-                const { updateDoc, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                const docRef = doc(window.db, "asatiza_wise_results", docId);
-                const snap = await getDoc(docRef);
+        if (!confirm("Kya aap sirf is subject/row ko delete karna chahte hain?")) return;
+
+        try {
+            const { updateDoc, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            const docRef = doc(window.db, "asatiza_wise_results", docId);
+            const snap = await getDoc(docRef);
+
+            if (snap.exists()) {
+                let currentData = [...snap.data().data]; // Create a copy
                 
-                if (snap.exists()) {
-                    let fullData = snap.data().data;
+                // Specific subject nikalna
+                if (currentData[teacherIdx] && currentData[teacherIdx].periods) {
+                    currentData[teacherIdx].periods.splice(periodIdx, 1);
                     
-                    // Specific subject array se nikalna
-                    fullData[teacherIdx].periods.splice(periodIdx, 1);
-                    
-                    // Agar us teacher ke saare subjects delete ho gaye to teacher ko bhi hata dein
-                    if (fullData[teacherIdx].periods.length === 0) {
-                        fullData.splice(teacherIdx, 1);
+                    // Agar periods khatam ho gaye to teacher ko hi hata dein
+                    if (currentData[teacherIdx].periods.length === 0) {
+                        currentData.splice(teacherIdx, 1);
                     }
                     
-                    // Firestore update karein
-                    await updateDoc(docRef, { data: fullData });
-                    
+                    // Firestore Update
+                    await updateDoc(docRef, { data: currentData });
                     alert("Subject delete ho gaya.");
-                    
-                    // Table refresh karein
+
+                    // UI Update
                     if (window.fetchResultData) {
                         await window.fetchResultData();
                     }
                 }
-            } catch (err) {
-                alert("Error: " + err.message);
             }
+        } catch (err) {
+            alert("Error: " + err.message);
         }
     };
+
+    // --- Container HTML aur fetchResultData logic yahan se shuru hoga ---
 
     container.innerHTML = `
       <div class="max-w-7xl mx-auto bg-white p-2 md:p-5 rounded-xl shadow-lg border border-gray-200 space-y-5 w-full">
