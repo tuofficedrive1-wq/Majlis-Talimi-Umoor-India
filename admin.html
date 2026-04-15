@@ -1235,6 +1235,43 @@ window.closeReportModal = closeModal;
         
         logoutBtn.addEventListener('click', handleLogout);
 
+        // --- TRANSFER JAMIA LOGIC ---
+const initTransferTab = () => {
+    console.log("Initializing Transfer Tab Dropdowns..."); // Debugging ke liye
+    const jamiaSelect = document.getElementById('transfer-jamia-select');
+    const newUserSelect = document.getElementById('transfer-new-user-select');
+    
+    if (!jamiaSelect || !newUserSelect) return;
+
+    // Jamiaat ki list nikalna sab users se
+    let allJamias = [];
+    allUsersData.forEach(u => {
+        if(u.jamiaatList && Array.isArray(u.jamiaatList)) {
+            u.jamiaatList.forEach(j => {
+                const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if(jName) {
+                    allJamias.push({ 
+                        name: jName, 
+                        userId: u.id, 
+                        userName: u.name || u.email 
+                    });
+                }
+            });
+        }
+    });
+
+    // Dropdown 1: Jamia Select
+    jamiaSelect.innerHTML = '<option value="">-- Jamia Select Karein --</option>' + 
+        allJamias.map(j => `<option value="${j.name}" data-uid="${j.userId}" data-uname="${j.userName}">${j.name} (${j.userName})</option>`).join('');
+
+    // Dropdown 2: Naya User Select
+    newUserSelect.innerHTML = '<option value="">-- Naya User Select Karein --</option>' + 
+        allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
+};
+
+// Ise window par attach karein taake handleAdminTabSwitch ise dekh sake
+window.initTransferTab = initTransferTab;
+
                // --- MAIN APP LOGIC & ROUTING ---
        const initApp = () => {
     showLoader(true);
@@ -2039,7 +2076,51 @@ kkdSummaryApplyFilterBtn.addEventListener('click', () => {
 });
              kkdDownloadExcelBtn.addEventListener('click', handleKkdExcelDownload);
              kkdDownloadImageBtn.addEventListener('click', handleKkdImageDownload);
+// 2. Jamia select karne par purana user auto-fill hona
+document.getElementById('transfer-jamia-select').addEventListener('change', (e) => {
+    const selected = e.target.options[e.target.selectedIndex];
+    document.getElementById('transfer-old-user-name').value = selected.dataset.uname || '';
+    document.getElementById('transfer-old-user-id').value = selected.dataset.uid || '';
+});
 
+// 3. Transfer Execute Karna
+document.getElementById('btn-execute-transfer').addEventListener('click', async () => {
+    const jamiaName = document.getElementById('transfer-jamia-select').value;
+    const oldUserId = document.getElementById('transfer-old-user-id').value;
+    const newUserId = document.getElementById('transfer-new-user-select').value;
+
+    if(!jamiaName || !newUserId) { alert("Tamam malumat select karein."); return; }
+    if(oldUserId === newUserId) { alert("Purana aur naya user same nahi ho sakte."); return; }
+
+    if(!confirm(`Kya aap waqai ${jamiaName} ko naye user ko dena chahte hain? Purana record naye user ko shift ho jayega.`)) return;
+
+    showLoader(true);
+    try {
+        const batch = writeBatch(db);
+        
+        // Old User se Jamia hatana
+        const oldUserRef = doc(db, 'users', oldUserId);
+        const oldU = allUsersData.find(u => u.id === oldUserId);
+        const updatedOldList = (oldU.jamiaatList || []).filter(j => (typeof j === 'object' ? j.name : j) !== jamiaName);
+        batch.update(oldUserRef, { jamiaatList: updatedOldList });
+
+        // New User mein Jamia jodna
+        const newUserRef = doc(db, 'users', newUserId);
+        const newU = allUsersData.find(u => u.id === newUserId);
+        let updatedNewList = [...(newU.jamiaatList || [])];
+        if(!updatedNewList.includes(jamiaName)) updatedNewList.push(jamiaName);
+        batch.update(newUserRef, { jamiaatList: updatedNewList });
+
+        await batch.commit();
+        showNotification("Jamia aur History successfully transfer ho gayi!");
+        initTransferTab(); // Reset dropdowns
+    } catch (err) {
+        console.error(err);
+        showNotification("Transfer fail ho gaya.", true);
+    } finally {
+        showLoader(false);
+    }
+});
                
          };
 
@@ -5098,73 +5179,9 @@ window.runAdminFinalAnalysis = function () {
     };
 };
         // 1. Transfer Tab open hote hi Dropdowns bharna
-const initTransferTab = () => {
-    const jamiaSelect = document.getElementById('transfer-jamia-select');
-    const newUserSelect = document.getElementById('transfer-new-user-select');
-    
-    // Jamiaat ki list nikalna sab users se
-    let allJamias = [];
-    allUsersData.forEach(u => {
-        if(u.jamiaatList) {
-            u.jamiaatList.forEach(j => {
-                const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                if(jName) allJamias.push({ name: jName, userId: u.id, userName: u.name });
-            });
-        }
-    });
 
-    jamiaSelect.innerHTML = '<option value="">-- Jamia Select Karein --</option>' + 
-        allJamias.map(j => `<option value="${j.name}" data-uid="${j.userId}" data-uname="${j.userName}">${j.name} (${j.userName})</option>`).join('');
 
-    newUserSelect.innerHTML = '<option value="">-- Naya User Select Karein --</option>' + 
-        allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
-};
 
-// 2. Jamia select karne par purana user auto-fill hona
-document.getElementById('transfer-jamia-select').addEventListener('change', (e) => {
-    const selected = e.target.options[e.target.selectedIndex];
-    document.getElementById('transfer-old-user-name').value = selected.dataset.uname || '';
-    document.getElementById('transfer-old-user-id').value = selected.dataset.uid || '';
-});
-
-// 3. Transfer Execute Karna
-document.getElementById('btn-execute-transfer').addEventListener('click', async () => {
-    const jamiaName = document.getElementById('transfer-jamia-select').value;
-    const oldUserId = document.getElementById('transfer-old-user-id').value;
-    const newUserId = document.getElementById('transfer-new-user-select').value;
-
-    if(!jamiaName || !newUserId) { alert("Tamam malumat select karein."); return; }
-    if(oldUserId === newUserId) { alert("Purana aur naya user same nahi ho sakte."); return; }
-
-    if(!confirm(`Kya aap waqai ${jamiaName} ko naye user ko dena chahte hain? Purana record naye user ko shift ho jayega.`)) return;
-
-    showLoader(true);
-    try {
-        const batch = writeBatch(db);
-        
-        // Old User se Jamia hatana
-        const oldUserRef = doc(db, 'users', oldUserId);
-        const oldU = allUsersData.find(u => u.id === oldUserId);
-        const updatedOldList = (oldU.jamiaatList || []).filter(j => (typeof j === 'object' ? j.name : j) !== jamiaName);
-        batch.update(oldUserRef, { jamiaatList: updatedOldList });
-
-        // New User mein Jamia jodna
-        const newUserRef = doc(db, 'users', newUserId);
-        const newU = allUsersData.find(u => u.id === newUserId);
-        let updatedNewList = [...(newU.jamiaatList || [])];
-        if(!updatedNewList.includes(jamiaName)) updatedNewList.push(jamiaName);
-        batch.update(newUserRef, { jamiaatList: updatedNewList });
-
-        await batch.commit();
-        showNotification("Jamia aur History successfully transfer ho gayi!");
-        initTransferTab(); // Reset dropdowns
-    } catch (err) {
-        console.error(err);
-        showNotification("Transfer fail ho gaya.", true);
-    } finally {
-        showLoader(false);
-    }
-});
        // --- Init ---
         initApp();
     </script>
