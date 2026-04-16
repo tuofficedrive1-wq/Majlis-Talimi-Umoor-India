@@ -166,13 +166,17 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     <p id="ra-report-subtitle" class="text-lg opacity-90 mt-2 font-sans text-center"></p>
                 </div>
                 <div class="flex gap-2 no-print" data-html2canvas-ignore="true">
-                    <button id="ra-download-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded shadow font-bold text-sm">
-                        <i class="fas fa-file-excel mr-1"></i> Excel
-                    </button>
-                    <button id="ra-download-image" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded shadow font-bold text-sm">
-                        <i class="fas fa-image mr-1"></i> Image
-                    </button>
-                </div>
+                        <button onclick="window.fetchResultData()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded shadow font-bold text-sm border border-indigo-300 transition active:scale-95">
+                            <i class="fas fa-sync-alt mr-1"></i> Refresh Data
+                        </button>
+                        
+                        <button id="ra-download-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded shadow font-bold text-sm">
+                            <i class="fas fa-file-excel mr-1"></i> Excel
+                        </button>
+                        <button id="ra-download-image" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded shadow font-bold text-sm">
+                            <i class="fas fa-image mr-1"></i> Image
+                        </button>
+                    </div>
             </div>
             <div class="w-full overflow-x-auto">
                 <table id="ra-data-table" class="w-full min-w-full text-center text-[15px] border-collapse" dir="rtl">
@@ -438,7 +442,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     
                     // Filter: Sirf 70% se kam wale (Weak Results)
                     if (percVal < 70) {
-                        // Firebase mein '.' allowed nahi hota key mein, isliye replace kiya gaya hai
                         const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]);
                         const specificWazahat = hasWazahat 
@@ -473,13 +476,20 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         }
     });
 
-    // Table Header with Counters
+    // Percentage Calculation
+    const totalRecords = totalPending + totalSubmitted;
+    const submissionPercent = totalRecords > 0 ? ((totalSubmitted / totalRecords) * 100).toFixed(1) : 0;
+
+    // Table Header with Counters and Percentage
     thead.innerHTML = `
         <tr class="bg-gray-800 text-white">
-            <th colspan="7" class="p-2 text-center text-sm">
-                Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-                Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
-                Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+            <th colspan="7" class="p-3 text-center text-sm md:text-base">
+                <div class="flex flex-wrap justify-center gap-4">
+                    <span>Kul Kamzor Results: <span class="text-yellow-400 font-bold">${totalRecords}</span></span>
+                    <span>Wazahat Aa Gayi: <span class="text-green-400 font-bold">${totalSubmitted}</span></span>
+                    <span>Baqi (Pending): <span class="text-red-400 font-bold">${totalPending}</span></span>
+                    <span class="bg-indigo-600 px-2 py-0.5 rounded">Progress: <span class="text-white font-bold">${submissionPercent}%</span></span>
+                </div>
             </th>
         </tr>
         <tr class="bg-red-50 text-red-900">
