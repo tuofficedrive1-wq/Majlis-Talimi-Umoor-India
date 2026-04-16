@@ -2313,6 +2313,58 @@ const fetchAndRenderAdminReports = async () => {
                  return { text: 'PENDING', color: 'text-yellow-600', bgColor: 'bg-yellow-100' };
               }
          };
+
+          // REPLACE existing getTeacherCountFromStructure WITH THIS
+const getTeacherCountFromStructure = (user) => {
+    try {
+        let teacherIds = new Set();
+
+        // 1) Old shape: user.academicStructure -> array of years -> karkardagiStructure -> array of jamia -> teachers array
+        if (Array.isArray(user.academicStructure)) {
+            user.academicStructure.forEach(yearData => {
+                const kark = yearData?.karkardagiStructure;
+                if (Array.isArray(kark)) {
+                    kark.forEach(jamia => {
+                        (jamia?.teachers || []).forEach(t => {
+                            if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
+                        });
+                    });
+                }
+            });
+        }
+
+        // 2) Newer shape: user.academicYears is an object keyed by year -> each year may have karkardagiStructure
+        if (user.academicYears && typeof user.academicYears === 'object') {
+            Object.values(user.academicYears).forEach(yearData => {
+                const kark = yearData?.karkardagiStructure || yearData?.karkardagi || [];
+                if (Array.isArray(kark)) {
+                    kark.forEach(jamia => {
+                        (jamia?.teachers || []).forEach(t => {
+                            if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
+                        });
+                    });
+                }
+            });
+        }
+
+        // 3) Also support case where teachers stored directly under jamia list: user.jamiaatList -> jamia.teachers
+        if (Array.isArray(user.jamiaatList)) {
+            user.jamiaatList.forEach(j => {
+                (j?.teachers || []).forEach(t => {
+                    if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
+                });
+            });
+        }
+
+        // 4) Fallback: if set empty, try totalAsatiza numeric
+        if (teacherIds.size > 0) return teacherIds.size;
+        const fallback = parseInt(user.totalAsatiza, 10);
+        return (isNaN(fallback) ? 0 : fallback);
+    } catch (err) {
+        console.error('Error in getTeacherCountFromStructure:', err);
+        return parseInt(user.totalAsatiza, 10) || 0;
+    }
+};
         
 const generateMasterSummaryHtml = (users, reports, title, titleColorClass) => {
     let stats = { jamiaat: 0, asatiza: 0, jaiza: 0, tests: 0, kkd: 0, recs: 0, submitted: 0 };
@@ -2412,57 +2464,7 @@ const generateMasterSummaryHtml = (users, reports, title, titleColorClass) => {
             
             
     // Helper: Calculate Teachers from Structure Safely
-    // REPLACE existing getTeacherCountFromStructure WITH THIS
-const getTeacherCountFromStructure = (user) => {
-    try {
-        let teacherIds = new Set();
-
-        // 1) Old shape: user.academicStructure -> array of years -> karkardagiStructure -> array of jamia -> teachers array
-        if (Array.isArray(user.academicStructure)) {
-            user.academicStructure.forEach(yearData => {
-                const kark = yearData?.karkardagiStructure;
-                if (Array.isArray(kark)) {
-                    kark.forEach(jamia => {
-                        (jamia?.teachers || []).forEach(t => {
-                            if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
-                        });
-                    });
-                }
-            });
-        }
-
-        // 2) Newer shape: user.academicYears is an object keyed by year -> each year may have karkardagiStructure
-        if (user.academicYears && typeof user.academicYears === 'object') {
-            Object.values(user.academicYears).forEach(yearData => {
-                const kark = yearData?.karkardagiStructure || yearData?.karkardagi || [];
-                if (Array.isArray(kark)) {
-                    kark.forEach(jamia => {
-                        (jamia?.teachers || []).forEach(t => {
-                            if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
-                        });
-                    });
-                }
-            });
-        }
-
-        // 3) Also support case where teachers stored directly under jamia list: user.jamiaatList -> jamia.teachers
-        if (Array.isArray(user.jamiaatList)) {
-            user.jamiaatList.forEach(j => {
-                (j?.teachers || []).forEach(t => {
-                    if (t && (t.id || t.teacherId)) teacherIds.add(t.id || t.teacherId);
-                });
-            });
-        }
-
-        // 4) Fallback: if set empty, try totalAsatiza numeric
-        if (teacherIds.size > 0) return teacherIds.size;
-        const fallback = parseInt(user.totalAsatiza, 10);
-        return (isNaN(fallback) ? 0 : fallback);
-    } catch (err) {
-        console.error('Error in getTeacherCountFromStructure:', err);
-        return parseInt(user.totalAsatiza, 10) || 0;
-    }
-};
+  
 
     // Group reports
     const reportsByUser = reports.reduce((acc, report) => {
