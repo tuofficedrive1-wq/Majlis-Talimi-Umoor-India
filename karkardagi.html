@@ -294,6 +294,9 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Book ka Naam</label>
                     <input type="text" id="modal-book-input" class="w-full p-2 border rounded-lg urdu-font" required>
+<select id="modal-book-input" class="w-full p-2 border rounded-lg urdu-font text-right" required>
+    <option value="">کتاب منتخب کریں</option>
+</select>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -2620,49 +2623,95 @@ const newPeriod = {
 };
         
         const handleEditPeriod = (e) => {
-             const row = e.target.closest('tr[data-period-id]');
-             const periodId = row.dataset.periodId;
-             const teacherDiv = e.target.closest('.border.rounded-lg[data-teacher-id]');
-             const jamiaDiv = e.target.closest('.border.rounded-lg[data-jamia-name]');
-             
-             if (!periodId || !teacherDiv || !jamiaDiv) return;
+    const row = e.target.closest('tr[data-period-id]');
+    const periodId = row.dataset.periodId;
+    const teacherDiv = e.target.closest('.border.rounded-lg[data-teacher-id]');
+    const jamiaDiv = e.target.closest('.border.rounded-lg[data-jamia-name]');
+    
+    if (!periodId || !teacherDiv || !jamiaDiv) return;
 
-             // Populate Modal fields
-             modalJamiaName.value = jamiaDiv.dataset.jamiaName;
-             modalTeacherId.value = teacherDiv.dataset.teacherId;
-             modalPeriodId.value = periodId;
-             modalClassInput.value = row.dataset.class;
-             modalBookInput.value = row.dataset.book;
-             modalSemesterSelect.value = row.dataset.sem;
-             modalTotalPagesInput.value = row.dataset.total;
-             
-             // Capture state *before* opening modal, because modal closing will trigger re-render
-             captureAccordionState(); 
-             
-             editPeriodModal.classList.remove('hidden');
-        };
+    const className = row.dataset.class;
+    const currentBookName = row.dataset.book;
+
+    // 1. Modal ke hidden fields aur class set karein
+    modalJamiaName.value = jamiaDiv.dataset.jamiaName;
+    modalTeacherId.value = teacherDiv.dataset.teacherId;
+    modalPeriodId.value = periodId;
+    modalClassInput.value = className;
+
+    // 2. Class ke hisaab se Books Dropdown populate karein
+    const bookDropdown = document.getElementById('modal-book-input');
+    const classData = adminAcademicConfig.classes.find(c => className.includes(c.classNameUrdu));
+
+    if (classData && classData.subjects) {
+        bookDropdown.innerHTML = '<option value="">کتاب منتخب کریں</option>' + 
+            classData.subjects.map(sub => {
+                const nameToShow = sub.urdu || sub.eng;
+                // Agar ye wahi kitab hai jo pehle se save thi, to use select kar dein
+                const isSelected = (nameToShow === currentBookName) ? 'selected' : '';
+                return `<option value="${sub.eng}" ${isSelected}>${nameToShow}</option>`;
+            }).join('');
+    }
+
+    modalSemesterSelect.value = row.dataset.sem;
+    modalTotalPagesInput.value = row.dataset.total;
+    
+    captureAccordionState(); 
+    editPeriodModal.classList.remove('hidden');
+};
+
+        // Modal ke andar class change hone par books filter karne ka logic
+document.getElementById('modal-class-input').addEventListener('input', (e) => {
+    const userInput = e.target.value.trim();
+    const bookDropdown = document.getElementById('modal-book-input');
+
+    if (!userInput) {
+        bookDropdown.innerHTML = '<option value="">کتاب منتخب کریں</option>';
+        return;
+    }
+
+    // Admin settings se matching class dhoondna
+    const classData = adminAcademicConfig.classes.find(c => 
+        c.classNameUrdu && userInput.includes(c.classNameUrdu)
+    );
+
+    if (classData && classData.subjects) {
+        bookDropdown.innerHTML = '<option value="">کتاب منتخب کریں</option>' + 
+            classData.subjects.map(sub => {
+                const nameToShow = sub.urdu || sub.eng;
+                return `<option value="${sub.eng}">${nameToShow}</option>`;
+            }).join('');
+    } else {
+        bookDropdown.innerHTML = '<option value="">کتابیں نہیں ملیں</option>';
+    }
+});
+        
 
         // Handle Update Period submission
         const handleUpdatePeriod = async (e) => {
-            e.preventDefault();
-            if (!activeYear) return;
-            
-            const jamiaName = modalJamiaName.value;
-            const teacherId = modalTeacherId.value;
-            const periodId = modalPeriodId.value;
+    e.preventDefault();
+    if (!activeYear) return;
+    
+    const jamiaName = modalJamiaName.value;
+    const teacherId = modalTeacherId.value;
+    const periodId = modalPeriodId.value;
 
-            const updatedPeriod = {
-                id: periodId,
-                className: modalClassInput.value.trim(), 
-                bookName: modalBookInput.value.trim(),
-                semester: modalSemesterSelect.value, 
-                totalPages: parseInt(modalTotalPagesInput.value, 10) || 0,
-            };
+    // --- NAYA BADLAV YAHA HAI ---
+    const bookSelect = document.getElementById('modal-book-input');
+    const selectedBookName = bookSelect.options[bookSelect.selectedIndex].text;
 
-            if (!updatedPeriod.className || !updatedPeriod.bookName || updatedPeriod.totalPages <= 0) {
-                 showNotification("Sabhi fields sahi se bharein.", true); 
-                 return;
-            }
+    const updatedPeriod = {
+        id: periodId,
+        className: modalClassInput.value.trim(), 
+        bookName: selectedBookName, // Ab ye dropdown se text lega
+        semester: modalSemesterSelect.value, 
+        totalPages: parseInt(modalTotalPagesInput.value, 10) || 0,
+    };
+    
+    if (!updatedPeriod.className || !updatedPeriod.bookName || updatedPeriod.totalPages <= 0) {
+         showNotification("Sabhi fields sahi se bharein.", true); 
+         return;
+    }
             
             let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
             let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
