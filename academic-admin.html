@@ -61,9 +61,12 @@
             </div>
         </div>
         <div id="tab-academic-system" class="tab-content hidden">
-        <div class="bg-white rounded-xl shadow-sm border p-6 max-w-5xl mx-auto">
+        <div class="bg-white rounded-xl shadow-sm border p-6 max-w-4xl mx-auto">
             <div class="flex justify-between items-center mb-6 border-b pb-4">
-                <h2 class="text-xl font-bold text-indigo-800"><i class="fas fa-layer-group mr-2"></i> Academic Configuration</h2>
+                <div>
+                    <h2 class="text-xl font-bold text-indigo-800">Academic Configuration</h2>
+                    <p class="text-xs text-gray-500">Define classes and subjects in English for inspectors</p>
+                </div>
                 <button id="btn-save-sys" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow-md transition">
                     <i class="fas fa-save mr-2"></i> Save Structure
                 </button>
@@ -276,39 +279,46 @@
         // --- ACADEMIC SYSTEM LOGIC ---
 const sysRef = doc(db, "settings", "academic_admin_config");
 
-// Subject Row Create Karna
-function addSubjectRow(parent, data = { eng: '', urdu: '' }) {
+// Subject Input Create Karna (Only English)
+function addSubjectRow(parent, value = '') {
     const div = document.createElement('div');
     div.className = "flex gap-2 items-center mb-2 academic-sub-row";
     div.innerHTML = `
-        <input type="text" placeholder="Subject Name" class="sub-eng p-2 border rounded text-sm w-full" value="${data.eng}">
-        <input type="text" dir="rtl" placeholder="مضمون" class="sub-urdu p-2 border rounded text-sm w-full font-urdu" value="${data.urdu}">
-        <button class="text-red-400 hover:text-red-600 px-2 remove-sub"><i class="fas fa-times"></i></button>
+        <div class="flex-1 relative">
+            <i class="fas fa-book text-gray-300 absolute left-3 top-3 text-xs"></i>
+            <input type="text" placeholder="Subject Name" class="sub-name p-2 pl-8 border rounded-lg text-sm w-full focus:ring-1 focus:ring-indigo-500 outline-none" value="${value}">
+        </div>
+        <button class="text-gray-300 hover:text-red-500 px-2 remove-sub transition"><i class="fas fa-times"></i></button>
     `;
     div.querySelector('.remove-sub').onclick = () => div.remove();
     parent.appendChild(div);
 }
 
-// Class Block Create Karna
-function addClassBlock(data = { eng: '', urdu: '', subjects: [] }) {
+// Class Block Create Karna (Only English)
+function addClassBlock(data = { name: '', subjects: [] }) {
     const container = document.getElementById('classes-container');
     const div = document.createElement('div');
-    div.className = "academic-class-item bg-gray-50 border rounded-xl p-4 relative";
+    div.className = "academic-class-item bg-gray-50 border rounded-2xl p-5 relative shadow-sm";
     div.innerHTML = `
-        <button class="absolute top-3 right-3 text-gray-400 hover:text-red-500 remove-class"><i class="fas fa-trash"></i></button>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <input type="text" placeholder="Class Name (English)" class="class-name-eng p-2 border rounded font-bold" value="${data.eng}">
-            <input type="text" dir="rtl" placeholder="درجہ" class="class-name-urdu p-2 border rounded font-bold font-urdu" value="${data.urdu}">
+        <button class="absolute top-4 right-4 text-gray-300 hover:text-red-500 remove-class transition"><i class="fas fa-trash-alt"></i></button>
+        
+        <div class="mb-4">
+            <label class="block text-[10px] font-bold text-indigo-400 uppercase mb-1 ml-1">Class Name</label>
+            <input type="text" placeholder="e.g. Class 10th" class="class-name p-2.5 border rounded-xl font-bold w-full md:w-1/2 shadow-sm focus:ring-2 focus:ring-indigo-200 outline-none" value="${data.name}">
         </div>
-        <div class="bg-white p-3 rounded-lg border">
+
+        <div class="bg-white p-4 rounded-xl border border-indigo-50">
+            <label class="block text-[10px] font-bold text-gray-400 uppercase mb-3">Subject List</label>
             <div class="subs-list"></div>
-            <button class="add-sub-btn text-indigo-600 text-xs font-bold mt-2 hover:underline">+ Add Subject</button>
+            <button class="add-sub-btn text-indigo-600 text-xs font-bold mt-3 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition">+ Add Subject</button>
         </div>
     `;
 
     const subsList = div.querySelector('.subs-list');
     div.querySelector('.add-sub-btn').onclick = () => addSubjectRow(subsList);
-    div.querySelector('.remove-class').onclick = () => div.remove();
+    div.querySelector('.remove-class').onclick = () => {
+        if(confirm("Delete this class and all its subjects?")) div.remove();
+    };
 
     if(data.subjects.length > 0) {
         data.subjects.forEach(s => addSubjectRow(subsList, s));
@@ -318,44 +328,55 @@ function addClassBlock(data = { eng: '', urdu: '', subjects: [] }) {
     container.appendChild(div);
 }
 
-// Data Load Karna
+// Load System
 async function loadAcademicSystem() {
-    const snap = await getDoc(sysRef);
-    if(snap.exists()) {
-        const d = snap.data();
-        document.getElementById('classes-container').innerHTML = '';
-        if(d.classes) d.classes.forEach(c => addClassBlock({ eng: c.nameEng, urdu: c.nameUrdu, subjects: c.subjects }));
-    }
+    try {
+        const snap = await getDoc(sysRef);
+        if(snap.exists()) {
+            const d = snap.data();
+            document.getElementById('classes-container').innerHTML = '';
+            if(d.classes) d.classes.forEach(c => addClassBlock({ name: c.name, subjects: c.subjects }));
+        }
+    } catch (e) { console.error("Load Error:", e); }
 }
 
-// Data Save Karna
+// Save System
 document.getElementById('btn-save-sys').onclick = async () => {
     const btn = document.getElementById('btn-save-sys');
+    const originalText = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = "Saving...";
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
 
     const classes = [];
     document.querySelectorAll('.academic-class-item').forEach(item => {
-        const eng = item.querySelector('.class-name-eng').value.trim();
-        const urdu = item.querySelector('.class-name-urdu').value.trim();
-        const subs = Array.from(item.querySelectorAll('.academic-sub-row')).map(row => ({
-            eng: row.querySelector('.sub-eng').value.trim(),
-            urdu: row.querySelector('.sub-urdu').value.trim()
-        })).filter(s => s.eng || s.urdu);
+        const name = item.querySelector('.class-name').value.trim();
+        const subjects = Array.from(item.querySelectorAll('.sub-name'))
+                              .map(inp => inp.value.trim())
+                              .filter(val => val !== "");
 
-        if(eng || urdu) classes.push({ nameEng: eng, nameUrdu: urdu, subjects: subs });
+        if(name) {
+            classes.push({ name, subjects });
+        }
     });
 
     try {
-        await setDoc(sysRef, { classes, updatedBy: 'Academic Admin', lastDate: new Date() });
-        alert("Academic system successfully saved!");
-    } catch (e) { alert("Error: " + e.message); }
-    finally { btn.disabled = false; btn.innerHTML = "Save Structure"; }
+        await setDoc(sysRef, { 
+            classes, 
+            lastUpdated: new Date(),
+            type: 'English-Only System' 
+        });
+        alert("Configuration saved successfully!");
+    } catch (e) { 
+        alert("Error saving: " + e.message); 
+    } finally { 
+        btn.disabled = false; 
+        btn.innerHTML = originalText; 
+    }
 };
 
 document.getElementById('btn-add-class').onclick = () => addClassBlock();
 
-// Initialization ke waqt load karein
+// Start
 loadAcademicSystem();
         
     </script>
