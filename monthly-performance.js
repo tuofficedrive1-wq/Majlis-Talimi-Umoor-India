@@ -4,6 +4,20 @@ import {
     updateDoc,
     serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+let academicConfig = null;
+
+// Academic Admin ki settings fetch karne ka function
+async function getAcademicConfig(db) {
+    if (academicConfig) return academicConfig;
+    const snap = await getDoc(doc(db, "settings", "academic_admin_config"));
+    if (snap.exists()) {
+        academicConfig = snap.data();
+        return academicConfig;
+    }
+    return null;
+}
 
 const getStatusStyles = (status) => {
     if (status === 'Mumtaz') return 'text-emerald-600 font-black';
@@ -179,16 +193,26 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat) => {
 
 const loadAllTeachers = async (jamiaat, db, currentUser) => {
     try {
+        // Step 1: Academic Config load karein taaki dropdown values mil sakein
+        const configSnap = await getDoc(doc(db, "settings", "academic_admin_config"));
+        const academicConfig = configSnap.exists() ? configSnap.data() : { classes: [] };
+
         const userRef = doc(db, "users", currentUser.uid);
         const userSnap = await getDoc(userRef);
         if (!userSnap.exists()) return;
 
         const structure = userSnap.data().academicYears?.["2025-2026"]?.karkardagiStructure || [];
+        
         jamiaat.forEach(jamia => {
             const safeId = jamia.replace(/\s+/g, '');
             const listDiv = document.getElementById(`list-${safeId}`);
             const jamiaData = structure.find(j => j.jamiaName === jamia);
             if (!listDiv || !jamiaData) return;
+
+            // Step 2: Class options generate karein
+            const classOptions = academicConfig.classes.map(c => 
+                `<option value="${c.name}">${c.name}</option>`
+            ).join('');
 
             listDiv.innerHTML = jamiaData.teachers.map(t => `
                 <div class="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 mb-4">
@@ -205,18 +229,26 @@ const loadAllTeachers = async (jamiaat, db, currentUser) => {
                     </div>
                     <div class="period-container hidden p-5 bg-white border-t border-slate-100 space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 bg-emerald-50/50 p-4 rounded-xl">
-                            <input type="text" placeholder="Class" class="p-class p-2 border rounded-lg text-sm">
-                            <input type="text" placeholder="Book" class="p-book p-2 border rounded-lg text-sm">
+                            <select class="p-class p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-500">
+                                <option value="">Select Class</option>
+                                ${classOptions}
+                            </select>
+                            
+                            <select class="p-book p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-500" disabled>
+                                <option value="">Select Subject</option>
+                            </select>
+
                             <select class="p-sem p-2 border rounded-lg text-sm"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
                             <input type="number" placeholder="Pages" class="p-pages p-2 border rounded-lg text-sm">
                             <button class="save-period-btn bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold" data-tid="${t.id}" data-jamia="${jamia}">Add Period</button>
                         </div>
+                        
                         <div class="overflow-x-auto">
                             <table class="w-full text-[10px] border-collapse">
-                                <thead><tr class="bg-slate-50 text-slate-400 uppercase font-black"><th class="p-2 border">Class</th><th class="p-2 border">Book</th><th class="p-2 border">Sem</th><th class="p-2 border">Pages</th><th class="p-2 border">Action</th></tr></thead>
+                                <thead><tr class="bg-slate-50 text-slate-400 uppercase font-black"><th class="p-2 border">Class</th><th class="p-2 border">Book/Subject</th><th class="p-2 border">Sem</th><th class="p-2 border">Pages</th><th class="p-2 border">Action</th></tr></thead>
                                 <tbody>
                                     ${(t.periods || []).map(p => `
-                                        <tr class="border-b">
+                                        <tr class="border-b hover:bg-slate-50">
                                             <td class="p-2 border">${p.className}</td>
                                             <td class="p-2 border">${p.bookName}</td>
                                             <td class="p-2 border text-center font-bold text-blue-600">${p.semester}</td>
@@ -231,9 +263,36 @@ const loadAllTeachers = async (jamiaat, db, currentUser) => {
                     </div>
                 </div>`).join('');
             
+            // Link Change Event attach karein
+            attachDropdownEvents(listDiv, academicConfig);
             attachTeacherEvents(listDiv, db, currentUser, jamiaat);
         });
     } catch (e) { console.error(e); }
+};
+
+const attachDropdownEvents = (container, config) => {
+    container.querySelectorAll('.teacher-toggle').forEach(toggle => {
+        const parent = toggle.nextElementSibling; // period-container
+        const classSelect = parent.querySelector('.p-class');
+        const bookSelect = parent.querySelector('.p-book');
+
+        classSelect.onchange = () => {
+            const selectedClass = classSelect.value;
+            bookSelect.innerHTML = `<option value="">Select Subject</option>`;
+            
+            if (selectedClass) {
+                const classData = config.classes.find(c => c.name === selectedClass);
+                if (classData && classData.subjects) {
+                    classData.subjects.forEach(sub => {
+                        bookSelect.innerHTML += `<option value="${sub}">${sub}</option>`;
+                    });
+                    bookSelect.disabled = false;
+                }
+            } else {
+                bookSelect.disabled = true;
+            }
+        };
+    });
 };
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat) => {
