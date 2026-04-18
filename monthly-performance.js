@@ -40,15 +40,13 @@ let currentUser = null;
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUser = user;
-        console.log("User logged in:", user.uid);
+        console.log("User:", user.uid);
 
-        // ⚠️ yahan call tabhi karo jab data ready ho
-        if (typeof assignedJamiaat !== "undefined") {
-            renderPerformanceTab(assignedJamiaat, currentUser);
-        }
+        // 👉 YAHI CALL KARNA HAI
+        renderPerformanceTab(assignedJamiaat, currentUser);
 
     } else {
-        console.log("User not logged in");
+        console.log("Not logged in");
     }
 });
 
