@@ -38,12 +38,32 @@ let globalAcademicConfig = null;
 let currentUser = null;
 
 onAuthStateChanged(auth, async (user) => {
-    if (!user) return;
+    if (user) {
+        currentUser = user;
+        console.log("User:", user.uid);
 
-    const userSnap = await getDoc(doc(db, "users", user.uid));
-    const assignedJamiaat = userSnap.data()?.assignedJamiaat || [];
+        try {
+            // User ka data fetch karein taaki assignedJamiaat mil sake
+            const userRef = doc(db, "users", user.uid);
+            const userSnap = await getDoc(userRef);
+            
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                // Agar field ka naam 'assignedJamiaat' hai toh:
+                const assignedJamiaat = userData.assignedJamiaat || [];
+                
+                // Ab function call karein
+                renderPerformanceTab(assignedJamiaat, currentUser);
+            } else {
+                console.log("User document not found in Firestore");
+            }
+        } catch (error) {
+            console.error("Error fetching user jamiaat:", error);
+        }
 
-    renderPerformanceTab(assignedJamiaat, user);
+    } else {
+        console.log("Not logged in");
+    }
 });
 
 // Admin Central Setup fetch karne ka function
