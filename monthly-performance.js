@@ -1,5 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+import { 
+    getFirestore,
+    doc,
+    getDoc,
+    updateDoc,
+    setDoc,
+    serverTimestamp
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -16,7 +24,7 @@ export const db = getFirestore(app);
 let globalAcademicConfig = null;
 
 // Admin Central Setup fetch karne ka function
-async function fetchGlobalSetup(db) {
+async function fetchGlobalSetup() {
     if (globalAcademicConfig) return globalAcademicConfig;
     if (!db) return null;
     try {
@@ -32,7 +40,7 @@ async function fetchGlobalSetup(db) {
     return null;
 }
 
-export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
+export const renderPerformanceTab = (assignedJamiaat, currentUser) => {
     const container = document.getElementById('performance-jamia-list');
     container.innerHTML = `
         <div class="mb-6">
@@ -60,7 +68,7 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     renderSubTabContent('performance', assignedJamiaat, currentUser, db);
 };
 
-const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
+const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
     const contentArea = document.getElementById('sub-tab-content');
     const setupData = await fetchGlobalSetup(db);
     const activeSession = setupData?.activeYear || '2026-2027';
@@ -105,7 +113,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                 </table>
             </div>
         `;
-        document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+        document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, currentUser);
         loadPerformanceTable(assignedJamiaat, db, currentUser);
 
     } else if (tabName === 'structure') {
@@ -158,7 +166,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     }
 };
 
-const loadPerformanceTable = async (jamiaat, db, currentUser) => {
+const loadPerformanceTable = async (jamiaat, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
     const setupData = await fetchGlobalSetup(db);
     const monthSelect = document.getElementById('perf-month-select');
