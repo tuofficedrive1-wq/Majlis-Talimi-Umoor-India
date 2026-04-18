@@ -9,6 +9,13 @@ import {
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+import { 
+    getAuth, 
+    onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+
+// 🔹 Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
     authDomain: "data-f15ab.firebaseapp.com",
@@ -16,27 +23,52 @@ const firebaseConfig = {
     storageBucket: "data-f15ab.firebasestorage.app"
 };
 
+// 🔹 Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// 🔥 YAHAN DB BAN RAHA HAI
+// 🔹 Services
 export const db = getFirestore(app);
+const auth = getAuth(app);
 
+// 🔹 Global cache
 let globalAcademicConfig = null;
+
+
+// 🔥 🔥 USER AUTH HANDLING (IMPORTANT)
+let currentUser = null;
+
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        currentUser = user;
+        console.log("User logged in:", user.uid);
+
+        // ⚠️ yahan call tabhi karo jab data ready ho
+        if (typeof assignedJamiaat !== "undefined") {
+            renderPerformanceTab(assignedJamiaat, currentUser);
+        }
+
+    } else {
+        console.log("User not logged in");
+    }
+});
 
 // Admin Central Setup fetch karne ka function
 async function fetchGlobalSetup() {
     if (globalAcademicConfig) return globalAcademicConfig;
-    if (!db) return null;
+
     try {
         const configRef = doc(db, "settings", "academic_config");
         const snap = await getDoc(configRef);
+
         if (snap.exists()) {
             globalAcademicConfig = snap.data();
             return globalAcademicConfig;
         }
+
     } catch (error) {
         console.error("Global setup fetch error:", error);
     }
+
     return null;
 }
 
@@ -61,7 +93,7 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser) => {
                 b.classList.add('text-slate-500');
             });
             btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser, db);
+            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser);
         };
     });
 
@@ -70,7 +102,7 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser) => {
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
     const contentArea = document.getElementById('sub-tab-content');
-    const setupData = await fetchGlobalSetup(db);
+    const setupData = await fetchGlobalSetup(); ✅
     const activeSession = setupData?.activeYear || '2026-2027';
 
     if (tabName === 'performance') {
@@ -114,7 +146,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
             </div>
         `;
         document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, currentUser);
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
+        loadPerformanceTable(assignedJamiaat, currentUser); 
 
     } else if (tabName === 'structure') {
         contentArea.innerHTML = `
