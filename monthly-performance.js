@@ -97,12 +97,12 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser) => {
         };
     });
 
-    renderSubTabContent('performance', assignedJamiaat, currentUser, db);
+    renderSubTabContent('performance', assignedJamiaat, currentUser);
 };
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
     const contentArea = document.getElementById('sub-tab-content');
-    const setupData = await fetchGlobalSetup(); ✅
+    const setupData = await fetchGlobalSetup();
     const activeSession = setupData?.activeYear || '2026-2027';
 
     if (tabName === 'performance') {
