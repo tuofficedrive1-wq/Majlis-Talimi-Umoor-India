@@ -8,23 +8,29 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 let academicConfig = null;
+
 let globalAcademicConfig = null;
 
-/**
- * Admin Academic Setup (Academic Year, Months, Days) fetch karta hai.
- * Yeh data 'settings/academic_config' se aata hai.
- */
 async function fetchGlobalSetup(db) {
-    // Agar data pehle se memory mein hai toh wahi return karein (Caching)
-    if (globalAcademicConfig) return globalAcademicConfig;
+    // Check karein ke db sahi hai ya nahi
+    if (!db) {
+        console.error("Firestore database instance (db) is missing!");
+        return null;
+    }
     
+    if (globalAcademicConfig) return globalAcademicConfig;
+
     try {
-        const snap = await getDoc(doc(db, "settings", "academic_config")); 
+        // Path wahi rakhein jo admin-academic-setup.js mein hai
+        const configRef = doc(db, "settings", "academic_config"); 
+        const snap = await getDoc(configRef);
+        
         if (snap.exists()) {
             globalAcademicConfig = snap.data();
+            console.log("Global Setup Loaded:", globalAcademicConfig);
             return globalAcademicConfig;
         } else {
-            console.warn("Global academic config not found in Firestore.");
+            console.warn("No global config found at settings/academic_config");
         }
     } catch (error) {
         console.error("Error fetching global setup:", error);
@@ -449,27 +455,20 @@ async function updateTeacherData(db, currentUser, jamiaName, updateFn) {
 }
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    const tbody = document.getElementById('performance-table-body');
-    if (!tbody) return;
+    // Ensure db is passed here correctly from the main script
+    const setupData = await fetchGlobalSetup(db);
+    if (!setupData) return;
 
-    // 1. Admin Setup aur User Data fetch karein
-    const [setupData, userSnap] = await Promise.all([
-        fetchGlobalSetup(db),
-        getDoc(doc(db, "users", currentUser.uid))
-    ]);
-
-    if (!userSnap.exists() || !setupData) {
-        tbody.innerHTML = '<tr><td colspan="11" class="p-10 text-center text-slate-400">Loading Configuration...</td></tr>';
-        return;
-    }
-
-    // 2. Selected Month aur Days ki calculation
     const selectedMonthIdx = document.getElementById('perf-month-select').value;
-    const isSem2 = [9, 10, 11, 0, 1, 2].includes(parseInt(selectedMonthIdx));
     
-    // Semester ke total working days aur current month ke days
+    // Semester days aur current month working days admin setup se lena
+    const isSem2 = [9, 10, 11, 0, 1, 2].includes(parseInt(selectedMonthIdx));
     const totalWorkingDays = isSem2 ? setupData.sem2TotalDays : setupData.sem1TotalDays;
-    const currentMonthDays = setupData.monthDetails[selectedMonthIdx][isSem2 ? 'sem2' : 'sem1'] || 0;
+    
+    // Month details array se current month ke days nikalna
+    const currentMonthDays = setupData.monthDetails[selectedMonthIdx] 
+        ? (isSem2 ? setupData.monthDetails[selectedMonthIdx].sem2 : setupData.monthDetails[selectedMonthIdx].sem1)
+        : 0;
 
     const structure = userSnap.data().academicYears?.["2025-2026"]?.karkardagiStructure || [];
     let html = "";
@@ -509,6 +508,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     });
 
     tbody.innerHTML = html || '<tr><td colspan="11" class="p-10 text-center text-slate-400">No records found.</td></tr>';
+    const targetPages = totalWorkingDays > 0 ? Math.round((p.totalPages / totalWorkingDays) * currentMonthDays) : 0;
 };
 
 window.openPerformanceForm = (id, name) => {
