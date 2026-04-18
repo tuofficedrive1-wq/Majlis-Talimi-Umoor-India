@@ -1,105 +1,51 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-
 import { 
-    getFirestore,
-    doc,
-    getDoc,
-    updateDoc,
-    setDoc,
-    serverTimestamp
+    doc, 
+    getDoc, 
+    updateDoc, 
+    setDoc, 
+    serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-import { 
-    getAuth, 
-    onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-
-// 🔹 Firebase Config
-const firebaseConfig = {
-    apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-    authDomain: "data-f15ab.firebaseapp.com",
-    projectId: "data-f15ab",
-    storageBucket: "data-f15ab.firebasestorage.app"
-};
-
-// 🔹 Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// 🔹 Services
-export const db = getFirestore(app);
-const auth = getAuth(app);
-
-// 🔹 Global cache
+// Global cache settings fetch karne ke liye
 let globalAcademicConfig = null;
 
-
-// 🔥 🔥 USER AUTH HANDLING (IMPORTANT)
-let currentUser = null;
-
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        currentUser = user;
-        console.log("User:", user.uid);
-
-        try {
-            // User ka data fetch karein taaki assignedJamiaat mil sake
-            const userRef = doc(db, "users", user.uid);
-            const userSnap = await getDoc(userRef);
-            
-            if (userSnap.exists()) {
-                const userData = userSnap.data();
-                // Agar field ka naam 'assignedJamiaat' hai toh:
-                const assignedJamiaat = userData.assignedJamiaat || [];
-                
-                // Ab function call karein
-                renderPerformanceTab(assignedJamiaat, currentUser);
-            } else {
-                console.log("User document not found in Firestore");
-            }
-        } catch (error) {
-            console.error("Error fetching user jamiaat:", error);
-        }
-
-    } else {
-        console.log("Not logged in");
-    }
-});
-
-// Admin Central Setup fetch karne ka function
-async function fetchGlobalSetup() {
+/**
+ * Global setup fetch karne ka function
+ */
+async function fetchGlobalSetup(db) {
     if (globalAcademicConfig) return globalAcademicConfig;
-
     try {
         const configRef = doc(db, "settings", "academic_config");
         const snap = await getDoc(configRef);
-
         if (snap.exists()) {
             globalAcademicConfig = snap.data();
             return globalAcademicConfig;
         }
-
     } catch (error) {
         console.error("Global setup fetch error:", error);
     }
-
     return null;
 }
 
-export const renderPerformanceTab = (assignedJamiaat, currentUser) => {
+/**
+ * Main function jo academic-inspector.html se call hoga
+ */
+export const renderPerformanceTab = async (assignedJamiaat, currentUser, db) => {
     const container = document.getElementById('performance-jamia-list');
+    if (!container) return;
+
     container.innerHTML = `
         <div class="mb-6">
             <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
-                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
+                <button class="perf-sub-tab active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
+                <button class="perf-sub-tab px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
+                <button class="perf-sub-tab px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
             </div>
         </div>
         <div id="sub-tab-content" class="space-y-6"></div>
     `;
 
-    const subTabBtns = container.querySelectorAll('.sub-tab-btn');
+    const subTabBtns = container.querySelectorAll('.perf-sub-tab');
     subTabBtns.forEach(btn => {
         btn.onclick = () => {
             subTabBtns.forEach(b => {
@@ -107,16 +53,20 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser) => {
                 b.classList.add('text-slate-500');
             });
             btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser);
+            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser, db);
         };
     });
 
-    renderSubTabContent('performance', assignedJamiaat, currentUser);
+    // Default tab load karein
+    renderSubTabContent('performance', assignedJamiaat, currentUser, db);
 };
 
-const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
+/**
+ * Sub-tabs ka content render karne ka function
+ */
+const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
-    const setupData = await fetchGlobalSetup();
+    const setupData = await fetchGlobalSetup(db);
     const activeSession = setupData?.activeYear || '2026-2027';
 
     if (tabName === 'performance') {
@@ -159,22 +109,11 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
                 </table>
             </div>
         `;
-        document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, currentUser);
-        loadPerformanceTable(assignedJamiaat, currentUser); 
+        document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, currentUser, db);
+        loadPerformanceTable(assignedJamiaat, currentUser, db); 
 
     } else if (tabName === 'structure') {
         contentArea.innerHTML = `
-            <div class="mb-6 flex items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-                <div class="bg-indigo-50 p-2.5 rounded-2xl text-indigo-600"><i class="fas fa-calendar-check text-lg"></i></div>
-                <div class="flex-1">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Select Academic Year</label>
-                    <select id="structure-year-select" class="w-full md:w-64 bg-transparent font-bold text-indigo-700 outline-none cursor-pointer text-sm">
-                        <option value="${activeSession}">${activeSession} (Active)</option>
-                        <option value="2025-2026">2025-2026</option>
-                        <option value="2027-2028">2027-2028</option>
-                    </select>
-                </div>
-            </div>
             <div id="structure-accordion" class="space-y-4">
                 ${assignedJamiaat.map(jamia => `
                     <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
@@ -191,13 +130,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
                                     <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name Of Teacher" class="p-2.5 border rounded-xl text-sm outline-none">
                                     <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code" class="p-2.5 border rounded-xl text-sm font-bold" maxlength="6">
                                     <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact No." class="p-2.5 border rounded-xl text-sm outline-none">
-                                    <input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level Qualified" class="p-2.5 border rounded-xl text-sm outline-none">
-                                    <input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qualification" class="p-2.5 border rounded-xl text-sm outline-none">
-                                    <input type="email" id="mail-${jamia.replace(/\s+/g, '')}" placeholder="Mail ID" class="p-2.5 border rounded-xl text-sm outline-none">
-                                    <input type="text" id="exp-${jamia.replace(/\s+/g, '')}" placeholder="Experience" class="p-2.5 border rounded-xl text-sm outline-none">
-                                    <input type="text" id="spec-${jamia.replace(/\s+/g, '')}" placeholder="Specialization" class="p-2.5 border rounded-xl text-sm outline-none">
                                     <input type="text" id="t-period-${jamia.replace(/\s+/g, '')}" placeholder="Total Period" class="p-2.5 border rounded-xl text-sm outline-none">
-                                    <input type="text" id="ijara-${jamia.replace(/\s+/g, '')}" placeholder="Ijara Status" class="p-2.5 border rounded-xl text-sm outline-none">
                                 </div>
                                 <button class="save-teacher-btn w-full mt-4 bg-indigo-600 text-white py-3 rounded-2xl font-bold shadow-lg" data-jamia-name="${jamia}">Save Teacher Profile</button>
                             </div>
@@ -212,7 +145,10 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser) => {
     }
 };
 
-const loadPerformanceTable = async (jamiaat, currentUser) => {
+/**
+ * Performance table ka data load karne ka function
+ */
+const loadPerformanceTable = async (jamiaat, currentUser, db) => {
     const tbody = document.getElementById('performance-table-body');
     const setupData = await fetchGlobalSetup(db);
     const monthSelect = document.getElementById('perf-month-select');
@@ -220,6 +156,7 @@ const loadPerformanceTable = async (jamiaat, currentUser) => {
 
     const selectedMonthIdx = monthSelect.value;
     const activeYear = setupData.activeYear || "2026-2027";
+    
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const structure = userSnap.data()?.academicYears?.[activeYear]?.karkardagiStructure || [];
     
@@ -259,6 +196,9 @@ const loadPerformanceTable = async (jamiaat, currentUser) => {
     tbody.innerHTML = html || '<tr><td colspan="12" class="p-10 text-center text-slate-400">No records found.</td></tr>';
 };
 
+/**
+ * Structure (Teachers/Classes) setup karne ka events function
+ */
 const setupStructureEvents = (container, db, currentUser, assignedJamiaat, activeYear) => {
     container.querySelectorAll('.jamia-toggle').forEach(btn => {
         btn.onclick = () => {
@@ -275,14 +215,6 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, activ
 
             const name = document.getElementById(`name-${safeId}`).value.trim();
             const ajeer = document.getElementById(`ajeer-${safeId}`).value.trim();
-            const contact = document.getElementById(`contact-${safeId}`).value.trim();
-            const level = document.getElementById(`level-${safeId}`).value.trim();
-            const hQual = document.getElementById(`h-qual-${safeId}`).value.trim();
-            const mail = document.getElementById(`mail-${safeId}`).value.trim();
-            const exp = document.getElementById(`exp-${safeId}`).value.trim();
-            const spec = document.getElementById(`spec-${safeId}`).value.trim();
-            const tPeriod = document.getElementById(`t-period-${safeId}`).value.trim();
-            const ijara = document.getElementById(`ijara-${safeId}`).value.trim();
 
             if (!name || !ajeer) return alert("Name and Ajeer Code are required.");
 
@@ -290,6 +222,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, activ
                 const userRef = doc(db, "users", currentUser.uid);
                 const userSnap = await getDoc(userRef);
                 let academicYears = userSnap.data().academicYears || {};
+                
                 if (!academicYears[activeYear]) academicYears[activeYear] = { karkardagiStructure: [] };
                 
                 let structure = academicYears[activeYear].karkardagiStructure;
@@ -297,17 +230,15 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, activ
                 if (!jamiaData) { jamiaData = { jamiaName, teachers: [] }; structure.push(jamiaData); }
 
                 const teacherObj = {
-                    id: editId || `t-${Date.now()}`, name, loginCode: ajeer, contact, levelQualified: level,
-                    highestQualification: hQual, mailId: mail, experience: exp,
-                    specialization: spec, teachingPeriod: tPeriod, ijaraStatus: ijara,
+                    id: editId || `t-${Date.now()}`, 
+                    name, 
+                    loginCode: ajeer,
                     periods: editId ? (jamiaData.teachers.find(t => t.id === editId)?.periods || []) : []
                 };
 
                 if (editId) {
                     const idx = jamiaData.teachers.findIndex(t => t.id === editId);
                     if (idx > -1) jamiaData.teachers[idx] = teacherObj;
-                    delete btn.dataset.editMode;
-                    btn.innerText = "Save Teacher Profile";
                 } else {
                     jamiaData.teachers.push(teacherObj);
                 }
@@ -320,15 +251,14 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, activ
     });
 };
 
+/**
+ * Registered teachers ko load karne ka function
+ */
 const loadAllTeachers = async (jamiaat, db, currentUser, activeYear) => {
     try {
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const structure = userSnap.data()?.academicYears?.[activeYear]?.karkardagiStructure || [];
         
-        const configSnap = await getDoc(doc(db, "settings", "academic_config"));
-        const adminConfig = configSnap.exists() ? configSnap.data() : { classes: [] };
-        const classOptions = adminConfig.classes.map(c => `<option value="${c.classNameEng}">${c.classNameEng}</option>`).join('');
-
         jamiaat.forEach(jamia => {
             const safeId = jamia.replace(/\s+/g, '');
             const listDiv = document.getElementById(`list-${safeId}`);
@@ -336,59 +266,13 @@ const loadAllTeachers = async (jamiaat, db, currentUser, activeYear) => {
             if (!listDiv || !jamiaData) return;
 
             listDiv.innerHTML = jamiaData.teachers.map(t => `
-                <div class="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 mb-4">
-                    <div class="teacher-toggle flex justify-between items-center p-4 cursor-pointer bg-white" data-tid="${t.id}" data-jamia="${jamia}">
-                        <div class="flex flex-col">
-                            <span class="font-bold text-slate-800">${t.name}</span>
-                            <span class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded w-fit">CODE: ${t.loginCode}</span>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <button class="edit-t-btn text-indigo-500 p-2" data-tid="${t.id}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
-                            <i class="fas fa-chevron-down text-slate-400"></i>
-                        </div>
+                <div class="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 mb-4 p-4 flex justify-between items-center">
+                    <div>
+                        <span class="font-bold text-slate-800">${t.name}</span>
+                        <span class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded ml-2">CODE: ${t.loginCode}</span>
                     </div>
-                    <div class="period-container hidden p-5 bg-white border-t space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 bg-emerald-50 p-4 rounded-xl mb-4">
-                            <select class="p-class p-2 border rounded-lg text-sm">${classOptions}</select>
-                            <input type="text" placeholder="Subject" class="p-book p-2 border rounded-lg text-sm">
-                            <select class="p-sem p-2 border rounded-lg text-sm"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
-                            <input type="number" placeholder="Total Pgs" class="p-pages p-2 border rounded-lg text-sm">
-                            <button class="save-period-btn bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold" data-tid="${t.id}" data-jamia="${jamia}">Add Period</button>
-                        </div>
-                        <table class="w-full text-xs border-collapse">
-                            <thead><tr class="bg-slate-50 font-bold"><th class="p-2 border">Class</th><th class="p-2 border">Book</th><th class="p-2 border text-center">Sem</th><th class="p-2 border text-center">Pages</th></tr></thead>
-                            <tbody>
-                                ${(t.periods || []).map(p => `<tr><td class="p-2 border">${p.className}</td><td class="p-2 border">${p.bookName}</td><td class="p-2 border text-center">${p.semester}</td><td class="p-2 border text-center font-bold">${p.totalPages}</td></tr>`).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                    <button class="edit-t-btn text-indigo-500" data-tid="${t.id}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
                 </div>`).join('');
-            
-            listDiv.querySelectorAll('.teacher-toggle').forEach(tg => {
-                tg.onclick = (e) => { if(!e.target.closest('button')) tg.nextElementSibling.classList.toggle('hidden'); };
-            });
-
-            listDiv.querySelectorAll('.edit-t-btn').forEach(btn => {
-                btn.onclick = () => {
-                    const teacher = jamiaData.teachers.find(tr => tr.id === btn.dataset.tid);
-                    if(teacher) {
-                        document.getElementById(`name-${safeId}`).value = teacher.name;
-                        document.getElementById(`ajeer-${safeId}`).value = teacher.loginCode;
-                        document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
-                        document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
-                        document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
-                        document.getElementById(`mail-${safeId}`).value = teacher.mailId || "";
-                        document.getElementById(`exp-${safeId}`).value = teacher.experience || "";
-                        document.getElementById(`spec-${safeId}`).value = teacher.specialization || "";
-                        document.getElementById(`t-period-${safeId}`).value = teacher.teachingPeriod || "";
-                        document.getElementById(`ijara-${safeId}`).value = teacher.ijaraStatus || "";
-                        const saveBtn = document.querySelector(`button[data-jamia-name="${jamia}"]`);
-                        saveBtn.innerText = "Update Teacher Profile";
-                        saveBtn.dataset.editMode = teacher.id;
-                        document.getElementById(`name-${safeId}`).focus();
-                    }
-                };
-            });
         });
     } catch (e) { console.error(e); }
 };
