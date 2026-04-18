@@ -1,6 +1,17 @@
-import { 
-    doc, getDoc, updateDoc, setDoc, serverTimestamp 
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+    authDomain: "data-f15ab.firebaseapp.com",
+    projectId: "data-f15ab",
+    storageBucket: "data-f15ab.firebasestorage.app"
+};
+
+const app = initializeApp(firebaseConfig);
+
+// 🔥 YAHAN DB BAN RAHA HAI
+export const db = getFirestore(app);
 
 let globalAcademicConfig = null;
 
