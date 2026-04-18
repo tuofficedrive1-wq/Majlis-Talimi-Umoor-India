@@ -37,17 +37,13 @@ let globalAcademicConfig = null;
 // 🔥 🔥 USER AUTH HANDLING (IMPORTANT)
 let currentUser = null;
 
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        currentUser = user;
-        console.log("User:", user.uid);
+onAuthStateChanged(auth, async (user) => {
+    if (!user) return;
 
-        // 👉 YAHI CALL KARNA HAI
-        renderPerformanceTab(assignedJamiaat, currentUser);
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    const assignedJamiaat = userSnap.data()?.assignedJamiaat || [];
 
-    } else {
-        console.log("Not logged in");
-    }
+    renderPerformanceTab(assignedJamiaat, user);
 });
 
 // Admin Central Setup fetch karne ka function
