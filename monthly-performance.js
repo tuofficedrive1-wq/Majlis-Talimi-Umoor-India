@@ -11,29 +11,20 @@ let academicConfig = null;
 
 let globalAcademicConfig = null;
 
+// Sahi fetch function jo 'db' instance check karta hai
 async function fetchGlobalSetup(db) {
-    // Check karein ke db sahi hai ya nahi
-    if (!db) {
-        console.error("Firestore database instance (db) is missing!");
-        return null;
-    }
-    
     if (globalAcademicConfig) return globalAcademicConfig;
+    if (!db) return null;
 
     try {
-        // Path wahi rakhein jo admin-academic-setup.js mein hai
-        const configRef = doc(db, "settings", "academic_config"); 
+        const configRef = doc(db, "settings", "academic_config");
         const snap = await getDoc(configRef);
-        
         if (snap.exists()) {
             globalAcademicConfig = snap.data();
-            console.log("Global Setup Loaded:", globalAcademicConfig);
             return globalAcademicConfig;
-        } else {
-            console.warn("No global config found at settings/academic_config");
         }
     } catch (error) {
-        console.error("Error fetching global setup:", error);
+        console.error("Global setup fetch error:", error);
     }
     return null;
 }
@@ -85,103 +76,96 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
     
-   if (tabName === 'performance') {
-    const monthsList = [
-        { name: "April", idx: 3 }, { name: "May", idx: 4 }, { name: "June", idx: 5 },
-        { name: "July", idx: 6 }, { name: "August", idx: 7 }, { name: "September", idx: 8 },
-        { name: "October", idx: 9 }, { name: "November", idx: 10 }, { name: "December", idx: 11 },
-        { name: "January", idx: 0 }, { name: "February", idx: 1 }, { name: "March", idx: 2 }
-    ];
-
-    contentArea.innerHTML = `
-        <div class="mb-6 flex items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
-            <div class="bg-emerald-50 p-2 rounded-xl text-emerald-600"><i class="fas fa-clock"></i></div>
-            <div class="flex-1">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Academic Month</label>
-                <select id="perf-month-select" class="w-full md:w-48 bg-transparent font-bold text-emerald-700 outline-none cursor-pointer">
-                    ${monthsList.map(m => `<option value="${m.idx}">${m.name}</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white">
-            <table class="w-full text-left border-collapse min-w-[1000px]">
-                <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
-                    <tr>
-                        <th class="p-4 border-b">Teacher</th>
-                        <th class="p-4 border-b">Class/Book</th>
-                        <th class="p-4 border-b text-center">Month Days</th>
-                        <th class="p-4 border-b text-center">Total Pgs</th>
-                        <th class="p-4 border-b text-center text-indigo-600 font-black">Target Pgs</th>
-                        <th class="p-4 border-b text-center">Covered</th>
-                        <th class="p-4 border-b text-center">Achv %</th>
-                        <th class="p-4 border-b text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="performance-table-body"></tbody>
-            </table>
-        </div>
-    `;
-
-    // Dropdown change hone par table reload karein
-    document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
-    loadPerformanceTable(assignedJamiaat, db, currentUser);
-} else if (tabName === 'structure') {
-    // 1. Admin setup fetch karein taaki active academic year mil sake
+    // 1. Admin setup fetch karein taaki dynamic data mil sake
     const setupData = await fetchGlobalSetup(db); 
-    const activeSession = setupData?.activeYear || '2025-2026';
+    const activeSession = setupData?.activeYear || '2026-2027';
 
-    contentArea.innerHTML = `
-        <div class="mb-6 flex items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-            <div class="bg-indigo-50 p-2.5 rounded-2xl text-indigo-600">
-                <i class="fas fa-calendar-check text-lg"></i>
-            </div>
-            <div class="flex-1">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Academic Session</label>
-                <select id="structure-year-select" class="w-full md:w-64 bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-sm">
-                    <option value="${activeSession}">${activeSession} (Active)</option>
-                    <option value="2024-2025">2024-2025</option>
-                    <option value="2026-2027">2026-2027</option>
-                </select>
-            </div>
-        </div>
+    if (tabName === 'performance') {
+        const monthsList = [
+            { name: "April", idx: 3 }, { name: "May", idx: 4 }, { name: "June", idx: 5 },
+            { name: "July", idx: 6 }, { name: "August", idx: 7 }, { name: "September", idx: 8 },
+            { name: "October", idx: 9 }, { name: "November", idx: 10 }, { name: "December", idx: 11 },
+            { name: "January", idx: 0 }, { name: "February", idx: 1 }, { name: "March", idx: 2 }
+        ];
 
-        <div id="structure-accordion" class="space-y-4">
-            ${assignedJamiaat.map(jamia => `
-                <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
-                    <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700 transition-colors">
-                        <span>${jamia}</span>
-                        <i class="fas fa-chevron-down transition-transform"></i>
-                    </button>
-                    <div class="jamia-content hidden p-6 border-t border-slate-100 space-y-6">
-                        <div class="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100">
-                            <h4 class="text-sm font-bold text-indigo-600 uppercase mb-4 flex items-center gap-2">
-                                <i class="fas fa-user-plus"></i> Register New Teacher
-                            </h4>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="form-${jamia.replace(/\s+/g, '')}">
-                                <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name Of Teacher" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code" class="p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-200 bg-white" maxlength="6">
-                                <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact No." class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level Qualified" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qualification" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="email" id="mail-${jamia.replace(/\s+/g, '')}" placeholder="Mail ID" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="exp-${jamia.replace(/\s+/g, '')}" placeholder="Experience" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="spec-${jamia.replace(/\s+/g, '')}" placeholder="Specialization" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="t-period-${jamia.replace(/\s+/g, '')}" placeholder="Total Period" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                                <input type="text" id="ijara-${jamia.replace(/\s+/g, '')}" placeholder="Ijara Status" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
-                            </div>
-                            <button class="save-teacher-btn w-full mt-4 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all" data-jamia-name="${jamia}">
-                                <i class="fas fa-save mr-2"></i> Save Teacher Profile
-                            </button>
-                        </div>
-                        <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}"></div>
-                    </div>
+        contentArea.innerHTML = `
+            <div class="mb-6 flex items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
+                <div class="bg-emerald-50 p-2.5 rounded-2xl text-emerald-600"><i class="fas fa-clock"></i></div>
+                <div class="flex-1">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Select Performance Month</label>
+                    <select id="perf-month-select" class="w-full md:w-48 bg-transparent font-bold text-emerald-700 outline-none cursor-pointer">
+                        ${monthsList.map(m => `<option value="${m.idx}">${m.name}</option>`).join('')}
+                    </select>
                 </div>
-            `).join('')}
-        </div>
-    `;
-    setupStructureEvents(contentArea, db, currentUser, assignedJamiaat);
-    loadAllTeachers(assignedJamiaat, db, currentUser);
-}
+            </div>
+            <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white">
+                <table class="w-full text-left border-collapse min-w-[1000px]">
+                    <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
+                        <tr>
+                            <th class="p-4 border-b">Teacher</th>
+                            <th class="p-4 border-b">Class/Book</th>
+                            <th class="p-4 border-b text-center">Month Days</th>
+                            <th class="p-4 border-b text-center">Total Pgs</th>
+                            <th class="p-4 border-b text-center text-indigo-600 font-black">Target Pgs</th>
+                            <th class="p-4 border-b text-center">Covered</th>
+                            <th class="p-4 border-b text-center">Achv %</th>
+                            <th class="p-4 border-b text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="performance-table-body"></tbody>
+                </table>
+            </div>
+        `;
+
+        document.getElementById('perf-month-select').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
+
+    } else if (tabName === 'structure') {
+        contentArea.innerHTML = `
+            <div class="mb-6 flex items-center gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                <div class="bg-indigo-50 p-2.5 rounded-2xl text-indigo-600">
+                    <i class="fas fa-calendar-check text-lg"></i>
+                </div>
+                <div class="flex-1">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Academic Session (Active)</label>
+                    <div id="current-active-year-display" class="font-bold text-indigo-700 text-lg">${activeSession}</div>
+                    <select id="structure-year-select" class="hidden">
+                        <option value="${activeSession}">${activeSession}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="structure-accordion" class="space-y-4">
+                ${assignedJamiaat.map(jamia => `
+                    <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
+                        <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700 transition-colors">
+                            <span>${jamia}</span>
+                            <i class="fas fa-chevron-down transition-transform"></i>
+                        </button>
+                        <div class="jamia-content hidden p-6 border-t border-slate-100 space-y-6">
+                            <div class="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100">
+                                <h4 class="text-sm font-bold text-indigo-600 uppercase mb-4 flex items-center gap-2">
+                                    <i class="fas fa-user-plus"></i> Register New Teacher
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="form-${jamia.replace(/\s+/g, '')}">
+                                    <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name Of Teacher" class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
+                                    <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code" class="p-2.5 border rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-200 bg-white" maxlength="6">
+                                    <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact No." class="p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-200 bg-white">
+                                </div>
+                                <button class="save-teacher-btn w-full mt-4 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all" data-jamia-name="${jamia}">
+                                    Save Teacher Profile
+                                </button>
+                            </div>
+                            <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}"></div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        // Setup events aur loading mein activeSession pass karein
+        setupStructureEvents(contentArea, db, currentUser, assignedJamiaat, activeSession);
+        loadAllTeachers(assignedJamiaat, db, currentUser, activeSession);
+    }
 };
 
 const setupStructureEvents = (container, db, currentUser, assignedJamiaat) => {
@@ -455,19 +439,17 @@ async function updateTeacherData(db, currentUser, jamiaName, updateFn) {
 }
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    // Ensure db is passed here correctly from the main script
     const setupData = await fetchGlobalSetup(db);
-    if (!setupData) return;
+    const monthSelect = document.getElementById('perf-month-select');
+    if (!monthSelect || !setupData) return;
 
-    const selectedMonthIdx = document.getElementById('perf-month-select').value;
-    
-    // Semester days aur current month working days admin setup se lena
+    const selectedMonthIdx = monthSelect.value;
     const isSem2 = [9, 10, 11, 0, 1, 2].includes(parseInt(selectedMonthIdx));
-    const totalWorkingDays = isSem2 ? setupData.sem2TotalDays : setupData.sem1TotalDays;
     
-    // Month details array se current month ke days nikalna
+    // Semester days aur Month days Admin setup se nikalna
+    const semesterTotalDays = isSem2 ? setupData.sem2TotalDays : setupData.sem1TotalDays;
     const currentMonthDays = setupData.monthDetails[selectedMonthIdx] 
-        ? (isSem2 ? setupData.monthDetails[selectedMonthIdx].sem2 : setupData.monthDetails[selectedMonthIdx].sem1)
+        ? (isSem2 ? setupData.monthDetails[selectedMonthIdx].sem2 : setupData.monthDetails[selectedMonthIdx].sem1) 
         : 0;
 
     const structure = userSnap.data().academicYears?.["2025-2026"]?.karkardagiStructure || [];
@@ -485,9 +467,9 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 
                 // 3. TARGET CALCULATION LOGIC
                 // Formula: (Total Pages / Semester Total Days) * Current Month Days
-                const targetPages = totalWorkingDays > 0 
-                    ? Math.round((p.totalPages / totalWorkingDays) * currentMonthDays) 
-                    : 0;
+               const targetPages = semesterTotalDays > 0 
+        ? Math.round((p.totalPages / semesterTotalDays) * currentMonthDays) 
+        : 0;
 
                 html += `
                     <tr class="border-b border-slate-100">
