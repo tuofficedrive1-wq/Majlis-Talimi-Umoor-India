@@ -9,9 +9,11 @@ import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-fires
 let academicConfig = null;
 
 // Academic Admin ki settings fetch karne ka function
+// monthly-performance.js ke shuruat mein
 async function getAcademicConfig(db) {
     if (academicConfig) return academicConfig;
-    const snap = await getDoc(doc(db, "settings", "academic_admin_config"));
+    // 'academic_admin_config' ko badal kar 'academic_calendar' karein
+    const snap = await getDoc(doc(db, "settings", "academic_calendar")); 
     if (snap.exists()) {
         academicConfig = snap.data();
         return academicConfig;
@@ -102,23 +104,28 @@ if (tabName === 'performance') {
     // Pehli baar table load karein
     loadPerformanceTable(assignedJamiaat, db, currentUser);
 } else if (tabName === 'structure') {
-    // Admin ki calendar settings se activeYear fetch karein
+    // 1. Admin ki settings se 'Active Year' lein
     const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    let activeYear = "2025-2026"; // Default
-    
-    if (calSnap.exists()) {
-        activeYear = calSnap.data().activeYear;
-    }
+    const activeYearByAdmin = calSnap.exists() ? calSnap.data().activeYear : "";
+
+    // 2. User ke document se saare available years nikaalein
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+    const allYears = Object.keys(userSnap.data().academicYears || {});
 
     contentArea.innerHTML = `
-        <div class="bg-indigo-600 p-4 rounded-2xl text-white mb-6 flex justify-between items-center shadow-lg">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 mb-6 shadow-sm flex justify-between items-center">
             <div>
-                <p class="text-[10px] font-bold opacity-80 uppercase">Current Active Academic Year</p>
-                <h4 id="current-active-year-display" class="text-lg font-black">${activeYear}</h4>
+                <h4 class="text-sm font-black text-slate-700 uppercase tracking-tight">Academic Year Selection</h4>
+                <p class="text-[10px] text-slate-400 font-bold italic">Select a year to view its structure</p>
             </div>
-            <div class="bg-indigo-500 p-2 rounded-lg">
-                <i class="fas fa-calendar-check text-xl"></i>
-            </div>
+            
+            <select id="structure-year-select" class="p-2 border-2 border-indigo-100 rounded-xl text-sm font-bold text-indigo-700 outline-none focus:border-indigo-500 transition-all bg-indigo-50">
+                ${allYears.map(yr => `
+                    <option value="${yr}" ${yr === activeYearByAdmin ? 'selected' : ''}>
+                        ${yr} ${yr === activeYearByAdmin ? '(Active)' : ''}
+                    </option>
+                `).join('')}
+            </select>
         </div>
 
         <div id="structure-accordion" class="space-y-4">
@@ -153,9 +160,33 @@ if (tabName === 'performance') {
                 `).join('')}
             </div>
         `;
-        setupStructureEvents(contentArea, db, currentUser, assignedJamiaat);
-        loadAllTeachers(assignedJamiaat, db, currentUser);
-    }
+        const updateDisplay = (selectedYear) => {
+            // Display area ko saaf karke naya data load karein
+            const displayArea = document.getElementById('structure-display-area');
+            displayArea.innerHTML = assignedJamiaat.map(jamia => `
+                <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm mb-4">
+                    <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
+                        <span>${jamia}</span>
+                        <i class="fas fa-chevron-down transition-transform"></i>
+                    </button>
+                    <div class="jamia-content hidden p-6 border-t border-slate-100" id="content-${jamia.replace(/\s+/g, '')}">
+                        <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}"></div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Events aur Data load karein (selectedYear ke saath)
+            setupStructureEvents(contentArea, db, currentUser, assignedJamiaat, selectedYear);
+            loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear); 
+        };
+
+        document.getElementById('structure-year-select').onchange = (e) => {
+            updateDisplay(e.target.value);
+        };
+
+        // Initial load: Dropdown mein jo pehla/selected saal hai wo load ho
+        updateDisplay(document.getElementById('structure-year-select').value);
+        }
 };
 
 const setupStructureEvents = (container, db, currentUser, assignedJamiaat) => {
@@ -430,60 +461,49 @@ async function updateTeacherData(db, currentUser, jamiaName, updateFn) {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
-    const selectedMonth = document.getElementById('report-month').value; // e.g. "apr"
+    const selectedMonth = document.getElementById('report-month').value;
     
-    // 1. Fetch Calendar and Structure Data
-    const [calSnap, userSnap] = await Promise.all([
-        getDoc(doc(db, "settings", "academic_calendar")),
-        getDoc(doc(db, "users", currentUser.uid))
-    ]);
+    // Admin configuration se active year uthayein
+    const config = await getAcademicConfig(db); 
+    if (!config) return;
 
-    if (!userSnap.exists() || !calSnap.exists()) return;
-
-    const calData = calSnap.data();
-    const activeYear = calData.activeYear || "2025-2026";
-    const structure = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
+    const activeYear = config.activeYear; // e.g., "2025-2026"
     
-    // 2. Mahine ke Working Days aur Semester Total nikalna
-    const monthInfo = calData.months?.[selectedMonth] || { s1: 0, s2: 0 };
-    const sem1Total = calData.totals?.s1 || 1; // 0 se division bachane ke liye 1
-    const sem2Total = calData.totals?.s2 || 1;
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+    // Sirf active saal ka data filter karein
+    const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
     let html = "";
-
     jamiaat.forEach(jamiaName => {
-        const jamiaData = structure.find(j => j.jamiaName === jamiaName);
-        if (!jamiaData || !jamiaData.teachers) return;
-
-        html += `<tr class="bg-indigo-50/50 font-bold"><td colspan="11" class="p-4 border-y border-indigo-100 text-indigo-700">${jamiaName}</td></tr>`;
+        const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
+        if (!jamiaData) return;
 
         jamiaData.teachers.forEach(teacher => {
-            const periods = teacher.periods || [];
-            periods.forEach((p, idx) => {
-                // Calculation: Kis semester ki book hai us hisab se target
-                const monthDays = (p.semester == "1") ? monthInfo.s1 : monthInfo.s2;
-                const semTotalDays = (p.semester == "1") ? sem1Total : sem2Total;
-                
-                // Monthly Target Calculation
-                const target = Math.round((p.totalPages / semTotalDays) * monthDays);
+            // Check karein ke teacher ke periods hain ya nahi
+            if (!teacher.periods || teacher.periods.length === 0) return;
+
+            teacher.periods.forEach((p, idx) => {
+                // Target calculate karein
+                const semDays = p.semester == "1" ? sem1Total : sem2Total;
+                const workingDays = p.semester == "1" ? monthData.s1 : monthData.s2;
+                const target = Math.round((p.totalPages / semDays) * workingDays) || 0;
 
                 html += `
                     <tr class="border-b border-slate-100">
-                        ${idx === 0 ? `<td rowspan="${periods.length}" class="p-4 font-bold text-slate-800 bg-slate-50/50 align-top">${teacher.name}</td>` : ''}
-                        <td class="p-4 text-slate-600 font-medium">${p.className}</td>
-                        <td class="p-4 text-slate-600 font-medium">${p.bookName}</td>
-                        <td class="p-4 text-slate-400 italic text-xs">-</td>
-                        <td class="p-4 text-center">0</td> <td class="p-4 text-center font-bold text-slate-400">${p.totalPages}</td>
-                        <td class="p-4 text-center font-black text-indigo-600">0</td> <td class="p-4 text-center font-bold text-indigo-600">${target}</td> <td class="p-4 text-center"><input type="number" class="w-16 p-1 border rounded text-center bg-slate-50" value="0" disabled></td>
-                        <td class="p-4 text-center">0%</td>
-                        <td class="p-4 text-center uppercase text-[10px]">
-                            <span class="px-2 py-1 bg-slate-100 rounded-full text-slate-500 font-bold">Pending</span>
-                        </td>
-                    </tr>`;
+                        ${idx === 0 ? `<td rowspan="${teacher.periods.length}" class="p-4 font-bold text-slate-800 bg-slate-50/50">${teacher.name}</td>` : ''}
+                        <td class="p-4">${p.className}</td>
+                        <td class="p-4">${p.bookName}</td>
+                        <td class="p-4 text-center">${p.totalPages}</td>
+                        <td class="p-4 text-center font-bold text-indigo-600">${target}</td>
+                        <td class="p-4 text-center">0</td>
+                        <td class="p-4 text-center uppercase text-[10px] font-bold text-red-500">Pending</td>
+                    </tr>
+                `;
             });
         });
     });
-    tbody.innerHTML = html || '<tr><td colspan="11" class="p-10 text-center text-slate-400">No records found for this month.</td></tr>';
+
+    tbody.innerHTML = html || '<tr><td colspan="11" class="p-10 text-center">No data found for year ' + activeYear + '</td></tr>';
 };
 
 window.openPerformanceForm = (id, name) => {
