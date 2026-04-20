@@ -104,22 +104,26 @@ if (tabName === 'performance') {
     // Pehli baar table load karein
     loadPerformanceTable(assignedJamiaat, db, currentUser);
 } else if (tabName === 'structure') {
-    // 1. Admin ki settings se 'Active Year' lein
+    // 1. Admin ki calendar settings se 'Active Year' fetch karein
     const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    const activeYearByAdmin = calSnap.exists() ? calSnap.data().activeYear : "";
+    const activeYearByAdmin = calSnap.exists() ? calSnap.data().activeYear : "2025-2026";
 
-    // 2. User ke document se saare available years nikaalein
+    // 2. User ke profile se saare available academic years nikaalein
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const allYears = Object.keys(userSnap.data().academicYears || {});
+    const academicYearsData = userSnap.data().academicYears || {};
+    const allYears = Object.keys(academicYearsData);
+
+    // Agar user ke paas koi data nahi hai, toh kam se kam active year dropdown mein dikhayein
+    if (allYears.length === 0) allYears.push(activeYearByAdmin);
 
     contentArea.innerHTML = `
         <div class="bg-white p-4 rounded-2xl border border-slate-200 mb-6 shadow-sm flex justify-between items-center">
             <div>
-                <h4 class="text-sm font-black text-slate-700 uppercase tracking-tight">Academic Year Selection</h4>
-                <p class="text-[10px] text-slate-400 font-bold italic">Select a year to view its structure</p>
+                <h4 class="text-sm font-black text-slate-700 uppercase">Academic Year Selection</h4>
+                <p class="text-[10px] text-slate-400 font-bold italic">Pichle saalon ka data dekhne ke liye saal badlein</p>
             </div>
             
-            <select id="structure-year-select" class="p-2 border-2 border-indigo-100 rounded-xl text-sm font-bold text-indigo-700 outline-none focus:border-indigo-500 transition-all bg-indigo-50">
+            <select id="structure-year-select" class="p-2 border-2 border-indigo-100 rounded-xl text-sm font-bold text-indigo-700 bg-indigo-50 outline-none focus:border-indigo-500 transition-all">
                 ${allYears.map(yr => `
                     <option value="${yr}" ${yr === activeYearByAdmin ? 'selected' : ''}>
                         ${yr} ${yr === activeYearByAdmin ? '(Active)' : ''}
@@ -128,7 +132,7 @@ if (tabName === 'performance') {
             </select>
         </div>
 
-        <div id="structure-accordion" class="space-y-4">
+        <div id="structure-display-area" class="space-y-4">
                 ${assignedJamiaat.map(jamia => `
                     <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
                         <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
@@ -160,33 +164,32 @@ if (tabName === 'performance') {
                 `).join('')}
             </div>
         `;
-        const updateDisplay = (selectedYear) => {
-            // Display area ko saaf karke naya data load karein
-            const displayArea = document.getElementById('structure-display-area');
-            displayArea.innerHTML = assignedJamiaat.map(jamia => `
-                <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm mb-4">
-                    <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
-                        <span>${jamia}</span>
-                        <i class="fas fa-chevron-down transition-transform"></i>
-                    </button>
-                    <div class="jamia-content hidden p-6 border-t border-slate-100" id="content-${jamia.replace(/\s+/g, '')}">
-                        <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}"></div>
-                    </div>
+        const updateStructureView = (selectedYear) => {
+        const displayArea = document.getElementById('structure-display-area');
+        displayArea.innerHTML = assignedJamiaat.map(jamia => `
+            <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm mb-4">
+                <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
+                    <span>${jamia}</span>
+                    <i class="fas fa-chevron-down transition-transform"></i>
+                </button>
+                <div class="jamia-content hidden p-6 border-t border-slate-100">
+                    <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}"></div>
                 </div>
-            `).join('');
+            </div>
+        `).join('');
 
-            // Events aur Data load karein (selectedYear ke saath)
-            setupStructureEvents(contentArea, db, currentUser, assignedJamiaat, selectedYear);
-            loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear); 
-        };
+        // Functions ko 'selectedYear' pass karein
+        setupStructureEvents(contentArea, db, currentUser, assignedJamiaat, selectedYear);
+        loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear);
+    };
 
-        document.getElementById('structure-year-select').onchange = (e) => {
-            updateDisplay(e.target.value);
-        };
+    document.getElementById('structure-year-select').onchange = (e) => {
+        updateStructureView(e.target.value);
+    };
 
-        // Initial load: Dropdown mein jo pehla/selected saal hai wo load ho
-        updateDisplay(document.getElementById('structure-year-select').value);
-        }
+    // Initial load
+    updateStructureView(document.getElementById('structure-year-select').value);
+}
 };
 
 const setupStructureEvents = (container, db, currentUser, assignedJamiaat) => {
