@@ -56,53 +56,72 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
     
-    if (tabName === 'performance') {
-        const reportMonth = document.getElementById('report-month').value;
-        contentArea.innerHTML = `
-            <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white">
-                <table class="w-full text-left border-collapse min-w-[1000px]">
-                    <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
-                        <tr>
-                            <th class="p-4 border-b">Teacher</th>
-                            <th class="p-4 border-b">Class</th>
-                            <th class="p-4 border-b">Book</th>
-                            <th class="p-4 border-b">Last Lesson</th>
-                            <th class="p-4 border-b text-center">Pg No.</th>
-                            <th class="p-4 border-b text-center">Total Pgs</th>
-                            <th class="p-4 border-b text-center">Cumulative</th>
-                            <th class="p-4 border-b text-center">Target</th>
-                            <th class="p-4 border-b text-center">Monthly</th>
-                            <th class="p-4 border-b text-center">Achv %</th>
-                            <th class="p-4 border-b text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="performance-table-body"></tbody>
-                </table>
-            </div>
-        `;
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
+    // monthly-performance.js ke andar renderSubTabContent function mein badlav:
 
-    } else if (tabName === 'structure') {
-        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        const activeYear = userSnap.data().academicYears?.activeYear || "2025-2026"; // User profile se active year uthayein
+if (tabName === 'performance') {
+    contentArea.innerHTML = `
+        <div class="flex justify-between items-center mb-4 bg-white p-4 rounded-2xl border shadow-sm">
+            <h3 class="font-bold text-slate-700">Monthly Targets & Performance</h3>
+            
+            <select id="report-month" class="p-2 border rounded-xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200">
+                <option value="apr">April</option>
+                <option value="may">May</option>
+                <option value="jun">June</option>
+                <option value="jul">July</option>
+                <option value="aug">August</option>
+                <option value="sep">September</option>
+                <option value="oct">October</option>
+                <option value="nov">November</option>
+                <option value="dec">December</option>
+                <option value="jan">January</option>
+                <option value="feb">February</option>
+                <option value="mar">March</option>
+            </select>
+        </div>
 
-        contentArea.innerHTML = `
-            <div class="flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 mb-6 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
-                        <i class="fas fa-calendar-alt"></i>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase leading-none">Selected Academic Year</p>
-                        <h4 class="text-sm font-black text-slate-700">${activeYear}</h4>
-                    </div>
-                </div>
-                <select id="active-year-select" class="p-2 border rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-200">
-                    <option value="2025-2026" ${activeYear === '2025-2026' ? 'selected' : ''}>2025-2026</option>
-                    <option value="2026-2027" ${activeYear === '2026-2027' ? 'selected' : ''}>2026-2027</option>
-                </select>
+        <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white">
+            <table class="w-full text-left border-collapse min-w-[1000px]">
+                <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
+                    <tr>
+                        <th class="p-4 border-b">Teacher</th>
+                        <th class="p-4 border-b">Class</th>
+                        <th class="p-4 border-b">Book</th>
+                        <th class="p-4 border-b text-center">Total Pgs</th>
+                        <th class="p-4 border-b text-center">Target Pgs</th> <th class="p-4 border-b text-center">Achieved</th>
+                        <th class="p-4 border-b text-center">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="performance-table-body"></tbody>
+            </table>
+        </div>
+    `;
+
+    // Dropdown badalne par table refresh karein
+    document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+    
+    // Pehli baar table load karein
+    loadPerformanceTable(assignedJamiaat, db, currentUser);
+} else if (tabName === 'structure') {
+    // Admin ki calendar settings se activeYear fetch karein
+    const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+    let activeYear = "2025-2026"; // Default
+    
+    if (calSnap.exists()) {
+        activeYear = calSnap.data().activeYear;
+    }
+
+    contentArea.innerHTML = `
+        <div class="bg-indigo-600 p-4 rounded-2xl text-white mb-6 flex justify-between items-center shadow-lg">
+            <div>
+                <p class="text-[10px] font-bold opacity-80 uppercase">Current Active Academic Year</p>
+                <h4 id="current-active-year-display" class="text-lg font-black">${activeYear}</h4>
             </div>
-            <div id="structure-accordion" class="space-y-4">
+            <div class="bg-indigo-500 p-2 rounded-lg">
+                <i class="fas fa-calendar-check text-xl"></i>
+            </div>
+        </div>
+
+        <div id="structure-accordion" class="space-y-4">
                 ${assignedJamiaat.map(jamia => `
                     <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
                         <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
