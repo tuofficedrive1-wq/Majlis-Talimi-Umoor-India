@@ -253,7 +253,12 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                             <select class="p-book p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-500" disabled><option value="">Select Subject</option></select>
                             <select class="p-sem p-2 border rounded-lg text-sm"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
                             <input type="number" placeholder="Pages" class="p-pages p-2 border rounded-lg text-sm">
-                            <button class="save-period-btn bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold" data-tid="${t.id}" data-jamia="${jamia}">Add Period</button>
+                            <select class="p-syllabus p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-500">
+                                <option value="Majlis">Majlis</option>
+                                <option value="State">State</option>
+                                <option value="Approval">Approval</option>
+                            </select>
+                          <button class="save-period-btn bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold" data-tid="${t.id}" data-jamia="${jamia}">Add Period</button>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-[10px] border-collapse">
@@ -264,6 +269,7 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                             <td class="p-2 border">${p.className}</td><td class="p-2 border">${p.bookName}</td>
                                             <td class="p-2 border text-center font-bold text-blue-600">${p.semester}</td>
                                             <td class="p-2 border text-center font-black">${p.totalPages}</td>
+                                            <td class="p-2 border text-center text-[9px] font-bold text-indigo-500">${p.syllabus || 'Majlis'}</td> <td class="p-2 border text-center">
                                             <td class="p-2 border text-center">
                                                 <button class="del-period-btn text-red-500" data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}"><i class="fas fa-times-circle"></i></button>
                                             </td>
@@ -282,23 +288,21 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
-    const selectedMonthIdx = document.getElementById('report-month').value; // e.g., "apr"
+    const selectedMonthIdx = document.getElementById('report-month').value; 
     
-    // 1. Admin ki Central Calendar Settings fetch karein
-    const config = await getAcademicConfig(db); 
-    if (!config) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Admin Academic Calendar set nahi hai.</td></tr>';
+    // Connection fixed: 'academic_config' use kar rahe hain
+    const configSnap = await getDoc(doc(db, "settings", "academic_config"));
+    if (!configSnap.exists()) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Admin Config nahi mili. Academic Admin se save karein.</td></tr>';
         return;
     }
 
+    const config = configSnap.data();
     const activeYear = config.activeYear;
-    const sem1TotalDays = config.totals?.s1 || 0; // Admin setup se total days
-    const sem2TotalDays = config.totals?.s2 || 0;
-    
-    // Is mahine ke specific days nikaalein
-    const monthData = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
+    const sem1Total = config.sem1TotalDays || 1; 
+    const sem2Total = config.sem2TotalDays || 1;
+    const monthData = config.monthDetails?.[selectedMonthIdx] || { sem1: 0, sem2: 0 };
 
-    // 2. User ka structure fetch karein
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -311,36 +315,26 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         jamiaData.teachers.forEach(teacher => {
             if (!teacher.periods || teacher.periods.length === 0) return;
-
             teacher.periods.forEach((p, idx) => {
-                // --- TARGET CALCULATION LOGIC (As per karkardagi.html) ---
-                const isSem1 = p.semester == "1";
-                const semTotalDays = isSem1 ? sem1TotalDays : sem2TotalDays;
-                const monthDays = isSem1 ? (monthData.s1 || 0) : (monthData.s2 || 0);
-
-                let target = 0;
-                if (semTotalDays > 0 && monthDays > 0 && p.totalPages > 0) {
-                    // Formula: (Total Pages / Total Days in Semester) * Days in this month
-                    target = Math.round((p.totalPages / semTotalDays) * monthDays);
-                }
+                // Sahi Target Calculation
+                const totalDays = (p.semester == "1") ? sem1Total : sem2Total;
+                const monthDays = (p.semester == "1") ? monthData.sem1 : monthData.sem2;
+                const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
 
                 html += `
-                    <tr class="border-b border-slate-100">
+                    <tr class="border-b">
                         <td class="p-4 font-bold text-slate-800">${idx === 0 ? teacher.name : ''}</td>
-                        <td class="p-4 text-slate-600">${p.className}</td>
-                        <td class="p-4 text-slate-600">${p.bookName}</td>
-                        <td class="p-4 text-center font-medium">${p.totalPages}</td>
-                        <td class="p-4 text-center font-black text-indigo-600 bg-indigo-50/30">${target}</td>
+                        <td class="p-4">${p.className}</td>
+                        <td class="p-4">${p.bookName}</td>
+                        <td class="p-4 text-center">${p.totalPages}</td>
+                        <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/20">${target}</td>
                         <td class="p-4 text-center">0</td>
-                        <td class="p-4 text-center">
-                            <span class="px-2 py-1 bg-red-100 text-red-600 rounded-full text-[10px] font-bold uppercase">Pending</span>
-                        </td>
+                        <td class="p-4 text-center text-xs font-bold text-red-500">Pending</td>
                     </tr>`;
             });
         });
     });
-
-    tbody.innerHTML = html || '<tr><td colspan="7" class="p-10 text-center text-slate-400">No records found for ' + activeYear + '</td></tr>';
+    tbody.innerHTML = html || '<tr><td colspan="7" class="p-10 text-center">Data nahi mila.</td></tr>';
 };
 
 // --- Helpers ---
@@ -368,25 +362,41 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         };
     });
 
-    container.querySelectorAll('.save-period-btn').forEach(btn => {
-        btn.onclick = async () => {
-            const panel = btn.closest('.period-container');
-            const data = {
-                className: panel.querySelector('.p-class').value,
-                bookName: panel.querySelector('.p-book').value,
-                semester: panel.querySelector('.p-sem').value,
-                totalPages: parseInt(panel.querySelector('.p-pages').value)
-            };
-            if (!data.className || !data.bookName || !data.totalPages) return alert("Fill all details.");
-
-            await updateTeacherData(db, currentUser, btn.dataset.jamia, selectedYear, (teachers) => {
-                const t = teachers.find(teach => teach.id === btn.dataset.tid);
-                if (t) { if (!t.periods) t.periods = []; t.periods.push({ id: `p-${Date.now()}`, ...data }); }
-                return teachers;
-            });
-            loadAllTeachers(jamiaat, db, currentUser, selectedYear);
+        container.querySelectorAll('.save-period-btn').forEach(btn => {
+    btn.onclick = async () => {
+        const panel = btn.closest('.period-container');
+        const data = {
+            className: panel.querySelector('.p-class').value,
+            bookName: panel.querySelector('.p-book').value,
+            semester: panel.querySelector('.p-sem').value,
+            totalPages: parseInt(panel.querySelector('.p-pages').value),
+            syllabus: panel.querySelector('.p-syllabus').value // Naya field
         };
-    });
+
+        if (!data.className || !data.bookName || !data.totalPages) return alert("Fill all details.");
+
+        await updateTeacherData(db, currentUser, btn.dataset.jamia, selectedYear, (teachers) => {
+            const t = teachers.find(teach => teach.id === btn.dataset.tid);
+            if (t) { 
+                if (!t.periods) t.periods = []; 
+                t.periods.push({ id: `p-${Date.now()}`, ...data }); 
+            }
+            return teachers;
+        });
+
+        // UI Refresh
+        await loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear);
+        
+        // --- DROPDOWN OPEN RAKHNE KA LOGIC ---
+        // Refresh ke baad wahi teacher ka container dhoond kar open karein
+        const teacherRow = document.querySelector(`[data-tid="${btn.dataset.tid}"]`);
+        if (teacherRow) {
+            teacherRow.nextElementSibling.classList.remove('hidden');
+            // Jamia ka main container bhi open rahe ye ensure karein
+            teacherRow.closest('.jamia-content').classList.remove('hidden');
+        }
+    };
+});
 
     container.querySelectorAll('.del-period-btn, .del-t-btn').forEach(btn => {
         btn.onclick = async () => {
