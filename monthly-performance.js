@@ -282,45 +282,65 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
-    const selectedMonth = document.getElementById('report-month').value;
+    const selectedMonthIdx = document.getElementById('report-month').value; // e.g., "apr"
+    
+    // 1. Admin ki Central Calendar Settings fetch karein
     const config = await getAcademicConfig(db); 
-    if (!config) return;
+    if (!config) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Admin Academic Calendar set nahi hai.</td></tr>';
+        return;
+    }
 
     const activeYear = config.activeYear;
-    const monthData = config.months[selectedMonth] || { s1: 0, s2: 0 };
-    const sem1Total = config.totals.s1 || 1;
-    const sem2Total = config.totals.s2 || 1;
+    const sem1TotalDays = config.totals?.s1 || 0; // Admin setup se total days
+    const sem2TotalDays = config.totals?.s2 || 0;
+    
+    // Is mahine ke specific days nikaalein
+    const monthData = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
 
+    // 2. User ka structure fetch karein
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
     let html = "";
     jamiaat.forEach(jamiaName => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
-        if (!jamiaData) return;
+        if (!jamiaData || !jamiaData.teachers) return;
 
         html += `<tr class="bg-indigo-50 font-bold"><td colspan="7" class="p-4 border-y border-indigo-100 text-indigo-700">${jamiaName}</td></tr>`;
 
         jamiaData.teachers.forEach(teacher => {
             if (!teacher.periods || teacher.periods.length === 0) return;
+
             teacher.periods.forEach((p, idx) => {
-                const semDays = p.semester == "1" ? sem1Total : sem2Total;
-                const workingDays = p.semester == "1" ? monthData.s1 : monthData.s2;
-                const target = Math.round((p.totalPages / semDays) * workingDays) || 0;
+                // --- TARGET CALCULATION LOGIC (As per karkardagi.html) ---
+                const isSem1 = p.semester == "1";
+                const semTotalDays = isSem1 ? sem1TotalDays : sem2TotalDays;
+                const monthDays = isSem1 ? (monthData.s1 || 0) : (monthData.s2 || 0);
+
+                let target = 0;
+                if (semTotalDays > 0 && monthDays > 0 && p.totalPages > 0) {
+                    // Formula: (Total Pages / Total Days in Semester) * Days in this month
+                    target = Math.round((p.totalPages / semTotalDays) * monthDays);
+                }
 
                 html += `
                     <tr class="border-b border-slate-100">
                         <td class="p-4 font-bold text-slate-800">${idx === 0 ? teacher.name : ''}</td>
-                        <td class="p-4">${p.className}</td><td class="p-4">${p.bookName}</td>
-                        <td class="p-4 text-center">${p.totalPages}</td>
-                        <td class="p-4 text-center font-bold text-indigo-600">${target}</td>
+                        <td class="p-4 text-slate-600">${p.className}</td>
+                        <td class="p-4 text-slate-600">${p.bookName}</td>
+                        <td class="p-4 text-center font-medium">${p.totalPages}</td>
+                        <td class="p-4 text-center font-black text-indigo-600 bg-indigo-50/30">${target}</td>
                         <td class="p-4 text-center">0</td>
-                        <td class="p-4 text-center uppercase text-[10px] font-bold text-red-500">Pending</td>
+                        <td class="p-4 text-center">
+                            <span class="px-2 py-1 bg-red-100 text-red-600 rounded-full text-[10px] font-bold uppercase">Pending</span>
+                        </td>
                     </tr>`;
             });
         });
     });
-    tbody.innerHTML = html || '<tr><td colspan="11" class="p-10 text-center text-slate-400">No data found for active year ' + activeYear + '</td></tr>';
+
+    tbody.innerHTML = html || '<tr><td colspan="7" class="p-10 text-center text-slate-400">No records found for ' + activeYear + '</td></tr>';
 };
 
 // --- Helpers ---
