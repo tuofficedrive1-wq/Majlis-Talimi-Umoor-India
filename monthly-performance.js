@@ -83,7 +83,25 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
         loadPerformanceTable(assignedJamiaat, db, currentUser);
 
     } else if (tabName === 'structure') {
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const activeYear = userSnap.data().academicYears?.activeYear || "2025-2026"; // User profile se active year uthayein
+
         contentArea.innerHTML = `
+            <div class="flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 mb-6 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase leading-none">Selected Academic Year</p>
+                        <h4 class="text-sm font-black text-slate-700">${activeYear}</h4>
+                    </div>
+                </div>
+                <select id="active-year-select" class="p-2 border rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-200">
+                    <option value="2025-2026" ${activeYear === '2025-2026' ? 'selected' : ''}>2025-2026</option>
+                    <option value="2026-2027" ${activeYear === '2026-2027' ? 'selected' : ''}>2026-2027</option>
+                </select>
+            </div>
             <div id="structure-accordion" class="space-y-4">
                 ${assignedJamiaat.map(jamia => `
                     <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm" data-jamia="${jamia}">
@@ -393,39 +411,60 @@ async function updateTeacherData(db, currentUser, jamiaName, updateFn) {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    if (!userSnap.exists()) return;
+    const selectedMonth = document.getElementById('report-month').value; // e.g. "apr"
+    
+    // 1. Fetch Calendar and Structure Data
+    const [calSnap, userSnap] = await Promise.all([
+        getDoc(doc(db, "settings", "academic_calendar")),
+        getDoc(doc(db, "users", currentUser.uid))
+    ]);
 
-    const structure = userSnap.data().academicYears?.["2025-2026"]?.karkardagiStructure || [];
+    if (!userSnap.exists() || !calSnap.exists()) return;
+
+    const calData = calSnap.data();
+    const activeYear = calData.activeYear || "2025-2026";
+    const structure = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
+    
+    // 2. Mahine ke Working Days aur Semester Total nikalna
+    const monthInfo = calData.months?.[selectedMonth] || { s1: 0, s2: 0 };
+    const sem1Total = calData.totals?.s1 || 1; // 0 se division bachane ke liye 1
+    const sem2Total = calData.totals?.s2 || 1;
+
     let html = "";
 
     jamiaat.forEach(jamiaName => {
         const jamiaData = structure.find(j => j.jamiaName === jamiaName);
         if (!jamiaData || !jamiaData.teachers) return;
 
-        html += `<tr class="bg-indigo-50 font-bold"><td colspan="11" class="p-4 border-y border-indigo-100 text-indigo-700">${jamiaName}</td></tr>`;
+        html += `<tr class="bg-indigo-50/50 font-bold"><td colspan="11" class="p-4 border-y border-indigo-100 text-indigo-700">${jamiaName}</td></tr>`;
 
         jamiaData.teachers.forEach(teacher => {
             const periods = teacher.periods || [];
             periods.forEach((p, idx) => {
+                // Calculation: Kis semester ki book hai us hisab se target
+                const monthDays = (p.semester == "1") ? monthInfo.s1 : monthInfo.s2;
+                const semTotalDays = (p.semester == "1") ? sem1Total : sem2Total;
+                
+                // Monthly Target Calculation
+                const target = Math.round((p.totalPages / semTotalDays) * monthDays);
+
                 html += `
                     <tr class="border-b border-slate-100">
                         ${idx === 0 ? `<td rowspan="${periods.length}" class="p-4 font-bold text-slate-800 bg-slate-50/50 align-top">${teacher.name}</td>` : ''}
                         <td class="p-4 text-slate-600 font-medium">${p.className}</td>
                         <td class="p-4 text-slate-600 font-medium">${p.bookName}</td>
                         <td class="p-4 text-slate-400 italic text-xs">-</td>
-                        <td class="p-4 text-center">0</td>
-                        <td class="p-4 text-center font-bold text-slate-400">${p.totalPages}</td>
-                        <td class="p-4 text-center font-black text-indigo-600">0</td>
-                        <td class="p-4 text-center">0</td>
-                        <td class="p-4 text-center"><input type="number" class="w-16 p-1 border rounded text-center" value="0" disabled></td>
+                        <td class="p-4 text-center">0</td> <td class="p-4 text-center font-bold text-slate-400">${p.totalPages}</td>
+                        <td class="p-4 text-center font-black text-indigo-600">0</td> <td class="p-4 text-center font-bold text-indigo-600">${target}</td> <td class="p-4 text-center"><input type="number" class="w-16 p-1 border rounded text-center bg-slate-50" value="0" disabled></td>
                         <td class="p-4 text-center">0%</td>
-                        <td class="p-4 text-center uppercase text-[10px]">Pending</td>
+                        <td class="p-4 text-center uppercase text-[10px]">
+                            <span class="px-2 py-1 bg-slate-100 rounded-full text-slate-500 font-bold">Pending</span>
+                        </td>
                     </tr>`;
             });
         });
     });
-    tbody.innerHTML = html || '<tr><td colspan="11" class="p-10 text-center text-slate-400">No records found.</td></tr>';
+    tbody.innerHTML = html || '<tr><td colspan="11" class="p-10 text-center text-slate-400">No records found for this month.</td></tr>';
 };
 
 window.openPerformanceForm = (id, name) => {
