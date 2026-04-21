@@ -111,41 +111,6 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         }
     };
 
-    window.openCommentModal = async (docId, subjectKey, teacher) => {
-    const modal = document.getElementById('comment-modal');
-    const textarea = document.getElementById('zimmedar-text');
-    const saveBtn = document.getElementById('save-comment-btn');
-    document.getElementById('modal-teacher-name').textContent = "Teacher: " + teacher;
-
-    modal.classList.remove('hidden');
-
-    saveBtn.onclick = async () => {
-        const comment = textarea.value.trim();
-        if(!comment) return alert("Kuch likhna zaroori hai!");
-
-        try {
-            const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-            const docRef = doc(window.db, "asatiza_wise_results", docId);
-            
-            // Dynamic Key update (zimmedar_comments.subject_name)
-            await updateDoc(docRef, {
-                [`zimmedar_comments.${subjectKey}`]: comment
-            });
-
-            alert("Comment save ho gaya!");
-            closeCommentModal();
-            window.fetchResultData(); // Table refresh karein
-        } catch (err) {
-            alert("Error: " + err.message);
-        }
-    };
-};
-
-window.closeCommentModal = () => {
-    document.getElementById('comment-modal').classList.add('hidden');
-    document.getElementById('zimmedar-text').value = '';
-};
-
     // --- Container HTML aur fetchResultData logic yahan se shuru hoga ---
 
     container.innerHTML = `
@@ -222,17 +187,6 @@ window.closeCommentModal = () => {
             </div>
         </div>
       </div>
-      <div id="comment-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all">
-        <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2 urdu-font text-right">تعلیمی ذمہ دار کا تبصرہ</h3>
-        <p id="modal-teacher-name" class="text-sm text-indigo-600 mb-2 font-bold"></p>
-        <textarea id="zimmedar-text" rows="4" class="w-full border rounded-lg p-3 text-right urdu-font focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Yahan apna comment likhein..."></textarea>
-        <div class="flex justify-start gap-3 mt-5">
-            <button onclick="closeCommentModal()" class="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg font-bold">Cancel</button>
-            <button id="save-comment-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg">Save Comment</button>
-        </div>
-    </div>
-</div>
     `;
 
     const jamiaSelect = document.getElementById('ra-jamia-filter');
@@ -490,13 +444,13 @@ window.closeCommentModal = () => {
                     if (percVal < 70) {
                         const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]);
-                        const specificWazahat = hasWazahat ? d.wazahat_map[subjectKeyForDisplay] : '<span class="text-red-500 font-bold">Pending...</span>';
-                        
-                        // Zimmedar Comment check karein
-                        const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
-                            ? d.zimmedar_comments[subjectKeyForDisplay] 
-                            : '<span class="text-gray-400 italic text-[11px]">No comment yet</span>';
-                        
+                        const specificWazahat = hasWazahat 
+                                                ? d.wazahat_map[subjectKeyForDisplay] 
+                                                : '<span class="text-red-500 font-bold">Pending...</span>';
+
+                        // Counters update karein
+                        if (hasWazahat) totalSubmitted++; else totalPending++;
+
                         wazahatRows += `
                             <tr class="hover:bg-red-50 border-b border-red-100 text-center">
                                 <td class="border p-3 font-bold text-right">${d.jamia}</td>
@@ -509,20 +463,11 @@ window.closeCommentModal = () => {
                                 <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
                                     ${specificWazahat} 
                                 </td>
-                                <td class="border p-3 text-sm font-medium text-indigo-900 bg-indigo-50/30 urdu-font">
-                                    ${zimmedarComment}
-                                </td>
                                 <td class="border p-3 no-print">
-                                    <div class="flex flex-col gap-1">
-                                        <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs whitespace-nowrap">
-                                            <i class="fab fa-whatsapp"></i> Link
-                                        </button>
-                                        <button onclick="openCommentModal('${d.docId}', '${subjectKeyForDisplay}', '${tEntry.teacher}', \`${p.subject}\`)" 
-                                                class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs whitespace-nowrap">
-                                            <i class="fas fa-edit"></i> Tabsarah
-                                        </button>
-                                    </div>
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
+                                        <i class="fab fa-whatsapp"></i> Link
+                                    </button>
                                 </td>
                             </tr>`;
                     }
@@ -554,7 +499,6 @@ window.closeCommentModal = () => {
             <th class="border p-3">فیصد</th>
             <th class="border p-3">کیفیت</th>
             <th class="border p-3">وضاحت (Explanation)</th>
-            <th class="border p-3">تبصرہ (Comments)</th>
             <th class="border p-3 no-print">ایکشن</th>
         </tr>`;
 
