@@ -214,8 +214,8 @@ window.closeCommentModal = () => {
                     </div>
             </div>
             <div class="w-full overflow-x-auto">
-                <table id="ra-data-table" class="w-full min-w-full text-center text-[15px] border-collapse" dir="rtl">
-                    <thead id="ra-table-head" class="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300 text-base"></thead>
+                <table id="ra-data-table" class="w-full table-auto border-collapse text-right" dir="rtl">
+                        <thead id="ra-table-head" class="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300 text-base"></thead>
                     <tbody id="ra-table-body" class="divide-y divide-gray-200 urdu-font bg-white"></tbody>
                     <tfoot id="ra-table-foot" class="bg-gray-800 text-white font-bold urdu-font"></tfoot>
                 </table>
@@ -532,31 +532,40 @@ window.closeCommentModal = () => {
     });
 
     // Percentage Calculation
-    const totalRecords = totalPending + totalSubmitted;
-    const submissionPercent = totalRecords > 0 ? ((totalSubmitted / totalRecords) * 100).toFixed(1) : 0;
+    // Percentage Calculation
+const totalRecords = totalPending + totalSubmitted;
+const submissionPercent = totalRecords > 0 ? ((totalSubmitted / totalRecords) * 100).toFixed(1) : 0;
 
-    // Table Header with Counters and Percentage
-    thead.innerHTML = `
-        <tr class="bg-gray-800 text-white">
-            <th colspan="7" class="p-3 text-center text-sm md:text-base">
-                <div class="flex flex-wrap justify-center gap-4">
-                    <span>Kul Kamzor Results: <span class="text-yellow-400 font-bold">${totalRecords}</span></span>
-                    <span>Wazahat Aa Gayi: <span class="text-green-400 font-bold">${totalSubmitted}</span></span>
-                    <span>Baqi (Pending): <span class="text-red-400 font-bold">${totalPending}</span></span>
-                    <span class="bg-indigo-600 px-2 py-0.5 rounded">Progress: <span class="text-white font-bold">${submissionPercent}%</span></span>
+// Fixed Table Header
+thead.innerHTML = `
+    <tr class="bg-slate-800 text-white no-print">
+        <th colspan="8" class="p-4">
+            <div class="flex flex-wrap items-center justify-center gap-3 md:gap-6 text-[12px] md:text-sm">
+                <div class="bg-red-500/20 border border-red-400 px-3 py-1.5 rounded-lg">
+                    Kul Kamzor Results: <span class="font-bold text-red-400 text-lg">${totalRecords}</span>
                 </div>
-            </th>
-        </tr>
-        <tr class="bg-red-50 text-red-900">
-            <th class="border p-3">جامعہ</th>
-            <th class="border p-3">استاد</th>
-            <th class="border p-3">مضمون / درجہ</th>
-            <th class="border p-3">فیصد</th>
-            <th class="border p-3">کیفیت</th>
-            <th class="border p-3">وضاحت (Explanation)</th>
-            <th class="border p-3">تبصرہ (Comments)</th>
-            <th class="border p-3 no-print">ایکشن</th>
-        </tr>`;
+                <div class="bg-green-500/20 border border-green-400 px-3 py-1.5 rounded-lg">
+                    Wazahat Aa Gayi: <span class="font-bold text-green-400 text-lg">${totalSubmitted}</span>
+                </div>
+                <div class="bg-yellow-500/20 border border-yellow-400 px-3 py-1.5 rounded-lg">
+                    Baqi (Pending): <span class="font-bold text-yellow-400 text-lg">${totalPending}</span>
+                </div>
+                <div class="bg-indigo-600 px-4 py-1.5 rounded-lg shadow-inner">
+                    Progress: <span class="font-bold text-white text-lg">${submissionPercent}%</span>
+                </div>
+            </div>
+        </th>
+    </tr>
+    <tr class="bg-red-50 text-red-900 border-b-2 border-red-200">
+        <th class="border p-3 text-sm md:text-base">جامعہ</th>
+        <th class="border p-3 text-sm md:text-base">استاد</th>
+        <th class="border p-3 text-sm md:text-base">مضمون / درجہ</th>
+        <th class="border p-3 text-sm md:text-base">فیصد</th>
+        <th class="border p-3 text-sm md:text-base">کیفیت</th>
+        <th class="border p-3 text-sm md:text-base">وضاحت (Explanation)</th>
+        <th class="border p-3 text-sm md:text-base">تبصرہ (Comments)</th>
+        <th class="border p-3 no-print text-sm md:text-base">ایکشن</th>
+    </tr>`;
 
     rowsHtml = wazahatRows;
 }
