@@ -274,21 +274,26 @@ window.closeCommentModal = () => {
             let latestDataMap = new Map();
 
             snapshot.forEach(docSnap => {
-                const d = docSnap.data();
-                d.docId = docSnap.id;
+    const d = docSnap.data();
+    d.docId = docSnap.id;
 
-                if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                    if (!d.uid || d.uid === user.uid) { 
-                        let uniqueKey = layoutLevel === 'teacher' 
-                            ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}` 
-                            : `${d.jamia}_${d.darjah}`;
+    if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+        if (!d.uid || d.uid === user.uid) { 
+            // FIXED KEY LOGIC
+            let uniqueKey;
+            if (layoutLevel === 'teacher' || layoutLevel === 'wazahat') {
+                // Wazahat aur Teacher ke liye same key structure use karein
+                uniqueKey = docSnap.id; // Sabse behtar hai Doc ID use karna taake data miss na ho
+            } else {
+                uniqueKey = `${d.jamia}_${d.darjah}`;
+            }
 
-                        if (!latestDataMap.has(uniqueKey)) {
-                            latestDataMap.set(uniqueKey, d);
-                        }
-                    }
-                }
-            });
+            if (!latestDataMap.has(uniqueKey)) {
+                latestDataMap.set(uniqueKey, d);
+            }
+        }
+    }
+});
 
             let rowsHtml = "";
             let totals = { kul: 0, hazir: 0, passed: 0, zimni: 0, nakam: 0 };
