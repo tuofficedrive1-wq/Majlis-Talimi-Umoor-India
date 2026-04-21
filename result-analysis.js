@@ -448,25 +448,39 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                         // Counters update karein
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        wazahatRows += `
-                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                                <td class="border p-3 font-bold text-right">${d.jamia}</td>
-                                <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-                                <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-                                <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-                                <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
-                                    ${getJamiaKefiyat(percVal, 'teacher')}
-                                </td>
-                                <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
-                                    ${specificWazahat} 
-                                </td>
-                                <td class="border p-3 no-print">
-                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
-                                        <i class="fab fa-whatsapp"></i> Link
-                                    </button>
-                                </td>
-                            </tr>`;
+                        // Rows Loop ke andar ye logic add karein
+const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
+                        ? d.zimmedar_comments[subjectKeyForDisplay] 
+                        : '';
+
+wazahatRows += `
+    <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+        <td class="border p-3 font-bold text-right">${d.jamia}</td>
+        <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+        <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+        <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+        <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+            ${getJamiaKefiyat(percVal, 'teacher')}
+        </td>
+        <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
+            ${specificWazahat} 
+        </td>
+        <td class="border p-3 text-sm">
+            <div class="flex flex-col gap-1">
+                <span class="text-indigo-600 font-semibold">${zimmedarComment}</span>
+                <button onclick="addZimmedarComment('${d.docId}', '${subjectKeyForDisplay}')" 
+                        class="text-[10px] text-gray-400 hover:text-indigo-600 no-print">
+                    <i class="fas fa-edit"></i> Comment Likhein
+                </button>
+            </div>
+        </td>
+        <td class="border p-3 no-print">
+            <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                    class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
+                <i class="fab fa-whatsapp"></i> Link
+            </button>
+        </td>
+    </tr>`;
                     }
                 });
             });
@@ -475,22 +489,22 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 
     // Table Header with Counters
     thead.innerHTML = `
-        <tr class="bg-gray-800 text-white">
-            <th colspan="7" class="p-2 text-center text-sm">
-                Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-                Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
-                Baqi (Pending): <span class="text-red-400">${totalPending}</span>
-            </th>
-        </tr>
-        <tr class="bg-red-50 text-red-900">
-            <th class="border p-3">جامعہ</th>
-            <th class="border p-3">استاد</th>
-            <th class="border p-3">مضمون / درجہ</th>
-            <th class="border p-3">فیصد</th>
-            <th class="border p-3">کیفیت</th>
-            <th class="border p-3">وضاحت (Explanation)</th>
-            <th class="border p-3 no-print">ایکشن</th>
-        </tr>`;
+    <tr class="bg-gray-800 text-white">
+        <th colspan="8" class="p-2 text-center text-sm">
+            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
+            Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+        </th>
+    </tr>
+    <tr class="bg-red-50 text-red-900">
+        <th class="border p-3">جامعہ</th>
+        <th class="border p-3">استاد</th>
+        <th class="border p-3">مضمون / درجہ</th>
+        <th class="border p-3">فیصد</th>
+        <th class="border p-3">کیفیت</th>
+        <th class="border p-3">وضاحت (Explanation)</th>
+        <th class="border p-3 text-indigo-700">تعلیمی ذمہ دار کا تبصرہ</th> <th class="border p-3 no-print">ایکشن</th>
+    </tr>`;
 
     rowsHtml = wazahatRows;
 }
@@ -552,5 +566,26 @@ window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat) => {
                     `شکریہ۔`;
     
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+};
+window.addZimmedarComment = async (docId, subjectKey) => {
+    const comment = prompt("Talimi Zimmedar ka comment yahan likhein:");
+    if (comment === null) return; // Cancel handle
+
+    try {
+        const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const docRef = doc(window.db, "asatiza_wise_results", docId);
+        
+        // Dynamic key for nested object: zimmedar_comments.subject_name
+        const updatePath = {};
+        updatePath[`zimmedar_comments.${subjectKey}`] = comment;
+
+        await updateDoc(docRef, updatePath);
+        alert("Comment save ho gaya!");
+        
+        // Refresh Table
+        if (window.fetchResultData) await window.fetchResultData();
+    } catch (err) {
+        alert("Galti: " + err.message);
+    }
 };
 
