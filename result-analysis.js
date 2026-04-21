@@ -489,31 +489,48 @@ window.closeCommentModal = () => {
                     // Filter: Sirf 70% se kam wale (Weak Results)
                     if (percVal < 70) {
                         const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
-                        const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]);
-                        const specificWazahat = hasWazahat ? d.wazahat_map[subjectKeyForDisplay] : '<span class="text-red-500 font-bold">Pending...</span>';
                         
-                        // Zimmedar Comment check karein
+                        // Yahan check ho raha hai ke explanation maujood hai ya nahi
+                        const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay] && d.wazahat_map[subjectKeyForDisplay].trim() !== "");
+                        
+                        const specificWazahat = hasWazahat 
+                                                ? d.wazahat_map[subjectKeyForDisplay] 
+                                                : '<span class="text-red-500 font-bold">Pending...</span>';
+
                         const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
-                            ? d.zimmedar_comments[subjectKeyForDisplay] 
-                            : '<span class="text-gray-400 italic text-[11px]">No comment yet</span>';
-                        
+                                                ? d.zimmedar_comments[subjectKeyForDisplay] 
+                                                : '<span class="text-gray-400 italic text-[11px]">No comment</span>';
+
+                        // Counters Update logic
+                        if (hasWazahat) {
+                            totalSubmitted++; 
+                        } else {
+                            totalPending++;
+                        }
+
                         wazahatRows += `
-                                    <tr class="hover:bg-red-50 border-b border-red-100 text-center text-sm md:text-base">
-                                        <td class="border p-3 font-bold text-right">${d.jamia}</td>
-                                        <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-                                        <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-                                        <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-                                        <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">${getJamiaKefiyat(percVal, 'teacher')}</td>
-                                        <td class="border p-3 text-[13px] italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">${specificWazahat}</td>
-                                        <td class="border p-3 text-[13px] font-medium text-indigo-900 bg-indigo-50/30">${zimmedarComment}</td>
-                                        <td class="border p-3 no-print">
-                                            <div class="flex flex-col gap-1">
+                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                                <td class="border p-3 font-bold text-right">${d.jamia}</td>
+                                <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+                                <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+                                <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                    ${getJamiaKefiyat(percVal, 'teacher')}
+                                </td>
+                                <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
+                                    ${specificWazahat} 
+                                </td>
+                                <td class="border p-3 text-sm font-medium text-indigo-900 bg-indigo-50/30 urdu-font">
+                                    ${zimmedarComment}
+                                </td>
+                                <td class="border p-3 no-print">
+                                    <div class="flex flex-col gap-1">
                                         <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs whitespace-nowrap">
+                                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
                                             <i class="fab fa-whatsapp"></i> Link
                                         </button>
                                         <button onclick="openCommentModal('${d.docId}', '${subjectKeyForDisplay}', '${tEntry.teacher}', \`${p.subject}\`)" 
-                                                class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs whitespace-nowrap">
+                                                class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs">
                                             <i class="fas fa-edit"></i> Tabsarah
                                         </button>
                                     </div>
@@ -525,46 +542,39 @@ window.closeCommentModal = () => {
         }
     });
 
-    // Percentage Calculation
-    // Percentage Calculation
-// Pehle calculations check karlein
-const totalRecords = totalPending + totalSubmitted;
-const submissionPercent = totalRecords > 0 ? ((totalSubmitted / totalRecords) * 100).toFixed(1) : 0;
+    const totalRecords = totalPending + totalSubmitted;
+    const submissionPercent = totalRecords > 0 ? ((totalSubmitted / totalRecords) * 100).toFixed(1) : 0;
 
-// Table Header with Correct Colspan (8 columns)
-thead.innerHTML = `
-    <tr class="bg-slate-900 text-white no-print">
-        <th colspan="8" class="p-4 border-b border-slate-700">
-            <div class="flex flex-wrap justify-center items-center gap-4 text-xs md:text-sm">
-                <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-md">
-                    <span class="text-slate-400">Kul Kamzor Results:</span>
-                    <span class="text-yellow-400 font-bold text-base">${totalRecords}</span>
+    // Header with proper Colspan=8
+    thead.innerHTML = `
+        <tr class="bg-slate-900 text-white no-print">
+            <th colspan="8" class="p-4">
+                <div class="flex flex-wrap justify-center items-center gap-4 text-xs md:text-sm font-sans">
+                    <div class="bg-slate-800 border border-slate-700 px-4 py-2 rounded-lg">
+                        Total Weak: <span class="text-yellow-400 font-bold text-lg">${totalRecords}</span>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 px-4 py-2 rounded-lg">
+                        Submitted: <span class="text-green-400 font-bold text-lg">${totalSubmitted}</span>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 px-4 py-2 rounded-lg">
+                        Pending: <span class="text-red-400 font-bold text-lg">${totalPending}</span>
+                    </div>
+                    <div class="bg-indigo-600 px-4 py-2 rounded-lg shadow-lg border border-indigo-400">
+                        Progress: <span class="text-white font-bold text-lg">${submissionPercent}%</span>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-md">
-                    <span class="text-slate-400">Wazahat Aa Gayi:</span>
-                    <span class="text-green-400 font-bold text-base">${totalSubmitted}</span>
-                </div>
-                <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-md">
-                    <span class="text-slate-400">Baqi (Pending):</span>
-                    <span class="text-red-400 font-bold text-base">${totalPending}</span>
-                </div>
-                <div class="bg-indigo-600 px-3 py-1.5 rounded-md shadow-lg border border-indigo-500">
-                    <span class="text-indigo-100">Progress:</span>
-                    <span class="text-white font-bold text-base ml-1">${submissionPercent}%</span>
-                </div>
-            </div>
-        </th>
-    </tr>
-    <tr class="bg-red-50 text-red-900 font-bold text-sm md:text-base border-b-2 border-red-200">
-        <th class="border p-3">جامعہ</th>
-        <th class="border p-3">استاد</th>
-        <th class="border p-3">مضمون / درجہ</th>
-        <th class="border p-3">فیصد</th>
-        <th class="border p-3">کیفiyat</th>
-        <th class="border p-3">وضاحت (Explanation)</th>
-        <th class="border p-3">تبصرہ (Comments)</th>
-        <th class="border p-3 no-print">ایکشن</th>
-    </tr>`;
+            </th>
+        </tr>
+        <tr class="bg-red-50 text-red-900 font-bold border-b-2 border-red-200">
+            <th class="border p-3">جامعہ</th>
+            <th class="border p-3">استاد</th>
+            <th class="border p-3">مضمون / درجہ</th>
+            <th class="border p-3">فیصد</th>
+            <th class="border p-3">کیفیت</th>
+            <th class="border p-3">وضاحت (Explanation)</th>
+            <th class="border p-3">تبصرہ (Comments)</th>
+            <th class="border p-3 no-print">ایکشن</th>
+        </tr>`;
 
     rowsHtml = wazahatRows;
 }
