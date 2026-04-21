@@ -279,17 +279,37 @@ window.closeCommentModal = () => {
 
     if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
         if (!d.uid || d.uid === user.uid) { 
-            // FIXED KEY LOGIC
-            let uniqueKey;
-            if (layoutLevel === 'teacher' || layoutLevel === 'wazahat') {
-                // Wazahat aur Teacher ke liye same key structure use karein
-                uniqueKey = docSnap.id; // Sabse behtar hai Doc ID use karna taake data miss na ho
-            } else {
-                uniqueKey = `${d.jamia}_${d.darjah}`;
-            }
+            if (layoutLevel === 'wazahat') {
+                // Har subject ke liye unique entry banayein taake duplication na ho
+                if (d.data && Array.isArray(d.data)) {
+                    d.data.forEach((tEntry) => {
+                        const periods = tEntry.periods || [];
+                        periods.forEach((p) => {
+                            // Unique Key = DocID + Teacher + Subject + Class
+                            const subKey = `${docSnap.id}_${tEntry.teacher}_${p.subject}_${p.class}`;
+                            
+                            // Ek naya object banayein jo sirf is specific subject ka ho
+                            const singleSubjectData = {
+                                ...d,
+                                specificTeacher: tEntry,
+                                specificPeriod: p
+                            };
 
-            if (!latestDataMap.has(uniqueKey)) {
-                latestDataMap.set(uniqueKey, d);
+                            if (!latestDataMap.has(subKey)) {
+                                latestDataMap.set(subKey, singleSubjectData);
+                            }
+                        });
+                    });
+                }
+            } else {
+                // Baki layouts ke liye purana logic
+                let uniqueKey = layoutLevel === 'teacher' 
+                    ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}` 
+                    : `${d.jamia}_${d.darjah}`;
+
+                if (!latestDataMap.has(uniqueKey)) {
+                    latestDataMap.set(uniqueKey, d);
+                }
             }
         }
     }
@@ -480,72 +500,78 @@ window.closeCommentModal = () => {
     tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
 }
                        else if (layoutLevel === 'wazahat') {
-    let totalPending = 0;
-    let totalSubmitted = 0;
-    let wazahatRows = "";
+   let totalPending = 0;
+let totalSubmitted = 0;
+let wazahatRows = "";
+const processedKeys = new Set(); // Duplication rokne ke liye
 
-    latestDataMap.forEach((d) => {
-        if (d.data && Array.isArray(d.data)) {
-            d.data.forEach((tEntry) => {
-                const periods = tEntry.periods || [];
-                periods.forEach((p) => {
-                    let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
+latestDataMap.forEach((d) => {
+    if (d.data && Array.isArray(d.data)) {
+        d.data.forEach((tEntry) => {
+            const periods = tEntry.periods || [];
+            periods.forEach((p) => {
+                let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
+                
+                // Filter: Sirf 70% se kam wale
+                if (percVal < 70) {
+                    // Ek aisi unique key banayein jo teacher, subject aur class ko milaye
+                    const uniqueRowKey = `${d.docId}_${tEntry.teacher}_${p.subject}_${p.class}`;
                     
-                    // Filter: Sirf 70% se kam wale (Weak Results)
-                    if (percVal < 70) {
-                        const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
-                        
-                        // Yahan check ho raha hai ke explanation maujood hai ya nahi
-                        const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay] && d.wazahat_map[subjectKeyForDisplay].trim() !== "");
-                        
-                        const specificWazahat = hasWazahat 
-                                                ? d.wazahat_map[subjectKeyForDisplay] 
-                                                : '<span class="text-red-500 font-bold">Pending...</span>';
+                    // Agar ye row pehle hi process ho chuki hai, to skip karein
+                    if (processedKeys.has(uniqueRowKey)) return;
+                    processedKeys.add(uniqueRowKey);
 
-                        const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
-                                                ? d.zimmedar_comments[subjectKeyForDisplay] 
-                                                : '<span class="text-gray-400 italic text-[11px]">No comment</span>';
+                    const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
+                    const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay] && d.wazahat_map[subjectKeyForDisplay].trim() !== "");
+                    
+                    const specificWazahat = hasWazahat 
+                        ? d.wazahat_map[subjectKeyForDisplay] 
+                        : '<span class="text-red-500 font-bold">Pending...</span>';
 
-                        // Counters Update logic
-                        if (hasWazahat) {
-                            totalSubmitted++; 
-                        } else {
-                            totalPending++;
-                        }
+                    const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
+                        ? d.zimmedar_comments[subjectKeyForDisplay] 
+                        : '<span class="text-gray-400 italic text-[11px]">No comment</span>';
 
-                        wazahatRows += `
-                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                                <td class="border p-3 font-bold text-right">${d.jamia}</td>
-                                <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-                                <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-                                <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-                                <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
-                                    ${getJamiaKefiyat(percVal, 'teacher')}
-                                </td>
-                                <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
-                                    ${specificWazahat} 
-                                </td>
-                                <td class="border p-3 text-sm font-medium text-indigo-900 bg-indigo-50/30 urdu-font">
-                                    ${zimmedarComment}
-                                </td>
-                                <td class="border p-3 no-print">
-                                    <div class="flex flex-col gap-1">
-                                        <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
-                                            <i class="fab fa-whatsapp"></i> Link
-                                        </button>
-                                        <button onclick="openCommentModal('${d.docId}', '${subjectKeyForDisplay}', '${tEntry.teacher}', \`${p.subject}\`)" 
-                                                class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs">
-                                            <i class="fas fa-edit"></i> Tabsarah
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>`;
+                    // Counters Update logic (Ab sirf unique rows count hongi)
+                    if (hasWazahat) {
+                        totalSubmitted++; 
+                    } else {
+                        totalPending++;
                     }
-                });
+
+                    wazahatRows += `
+                        <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                            <td class="border p-3 font-bold text-right">${d.jamia}</td>
+                            <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+                            <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                            <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+                            <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                ${getJamiaKefiyat(percVal, 'teacher')}
+                            </td>
+                            <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
+                                ${specificWazahat} 
+                            </td>
+                            <td class="border p-3 text-sm font-medium text-indigo-900 bg-indigo-50/30 urdu-font">
+                                ${zimmedarComment}
+                            </td>
+                            <td class="border p-3 no-print">
+                                <div class="flex flex-col gap-1">
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
+                                        <i class="fab fa-whatsapp"></i> Link
+                                    </button>
+                                    <button onclick="openCommentModal('${d.docId}', '${subjectKeyForDisplay}', '${tEntry.teacher}', \`${p.subject}\`)" 
+                                            class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs">
+                                        <i class="fas fa-edit"></i> Tabsarah
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>`;
+                }
             });
-        }
-    });
+        });
+    }
+});
 
     const totalRecords = totalPending + totalSubmitted;
     const submissionPercent = totalRecords > 0 ? ((totalSubmitted / totalRecords) * 100).toFixed(1) : 0;
