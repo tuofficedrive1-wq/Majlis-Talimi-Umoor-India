@@ -424,7 +424,9 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
     tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
 }
-                       else if (layoutLevel === 'wazahat') {
+    // --- Baki ka purana code upar wese hi rahega ---
+
+else if (layoutLevel === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
     let wazahatRows = "";
@@ -438,56 +440,54 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     
                     // Filter: Sirf 70% se kam wale (Weak Results)
                     if (percVal < 70) {
-                        // Firebase mein '.' allowed nahi hota key mein, isliye replace kiya gaya hai
                         const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]);
                         const specificWazahat = hasWazahat 
                                                 ? d.wazahat_map[subjectKeyForDisplay] 
                                                 : '<span class="text-red-500 font-bold">Pending...</span>';
 
-                        // Counters update karein
+                        // Zimmedar Comment fetch karein
+                        const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
+                                                ? d.zimmedar_comments[subjectKeyForDisplay] 
+                                                : '';
+
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        // Rows Loop ke andar ye logic add karein
-const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
-                        ? d.zimmedar_comments[subjectKeyForDisplay] 
-                        : '';
-
-wazahatRows += `
-    <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-        <td class="border p-3 font-bold text-right">${d.jamia}</td>
-        <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-        <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
-        <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-        <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
-            ${getJamiaKefiyat(percVal, 'teacher')}
-        </td>
-        <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
-            ${specificWazahat} 
-        </td>
-        <td class="border p-3 text-sm">
-            <div class="flex flex-col gap-1">
-                <span class="text-indigo-600 font-semibold">${zimmedarComment}</span>
-                <button onclick="addZimmedarComment('${d.docId}', '${subjectKeyForDisplay}')" 
-                        class="text-[10px] text-gray-400 hover:text-indigo-600 no-print">
-                    <i class="fas fa-edit"></i> Comment Likhein
-                </button>
-            </div>
-        </td>
-        <td class="border p-3 no-print">
-            <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
-                    class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
-                <i class="fab fa-whatsapp"></i> Link
-            </button>
-        </td>
-    </tr>`;
+                        wazahatRows += `
+                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                                <td class="border p-3 font-bold text-right">${d.jamia}</td>
+                                <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
+                                <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
+                                <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                    ${getJamiaKefiyat(percVal, 'teacher')}
+                                </td>
+                                <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
+                                    ${specificWazahat} 
+                                </td>
+                                <td class="border p-3 text-sm">
+                                    <div class="flex flex-col gap-1">
+                                        <span class="text-indigo-600 font-semibold">${zimmedarComment}</span>
+                                        <button onclick="addZimmedarComment('${d.docId}', '${subjectKeyForDisplay}')" 
+                                                class="text-[10px] text-gray-400 hover:text-indigo-600 no-print">
+                                            <i class="fas fa-edit"></i> Comment Likhein
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="border p-3 no-print">
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
+                                        <i class="fab fa-whatsapp"></i> Link
+                                    </button>
+                                </td>
+                            </tr>`;
                     }
                 });
             });
         }
     });
 
-    // Table Header with Counters
+    // Table Header
     thead.innerHTML = `
     <tr class="bg-gray-800 text-white">
         <th colspan="8" class="p-2 text-center text-sm">
@@ -503,7 +503,8 @@ wazahatRows += `
         <th class="border p-3">فیصد</th>
         <th class="border p-3">کیفیت</th>
         <th class="border p-3">وضاحت (Explanation)</th>
-        <th class="border p-3 text-indigo-700">تعلیمی ذمہ دار کا تبصرہ</th> <th class="border p-3 no-print">ایکشن</th>
+        <th class="border p-3 text-indigo-700">تعلیمی ذمہ دار کا تبصرہ</th> 
+        <th class="border p-3 no-print">ایکشن</th>
     </tr>`;
 
     rowsHtml = wazahatRows;
