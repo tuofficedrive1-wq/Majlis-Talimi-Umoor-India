@@ -427,56 +427,80 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     }
         else if (layout === 'wazahat') {
-    thead.innerHTML = `
-        <th class="p-2 border">Sr.</th>
-        <th class="p-2 border">Jamia & Teacher</th>
-        <th class="p-2 border">Subject & Result</th>
-        <th class="p-2 border text-red-600 bg-red-50">Teacher ki Wazahat</th>
-        <th class="p-2 border text-blue-600 bg-blue-50">Zimmedar ka Tabsura</th>
-        <th class="p-2 border">Action</th>`;
+    let totalPending = 0;
+    let totalSubmitted = 0;
+    let wazahatRows = "";
 
-    let srNo = 1;
-    data.forEach(d => {
+    data.forEach((d) => {
         // Asatiza wise data (asatiza_wise_results collection) se loop chalayenge
-        (d.data || []).forEach(tEntry => {
-            (tEntry.periods || []).forEach(p => {
-                const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                const kefiyat = getJamiaKefiyat(sPer, 'teacher');
+        if (d.data && Array.isArray(d.data)) {
+            d.data.forEach((tEntry) => {
+                (tEntry.periods || []).forEach((p) => {
+                    const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
+                    const kefiyat = getJamiaKefiyat(sPer, 'teacher');
 
-                // Sirf Kamzor aur Tashwish Nak results filter karein
-                if (kefiyat === "کمزور" || kefiyat === "تشویش ناک") {
-                    const subjectKey = (p.subject || "").replace(/\./g, '_');
-                    
-                    // Teacher ka comment (wazahat_text) aur Zimmedar ka comment (zimmedar_comments object)
-                    const teacherComment = p.wazahat_text || '<span class="text-gray-400 italic">No Comment</span>';
-                    const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
-                                            ? d.zimmedar_comments[subjectKey] 
-                                            : '<span class="text-gray-400 italic">Pending...</span>';
+                    // Filter: Sirf 70% se kam wale (Weak Results) ya "Kamzor/Tashwish Nak"
+                    if (sPer < 70) {
+                        const subjectKey = (p.subject || "").replace(/\./g, '_');
+                        
+                        // Teacher ka comment (wazahat_text ya wazahat_map se)
+                        const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
+                        const teacherComment = hasWazahat 
+                                                ? d.wazahat_map[subjectKey] 
+                                                : '<span class="text-red-500 font-bold">Pending...</span>';
 
-                    tbody.innerHTML += `
-                    <tr class="text-center border-b">
-                        <td class="p-2 border">${srNo++}</td>
-                        <td class="p-2 border text-right">
-                            <div class="font-bold text-indigo-800 urdu-font">${d.jamia}</div>
-                            <div class="text-xs text-gray-600 urdu-font">${tEntry.teacher}</div>
-                        </td>
-                        <td class="p-2 border">
-                            <div class="font-bold urdu-font">${p.subject}</div>
-                            <div class="text-xs font-bold ${sPer < 51 ? 'text-red-600' : 'text-orange-600'}">${sPer.toFixed(1)}% (${kefiyat})</div>
-                        </td>
-                        <td class="p-2 border bg-red-50 text-right text-sm urdu-font italic">${teacherComment}</td>
-                        <td class="p-2 border bg-blue-50 text-right text-sm urdu-font italic">${zimmedarComment}</td>
-                        <td class="p-2 border">
-                            <button onclick="window.editAdminTabsura('${d.id}', '${subjectKey}', '${d.jamia}', '${p.subject}')" 
-                                    class="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold shadow hover:bg-blue-700">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                        </td>
-                    </tr>`;
-                }
+                        // Zimmedar ka tabsura
+                        const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
+                                                ? d.zimmedar_comments[subjectKey] 
+                                                : '<span class="text-gray-400 italic">Nahi likha</span>';
+
+                        if (hasWazahat) totalSubmitted++; else totalPending++;
+
+                        wazahatRows += `
+                        <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                            <td class="p-2 border text-right font-bold urdu-font text-indigo-800">${d.jamia}</td>
+                            <td class="p-2 border font-bold urdu-font text-blue-700">${tEntry.teacher || "-"}</td>
+                            <td class="p-2 border text-right">
+                                <div class="font-bold urdu-font">${p.subject}</div>
+                                <div class="text-xs text-gray-500 urdu-font">${p.class || '-'}</div>
+                            </td>
+                            <td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border font-bold urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">
+                                ${kefiyat}
+                            </td>
+                            <td class="p-2 border bg-red-50 text-right text-sm urdu-font italic text-gray-700">
+                                ${teacherComment}
+                            </td>
+                            <td class="p-2 border bg-blue-50 text-right text-sm urdu-font italic text-indigo-700">
+                                ${zimmedarComment}
+                            </td>
+                        </tr>`;
+                    }
+                });
             });
-        });
+        }
     });
+
+    // Table Header (Action column ke bina)
+    thead.innerHTML = `
+    <tr class="bg-gray-800 text-white">
+        <th colspan="7" class="p-2 text-center text-sm font-bold">
+            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
+            Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+        </th>
+    </tr>
+    <tr class="bg-slate-100 text-slate-800">
+        <th class="p-2 border">جامعہ</th>
+        <th class="p-2 border">استاد</th>
+        <th class="p-2 border">مضمون / درجہ</th>
+        <th class="p-2 border">فیصد</th>
+        <th class="p-2 border">کیفیت</th>
+        <th class="p-2 border bg-red-100 text-red-900">وضاحت (Explanation)</th>
+        <th class="p-2 border bg-blue-100 text-indigo-900">تعلیمی ذمہ دار کا تبصرہ</th>
+    </tr>`;
+
+    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold">Koi Kamzor result nahi mila.</td></tr>`;
 }
     else {
         // ✅ ASATIZA WISE: Region aur User ke saath
