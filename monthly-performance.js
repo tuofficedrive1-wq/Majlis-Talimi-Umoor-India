@@ -74,18 +74,17 @@ if (tabName === 'performance') {
         </div>
         <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white" id="performance-table-container">
             <table class="w-full text-left border-collapse min-w-[1100px]">
-                <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
-                    <tr>
-                        <th class="p-4 border-b">Teacher</th>
-                        <th class="p-4 border-b">Class</th>
-                        <th class="p-4 border-b">Book</th>
-                        <th class="p-4 border-b text-center">Total Pgs</th>
-                        <th class="p-4 border-b text-center">Target</th>
-                        <th class="p-4 border-b text-center">Achieved</th>
-                        <th class="p-4 border-b text-center">Status</th>
-                        <th class="p-4 border-b text-center">Action</th>
-                    </tr>
-                </thead>
+                <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black">
+        <tr>
+            <th class="p-3 border-b">Teacher / Class / Book</th>
+            <th class="p-3 border-b text-center">Total Pgs</th>
+            <th class="p-3 border-b text-center">Month Target</th>
+            <th class="p-3 border-b text-center">Achieved</th>
+            <th class="p-3 border-b text-center">%</th>
+            <th class="p-3 border-b text-center">Kaifiyat</th>
+            <th class="p-3 border-b text-center">Action</th>
+        </tr>
+    </thead>
                 <tbody id="performance-table-body"></tbody>
             </table>
         </div>
@@ -306,71 +305,81 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
-    const selectedMonthIdx = parseInt(document.getElementById('report-month').value); 
+    const selectedMonthIdx = document.getElementById('report-month').value; 
     
-    // Config Load karein
-    const configSnap = await getDoc(doc(db, "settings", "academic_config"));
-    const config = configSnap.exists() ? configSnap.data() : null;
-    
-    if (!config) {
-        tbody.innerHTML = '<tr><td colspan="8" class="p-10 text-center text-red-500">Admin Config nahi mili.</td></tr>';
-        return;
-    }
+    // 1. Admin Calendar Fetch (Target nikalne ke liye)
+    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+    if (!configSnap.exists()) return;
+    const config = configSnap.data();
 
-    const activeYear = config.activeYear;
-    const monthData = config.monthDetails?.[selectedMonthIdx] || { sem1: 0, sem2: 0 };
-    
+    const sem1Total = config.totals?.s1 || 1; 
+    const sem2Total = config.totals?.s2 || 1;
+    const monthDays = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
+
+    // 2. User Data Fetch
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
+    const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
 
     let html = "";
     jamiaat.forEach(jamiaName => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
-        if (!jamiaData || !jamiaData.teachers) return;
+        if (!jamiaData) return;
 
-        // Jamia Header with Buttons (Copy from karkardagi.html logic)
+        // Jamia Header with Action Buttons
         html += `
-            <tr class="bg-slate-100 font-bold jamia-performance-header" data-jamia="${jamiaName}" data-editing="false">
-                <td colspan="8" class="p-4 border-y border-slate-200">
+            <tr class="bg-slate-100 font-bold" data-jamia="${jamiaName}">
+                <td colspan="7" class="p-3 border-y">
                     <div class="flex justify-between items-center">
-                        <span class="text-indigo-700 text-lg">${jamiaName}</span>
+                        <span class="text-indigo-700">${jamiaName}</span>
                         <div class="flex gap-2">
-                            <button onclick="copyTeacherLink('${jamiaName}')" class="bg-emerald-500 text-white text-[10px] px-3 py-1 rounded-lg">Link</button>
-                            <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-red-500 text-white text-[10px] px-3 py-1 rounded-lg">Image</button>
-                            <button onclick="toggleEditMode('${jamiaName}')" class="toggle-edit-btn bg-indigo-600 text-white text-[10px] px-3 py-1 rounded-lg">Edit Pages</button>
+                            <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-emerald-600 text-white text-[9px] px-2 py-1 rounded">Excel</button>
+                            <button onclick="toggleEdit('${jamiaName}')" class="edit-btn bg-indigo-600 text-white text-[9px] px-2 py-1 rounded">Edit</button>
                         </div>
                     </div>
                 </td>
             </tr>`;
 
         jamiaData.teachers.forEach(teacher => {
-            if (!teacher.periods) return;
-            teacher.periods.forEach((p, idx) => {
-                const totalDays = (p.semester == "1") ? config.sem1TotalDays : config.sem2TotalDays;
-                const monthDays = (p.semester == "1") ? monthData.sem1 : monthData.sem2;
-                const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
+            teacher.periods?.forEach(p => {
+                // Calculation Logic
+                const totalYearDays = (p.semester == "1") ? sem1Total : sem2Total;
+                const activeMonthDays = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
+                
+                // Monthly Target Calculation
+                const target = Math.round((p.totalPages / totalYearDays) * activeMonthDays) || 0;
+                
+                // Achievement & Status Logic (Default 0 for now)
+                const achieved = 0; 
+                const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+                
+                let status = "Munasib";
+                let statusClass = "text-red-600";
+                if (percentage >= 90) { status = "Mumtaz"; statusClass = "text-emerald-600"; }
+                else if (percentage >= 70) { status = "Behtar"; statusClass = "text-blue-600"; }
 
                 html += `
-                    <tr class="border-b performance-row" data-jamia="${jamiaName}">
-                        <td class="p-4 font-bold text-slate-800">${idx === 0 ? teacher.name : ''}</td>
-                        <td class="p-4">${p.className}</td>
-                        <td class="p-4">${p.bookName}</td>
-                        <td class="p-4 text-center">${p.totalPages}</td>
-                        <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/20">${target}</td>
-                        <td class="p-4 text-center">
-                            <input type="number" value="0" disabled 
-                                   class="achieved-input w-20 p-1 border rounded text-center bg-slate-50" 
-                                   data-target="${target}">
+                    <tr class="border-b text-sm" data-jamia="${jamiaName}">
+                        <td class="p-3">
+                            <div class="font-bold text-slate-700">${teacher.name}</div>
+                            <div class="text-[10px] text-slate-500">${p.className} - ${p.bookName}</div>
                         </td>
-                        <td class="p-4 text-center status-cell font-bold text-red-500">Pending</td>
-                        <td class="p-4 text-center">
-                             <button class="text-slate-400 hover:text-indigo-600"><i class="fas fa-ellipsis-v"></i></button>
+                        <td class="p-3 text-center">${p.totalPages}</td>
+                        <td class="p-3 text-center font-bold text-indigo-600">${target}</td>
+                        <td class="p-3 text-center">
+                            <input type="number" value="${achieved}" disabled 
+                                   class="achieved-inp w-16 border rounded text-center bg-slate-50"
+                                   oninput="updateRowStatus(this, ${target})">
+                        </td>
+                        <td class="p-3 text-center perc-cell font-bold">${percentage}%</td>
+                        <td class="p-3 text-center status-cell font-black ${statusClass}">${status}</td>
+                        <td class="p-3 text-center">
+                            <button class="text-slate-400"><i class="fas fa-history"></i></button>
                         </td>
                     </tr>`;
             });
         });
     });
-    tbody.innerHTML = html || '<tr><td colspan="8" class="p-10 text-center">Data nahi mila.</td></tr>';
+    tbody.innerHTML = html;
 };
 
 // --- Helpers ---
@@ -504,4 +513,25 @@ window.downloadJamiaImage = async (jamiaName) => {
     // Isme hum sirf us Jamia ka data filter karke image banate hain jese karkardagi.html me tha
     alert("Image generation starting for " + jamiaName);
     // html2canvas logic yahan aayega...
+};
+window.updateRowStatus = (input, target) => {
+    const row = input.closest('tr');
+    const achieved = parseInt(input.value) || 0;
+    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+    
+    const percCell = row.querySelector('.perc-cell');
+    const statusCell = row.querySelector('.status-cell');
+    
+    percCell.textContent = percentage + "%";
+    
+    if (percentage >= 90) {
+        statusCell.textContent = "Mumtaz";
+        statusCell.className = "p-3 text-center status-cell font-black text-emerald-600";
+    } else if (percentage >= 70) {
+        statusCell.textContent = "Behtar";
+        statusCell.className = "p-3 text-center status-cell font-black text-blue-600";
+    } else {
+        statusCell.textContent = "Munasib";
+        statusCell.className = "p-3 text-center status-cell font-black text-red-600";
+    }
 };
