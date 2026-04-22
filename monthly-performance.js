@@ -389,7 +389,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         });
 
         // UI Refresh
-        await loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear);
+        await loadAllTeachers(jamiaat, db, currentUser, selectedYear);
         
         // --- DROPDOWN OPEN RAKHNE KA LOGIC ---
         // Refresh ke baad wahi teacher ka container dhoond kar open karein
