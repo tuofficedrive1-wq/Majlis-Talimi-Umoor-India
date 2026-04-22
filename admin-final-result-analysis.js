@@ -414,6 +414,7 @@ else if (layout === 'wazahat') {
             (tEntry.periods || []).forEach((p) => {
                 const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
                 
+                // 70% threshold for weak results
                 if (sPer < 70) {
                     const subjectKey = (p.subject || "").replace(/\./g, '_');
                     const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
@@ -422,51 +423,53 @@ else if (layout === 'wazahat') {
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        // ✅ WAZAHAT FONT & DESIGN: Font bada (text-lg) aur leading behtar ki gayi hai
+                        // ✅ WAZAHAT FONT: Text-xl (Bada) aur Leading behtar kiya
                         const teacherComment = hasWazahat 
-                            ? `<div class="text-lg font-bold leading-snug urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` 
-                            : '<span class="text-red-600 font-black italic animate-pulse">Pending...</span>';
+                            ? `<div class="text-xl font-bold leading-snug urdu-font text-gray-900 text-center">${d.wazahat_map[subjectKey]}</div>` 
+                            : '<span class="text-red-600 font-black italic animate-pulse text-lg">Pending...</span>';
                         
                         const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
-                            ? `<div class="text-lg font-bold leading-snug urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` 
-                            : '<span class="text-gray-400 italic">Khali hai</span>';
+                            ? `<div class="text-xl font-bold leading-snug urdu-font text-indigo-900 text-center">${d.zimmedar_comments[subjectKey]}</div>` 
+                            : '<span class="text-gray-400 italic text-lg">Khali hai</span>';
 
-                        const rowHtml = `
+                        wazahatRows += `
                         <tr class="hover:bg-red-50 border-b text-center align-middle">
                             <td class="p-2 border font-bold urdu-font text-indigo-950 whitespace-nowrap text-sm">${d.jamia}</td>
                             <td class="p-2 border font-bold urdu-font text-blue-800 whitespace-nowrap text-sm">${tEntry.teacher || "-"}</td>
-                            <td class="p-2 border whitespace-nowrap min-w-max">
+                            <td class="p-2 border whitespace-nowrap">
                                 <div class="font-bold urdu-font text-sm text-black">${p.subject || '-'}</div>
-                                <div class="text-xs font-black text-red-700 mt-1 border-t border-red-100 pt-1">${p.class || '-'}</div>
+                                <div class="text-[12px] font-black text-red-700 mt-1 border-t border-red-100 pt-0.5">${p.class || '-'}</div>
                             </td>
-                            <td class="p-2 border font-black text-red-600 w-12 text-sm">${sPer.toFixed(1)}%</td>
-                            <td class="p-2 border font-bold urdu-font w-16 text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                            <td class="p-2 border font-black text-red-600 whitespace-nowrap text-sm">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border font-bold urdu-font whitespace-nowrap text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
                             
-                            <td class="p-4 border bg-red-50 text-center min-w-[300px] shadow-inner">${teacherComment}</td>
-                            <td class="p-4 border bg-blue-50 text-center min-w-[300px] shadow-inner">${zimmedarComment}</td>
+                            <td class="p-5 border bg-red-50 min-w-[350px] shadow-inner">${teacherComment}</td>
+                            <td class="p-5 border bg-blue-50 min-w-[350px] shadow-inner">${zimmedarComment}</td>
                         </tr>`;
                         
-                        latestMap.set(uniqueId, rowHtml);
-                        wazahatRows += rowHtml;
+                        latestMap.set(uniqueId, true);
                     }
                 }
             });
         });
     });
 
+    // ✅ FINAL HEADING FIX: thead ke andar hi rakha hai taake bigde nahi
     thead.innerHTML = `
     <tr class="bg-slate-900 text-white border-b-2 border-yellow-500">
-        <th colspan="7" class="p-3 text-center text-lg font-bold">
-            ⚠️ Kamzor Results Ki Tafseel (Wazahat Report)
+        <th colspan="7" class="p-3 text-center text-base md:text-lg font-bold">
+            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
+            Baqi (Pending): <span class="text-red-400">${totalPending}</span>
         </th>
     </tr>
-    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold border-b-2 shadow-sm">
+    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold border-b-2">
         <th class="p-2 border whitespace-nowrap">جامعہ</th>
         <th class="p-2 border whitespace-nowrap">استاد</th>
         <th class="p-2 border whitespace-nowrap">مضمون/درجہ</th>
-        <th class="p-2 border w-12">فیصد</th>
-        <th class="p-2 border w-16">کیفیت</th>
-        <th class="p-2 border bg-red-100 text-red-900">وضاحت (Explanation)</th>
+        <th class="p-2 border whitespace-nowrap">فیصد</th>
+        <th class="p-2 border whitespace-nowrap">کیفیت</th>
+        <th class="p-2 border bg-red-100 text-red-900">وضاحت (Teacher)</th>
         <th class="p-2 border bg-blue-100 text-indigo-900">ذمہ دار کا تبصرہ</th>
     </tr>`;
 
