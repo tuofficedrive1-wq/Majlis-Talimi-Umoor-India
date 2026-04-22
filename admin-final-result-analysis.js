@@ -422,28 +422,28 @@ else if (layout === 'wazahat') {
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        // ✅ FONT & ALIGNMENT: Text ko center kiya aur size badhaya (text-base aur text-center)
+                        // ✅ WAZAHAT FONT & DESIGN: Font bada (text-lg) aur leading behtar ki gayi hai
                         const teacherComment = hasWazahat 
-                            ? `<div class="text-base font-medium leading-relaxed">${d.wazahat_map[subjectKey]}</div>` 
-                            : '<span class="text-red-500 font-bold italic">Pending...</span>';
+                            ? `<div class="text-lg font-bold leading-snug urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` 
+                            : '<span class="text-red-600 font-black italic animate-pulse">Pending...</span>';
                         
                         const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
-                            ? `<div class="text-base font-medium leading-relaxed text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` 
-                            : '<span class="text-gray-400 italic">Nahi likha</span>';
+                            ? `<div class="text-lg font-bold leading-snug urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` 
+                            : '<span class="text-gray-400 italic">Khali hai</span>';
 
                         const rowHtml = `
                         <tr class="hover:bg-red-50 border-b text-center align-middle">
-                            <td class="p-2 border text-right font-bold urdu-font text-indigo-900 whitespace-nowrap">${d.jamia}</td>
-                            <td class="p-2 border font-bold urdu-font text-blue-700 whitespace-nowrap">${tEntry.teacher || "-"}</td>
-                            <td class="p-2 border text-center whitespace-nowrap">
-                                <div class="font-bold urdu-font text-sm">${p.subject || '-'}</div>
-                                <div class="text-[10px] text-gray-500">${p.class || '-'}</div>
+                            <td class="p-2 border font-bold urdu-font text-indigo-950 whitespace-nowrap text-sm">${d.jamia}</td>
+                            <td class="p-2 border font-bold urdu-font text-blue-800 whitespace-nowrap text-sm">${tEntry.teacher || "-"}</td>
+                            <td class="p-2 border whitespace-nowrap min-w-max">
+                                <div class="font-bold urdu-font text-sm text-black">${p.subject || '-'}</div>
+                                <div class="text-xs font-black text-red-700 mt-1 border-t border-red-100 pt-1">${p.class || '-'}</div>
                             </td>
-                            <td class="p-2 border font-bold text-red-600 w-16">${sPer.toFixed(1)}%</td>
-                            <td class="p-2 border font-bold urdu-font w-20" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                            <td class="p-2 border font-black text-red-600 w-12 text-sm">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border font-bold urdu-font w-16 text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
                             
-                            <td class="p-4 border bg-red-50 text-center urdu-font text-gray-800 min-w-[200px]">${teacherComment}</td>
-                            <td class="p-4 border bg-blue-50 text-center urdu-font text-indigo-800 min-w-[200px]">${zimmedarComment}</td>
+                            <td class="p-4 border bg-red-50 text-center min-w-[300px] shadow-inner">${teacherComment}</td>
+                            <td class="p-4 border bg-blue-50 text-center min-w-[300px] shadow-inner">${zimmedarComment}</td>
                         </tr>`;
                         
                         latestMap.set(uniqueId, rowHtml);
@@ -454,26 +454,23 @@ else if (layout === 'wazahat') {
         });
     });
 
-    // ✅ HEADER: Width ko tight karne ke liye whitespace-nowrap use kiya
     thead.innerHTML = `
-    <tr class="bg-slate-800 text-white">
-        <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm">
-            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
-            Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+    <tr class="bg-slate-900 text-white border-b-2 border-yellow-500">
+        <th colspan="7" class="p-3 text-center text-lg font-bold">
+            ⚠️ Kamzor Results Ki Tafseel (Wazahat Report)
         </th>
     </tr>
-    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold border-b-2">
+    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold border-b-2 shadow-sm">
         <th class="p-2 border whitespace-nowrap">جامعہ</th>
         <th class="p-2 border whitespace-nowrap">استاد</th>
         <th class="p-2 border whitespace-nowrap">مضمون/درجہ</th>
-        <th class="p-2 border w-16">فیصد</th>
-        <th class="p-2 border w-24">کیفیت</th>
-        <th class="p-2 border bg-red-100 text-red-900">وضاحت (Teacher)</th>
-        <th class="p-2 border bg-blue-100 text-indigo-900">تبصرہ (Zimmedar)</th>
+        <th class="p-2 border w-12">فیصد</th>
+        <th class="p-2 border w-16">کیفیت</th>
+        <th class="p-2 border bg-red-100 text-red-900">وضاحت (Explanation)</th>
+        <th class="p-2 border bg-blue-100 text-indigo-900">ذمہ دار کا تبصرہ</th>
     </tr>`;
 
-    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Koi record nahi mila.</td></tr>`;
+    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
 }
     else {
         // ✅ ASATIZA WISE: Region aur User ke saath
