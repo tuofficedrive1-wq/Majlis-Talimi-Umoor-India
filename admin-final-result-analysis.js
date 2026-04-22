@@ -402,12 +402,10 @@ export async function initAdminResultAnalysis(db, containerId) {
             </tr>`;
         });
     }
-   else if (layout === 'wazahat') {
+  else if (layout === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
     let wazahatRows = "";
-
-    // Duplicacy se bachne ke liye Map ka istemal
     let latestMap = new Map();
 
     data.forEach((d) => {
@@ -416,7 +414,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             (tEntry.periods || []).forEach((p) => {
                 const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
                 
-                // Result analysis ke mutabiq 70% se kam wale weak results
+                // Result analysis criteria (70% threshold)
                 if (sPer < 70) {
                     const subjectKey = (p.subject || "").replace(/\./g, '_');
                     const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
@@ -450,28 +448,27 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     });
 
-    // ✅ FINAL HEADING FIX: Do alag TR rows mein split kiya gaya hai
+    // ✅ FINAL HEADING RE-FIX: Isay bilkul aise hi paste karein
+    // Ensure karein ke thead ke andar purana kuch na bacha ho
     thead.innerHTML = `
-    <tr class="bg-slate-800 text-white border-b border-slate-700">
-        <th colspan="7" class="p-4 text-center text-sm md:text-base font-bold tracking-wide">
-            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> 
-            <span class="mx-3 text-slate-500">|</span> 
-            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> 
-            <span class="mx-3 text-slate-500">|</span> 
+    <tr class="bg-slate-800 text-white">
+        <th colspan="7" class="p-4 text-center text-base font-bold">
+            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
             Baqi (Pending): <span class="text-red-400">${totalPending}</span>
         </th>
     </tr>
-    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold uppercase">
-        <th class="p-3 border">جامعہ</th>
-        <th class="p-3 border">استاد</th>
-        <th class="p-3 border">مضمون / درجہ</th>
-        <th class="p-3 border">فیصد</th>
-        <th class="p-3 border">کیفیت</th>
-        <th class="p-3 border bg-red-100 text-red-900">وضاحت (Teacher)</th>
-        <th class="p-3 border bg-blue-100 text-indigo-900">تبصرہ (Zimmedar)</th>
+    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold">
+        <th class="p-3 border w-[15%]">جامعہ</th>
+        <th class="p-3 border w-[15%]">استاد</th>
+        <th class="p-3 border w-[15%]">مضمون / درجہ</th>
+        <th class="p-3 border w-[8%]">فیصد</th>
+        <th class="p-3 border w-[10%]">کیفیت</th>
+        <th class="p-3 border bg-red-50 text-red-900 w-[20%]">وضاحت (Teacher)</th>
+        <th class="p-3 border bg-blue-50 text-indigo-900 w-[17%]">تبصرہ (Zimmedar)</th>
     </tr>`;
 
-    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Muntakhaba criteria ke mutabiq koi record nahi mila.</td></tr>`;
+    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Koi record nahi mila.</td></tr>`;
 }
     else {
         // ✅ ASATIZA WISE: Region aur User ke saath
