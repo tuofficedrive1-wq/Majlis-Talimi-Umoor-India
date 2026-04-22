@@ -52,20 +52,25 @@ export async function initAdminResultAnalysis(db, containerId) {
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
 
     const getJamiaContext = (jamiaName) => {
-        if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
-        const target = jamiaName.trim().toLowerCase();
-        const foundUser = allUsers.find(u => {
-            const list = u.jamiaatList || [];
-            return list.some(j => {
-                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                return (name || '').trim().toLowerCase() === target;
-            });
+    if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
+    const target = jamiaName.trim().toLowerCase();
+
+    // 🛑 FIX: Filter users by those who have this jamia AND are standard users
+    const foundUser = allUsers.find(u => {
+        const list = u.jamiaatList || [];
+        const hasJamia = list.some(j => {
+            const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+            return (name || '').trim().toLowerCase() === target;
         });
-        return {
-            userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
-            region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
-        };
+        // Zimmedar ko priority dein (Role check)
+        return hasJamia && (u.role === 'standard' || !u.role);
+    });
+
+    return {
+        userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
+        region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
     };
+};
 
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
@@ -208,11 +213,12 @@ export async function initAdminResultAnalysis(db, containerId) {
     elements.regionFilter.onchange = () => {
         const selReg = elements.regionFilter.value;
         elements.userFilter.innerHTML = '<option value="all">All Users</option>';
-        const filtered = selReg === "all" ? allUsers : allUsers.filter(u => u.region === selReg);
-        filtered.forEach(u => {
-            const n = u.name || u.email;
-            elements.userFilter.innerHTML += `<option value="${n}">${n}</option>`;
-        });
+            // Sirf standard users ko dropdown mein shamil karein
+            const standardOnly = allUsers.filter(u => u.role === 'standard' || !u.role);
+            standardOnly.forEach(u => {
+                const n = u.name || u.email;
+                elements.userFilter.innerHTML += `<option value="${n}">${n}</option>`;
+            });
         updateJamiaList();
     };
 
@@ -241,18 +247,26 @@ export async function initAdminResultAnalysis(db, containerId) {
             let totalStudents = 0, passedStudents = 0, jamiaCount = new Set();
 
             snapshot.forEach(doc => {
-                const d = doc.data();
-                const context = getJamiaContext(d.jamia);
-
-                const matchRegion = (selRegion === "all" || context.region === selRegion);
-                const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
-                const matchJamia = (selJamia === "all" || d.jamia.toLowerCase().includes(selJamia));
-
-                const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
-
-                if (matchRegion && matchUser && matchJamia && !uniqueKeys.has(uniqueId)) {
-                    dataList.push({ ...d, ...context });
-                    uniqueKeys.add(uniqueId);
+                    const d = doc.data();
+                    const context = getJamiaContext(d.jamia);
+                
+                    // 🛑 NEW: Sirf wahi data uthayein jo 'Standard' user (Zimmedar) ne submit kiya ho
+                    // Agar humein context se pata chale ke ye Inspector hai, toh use skip kar dein
+                    const foundUserInSystem = allUsers.find(u => (u.name || u.email) === context.userName);
+                    const isStandardUser = !foundUserInSystem || foundUserInSystem.role === 'standard' || !foundUserInSystem.role;
+                
+                    if (!isStandardUser) return; // Agar Inspector hai toh display list mein na shamil karein
+                
+                    const matchRegion = (selRegion === "all" || context.region === selRegion);
+                    const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
+                    const matchJamia = (selJamia === "all" || d.jamia.toLowerCase().includes(selJamia));
+                
+                    // Unique key taake duplicate entries (agar hon) toh wo bhi hat jayein
+                    const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
+                
+                    if (matchRegion && matchUser && matchJamia && !uniqueKeys.has(uniqueId)) {
+                        dataList.push({ ...d, ...context });
+                        uniqueKeys.add(uniqueId);
                     
                     const num = (v) => parseInt(v) || 0;
                     const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
