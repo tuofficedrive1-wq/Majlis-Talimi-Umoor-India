@@ -458,10 +458,13 @@ else if (layout === 'wazahat') {
     // ✅ HEADER STABILITY: Two separate <tr> rows within <thead>
    thead.innerHTML = `
 <tr class="bg-slate-800 text-white">
-    <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm leading-relaxed">
-        Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-        Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> <br>
-        Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+    <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm">
+        Kul Kamzor Results: 
+        <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+        Wazahat Aa Gayi: 
+        <span class="text-green-400">${totalSubmitted}</span> | 
+        Baqi (Pending): 
+        <span class="text-red-400">${totalPending}</span>
     </th>
 </tr>
 
