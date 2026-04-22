@@ -402,27 +402,33 @@ export async function initAdminResultAnalysis(db, containerId) {
             </tr>`;
         });
     }
-    if (layout === 'wazahat') {
-        let totalPending = 0;
-        let totalSubmitted = 0;
-        let wazahatRows = "";
+   else if (layout === 'wazahat') {
+    let totalPending = 0;
+    let totalSubmitted = 0;
+    let wazahatRows = "";
 
-        data.forEach((d) => {
-            const records = d.data || []; 
-            records.forEach((tEntry) => {
-                (tEntry.periods || []).forEach((p) => {
-                    const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                    
-                    if (sPer < 70) {
-                        const subjectKey = (p.subject || "").replace(/\./g, '_');
+    // Duplicacy se bachne ke liye Map ka istemal
+    let latestMap = new Map();
+
+    data.forEach((d) => {
+        const records = d.data || [];
+        records.forEach((tEntry) => {
+            (tEntry.periods || []).forEach((p) => {
+                const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
+                
+                // Result analysis ke mutabiq 70% se kam wale weak results
+                if (sPer < 70) {
+                    const subjectKey = (p.subject || "").replace(/\./g, '_');
+                    const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
+
+                    if (!latestMap.has(uniqueId)) {
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
-                        
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
                         const teacherComment = hasWazahat ? d.wazahat_map[subjectKey] : '<span class="text-red-500 font-bold italic">Pending...</span>';
                         const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) ? d.zimmedar_comments[subjectKey] : '<span class="text-gray-400 italic">Nahi likha</span>';
 
-                        wazahatRows += `
+                        const rowHtml = `
                         <tr class="hover:bg-red-50 border-b text-center align-middle">
                             <td class="p-3 border text-right font-bold urdu-font text-indigo-900">${d.jamia}</td>
                             <td class="p-3 border font-bold urdu-font text-blue-700">${tEntry.teacher || "-"}</td>
@@ -432,35 +438,41 @@ export async function initAdminResultAnalysis(db, containerId) {
                             </td>
                             <td class="p-3 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
                             <td class="p-3 border font-bold urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
-                            <td class="p-3 border bg-red-50 text-right text-sm urdu-font italic text-gray-700">${teacherComment}</td>
-                            <td class="p-3 border bg-blue-50 text-right text-sm urdu-font italic text-indigo-800">${zimmedarComment}</td>
+                            <td class="p-3 border bg-red-50 text-right text-sm urdu-font italic text-gray-700 leading-relaxed">${teacherComment}</td>
+                            <td class="p-3 border bg-blue-50 text-right text-sm urdu-font italic text-indigo-800 leading-relaxed">${zimmedarComment}</td>
                         </tr>`;
+                        
+                        latestMap.set(uniqueId, rowHtml);
+                        wazahatRows += rowHtml;
                     }
-                });
+                }
             });
         });
+    });
 
-        // ✅ FIXED HEADING: Do alag Rows (<tr>) mein split taake bikhre nahi
-        thead.innerHTML = `
-        <tr class="bg-gray-800 text-white">
-            <th colspan="7" class="p-3 text-center text-sm font-bold border-b border-gray-700">
-                Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-                Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
-                Baqi (Pending): <span class="text-red-400">${totalPending}</span>
-            </th>
-        </tr>
-        <tr class="bg-slate-200 text-slate-900 text-[13px] font-bold">
-            <th class="p-2 border">جامعہ</th>
-            <th class="p-2 border">استاد</th>
-            <th class="p-2 border">مضمون / درجہ</th>
-            <th class="p-2 border">فیصد</th>
-            <th class="p-2 border">کیفیت</th>
-            <th class="p-2 border bg-red-100">وضاحت (Teacher)</th>
-            <th class="p-2 border bg-blue-100">تبصرہ (Zimmedar)</th>
-        </tr>`;
+    // ✅ FINAL HEADING FIX: Do alag TR rows mein split kiya gaya hai
+    thead.innerHTML = `
+    <tr class="bg-slate-800 text-white border-b border-slate-700">
+        <th colspan="7" class="p-4 text-center text-sm md:text-base font-bold tracking-wide">
+            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> 
+            <span class="mx-3 text-slate-500">|</span> 
+            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> 
+            <span class="mx-3 text-slate-500">|</span> 
+            Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+        </th>
+    </tr>
+    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold uppercase">
+        <th class="p-3 border">جامعہ</th>
+        <th class="p-3 border">استاد</th>
+        <th class="p-3 border">مضمون / درجہ</th>
+        <th class="p-3 border">فیصد</th>
+        <th class="p-3 border">کیفیت</th>
+        <th class="p-3 border bg-red-100 text-red-900">وضاحت (Teacher)</th>
+        <th class="p-3 border bg-blue-100 text-indigo-900">تبصرہ (Zimmedar)</th>
+    </tr>`;
 
-        tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Koi Kamzor result nahi mila.</td></tr>`;
-    }
+    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Muntakhaba criteria ke mutabiq koi record nahi mila.</td></tr>`;
+}
     else {
         // ✅ ASATIZA WISE: Region aur User ke saath
         thead.innerHTML = `
