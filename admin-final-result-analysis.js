@@ -456,7 +456,7 @@ else if (layout === 'wazahat') {
     });
 
     // ✅ HEADER STABILITY: Two separate <tr> rows within <thead>
-   thead.innerHTML = `
+thead.innerHTML = `
 <tr class="bg-slate-800 text-white">
     <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm">
         Kul Kamzor Results: 
@@ -468,14 +468,14 @@ else if (layout === 'wazahat') {
     </th>
 </tr>
 
-<tr class="bg-slate-100 text-slate-900 text-[13px] font-bold border-b-2">
-    <th class="p-2 border whitespace-nowrap">جامعہ</th>
-    <th class="p-2 border whitespace-nowrap">استاد</th>
-    <th class="p-2 border whitespace-nowrap">مضمون/درجہ</th>
-    <th class="p-2 border w-16">فیصد</th>
-    <th class="p-2 border w-24">کیفیت</th>
-    <th class="p-2 border bg-red-100 text-red-900">وضاحت (Teacher)</th>
-    <th class="p-2 border bg-blue-100 text-indigo-900">تبصرہ (Zimmedar)</th>
+<tr class="bg-slate-900 text-white text-[13px] font-bold">
+    <th class="p-2 border">جامعہ</th>
+    <th class="p-2 border">استاد</th>
+    <th class="p-2 border">مضمون/درجہ</th>
+    <th class="p-2 border">فیصد</th>
+    <th class="p-2 border">کیفیت</th>
+    <th class="p-2 border bg-red-200 text-red-900">وضاحت (Teacher)</th>
+    <th class="p-2 border bg-blue-200 text-indigo-900">تبصرہ (Zimmedar)</th>
 </tr>
 `;
 
