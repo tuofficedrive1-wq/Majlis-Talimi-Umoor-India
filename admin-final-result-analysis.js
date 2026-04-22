@@ -414,7 +414,6 @@ else if (layout === 'wazahat') {
             (tEntry.periods || []).forEach((p) => {
                 const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
                 
-                // Result Analysis Criteria (70% threshold)
                 if (sPer < 70) {
                     const subjectKey = (p.subject || "").replace(/\./g, '_');
                     const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
@@ -423,7 +422,6 @@ else if (layout === 'wazahat') {
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        // ✅ FONT SIZE IMPROVED: text-lg aur font-bold for better visibility
                         const teacherComment = hasWazahat 
                             ? `<div class="text-lg font-bold leading-snug urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` 
                             : '<span class="text-red-600 font-black italic animate-pulse">Pending...</span>';
@@ -434,17 +432,16 @@ else if (layout === 'wazahat') {
 
                         const rowHtml = `
                         <tr class="hover:bg-red-50 border-b text-center align-middle">
-                            <td class="p-2 border font-bold urdu-font text-indigo-950 whitespace-nowrap text-sm">${d.jamia}</td>
-                            <td class="p-2 border font-bold urdu-font text-blue-800 whitespace-nowrap text-sm">${tEntry.teacher || "-"}</td>
-                            <td class="p-2 border whitespace-nowrap">
+                            <td class="p-2 border font-bold urdu-font text-indigo-950 text-sm">${d.jamia}</td>
+                            <td class="p-2 border font-bold urdu-font text-blue-800 text-sm">${tEntry.teacher || "-"}</td>
+                            <td class="p-2 border">
                                 <div class="font-bold urdu-font text-sm text-black">${p.subject || '-'}</div>
                                 <div class="text-[12px] font-black text-red-700 mt-1 border-t border-red-100 pt-0.5">${p.class || '-'}</div>
                             </td>
                             <td class="p-2 border font-black text-red-600 w-12 text-sm">${sPer.toFixed(1)}%</td>
                             <td class="p-2 border font-bold urdu-font w-16 text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
-                            
-                            <td class="p-4 border bg-red-50 text-center min-w-[300px] shadow-inner">${teacherComment}</td>
-                            <td class="p-4 border bg-blue-50 text-center min-w-[300px] shadow-inner">${zimmedarComment}</td>
+                            <td class="p-4 border bg-red-50 text-center min-w-[250px]">${teacherComment}</td>
+                            <td class="p-4 border bg-blue-50 text-center min-w-[250px]">${zimmedarComment}</td>
                         </tr>`;
                         
                         latestMap.set(uniqueId, true);
@@ -455,29 +452,27 @@ else if (layout === 'wazahat') {
         });
     });
 
-    // ✅ HEADER STABILITY: Two separate <tr> rows within <thead>
-thead.innerHTML = `
-<tr class="bg-slate-800 text-white">
-    <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm">
-        Kul Kamzor Results: 
-        <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-        Wazahat Aa Gayi: 
-        <span class="text-green-400">${totalSubmitted}</span> | 
-        Baqi (Pending): 
-        <span class="text-red-400">${totalPending}</span>
-    </th>
-</tr>
-
-<tr class="bg-slate-900 text-white text-[13px] font-bold">
-    <th class="p-2 border">جامعہ</th>
-    <th class="p-2 border">استاد</th>
-    <th class="p-2 border">مضمون/درجہ</th>
-    <th class="p-2 border">فیصد</th>
-    <th class="p-2 border">کیفیت</th>
-    <th class="p-2 border bg-red-200 text-red-900">وضاحت (Teacher)</th>
-    <th class="p-2 border bg-blue-200 text-indigo-900">تبصرہ (Zimmedar)</th>
-</tr>
-`;
+    // ✅ FIXED HEADER: Dono rows ko ek hi innerHTML assignment mein rakha gaya hai
+    thead.innerHTML = `
+        <tr class="bg-[#1e293b] text-white">
+            <th colspan="7" class="p-4 text-center text-lg font-bold tracking-wide border-b border-slate-700">
+                <span class="opacity-80">Kul Kamzor Results:</span> <span class="text-yellow-400 mx-2">${totalPending + totalSubmitted}</span> 
+                <span class="mx-3 text-slate-500">|</span>
+                <span class="opacity-80">Wazahat Aa Gayi:</span> <span class="text-green-400 mx-2">${totalSubmitted}</span> 
+                <span class="mx-3 text-slate-500">|</span>
+                <span class="opacity-80">Baqi (Pending):</span> <span class="text-red-400 mx-2">${totalPending}</span>
+            </th>
+        </tr>
+        <tr class="bg-slate-900 text-white text-[13px] font-bold urdu-font">
+            <th class="p-3 border border-slate-700">جامعہ</th>
+            <th class="p-3 border border-slate-700">استاد</th>
+            <th class="p-3 border border-slate-700">مضمون/درجہ</th>
+            <th class="p-3 border border-slate-700">فیصد</th>
+            <th class="p-3 border border-slate-700">کیفیت</th>
+            <th class="p-3 border border-slate-700 bg-red-900/30">وضاحت (Teacher)</th>
+            <th class="p-3 border border-slate-700 bg-blue-900/30">تبصرہ (Zimmedar)</th>
+        </tr>
+    `;
 
     tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
 }
