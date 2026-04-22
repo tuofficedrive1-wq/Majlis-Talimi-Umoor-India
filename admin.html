@@ -2367,17 +2367,18 @@ const getTeacherCountFromStructure = (user) => {
     }
 };
         
-const generateMasterSummaryHtml = (users, reports, title, titleColorClass) => {
+const generateMasterSummaryHtml = (users, allReports, title, titleColorClass) => {
     let stats = { jamiaat: 0, asatiza: 0, jaiza: 0, tests: 0, kkd: 0, recs: 0, submitted: 0 };
     const userIds = new Set(users.map(u => u.id));
-    const reportsByUser = reports
-        .filter(r => userIds.has(r.userId))
-        .reduce((acc, r) => { acc[r.userId] = r; return acc; }, {});
+
+    // Sabse important step: Sirf unhi reports ko filter karein jo in users ki hain
+    const filteredReports = allReports.filter(r => userIds.has(r.userId));
+    const reportsByUser = filteredReports.reduce((acc, r) => { acc[r.userId] = r; return acc; }, {});
 
     users.forEach(user => {
         const report = reportsByUser[user.id];
         stats.jamiaat += user.totalJamiaat || (user.jamiaatList ? user.jamiaatList.length : 0);
-        stats.asatiza += getTeacherCountFromStructure(user); 
+        stats.asatiza += getTeacherCountFromStructure(user);
 
         if (report) {
             stats.submitted++;
@@ -2390,84 +2391,115 @@ const generateMasterSummaryHtml = (users, reports, title, titleColorClass) => {
     });
 
     return `
-        <div class="summary-card master-summary-card col-span-full">
+        <div class="summary-card master-summary-card col-span-full mb-6">
             <div class="border-b pb-4 mb-2">
                 <h3 class="text-2xl font-bold ${titleColorClass}">${title}</h3>
-                <p class="text-sm text-gray-600">Total data for ${users.length} users (${stats.submitted} reports submitted).</p>
+                <p class="text-sm text-gray-600">Total: ${users.length} Users | ${stats.submitted} Reports Submitted</p>
             </div>
-            <div class="master-summary-stats">
-                <div class="bg-blue-50 border-blue-100"><p class="text-3xl font-bold text-blue-800">${stats.jamiaat}</p><p class="text-xs uppercase mt-1">Total Jamiaat</p></div>
-                <div class="bg-purple-50 border-purple-100"><p class="text-3xl font-bold text-purple-800">${stats.asatiza}</p><p class="text-xs uppercase mt-1">Total Asatiza</p></div>
-                <div class="bg-green-50 border-green-100"><p class="text-3xl font-bold text-green-800">${stats.jaiza}</p><p class="text-xs uppercase mt-1">Jaiza Done</p></div>
-                <div class="bg-yellow-50 border-yellow-100"><p class="text-3xl font-bold text-yellow-800">${stats.tests}</p><p class="text-xs uppercase mt-1">Tests Taken</p></div>
-                <div class="bg-indigo-50 border-indigo-100"><p class="text-3xl font-bold text-indigo-800">${stats.kkd}</p><p class="text-xs uppercase mt-1">Teachers Filled</p></div>
-                <div class="bg-teal-50 border-teal-100"><p class="text-3xl font-bold text-teal-800">${stats.recs}</p><p class="text-xs uppercase mt-1">Recordings</p></div>
+            <div class="master-summary-stats grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="bg-blue-50 p-3 rounded">
+                    <p class="text-2xl font-bold text-blue-800">${stats.jamiaat}</p>
+                    <p class="text-[10px] uppercase font-bold">Jamiaat</p>
+                </div>
+                <div class="bg-purple-50 p-3 rounded">
+                    <p class="text-2xl font-bold text-purple-800">${stats.asatiza}</p>
+                    <p class="text-[10px] uppercase font-bold">Asatiza</p>
+                </div>
+                <div class="bg-green-50 p-3 rounded">
+                    <p class="text-2xl font-bold text-green-800">${stats.jaiza}</p>
+                    <p class="text-[10px] uppercase font-bold">Jaiza Done</p>
+                </div>
+                <div class="bg-yellow-50 p-3 rounded">
+                    <p class="text-2xl font-bold text-yellow-800">${stats.tests}</p>
+                    <p class="text-[10px] uppercase font-bold">Tests</p>
+                </div>
+                <div class="bg-indigo-50 p-3 rounded">
+                    <p class="text-2xl font-bold text-indigo-800">${stats.kkd}</p>
+                    <p class="text-[10px] uppercase font-bold">KKd Filled</p>
+                </div>
+                <div class="bg-teal-50 p-3 rounded">
+                    <p class="text-2xl font-bold text-teal-800">${stats.recs}</p>
+                    <p class="text-[10px] uppercase font-bold">Recordings</p>
+                </div>
             </div>
         </div>`;
 };
         
         const renderAdminSummaryCards = (reports) => {
-
-            console.log("ALL USERS:", allUsersData);
-    console.log("ROLES:", allUsersData.map(u => u.role));
-            
     if (!adminReportsSummaryContainer) return;
     
     const selectedUserId = adminUserFilterSelect.value;
     const selectedRegion = adminRegionFilterSelect.value;
 
-    // Containers ki reference
+    // Sahi containers ko target karna
     const standardContainer = document.getElementById('admin-reports-summary-container');
     const inspectorContainer = document.getElementById('inspector-reports-summary-container');
     const inspectorHeading = document.getElementById('inspector-reports-summary-heading');
 
-    // 1. AGAR SINGLE USER SELECT HAI (Purana Analysis View Logic)
-    if (selectedUserId !== 'all') {
-        const user = allUsersData.find(u => u.id === selectedUserId);
-        const userReports = reports.filter(r => r.userId === selectedUserId);
-        if (user) {
-            inspectorHeading.classList.add('hidden');
-            inspectorContainer.innerHTML = '';
-            renderFullUserAnalysis(user, userReports);
-            return; // Function yahan se ruk jayega
-        }
-    }
-
-    // 2. DATA KO ROLES KE HISAB SE FILTER KAREIN
-    let standardUsers = allUsersData.filter(u => 
-    u.id !== ADMIN_UID &&
-    u.role === "standard" &&
-    (selectedRegion === 'all' || u.region === selectedRegion)
-).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            console.log("STANDARD USERS COUNT:", standardUsers.length);
-
-    let inspectorUsers = allUsersData.filter(u => 
-        u.id !== ADMIN_UID && 
-        u.role === 'inspector' &&
-        (selectedRegion === 'all' || u.region === selectedRegion)
-    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-    // UI Reset
+    // UI ko reset (saaf) karna
     reportsLoadingMsg.classList.add('hidden');
     standardContainer.innerHTML = '';
     inspectorContainer.innerHTML = '';
     standardContainer.classList.remove('single-user-view');
+    inspectorHeading.classList.add('hidden');
 
-    // 3. MASTER SUMMARIES RENDER KAREIN
-    // Talimi Zimmedar Section
+    // --- 1. DATA FILTERING (Isolation by Role) ---
+    const allValidUsers = allUsersData.filter(u => u.id !== ADMIN_UID);
+
+    // Standard Users (Talimi Zimmedar) ki list alag karein
+    let standardUsers = allValidUsers.filter(u => 
+        (u.role === "standard" || !u.role) && 
+        (selectedRegion === 'all' || u.region === selectedRegion) &&
+        (selectedUserId === 'all' || u.id === selectedUserId)
+    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    // Academic Inspectors ki list alag karein
+    let inspectorUsers = allValidUsers.filter(u => 
+        u.role === 'inspector' &&
+        (selectedRegion === 'all' || u.region === selectedRegion) &&
+        (selectedUserId === 'all' || u.id === selectedUserId)
+    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    // --- 2. SINGLE USER VIEW LOGIC ---
+    if (selectedUserId !== 'all') {
+        const user = allValidUsers.find(u => u.id === selectedUserId);
+        const userReports = reports.filter(r => r.userId === selectedUserId);
+        if (user) {
+            standardContainer.classList.add('single-user-view');
+            renderFullUserAnalysis(user, userReports);
+            return; 
+        }
+    }
+
+    // --- 3. MASTER SUMMARIES RENDER (Role Isolation) ---
+    
+    // Talimi Zimmedar Section (Standard Container mein)
     if (standardUsers.length > 0) {
-        standardContainer.innerHTML = generateMasterSummaryHtml(standardUsers, reports, "All Regions Consolidated (Zimmedar)", "text-blue-600");
-    } else {
+        const title = selectedRegion !== 'all' ? `Standard: ${selectedRegion}` : "Talimi Zimmedaran (Standard)";
+        standardContainer.innerHTML = generateMasterSummaryHtml(standardUsers, reports, title, "text-blue-600");
+    } else if (selectedUserId === 'all') {
         standardContainer.innerHTML = '<p class="text-center py-4 text-gray-500 col-span-full">No Zimmedar found.</p>';
     }
 
-    // Academic Inspectors Section
+    // Academic Inspectors Section (Inspector Container mein)
     if (inspectorUsers.length > 0) {
         inspectorHeading.classList.remove('hidden');
-        inspectorContainer.innerHTML = generateMasterSummaryHtml(inspectorUsers, reports, "Academic Inspectors Summary", "text-teal-600");
-    } else {
-        inspectorHeading.classList.add('hidden');
+        const title = selectedRegion !== 'all' ? `Inspectors: ${selectedRegion}` : "Academic Inspectors Summary";
+        inspectorContainer.innerHTML = generateMasterSummaryHtml(inspectorUsers, reports, title, "text-teal-600");
     }
+
+    // Event listeners dobara lagana
+    setTimeout(() => {
+        document.querySelectorAll('.admin-view-details-btn').forEach(btn => 
+            btn.onclick = (e) => {
+                const r = reports.find(item => item.id === e.target.closest('button').dataset.reportId);
+                if (r) showReportModal(r, true);
+            }
+        );
+        document.querySelectorAll('.admin-delete-report-btn').forEach(btn => 
+            btn.onclick = (e) => handleDeleteReport(e.target.closest('button').dataset.reportId)
+        );
+    }, 100);
             
             
     // Helper: Calculate Teachers from Structure Safely
