@@ -432,18 +432,18 @@ export async function initAdminResultAnalysis(db, containerId) {
     let wazahatRows = "";
 
     data.forEach((d) => {
-        // Asatiza wise data (asatiza_wise_results collection) se loop chalayenge
+        // Asatiza wise data loop
         if (d.data && Array.isArray(d.data)) {
             d.data.forEach((tEntry) => {
                 (tEntry.periods || []).forEach((p) => {
                     const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
                     const kefiyat = getJamiaKefiyat(sPer, 'teacher');
 
-                    // Filter: Sirf 70% se kam wale (Weak Results) ya "Kamzor/Tashwish Nak"
+                    // Filter: Sirf 70% se kam wale (Weak Results)
                     if (sPer < 70) {
                         const subjectKey = (p.subject || "").replace(/\./g, '_');
                         
-                        // Teacher ka comment (wazahat_text ya wazahat_map se)
+                        // Teacher ka comment
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
                         const teacherComment = hasWazahat 
                                                 ? d.wazahat_map[subjectKey] 
@@ -481,16 +481,16 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     });
 
-    // Table Header (Action column ke bina)
+    // ✅ FIXED HEADING: Ab do alag rows mein show hoga
     thead.innerHTML = `
     <tr class="bg-gray-800 text-white">
-        <th colspan="7" class="p-2 text-center text-sm font-bold">
+        <th colspan="7" class="p-3 text-center text-sm font-bold border-b border-gray-600">
             Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
             Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
             Baqi (Pending): <span class="text-red-400">${totalPending}</span>
         </th>
     </tr>
-    <tr class="bg-slate-100 text-slate-800">
+    <tr class="bg-slate-100 text-slate-800 uppercase text-[12px]">
         <th class="p-2 border">جامعہ</th>
         <th class="p-2 border">استاد</th>
         <th class="p-2 border">مضمون / درجہ</th>
