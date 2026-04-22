@@ -482,8 +482,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             });
         });
     }
-        // renderDetailedReports function ke aakhir mein ye else if add karein
-else if (layout === 'wazahat') {
+        else if (layout === 'wazahat') {
     thead.innerHTML = `
         <th class="p-2 border">Sr.</th>
         <th class="p-2 border">Jamia & Teacher</th>
