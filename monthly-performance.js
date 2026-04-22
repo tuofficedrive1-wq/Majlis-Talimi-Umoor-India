@@ -217,10 +217,12 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
 const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
     try {
         const [configSnap, userSnap] = await Promise.all([
-            getDoc(doc(db, "settings", "academic_config")), // academic-admin.html ke mutabiq sahi path
+            // SAHI PATH: 'academic_admin_config' jo admin file me use hua hai
+            getDoc(doc(db, "settings", "academic_admin_config")), 
             getDoc(doc(db, "users", currentUser.uid))
         ]);
         
+        // Agar data mil jaye to theek, warna empty array
         const academicConfig = configSnap.exists() ? configSnap.data() : { classes: [] };
         const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
         
@@ -292,18 +294,19 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
     
-    // Connection fixed: 'academic_config' use kar rahe hain
-    const configSnap = await getDoc(doc(db, "settings", "academic_config"));
+    // 1. SAHI PATH: 'academic_calendar' use karein
+    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
     if (!configSnap.exists()) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Admin Config nahi mili. Academic Admin se save karein.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Calendar Data nahi mila.</td></tr>';
         return;
     }
 
     const config = configSnap.data();
     const activeYear = config.activeYear;
-    const sem1Total = config.sem1TotalDays || 1; 
-    const sem2Total = config.sem2TotalDays || 1;
-    const monthData = config.monthDetails?.[selectedMonthIdx] || { sem1: 0, sem2: 0 };
+    // 2. FIELD NAMES: 'totals.s1' aur 'months' use karein jo admin file me hain
+    const sem1Total = config.totals?.s1 || 1; 
+    const sem2Total = config.totals?.s2 || 1;
+    const monthData = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
 
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
@@ -319,10 +322,9 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             if (!teacher.periods || teacher.periods.length === 0) return;
             teacher.periods.forEach((p, idx) => {
                 // Sahi Target Calculation
-                const totalDays = (p.semester == "1") ? sem1Total : sem2Total;
-                const monthDays = (p.semester == "1") ? monthData.sem1 : monthData.sem2;
-                const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
-
+               const totalDays = (p.semester == "1") ? sem1Total : sem2Total;
+    const monthDays = (p.semester == "1") ? monthData.s1 : monthData.s2;
+    const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
                 html += `
                     <tr class="border-b">
                         <td class="p-4 font-bold text-slate-800">${idx === 0 ? teacher.name : ''}</td>
