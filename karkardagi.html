@@ -2239,25 +2239,20 @@ if (saveAcademicMonthsBtn) {
     try {
         const userRef = doc(db, 'users', currentUser.uid);
 
-        // --- ERROR FIX START ---
-        // Admin config se mahino ka data nikaalein
         const academicMonthsMap = {};
         if (adminAcademicConfig && adminAcademicConfig.monthDetails) {
             Object.keys(adminAcademicConfig.monthDetails).forEach(idx => {
                 const m = adminAcademicConfig.monthDetails[idx];
-                // Sem 1 aur Sem 2 ke dino ko plus karke total academicMonths banayein
-                // Agar data na ho toh default 0 rakhein taake undefined na ho
                 academicMonthsMap[idx] = (m.sem1 || 0) + (m.sem2 || 0);
             });
         }
-        // --- ERROR FIX END ---
 
         const updateData = {
-            // academicMonths ko 'undefined' hone se bachane ke liye academicMonthsMap use karein
             [`academicYears.${activeYear}.academicMonths`]: academicMonthsMap,
             [`academicYears.${activeYear}.sem1TotalDays`]: adminAcademicConfig?.sem1TotalDays || 0,
             [`academicYears.${activeYear}.sem2TotalDays`]: adminAcademicConfig?.sem2TotalDays || 0,
-            [`academicYears.${activeYear}.jamia`]: allAcademicYearsData[activeYear]?.karkardagiStructure || [],
+            // ⬇️ YAHAN FIX HAI: 'jamia' ki jagah 'karkardagiStructure' use karein
+            [`academicYears.${activeYear}.karkardagiStructure`]: allAcademicYearsData[activeYear]?.karkardagiStructure || [],
             lastUpdated: serverTimestamp()
         };
 
@@ -2700,61 +2695,58 @@ document.getElementById('modal-class-input').addEventListener('input', (e) => {
         // Handle Update Period submission
         const handleUpdatePeriod = async (e) => {
     e.preventDefault();
-    if (!activeYear) return;
+    if (!activeYear || !allAcademicYearsData[activeYear]) return;
     
     const jamiaName = modalJamiaName.value;
     const teacherId = modalTeacherId.value;
     const periodId = modalPeriodId.value;
 
-    // --- NAYA BADLAV YAHA HAI ---
     const bookSelect = document.getElementById('modal-book-input');
-    const selectedBookName = bookSelect.options[bookSelect.selectedIndex].text;
-
     const updatedPeriod = {
-    id: periodId,
-    className: document.getElementById('modal-class-input').value.trim(),
-    // Dropdown se text uthane ka sahi tarika:
-    bookName: bookSelect.options[bookSelect.selectedIndex].text, 
-    semester: modalSemesterSelect.value,
-    totalPages: parseInt(modalTotalPagesInput.value, 10) || 0,
-};
+        id: periodId,
+        className: document.getElementById('modal-class-input').value.trim(),
+        bookName: bookSelect.options[bookSelect.selectedIndex].text, 
+        semester: modalSemesterSelect.value,
+        totalPages: parseInt(modalTotalPagesInput.value, 10) || 0,
+    };
     
-    if (!updatedPeriod.className || !updatedPeriod.bookName || updatedPeriod.totalPages <= 0) {
-         showNotification("Sabhi fields sahi se bharein.", true); 
-         return;
-    }
+    // Structure ko direct access karein
+    let structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    let jamiaIndex = structure.findIndex(j => j.jamiaName === jamiaName);
+    
+    if (jamiaIndex !== -1) {
+        let teacherIndex = structure[jamiaIndex].teachers.findIndex(t => t.id === teacherId);
+        
+        if (teacherIndex !== -1) {
+            let periodIndex = structure[jamiaIndex].teachers[teacherIndex].periods.findIndex(p => p.id === periodId);
             
-            let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure;
-            let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
-            let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
-            
-            if (teacherData && teacherData.periods) {
-    const index = teacherData.periods.findIndex(p => p.id === periodId);
+            if (periodIndex !== -1) {
+                // Local state update
+                structure[jamiaIndex].teachers[teacherIndex].periods[periodIndex] = updatedPeriod;
+                allAcademicYearsData[activeYear].karkardagiStructure = structure;
 
-    if (index !== -1) {
-        teacherData.periods[index] = updatedPeriod;
+                showLoader(true); // Loading dikhayein kyunki DB write ho raha hai
+                try {
+                    // Database mein save karein
+                    await saveActiveYearStructure();
 
-        await saveActiveYearStructure();
+                    editPeriodModal.classList.add('hidden');
+                    
+                    // Sabse zaroori: UI aur Data refresh
+                    await loadMonthlyReportData(true); 
+                    renderSetupTab();
+                    renderReportingTab();
 
-        // ✅ modal band
-        editPeriodModal.classList.add('hidden');
-
-        // ✅ fresh data load (MOST IMPORTANT)
-        await loadUserData(true);
-
-        // ✅ UI refresh
-        renderSetupTab();
-        renderReportingTab();
-
-        // optional
-        restoreAccordionState();
-
-        showNotification("Period successfully update ho gaya!");
-    } else {
-        showNotification("Period not found in structure.", true);
+                    showNotification("Period successfully update ho gaya!");
+                } catch (err) {
+                    showNotification("Database update fail: " + err.message, true);
+                } finally {
+                    showLoader(false);
+                }
+            }
+        }
     }
-}
-                   };
+};
         
         // --- REPORTING TAB LOGIC ---
         
