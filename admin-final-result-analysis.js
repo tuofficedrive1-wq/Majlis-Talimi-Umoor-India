@@ -431,57 +431,65 @@ export async function initAdminResultAnalysis(db, containerId) {
     let totalSubmitted = 0;
     let wazahatRows = "";
 
+    console.log("Wazahat Data Debug:", data); // Check karein console mein data aa raha hai ya nahi
+
     data.forEach((d) => {
-        // Asatiza wise data loop
-        if (d.data && Array.isArray(d.data)) {
-            d.data.forEach((tEntry) => {
-                (tEntry.periods || []).forEach((p) => {
-                    const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                    const kefiyat = getJamiaKefiyat(sPer, 'teacher');
+        // 1. Check karein ke asatiza data maujood hai
+        const records = d.data || d.subjects_data || []; 
+        
+        if (Array.isArray(records)) {
+            records.forEach((tEntry) => {
+                const periods = tEntry.periods || tEntry.subjects || [];
+                
+                if (Array.isArray(periods)) {
+                    periods.forEach((p) => {
+                        const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
+                        const kefiyat = getJamiaKefiyat(sPer, 'teacher');
 
-                    // Filter: Sirf 70% se kam wale (Weak Results)
-                    if (sPer < 70) {
-                        const subjectKey = (p.subject || "").replace(/\./g, '_');
-                        
-                        // Teacher ka comment
-                        const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
-                        const teacherComment = hasWazahat 
-                                                ? d.wazahat_map[subjectKey] 
-                                                : '<span class="text-red-500 font-bold">Pending...</span>';
+                        // 2. Filter: 70% se kam ya Kamzor/Tashwish Nak
+                        if (sPer < 70 || kefiyat === "کمزور" || kefiyat === "تشویش ناک") {
+                            const subjectKey = (p.subject || "").replace(/\./g, '_');
+                            
+                            // Teacher ka comment (wazahat_map ya wazahat_text)
+                            const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]) || p.wazahat_text;
+                            const teacherComment = hasWazahat 
+                                                    ? (d.wazahat_map ? d.wazahat_map[subjectKey] : p.wazahat_text)
+                                                    : '<span class="text-red-500 font-bold">Pending...</span>';
 
-                        // Zimmedar ka tabsura
-                        const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
-                                                ? d.zimmedar_comments[subjectKey] 
-                                                : '<span class="text-gray-400 italic">Nahi likha</span>';
+                            // Zimmedar ka tabsura
+                            const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
+                                                    ? d.zimmedar_comments[subjectKey] 
+                                                    : '<span class="text-gray-400 italic">Nahi likha</span>';
 
-                        if (hasWazahat) totalSubmitted++; else totalPending++;
+                            if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        wazahatRows += `
-                        <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                            <td class="p-2 border text-right font-bold urdu-font text-indigo-800">${d.jamia}</td>
-                            <td class="p-2 border font-bold urdu-font text-blue-700">${tEntry.teacher || "-"}</td>
-                            <td class="p-2 border text-right">
-                                <div class="font-bold urdu-font">${p.subject}</div>
-                                <div class="text-xs text-gray-500 urdu-font">${p.class || '-'}</div>
-                            </td>
-                            <td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
-                            <td class="p-2 border font-bold urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">
-                                ${kefiyat}
-                            </td>
-                            <td class="p-2 border bg-red-50 text-right text-sm urdu-font italic text-gray-700">
-                                ${teacherComment}
-                            </td>
-                            <td class="p-2 border bg-blue-50 text-right text-sm urdu-font italic text-indigo-700">
-                                ${zimmedarComment}
-                            </td>
-                        </tr>`;
-                    }
-                });
+                            wazahatRows += `
+                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                                <td class="p-2 border text-right font-bold urdu-font text-indigo-800">${d.jamia}</td>
+                                <td class="p-2 border font-bold urdu-font text-blue-700">${tEntry.teacher || "-"}</td>
+                                <td class="p-2 border text-right">
+                                    <div class="font-bold urdu-font">${p.subject || '-'}</div>
+                                    <div class="text-xs text-gray-500 urdu-font">${p.class || d.darjah || '-'}</div>
+                                </td>
+                                <td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
+                                <td class="p-2 border font-bold urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">
+                                    ${kefiyat}
+                                </td>
+                                <td class="p-2 border bg-red-50 text-right text-sm urdu-font italic text-gray-700">
+                                    ${teacherComment}
+                                </td>
+                                <td class="p-2 border bg-blue-50 text-right text-sm urdu-font italic text-indigo-700">
+                                    ${zimmedarComment}
+                                </td>
+                            </tr>`;
+                        }
+                    });
+                }
             });
         }
     });
 
-    // ✅ FIXED HEADING: Ab do alag rows mein show hoga
+    // Heading do hisso mein
     thead.innerHTML = `
     <tr class="bg-gray-800 text-white">
         <th colspan="7" class="p-3 text-center text-sm font-bold border-b border-gray-600">
@@ -490,7 +498,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             Baqi (Pending): <span class="text-red-400">${totalPending}</span>
         </th>
     </tr>
-    <tr class="bg-slate-100 text-slate-800 uppercase text-[12px]">
+    <tr class="bg-slate-100 text-slate-800 text-[12px]">
         <th class="p-2 border">جامعہ</th>
         <th class="p-2 border">استاد</th>
         <th class="p-2 border">مضمون / درجہ</th>
