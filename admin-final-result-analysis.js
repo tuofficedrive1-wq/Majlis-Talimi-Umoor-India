@@ -402,19 +402,20 @@ export async function initAdminResultAnalysis(db, containerId) {
             </tr>`;
         });
     }
-  else if (layout === 'wazahat') {
+else if (layout === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
     let wazahatRows = "";
     let latestMap = new Map();
 
+    // 1. Data Processing & Duplicacy Filter
     data.forEach((d) => {
         const records = d.data || [];
         records.forEach((tEntry) => {
             (tEntry.periods || []).forEach((p) => {
                 const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
                 
-                // Result analysis criteria (70% threshold)
+                // Result Analysis Criteria (70% threshold)
                 if (sPer < 70) {
                     const subjectKey = (p.subject || "").replace(/\./g, '_');
                     const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
@@ -428,16 +429,16 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                         const rowHtml = `
                         <tr class="hover:bg-red-50 border-b text-center align-middle">
-                            <td class="p-3 border text-right font-bold urdu-font text-indigo-900">${d.jamia}</td>
-                            <td class="p-3 border font-bold urdu-font text-blue-700">${tEntry.teacher || "-"}</td>
-                            <td class="p-3 border text-right">
+                            <td class="p-2 border text-right font-bold urdu-font text-indigo-900 w-[12%]">${d.jamia}</td>
+                            <td class="p-2 border font-bold urdu-font text-blue-700 w-[12%]">${tEntry.teacher || "-"}</td>
+                            <td class="p-2 border text-right w-[15%]">
                                 <div class="font-bold urdu-font">${p.subject || '-'}</div>
-                                <div class="text-[11px] text-gray-500">${p.class || '-'}</div>
+                                <div class="text-[10px] text-gray-500">${p.class || '-'}</div>
                             </td>
-                            <td class="p-3 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
-                            <td class="p-3 border font-bold urdu-font" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
-                            <td class="p-3 border bg-red-50 text-right text-sm urdu-font italic text-gray-700 leading-relaxed">${teacherComment}</td>
-                            <td class="p-3 border bg-blue-50 text-right text-sm urdu-font italic text-indigo-800 leading-relaxed">${zimmedarComment}</td>
+                            <td class="p-2 border font-bold text-red-600 w-[7%]">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border font-bold urdu-font w-[10%]" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                            <td class="p-2 border bg-red-50 text-right text-xs urdu-font italic text-gray-700 leading-snug w-[22%]">${teacherComment}</td>
+                            <td class="p-2 border bg-blue-50 text-right text-xs urdu-font italic text-indigo-800 leading-snug w-[22%]">${zimmedarComment}</td>
                         </tr>`;
                         
                         latestMap.set(uniqueId, rowHtml);
@@ -448,27 +449,42 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     });
 
-    // ✅ FINAL HEADING RE-FIX: Isay bilkul aise hi paste karein
-    // Ensure karein ke thead ke andar purana kuch na bacha ho
-    thead.innerHTML = `
-    <tr class="bg-slate-800 text-white">
-        <th colspan="7" class="p-4 text-center text-base font-bold">
+    // 2. ✅ HEADING FIX (ALAG DIV STRUCTURE)
+    // Table se pehle Summary Box add kar rahe hain
+    const statsHeader = `
+        <div class="bg-slate-800 text-white p-3 text-center text-sm md:text-base font-bold shadow-md rounded-t-lg">
             Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
             Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
             Baqi (Pending): <span class="text-red-400">${totalPending}</span>
-        </th>
-    </tr>
-    <tr class="bg-slate-100 text-slate-900 text-[13px] font-bold">
-        <th class="p-3 border w-[15%]">جامعہ</th>
-        <th class="p-3 border w-[15%]">استاد</th>
-        <th class="p-3 border w-[15%]">مضمون / درجہ</th>
-        <th class="p-3 border w-[8%]">فیصد</th>
-        <th class="p-3 border w-[10%]">کیفیت</th>
-        <th class="p-3 border bg-red-50 text-red-900 w-[20%]">وضاحت (Teacher)</th>
-        <th class="p-3 border bg-blue-50 text-indigo-900 w-[17%]">تبصرہ (Zimmedar)</th>
-    </tr>`;
+        </div>`;
 
+    // thead ko sirf column names tak mehdood kar diya
+    thead.innerHTML = `
+        <tr class="bg-slate-100 text-slate-900 text-[12px] font-bold border-b-2 border-slate-300">
+            <th class="p-2 border">جامعہ</th>
+            <th class="p-2 border">استاد</th>
+            <th class="p-2 border">مضمون/درجہ</th>
+            <th class="p-2 border">فیصد</th>
+            <th class="p-2 border">کیفیت</th>
+            <th class="p-2 border bg-red-100 text-red-900">وضاحت (Teacher)</th>
+            <th class="p-2 border bg-blue-100 text-indigo-900">تبصرہ (Zimmedar)</th>
+        </tr>`;
+
+    // 3. Body Render
     tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Koi record nahi mila.</td></tr>`;
+
+    // 4. statsHeader ko table se pehle insert karna (Agar container mil jaye)
+    const reportView = document.getElementById('reports-view');
+    if (reportView) {
+        // Purana header remove karein agar pehle se hai
+        const oldHeader = reportView.querySelector('.stats-header-box');
+        if(oldHeader) oldHeader.remove();
+        
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'stats-header-box w-full';
+        headerDiv.innerHTML = statsHeader;
+        reportView.insertBefore(headerDiv, reportView.firstChild);
+    }
 }
     else {
         // ✅ ASATIZA WISE: Region aur User ke saath
