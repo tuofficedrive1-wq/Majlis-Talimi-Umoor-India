@@ -226,93 +226,61 @@ export async function initAdminResultAnalysis(db, containerId) {
     elements.userFilter.onchange = updateJamiaList;
 
     // 📊 Show Analysis Logic
-    document.getElementById("admin-show-btn").onclick = async () => {
-        const examType = document.getElementById("admin-exam-type").value;
-        const examYear = document.getElementById("admin-exam-year").value;
-        const selRegion = elements.regionFilter.value;
-        const selUser = elements.userFilter.value;
-        const selJamia = elements.jamiaSelect.value.toLowerCase();
-        const layout = document.getElementById("admin-layout").value;
-        const colName = (layout === 'teacher' || layout === 'wazahat') 
-                    ? "asatiza_wise_results" 
-                    : "class_wise_results";
-        const activeTab = elements.btnDashboard.classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
+   // 📊 Show Analysis Logic (admin-final-result-analysis.js ke andar)
+document.getElementById("admin-show-btn").onclick = async () => {
+    const examType = document.getElementById("admin-exam-type").value;
+    const examYear = document.getElementById("admin-exam-year").value;
+    const selRegion = elements.regionFilter.value;
+    const selUser = elements.userFilter.value;
+    const selJamia = elements.jamiaSelect.value.toLowerCase();
+    const layout = document.getElementById("admin-layout").value;
 
-        const loader = document.getElementById("admin-loader");
-        loader.classList.remove("hidden");
+    const loader = document.getElementById("admin-loader");
+    loader.classList.remove("hidden");
+    
+    try {
+        // Layout ke hisab se sahi collection select karein
+        const colName = (layout === 'teacher' || layout === 'wazahat') ? "asatiza_wise_results" : "class_wise_results";
+        const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
         
-        try {
-            const colName = (activeTab === 'reports' && layout === 'teacher') ? "asatiza_wise_results" : "class_wise_results";
-            const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
-            
-            const snapshot = await getDocs(q);
-            let dataList = [];
-            let uniqueKeys = new Set();
-            let totalStudents = 0, passedStudents = 0, jamiaCount = new Set();
+        const snapshot = await getDocs(q);
+        let dataList = [];
+        let uniqueKeys = new Set();
 
-            snapshot.forEach(doc => {
-                    const d = doc.data();
-                    const context = getJamiaContext(d.jamia);
-                
-                    // 🛑 NEW: Sirf wahi data uthayein jo 'Standard' user (Zimmedar) ne submit kiya ho
-                    // Agar humein context se pata chale ke ye Inspector hai, toh use skip kar dein
-                    const foundUserInSystem = allUsers.find(u => (u.name || u.email) === context.userName);
-                    const isStandardUser = !foundUserInSystem || foundUserInSystem.role === 'standard' || !foundUserInSystem.role;
-                
-                    if (!isStandardUser) return; // Agar Inspector hai toh display list mein na shamil karein
-                
-                    const matchRegion = (selRegion === "all" || context.region === selRegion);
-                    const matchUser = (activeTab === 'dashboard' || selUser === "all" || context.userName === selUser);
-                    const matchJamia = (selJamia === "all" || d.jamia.toLowerCase().includes(selJamia));
-                
-                    // Unique key taake duplicate entries (agar hon) toh wo bhi hat jayein
-                    const uniqueId = `${d.jamia}_${d.darjah || d.class || ''}_${d.teacher || ''}`.toLowerCase().trim();
-                
-                    if (matchRegion && matchUser && matchJamia && !uniqueKeys.has(uniqueId)) {
-                        dataList.push({ ...d, ...context });
-                        uniqueKeys.add(uniqueId);
-                    
-                    const num = (v) => parseInt(v) || 0;
-                    const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
-                    const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                    totalStudents += h; passedStudents += p;
-                    jamiaCount.add(d.jamia);
-                }
-            });
+        snapshot.forEach(doc => {
+            const d = doc.data();
+            d.id = doc.id; // ID zaroori hai edit ke liye
+            const context = getJamiaContext(d.jamia);
 
-            // Update Top Stats
-            const overallPer = totalStudents ? (passedStudents/totalStudents)*100 : 0;
-            elements.statsContainer.innerHTML = `
-                <div class="bg-white p-4 rounded-xl border-l-4 border-indigo-500 shadow-sm">
-                    <p class="text-[10px] text-gray-500 font-bold uppercase">Total Jamiaat</p>
-                    <p class="text-xl font-black">${jamiaCount.size}</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border-l-4 border-blue-500 shadow-sm">
-                    <p class="text-[10px] text-gray-500 font-bold uppercase">Hazir Students</p>
-                    <p class="text-xl font-black">${totalStudents}</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border-l-4 border-green-500 shadow-sm">
-                    <p class="text-[10px] text-gray-500 font-bold uppercase">Total Pass</p>
-                    <p class="text-xl font-black">${passedStudents}</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border-l-4 border-orange-500 shadow-sm">
-                    <p class="text-[10px] text-gray-500 font-bold uppercase">Overall %</p>
-                    <p class="text-xl font-black">${overallPer.toFixed(1)}%</p>
-                </div>
-            `;
+            // Filter check: Region, User, aur Jamia matching
+            const matchRegion = (selRegion === "all" || context.region === selRegion);
+            const matchUser = (selUser === "all" || context.userName === selUser);
+            const matchJamia = (selJamia === "all" || d.jamia.toLowerCase().includes(selJamia));
 
-            if (activeTab === 'dashboard') {
-                renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers);
-                elements.exportBtn.classList.add("hidden"); 
-            } else {
-                renderDetailedReports(dataList, layout);
-                elements.exportBtn.classList.remove("hidden");
+            // Unique key taake purana data overwrite na ho aur duplicacy na aaye
+            let uniqueId = (layout === 'teacher' || layout === 'wazahat') 
+                ? `${d.jamia}_${d.teacher}_${d.id}`.toLowerCase() 
+                : `${d.jamia}_${d.darjah}`.toLowerCase();
+
+            if (matchRegion && matchUser && matchJamia && !uniqueKeys.has(uniqueId)) {
+                dataList.push({ ...d, ...context });
+                uniqueKeys.add(uniqueId);
             }
-        } catch (e) { 
-            console.error(e); alert("Error loading data.");
+        });
+
+        // Agar Dashboard view hai toh dashboard render karein, warna Detailed Report
+        const activeTab = elements.btnDashboard.classList.contains("active-sub-tab") ? 'dashboard' : 'reports';
+        if (activeTab === 'dashboard') {
+            renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers);
+        } else {
+            renderDetailedReports(dataList, layout);
         }
-        loader.classList.add("hidden");
-    };
+    } catch (e) { 
+        console.error("Fetch Error:", e); 
+        alert("Data load nahi ho saka.");
+    }
+    loader.classList.add("hidden");
+};
 
     // Excel Export
     elements.exportBtn.onclick = () => {
@@ -428,12 +396,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'class')}">${getJamiaKefiyat(per, 'class')}</td>
             </tr>`;
         });
-    }else if (layout === 'wazahat') {
+    }
+    else if (layout === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
     let wazahatRows = "";
 
-    // Data processing logic
     data.forEach((d) => {
         const records = d.data || []; 
         if (Array.isArray(records)) {
@@ -441,6 +409,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const periods = tEntry.periods || [];
                 periods.forEach((p) => {
                     const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
+                    // Result file ki tarah filter (70% threshold)
                     if (sPer < 70) {
                         const subjectKey = (p.subject || "").replace(/\./g, '_');
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
@@ -469,26 +438,26 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     });
 
-    // ✅ HEADING FIX: Do alag TR tags use kiye hain
+    // Pehli Row: Stats, Doosri Row: Columns
     thead.innerHTML = `
-    <tr class="bg-gray-800 text-white">
-        <th colspan="7" class="p-3 text-center text-sm font-bold border-b border-gray-600">
+    <tr class="bg-gray-900 text-white">
+        <th colspan="7" class="p-3 text-center text-sm font-bold border-b border-gray-700">
             Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
             Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
             Baqi (Pending): <span class="text-red-400">${totalPending}</span>
         </th>
     </tr>
-    <tr class="bg-slate-100 text-slate-800">
+    <tr class="bg-slate-200 text-slate-900 text-[13px]">
         <th class="p-2 border">جامعہ</th>
         <th class="p-2 border">استاد</th>
         <th class="p-2 border">مضمون / درجہ</th>
         <th class="p-2 border">فیصد</th>
         <th class="p-2 border">کیفیت</th>
-        <th class="p-2 border bg-red-100 text-red-900">وضاحت (Explanation)</th>
-        <th class="p-2 border bg-blue-100 text-indigo-900">تعلیمی ذمہ دار کا تبصرہ</th>
+        <th class="p-2 border bg-red-100">وضاحت (Teacher)</th>
+        <th class="p-2 border bg-blue-100">تبصرہ (Zimmedar)</th>
     </tr>`;
 
-    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold">Koi Kamzor result nahi mila.</td></tr>`;
+    tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-10 text-center text-red-500 font-bold bg-white">Koi record nahi mila. Check karein kya data asatiza_wise_results mein maujood hai?</td></tr>`;
 }
     else {
         // ✅ ASATIZA WISE: Region aur User ke saath
