@@ -413,37 +413,34 @@ else if (layout === 'wazahat') {
         records.forEach((tEntry) => {
             (tEntry.periods || []).forEach((p) => {
                 const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                
                 if (sPer < 70) {
                     const subjectKey = (p.subject || "").replace(/\./g, '_');
                     const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
-
                     if (!latestMap.has(uniqueId)) {
                         const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                        const teacherComment = hasWazahat 
-                            ? `<div class="text-base font-medium leading-relaxed urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` 
-                            : '<span class="text-red-500 font-bold italic animate-pulse">Pending...</span>';
+                        const tComment = hasWazahat 
+                            ? `<div class="text-sm urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` 
+                            : '<span class="text-red-500 font-bold italic">Pending...</span>';
                         
-                        const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
-                            ? `<div class="text-base font-medium leading-relaxed urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` 
-                            : '<span class="text-gray-400 italic">Nahi likha</span>';
+                        const zComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
+                            ? `<div class="text-sm urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` 
+                            : '<span class="text-gray-400 italic text-xs">Nahi likha</span>';
 
                         wazahatRows += `
-                        <tr class="hover:bg-red-50 border-b text-center align-middle bg-white">
-                            <td class="p-2 border font-bold urdu-font text-indigo-950 whitespace-nowrap text-sm">${d.jamia}</td>
-                            <td class="p-2 border font-bold urdu-font text-blue-800 whitespace-nowrap text-sm">${tEntry.teacher || "-"}</td>
+                        <tr class="border-b hover:bg-gray-50 text-center">
+                            <td class="p-2 border urdu-font font-bold text-gray-800">${d.jamia}</td>
+                            <td class="p-2 border urdu-font font-bold text-blue-800">${tEntry.teacher || "-"}</td>
                             <td class="p-2 border">
-                                <div class="font-bold urdu-font text-sm text-black">${p.subject || '-'}</div>
-                                <div class="text-[10px] font-bold text-red-600 mt-1">${p.class || '-'}</div>
+                                <div class="font-bold urdu-font text-[13px]">${p.subject || '-'}</div>
+                                <div class="text-[10px] font-bold text-red-600">${p.class || '-'}</div>
                             </td>
-                            <td class="p-2 border font-black text-red-600 w-16 text-sm">${sPer.toFixed(1)}%</td>
-                            <td class="p-2 border font-bold urdu-font w-24 text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
-                            <td class="p-4 border bg-red-50/30 text-center min-w-[250px] shadow-inner">${teacherComment}</td>
-                            <td class="p-4 border bg-blue-50/30 text-center min-w-[250px] shadow-inner">${zimmedarComment}</td>
+                            <td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border urdu-font font-bold text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                            <td class="p-3 border bg-red-50/30 min-w-[200px] text-right">${tComment}</td>
+                            <td class="p-3 border bg-blue-50/30 min-w-[200px] text-right">${zComment}</td>
                         </tr>`;
-                        
                         latestMap.set(uniqueId, true);
                     }
                 }
@@ -451,25 +448,38 @@ else if (layout === 'wazahat') {
         });
     });
 
-    // ✅ FIXED HEADER STRUCTURE: Dono rows ko alag-alag rakha gaya hai
+    // ✅ STEP 1: Pehle table ke bahar Top Summary Bar banayein (Rounded Corners ke liye)
+    const summaryHeader = `
+        <div class="bg-[#1e293b] text-white p-3 rounded-t-2xl text-center font-bold text-sm border-b border-slate-700">
+            Kul Kamzor Results: <span class="text-yellow-400 mx-1">${totalPending + totalSubmitted}</span> | 
+            Wazahat Aa Gayi: <span class="text-green-400 mx-1">${totalSubmitted}</span> | 
+            Baqi (Pending): <span class="text-red-400 mx-1">${totalPending}</span>
+        </div>
+    `;
+
+    // ✅ STEP 2: Table ke headers ko set karein
     thead.innerHTML = `
-        <tr class="bg-slate-800 text-white">
-            <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm">
-                Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-                Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
-                Baqi (Pending): <span class="text-red-400">${totalPending}</span>
-            </th>
-        </tr>
         <tr class="bg-slate-900 text-white text-[13px] font-bold urdu-font">
-            <th class="p-3 border border-slate-700 whitespace-nowrap">جامعہ</th>
-            <th class="p-3 border border-slate-700 whitespace-nowrap">استاد</th>
-            <th class="p-3 border border-slate-700 whitespace-nowrap">مضمون/درجہ</th>
+            <th class="p-3 border border-slate-700">جامعہ</th>
+            <th class="p-3 border border-slate-700">استاد</th>
+            <th class="p-3 border border-slate-700">مضمون/درجہ</th>
             <th class="p-3 border border-slate-700 w-16">فیصد</th>
             <th class="p-3 border border-slate-700 w-24">کیفیت</th>
             <th class="p-3 border border-slate-700 bg-red-900/40">وضاحت (Teacher)</th>
             <th class="p-3 border border-slate-700 bg-blue-900/40">تبصرہ (Zimmedar)</th>
         </tr>
     `;
+
+    // ✅ STEP 3: Table container mein summary bar ko insert karein
+    const tableContainer = document.getElementById("reports-view");
+    // Purani summary hatane ke liye check karein
+    const existingSummary = tableContainer.querySelector('.summary-bar-wazahat');
+    if (existingSummary) existingSummary.remove();
+
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'summary-bar-wazahat';
+    summaryDiv.innerHTML = summaryHeader;
+    tableContainer.prepend(summaryDiv); // Table ke bilkul upar rounded bar lagayega
 
     tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
 }
