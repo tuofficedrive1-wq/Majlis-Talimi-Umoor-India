@@ -56,34 +56,48 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
     
-    if (tabName === 'performance') {
-        contentArea.innerHTML = `
-            <div class="flex justify-between items-center mb-4 bg-white p-4 rounded-2xl border shadow-sm">
-                <h3 class="font-bold text-slate-700">Monthly Targets & Performance</h3>
+    // monthly-performance.js ke renderSubTabContent mein jahan 'performance' tab ka HTML hai:
+
+if (tabName === 'performance') {
+    contentArea.innerHTML = `
+        <div class="flex flex-col md:flex-row justify-between items-center mb-4 bg-white p-4 rounded-2xl border shadow-sm gap-4">
+            <h3 class="font-bold text-slate-700">Monthly Targets & Performance</h3>
+            <div class="flex items-center gap-2">
+                <label class="text-xs font-bold text-slate-500">SELECT MONTH:</label>
                 <select id="report-month" class="p-2 border rounded-xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200">
-                    <option value="apr">April</option><option value="may">May</option><option value="jun">June</option>
-                    <option value="jul">July</option><option value="aug">August</option><option value="sep">September</option>
-                    <option value="oct">October</option><option value="nov">November</option><option value="dec">December</option>
-                    <option value="jan">January</option><option value="feb">February</option><option value="mar">March</option>
+                    <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                    <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                    <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+                    <option value="0">January</option><option value="1">February</option><option value="2">March</option>
                 </select>
             </div>
-            <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white">
-                <table class="w-full text-left border-collapse min-w-[1000px]">
-                    <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
-                        <tr>
-                            <th class="p-4 border-b">Teacher</th><th class="p-4 border-b">Class</th><th class="p-4 border-b">Book</th>
-                            <th class="p-4 border-b text-center">Total Pgs</th><th class="p-4 border-b text-center">Target Pgs</th>
-                            <th class="p-4 border-b text-center">Achieved</th><th class="p-4 border-b text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="performance-table-body"></tbody>
-                </table>
-            </div>
-        `;
-        document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
-
-    } else if (tabName === 'structure') {
+        </div>
+        <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white" id="performance-table-container">
+            <table class="w-full text-left border-collapse min-w-[1100px]">
+                <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase font-black tracking-wider">
+                    <tr>
+                        <th class="p-4 border-b">Teacher</th>
+                        <th class="p-4 border-b">Class</th>
+                        <th class="p-4 border-b">Book</th>
+                        <th class="p-4 border-b text-center">Total Pgs</th>
+                        <th class="p-4 border-b text-center">Target</th>
+                        <th class="p-4 border-b text-center">Achieved</th>
+                        <th class="p-4 border-b text-center">Status</th>
+                        <th class="p-4 border-b text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="performance-table-body"></tbody>
+            </table>
+        </div>
+        <div class="mt-6 flex justify-end">
+            <button id="save-performance-btn" class="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition hidden">
+                <i class="fas fa-save mr-2"></i> Save Performance Changes
+            </button>
+        </div>
+    `;
+    document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+    loadPerformanceTable(assignedJamiaat, db, currentUser);
+} else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
 
@@ -292,22 +306,20 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
-    const selectedMonthIdx = document.getElementById('report-month').value; 
+    const selectedMonthIdx = parseInt(document.getElementById('report-month').value); 
     
-    // 1. SAHI PATH: 'academic_calendar' use karein
-    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    if (!configSnap.exists()) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Calendar Data nahi mila.</td></tr>';
+    // Config Load karein
+    const configSnap = await getDoc(doc(db, "settings", "academic_config"));
+    const config = configSnap.exists() ? configSnap.data() : null;
+    
+    if (!config) {
+        tbody.innerHTML = '<tr><td colspan="8" class="p-10 text-center text-red-500">Admin Config nahi mili.</td></tr>';
         return;
     }
 
-    const config = configSnap.data();
     const activeYear = config.activeYear;
-    // 2. FIELD NAMES: 'totals.s1' aur 'months' use karein jo admin file me hain
-    const sem1Total = config.totals?.s1 || 1; 
-    const sem2Total = config.totals?.s2 || 1;
-    const monthData = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
-
+    const monthData = config.monthDetails?.[selectedMonthIdx] || { sem1: 0, sem2: 0 };
+    
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -316,29 +328,49 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
         if (!jamiaData || !jamiaData.teachers) return;
 
-        html += `<tr class="bg-indigo-50 font-bold"><td colspan="7" class="p-4 border-y border-indigo-100 text-indigo-700">${jamiaName}</td></tr>`;
+        // Jamia Header with Buttons (Copy from karkardagi.html logic)
+        html += `
+            <tr class="bg-slate-100 font-bold jamia-performance-header" data-jamia="${jamiaName}" data-editing="false">
+                <td colspan="8" class="p-4 border-y border-slate-200">
+                    <div class="flex justify-between items-center">
+                        <span class="text-indigo-700 text-lg">${jamiaName}</span>
+                        <div class="flex gap-2">
+                            <button onclick="copyTeacherLink('${jamiaName}')" class="bg-emerald-500 text-white text-[10px] px-3 py-1 rounded-lg">Link</button>
+                            <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-red-500 text-white text-[10px] px-3 py-1 rounded-lg">Image</button>
+                            <button onclick="toggleEditMode('${jamiaName}')" class="toggle-edit-btn bg-indigo-600 text-white text-[10px] px-3 py-1 rounded-lg">Edit Pages</button>
+                        </div>
+                    </div>
+                </td>
+            </tr>`;
 
         jamiaData.teachers.forEach(teacher => {
-            if (!teacher.periods || teacher.periods.length === 0) return;
+            if (!teacher.periods) return;
             teacher.periods.forEach((p, idx) => {
-                // Sahi Target Calculation
-               const totalDays = (p.semester == "1") ? sem1Total : sem2Total;
-    const monthDays = (p.semester == "1") ? monthData.s1 : monthData.s2;
-    const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
+                const totalDays = (p.semester == "1") ? config.sem1TotalDays : config.sem2TotalDays;
+                const monthDays = (p.semester == "1") ? monthData.sem1 : monthData.sem2;
+                const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
+
                 html += `
-                    <tr class="border-b">
+                    <tr class="border-b performance-row" data-jamia="${jamiaName}">
                         <td class="p-4 font-bold text-slate-800">${idx === 0 ? teacher.name : ''}</td>
                         <td class="p-4">${p.className}</td>
                         <td class="p-4">${p.bookName}</td>
                         <td class="p-4 text-center">${p.totalPages}</td>
                         <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/20">${target}</td>
-                        <td class="p-4 text-center">0</td>
-                        <td class="p-4 text-center text-xs font-bold text-red-500">Pending</td>
+                        <td class="p-4 text-center">
+                            <input type="number" value="0" disabled 
+                                   class="achieved-input w-20 p-1 border rounded text-center bg-slate-50" 
+                                   data-target="${target}">
+                        </td>
+                        <td class="p-4 text-center status-cell font-bold text-red-500">Pending</td>
+                        <td class="p-4 text-center">
+                             <button class="text-slate-400 hover:text-indigo-600"><i class="fas fa-ellipsis-v"></i></button>
+                        </td>
                     </tr>`;
             });
         });
     });
-    tbody.innerHTML = html || '<tr><td colspan="7" class="p-10 text-center">Data nahi mila.</td></tr>';
+    tbody.innerHTML = html || '<tr><td colspan="8" class="p-10 text-center">Data nahi mila.</td></tr>';
 };
 
 // --- Helpers ---
@@ -429,3 +461,47 @@ async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updat
         await updateDoc(userRef, { academicYears });
     }
 }
+// 1. Toggle Edit Mode (Lock/Unlock)
+window.toggleEditMode = (jamiaName) => {
+    const header = document.querySelector(`.jamia-performance-header[data-jamia="${jamiaName}"]`);
+    const isEditing = header.dataset.editing === "true";
+    header.dataset.editing = !isEditing;
+    
+    const btn = header.querySelector('.toggle-edit-btn');
+    btn.textContent = isEditing ? "Edit Pages" : "Lock Pages";
+    btn.classList.toggle('bg-slate-800', !isEditing);
+
+    const inputs = document.querySelectorAll(`.performance-row[data-jamia="${jamiaName}"] .achieved-input`);
+    inputs.forEach(input => {
+        input.disabled = isEditing;
+        input.classList.toggle('bg-white', !isEditing);
+        input.classList.toggle('bg-slate-50', isEditing);
+    });
+    
+    document.getElementById('save-performance-btn').classList.toggle('hidden', isEditing);
+};
+
+// 2. Copy Teacher Form Link
+window.copyTeacherLink = (jamiaName) => {
+    const monthIdx = document.getElementById('report-month').value;
+    const baseUrl = window.location.href.split('inspector.html')[0];
+    const params = new URLSearchParams({
+        jamiaId: jamiaName,
+        userId: currentUser.uid, // Global currentUser variable
+        monthIndex: monthIdx,
+        activeYear: "2026-2027" // Dynamic karna behtar hai
+    });
+    const link = `${baseUrl}teacher-form.html?${params.toString()}`;
+    
+    navigator.clipboard.writeText(link).then(() => {
+        alert("Teacher Form Link Copied for " + jamiaName);
+    });
+};
+
+// 3. Image Download Logic (html2canvas require hoga)
+window.downloadJamiaImage = async (jamiaName) => {
+    const container = document.getElementById('performance-table-container');
+    // Isme hum sirf us Jamia ka data filter karke image banate hain jese karkardagi.html me tha
+    alert("Image generation starting for " + jamiaName);
+    // html2canvas logic yahan aayega...
+};
