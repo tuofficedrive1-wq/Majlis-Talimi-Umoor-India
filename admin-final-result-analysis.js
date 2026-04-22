@@ -423,25 +423,25 @@ else if (layout === 'wazahat') {
                         if (hasWazahat) totalSubmitted++; else totalPending++;
 
                         const teacherComment = hasWazahat 
-                            ? `<div class="text-[15px] font-bold leading-snug urdu-font text-gray-900 px-2">${d.wazahat_map[subjectKey]}</div>` 
-                            : '<span class="text-red-600 font-bold italic animate-pulse">Pending...</span>';
+                            ? `<div class="text-base font-medium leading-relaxed urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` 
+                            : '<span class="text-red-500 font-bold italic animate-pulse">Pending...</span>';
                         
                         const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) 
-                            ? `<div class="text-[15px] font-bold leading-snug urdu-font text-indigo-900 px-2">${d.zimmedar_comments[subjectKey]}</div>` 
+                            ? `<div class="text-base font-medium leading-relaxed urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` 
                             : '<span class="text-gray-400 italic">Nahi likha</span>';
 
                         wazahatRows += `
-                        <tr class="hover:bg-red-50 border-b text-center align-middle">
-                            <td class="p-2 border urdu-font text-sm font-bold text-gray-800">${d.jamia}</td>
-                            <td class="p-2 border urdu-font text-sm font-bold text-blue-800">${tEntry.teacher || "-"}</td>
+                        <tr class="hover:bg-red-50 border-b text-center align-middle bg-white">
+                            <td class="p-2 border font-bold urdu-font text-indigo-950 whitespace-nowrap text-sm">${d.jamia}</td>
+                            <td class="p-2 border font-bold urdu-font text-blue-800 whitespace-nowrap text-sm">${tEntry.teacher || "-"}</td>
                             <td class="p-2 border">
-                                <div class="font-bold urdu-font text-sm">${p.subject || '-'}</div>
-                                <div class="text-[11px] font-bold text-red-600 border-t border-red-50 mt-1">${p.class || '-'}</div>
+                                <div class="font-bold urdu-font text-sm text-black">${p.subject || '-'}</div>
+                                <div class="text-[10px] font-bold text-red-600 mt-1">${p.class || '-'}</div>
                             </td>
-                            <td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td>
-                            <td class="p-2 border urdu-font text-xs font-bold" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
-                            <td class="p-3 border bg-red-50/50 min-w-[280px]">${teacherComment}</td>
-                            <td class="p-3 border bg-blue-50/50 min-w-[280px]">${zimmedarComment}</td>
+                            <td class="p-2 border font-black text-red-600 w-16 text-sm">${sPer.toFixed(1)}%</td>
+                            <td class="p-2 border font-bold urdu-font w-24 text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                            <td class="p-4 border bg-red-50/30 text-center min-w-[250px] shadow-inner">${teacherComment}</td>
+                            <td class="p-4 border bg-blue-50/30 text-center min-w-[250px] shadow-inner">${zimmedarComment}</td>
                         </tr>`;
                         
                         latestMap.set(uniqueId, true);
@@ -451,27 +451,23 @@ else if (layout === 'wazahat') {
         });
     });
 
-    // ✅ FIXED STRUCTURE: Isme columns bilkul titles ke niche aayenge
+    // ✅ FIXED HEADER STRUCTURE: Dono rows ko alag-alag rakha gaya hai
     thead.innerHTML = `
         <tr class="bg-slate-800 text-white">
-            <th colspan="7" class="p-4 text-center border-b border-slate-700">
-                <div class="flex justify-center gap-6 text-base font-bold">
-                    <span>Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span></span>
-                    <span class="text-slate-500">|</span>
-                    <span>Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span></span>
-                    <span class="text-slate-500">|</span>
-                    <span>Baqi (Pending): <span class="text-red-400">${totalPending}</span></span>
-                </div>
+            <th colspan="7" class="p-3 text-center text-base font-bold shadow-sm">
+                Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+                Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
+                Baqi (Pending): <span class="text-red-400">${totalPending}</span>
             </th>
         </tr>
         <tr class="bg-slate-900 text-white text-[13px] font-bold urdu-font">
-            <th class="p-3 border border-slate-700 w-[15%]">جامعہ</th>
-            <th class="p-3 border border-slate-700 w-[15%]">استاد</th>
-            <th class="p-3 border border-slate-700 w-[12%]">مضمون/درجہ</th>
-            <th class="p-3 border border-slate-700 w-[8%]">فیصد</th>
-            <th class="p-3 border border-slate-700 w-[10%]">کیفیت</th>
-            <th class="p-3 border border-slate-700 w-[20%] bg-red-900/20">وضاحت (Teacher)</th>
-            <th class="p-3 border border-slate-700 w-[20%] bg-blue-900/20">تبصرہ (Zimmedar)</th>
+            <th class="p-3 border border-slate-700 whitespace-nowrap">جامعہ</th>
+            <th class="p-3 border border-slate-700 whitespace-nowrap">استاد</th>
+            <th class="p-3 border border-slate-700 whitespace-nowrap">مضمون/درجہ</th>
+            <th class="p-3 border border-slate-700 w-16">فیصد</th>
+            <th class="p-3 border border-slate-700 w-24">کیفیت</th>
+            <th class="p-3 border border-slate-700 bg-red-900/40">وضاحت (Teacher)</th>
+            <th class="p-3 border border-slate-700 bg-blue-900/40">تبصرہ (Zimmedar)</th>
         </tr>
     `;
 
