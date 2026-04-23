@@ -58,43 +58,43 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     
     // monthly-performance.js ke renderSubTabContent mein jahan 'performance' tab ka HTML hai:
 
+// monthly-performance.js mein performance tab ka header section
 if (tabName === 'performance') {
     contentArea.innerHTML = `
-        <div class="flex flex-col md:flex-row justify-between items-center mb-4 bg-white p-4 rounded-2xl border shadow-sm gap-4">
-            <h3 class="font-bold text-slate-700">Monthly Targets & Performance</h3>
-            <div class="flex items-center gap-2">
-                <label class="text-xs font-bold text-slate-500">SELECT MONTH:</label>
-                <select id="report-month" class="p-2 border rounded-xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200">
-                    <option value="3">April</option><option value="4">May</option><option value="5">June</option>
-                    <option value="6">July</option><option value="7">August</option><option value="8">September</option>
-                    <option value="9">October</option><option value="10">November</option><option value="11">December</option>
-                    <option value="0">January</option><option value="1">February</option><option value="2">March</option>
-                </select>
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
+            <div class="flex flex-col">
+                <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex flex-col gap-1">
+                    <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
+                    <select id="report-month" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[120px]">
+                        <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                        <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                        <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+                        <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                    </select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
+                    <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
+                        <option value="all">All Jamiaat (Show All)</option>
+                        ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
+                    </select>
+                </div>
             </div>
         </div>
-        <div class="overflow-x-auto border border-slate-200 rounded-3xl shadow-sm bg-white" id="performance-table-container">
-            <table class="w-full text-left border-collapse min-w-[1100px]">
-                <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black">
-        <tr>
-            <th class="p-3 border-b">Teacher / Class / Book</th>
-            <th class="p-3 border-b text-center">Total Pgs</th>
-            <th class="p-3 border-b text-center">Month Target</th>
-            <th class="p-3 border-b text-center">Achieved</th>
-            <th class="p-3 border-b text-center">%</th>
-            <th class="p-3 border-b text-center">Kaifiyat</th>
-            <th class="p-3 border-b text-center">Action</th>
-        </tr>
-    </thead>
-                <tbody id="performance-table-body"></tbody>
-            </table>
-        </div>
-        <div class="mt-6 flex justify-end">
-            <button id="save-performance-btn" class="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition hidden">
-                <i class="fas fa-save mr-2"></i> Save Performance Changes
-            </button>
-        </div>
+        <div id="performance-table-body"></div>
     `;
+
+    // Event Listeners bind karein
     document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+    document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+    
+    // Initial Load
     loadPerformanceTable(assignedJamiaat, db, currentUser);
 } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
@@ -304,10 +304,11 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    const container = document.getElementById('performance-table-body'); // Iska naam 'performance-container' rakhna behtar hai
+    const container = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
+    const selectedJamia = document.getElementById('report-jamia').value; // Jamia filter value
     
-    // 1. Admin Settings Fetch karein (Target calculation ke liye)
+    // Admin Calendar Fetch
     const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
     if (!configSnap.exists()) return;
     const config = configSnap.data();
@@ -316,17 +317,22 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const sem2Total = config.totals?.s2 || 1;
     const monthDays = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
 
-    // 2. Structure Fetch karein
+    // Structure Fetch
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
 
+    // Filter Logic: Agar "all" nahi hai toh sirf selected jamia dikhao
+    const filteredJamiaat = selectedJamia === "all" 
+        ? jamiaat 
+        : jamiaat.filter(j => j === selectedJamia);
+
     let html = "";
-    jamiaat.forEach(jamiaName => {
+    filteredJamiaat.forEach(jamiaName => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
         if (!jamiaData) return;
 
-        html += `
-        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-6 overflow-hidden">
+       html += `
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden">
             <div class="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
                 <div>
                     <h3 class="font-bold text-indigo-900 text-lg">${jamiaName}</h3>
@@ -390,7 +396,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         html += `</tbody></table></div></div>`;
     });
-    container.innerHTML = html;
+    container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Is Jamia ka koi data nahi mila.</div>';
 };
 
 // --- Helpers ---
