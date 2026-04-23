@@ -145,37 +145,6 @@ window.copyTeacherFormLink = (jamiaName) => {
     navigator.clipboard.writeText(url).then(() => alert("Link Copied!"));
 };
 
-// --- SAVE ALL DATA ---
-async function saveFullReport(assignedJamiaat, db, currentUser) {
-    const monthKey = document.getElementById('report-month-select').value;
-    const btn = document.getElementById('final-save-btn');
-    
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> SAVING DATA...`;
-    btn.disabled = true;
-
-    try {
-        const batchPromises = assignedJamiaat.map(jamia => {
-            const safeId = getSafeId(jamia);
-            return setDoc(doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`), {
-                Hafte_Ka_Kaam: document.getElementById(`taameer-${safeId}`).value,
-                Karyalay_Ka_Kaam: document.getElementById(`karyalay-${safeId}`).value,
-                Aayaat_Ka_Kaam: document.getElementById(`aayaat-${safeId}`).value,
-                Inspector_ID: currentUser.uid,
-                Last_Updated: new Date()
-            }, { merge: true });
-        });
-
-        await Promise.all(batchPromises);
-        alert("Shabash! Sabhi Jamiaat ka data save ho gaya.");
-    } catch (e) {
-        console.error(e);
-        alert("Error saving report: " + e.message);
-    } finally {
-        btn.innerHTML = `<i class="fas fa-save"></i> SAVE FULL REPORT`;
-        btn.disabled = false;
-    }
-}
-
 // --- WINDOW SCOPE FUNCTIONS ---
 
 window.toggleEditMode = (jamiaName) => {
