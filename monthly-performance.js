@@ -619,12 +619,23 @@ window.updateRowStatus = (input, target) => {
         statusCell.className = "p-3 text-center status-cell font-black text-red-600";
     }
 };
+
+// monthly-performance.js ke aakhir mein ye functions replace karein
+
+// --- Helper: Safe ID banana (Spaces hatane ke liye) ---
+const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
+
 // --- 1. Link Copy Function ---
 window.copyTeacherFormLink = (jamiaName) => {
     const monthIdx = document.getElementById('report-month').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('inspector.html', '');
-    // Aapki uploaded file ka naam academic-monthly-performance.html hai
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&inspectorId=${currentUser.uid}`;
+    // Base URL nikalne ka sahi tarika
+    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
+    
+    // Yahan hum global auth se UID lenge taaki 'currentUser' ki error na aaye
+    const auth = firebase.auth().currentUser; 
+    const inspectorId = auth ? auth.uid : 'anonymous';
+
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&inspectorId=${inspectorId}`;
     
     navigator.clipboard.writeText(url).then(() => {
         alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
@@ -633,62 +644,82 @@ window.copyTeacherFormLink = (jamiaName) => {
 
 // --- 2. Edit/Lock Toggle Function ---
 window.toggleEditMode = (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
+    const safeId = getSafeId(jamiaName);
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
     const btn = document.querySelector(`.edit-btn-${safeId}`);
+
+    // Error handling: Check karein agar inputs mile ya nahi
+    if (!inputs || inputs.length === 0) {
+        console.error("Inputs nahi mile for:", safeId);
+        return;
+    }
+
     const isLocked = inputs[0].disabled;
 
     if (isLocked) {
-        // Unlock karna hai
+        // Unlock karna
         inputs.forEach(inp => {
             inp.disabled = false;
-            inp.classList.add('bg-white', 'border-indigo-300', 'shadow-sm');
-            inp.classList.remove('bg-transparent', 'border-transparent');
+            inp.style.backgroundColor = "white";
+            inp.style.border = "1px solid #6366f1";
         });
         btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
-        btn.classList.replace('bg-indigo-600', 'bg-slate-800');
+        btn.style.backgroundColor = "#1e293b"; // Slate-800
     } else {
-        // Lock karna hai aur save logic yahan aayega
+        // Lock karna
         inputs.forEach(inp => {
             inp.disabled = true;
-            inp.classList.remove('bg-white', 'border-indigo-300', 'shadow-sm');
-            inp.classList.add('bg-transparent', 'border-transparent');
+            inp.style.backgroundColor = "transparent";
+            inp.style.border = "1px solid transparent";
         });
         btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.classList.replace('bg-slate-800', 'bg-indigo-600');
-        alert("Data lock kar diya gaya hai. (Saving logic can be added here)");
+        btn.style.backgroundColor = "#4f46e5"; // Indigo-600
+        alert("Data successfully lock kar diya gaya.");
     }
 };
 
-// --- 3. Image Download (Using html2canvas) ---
+// --- 3. Image Download Function ---
 window.downloadJamiaImage = (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
+    const safeId = getSafeId(jamiaName);
     const card = document.getElementById(`card-${safeId}`);
-    
+
+    if (!card) return alert("Card element nahi mila!");
+    if (typeof html2canvas === 'undefined') return alert("html2canvas library load nahi hui!");
+
     html2canvas(card, { scale: 2 }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `${jamiaName}_Report_${new Date().toLocaleDateString()}.png`;
+        link.download = `${jamiaName}_Performance.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
     });
 };
 
-// --- 4. Excel Download ---
+// --- 4. Excel/CSV Download Function ---
 window.downloadJamiaExcel = (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
-    const table = document.querySelector(`#card-${safeId} table`);
+    const safeId = getSafeId(jamiaName);
+    // Table element ko dhoondne ka sahi tarika
+    const card = document.getElementById(`card-${safeId}`);
+    const table = card ? card.querySelector("table") : null;
+
+    if (!table) return alert("Table nahi mili!");
+
     let csv = [];
     const rows = table.querySelectorAll("tr");
     
-    for (const row of rows) {
+    rows.forEach(row => {
         const cols = row.querySelectorAll("td, th");
-        const rowData = Array.from(cols).map(col => `"${col.innerText.replace(/\n/g, ' ')}"`).join(",");
+        const rowData = Array.from(cols)
+            .map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`)
+            .join(",");
         csv.push(rowData);
-    }
+    });
     
-    const csvContent = "data:text/csv;charset=utf-8," + csv.join("\n");
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csv.join("\n");
+    const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
-    link.setAttribute("download", `${jamiaName}_Report.csv`);
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${jamiaName}_Monthly_Report.csv`);
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
 };
