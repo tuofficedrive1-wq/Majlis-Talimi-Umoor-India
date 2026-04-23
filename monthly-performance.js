@@ -3,10 +3,6 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-// Global instances
-const auth = getAuth();
-const db = getFirestore();
-
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
 let academicConfig = null;
@@ -598,6 +594,7 @@ window.updateRowStatus = (input, target) => {
 
 // 1. Link Copy Function
 window.copyTeacherFormLink = (jamiaName) => {
+    const auth = getAuth(); // Yahan function ke andar call karein
     const monthKey = document.getElementById('report-month').value;
     const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
     const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
@@ -608,7 +605,6 @@ window.copyTeacherFormLink = (jamiaName) => {
         alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
     });
 };
-
 // 2. Edit Mode Toggle (with save logic foundation)
 window.toggleEditMode = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
