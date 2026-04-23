@@ -1,8 +1,11 @@
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { 
-    getFirestore, doc, getDoc, updateDoc, setDoc 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    getFirestore, doc, getDoc, updateDoc, setDoc, collection 
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
+// Global instances
+const auth = getAuth();
+const db = getFirestore();
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
 let academicConfig = null;
@@ -304,27 +307,30 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 // Main loop function ko authenticated user handle karne ke liye update karein
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    const container = document.getElementById('performance-table-body');
-    const selectedMonthIdx = document.getElementById('report-month').value; 
-    const selectedJamia = document.getElementById('report-jamia')?.value || "all";
+    const tbody = document.getElementById('performance-table-body');
+    const selectedMonthKey = document.getElementById('report-month').value; // 'apr', 'may' etc.
     
-    // 1. ADMIN CALENDAR FETCH (Target nikalne ke liye)
-    // Admin file 'academic_calendar' path use karti hai
-    const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    if (!calSnap.exists()) {
-        container.innerHTML = '<div class="p-5 text-red-500 font-bold">Admin Calendar data nahi mila!</div>';
+    // SAHI PATH: 'academic_calendar' jo admin file me use hua hai
+    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+    if (!configSnap.exists()) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Calendar Data nahi mila.</td></tr>';
         return;
     }
-    const calData = calSnap.data();
-    
-    // Admin file me month indices 'apr', 'may' etc. hain
-    // Lekin dropdown me numbers hain. Is mismatch ko handle karein:
-    const monthMap = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    const monthKey = monthMap[selectedMonthIdx];
-    
-    const sem1Total = calData.totals?.s1 || 1; 
-    const sem2Total = calData.totals?.s2 || 1;
-    const monthDays = calData.months?.[monthKey] || { s1: 0, s2: 0 };
+
+    const config = configSnap.data();
+    const activeYear = config.activeYear;
+    const sem1Total = config.totals?.s1 || 1; 
+    const sem2Total = config.totals?.s2 || 1;
+    // Admin file me month data 'months' field ke andar hai
+    const monthData = config.months?.[selectedMonthKey] || { s1: 0, s2: 0 };
+
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+    const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
+
+    // ... Calculation me use karein:
+    const totalDays = (p.semester == "1") ? sem1Total : sem2Total;
+    const monthDays = (p.semester == "1") ? monthData.s1 : monthData.s2;
+    const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
 
     // 2. USER STRUCTURE FETCH
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
@@ -603,53 +609,37 @@ window.updateRowStatus = (input, target) => {
 
 // --- monthly-performance.js ke aakhir mein ye helper functions check karein ---
 
-// 1. Link Copy: Global auth se UID nikalne ke liye
+// --- 1. Link Copy Function ---
 window.copyTeacherFormLink = (jamiaName) => {
-    const monthIdx = document.getElementById('report-month').value;
+    const monthKey = document.getElementById('report-month').value;
     const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
     
-    // Auth ko modular tarike se dhoondein taaki ReferenceError na aaye
+    // Auth modular tarike se
     const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
 
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaId=${encodeURIComponent(jamiaName)}&month=${monthIdx}&inspectorId=${inspectorId}`;
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
     
     navigator.clipboard.writeText(url).then(() => {
         alert("Teacher Form link copy ho gayi hai!");
     });
 };
 
-// 2. Edit Toggle: Specific classes aur styling correct
+// --- 2. Edit/Lock Toggle ---
 window.toggleEditMode = (jamiaName) => {
-    const safeId = getSafeId(jamiaName);
+    const safeId = jamiaName.replace(/\s+/g, '');
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
     const btn = document.querySelector(`.edit-btn-${safeId}`);
 
-    if (inputs.length === 0) return console.error("Inputs nahi mile for:", safeId);
-    
+    if (inputs.length === 0) return;
     const isLocked = inputs[0].disabled;
 
-    if (isLocked) {
-        // Unlock (Editable)
-        inputs.forEach(inp => {
-            inp.disabled = false;
-            inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #c7d2fe"; // indigo-200
-            inp.classList.remove('border-transparent');
-        });
-        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
-        btn.className = `edit-btn-${safeId} bg-emerald-600 text-white text-[11px] px-4 py-2 rounded-xl transition font-bold shadow-lg`;
-    } else {
-        // Lock (Read-only)
-        inputs.forEach(inp => {
-            inp.disabled = true;
-            inp.style.backgroundColor = "transparent";
-            inp.style.border = "1px solid transparent";
-            inp.classList.add('border-transparent');
-        });
-        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.className = `edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl transition font-bold shadow-md`;
-        alert("Changes temp store hue hain, Firetore save logic yahan add karein.");
-    }
+    inputs.forEach(inp => {
+        inp.disabled = !isLocked;
+        inp.classList.toggle('bg-white', isLocked);
+    });
+
+    btn.innerHTML = isLocked ? `<i class="fas fa-lock mr-1"></i> Lock` : `<i class="fas fa-edit mr-1"></i> Edit`;
+    btn.classList.toggle('bg-slate-800', isLocked);
 };
 
 // 3. Image Download: Pure card ki photo
