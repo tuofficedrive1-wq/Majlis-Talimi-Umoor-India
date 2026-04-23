@@ -1,274 +1,62 @@
-import { 
-    getFirestore, doc, getDoc, updateDoc, setDoc, collection 
-} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { firebase, db } from './firebase-config.js'; // Sahi firebase setup import karein
+import { getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
-const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-];
+let academicConfig = null;
 
-// CRITICAL FIX: Ensure 'export' is present before the function
-export async function renderPerformanceTab(assignedJamiaat, currentUser, db) {
+// Academic Admin ki settings fetch karne ka function
+async function getAcademicConfig(db) {
+    if (academicConfig) return academicConfig;
+    const snap = await getDoc(doc(db, "settings", "academic_calendar")); 
+    if (snap.exists()) {
+        academicConfig = snap.data();
+        return academicConfig;
+    }
+    return null;
+}
+
+const getStatusStyles = (status) => {
+    if (status === 'Mumtaz') return 'text-emerald-600 font-black';
+    if (status === 'Behtar') return 'text-blue-600 font-bold';
+    return 'text-red-600 font-bold';
+};
+
+export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     const container = document.getElementById('performance-jamia-list');
-    if (!container) return;
-
-    const currentMonthIndex = new Date().getMonth();
-
     container.innerHTML = `
-        <div class="performance-container space-y-6">
-            <div class="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
-                <div class="flex flex-col">
-                    <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
-                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Entry Management</p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Select Month</label>
-                        <select id="report-month-select" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[150px]">
-                            ${months.map((m, i) => `<option value="${i}" ${i === currentMonthIndex ? 'selected' : ''}>${m}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div id="performance-grid" class="space-y-4"></div>
-            <div class="save-report-footer flex justify-center py-8">
-                <button id="final-save-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-12 py-4 rounded-2xl font-bold shadow-lg shadow-emerald-100 transition-all active:scale-95 flex items-center gap-3">
-                    <i class="fas fa-save"></i> SAVE FULL REPORT
-                </button>
+        <div class="mb-6">
+            <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
+                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
+                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
+                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
             </div>
         </div>
+        <div id="sub-tab-content" class="space-y-6"></div>
     `;
 
-    const loadContent = () => loadJamiaCards(assignedJamiaat, db, currentUser);
-    await loadContent();
-
-    document.getElementById('report-month-select').onchange = loadContent;
-    document.getElementById('final-save-btn').onclick = () => saveFullReport(assignedJamiaat, db, currentUser);
-}
-
-// Card Loading Logic
-async function loadJamiaCards(assignedJamiaat, db, currentUser) {
-    const grid = document.getElementById('performance-grid');
-    const monthKey = document.getElementById('report-month-select').value;
-    grid.innerHTML = '<div class="text-center p-10 font-bold text-slate-400">Loading Jamiaat Data...</div>';
-
-    let html = "";
-    for (const jamia of assignedJamiaat) {
-        const safeId = getSafeId(jamia);
-        const docRef = doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`);
-        const snap = await getDoc(docRef);
-        const data = snap.exists() ? snap.data() : {};
-
-        html += `
-            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden jamia-card" id="card-${safeId}">
-                <div class="bg-slate-50/50 p-4 border-b flex justify-between items-center">
-                    <div class="flex items-center gap-3">
-                        <div class="w-2 h-8 bg-indigo-600 rounded-full"></div>
-                        <h4 class="font-bold text-indigo-900">${jamia}</h4>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="copyTeacherFormLink('${jamia}')" class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-xl text-[10px] font-bold">Link</button>
-                        <button onclick="toggleEditMode('${jamia}')" class="edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold">Edit</button>
-                    </div>
-                </div>
-                <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="flex flex-col gap-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Hafte Ka Kaam</label>
-                        <input type="text" id="taameer-${safeId}" disabled value="${data.Hafte_Ka_Kaam || ''}" class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
-                    </div>
-                    <div class="flex flex-col gap-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Karyalay Ka Kaam</label>
-                        <input type="text" id="karyalay-${safeId}" disabled value="${data.Karyalay_Ka_Kaam || ''}" class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
-                    </div>
-                    <div class="flex flex-col gap-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase">Aayaat Ka Kaam</label>
-                        <input type="text" id="aayaat-${safeId}" disabled value="${data.Aayaat_Ka_Kaam || ''}" class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
-                    </div>
-                </div>
-            </div>`;
-    }
-    grid.innerHTML = html;
-}
-
-// Bulk Save Function
-async function saveFullReport(assignedJamiaat, db, currentUser) {
-    const monthKey = document.getElementById('report-month-select').value;
-    const btn = document.getElementById('final-save-btn');
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> SAVING...`;
-    btn.disabled = true;
-
-    try {
-        for (const jamia of assignedJamiaat) {
-            const safeId = getSafeId(jamia);
-            await setDoc(doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`), {
-                Hafte_Ka_Kaam: document.getElementById(`taameer-${safeId}`).value,
-                Karyalay_Ka_Kaam: document.getElementById(`karyalay-${safeId}`).value,
-                Aayaat_Ka_Kaam: document.getElementById(`aayaat-${safeId}`).value,
-                Inspector_ID: currentUser.uid,
-                Last_Updated: new Date()
-            }, { merge: true });
-        }
-        alert("Shabash! Report save ho gayi.");
-    } catch (e) {
-        alert("Error: " + e.message);
-    } finally {
-        btn.innerHTML = `<i class="fas fa-save"></i> SAVE FULL REPORT`;
-        btn.disabled = false;
-    }
-}
-
-// Global Window Functions
-window.toggleEditMode = (jamiaName) => {
-    const safeId = getSafeId(jamiaName);
-    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
-    const btn = document.querySelector(`.edit-btn-${safeId}`);
-    const isLocked = inputs[0].disabled;
-
-    inputs.forEach(inp => {
-        inp.disabled = !isLocked;
-        inp.style.backgroundColor = isLocked ? "white" : "";
-        inp.style.borderColor = isLocked ? "#c7d2fe" : "transparent";
+    const subTabBtns = container.querySelectorAll('.sub-tab-btn');
+    subTabBtns.forEach(btn => {
+        btn.onclick = () => {
+            subTabBtns.forEach(b => {
+                b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+                b.classList.add('text-slate-500');
+            });
+            btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser, db);
+        };
     });
 
-    btn.innerHTML = isLocked ? "Lock" : "Edit";
-    btn.className = isLocked ? `edit-btn-${safeId} bg-slate-800 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold` : `edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold`;
-};
-
-window.copyTeacherFormLink = (jamiaName) => {
-    const auth = getAuth();
-    const monthKey = document.getElementById('report-month-select').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${auth.currentUser.uid}`;
-    navigator.clipboard.writeText(url).then(() => alert("Link Copied!"));
-};
-
-// --- WINDOW SCOPE FUNCTIONS ---
-
-window.toggleEditMode = (jamiaName) => {
-    const safeId = getSafeId(jamiaName);
-    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
-    const btn = document.querySelector(`.edit-btn-${safeId}`);
-    const isLocked = inputs[0].disabled;
-
-    inputs.forEach(inp => {
-        inp.disabled = !isLocked;
-        if (isLocked) {
-            inp.style.backgroundColor = "white";
-            inp.style.borderColor = "#c7d2fe";
-        } else {
-            inp.style.backgroundColor = "";
-            inp.style.borderColor = "transparent";
-        }
-    });
-
-    btn.innerHTML = isLocked ? "Lock" : "Edit";
-    btn.className = isLocked 
-        ? `edit-btn-${safeId} bg-slate-800 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold` 
-        : `edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold`;
-};
-
-window.copyTeacherFormLink = (jamiaName) => {
-    const auth = getAuth();
-    const monthKey = document.getElementById('report-month-select').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
-    
-    navigator.clipboard.writeText(url).then(() => alert("Teacher Form Link copy ho gayi!"));
-};
-
-window.downloadJamiaImage = (jamiaName) => {
-    const safeId = getSafeId(jamiaName);
-    const card = document.getElementById(`card-${safeId}`);
-    if (typeof html2canvas === 'undefined') return alert("html2canvas library missing!");
-
-    html2canvas(card, { scale: 2 }).then(canvas => {
-        const link = document.createElement('a');
-        link.download = `${jamiaName}_Performance.png`;
-        link.href = canvas.toDataURL();
-        link.click();
-    });
-};
-
-window.downloadJamiaExcel = (jamiaName) => {
-    // Basic CSV download logic
-    const safeId = getSafeId(jamiaName);
-    const h = document.getElementById(`taameer-${safeId}`).value;
-    const k = document.getElementById(`karyalay-${safeId}`).value;
-    const a = document.getElementById(`aayaat-${safeId}`).value;
-    
-    let csvContent = "data:text/csv;charset=utf-8,Jamia,Hafte Ka Kaam,Karyalay Ka Kaam,Aayaat Ka Kaam\n";
-    csvContent += `${jamiaName},${h},${k},${a}`;
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${jamiaName}_report.csv`);
-    document.body.appendChild(link);
-    link.click();
-};
-
-
-// --- Functions exposed to window (for inline onclick) ---
-
-window.saveJamiaData = async (jamiaName) => {
-    const auth = getAuth();
-    const db = getFirestore();
-    const monthKey = document.getElementById('report-month').value;
-    const safeJamiaId = getSafeId(jamiaName);
-    const userId = auth.currentUser.uid;
-
-    const taameer = document.getElementById(`taameer-${safeJamiaId}`).value;
-    const karyalay = document.getElementById(`karyalay-${safeJamiaId}`).value;
-    const aayaat = document.getElementById(`aayaat-${safeJamiaId}`).value;
-
-    try {
-        await setDoc(doc(db, 'Jamia_Reports', jamiaName, 'Reports', `Month_${monthKey}`), {
-            Hafte_Ka_Kaam: taameer,
-            Karyalay_Ka_Kaam: karyalay,
-            Aayaat_Ka_Kaam: aayaat,
-            Inspector_ID: userId,
-            Date: new Date()
-        });
-        alert(`${jamiaName} data saved successfully!`);
-        // Refresh grid (optional but good)
-        // window.location.reload(); 
-    } catch (error) {
-        console.error("Error saving data:", error);
-        alert(`Failed to save data for ${jamiaName}.`);
-    }
-};
-
-window.copyTeacherFormLink = (jamiaName) => {
-    const auth = getAuth();
-    const monthKey = document.getElementById('report-month').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
-
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
-    
-    navigator.clipboard.writeText(url).then(() => {
-        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
-    });
-};
-
-window.openPerformanceReport = (jamiaName) => {
-    const monthKey = document.getElementById('report-month').value;
-    const monthName = months[parseInt(monthKey)];
-    const year = new Date().getFullYear();
-    const tabName = `Performance_${jamiaName}_${monthName}`;
-    const reportTitle = `${jamiaName} (${monthName} ${year})`;
-
-    window.openTab(`${reportTitle}`, tabName);
+    renderSubTabContent('performance', assignedJamiaat, currentUser, db);
 };
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
     
- // monthly-performance.js mein performance tab ka header section
+    // monthly-performance.js ke renderSubTabContent mein jahan 'performance' tab ka HTML hai:
+
+// monthly-performance.js mein performance tab ka header section
 if (tabName === 'performance') {
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
@@ -514,75 +302,104 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 };
 
 // Main loop function ko authenticated user handle karne ke liye update karein
-// --- Main Load Function ---
-export const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    const container = document.getElementById('performance-table-body');
-    const monthKey = document.getElementById('report-month').value; 
-    const selectedJamia = document.getElementById('report-jamia')?.value || "all";
+const loadPerformanceTable = async (jamiaat, db, selectedYear = "2026-2027") => {
+    const tbody = document.getElementById('performance-table-body');
+    const selectedMonthIdx = document.getElementById('report-month').value; 
     
-    // Admin Calendar Fetch
-    const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    if (!calSnap.exists()) return;
-    const calData = calSnap.data();
-    
-    const sem1Total = calData.totals?.s1 || 1; 
-    const sem2Total = calData.totals?.s2 || 1;
-    const monthDays = calData.months?.[monthKey] || { s1: 0, s2: 0 };
+    // Auth Check: Error se bachne ke liye
+    const user = firebase.auth().currentUser;
+    if (!user) {
+        tbody.innerHTML = '<div class="p-5 text-center text-rose-500 font-bold">User session expired. Please login.</div>';
+        return;
+    }
 
-    // Structure Fetch
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const karkardagi = userSnap.data().academicYears?.[calData.activeYear]?.karkardagiStructure || [];
+    // 1. Admin Calendar Fetch (Target calculation ke liye)
+    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+    if (!configSnap.exists()) return;
+    const config = configSnap.data();
 
-    const filtered = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
+    const sem1Total = config.totals?.s1 || 1; 
+    const sem2Total = config.totals?.s2 || 1;
+    const monthDays = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
+
+    // 2. Structure Fetch
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    const karkardagi = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
 
     let html = "";
-    filtered.forEach(jamiaName => {
+    jamiaat.forEach(jamiaName => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
         if (!jamiaData) return;
+
         const safeId = getSafeId(jamiaName);
 
+        // Jamia Card with ID, Class aur Data Attributes bilkul sahi
         html += `
-        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden" id="card-${safeId}">
-            <div class="bg-slate-50 p-5 border-b flex justify-between items-center">
-                <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
-                <div class="flex gap-2">
-                    <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border px-3 py-2 rounded-xl text-[11px] font-bold">Link</button>
-                    <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border px-3 py-2 rounded-xl text-[11px] font-bold">Image</button>
-                    <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border px-3 py-2 rounded-xl text-[11px] font-bold">Excel</button>
-                    <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} bg-indigo-600 text-white px-3 py-2 rounded-xl text-[11px] font-bold">Edit</button>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 jamia-card" id="card-${safeId}" data-jamia-name="${jamiaName}">
+            <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center header-section">
+                <div>
+                    <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border text-slate-700 text-[11px] px-3 py-2 rounded-xl transition font-bold shadow-sm">
+                        <i class="fas fa-link mr-1 text-indigo-500"></i> Link
+                    </button>
+                    <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border text-slate-700 text-[11px] px-3 py-2 rounded-xl transition font-bold shadow-sm">
+                        <i class="fas fa-image mr-1 text-rose-500"></i> Image
+                    </button>
+                    <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border text-slate-700 text-[11px] px-3 py-2 rounded-xl transition font-bold shadow-sm">
+                        <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
+                    </button>
+                    <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
+                        <i class="fas fa-edit mr-1"></i> Edit
+                    </button>
                 </div>
             </div>
-            <table class="w-full">
-                <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
-                    <tr>
-                        <th class="p-4 text-left">Teacher</th>
-                        <th class="p-4 text-center">Total</th>
-                        <th class="p-4 text-center text-indigo-600">Target</th>
-                        <th class="p-4 text-center">Achieved</th>
-                    </tr>
-                </thead>
-                <tbody>`;
 
-        jamiaData.teachers.forEach(t => {
-            t.periods?.forEach(p => {
-                const totalYear = (p.semester == "1") ? sem1Total : sem2Total;
-                const monthAct = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
-                const target = Math.round((p.totalPages / totalYear) * monthAct) || 0;
+            <div class="overflow-x-auto table-section">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
+                        <tr>
+                            <th class="p-4 border-b">Teacher & Subject</th>
+                            <th class="p-4 border-b text-center">Total</th>
+                            <th class="p-4 border-b text-center text-indigo-600">Target</th>
+                            <th class="p-4 border-b text-center">Achieved</th>
+                            <th class="p-4 border-b text-center">%</th>
+                            <th class="p-4 border-b text-center">Kaifiyat</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        jamiaData.teachers.forEach((teacher, tIdx) => {
+            teacher.periods?.forEach((p, pIdx) => {
+                const totalYearDays = (p.semester == "1") ? sem1Total : sem2Total;
+                const activeMonthDays = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
+                const target = Math.round((p.totalPages / totalYearDays) * activeMonthDays) || 0;
+                const achieved = 0; // Default
+                const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
 
                 html += `
-                <tr class="border-b">
-                    <td class="p-4 font-bold text-slate-800">${t.name}<br><span class="text-[10px] text-slate-400 font-medium">${p.bookName}</span></td>
-                    <td class="p-4 text-center">${p.totalPages}</td>
-                    <td class="p-4 text-center font-bold text-indigo-600">${target}</td>
-                    <td class="p-4 text-center">
-                        <input type="number" value="0" disabled class="achieved-input-${safeId} w-16 p-1 border border-transparent rounded text-center bg-transparent">
-                    </td>
-                </tr>`;
+                    <tr class="border-b last:border-0 hover:bg-slate-50/50">
+                        <td class="p-4">
+                            <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
+                            <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
+                        </td>
+                        <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
+                        <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                        <td class="p-4 text-center">
+                            <input type="number" value="${achieved}" disabled 
+                                   class="achieved-input-${safeId} w-16 p-1.5 border border-transparent rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none transition"
+                                   oninput="calculateLiveStatus(this, ${target})">
+                        </td>
+                        <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
+                        <td class="p-4 text-center status-cell font-black text-red-500 italic">Munasib</td>
+                    </tr>`;
             });
         });
-        html += `</tbody></table></div>`;
+        html += `</tbody></table></div></div>`;
     });
-    container.innerHTML = html;
+    tbody.innerHTML = html;
 };
 
 // --- Helpers ---
@@ -803,83 +620,99 @@ window.updateRowStatus = (input, target) => {
 
 // monthly-performance.js ke aakhir mein ye functions replace karein
 
-// 1. Link Copy Function
-window.copyTeacherFormLink = (jamiaName) => {
-    const auth = getAuth(); // Yahan function ke andar call karein
-    const monthKey = document.getElementById('report-month').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
+// --- monthly-performance.js ke aakhir mein ye helper functions check karein ---
 
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
+// 1. Link Copy: Global auth se UID nikalne ke liye
+window.copyTeacherFormLink = (jamiaName) => {
+    const monthIdx = document.getElementById('report-month').value;
+    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
+    
+    // Yahan hum global authentication object use karenge taaki 'currentUser' error na aaye
+    const user = firebase.auth().currentUser;
+    const inspectorId = user ? user.uid : 'null';
+
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaId=${encodeURIComponent(jamiaName)}&month=${monthIdx}&inspectorId=${inspectorId}`;
     
     navigator.clipboard.writeText(url).then(() => {
-        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
+        alert("Teacher Form link copy ho gayi hai!");
     });
 };
-// 2. Edit Mode Toggle (with save logic foundation)
+
+// 2. Edit Toggle: Specific classes aur styling correct
 window.toggleEditMode = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
     const btn = document.querySelector(`.edit-btn-${safeId}`);
 
-    if (inputs.length === 0) return;
+    if (inputs.length === 0) return console.error("Inputs nahi mile for:", safeId);
+    
     const isLocked = inputs[0].disabled;
 
-    inputs.forEach(inp => {
-        inp.disabled = !isLocked;
-        if (isLocked) {
+    if (isLocked) {
+        // Unlock (Editable)
+        inputs.forEach(inp => {
+            inp.disabled = false;
             inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #c7d2fe";
-        } else {
+            inp.style.border = "1px solid #c7d2fe"; // indigo-200
+            inp.classList.remove('border-transparent');
+        });
+        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
+        btn.className = `edit-btn-${safeId} bg-emerald-600 text-white text-[11px] px-4 py-2 rounded-xl transition font-bold shadow-lg`;
+    } else {
+        // Lock (Read-only)
+        inputs.forEach(inp => {
+            inp.disabled = true;
             inp.style.backgroundColor = "transparent";
             inp.style.border = "1px solid transparent";
-        }
-    });
-
-    if (isLocked) {
-        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
-        btn.className = `edit-btn-${safeId} bg-slate-800 text-white text-[11px] px-4 py-2 rounded-xl font-bold`;
-    } else {
+            inp.classList.add('border-transparent');
+        });
         btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.className = `edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl font-bold`;
-        alert("Changes locally saved. Firestore sync can be added here.");
+        btn.className = `edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl transition font-bold shadow-md`;
+        alert("Changes temp store hue hain, Firetore save logic yahan add karein.");
     }
 };
 
-// 3. Image Download (Full Card)
+// 3. Image Download: Pure card ki photo
 window.downloadJamiaImage = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
+    // Table download ki bajay pure Card ki download request karein
     const card = document.getElementById(`card-${safeId}`);
     
     if (!card) return alert("Card nahi mila!");
-    if (typeof html2canvas === 'undefined') return alert("html2canvas library missing!");
+    if (typeof html2canvas === 'undefined') return alert("Haqeeqat Image library missing hai! Apne HTML mein script add karein.");
 
-    html2canvas(card, { scale: 2, useCORS: true }).then(canvas => {
+    html2canvas(card, { scale: 2 }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `${jamiaName}_Report.png`;
+        link.download = `${jamiaName}_Performance_Report.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
     });
 };
 
-// 4. Excel Download
+// 4. Excel Download: Sahi table data fetch
 window.downloadJamiaExcel = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const table = document.querySelector(`#card-${safeId} table`);
-    if (!table) return;
+
+    if (!table) return alert("Table nahi mili!");
 
     let csv = [];
     const rows = table.querySelectorAll("tr");
-    rows.forEach(row => {
-        const rowData = Array.from(row.querySelectorAll("td, th"))
-                             .map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`)
-                             .join(",");
-        csv.push(rowData);
-    });
     
-    const blob = new Blob(["\uFEFF" + csv.join("\n")], { type: 'text/csv;charset=utf-8;' });
+    for (const row of rows) {
+        const cols = row.querySelectorAll("td, th");
+        const rowData = Array.from(cols)
+            .map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`) // Data cleaning
+            .join(",");
+        csv.push(rowData);
+    }
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csv.join("\n");
+    const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${jamiaName}_Report.csv`;
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${jamiaName}_Monthly_Report.csv`);
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
 };
