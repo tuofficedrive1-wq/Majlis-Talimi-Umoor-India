@@ -24,40 +24,230 @@ const getStatusStyles = (status) => {
     return 'text-red-600 font-bold';
 };
 
-export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
-    const container = document.getElementById('performance-jamia-list');
+export async function renderPerformanceTab(assignedJamiaat, currentUser, db) {
+    const container = document.getElementById('performance-tab');
+    if (!container) return;
+
+    const currentMonthIndex = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    // 1. Clear container and setup basic layout
     container.innerHTML = `
-        <div class="mb-6">
-            <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
-                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
+        <div class="performance-container">
+            <div class="month-selector-group">
+                <div class="selector-box">
+                    <label for="report-month">Select Month:</label>
+                    <select id="report-month"></select>
+                </div>
+                <div id="inspector-status" class="status-badge status-pending">
+                    Checking Status...
+                </div>
             </div>
+
+            <div class="performance-header">
+                <div class="search-input-group">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="jamia-search" placeholder="Quick Search... (e.g., Jamia Name)">
+                </div>
+                <div class="header-actions">
+                    <div class="header-checkbox-group">
+                        <input type="checkbox" id="search-current-month" checked>
+                        <label for="search-current-month">Search In This Month</label>
+                    </div>
+                    <button id="save-all-btn" class="action-btn btn-primary">
+                        <span>💾</span> Save All Changes
+                    </button>
+                </div>
+            </div>
+
+            <div id="performance-grid" class="performance-grid mt-4">
+                </div>
         </div>
-        <div id="sub-tab-content" class="space-y-6"></div>
     `;
 
-    const subTabBtns = container.querySelectorAll('.sub-tab-btn');
-    subTabBtns.forEach(btn => {
-        btn.onclick = () => {
-            subTabBtns.forEach(b => {
-                b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-                b.classList.add('text-slate-500');
-            });
-            btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser, db);
-        };
+    // 2. Populate month selector
+    const monthSelect = document.getElementById('report-month');
+    months.forEach((month, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${month} ${currentYear}`;
+        if (index === currentMonthIndex) option.selected = true;
+        monthSelect.appendChild(option);
     });
 
-    renderSubTabContent('performance', assignedJamiaat, currentUser, db);
+    // 3. Render Cards Function (Updated with modern styling and icons)
+    async function renderJamiaCards(monthKey) {
+        const grid = document.getElementById('performance-grid');
+        grid.innerHTML = '<p class="text-center">Loading Performance Data...</p>';
+
+        try {
+            const docRefs = assignedJamiaat.map(jamia => doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`));
+            
+            // Check overall inspector status
+            const inspectorDoc = await getDoc(doc(db, 'users', currentUser.uid, 'Inspector_Submissions', `Month_${monthKey}`));
+            updateInspectorStatus(inspectorDoc.exists());
+
+            const htmlPromises = assignedJamiaat.map(async jamia => {
+                const safeJamiaId = getSafeId(jamia);
+                const reportDoc = await getDoc(doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`));
+                const data = reportDoc.exists() ? reportDoc.data() : null;
+
+                const status = data ? 'Submitted' : 'Pending';
+                const statusClass = data ? 'status-submitted' : 'status-pending';
+
+                // Input fields with data (pre-filled if available)
+                const taameerInputs = `
+                    <div class="data-input-group">
+                        <div class="data-input-field">
+                            <label>Hafte_Ka_Kaam</label>
+                            <input type="text" class="form-control" id="taameer-${safeJamiaId}" placeholder="Enter work..." value="${data?.Hafte_Ka_Kaam || ''}">
+                        </div>
+                        <div class="data-input-field">
+                            <label>Karyalay_Ka_Kaam</label>
+                            <input type="text" class="form-control" id="karyalay-${safeJamiaId}" placeholder="Enter work..." value="${data?.Karyalay_Ka_Kaam || ''}">
+                        </div>
+                        <div class="data-input-field">
+                            <label>Aayaat_Ka_Kaam</label>
+                            <input type="text" class="form-control" id="aayaat-${safeJamiaId}" placeholder="Enter work..." value="${data?.Aayaat_Ka_Kaam || ''}">
+                        </div>
+                    </div>
+                `;
+
+                return `
+                    <div class="jamia-card" data-jamia="${jamia}">
+                        <div class="card-header-flex">
+                            <span class="jamia-title-badge">${jamia}</span>
+                            <span class="status-badge ${statusClass}">${status}</span>
+                        </div>
+                        
+                        <div class="card-actions-row">
+                            <button onclick="saveJamiaData('${jamia}')" class="action-btn btn-primary">
+                                <span>✅</span> Save Data
+                            </button>
+                            <button onclick="copyTeacherFormLink('${jamia}')" class="action-btn btn-secondary">
+                                <span>🔗</span> Copy Teacher Form
+                            </button>
+                            <button onclick="openPerformanceReport('${jamia}')" class="action-btn btn-info">
+                                <span>👁️</span> Open Report
+                            </button>
+                        </div>
+
+                        ${taameerInputs}
+                    </div>
+                `;
+            });
+
+            const cardsHtmlArray = await Promise.all(htmlPromises);
+            grid.innerHTML = cardsHtmlArray.join('');
+
+            // Setup Search Functionality for the newly rendered cards
+            setupGridSearch();
+
+        } catch (error) {
+            console.error("Error loading performance:", error);
+            grid.innerHTML = '<p class="text-danger">Failed to load performance data.</p>';
+        }
+    }
+
+    // 4. Initial Render and Change Event
+    renderJamiaCards(currentMonthIndex);
+    monthSelect.addEventListener('change', (e) => renderJamiaCards(e.target.value));
+
+    // Define helper functions
+    function updateInspectorStatus(submitted) {
+        const statusEl = document.getElementById('inspector-status');
+        if (submitted) {
+            statusEl.textContent = 'Report Submitted';
+            statusEl.classList.remove('status-pending');
+            statusEl.classList.add('status-submitted');
+        } else {
+            statusEl.textContent = 'Report Pending';
+            statusEl.classList.remove('status-submitted');
+            statusEl.classList.add('status-pending');
+        }
+    }
+
+    // Modern search setup for the grid (Card View)
+    function setupGridSearch() {
+        const searchInput = document.getElementById('jamia-search');
+        const cards = document.querySelectorAll('.jamia-card');
+
+        searchInput.addEventListener('keyup', (e) => {
+            const term = e.target.value.toLowerCase().trim();
+            cards.forEach(card => {
+                const jamiaName = card.getAttribute('data-jamia').toLowerCase();
+                // We search inside input values too
+                const inputsText = Array.from(card.querySelectorAll('input'))
+                                       .map(input => input.value.toLowerCase()).join(' ');
+
+                if (jamiaName.includes(term) || inputsText.includes(term)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    }
+}
+
+
+// --- Functions exposed to window (for inline onclick) ---
+
+window.saveJamiaData = async (jamiaName) => {
+    const auth = getAuth();
+    const db = getFirestore();
+    const monthKey = document.getElementById('report-month').value;
+    const safeJamiaId = getSafeId(jamiaName);
+    const userId = auth.currentUser.uid;
+
+    const taameer = document.getElementById(`taameer-${safeJamiaId}`).value;
+    const karyalay = document.getElementById(`karyalay-${safeJamiaId}`).value;
+    const aayaat = document.getElementById(`aayaat-${safeJamiaId}`).value;
+
+    try {
+        await setDoc(doc(db, 'Jamia_Reports', jamiaName, 'Reports', `Month_${monthKey}`), {
+            Hafte_Ka_Kaam: taameer,
+            Karyalay_Ka_Kaam: karyalay,
+            Aayaat_Ka_Kaam: aayaat,
+            Inspector_ID: userId,
+            Date: new Date()
+        });
+        alert(`${jamiaName} data saved successfully!`);
+        // Refresh grid (optional but good)
+        // window.location.reload(); 
+    } catch (error) {
+        console.error("Error saving data:", error);
+        alert(`Failed to save data for ${jamiaName}.`);
+    }
+};
+
+window.copyTeacherFormLink = (jamiaName) => {
+    const auth = getAuth();
+    const monthKey = document.getElementById('report-month').value;
+    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
+    const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
+
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
+    
+    navigator.clipboard.writeText(url).then(() => {
+        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
+    });
+};
+
+window.openPerformanceReport = (jamiaName) => {
+    const monthKey = document.getElementById('report-month').value;
+    const monthName = months[parseInt(monthKey)];
+    const year = new Date().getFullYear();
+    const tabName = `Performance_${jamiaName}_${monthName}`;
+    const reportTitle = `${jamiaName} (${monthName} ${year})`;
+
+    window.openTab(`${reportTitle}`, tabName);
 };
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
     
-    // monthly-performance.js ke renderSubTabContent mein jahan 'performance' tab ka HTML hai:
-
-// monthly-performance.js mein performance tab ka header section
+ // monthly-performance.js mein performance tab ka header section
 if (tabName === 'performance') {
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
