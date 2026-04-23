@@ -331,25 +331,30 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
         if (!jamiaData) return;
 
-       html += `
-        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden">
-            <div class="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
-                <div>
-                    <h3 class="font-bold text-indigo-900 text-lg">${jamiaName}</h3>
-                    <p class="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Monthly Performance Report</p>
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="copyTeacherLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold">
-                        <i class="fas fa-link mr-1 text-indigo-500"></i> Link
-                    </button>
-                    <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold">
-                        <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
-                    </button>
-                    <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${jamiaName} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
-                        <i class="fas fa-edit mr-1"></i> Edit
-                    </button>
-                </div>
-            </div>
+       // loadPerformanceTable function ke andar Jamia Header ka section:
+html += `
+<div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${jamiaName.replace(/\s+/g, '')}">
+    <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
+        <div>
+            <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                <i class="fas fa-link mr-1 text-indigo-500"></i> Link
+            </button>
+            <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                <i class="fas fa-image mr-1 text-rose-500"></i> Image
+            </button>
+            <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
+            </button>
+            <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${jamiaName.replace(/\s+/g, '')} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
+                <i class="fas fa-edit mr-1"></i> Edit
+            </button>
+        </div>
+    </div>
+    </div>
 
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
@@ -613,4 +618,77 @@ window.updateRowStatus = (input, target) => {
         statusCell.textContent = "Munasib";
         statusCell.className = "p-3 text-center status-cell font-black text-red-600";
     }
+};
+// --- 1. Link Copy Function ---
+window.copyTeacherFormLink = (jamiaName) => {
+    const monthIdx = document.getElementById('report-month').value;
+    const baseUrl = window.location.origin + window.location.pathname.replace('inspector.html', '');
+    // Aapki uploaded file ka naam academic-monthly-performance.html hai
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&inspectorId=${currentUser.uid}`;
+    
+    navigator.clipboard.writeText(url).then(() => {
+        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
+    });
+};
+
+// --- 2. Edit/Lock Toggle Function ---
+window.toggleEditMode = (jamiaName) => {
+    const safeId = jamiaName.replace(/\s+/g, '');
+    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
+    const btn = document.querySelector(`.edit-btn-${safeId}`);
+    const isLocked = inputs[0].disabled;
+
+    if (isLocked) {
+        // Unlock karna hai
+        inputs.forEach(inp => {
+            inp.disabled = false;
+            inp.classList.add('bg-white', 'border-indigo-300', 'shadow-sm');
+            inp.classList.remove('bg-transparent', 'border-transparent');
+        });
+        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
+        btn.classList.replace('bg-indigo-600', 'bg-slate-800');
+    } else {
+        // Lock karna hai aur save logic yahan aayega
+        inputs.forEach(inp => {
+            inp.disabled = true;
+            inp.classList.remove('bg-white', 'border-indigo-300', 'shadow-sm');
+            inp.classList.add('bg-transparent', 'border-transparent');
+        });
+        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
+        btn.classList.replace('bg-slate-800', 'bg-indigo-600');
+        alert("Data lock kar diya gaya hai. (Saving logic can be added here)");
+    }
+};
+
+// --- 3. Image Download (Using html2canvas) ---
+window.downloadJamiaImage = (jamiaName) => {
+    const safeId = jamiaName.replace(/\s+/g, '');
+    const card = document.getElementById(`card-${safeId}`);
+    
+    html2canvas(card, { scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${jamiaName}_Report_${new Date().toLocaleDateString()}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+    });
+};
+
+// --- 4. Excel Download ---
+window.downloadJamiaExcel = (jamiaName) => {
+    const safeId = jamiaName.replace(/\s+/g, '');
+    const table = document.querySelector(`#card-${safeId} table`);
+    let csv = [];
+    const rows = table.querySelectorAll("tr");
+    
+    for (const row of rows) {
+        const cols = row.querySelectorAll("td, th");
+        const rowData = Array.from(cols).map(col => `"${col.innerText.replace(/\n/g, ' ')}"`).join(",");
+        csv.push(rowData);
+    }
+    
+    const csvContent = "data:text/csv;charset=utf-8," + csv.join("\n");
+    const link = document.createElement("a");
+    link.setAttribute("href", encodeURI(csvContent));
+    link.setAttribute("download", `${jamiaName}_Report.csv`);
+    link.click();
 };
