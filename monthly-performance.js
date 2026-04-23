@@ -307,16 +307,18 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const tbody = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
     
-    // 1. Admin Calendar Fetch (Target nikalne ke liye)
+    // 1. Admin Calendar se Days Fetch karein
     const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    if (!configSnap.exists()) return;
+    if (!configSnap.exists()) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Admin settings load nahi hui.</td></tr>';
+        return;
+    }
     const config = configSnap.data();
-
     const sem1Total = config.totals?.s1 || 1; 
     const sem2Total = config.totals?.s2 || 1;
     const monthDays = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
 
-    // 2. User Data Fetch
+    // 2. Teacher Structure Fetch karein
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
 
@@ -325,56 +327,51 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
         if (!jamiaData) return;
 
-        // Jamia Header with Action Buttons
+        // Jamia Header
         html += `
-            <tr class="bg-slate-100 font-bold" data-jamia="${jamiaName}">
-                <td colspan="7" class="p-3 border-y">
+            <tr class="bg-indigo-50/50 font-bold" data-jamia-header="${jamiaName}">
+                <td colspan="7" class="p-4 border-y border-indigo-100">
                     <div class="flex justify-between items-center">
-                        <span class="text-indigo-700">${jamiaName}</span>
+                        <span class="text-indigo-800 text-lg"><i class="fas fa-university mr-2"></i>${jamiaName}</span>
                         <div class="flex gap-2">
-                            <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-emerald-600 text-white text-[9px] px-2 py-1 rounded">Excel</button>
-                            <button onclick="toggleEdit('${jamiaName}')" class="edit-btn bg-indigo-600 text-white text-[9px] px-2 py-1 rounded">Edit</button>
+                            <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${jamiaName} bg-indigo-600 text-white text-[11px] px-4 py-1.5 rounded-xl shadow-sm">
+                                <i class="fas fa-edit mr-1"></i> Edit Pages
+                            </button>
                         </div>
                     </div>
                 </td>
             </tr>`;
 
-        jamiaData.teachers.forEach(teacher => {
-            teacher.periods?.forEach(p => {
-                // Calculation Logic
+        jamiaData.teachers.forEach((teacher, tIdx) => {
+            // Har teacher ke liye alag background (Alternate colors)
+            const rowBg = tIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+
+            teacher.periods?.forEach((p, pIdx) => {
+                // Target Calculation
                 const totalYearDays = (p.semester == "1") ? sem1Total : sem2Total;
                 const activeMonthDays = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
-                
-                // Monthly Target Calculation
                 const target = Math.round((p.totalPages / totalYearDays) * activeMonthDays) || 0;
                 
-                // Achievement & Status Logic (Default 0 for now)
+                // Placeholder achieved (isko aap database se link kar sakte hain)
                 const achieved = 0; 
                 const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
-                
-                let status = "Munasib";
-                let statusClass = "text-red-600";
-                if (percentage >= 90) { status = "Mumtaz"; statusClass = "text-emerald-600"; }
-                else if (percentage >= 70) { status = "Behtar"; statusClass = "text-blue-600"; }
 
                 html += `
-                    <tr class="border-b text-sm" data-jamia="${jamiaName}">
-                        <td class="p-3">
-                            <div class="font-bold text-slate-700">${teacher.name}</div>
-                            <div class="text-[10px] text-slate-500">${p.className} - ${p.bookName}</div>
+                    <tr class="border-b ${rowBg} hover:bg-indigo-50/20 transition-colors performance-row-${jamiaName}" data-target-val="${target}">
+                        <td class="p-4">
+                            <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
+                            <div class="text-[11px] font-medium text-indigo-500 uppercase tracking-wider">${p.className} | ${p.bookName}</div>
                         </td>
-                        <td class="p-3 text-center">${p.totalPages}</td>
-                        <td class="p-3 text-center font-bold text-indigo-600">${target}</td>
-                        <td class="p-3 text-center">
+                        <td class="p-4 text-center text-slate-600 font-medium">${p.totalPages}</td>
+                        <td class="p-4 text-center font-bold text-indigo-700">${target}</td>
+                        <td class="p-4 text-center">
                             <input type="number" value="${achieved}" disabled 
-                                   class="achieved-inp w-16 border rounded text-center bg-slate-50"
-                                   oninput="updateRowStatus(this, ${target})">
+                                   class="achieved-input-${jamiaName} w-20 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
+                                   oninput="calculateLiveStatus(this, ${target})">
                         </td>
-                        <td class="p-3 text-center perc-cell font-bold">${percentage}%</td>
-                        <td class="p-3 text-center status-cell font-black ${statusClass}">${status}</td>
-                        <td class="p-3 text-center">
-                            <button class="text-slate-400"><i class="fas fa-history"></i></button>
-                        </td>
+                        <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
+                        <td class="p-4 text-center status-cell font-black text-red-500 italic">Munasib</td>
+                        <td class="p-4 text-center text-slate-300"><i class="fas fa-lock"></i></td>
                     </tr>`;
             });
         });
@@ -471,23 +468,49 @@ async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updat
     }
 }
 // 1. Toggle Edit Mode (Lock/Unlock)
+// Edit Mode Toggle (Lock/Unlock)
 window.toggleEditMode = (jamiaName) => {
-    const header = document.querySelector(`.jamia-performance-header[data-jamia="${jamiaName}"]`);
-    const isEditing = header.dataset.editing === "true";
-    header.dataset.editing = !isEditing;
-    
-    const btn = header.querySelector('.toggle-edit-btn');
-    btn.textContent = isEditing ? "Edit Pages" : "Lock Pages";
-    btn.classList.toggle('bg-slate-800', !isEditing);
+    const inputs = document.querySelectorAll(`.achieved-input-${jamiaName}`);
+    const btn = document.querySelector(`.edit-btn-${jamiaName}`);
+    const isLocked = inputs[0].disabled;
 
-    const inputs = document.querySelectorAll(`.performance-row[data-jamia="${jamiaName}"] .achieved-input`);
-    inputs.forEach(input => {
-        input.disabled = isEditing;
-        input.classList.toggle('bg-white', !isEditing);
-        input.classList.toggle('bg-slate-50', isEditing);
+    inputs.forEach(inp => {
+        inp.disabled = !isLocked;
+        inp.classList.toggle('bg-white', isLocked);
+        inp.classList.toggle('border-indigo-300', isLocked);
     });
+
+    if (isLocked) {
+        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save Data`;
+        btn.className = `edit-btn-${jamiaName} bg-emerald-600 text-white text-[11px] px-4 py-1.5 rounded-xl shadow-lg`;
+    } else {
+        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit Pages`;
+        btn.className = `edit-btn-${jamiaName} bg-indigo-600 text-white text-[11px] px-4 py-1.5 rounded-xl shadow-sm`;
+        alert("Changes temporary hain, database save logic yahan add karein.");
+    }
+};
+
+// Live Percentage aur Kaifiyat Calculation
+window.calculateLiveStatus = (input, target) => {
+    const row = input.closest('tr');
+    const achieved = parseInt(input.value) || 0;
+    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
     
-    document.getElementById('save-performance-btn').classList.toggle('hidden', isEditing);
+    const percCell = row.querySelector('.perc-cell');
+    const statusCell = row.querySelector('.status-cell');
+    
+    percCell.textContent = percentage + "%";
+    
+    if (percentage >= 90) {
+        statusCell.textContent = "Mumtaz";
+        statusCell.className = "p-4 text-center status-cell font-black text-emerald-600 italic";
+    } else if (percentage >= 70) {
+        statusCell.textContent = "Behtar";
+        statusCell.className = "p-4 text-center status-cell font-black text-blue-600 italic";
+    } else {
+        statusCell.textContent = "Munasib";
+        statusCell.className = "p-4 text-center status-cell font-black text-red-500 italic";
+    }
 };
 
 // 2. Copy Teacher Form Link
