@@ -5,6 +5,11 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth
 
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
+const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+
 let academicConfig = null;
 
 // Academic Admin ki settings fetch karne ka function
@@ -24,171 +29,152 @@ const getStatusStyles = (status) => {
     return 'text-red-600 font-bold';
 };
 
-export async function renderPerformanceTab(assignedJamiaat, currentUser, db) {
-    const container = document.getElementById('performance-tab');
-    if (!container) return;
+// --- LOAD CARDS LOGIC ---
+async function loadJamiaCards(assignedJamiaat, db, currentUser) {
+    const grid = document.getElementById('performance-grid');
+    const monthKey = document.getElementById('report-month-select').value;
+    grid.innerHTML = '<div class="text-center p-10 font-bold text-slate-400">Loading Jamiaat Data...</div>';
 
-    const currentMonthIndex = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
+    let html = "";
+    for (const jamia of assignedJamiaat) {
+        const safeId = getSafeId(jamia);
+        const docRef = doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`);
+        const snap = await getDoc(docRef);
+        const data = snap.exists() ? snap.data() : {};
 
-    // 1. Clear container and setup basic layout
-    container.innerHTML = `
-        <div class="performance-container">
-            <div class="month-selector-group">
-                <div class="selector-box">
-                    <label for="report-month">Select Month:</label>
-                    <select id="report-month"></select>
+        html += `
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden jamia-card" id="card-${safeId}">
+                <div class="bg-slate-50/50 p-4 border-b flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-8 bg-indigo-600 rounded-full"></div>
+                        <h4 class="font-bold text-indigo-900">${jamia}</h4>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="copyTeacherFormLink('${jamia}')" class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-xl text-[10px] font-bold hover:bg-indigo-50 hover:text-indigo-600 transition-all">Link</button>
+                        <button onclick="toggleEditMode('${jamia}')" class="edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold shadow-sm">Edit</button>
+                        <button onclick="downloadJamiaImage('${jamia}')" class="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-[10px]"><i class="fas fa-image"></i></button>
+                    </div>
                 </div>
-                <div id="inspector-status" class="status-badge status-pending">
-                    Checking Status...
+                
+                <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="flex flex-col gap-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Hafte Ka Kaam</label>
+                        <input type="text" id="taameer-${safeId}" disabled value="${data.Hafte_Ka_Kaam || ''}" 
+                            class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Karyalay Ka Kaam</label>
+                        <input type="text" id="karyalay-${safeId}" disabled value="${data.Karyalay_Ka_Kaam || ''}" 
+                            class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Aayaat Ka Kaam</label>
+                        <input type="text" id="aayaat-${safeId}" disabled value="${data.Aayaat_Ka_Kaam || ''}" 
+                            class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
+                    </div>
                 </div>
             </div>
-
-            <div class="performance-header">
-                <div class="search-input-group">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="jamia-search" placeholder="Quick Search... (e.g., Jamia Name)">
-                </div>
-                <div class="header-actions">
-                    <div class="header-checkbox-group">
-                        <input type="checkbox" id="search-current-month" checked>
-                        <label for="search-current-month">Search In This Month</label>
-                    </div>
-                    <button id="save-all-btn" class="action-btn btn-primary">
-                        <span>💾</span> Save All Changes
-                    </button>
-                </div>
-            </div>
-
-            <div id="performance-grid" class="performance-grid mt-4">
-                </div>
-        </div>
-    `;
-
-    // 2. Populate month selector
-    const monthSelect = document.getElementById('report-month');
-    months.forEach((month, index) => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = `${month} ${currentYear}`;
-        if (index === currentMonthIndex) option.selected = true;
-        monthSelect.appendChild(option);
-    });
-
-    // 3. Render Cards Function (Updated with modern styling and icons)
-    async function renderJamiaCards(monthKey) {
-        const grid = document.getElementById('performance-grid');
-        grid.innerHTML = '<p class="text-center">Loading Performance Data...</p>';
-
-        try {
-            const docRefs = assignedJamiaat.map(jamia => doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`));
-            
-            // Check overall inspector status
-            const inspectorDoc = await getDoc(doc(db, 'users', currentUser.uid, 'Inspector_Submissions', `Month_${monthKey}`));
-            updateInspectorStatus(inspectorDoc.exists());
-
-            const htmlPromises = assignedJamiaat.map(async jamia => {
-                const safeJamiaId = getSafeId(jamia);
-                const reportDoc = await getDoc(doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`));
-                const data = reportDoc.exists() ? reportDoc.data() : null;
-
-                const status = data ? 'Submitted' : 'Pending';
-                const statusClass = data ? 'status-submitted' : 'status-pending';
-
-                // Input fields with data (pre-filled if available)
-                const taameerInputs = `
-                    <div class="data-input-group">
-                        <div class="data-input-field">
-                            <label>Hafte_Ka_Kaam</label>
-                            <input type="text" class="form-control" id="taameer-${safeJamiaId}" placeholder="Enter work..." value="${data?.Hafte_Ka_Kaam || ''}">
-                        </div>
-                        <div class="data-input-field">
-                            <label>Karyalay_Ka_Kaam</label>
-                            <input type="text" class="form-control" id="karyalay-${safeJamiaId}" placeholder="Enter work..." value="${data?.Karyalay_Ka_Kaam || ''}">
-                        </div>
-                        <div class="data-input-field">
-                            <label>Aayaat_Ka_Kaam</label>
-                            <input type="text" class="form-control" id="aayaat-${safeJamiaId}" placeholder="Enter work..." value="${data?.Aayaat_Ka_Kaam || ''}">
-                        </div>
-                    </div>
-                `;
-
-                return `
-                    <div class="jamia-card" data-jamia="${jamia}">
-                        <div class="card-header-flex">
-                            <span class="jamia-title-badge">${jamia}</span>
-                            <span class="status-badge ${statusClass}">${status}</span>
-                        </div>
-                        
-                        <div class="card-actions-row">
-                            <button onclick="saveJamiaData('${jamia}')" class="action-btn btn-primary">
-                                <span>✅</span> Save Data
-                            </button>
-                            <button onclick="copyTeacherFormLink('${jamia}')" class="action-btn btn-secondary">
-                                <span>🔗</span> Copy Teacher Form
-                            </button>
-                            <button onclick="openPerformanceReport('${jamia}')" class="action-btn btn-info">
-                                <span>👁️</span> Open Report
-                            </button>
-                        </div>
-
-                        ${taameerInputs}
-                    </div>
-                `;
-            });
-
-            const cardsHtmlArray = await Promise.all(htmlPromises);
-            grid.innerHTML = cardsHtmlArray.join('');
-
-            // Setup Search Functionality for the newly rendered cards
-            setupGridSearch();
-
-        } catch (error) {
-            console.error("Error loading performance:", error);
-            grid.innerHTML = '<p class="text-danger">Failed to load performance data.</p>';
-        }
+        `;
     }
+    grid.innerHTML = html;
+}
 
-    // 4. Initial Render and Change Event
-    renderJamiaCards(currentMonthIndex);
-    monthSelect.addEventListener('change', (e) => renderJamiaCards(e.target.value));
+// --- SAVE ALL DATA ---
+async function saveFullReport(assignedJamiaat, db, currentUser) {
+    const monthKey = document.getElementById('report-month-select').value;
+    const btn = document.getElementById('final-save-btn');
+    
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> SAVING DATA...`;
+    btn.disabled = true;
 
-    // Define helper functions
-    function updateInspectorStatus(submitted) {
-        const statusEl = document.getElementById('inspector-status');
-        if (submitted) {
-            statusEl.textContent = 'Report Submitted';
-            statusEl.classList.remove('status-pending');
-            statusEl.classList.add('status-submitted');
-        } else {
-            statusEl.textContent = 'Report Pending';
-            statusEl.classList.remove('status-submitted');
-            statusEl.classList.add('status-pending');
-        }
-    }
-
-    // Modern search setup for the grid (Card View)
-    function setupGridSearch() {
-        const searchInput = document.getElementById('jamia-search');
-        const cards = document.querySelectorAll('.jamia-card');
-
-        searchInput.addEventListener('keyup', (e) => {
-            const term = e.target.value.toLowerCase().trim();
-            cards.forEach(card => {
-                const jamiaName = card.getAttribute('data-jamia').toLowerCase();
-                // We search inside input values too
-                const inputsText = Array.from(card.querySelectorAll('input'))
-                                       .map(input => input.value.toLowerCase()).join(' ');
-
-                if (jamiaName.includes(term) || inputsText.includes(term)) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
+    try {
+        const batchPromises = assignedJamiaat.map(jamia => {
+            const safeId = getSafeId(jamia);
+            return setDoc(doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`), {
+                Hafte_Ka_Kaam: document.getElementById(`taameer-${safeId}`).value,
+                Karyalay_Ka_Kaam: document.getElementById(`karyalay-${safeId}`).value,
+                Aayaat_Ka_Kaam: document.getElementById(`aayaat-${safeId}`).value,
+                Inspector_ID: currentUser.uid,
+                Last_Updated: new Date()
+            }, { merge: true });
         });
+
+        await Promise.all(batchPromises);
+        alert("Shabash! Sabhi Jamiaat ka data save ho gaya.");
+    } catch (e) {
+        console.error(e);
+        alert("Error saving report: " + e.message);
+    } finally {
+        btn.innerHTML = `<i class="fas fa-save"></i> SAVE FULL REPORT`;
+        btn.disabled = false;
     }
 }
+
+// --- WINDOW SCOPE FUNCTIONS ---
+
+window.toggleEditMode = (jamiaName) => {
+    const safeId = getSafeId(jamiaName);
+    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
+    const btn = document.querySelector(`.edit-btn-${safeId}`);
+    const isLocked = inputs[0].disabled;
+
+    inputs.forEach(inp => {
+        inp.disabled = !isLocked;
+        if (isLocked) {
+            inp.style.backgroundColor = "white";
+            inp.style.borderColor = "#c7d2fe";
+        } else {
+            inp.style.backgroundColor = "";
+            inp.style.borderColor = "transparent";
+        }
+    });
+
+    btn.innerHTML = isLocked ? "Lock" : "Edit";
+    btn.className = isLocked 
+        ? `edit-btn-${safeId} bg-slate-800 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold` 
+        : `edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold`;
+};
+
+window.copyTeacherFormLink = (jamiaName) => {
+    const auth = getAuth();
+    const monthKey = document.getElementById('report-month-select').value;
+    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
+    const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
+    
+    navigator.clipboard.writeText(url).then(() => alert("Teacher Form Link copy ho gayi!"));
+};
+
+window.downloadJamiaImage = (jamiaName) => {
+    const safeId = getSafeId(jamiaName);
+    const card = document.getElementById(`card-${safeId}`);
+    if (typeof html2canvas === 'undefined') return alert("html2canvas library missing!");
+
+    html2canvas(card, { scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${jamiaName}_Performance.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+    });
+};
+
+window.downloadJamiaExcel = (jamiaName) => {
+    // Basic CSV download logic
+    const safeId = getSafeId(jamiaName);
+    const h = document.getElementById(`taameer-${safeId}`).value;
+    const k = document.getElementById(`karyalay-${safeId}`).value;
+    const a = document.getElementById(`aayaat-${safeId}`).value;
+    
+    let csvContent = "data:text/csv;charset=utf-8,Jamia,Hafte Ka Kaam,Karyalay Ka Kaam,Aayaat Ka Kaam\n";
+    csvContent += `${jamiaName},${h},${k},${a}`;
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${jamiaName}_report.csv`);
+    document.body.appendChild(link);
+    link.click();
+};
 
 
 // --- Functions exposed to window (for inline onclick) ---
