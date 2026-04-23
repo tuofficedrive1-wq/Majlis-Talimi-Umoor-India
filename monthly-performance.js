@@ -1,6 +1,7 @@
-import { firebase, db } from './firebase-config.js'; // Sahi firebase setup import karein
-import { getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { 
+    getFirestore, doc, getDoc, updateDoc, setDoc 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
@@ -627,14 +628,16 @@ window.copyTeacherFormLink = (jamiaName) => {
     const monthIdx = document.getElementById('report-month').value;
     const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
     
-    // Yahan hum global authentication object use karenge taaki 'currentUser' error na aaye
-    const user = firebase.auth().currentUser;
-    const inspectorId = user ? user.uid : 'null';
+    // Modular Auth use karein
+    const auth = getAuth(); 
+    const inspectorId = auth.currentUser ? auth.currentUser.uid : 'anonymous';
 
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaId=${encodeURIComponent(jamiaName)}&month=${monthIdx}&inspectorId=${inspectorId}`;
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&inspectorId=${inspectorId}`;
     
     navigator.clipboard.writeText(url).then(() => {
-        alert("Teacher Form link copy ho gayi hai!");
+        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
+    }).catch(err => {
+        console.error("Link copy nahi ho saki:", err);
     });
 };
 
