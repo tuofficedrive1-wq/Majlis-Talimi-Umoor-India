@@ -332,10 +332,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const monthDays = (p.semester == "1") ? monthData.s1 : monthData.s2;
     const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
 
-    // 2. USER STRUCTURE FETCH
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const karkardagi = userSnap.data().academicYears?.[calData.activeYear]?.karkardagiStructure || [];
-
+    
     const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
     let html = "";
