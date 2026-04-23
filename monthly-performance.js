@@ -6,6 +6,7 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth
 // Global instances
 const auth = getAuth();
 const db = getFirestore();
+
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
 let academicConfig = null;
@@ -306,84 +307,75 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 };
 
 // Main loop function ko authenticated user handle karne ke liye update karein
-const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    const tbody = document.getElementById('performance-table-body');
-    const selectedMonthKey = document.getElementById('report-month').value; // 'apr', 'may' etc.
+// --- Main Load Function ---
+export const loadPerformanceTable = async (jamiaat, db, currentUser) => {
+    const container = document.getElementById('performance-table-body');
+    const monthKey = document.getElementById('report-month').value; 
+    const selectedJamia = document.getElementById('report-jamia')?.value || "all";
     
-    // SAHI PATH: 'academic_calendar' jo admin file me use hua hai
-    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    if (!configSnap.exists()) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-10 text-center text-red-500">Calendar Data nahi mila.</td></tr>';
-        return;
-    }
+    // Admin Calendar Fetch
+    const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+    if (!calSnap.exists()) return;
+    const calData = calSnap.data();
+    
+    const sem1Total = calData.totals?.s1 || 1; 
+    const sem2Total = calData.totals?.s2 || 1;
+    const monthDays = calData.months?.[monthKey] || { s1: 0, s2: 0 };
 
-    const config = configSnap.data();
-    const activeYear = config.activeYear;
-    const sem1Total = config.totals?.s1 || 1; 
-    const sem2Total = config.totals?.s2 || 1;
-    // Admin file me month data 'months' field ke andar hai
-    const monthData = config.months?.[selectedMonthKey] || { s1: 0, s2: 0 };
-
+    // Structure Fetch
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
+    const karkardagi = userSnap.data().academicYears?.[calData.activeYear]?.karkardagiStructure || [];
 
-    // ... Calculation me use karein:
-    const totalDays = (p.semester == "1") ? sem1Total : sem2Total;
-    const monthDays = (p.semester == "1") ? monthData.s1 : monthData.s2;
-    const target = Math.round((p.totalPages / totalDays) * monthDays) || 0;
-
-    
-    const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
+    const filtered = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
     let html = "";
-    filteredJamiaat.forEach(jamiaName => {
+    filtered.forEach(jamiaName => {
         const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
         if (!jamiaData) return;
-
-        const safeId = jamiaName.replace(/\s+/g, '');
+        const safeId = getSafeId(jamiaName);
 
         html += `
-        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeId}">
-            <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden" id="card-${safeId}">
+            <div class="bg-slate-50 p-5 border-b flex justify-between items-center">
                 <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
                 <div class="flex gap-2">
-                    <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border p-2 rounded-xl text-[11px] font-bold shadow-sm">Link</button>
-                    <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border p-2 rounded-xl text-[11px] font-bold shadow-sm">Image</button>
-                    <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} bg-indigo-600 text-white p-2 rounded-xl text-[11px] font-bold">Edit</button>
+                    <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border px-3 py-2 rounded-xl text-[11px] font-bold">Link</button>
+                    <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border px-3 py-2 rounded-xl text-[11px] font-bold">Image</button>
+                    <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border px-3 py-2 rounded-xl text-[11px] font-bold">Excel</button>
+                    <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} bg-indigo-600 text-white px-3 py-2 rounded-xl text-[11px] font-bold">Edit</button>
                 </div>
             </div>
-            <table class="w-full text-left">
-                <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-black">
+            <table class="w-full">
+                <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
                     <tr>
-                        <th class="p-4">Teacher & Subject</th><th class="p-4 text-center">Total</th>
+                        <th class="p-4 text-left">Teacher</th>
+                        <th class="p-4 text-center">Total</th>
                         <th class="p-4 text-center text-indigo-600">Target</th>
-                        <th class="p-4 text-center">Achieved</th><th class="p-4 text-center">Kaifiyat</th>
+                        <th class="p-4 text-center">Achieved</th>
                     </tr>
                 </thead>
                 <tbody>`;
 
-        jamiaData.teachers.forEach(teacher => {
-            teacher.periods?.forEach(p => {
-                // Target Calculation logic based on Admin Days
-                const totalYearDays = (p.semester == "1") ? sem1Total : sem2Total;
-                const activeMonthDays = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
-                const target = Math.round((p.totalPages / totalYearDays) * activeMonthDays) || 0;
+        jamiaData.teachers.forEach(t => {
+            t.periods?.forEach(p => {
+                const totalYear = (p.semester == "1") ? sem1Total : sem2Total;
+                const monthAct = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
+                const target = Math.round((p.totalPages / totalYear) * monthAct) || 0;
 
                 html += `
-                    <tr class="border-b">
-                        <td class="p-4 font-bold text-slate-800">${teacher.name}<br><span class="text-[10px] text-slate-400">${p.className} | ${p.bookName}</span></td>
-                        <td class="p-4 text-center">${p.totalPages}</td>
-                        <td class="p-4 text-center font-bold text-indigo-600">${target}</td>
-                        <td class="p-4 text-center">
-                            <input type="number" value="0" disabled class="achieved-input-${safeId} w-16 p-1 border rounded text-center bg-transparent">
-                        </td>
-                        <td class="p-4 text-center status-cell font-bold text-red-500 italic">Munasib</td>
-                    </tr>`;
+                <tr class="border-b">
+                    <td class="p-4 font-bold text-slate-800">${t.name}<br><span class="text-[10px] text-slate-400 font-medium">${p.bookName}</span></td>
+                    <td class="p-4 text-center">${p.totalPages}</td>
+                    <td class="p-4 text-center font-bold text-indigo-600">${target}</td>
+                    <td class="p-4 text-center">
+                        <input type="number" value="0" disabled class="achieved-input-${safeId} w-16 p-1 border border-transparent rounded text-center bg-transparent">
+                    </td>
+                </tr>`;
             });
         });
         html += `</tbody></table></div>`;
     });
-    container.innerHTML = html || '<div class="p-10 text-center">Data nahi mila.</div>';
+    container.innerHTML = html;
 };
 
 // --- Helpers ---
@@ -604,26 +596,22 @@ window.updateRowStatus = (input, target) => {
 
 // monthly-performance.js ke aakhir mein ye functions replace karein
 
-// --- monthly-performance.js ke aakhir mein ye helper functions check karein ---
-
-// --- 1. Link Copy Function ---
+// 1. Link Copy Function
 window.copyTeacherFormLink = (jamiaName) => {
     const monthKey = document.getElementById('report-month').value;
     const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    
-    // Auth modular tarike se
     const inspectorId = auth.currentUser ? auth.currentUser.uid : 'null';
 
     const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${inspectorId}`;
     
     navigator.clipboard.writeText(url).then(() => {
-        alert("Teacher Form link copy ho gayi hai!");
+        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
     });
 };
 
-// --- 2. Edit/Lock Toggle ---
+// 2. Edit Mode Toggle (with save logic foundation)
 window.toggleEditMode = (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
+    const safeId = getSafeId(jamiaName);
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
     const btn = document.querySelector(`.edit-btn-${safeId}`);
 
@@ -632,54 +620,59 @@ window.toggleEditMode = (jamiaName) => {
 
     inputs.forEach(inp => {
         inp.disabled = !isLocked;
-        inp.classList.toggle('bg-white', isLocked);
+        if (isLocked) {
+            inp.style.backgroundColor = "white";
+            inp.style.border = "1px solid #c7d2fe";
+        } else {
+            inp.style.backgroundColor = "transparent";
+            inp.style.border = "1px solid transparent";
+        }
     });
 
-    btn.innerHTML = isLocked ? `<i class="fas fa-lock mr-1"></i> Lock` : `<i class="fas fa-edit mr-1"></i> Edit`;
-    btn.classList.toggle('bg-slate-800', isLocked);
+    if (isLocked) {
+        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
+        btn.className = `edit-btn-${safeId} bg-slate-800 text-white text-[11px] px-4 py-2 rounded-xl font-bold`;
+    } else {
+        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
+        btn.className = `edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl font-bold`;
+        alert("Changes locally saved. Firestore sync can be added here.");
+    }
 };
 
-// 3. Image Download: Pure card ki photo
+// 3. Image Download (Full Card)
 window.downloadJamiaImage = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
-    // Table download ki bajay pure Card ki download request karein
     const card = document.getElementById(`card-${safeId}`);
     
     if (!card) return alert("Card nahi mila!");
-    if (typeof html2canvas === 'undefined') return alert("Haqeeqat Image library missing hai! Apne HTML mein script add karein.");
+    if (typeof html2canvas === 'undefined') return alert("html2canvas library missing!");
 
-    html2canvas(card, { scale: 2 }).then(canvas => {
+    html2canvas(card, { scale: 2, useCORS: true }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `${jamiaName}_Performance_Report.png`;
+        link.download = `${jamiaName}_Report.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
     });
 };
 
-// 4. Excel Download: Sahi table data fetch
+// 4. Excel Download
 window.downloadJamiaExcel = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const table = document.querySelector(`#card-${safeId} table`);
-
-    if (!table) return alert("Table nahi mili!");
+    if (!table) return;
 
     let csv = [];
     const rows = table.querySelectorAll("tr");
-    
-    for (const row of rows) {
-        const cols = row.querySelectorAll("td, th");
-        const rowData = Array.from(cols)
-            .map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`) // Data cleaning
-            .join(",");
+    rows.forEach(row => {
+        const rowData = Array.from(row.querySelectorAll("td, th"))
+                             .map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`)
+                             .join(",");
         csv.push(rowData);
-    }
+    });
     
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csv.join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(["\uFEFF" + csv.join("\n")], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${jamiaName}_Monthly_Report.csv`);
-    document.body.appendChild(link);
+    link.href = URL.createObjectURL(blob);
+    link.download = `${jamiaName}_Report.csv`;
     link.click();
-    document.body.removeChild(link);
 };
