@@ -10,26 +10,46 @@ const months = [
     "July", "August", "September", "October", "November", "December"
 ];
 
-let academicConfig = null;
+// CRITICAL FIX: Ensure 'export' is present before the function
+export async function renderPerformanceTab(assignedJamiaat, currentUser, db) {
+    const container = document.getElementById('performance-jamia-list');
+    if (!container) return;
 
-// Academic Admin ki settings fetch karne ka function
-async function getAcademicConfig(db) {
-    if (academicConfig) return academicConfig;
-    const snap = await getDoc(doc(db, "settings", "academic_calendar")); 
-    if (snap.exists()) {
-        academicConfig = snap.data();
-        return academicConfig;
-    }
-    return null;
+    const currentMonthIndex = new Date().getMonth();
+
+    container.innerHTML = `
+        <div class="performance-container space-y-6">
+            <div class="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
+                <div class="flex flex-col">
+                    <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Entry Management</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2 uppercase">Select Month</label>
+                        <select id="report-month-select" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[150px]">
+                            ${months.map((m, i) => `<option value="${i}" ${i === currentMonthIndex ? 'selected' : ''}>${m}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div id="performance-grid" class="space-y-4"></div>
+            <div class="save-report-footer flex justify-center py-8">
+                <button id="final-save-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-12 py-4 rounded-2xl font-bold shadow-lg shadow-emerald-100 transition-all active:scale-95 flex items-center gap-3">
+                    <i class="fas fa-save"></i> SAVE FULL REPORT
+                </button>
+            </div>
+        </div>
+    `;
+
+    const loadContent = () => loadJamiaCards(assignedJamiaat, db, currentUser);
+    await loadContent();
+
+    document.getElementById('report-month-select').onchange = loadContent;
+    document.getElementById('final-save-btn').onclick = () => saveFullReport(assignedJamiaat, db, currentUser);
 }
 
-const getStatusStyles = (status) => {
-    if (status === 'Mumtaz') return 'text-emerald-600 font-black';
-    if (status === 'Behtar') return 'text-blue-600 font-bold';
-    return 'text-red-600 font-bold';
-};
-
-// --- LOAD CARDS LOGIC ---
+// Card Loading Logic
 async function loadJamiaCards(assignedJamiaat, db, currentUser) {
     const grid = document.getElementById('performance-grid');
     const monthKey = document.getElementById('report-month-select').value;
@@ -50,34 +70,80 @@ async function loadJamiaCards(assignedJamiaat, db, currentUser) {
                         <h4 class="font-bold text-indigo-900">${jamia}</h4>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="copyTeacherFormLink('${jamia}')" class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-xl text-[10px] font-bold hover:bg-indigo-50 hover:text-indigo-600 transition-all">Link</button>
-                        <button onclick="toggleEditMode('${jamia}')" class="edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold shadow-sm">Edit</button>
-                        <button onclick="downloadJamiaImage('${jamia}')" class="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-[10px]"><i class="fas fa-image"></i></button>
+                        <button onclick="copyTeacherFormLink('${jamia}')" class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-xl text-[10px] font-bold">Link</button>
+                        <button onclick="toggleEditMode('${jamia}')" class="edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold">Edit</button>
                     </div>
                 </div>
-                
                 <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div class="flex flex-col gap-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Hafte Ka Kaam</label>
-                        <input type="text" id="taameer-${safeId}" disabled value="${data.Hafte_Ka_Kaam || ''}" 
-                            class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
+                        <label class="text-[10px] font-black text-slate-400 uppercase">Hafte Ka Kaam</label>
+                        <input type="text" id="taameer-${safeId}" disabled value="${data.Hafte_Ka_Kaam || ''}" class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
                     </div>
                     <div class="flex flex-col gap-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Karyalay Ka Kaam</label>
-                        <input type="text" id="karyalay-${safeId}" disabled value="${data.Karyalay_Ka_Kaam || ''}" 
-                            class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
+                        <label class="text-[10px] font-black text-slate-400 uppercase">Karyalay Ka Kaam</label>
+                        <input type="text" id="karyalay-${safeId}" disabled value="${data.Karyalay_Ka_Kaam || ''}" class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
                     </div>
                     <div class="flex flex-col gap-2">
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Aayaat Ka Kaam</label>
-                        <input type="text" id="aayaat-${safeId}" disabled value="${data.Aayaat_Ka_Kaam || ''}" 
-                            class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
+                        <label class="text-[10px] font-black text-slate-400 uppercase">Aayaat Ka Kaam</label>
+                        <input type="text" id="aayaat-${safeId}" disabled value="${data.Aayaat_Ka_Kaam || ''}" class="achieved-input-${safeId} p-4 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-300 outline-none transition-all">
                     </div>
                 </div>
-            </div>
-        `;
+            </div>`;
     }
     grid.innerHTML = html;
 }
+
+// Bulk Save Function
+async function saveFullReport(assignedJamiaat, db, currentUser) {
+    const monthKey = document.getElementById('report-month-select').value;
+    const btn = document.getElementById('final-save-btn');
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> SAVING...`;
+    btn.disabled = true;
+
+    try {
+        for (const jamia of assignedJamiaat) {
+            const safeId = getSafeId(jamia);
+            await setDoc(doc(db, 'Jamia_Reports', jamia, 'Reports', `Month_${monthKey}`), {
+                Hafte_Ka_Kaam: document.getElementById(`taameer-${safeId}`).value,
+                Karyalay_Ka_Kaam: document.getElementById(`karyalay-${safeId}`).value,
+                Aayaat_Ka_Kaam: document.getElementById(`aayaat-${safeId}`).value,
+                Inspector_ID: currentUser.uid,
+                Last_Updated: new Date()
+            }, { merge: true });
+        }
+        alert("Shabash! Report save ho gayi.");
+    } catch (e) {
+        alert("Error: " + e.message);
+    } finally {
+        btn.innerHTML = `<i class="fas fa-save"></i> SAVE FULL REPORT`;
+        btn.disabled = false;
+    }
+}
+
+// Global Window Functions
+window.toggleEditMode = (jamiaName) => {
+    const safeId = getSafeId(jamiaName);
+    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
+    const btn = document.querySelector(`.edit-btn-${safeId}`);
+    const isLocked = inputs[0].disabled;
+
+    inputs.forEach(inp => {
+        inp.disabled = !isLocked;
+        inp.style.backgroundColor = isLocked ? "white" : "";
+        inp.style.borderColor = isLocked ? "#c7d2fe" : "transparent";
+    });
+
+    btn.innerHTML = isLocked ? "Lock" : "Edit";
+    btn.className = isLocked ? `edit-btn-${safeId} bg-slate-800 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold` : `edit-btn-${safeId} bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-[10px] font-bold`;
+};
+
+window.copyTeacherFormLink = (jamiaName) => {
+    const auth = getAuth();
+    const monthKey = document.getElementById('report-month-select').value;
+    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthKey}&inspectorId=${auth.currentUser.uid}`;
+    navigator.clipboard.writeText(url).then(() => alert("Link Copied!"));
+};
 
 // --- SAVE ALL DATA ---
 async function saveFullReport(assignedJamiaat, db, currentUser) {
