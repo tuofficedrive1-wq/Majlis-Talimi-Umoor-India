@@ -5398,89 +5398,57 @@ window.runAdminFinalAnalysis = function () {
 
     };
 };
-        // Users fetch karke dropdown bharne ka naya listener
+        
+// --- 1. ADMIN LOGIC: Users List load karna Dropdown mein ---
 const setupTaskUserDropdown = () => {
-    // 'users' aapke collection ka naam hona chahiye jisme users ki details hain
     onSnapshot(collection(db, "users"), (snapshot) => {
-        const usersList = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        
-        // Dropdown element ko pakdein
-        const taskUserSelect = document.getElementById('task-user-select');
-        
-        if (taskUserSelect) {
-            taskUserSelect.innerHTML = '<option value="">-- User Select Karein --</option>' + 
-                usersList.map(u => {
-                    // Yahan u.name aur u.jamia aapke database fields ke mutabiq honi chahiye
-                    const displayName = u.name || u.displayName || "Unknown User";
-                    const displayJamia = u.jamia ? `(${u.jamia})` : "";
-                    return `<option value="${u.id}">${displayName} ${displayJamia}</option>`;
-                }).join('');
-        }
+        let options = '<option value="">-- User Select Karein --</option>';
+        snapshot.forEach((doc) => {
+            const u = doc.data();
+            options += `<option value="${doc.id}">${u.name || 'Unknown'} (${u.jamia || ''})</option>`;
+        });
+        if(taskUserSelect) taskUserSelect.innerHTML = options;
     });
 };
 
-// Ise furan chala dein
-setupTaskUserDropdown();
-// User ke tasks listen karne ka function
-const listenForUserTasks = (currentUserId) => {
-    const q = query(
-        collection(db, "user_tasks"), 
-        where("userId", "==", currentUserId), 
-        where("status", "==", "pending")
-    );
-
-    onSnapshot(q, (snapshot) => {
-        const taskArea = document.getElementById('user-tasks-container'); // Ye ID dashboard me honi chahiye
-        if (!taskArea) return;
-
-        if (snapshot.empty) {
-            taskArea.innerHTML = ""; // Agar koi task nahi hai to khali rakhein
-            return;
-        }
-
-        taskArea.innerHTML = snapshot.docs.map(doc => `
-            <div class="bg-indigo-700 text-white p-4 rounded-lg shadow-lg mb-4 flex justify-between items-center animate-pulse">
-                <div>
-                    <span class="text-xs font-bold uppercase opacity-80">Zaroori Kaam (Task):</span>
-                    <p class="urdu-font text-lg">${doc.data().task}</p>
-                </div>
-                <button onclick="markTaskAsDone('${doc.id}')" class="bg-white text-indigo-700 px-4 py-2 rounded-md font-bold text-sm">
-                    Done
-                </button>
-            </div>
-        `).join('');
-    });
-};
-
-// Task complete karne ka function
-window.markTaskAsDone = async (taskId) => {
-    if(confirm("Kya ye kaam mukammal ho gaya?")) {
-        try {
-            await updateDoc(doc(db, "user_tasks", taskId), {
-                status: "done"
-            });
-            alert("Task complete ho gaya!");
-        } catch (e) {
-            console.error("Update failed", e);
-        }
-    }
-};
-       
- // Click aur Submit events ko active karna
-if (elanaatForm) {
-    elanaatForm.addEventListener('submit', handleElanaatSubmit);
-}
-
+// --- 2. ADMIN LOGIC: Task Assign Karna ---
 if (assignTaskBtn) {
-    assignTaskBtn.addEventListener('click', handleTaskSubmit);
+    assignTaskBtn.addEventListener('click', async () => {
+        const uid = taskUserSelect.value;
+        const text = taskInput.value.trim();
+        if(!uid || !text) { alert("Pehle User aur Task dono bharein!"); return; }
+
+        try {
+            await addDoc(collection(db, "user_tasks"), {
+                userId: uid,
+                task: text,
+                status: "pending",
+                timestamp: serverTimestamp()
+            });
+            taskInput.value = "";
+            alert("Task bhej diya gaya!");
+        } catch (e) { console.error("Error:", e); }
+    });
 }
 
-// Dropdown aur Lists ko pehli baar load karna
-loadUsersIntoTaskDropdown(); 
+// --- 3. ADMIN LOGIC: Elaan Publish Karna ---
+if (elanaatForm) {
+    elanaatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+            await addDoc(collection(db, "announcements"), {
+                text: elanaatTextarea.value,
+                timestamp: serverTimestamp()
+            });
+            elanaatForm.reset();
+            alert("Elaan publish ho gaya!");
+        } catch (err) { console.error(err); }
+    });
+}
 
+// Admin page load hone par dropdown chalao
+setupTaskUserDropdown();
+      
        // --- Init ---
         initApp();
     </script>
