@@ -655,17 +655,36 @@
 </div>
 
                      <div id="admin-elanaat-tab" class="admin-tab-content hidden">
-                        <h3 class="text-xl font-semibold mb-4">Markazi Elanaat (Announcements)</h3>
-                        <form id="elanaat-form" class="mb-6 p-4 bg-gray-50 border rounded-lg">
-                            <label for="elanaat-textarea" class="block text-sm font-medium text-gray-700 mb-2">Naya Elaan:</label>
-                            <textarea id="elanaat-textarea" rows="3" class="w-full p-2 border rounded-lg urdu-font" placeholder="Yahan apna paigham likhein..." required></textarea>
-                            <button type="submit" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Publish Elaan</button>
-                        </form>
-                        <h4 class="text-lg font-semibold mb-3">Pehle Ke Elanaat</h4>
-                        <div id="elanaat-list" class="space-y-3">
-                            <p class="text-gray-500">Koi elaan nahi mila.</p>
-                        </div>
-                     </div>
+    <h3 class="text-xl font-semibold mb-4">Markazi Elanaat & Task Management</h3>
+    
+    <form id="elanaat-form" class="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Naya Markazi Elaan (Sabke Liye):</label>
+        <textarea id="elanaat-textarea" rows="3" class="w-full p-2 border rounded-lg urdu-font" placeholder="Yahan sabke liye paigham likhein..." required></textarea>
+        <button type="submit" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Publish Elaan</button>
+    </form>
+
+    <div class="mb-8 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+        <h4 class="font-bold text-indigo-800 mb-3 text-lg">Assign Personal Task (Kisi Ek User Ko)</h4>
+        <div class="space-y-3">
+            <select id="task-user-select" class="w-full p-2 border rounded-lg urdu-font">
+                <option value="">-- User Select Karein --</option>
+            </select>
+            <textarea id="task-input" rows="2" placeholder="User ko kya kaam dena hai?" class="w-full p-2 border rounded-lg urdu-font"></textarea>
+            <button id="assign-task-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Send Task</button>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+        <div>
+            <h4 class="text-lg font-semibold mb-3">Pehle Ke Elanaat</h4>
+            <div id="elanaat-list" class="space-y-3"></div>
+        </div>
+        <div>
+            <h4 class="text-lg font-semibold mb-3">Tasks Ka Status</h4>
+            <div id="admin-task-list" class="space-y-3"></div>
+        </div>
+    </div>
+</div>
                  <div id="admin-analysis-tab" class="admin-tab-content hidden">
     <div class="bg-white p-6 rounded-xl shadow-md mb-8 border border-teal-100">
         <h3 class="text-xl font-bold text-gray-800 mb-4">Overall Performance Analysis</h3>
@@ -1025,9 +1044,52 @@
         const kkdOnlyUnfilledCheckbox = document.getElementById('kkd-only-unfilled');
 
         // Elanaat Tab Elements
-        const elanaatForm = document.getElementById('elanaat-form'); 
-        const elanaatTextarea = document.getElementById('elanaat-textarea'); 
-        const elanaatListDiv = document.getElementById('elanaat-list'); 
+        // Variables jo aapne bataye
+const elanaatForm = document.getElementById('elanaat-form'); 
+const elanaatTextarea = document.getElementById('elanaat-textarea'); 
+const elanaatListDiv = document.getElementById('elanaat-list'); 
+
+// Task System ke naye variables
+const taskUserSelect = document.getElementById('task-user-select');
+const taskInput = document.getElementById('task-input');
+const assignTaskBtn = document.getElementById('assign-task-btn');
+
+// Form Submit Event (Isse elaan save hoga)
+if (elanaatForm) {
+    elanaatForm.addEventListener('submit', handleElanaatSubmit);
+}
+
+// Task Button Event (Isse task assign hoga)
+if (assignTaskBtn) {
+    assignTaskBtn.addEventListener('click', handleTaskSubmit);
+}
+        // Users fetch karke dropdown bharne ka naya listener
+const setupTaskUserDropdown = () => {
+    // 'users' aapke collection ka naam hona chahiye jisme users ki details hain
+    onSnapshot(collection(db, "users"), (snapshot) => {
+        const usersList = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        // Dropdown element ko pakdein
+        const taskUserSelect = document.getElementById('task-user-select');
+        
+        if (taskUserSelect) {
+            taskUserSelect.innerHTML = '<option value="">-- User Select Karein --</option>' + 
+                usersList.map(u => {
+                    // Yahan u.name aur u.jamia aapke database fields ke mutabiq honi chahiye
+                    const displayName = u.name || u.displayName || "Unknown User";
+                    const displayJamia = u.jamia ? `(${u.jamia})` : "";
+                    return `<option value="${u.id}">${displayName} ${displayJamia}</option>`;
+                }).join('');
+        }
+    });
+};
+
+// Ise furan chala dein
+setupTaskUserDropdown();
+        
         // Edit User Modal Elements
         const editUserModal = document.getElementById('edit-user-modal');
         const editUserForm = document.getElementById('edit-user-form');
@@ -3776,10 +3838,78 @@ modalContent.querySelectorAll('.tadris-save-btn').forEach(btn => {
 
         // --- NEW FEATURES LOGIC (Announcements, Reminders) ---
 
-        const listenForAnnouncements = () => { /* ... (Logic for announcements listener) ... */ };
-        const renderAdminAnnouncementsList = (docs) => { /* ... (Logic to render announcements) ... */ };
-        const handleElanaatSubmit = async (e) => { /* ... (Logic for announcement submit) ... */ };
-        const handleDeleteElanaat = async (e) => { /* ... (Logic for announcement delete) ... */ };
+        // --- ELANAAT LOGIC ---
+
+// 1. Elaan Save Karne Ka Function
+const handleElanaatSubmit = async (e) => {
+    e.preventDefault();
+    const text = elanaatTextarea.value.trim();
+    if (!text) return;
+
+    try {
+        await addDoc(collection(db, "announcements"), {
+            text: text,
+            timestamp: serverTimestamp()
+        });
+        elanaatTextarea.value = ""; // Clear textarea
+        alert("Elaan publish ho gaya!");
+    } catch (error) {
+        console.error("Error:", error);
+    }
+};
+        const populateUserDropdown = (users) => {
+    const taskUserSelect = document.getElementById('task-user-select');
+    if (!taskUserSelect) return;
+    
+    taskUserSelect.innerHTML = '<option value="">-- User Select Karein --</option>' + 
+        users.map(u => `<option value="${u.id}">${u.name || 'No Name'} (${u.jamia || 'No Jamia'})</option>`).join('');
+};
+
+// 2. Elanaat List Dikhane Ka Function
+const listenForAnnouncements = () => {
+    const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
+    onSnapshot(q, (snapshot) => {
+        elanaatListDiv.innerHTML = snapshot.docs.map(doc => `
+            <div class="p-3 bg-white border rounded shadow-sm flex justify-between group">
+                <p class="urdu-font">${doc.data().text}</p>
+                <button onclick="deleteElaan('${doc.id}')" class="text-red-500 opacity-0 group-hover:opacity-100 transition">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `).join('') || '<p class="text-gray-400">Koi elaan nahi hai.</p>';
+    });
+};
+
+// --- TASK SYSTEM LOGIC ---
+
+// 3. Naya Task Bhejne Ka Function
+const handleTaskSubmit = async () => {
+    const userId = taskUserSelect.value;
+    const taskText = taskInput.value.trim();
+
+    if (!userId || !taskText) {
+        alert("User select karein aur kaam likhein!");
+        return;
+    }
+
+    try {
+        await addDoc(collection(db, "user_tasks"), {
+            userId: userId,
+            task: taskText,
+            status: "pending",
+            timestamp: serverTimestamp()
+        });
+        taskInput.value = "";
+        alert("Task bhej diya gaya!");
+    } catch (error) {
+        console.error("Task Error:", error);
+    }
+};
+
+// Task delete ya status dekhne ke liye global function
+window.deleteElaan = async (id) => {
+    if(confirm("Delete karein?")) await deleteDoc(doc(db, "announcements", id));
+};
 // --- Naya Function: User ki poori bariki (Analysis) dikhane ke liye ---
 const renderFullUserAnalysis = (user, userReports) => {
     const container = document.getElementById('admin-reports-summary-container');
