@@ -476,10 +476,11 @@ else if (layoutLevel === 'wazahat') {
                                 </td>
                                 <td class="border p-3 no-print">
                                    
-                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${p.class || p.darjah || '-'}')" 
-                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
-                                        <i class="fab fa-whatsapp"></i> Link
-                                    </button>
+                                  
+<button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${p.class || p.darjah || '-'}')" 
+        class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
+    <i class="fab fa-whatsapp"></i> Link
+</button>
                                 </td>
                             </tr>`;
                     }
@@ -545,11 +546,12 @@ else if (layoutLevel === 'wazahat') {
     document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
 // Function mein 'darjah' parameter add kiya gaya hai
+// Function mein 'darjah' ka izafa kiya gaya hai
 window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat, darjah) => {
     const repoName = "Majlis-Talimi-Umoor-India";
     const baseUrl = `https://tuofficedrive1-wq.github.io/${repoName}/teacher-wazahat.html`;
     
-    // URL parameters mein '&class=' add kiya gaya hai
+    // Yahan params mein &class= joda gaya hai
     const params = `id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}&perc=${encodeURIComponent(percentage)}&kef=${encodeURIComponent(kefiyat)}&class=${encodeURIComponent(darjah)}`;
     
     const fullLink = `${baseUrl}?${params}`;
