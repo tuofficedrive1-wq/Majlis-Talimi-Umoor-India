@@ -451,23 +451,26 @@ latestDataMap.forEach((d) => {
                    let finalWazahatText = "";
 
 if (d.wazahat_map) {
-    const keys = Object.keys(d.wazahat_map);
+    const raw = (rawSubject || "").toLowerCase().trim();
 
-    const matchKey = keys.find(k => {
-        const cleanK = k.toLowerCase().trim().replace(/\./g, '_');
-        const cleanSubject = rawSubject.toLowerCase().trim().replace(/\./g, '_');
-        return cleanK === cleanSubject;
+    const matchKey = Object.keys(d.wazahat_map).find(k => {
+        const cleanKey = k.toLowerCase().replace(/\./g, '').trim();
+        const cleanSub = raw.replace(/\./g, '').trim();
+
+        return (
+            cleanKey === cleanSub ||
+            cleanKey.includes(cleanSub) ||
+            cleanSub.includes(cleanKey)
+        );
     });
 
     if (matchKey) {
         finalWazahatText = d.wazahat_map[matchKey];
     }
 }
-                    
-                    // Purani single field check (Legacy support)
-                    if (!finalWazahatText && d.wazahat) {
-                        finalWazahatText = d.wazahat;
-                    }
+        if (!finalWazahatText && d.wazahat) {
+    finalWazahatText = d.wazahat;
+}
 
                     const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
                     const specificWazahat = hasWazahat 
