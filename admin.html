@@ -5400,16 +5400,35 @@ window.runAdminFinalAnalysis = function () {
 };
         
 // --- 1. ADMIN LOGIC: Users List load karna Dropdown mein ---
+// 1. usersMap ko bahar rakhein taaki ye poore admin panel me kaam kare
+let usersMap = {}; 
+
 const setupTaskUserDropdown = () => {
+    // Users ko fetch karke Map me save karna aur dropdown bharna
     onSnapshot(collection(db, "users"), (snapshot) => {
         let options = '<option value="">-- User Select Karein --</option>';
+        
         snapshot.forEach((doc) => {
             const u = doc.data();
-            options += `<option value="${doc.id}">${u.name || 'Unknown'} (${u.jamia || ''})</option>`;
+            const userId = doc.id;
+            const userName = u.name || "Unknown";
+
+            // ID ke saath Naam save kar liya (Global variable me)
+            usersMap[userId] = userName; 
+
+            options += `<option value="${userId}">${userName} (${u.jamia || ''})</option>`;
         });
-        if(taskUserSelect) taskUserSelect.innerHTML = options;
+
+        const dropdown = document.getElementById('task-user-select');
+        if(dropdown) {
+            dropdown.innerHTML = options;
+        }
+        console.log("Users Map Updated:", usersMap); // Check karne ke liye
     });
 };
+
+// Function ko call karein
+setupTaskUserDropdown();
 
 // --- 2. ADMIN LOGIC: Task Assign Karna ---
 if (assignTaskBtn) {
@@ -5464,32 +5483,55 @@ onSnapshot(query(collection(db, "announcements"), orderBy("timestamp", "desc")),
 // 3. Admin Panel par Tasks ka Live Status (Done Time ke saath)
 const adminTaskList = document.getElementById('admin-task-list'); // Ensure this ID exists in HTML
 onSnapshot(query(collection(db, "user_tasks"), orderBy("timestamp", "desc")), (snap) => {
+    const adminTaskList = document.getElementById('admin-task-list');
     if (!adminTaskList) return;
-    adminTaskList.innerHTML = snap.docs.map(doc => {
+
+    // Tasks ko user-wise group karna
+    const groupedTasks = {};
+    snap.forEach(doc => {
         const d = doc.data();
-        const createdDate = d.timestamp ? d.timestamp.toDate().toLocaleString('en-IN') : '...';
-        const doneDate = d.doneAt ? d.doneAt.toDate().toLocaleString('en-IN') : '';
+        const uid = d.userId;
+        if (!groupedTasks[uid]) groupedTasks[uid] = [];
+        groupedTasks[uid].push({ id: doc.id, ...d });
+    });
+
+    // HTML taiyar karna (Accordion style)
+    adminTaskList.innerHTML = Object.keys(groupedTasks).map(uid => {
+        const userName = usersMap[uid] || uid; // Agar naam mil gaya to naam, warna ID
+        const tasks = groupedTasks[uid];
         
         return `
-            <div class="p-3 border rounded mb-2 ${d.status === 'done' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}">
-                <div class="flex justify-between items-start">
-                    <span class="text-xs font-bold text-indigo-600">${d.userId}</span>
-                    <span class="text-[10px] ${d.status === 'done' ? 'text-green-600' : 'text-orange-500'} font-bold">
-                        ${d.status === 'done' ? '✓ DONE' : '⌛ PENDING'}
-                    </span>
+            <div class="mb-4 border rounded-lg overflow-hidden shadow-sm">
+                <button onclick="this.nextElementSibling.classList.toggle('hidden')" 
+                        class="w-full flex justify-between items-center p-3 bg-indigo-50 hover:bg-indigo-100 transition font-bold text-indigo-800">
+                    <span><i class="fas fa-user-circle mr-2"></i> ${userName}</span>
+                    <span class="bg-indigo-200 text-indigo-800 text-xs px-2 py-1 rounded-full">${tasks.length} Tasks</span>
+                </button>
+                <div class="hidden p-2 space-y-2 bg-white">
+                    ${tasks.map(t => {
+                        const cDate = t.timestamp ? t.timestamp.toDate().toLocaleString('en-IN') : '...';
+                        const dDate = t.doneAt ? t.doneAt.toDate().toLocaleString('en-IN') : '';
+                        return `
+                            <div class="p-2 border-b last:border-0 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="urdu-font font-semibold">${t.task}</span>
+                                    <span class="text-[10px] font-bold ${t.status === 'done' ? 'text-green-600' : 'text-orange-500'}">
+                                        ${t.status === 'done' ? '✓ DONE' : '⌛ PENDING'}
+                                    </span>
+                                </div>
+                                <div class="text-[9px] text-gray-400 mt-1">
+                                    Assign: ${cDate} ${t.status === 'done' ? ` | Done: ${dDate}` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
-                <p class="urdu-font my-1">${d.task}</p>
-                <div class="text-[9px] text-gray-500">
-                    <div><b>Assigned:</b> ${createdDate}</div>
-                    ${d.status === 'done' ? `<div class="text-green-600"><b>Completed:</b> ${doneDate}</div>` : ''}
-                </div>
-            </div>`;
+            </div>
+        `;
     }).join('');
 });
 
-// Admin page load hone par dropdown chalao
-setupTaskUserDropdown();
-      
+     
        // --- Init ---
         initApp();
     </script>
