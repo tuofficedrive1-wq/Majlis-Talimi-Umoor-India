@@ -475,7 +475,8 @@ else if (layoutLevel === 'wazahat') {
                                     </div>
                                 </td>
                                 <td class="border p-3 no-print">
-                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}')" 
+                                   
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${p.class || p.darjah || '-'}')" 
                                             class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
                                         <i class="fab fa-whatsapp"></i> Link
                                     </button>
@@ -543,23 +544,19 @@ else if (layoutLevel === 'wazahat') {
 
     document.getElementById('ra-show-btn').onclick = () => window.fetchResultData();
 }
-window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat) => {
-    // 1. Aapki repository ka sahi naam yahan set kar diya hai
+// Function mein 'darjah' parameter add kiya gaya hai
+window.sendWazahatLink = (docId, teacherName, subject, percentage, kefiyat, darjah) => {
     const repoName = "Majlis-Talimi-Umoor-India";
-    
-    // 2. Base URL ko repository name ke saath joda gaya hai
     const baseUrl = `https://tuofficedrive1-wq.github.io/${repoName}/teacher-wazahat.html`;
     
-    // 3. Parameters taiyar karein
-    const params = `id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}&perc=${encodeURIComponent(percentage)}&kef=${encodeURIComponent(kefiyat)}`;
+    // URL parameters mein '&class=' add kiya gaya hai
+    const params = `id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}&perc=${encodeURIComponent(percentage)}&kef=${encodeURIComponent(kefiyat)}&class=${encodeURIComponent(darjah)}`;
     
-    // 4. Full Link
     const fullLink = `${baseUrl}?${params}`;
     
-    // WhatsApp Message
     const message = `*نوٹس برائے وضاحت (Official Notification)*\n\n` +
                     `محترم ${teacherName} صاحب،\n` +
-                    `آپ کے مضمون *(${subject})* کا رزلٹ کمزور پایا گیا ہے۔\n\n` +
+                    `آپ کے درجہ *${darjah}* کے مضمون *(${subject})* کا رزلٹ کمزور پایا گیا ہے۔\n\n` +
                     `*تفصیلات:*\n` +
                     `فیصد: *${percentage}*\n` +
                     `کیفیت: *${kefiyat}*\n\n` +
