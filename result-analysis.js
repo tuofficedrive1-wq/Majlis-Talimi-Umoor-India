@@ -438,15 +438,23 @@ else if (layoutLevel === 'wazahat') {
                 periods.forEach((p) => {
                     let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
                     
-                    // Filter: Sirf 70% se kam wale (Weak Results)
                     if (percVal < 70) {
                         const subjectKeyForDisplay = (p.subject || '-').replace(/\./g, '_');
-                        const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]);
+                        
+                        // --- DATA FETCHING LOGIC ---
+                        // 1. Naya tareeqa: Map se subject-wise data uthana
+                        const mapWazahat = (d.wazahat_map && d.wazahat_map[subjectKeyForDisplay]);
+                        // 2. Purana tareeqa: Agar map mein nahi hai to purani single field 'wazahat' check karna
+                        const oldWazahat = d.wazahat || "";
+                        
+                        // Final selection: Agar map mein hai to wahi dikhayein, warna purana record
+                        const finalWazahatText = mapWazahat || oldWazahat;
+                        
+                        const hasWazahat = finalWazahatText && finalWazahatText.length > 2;
                         const specificWazahat = hasWazahat 
-                                                ? d.wazahat_map[subjectKeyForDisplay] 
-                                                : '<span class="text-red-500 font-bold">Pending...</span>';
+                                                ? finalWazahatText 
+                                                : '<span class="text-red-500 font-bold italic text-[10px]">Pending...</span>';
 
-                        // Zimmedar Comment fetch karein
                         const zimmedarComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKeyForDisplay]) 
                                                 ? d.zimmedar_comments[subjectKeyForDisplay] 
                                                 : '';
@@ -455,32 +463,32 @@ else if (layoutLevel === 'wazahat') {
 
                         wazahatRows += `
                             <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                                <td class="border p-3 font-bold text-right">${d.jamia}</td>
-                                <td class="border p-3 text-blue-700 font-bold">${tEntry.teacher || "-"}</td>
-                                <td class="border p-3 text-right">${p.subject || '-'} (${p.class || '-'})</td>
+                                <td class="border p-3 font-bold text-right text-xs">${d.jamia}</td>
+                                <td class="border p-3 text-blue-700 font-bold text-xs">${tEntry.teacher || "-"}</td>
+                                <td class="border p-3 text-right text-xs">${p.subject || '-'} <br><small class="text-gray-500">${p.class || '-'}</small></td>
                                 <td class="border p-3 text-red-600 font-bold">${percVal.toFixed(1)}%</td>
-                                <td class="border p-3 font-bold" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                <td class="border p-3 font-bold text-xs" style="color:${getKefiyatColor(percVal, 'teacher')}">
                                     ${getJamiaKefiyat(percVal, 'teacher')}
                                 </td>
                                 <td class="border p-3 text-sm italic text-gray-700 ${hasWazahat ? 'bg-green-50' : 'bg-yellow-50'}">
-                                    ${specificWazahat} 
+                                    <div class="max-h-24 overflow-y-auto text-right px-1" style="min-width:150px">
+                                        ${specificWazahat}
+                                    </div>
                                 </td>
                                 <td class="border p-3 text-sm">
                                     <div class="flex flex-col gap-1">
-                                        <span class="text-indigo-600 font-semibold">${zimmedarComment}</span>
+                                        <span class="text-indigo-600 font-semibold text-xs text-right">${zimmedarComment}</span>
                                         <button onclick="addZimmedarComment('${d.docId}', '${subjectKeyForDisplay}')" 
-                                                class="text-[10px] text-gray-400 hover:text-indigo-600 no-print">
-                                            <i class="fas fa-edit"></i> Comment Likhein
+                                                class="text-[10px] text-gray-400 hover:text-indigo-600 no-print border border-dashed rounded p-1">
+                                            <i class="fas fa-edit"></i> Comment
                                         </button>
                                     </div>
                                 </td>
                                 <td class="border p-3 no-print">
-                                   
-                                  
-<button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${p.class || p.darjah || '-'}')" 
-        class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
-    <i class="fab fa-whatsapp"></i> Link
-</button>
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${p.subject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${p.class || p.darjah || '-'}')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1">
+                                        <i class="fab fa-whatsapp"></i> Link
+                                    </button>
                                 </td>
                             </tr>`;
                     }
@@ -489,16 +497,16 @@ else if (layoutLevel === 'wazahat') {
         }
     });
 
-    // Table Header
+    // Header logic wahi rahega...
     thead.innerHTML = `
     <tr class="bg-gray-800 text-white">
         <th colspan="8" class="p-2 text-center text-sm">
-            Kul Kamzor Results: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-            Wazahat Aa Gayi: <span class="text-green-400">${totalSubmitted}</span> | 
-            Baqi (Pending): <span class="text-red-400">${totalPending}</span>
+            Total Cases: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
+            Received: <span class="text-green-400">${totalSubmitted}</span> | 
+            Pending: <span class="text-red-400">${totalPending}</span>
         </th>
     </tr>
-    <tr class="bg-red-50 text-red-900">
+    <tr class="bg-red-50 text-red-900 text-xs">
         <th class="border p-3">جامعہ</th>
         <th class="border p-3">استاد</th>
         <th class="border p-3">مضمون / درجہ</th>
