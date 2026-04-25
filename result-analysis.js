@@ -448,23 +448,21 @@ latestDataMap.forEach((d) => {
                     const subjectKey = rawSubject.replace(/\./g, '_');
                     
                     // --- Sab se important hissa: Data nikalne ke 4 tarike ---
-                    let finalWazahatText = "";
-                    
-                    if (d.wazahat_map) {
-                        // 1. Check karein underscore wali key (e.g., Riyazi)
-                        // 2. Check karein raw subject (e.g., Riyazi.)
-                        // 3. Case-insensitive check (agar teacher ne chote bade letters use kiye hon)
-                        finalWazahatText = d.wazahat_map[subjectKey] || d.wazahat_map[rawSubject];
-                        
-                        if (!finalWazahatText) {
-                            // 4. Poore map mein dhoondo agar koi milti julti key mil jaye
-                            const foundKey = Object.keys(d.wazahat_map).find(k => 
-                                k.toLowerCase().trim() === rawSubject.toLowerCase().trim() ||
-                                k.replace(/_/g, '.') === rawSubject
-                            );
-                            if (foundKey) finalWazahatText = d.wazahat_map[foundKey];
-                        }
-                    }
+                   let finalWazahatText = "";
+
+if (d.wazahat_map) {
+    const keys = Object.keys(d.wazahat_map);
+
+    const matchKey = keys.find(k => {
+        const cleanK = k.toLowerCase().trim().replace(/\./g, '_');
+        const cleanSubject = rawSubject.toLowerCase().trim().replace(/\./g, '_');
+        return cleanK === cleanSubject;
+    });
+
+    if (matchKey) {
+        finalWazahatText = d.wazahat_map[matchKey];
+    }
+}
                     
                     // Purani single field check (Legacy support)
                     if (!finalWazahatText && d.wazahat) {
