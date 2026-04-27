@@ -151,10 +151,11 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
                 <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
             </button>
-            <button id="ra-top3-poster-btn" class="bg-gradient-to-r from-amber-500 to-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hidden no-print">
-                <i class="fas fa-trophy mr-1"></i> Top 3 Poster
-            </button>
-        </div>
+            <button id="ra-top3-poster-btn" class="bg-gradient-to-r from-teal-500 to-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md">
+        <i class="fas fa-trophy mr-1"></i> Download Top 3 Poster
+    </button>
+                    </div>
+
 
         <div id="ra-loader" class="hidden text-center py-8">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
@@ -637,7 +638,18 @@ window.addZimmedarComment = async (docId, subjectKey) => {
     }
 };
 window.generateTop3Poster = async (topData, year, exam) => {
-    // Ek temporary hidden div banayein poster ke liye
+    // Collect State Names via Popup
+    const states = [];
+    for (let i = 0; i < 3; i++) {
+        const stateName = prompt(`Enter state for ${topData[i]?.name || `Rank ${i+1}`} (Rank ${i+1}):`);
+        if (stateName === null || stateName.trim() === "") {
+            alert("Download canceled. State names for all top Jamias are required.");
+            return; // Canceled or empty state
+        }
+        states.push(stateName.trim());
+    }
+
+    // Temporary hidden div for poster content
     const posterDiv = document.createElement('div');
     posterDiv.style.position = 'fixed';
     posterDiv.style.top = '-5000px';
@@ -645,61 +657,78 @@ window.generateTop3Poster = async (topData, year, exam) => {
     posterDiv.style.height = '1000px';
     document.body.appendChild(posterDiv);
 
-    // Modern Poster Design (Islamic Geometric Background style)
+    // Light Theme Poster Design (Mint Green and Gold)
     posterDiv.innerHTML = `
-        <div id="final-poster" style="width:100%; height:100%; background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 40px; color: white; font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif; text-align: center; border: 15px solid #fbbf24; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+        <div id="final-poster" style="width:100%; height:100%; background: radial-gradient(circle, #e6fffa 0%, #c6f6d5 100%); padding: 50px; color: #1a202c; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; border: 12px solid #fbbf24; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
             
-            <div style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0.1; background-image: url('https://www.transparenttextures.com/patterns/islamic-art.png'); pointer-events:none;"></div>
+            <div style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0.03; background-image: url('https://www.transparenttextures.com/patterns/carbon-fibre.png'); pointer-events:none;"></div>
 
             <div>
-                <h1 style="font-size: 60px; margin-bottom: 10px; color: #fbbf24;">اعزازی اعزاز (Top 3)</h1>
-                <p style="font-size: 24px; font-family: sans-serif; letter-spacing: 2px;">${exam} - Taleemi Saal ${year}</p>
-                <div style="width: 100px; height: 4px; background: #fbbf24; margin: 20px auto;"></div>
+                <h1 style="font-size: 55px; margin-bottom: 5px; color: #1a202c; text-transform: uppercase; font-weight: 900; letter-spacing: 2px;">CONGRATULATIONS</h1>
+                <p style="font-size: 28px; color: #2d3748; font-weight: 600; margin-top: 0;">(Top 3 Jamiaat)</p>
+                <div style="width: 150px; height: 3px; background: #fbbf24; margin: 15px auto;"></div>
+                <p style="font-size: 22px; opacity: 0.9;">${exam} | Taleemi Saal: ${year}</p>
             </div>
 
-            <div style="display: flex; justify-content: space-around; align-items: flex-end; margin-bottom: 50px; direction: rtl;">
+            <div style="display: flex; justify-content: center; align-items: flex-end; gap: 15px; margin-bottom: 60px;">
                 
-                <div style="width: 220px;">
-                    <div style="font-size: 22px; margin-bottom: 10px;">${topData[1]?.name || '-'}</div>
-                    <div style="background: #e5e7eb; color: #1f2937; height: 180px; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; justify-content: center; position: relative;">
-                         <span style="font-size: 50px; font-weight: bold;">2</span>
-                         <span style="font-size: 20px;">${topData[1]?.perc.toFixed(2)}%</span>
+                <div style="width: 210px; display: flex; flex-direction: column; align-items: center;">
+                    <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px; height: 50px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="display: block;">${topData[1]?.name || 'N/A'}</span>
+                        <span style="display: block; font-size: 16px; font-weight: normal; color: #4a5568;">[${states[1]}]</span>
+                    </div>
+                    <div style="width: 100%; background: #e2e8f0; color: #111827; height: 220px; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 -5px 15px rgba(0,0,0,0.15);">
+                         <span style="font-size: 60px; font-weight: 900;">2</span>
+                         <span style="font-size: 26px; font-weight: 900;">${topData[1]?.perc.toFixed(2)}%</span>
                     </div>
                 </div>
 
-                <div style="width: 260px;">
-                    <div style="font-size: 28px; margin-bottom: 10px; color: #fbbf24; font-weight: bold;">${topData[0]?.name || '-'}</div>
-                    <div style="background: #fbbf24; color: #1f2937; height: 260px; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 10;">
-                         <i class="fas fa-crown" style="font-size: 40px; margin-bottom: 10px;"></i>
-                         <span style="font-size: 70px; font-weight: bold;">1</span>
-                         <span style="font-size: 24px; font-weight: bold;">${topData[0]?.perc.toFixed(2)}%</span>
+                <div style="width: 250px; display: flex; flex-direction: column; align-items: center; position: relative; z-index: 10;">
+                    <div style="position: absolute; top: -60px; font-size: 60px;">👑</div>
+                    <div style="font-size: 24px; font-weight: 900; margin-bottom: 15px; color: #fbbf24; height: 70px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="display: block;">${topData[0]?.name || 'N/A'}</span>
+                        <span style="display: block; font-size: 18px; font-weight: normal; color: #4a5568;">[${states[0]}]</span>
+                    </div>
+                    <div style="width: 100%; background: #fbbf24; color: #111827; height: 320px; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 -5px 25px rgba(0,0,0,0.3); border: 4px solid #fff;">
+                         <span style="font-size: 85px; font-weight: 900;">1</span>
+                         <span style="font-size: 32px; font-weight: 900;">${topData[0]?.perc.toFixed(2)}%</span>
                     </div>
                 </div>
 
-                <div style="width: 220px;">
-                    <div style="font-size: 22px; margin-bottom: 10px;">${topData[2]?.name || '-'}</div>
-                    <div style="background: #d97706; color: white; height: 140px; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; justify-content: center;">
-                         <span style="font-size: 40px; font-weight: bold;">3</span>
-                         <span style="font-size: 20px;">${topData[2]?.perc.toFixed(2)}%</span>
+                <div style="width: 210px; display: flex; flex-direction: column; align-items: center;">
+                    <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px; height: 50px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="display: block;">${topData[2]?.name || 'N/A'}</span>
+                        <span style="display: block; font-size: 16px; font-weight: normal; color: #4a5568;">[${states[2]}]</span>
+                    </div>
+                    <div style="width: 100%; background: #d97706; color: #fff; height: 180px; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 -5px 15px rgba(0,0,0,0.15);">
+                         <span style="font-size: 55px; font-weight: 900;">3</span>
+                         <span style="font-size: 24px; font-weight: 900;">${topData[2]?.perc.toFixed(2)}%</span>
                     </div>
                 </div>
             </div>
 
-            <div style="font-size: 18px; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.2); pt-4;">
-                منجانب: مجلسِ تعلیمی امور (ہند)
+            <div style="border-top: 1px solid rgba(0,0,0,0.1); padding-top: 20px;">
+                <p style="font-size: 20px; font-weight: bold; color: #1a202c;">Minjanib: <span style="color:#fbbf24; font-weight:900;">Majlis-e-Talimi Umoor (India)</span></p>
             </div>
         </div>
     `;
 
-    // Canvas mein convert karke download karein
+    // Download Logic
     if(window.html2canvas) {
-        const canvas = await html2canvas(posterDiv.querySelector('#final-poster'), { scale: 2 });
-        const link = document.createElement("a");
-        link.download = `Top3_Jamia_${year}.png`;
-        link.href = canvas.toDataURL("image/png");
-        link.click();
-        document.body.removeChild(posterDiv); // Clean up
+        try {
+            const canvas = await html2canvas(posterDiv.querySelector('#final-poster'), { scale: 2, useCORS: true });
+            const link = document.createElement("a");
+            link.download = `Top3_Jamia_Report_${year}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        } catch (error) {
+            console.error("Poster generation failed:", error);
+            alert("Could not generate the poster. Check console for details.");
+        } finally {
+            document.body.removeChild(posterDiv); // Clean up always
+        }
     } else {
-        alert("Download library (html2canvas) missing!");
+        alert("html2canvas library load nahi hui!");
+        document.body.removeChild(posterDiv); // Clean up even on library error
     }
 };
