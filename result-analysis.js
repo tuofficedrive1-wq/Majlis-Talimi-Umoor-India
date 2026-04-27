@@ -430,98 +430,95 @@ else if (layoutLevel === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
     let wazahatRows = "";
-// --- result-analysis.js ke 'wazahat' layout section mein ye block replace karein ---
 
-latestDataMap.forEach((d) => {
-    if (d.data && Array.isArray(d.data)) {
-        d.data.forEach((tEntry) => {
-            const periods = tEntry.periods || [];
-            periods.forEach((p) => {
-                let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
-                
-                if (percVal < 70) {
-                    const rawSubject = (p.subject || '-').trim();
-                    const subjectKey = rawSubject.replace(/\./g, '_');
-                    // Class name check karein (naya field)
-                    const darjah = (p.class || p.darjah || '-').trim();
+    latestDataMap.forEach((d) => {
+        if (d.data && Array.isArray(d.data)) {
+            d.data.forEach((tEntry) => {
+                const periods = tEntry.periods || [];
+                periods.forEach((p) => {
+                    let percVal = parseFloat(String(p.percentage || 0).replace('%', ''));
                     
-                    let finalWazahatText = "";
-                    
-                    if (d.wazahat_map) {
-                        // 1. Nayi Key (With Subject underscore)
-                        // 2. Raw Subject Key
-                        // 3. Sab se important: Agar pehle class nahi thi, toh shayad key sirf subject name thi
-                        finalWazahatText = d.wazahat_map[subjectKey] || d.wazahat_map[rawSubject];
+                    if (percVal < 70) {
+                        const rawSubject = (p.subject || '-').trim();
+                        const subjectKey = rawSubject.replace(/\./g, '_');
+                        const darjah = (p.class || p.darjah || '-').trim();
+                        
+                        let finalWazahatText = "";
+                        
+                        // --- SMART SEARCH START ---
+                        if (d.wazahat_map) {
+                            // 1. Nayi key check karein (Standard underscore key)
+                            finalWazahatText = d.wazahat_map[subjectKey] || d.wazahat_map[rawSubject];
 
-                        // 4. Agar abhi bhi nahi mila, toh poore map mein loop chalayein (Deep Search)
-                        if (!finalWazahatText) {
-                            Object.keys(d.wazahat_map).forEach(key => {
-                                // Agar key mein subject ka naam kahin bhi hai, toh utha lo
-                                if (key.includes(subjectKey) || subjectKey.includes(key)) {
-                                    finalWazahatText = d.wazahat_map[key];
+                            // 2. Agar nahi mila, toh poore map mein 'Deep Search' karein
+                            if (!finalWazahatText) {
+                                for (let key in d.wazahat_map) {
+                                    // Agar purani key mein sirf subject ka naam tha (chahe class na ho)
+                                    if (key.includes(subjectKey) || subjectKey.includes(key)) {
+                                        finalWazahatText = d.wazahat_map[key];
+                                        break;
+                                    }
                                 }
-                            });
+                            }
                         }
-                    }
-                    
-                    // 5. Purani single field 'wazahat' (Jo shuru mein use hoti thi)
-                    if (!finalWazahatText && d.wazahat) {
-                        finalWazahatText = d.wazahat;
-                    }
+                        
+                        // 3. Purana single field 'wazahat' check karein
+                        if (!finalWazahatText && d.wazahat) {
+                            finalWazahatText = d.wazahat;
+                        }
+                        // --- SMART SEARCH END ---
 
-                    const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
-                    const specificWazahat = hasWazahat 
-                        ? `<div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl;">${finalWazahatText}</div>`
-                        : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
+                        const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
+                        const specificWazahat = hasWazahat 
+                            ? `<div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">${finalWazahatText}</div>`
+                            : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
 
-                    // Zimmedar Comment check (Same Logic)
-                    let zimmedarComment = "";
-                    if (d.zimmedar_comments) {
-                        zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || "";
-                    }
+                        let zimmedarComment = "";
+                        if (d.zimmedar_comments) {
+                            zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || "";
+                        }
 
-                    if (hasWazahat) totalSubmitted++; else totalPending++;
+                        if (hasWazahat) totalSubmitted++; else totalPending++;
 
-                    wazahatRows += `
-                        <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                            <td class="border p-3 font-bold text-right text-[10px]">${d.jamia}</td>
-                            <td class="border p-3 text-blue-700 font-bold text-xs">${tEntry.teacher || "-"}</td>
-                            <td class="border p-3 text-right text-xs">
-                                ${rawSubject} <br>
-                                <small class="text-gray-500">(${darjah})</small>
-                            </td>
-                            <td class="border p-3 text-red-600 font-bold text-sm">${percVal.toFixed(1)}%</td>
-                            <td class="border p-3 font-bold text-xs" style="color:${getKefiyatColor(percVal, 'teacher')}">
-                                ${getJamiaKefiyat(percVal, 'teacher')}
-                            </td>
-                            <td class="border p-2 text-[13px] italic text-gray-700 ${hasWazahat ? 'bg-green-50/20' : 'bg-yellow-50/20'}">
-                                <div class="max-h-32 overflow-y-auto" style="min-width:280px; white-space: pre-wrap; direction: rtl;">
-                                    ${specificWazahat}
-                                </div>
-                            </td>
-                            <td class="border p-3 text-sm">
-                                <div class="flex flex-col gap-1">
-                                    <span class="text-indigo-600 font-semibold text-[11px] text-right">${zimmedarComment}</span>
-                                    <button onclick="addZimmedarComment('${d.docId}', '${subjectKey}')" 
-                                            class="text-[10px] text-gray-400 hover:text-indigo-600 no-print border border-dashed rounded p-1 mt-1">
-                                        <i class="fas fa-edit"></i> Comment
+                        wazahatRows += `
+                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
+                                <td class="border p-3 font-bold text-right text-[10px]">${d.jamia}</td>
+                                <td class="border p-3 text-blue-700 font-bold text-xs">${tEntry.teacher || "-"}</td>
+                                <td class="border p-3 text-right text-xs">
+                                    ${rawSubject} <br>
+                                    <small class="text-gray-500">(${darjah})</small>
+                                </td>
+                                <td class="border p-3 text-red-600 font-bold text-sm">${percVal.toFixed(1)}%</td>
+                                <td class="border p-3 font-bold text-xs" style="color:${getKefiyatColor(percVal, 'teacher')}">
+                                    ${getJamiaKefiyat(percVal, 'teacher')}
+                                </td>
+                                <td class="border p-2 text-[13px] italic text-gray-700 ${hasWazahat ? 'bg-green-50/20' : 'bg-yellow-50/20'}">
+                                    <div class="max-h-32 overflow-y-auto" style="min-width:280px; white-space: pre-wrap; direction: rtl;">
+                                        ${specificWazahat}
+                                    </div>
+                                </td>
+                                <td class="border p-3 text-sm">
+                                    <div class="flex flex-col gap-1">
+                                        <span class="text-indigo-600 font-semibold text-[11px] text-right">${zimmedarComment}</span>
+                                        <button onclick="addZimmedarComment('${d.docId}', '${subjectKey}')" 
+                                                class="text-[10px] text-gray-400 hover:text-indigo-600 no-print border border-dashed rounded p-1 mt-1">
+                                            <i class="fas fa-edit"></i> Comment
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="border p-3 no-print">
+                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${rawSubject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${darjah}')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-2 py-2 rounded text-[10px] flex items-center gap-1 mx-auto shadow-sm">
+                                        <i class="fab fa-whatsapp"></i> Link
                                     </button>
-                                </div>
-                            </td>
-                            <td class="border p-3 no-print">
-                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${rawSubject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${darjah}')" 
-                                        class="bg-green-600 hover:bg-green-700 text-white px-2 py-2 rounded text-[10px] flex items-center gap-1 mx-auto shadow-sm">
-                                    <i class="fab fa-whatsapp"></i> Link
-                                </button>
-                            </td>
-                        </tr>`;
-                }
+                                </td>
+                            </tr>`;
+                    }
+                });
             });
-        });
-    }
-});
+        }
+    });
 
-    // Table UI Summary
     thead.innerHTML = `
     <tr class="bg-gray-800 text-white">
         <th colspan="8" class="p-2 text-center text-sm font-sans">
