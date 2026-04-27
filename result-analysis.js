@@ -639,7 +639,7 @@ window.addZimmedarComment = async (docId, subjectKey) => {
 };
 window.generateTop3Poster = async (topData, year, exam) => {
     // State Name Popup (Sirf ek baar)
-    const stateName = prompt("Apni State ka naam likhein (e.g., Bihar, Uttar Pradesh):");
+    const stateName = prompt("Apni State ka naam likhein (e.g., J&K, Bihar):");
     if (!stateName) {
         alert("State ka naam zaroori hai!");
         return;
@@ -648,84 +648,84 @@ window.generateTop3Poster = async (topData, year, exam) => {
     const posterDiv = document.createElement('div');
     posterDiv.style.position = 'fixed';
     posterDiv.style.top = '-5000px';
-    posterDiv.style.width = '700px'; // Standard Portrait Size
+    posterDiv.style.width = '700px'; 
     posterDiv.style.height = '1000px';
     document.body.appendChild(posterDiv);
 
-    // Design inspired by your shared image
     posterDiv.innerHTML = `
-        <div id="final-poster" style="width:100%; height:100%; background: #ffffff; padding: 40px; color: #064e3b; font-family: 'Segoe UI', Arial, sans-serif; text-align: center; box-sizing: border-box; display: flex; flex-direction: column; position: relative; overflow: hidden; border: 1px solid #ddd;">
+        <div id="final-poster" style="width:100%; height:100%; background: #ffffff; padding: 40px; color: #064e3b; font-family: 'Segoe UI', Arial, sans-serif; text-align: center; box-sizing: border-box; display: flex; flex-direction: column; position: relative; overflow: hidden;">
             
-            <div style="position:absolute; top:-50px; left:-50px; width:200px; height:200px; background:#064e3b; border-radius:50%; opacity:0.1;"></div>
-            <div style="position:absolute; bottom:-50px; right:-50px; width:200px; height:200px; background:#fbbf24; border-radius:50%; opacity:0.1;"></div>
+            <div style="position:absolute; top:-60px; left:-60px; width:250px; height:250px; background:#f0f4f2; border-radius:50%; z-index:0;"></div>
+            <div style="position:absolute; bottom:-60px; right:-60px; width:250px; height:250px; background:#fffdf5; border-radius:50%; z-index:0;"></div>
 
-            <div style="margin-top: 20px;">
-                <div style="color: #fbbf24; font-size: 24px;">⭐⭐⭐</div>
-                <h2 style="font-size: 45px; margin: 5px 0; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">ANNUAL EXAM</h2>
-                <p style="font-size: 28px; font-weight: bold; margin: 0;">${year}</p>
-                <div style="width: 150px; height: 2px; background: #fbbf24; margin: 15px auto;"></div>
-                <p style="font-size: 18px; text-transform: uppercase; letter-spacing: 3px; color: #555;">Proudly Announcing</p>
-                <h1 style="font-size: 100px; line-height: 1; margin: 10px 0; font-weight: 900; color: #064e3b;">TOP 3</h1>
-                <p style="font-size: 22px; font-style: italic; color: #064e3b; margin-top: -15px;">Ilm ka Safar, Kamyabi ki Manzil</p>
+            <div style="position:relative; z-index:1; margin-top: 20px;">
+                <div style="color: #fbbf24; font-size: 28px; letter-spacing: 5px;">⭐⭐⭐</div>
+                <h2 style="font-size: 48px; margin: 10px 0 5px 0; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">ANNUAL EXAM</h2>
+                <p style="font-size: 32px; font-weight: bold; margin: 0; color: #064e3b; border-bottom: 3px solid #fbbf24; display: inline-block; padding: 0 20px;">${year}</p>
+                
+                <div style="margin-top: 30px;">
+                    <p style="font-size: 18px; text-transform: uppercase; letter-spacing: 4px; color: #888; margin-bottom: 5px;">Proudly Announcing</p>
+                    <h1 style="font-size: 110px; line-height: 0.9; margin: 0; font-weight: 900; color: #064e3b;">TOP 3</h1>
+                    <p style="font-size: 22px; font-style: italic; color: #064e3b; margin-top: 15px; font-weight: 600;">Ilm ka Safar, Kamyabi ki Manzil</p>
+                </div>
             </div>
 
-            <div style="display: flex; justify-content: center; align-items: flex-end; gap: 15px; margin-top: 50px; flex: 1;">
+            <div style="display: flex; justify-content: center; align-items: flex-end; gap: 15px; margin-top: 40px; flex: 1; position:relative; z-index:1;">
                 
                 <div style="width: 190px; text-align: center;">
-                    <div style="background: white; border: 1px solid #ddd; border-radius: 20px; padding: 20px 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); position: relative;">
-                        <div style="position: absolute; top: -30px; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; background: #BDC3C7; border: 5px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">2</div>
-                        <p style="font-size: 12px; color: #777; margin-top: 20px; text-transform: uppercase;">Jamiaat</p>
-                        <h3 style="font-size: 18px; font-weight: 900; margin: 5px 0; height: 45px; overflow: hidden;">${topData[1]?.name || 'N/A'}</h3>
-                        <div style="width: 30px; height: 2px; background: #eee; margin: 10px auto;"></div>
-                        <p style="font-size: 10px; color: #777; margin: 0;">PERCENTAGE</p>
-                        <p style="font-size: 22px; font-weight: 900; color: #064e3b;">${topData[1]?.perc.toFixed(2)}%</p>
+                    <div style="background: white; border: 1px solid #eee; border-radius: 25px; padding: 25px 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); position: relative;">
+                        <div style="position: absolute; top: -35px; left: 50%; transform: translateX(-50%); width: 70px; height: 70px; background: #BDC3C7; border: 6px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">2</div>
+                        <p style="font-size: 13px; color: #999; margin-top: 30px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Jamia-tul-Madina</p>
+                        <h3 style="font-size: 22px; font-weight: 900; margin: 8px 0; color: #064e3b; height: 30px; overflow: hidden;">${topData[1]?.name || 'N/A'}</h3>
+                        <div style="width: 40px; height: 2px; background: #f0f0f0; margin: 15px auto;"></div>
+                        <p style="font-size: 11px; color: #aaa; margin: 0; letter-spacing: 1px;">PERCENTAGE</p>
+                        <p style="font-size: 26px; font-weight: 900; color: #064e3b; margin-top: 5px;">${topData[1]?.perc.toFixed(2)}%</p>
                     </div>
-                    <div style="height: 30px; background: linear-gradient(to bottom, #bdc3c7, #95a5a6); border-radius: 0 0 10px 10px; margin: 0 10px;"></div>
+                    <div style="height: 35px; background: #95a5a6; border-radius: 0 0 15px 15px; margin: 0 12px; opacity: 0.8;"></div>
                 </div>
 
-                <div style="width: 220px; text-align: center; z-index: 2;">
-                    <div style="background: white; border: 2px solid #fbbf24; border-radius: 20px; padding: 30px 10px; box-shadow: 0 15px 30px rgba(0,0,0,0.15); position: relative;">
-                        <div style="position: absolute; top: -40px; left: 50%; transform: translateX(-50%); width: 80px; height: 80px; background: #fbbf24; border: 6px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 35px; font-weight: bold; box-shadow: 0 6px 15px rgba(0,0,0,0.2);">1</div>
-                        <p style="font-size: 14px; color: #777; margin-top: 30px; text-transform: uppercase;">Jamiaat</p>
-                        <h3 style="font-size: 22px; font-weight: 900; margin: 5px 0; height: 55px; overflow: hidden;">${topData[0]?.name || 'N/A'}</h3>
-                        <div style="width: 40px; height: 2px; background: #fbbf24; margin: 10px auto;"></div>
-                        <p style="font-size: 11px; color: #777; margin: 0;">PERCENTAGE</p>
-                        <p style="font-size: 28px; font-weight: 900; color: #064e3b;">${topData[0]?.perc.toFixed(2)}%</p>
-                        <div style="color: #fbbf24; font-size: 20px; margin-top: 10px;">🏆</div>
+                <div style="width: 230px; text-align: center; z-index: 2;">
+                    <div style="background: white; border: 2px solid #fbbf24; border-radius: 30px; padding: 35px 10px; box-shadow: 0 15px 40px rgba(0,0,0,0.1); position: relative;">
+                        <div style="position: absolute; top: -45px; left: 50%; transform: translateX(-50%); width: 90px; height: 90px; background: #fbbf24; border: 8px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; font-weight: bold; box-shadow: 0 8px 20px rgba(251,191,36,0.3);">1</div>
+                        <p style="font-size: 14px; color: #999; margin-top: 40px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Jamia-tul-Madina</p>
+                        <h3 style="font-size: 26px; font-weight: 900; margin: 8px 0; color: #064e3b; height: 35px; overflow: hidden;">${topData[0]?.name || 'N/A'}</h3>
+                        <div style="width: 50px; height: 3px; background: #fbbf24; margin: 15px auto;"></div>
+                        <p style="font-size: 12px; color: #aaa; margin: 0; letter-spacing: 1px;">PERCENTAGE</p>
+                        <p style="font-size: 32px; font-weight: 900; color: #064e3b; margin-top: 5px;">${topData[0]?.perc.toFixed(2)}%</p>
+                        <div style="margin-top: 15px; font-size: 24px;">🏆</div>
                     </div>
-                    <div style="height: 50px; background: linear-gradient(to bottom, #f1c40f, #d4af37); border-radius: 0 0 15px 15px; margin: 0 5px;"></div>
+                    <div style="height: 55px; background: #d4af37; border-radius: 0 0 20px 20px; margin: 0 8px;"></div>
                 </div>
 
                 <div style="width: 190px; text-align: center;">
-                    <div style="background: white; border: 1px solid #ddd; border-radius: 20px; padding: 20px 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); position: relative;">
-                        <div style="position: absolute; top: -30px; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; background: #E67E22; border: 5px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">3</div>
-                        <p style="font-size: 12px; color: #777; margin-top: 20px; text-transform: uppercase;">Jamiaat</p>
-                        <h3 style="font-size: 18px; font-weight: 900; margin: 5px 0; height: 45px; overflow: hidden;">${topData[2]?.name || 'N/A'}</h3>
-                        <div style="width: 30px; height: 2px; background: #eee; margin: 10px auto;"></div>
-                        <p style="font-size: 10px; color: #777; margin: 0;">PERCENTAGE</p>
-                        <p style="font-size: 22px; font-weight: 900; color: #064e3b;">${topData[2]?.perc.toFixed(2)}%</p>
+                    <div style="background: white; border: 1px solid #eee; border-radius: 25px; padding: 25px 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); position: relative;">
+                        <div style="position: absolute; top: -35px; left: 50%; transform: translateX(-50%); width: 70px; height: 70px; background: #E67E22; border: 6px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: bold; box-shadow: 0 4px 12px rgba(230,126,34,0.2);">3</div>
+                        <p style="font-size: 13px; color: #999; margin-top: 30px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">Jamia-tul-Madina</p>
+                        <h3 style="font-size: 22px; font-weight: 900; margin: 8px 0; color: #064e3b; height: 30px; overflow: hidden;">${topData[2]?.name || 'N/A'}</h3>
+                        <div style="width: 40px; height: 2px; background: #f0f0f0; margin: 15px auto;"></div>
+                        <p style="font-size: 11px; color: #aaa; margin: 0; letter-spacing: 1px;">PERCENTAGE</p>
+                        <p style="font-size: 26px; font-weight: 900; color: #064e3b; margin-top: 5px;">${topData[2]?.perc.toFixed(2)}%</p>
                     </div>
-                    <div style="height: 20px; background: linear-gradient(to bottom, #e67e22, #d35400); border-radius: 0 0 10px 10px; margin: 0 10px;"></div>
+                    <div style="height: 25px; background: #d35400; border-radius: 0 0 15px 15px; margin: 0 12px; opacity: 0.8;"></div>
                 </div>
             </div>
 
-            <div style="margin-bottom: 20px;">
-                <div style="width: 60px; height: 3px; background: #fbbf24; margin: 10px auto;"></div>
-                <h2 style="font-size: 32px; font-weight: 900; margin: 0; color: #064e3b; letter-spacing: 1px;">MAJLIS TALIMI UMOOR</h2>
-                <p style="font-size: 20px; font-weight: bold; color: #fbbf24; margin-top: 5px; text-transform: uppercase;">${stateName} STATE</p>
+            <div style="position:relative; z-index:1; margin-bottom: 30px;">
+                <h2 style="font-size: 38px; font-weight: 900; margin: 0; color: #064e3b; letter-spacing: 2px; text-transform: uppercase;">Majlis Talimi Umoor</h2>
+                <p style="font-size: 22px; font-weight: bold; color: #fbbf24; margin: 5px 0 0 0; text-transform: uppercase; letter-spacing: 1px;">${stateName} STATE</p>
             </div>
 
         </div>
     `;
 
-    // Download Implementation
+    // Download Logic
     if(window.html2canvas) {
         const canvas = await html2canvas(posterDiv.querySelector('#final-poster'), { 
-            scale: 3, // High quality download
+            scale: 4, // More Quality
             useCORS: true 
         });
         const link = document.createElement("a");
-        link.download = `Top3_Result_${stateName}_${year}.png`;
+        link.download = `Top3_Madina_${stateName}_${year}.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
         document.body.removeChild(posterDiv);
