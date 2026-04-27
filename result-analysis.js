@@ -151,6 +151,9 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             <button id="ra-show-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition transform active:scale-95">
                 <i class="fas fa-chart-bar mr-2"></i> Result Analysis Show Karein
             </button>
+            <button id="ra-top3-poster-btn" class="bg-gradient-to-r from-amber-500 to-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hidden no-print">
+                <i class="fas fa-trophy mr-1"></i> Top 3 Poster
+            </button>
         </div>
 
         <div id="ra-loader" class="hidden text-center py-8">
@@ -295,7 +298,23 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 }
                 const overallPerc = totals.hazir > 0 ? (totals.passed / totals.hazir) * 100 : 0;
                 tfoot.innerHTML = `<tr><td colspan="2" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.hazir}</td><td>${totals.passed}</td><td>${totals.zimni}</td><td>${totals.nakam}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td></tr>`;
-
+                    // Jamia stats ko sort karke top 3 nikalna
+                    let sortedJamia = Object.keys(jamiaStats).map(name => {
+                        const s = jamiaStats[name];
+                        const hazir = s.total - s.ghaib;
+                        return {
+                            name: name,
+                            perc: hazir > 0 ? (s.passed / hazir) * 100 : 0
+                        };
+                    }).sort((a, b) => b.perc - a.perc).slice(0, 3);
+                    
+                    // Agar 3 jamia hain to button dikhayein
+                    const top3Btn = document.getElementById('ra-top3-poster-btn');
+                    if (sortedJamia.length > 0) {
+                        top3Btn.classList.remove('hidden');
+                        top3Btn.onclick = () => generateTop3Poster(sortedJamia, examYear, examType);
+                    }
+            
             } else if (layoutLevel === 'class') {
                 thead.innerHTML = `
                     <tr class="bg-gray-200 text-sm">
@@ -617,4 +636,70 @@ window.addZimmedarComment = async (docId, subjectKey) => {
         alert("Galti: " + err.message);
     }
 };
+window.generateTop3Poster = async (topData, year, exam) => {
+    // Ek temporary hidden div banayein poster ke liye
+    const posterDiv = document.createElement('div');
+    posterDiv.style.position = 'fixed';
+    posterDiv.style.top = '-5000px';
+    posterDiv.style.width = '800px';
+    posterDiv.style.height = '1000px';
+    document.body.appendChild(posterDiv);
 
+    // Modern Poster Design (Islamic Geometric Background style)
+    posterDiv.innerHTML = `
+        <div id="final-poster" style="width:100%; height:100%; background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 40px; color: white; font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', serif; text-align: center; border: 15px solid #fbbf24; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+            
+            <div style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0.1; background-image: url('https://www.transparenttextures.com/patterns/islamic-art.png'); pointer-events:none;"></div>
+
+            <div>
+                <h1 style="font-size: 60px; margin-bottom: 10px; color: #fbbf24;">اعزازی اعزاز (Top 3)</h1>
+                <p style="font-size: 24px; font-family: sans-serif; letter-spacing: 2px;">${exam} - Taleemi Saal ${year}</p>
+                <div style="width: 100px; height: 4px; background: #fbbf24; margin: 20px auto;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-around; align-items: flex-end; margin-bottom: 50px; direction: rtl;">
+                
+                <div style="width: 220px;">
+                    <div style="font-size: 22px; margin-bottom: 10px;">${topData[1]?.name || '-'}</div>
+                    <div style="background: #e5e7eb; color: #1f2937; height: 180px; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; justify-content: center; position: relative;">
+                         <span style="font-size: 50px; font-weight: bold;">2</span>
+                         <span style="font-size: 20px;">${topData[1]?.perc.toFixed(2)}%</span>
+                    </div>
+                </div>
+
+                <div style="width: 260px;">
+                    <div style="font-size: 28px; margin-bottom: 10px; color: #fbbf24; font-weight: bold;">${topData[0]?.name || '-'}</div>
+                    <div style="background: #fbbf24; color: #1f2937; height: 260px; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 10;">
+                         <i class="fas fa-crown" style="font-size: 40px; margin-bottom: 10px;"></i>
+                         <span style="font-size: 70px; font-weight: bold;">1</span>
+                         <span style="font-size: 24px; font-weight: bold;">${topData[0]?.perc.toFixed(2)}%</span>
+                    </div>
+                </div>
+
+                <div style="width: 220px;">
+                    <div style="font-size: 22px; margin-bottom: 10px;">${topData[2]?.name || '-'}</div>
+                    <div style="background: #d97706; color: white; height: 140px; border-radius: 15px 15px 0 0; display: flex; flex-direction: column; justify-content: center;">
+                         <span style="font-size: 40px; font-weight: bold;">3</span>
+                         <span style="font-size: 20px;">${topData[2]?.perc.toFixed(2)}%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="font-size: 18px; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.2); pt-4;">
+                منجانب: مجلسِ تعلیمی امور (ہند)
+            </div>
+        </div>
+    `;
+
+    // Canvas mein convert karke download karein
+    if(window.html2canvas) {
+        const canvas = await html2canvas(posterDiv.querySelector('#final-poster'), { scale: 2 });
+        const link = document.createElement("a");
+        link.download = `Top3_Jamia_${year}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        document.body.removeChild(posterDiv); // Clean up
+    } else {
+        alert("Download library (html2canvas) missing!");
+    }
+};
