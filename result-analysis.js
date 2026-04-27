@@ -430,10 +430,7 @@ else if (layoutLevel === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
     let wazahatRows = "";
-
-    // --- result-analysis.js ke 'wazahat' section ke liye naya code ---
-
-
+// --- result-analysis.js ke 'wazahat' layout section mein ye block replace karein ---
 
 latestDataMap.forEach((d) => {
     if (d.data && Array.isArray(d.data)) {
@@ -444,40 +441,40 @@ latestDataMap.forEach((d) => {
                 
                 if (percVal < 70) {
                     const rawSubject = (p.subject || '-').trim();
-                    // Firebase keys ke liye dot ko underscore se badalte hain
                     const subjectKey = rawSubject.replace(/\./g, '_');
+                    // Class name check karein (naya field)
+                    const darjah = (p.class || p.darjah || '-').trim();
                     
-                    // --- Sab se important hissa: Data nikalne ke 4 tarike ---
-                   let finalWazahatText = "";
+                    let finalWazahatText = "";
+                    
+                    if (d.wazahat_map) {
+                        // 1. Nayi Key (With Subject underscore)
+                        // 2. Raw Subject Key
+                        // 3. Sab se important: Agar pehle class nahi thi, toh shayad key sirf subject name thi
+                        finalWazahatText = d.wazahat_map[subjectKey] || d.wazahat_map[rawSubject];
 
-if (d.wazahat_map) {
-    const raw = (rawSubject || "").toLowerCase().trim();
-
-    const matchKey = Object.keys(d.wazahat_map).find(k => {
-        const cleanKey = k.toLowerCase().replace(/\./g, '').trim();
-        const cleanSub = raw.replace(/\./g, '').trim();
-
-        return (
-            cleanKey === cleanSub ||
-            cleanKey.includes(cleanSub) ||
-            cleanSub.includes(cleanKey)
-        );
-    });
-
-    if (matchKey) {
-        finalWazahatText = d.wazahat_map[matchKey];
-    }
-}
-        if (!finalWazahatText && d.wazahat) {
-    finalWazahatText = d.wazahat;
-}
+                        // 4. Agar abhi bhi nahi mila, toh poore map mein loop chalayein (Deep Search)
+                        if (!finalWazahatText) {
+                            Object.keys(d.wazahat_map).forEach(key => {
+                                // Agar key mein subject ka naam kahin bhi hai, toh utha lo
+                                if (key.includes(subjectKey) || subjectKey.includes(key)) {
+                                    finalWazahatText = d.wazahat_map[key];
+                                }
+                            });
+                        }
+                    }
+                    
+                    // 5. Purani single field 'wazahat' (Jo shuru mein use hoti thi)
+                    if (!finalWazahatText && d.wazahat) {
+                        finalWazahatText = d.wazahat;
+                    }
 
                     const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
                     const specificWazahat = hasWazahat 
-                        ? `<div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right" style="direction:rtl;">${finalWazahatText}</div>`
+                        ? `<div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl;">${finalWazahatText}</div>`
                         : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
 
-                    // Zimmedar Comment check
+                    // Zimmedar Comment check (Same Logic)
                     let zimmedarComment = "";
                     if (d.zimmedar_comments) {
                         zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || "";
@@ -491,7 +488,7 @@ if (d.wazahat_map) {
                             <td class="border p-3 text-blue-700 font-bold text-xs">${tEntry.teacher || "-"}</td>
                             <td class="border p-3 text-right text-xs">
                                 ${rawSubject} <br>
-                                <small class="text-gray-500">(${p.class || '-'})</small>
+                                <small class="text-gray-500">(${darjah})</small>
                             </td>
                             <td class="border p-3 text-red-600 font-bold text-sm">${percVal.toFixed(1)}%</td>
                             <td class="border p-3 font-bold text-xs" style="color:${getKefiyatColor(percVal, 'teacher')}">
@@ -512,7 +509,7 @@ if (d.wazahat_map) {
                                 </div>
                             </td>
                             <td class="border p-3 no-print">
-                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${rawSubject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${p.class || p.darjah || '-'}')" 
+                                <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${rawSubject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${darjah}')" 
                                         class="bg-green-600 hover:bg-green-700 text-white px-2 py-2 rounded text-[10px] flex items-center gap-1 mx-auto shadow-sm">
                                     <i class="fab fa-whatsapp"></i> Link
                                 </button>
