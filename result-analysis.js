@@ -638,97 +638,96 @@ window.addZimmedarComment = async (docId, subjectKey) => {
     }
 };
 window.generateTop3Poster = async (topData, year, exam) => {
-    // Collect State Names via Popup
-    const states = [];
-    for (let i = 0; i < 3; i++) {
-        const stateName = prompt(`Enter state for ${topData[i]?.name || `Rank ${i+1}`} (Rank ${i+1}):`);
-        if (stateName === null || stateName.trim() === "") {
-            alert("Download canceled. State names for all top Jamias are required.");
-            return; // Canceled or empty state
-        }
-        states.push(stateName.trim());
+    // State Name Popup (Sirf ek baar)
+    const stateName = prompt("Apni State ka naam likhein (e.g., Bihar, Uttar Pradesh):");
+    if (!stateName) {
+        alert("State ka naam zaroori hai!");
+        return;
     }
 
-    // Temporary hidden div for poster content
     const posterDiv = document.createElement('div');
     posterDiv.style.position = 'fixed';
     posterDiv.style.top = '-5000px';
-    posterDiv.style.width = '800px';
+    posterDiv.style.width = '700px'; // Standard Portrait Size
     posterDiv.style.height = '1000px';
     document.body.appendChild(posterDiv);
 
-    // Light Theme Poster Design (Mint Green and Gold)
+    // Design inspired by your shared image
     posterDiv.innerHTML = `
-        <div id="final-poster" style="width:100%; height:100%; background: radial-gradient(circle, #e6fffa 0%, #c6f6d5 100%); padding: 50px; color: #1a202c; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; border: 12px solid #fbbf24; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+        <div id="final-poster" style="width:100%; height:100%; background: #ffffff; padding: 40px; color: #064e3b; font-family: 'Segoe UI', Arial, sans-serif; text-align: center; box-sizing: border-box; display: flex; flex-direction: column; position: relative; overflow: hidden; border: 1px solid #ddd;">
             
-            <div style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0.03; background-image: url('https://www.transparenttextures.com/patterns/carbon-fibre.png'); pointer-events:none;"></div>
+            <div style="position:absolute; top:-50px; left:-50px; width:200px; height:200px; background:#064e3b; border-radius:50%; opacity:0.1;"></div>
+            <div style="position:absolute; bottom:-50px; right:-50px; width:200px; height:200px; background:#fbbf24; border-radius:50%; opacity:0.1;"></div>
 
-            <div>
-                <h1 style="font-size: 55px; margin-bottom: 5px; color: #1a202c; text-transform: uppercase; font-weight: 900; letter-spacing: 2px;">CONGRATULATIONS</h1>
-                <p style="font-size: 28px; color: #2d3748; font-weight: 600; margin-top: 0;">(Top 3 Jamiaat)</p>
-                <div style="width: 150px; height: 3px; background: #fbbf24; margin: 15px auto;"></div>
-                <p style="font-size: 22px; opacity: 0.9;">${exam} | Taleemi Saal: ${year}</p>
+            <div style="margin-top: 20px;">
+                <div style="color: #fbbf24; font-size: 24px;">⭐⭐⭐</div>
+                <h2 style="font-size: 45px; margin: 5px 0; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">ANNUAL EXAM</h2>
+                <p style="font-size: 28px; font-weight: bold; margin: 0;">${year}</p>
+                <div style="width: 150px; height: 2px; background: #fbbf24; margin: 15px auto;"></div>
+                <p style="font-size: 18px; text-transform: uppercase; letter-spacing: 3px; color: #555;">Proudly Announcing</p>
+                <h1 style="font-size: 100px; line-height: 1; margin: 10px 0; font-weight: 900; color: #064e3b;">TOP 3</h1>
+                <p style="font-size: 22px; font-style: italic; color: #064e3b; margin-top: -15px;">Ilm ka Safar, Kamyabi ki Manzil</p>
             </div>
 
-            <div style="display: flex; justify-content: center; align-items: flex-end; gap: 15px; margin-bottom: 60px;">
+            <div style="display: flex; justify-content: center; align-items: flex-end; gap: 15px; margin-top: 50px; flex: 1;">
                 
-                <div style="width: 210px; display: flex; flex-direction: column; align-items: center;">
-                    <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px; height: 50px; display: flex; flex-direction: column; align-items: center; text-align: center;">
-                        <span style="display: block;">${topData[1]?.name || 'N/A'}</span>
-                        <span style="display: block; font-size: 16px; font-weight: normal; color: #4a5568;">[${states[1]}]</span>
+                <div style="width: 190px; text-align: center;">
+                    <div style="background: white; border: 1px solid #ddd; border-radius: 20px; padding: 20px 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); position: relative;">
+                        <div style="position: absolute; top: -30px; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; background: #BDC3C7; border: 5px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">2</div>
+                        <p style="font-size: 12px; color: #777; margin-top: 20px; text-transform: uppercase;">Jamiaat</p>
+                        <h3 style="font-size: 18px; font-weight: 900; margin: 5px 0; height: 45px; overflow: hidden;">${topData[1]?.name || 'N/A'}</h3>
+                        <div style="width: 30px; height: 2px; background: #eee; margin: 10px auto;"></div>
+                        <p style="font-size: 10px; color: #777; margin: 0;">PERCENTAGE</p>
+                        <p style="font-size: 22px; font-weight: 900; color: #064e3b;">${topData[1]?.perc.toFixed(2)}%</p>
                     </div>
-                    <div style="width: 100%; background: #e2e8f0; color: #111827; height: 220px; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 -5px 15px rgba(0,0,0,0.15);">
-                         <span style="font-size: 60px; font-weight: 900;">2</span>
-                         <span style="font-size: 26px; font-weight: 900;">${topData[1]?.perc.toFixed(2)}%</span>
-                    </div>
+                    <div style="height: 30px; background: linear-gradient(to bottom, #bdc3c7, #95a5a6); border-radius: 0 0 10px 10px; margin: 0 10px;"></div>
                 </div>
 
-                <div style="width: 250px; display: flex; flex-direction: column; align-items: center; position: relative; z-index: 10;">
-                    <div style="position: absolute; top: -60px; font-size: 60px;">👑</div>
-                    <div style="font-size: 24px; font-weight: 900; margin-bottom: 15px; color: #fbbf24; height: 70px; display: flex; flex-direction: column; align-items: center; text-align: center;">
-                        <span style="display: block;">${topData[0]?.name || 'N/A'}</span>
-                        <span style="display: block; font-size: 18px; font-weight: normal; color: #4a5568;">[${states[0]}]</span>
+                <div style="width: 220px; text-align: center; z-index: 2;">
+                    <div style="background: white; border: 2px solid #fbbf24; border-radius: 20px; padding: 30px 10px; box-shadow: 0 15px 30px rgba(0,0,0,0.15); position: relative;">
+                        <div style="position: absolute; top: -40px; left: 50%; transform: translateX(-50%); width: 80px; height: 80px; background: #fbbf24; border: 6px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 35px; font-weight: bold; box-shadow: 0 6px 15px rgba(0,0,0,0.2);">1</div>
+                        <p style="font-size: 14px; color: #777; margin-top: 30px; text-transform: uppercase;">Jamiaat</p>
+                        <h3 style="font-size: 22px; font-weight: 900; margin: 5px 0; height: 55px; overflow: hidden;">${topData[0]?.name || 'N/A'}</h3>
+                        <div style="width: 40px; height: 2px; background: #fbbf24; margin: 10px auto;"></div>
+                        <p style="font-size: 11px; color: #777; margin: 0;">PERCENTAGE</p>
+                        <p style="font-size: 28px; font-weight: 900; color: #064e3b;">${topData[0]?.perc.toFixed(2)}%</p>
+                        <div style="color: #fbbf24; font-size: 20px; margin-top: 10px;">🏆</div>
                     </div>
-                    <div style="width: 100%; background: #fbbf24; color: #111827; height: 320px; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 -5px 25px rgba(0,0,0,0.3); border: 4px solid #fff;">
-                         <span style="font-size: 85px; font-weight: 900;">1</span>
-                         <span style="font-size: 32px; font-weight: 900;">${topData[0]?.perc.toFixed(2)}%</span>
-                    </div>
+                    <div style="height: 50px; background: linear-gradient(to bottom, #f1c40f, #d4af37); border-radius: 0 0 15px 15px; margin: 0 5px;"></div>
                 </div>
 
-                <div style="width: 210px; display: flex; flex-direction: column; align-items: center;">
-                    <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px; height: 50px; display: flex; flex-direction: column; align-items: center; text-align: center;">
-                        <span style="display: block;">${topData[2]?.name || 'N/A'}</span>
-                        <span style="display: block; font-size: 16px; font-weight: normal; color: #4a5568;">[${states[2]}]</span>
+                <div style="width: 190px; text-align: center;">
+                    <div style="background: white; border: 1px solid #ddd; border-radius: 20px; padding: 20px 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); position: relative;">
+                        <div style="position: absolute; top: -30px; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; background: #E67E22; border: 5px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">3</div>
+                        <p style="font-size: 12px; color: #777; margin-top: 20px; text-transform: uppercase;">Jamiaat</p>
+                        <h3 style="font-size: 18px; font-weight: 900; margin: 5px 0; height: 45px; overflow: hidden;">${topData[2]?.name || 'N/A'}</h3>
+                        <div style="width: 30px; height: 2px; background: #eee; margin: 10px auto;"></div>
+                        <p style="font-size: 10px; color: #777; margin: 0;">PERCENTAGE</p>
+                        <p style="font-size: 22px; font-weight: 900; color: #064e3b;">${topData[2]?.perc.toFixed(2)}%</p>
                     </div>
-                    <div style="width: 100%; background: #d97706; color: #fff; height: 180px; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 -5px 15px rgba(0,0,0,0.15);">
-                         <span style="font-size: 55px; font-weight: 900;">3</span>
-                         <span style="font-size: 24px; font-weight: 900;">${topData[2]?.perc.toFixed(2)}%</span>
-                    </div>
+                    <div style="height: 20px; background: linear-gradient(to bottom, #e67e22, #d35400); border-radius: 0 0 10px 10px; margin: 0 10px;"></div>
                 </div>
             </div>
 
-            <div style="border-top: 1px solid rgba(0,0,0,0.1); padding-top: 20px;">
-                <p style="font-size: 20px; font-weight: bold; color: #1a202c;">Minjanib: <span style="color:#fbbf24; font-weight:900;">Majlis-e-Talimi Umoor (India)</span></p>
+            <div style="margin-bottom: 20px;">
+                <div style="width: 60px; height: 3px; background: #fbbf24; margin: 10px auto;"></div>
+                <h2 style="font-size: 32px; font-weight: 900; margin: 0; color: #064e3b; letter-spacing: 1px;">MAJLIS TALIMI UMOOR</h2>
+                <p style="font-size: 20px; font-weight: bold; color: #fbbf24; margin-top: 5px; text-transform: uppercase;">${stateName} STATE</p>
             </div>
+
         </div>
     `;
 
-    // Download Logic
+    // Download Implementation
     if(window.html2canvas) {
-        try {
-            const canvas = await html2canvas(posterDiv.querySelector('#final-poster'), { scale: 2, useCORS: true });
-            const link = document.createElement("a");
-            link.download = `Top3_Jamia_Report_${year}.png`;
-            link.href = canvas.toDataURL("image/png");
-            link.click();
-        } catch (error) {
-            console.error("Poster generation failed:", error);
-            alert("Could not generate the poster. Check console for details.");
-        } finally {
-            document.body.removeChild(posterDiv); // Clean up always
-        }
-    } else {
-        alert("html2canvas library load nahi hui!");
-        document.body.removeChild(posterDiv); // Clean up even on library error
+        const canvas = await html2canvas(posterDiv.querySelector('#final-poster'), { 
+            scale: 3, // High quality download
+            useCORS: true 
+        });
+        const link = document.createElement("a");
+        link.download = `Top3_Result_${stateName}_${year}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        document.body.removeChild(posterDiv);
     }
 };
