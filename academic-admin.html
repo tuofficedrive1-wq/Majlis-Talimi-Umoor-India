@@ -110,6 +110,21 @@
             <button id="btn-add-class" class="mt-6 w-full py-3 border-2 border-dashed border-indigo-200 text-indigo-600 font-bold rounded-xl hover:bg-indigo-50 transition">
                 <i class="fas fa-plus-circle mr-2"></i> Add New Class
             </button>
+            <div class="bg-white rounded-xl shadow-sm border p-6 max-w-4xl mx-auto mt-8 border-t-4 border-amber-500">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h2 class="text-xl font-bold text-amber-800">Monthly Page Targets</h2>
+            <p class="text-xs text-gray-500">Har mahine kitne safah (pages) padhane hain, yahan set karein</p>
+        </div>
+        <button id="btn-save-monthly-targets" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition">
+            <i class="fas fa-save mr-2"></i> Save Monthly Targets
+        </button>
+    </div>
+    
+    <div id="monthly-targets-container" class="space-y-4">
+        <p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein, phir yahan targets dikhenge.</p>
+    </div>
+</div>
         </div>
     </div>
             </main>
@@ -507,7 +522,65 @@ document.getElementById('btn-add-class').onclick = () => addClassBlock();
 
 // Start
 loadAcademicSystem();
+// Naya function Monthly Targets render karne ke liye
+async function renderMonthlyTargetsUI() {
+    const container = document.getElementById('monthly-targets-container');
+    const configSnap = await getDoc(sysRef); // academic_admin_config
+    const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+    
+    if(!configSnap.exists()) return;
+    const classes = configSnap.data().classes || [];
+    const savedTargets = targetSnap.exists() ? targetSnap.data().targets : {};
 
+    container.innerHTML = classes.map(cls => `
+        <div class="border rounded-xl p-4 bg-gray-50 mb-4">
+            <h3 class="font-bold text-indigo-700 mb-3 border-b pb-2">${cls.name}</h3>
+            ${cls.subjects.map(sub => {
+                const subId = `${cls.name}-${sub}`.replace(/\s+/g, '_');
+                return `
+                <div class="mb-4 bg-white p-3 rounded-lg border">
+                    <p class="text-sm font-bold text-gray-700 mb-2">${sub}</p>
+                    <div class="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+                        ${academicMonths.map(m => `
+                            <div>
+                                <label class="block text-[9px] uppercase font-bold text-gray-400">${m.name}</label>
+                                <input type="number" 
+                                    data-class="${cls.name}" 
+                                    data-subject="${sub}" 
+                                    data-month="${m.id}" 
+                                    class="monthly-target-input w-full p-1 border rounded text-xs text-center" 
+                                    value="${(savedTargets[subId] && savedTargets[subId][m.id]) || 0}">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>
+    `).join('');
+}
+
+// Save Karne ka function
+document.getElementById('btn-save-monthly-targets').onclick = async () => {
+    const btn = document.getElementById('btn-save-monthly-targets');
+    btn.disabled = true;
+    
+    const targets = {};
+    document.querySelectorAll('.monthly-target-input').forEach(inp => {
+        const cls = inp.dataset.class;
+        const sub = inp.dataset.subject;
+        const month = inp.dataset.month;
+        const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
+        
+        if(!targets[subId]) targets[subId] = {};
+        targets[subId][month] = parseInt(inp.value) || 0;
+    });
+
+    try {
+        await setDoc(doc(db, "settings", "monthly_page_targets"), { targets });
+        alert("Monthly Targets Saved Successfully!");
+    } catch (e) { alert("Error: " + e.message); }
+    finally { btn.disabled = false; }
+};
         
         
     </script>
