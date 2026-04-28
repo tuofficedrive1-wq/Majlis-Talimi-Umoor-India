@@ -318,10 +318,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     };
     const selectedMonthId = monthIdMap[selectedMonthIdx];
 
-    const sem1Total = config.totals?.s1 || 1; 
-    const sem2Total = config.totals?.s2 || 1;
-    const monthDays = config.months?.[selectedMonthIdx] || { s1: 0, s2: 0 };
-
     // Structure Fetch
     const userSnap = await getDoc(doc(db, "users", currentUser.uid));
     const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
