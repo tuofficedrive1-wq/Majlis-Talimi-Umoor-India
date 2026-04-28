@@ -417,20 +417,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     }
 };
 
-// --- In helper functions ko add karein taake error khatam ho jaye ---
-
-function getStatusStyles(percentage) {
-    if (percentage >= 90) return "text-emerald-600";
-    if (percentage >= 70) return "text-blue-600";
-    return "text-red-600";
-}
-
-function calculateStatusText(percentage) {
-    if (percentage >= 90) return "Mumtaz";
-    if (percentage >= 70) return "Behtar";
-    return "Munasib";
-}
-
 // --- Helpers ---
 
 const attachDropdownEvents = (container, config) => {
@@ -750,3 +736,16 @@ window.downloadJamiaExcel = (jamiaName) => {
     link.click();
     document.body.removeChild(link);
 };
+// --- In helper functions ko add karein taake error khatam ho jaye ---
+
+function getStatusStyles(percentage) {
+    if (percentage >= 90) return "text-emerald-600";
+    if (percentage >= 70) return "text-blue-600";
+    return "text-red-600";
+}
+
+function calculateStatusText(percentage) {
+    if (percentage >= 90) return "Mumtaz";
+    if (percentage >= 70) return "Behtar";
+    return "Munasib";
+}
