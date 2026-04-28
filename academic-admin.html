@@ -520,96 +520,105 @@ document.getElementById('btn-save-sys').onclick = async () => {
 
 document.getElementById('btn-add-class').onclick = () => addClassBlock();
 
-// Start
-loadAcademicSystem();
-// Mahino ke naam ka array (Ye zaroori hai)
-
+// --- 2. Monthly Targets UI Render Karne ka Function ---
 async function renderMonthlyTargetsUI() {
     const container = document.getElementById('monthly-targets-container');
     if(!container) return;
 
-    // Academic System ki config fetch karna
-    const configSnap = await getDoc(sysRef); 
-    const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-    
-    if(!configSnap.exists()) {
-        container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein.</p>`;
-        return;
+    try {
+        const configSnap = await getDoc(sysRef); 
+        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        
+        if(!configSnap.exists()) {
+            container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein.</p>`;
+            return;
+        }
+
+        const classes = configSnap.data().classes || [];
+        const savedTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+
+        if(classes.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Koi class ya subject nahi mila.</p>`;
+            return;
+        }
+
+        container.innerHTML = classes.map(cls => `
+            <div class="border rounded-xl p-4 bg-gray-50 mb-4">
+                <h3 class="font-bold text-indigo-700 mb-3 border-b pb-2 text-sm">${cls.name}</h3>
+                ${cls.subjects.map(sub => {
+                    const subId = `${cls.name}_${sub}`.replace(/\s+/g, '_');
+                    return `
+                    <div class="mb-4 bg-white p-3 rounded-lg border">
+                        <p class="text-[12px] font-bold text-gray-700 mb-2">${sub}</p>
+                        <div class="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+                            ${academicMonths.map(m => `
+                                <div>
+                                    <label class="block text-[9px] uppercase font-bold text-gray-400 text-center">${m.name}</label>
+                                    <input type="number" 
+                                        data-class="${cls.name}" 
+                                        data-subject="${sub}" 
+                                        data-month="${m.id}" 
+                                        class="monthly-target-input w-full p-1 border rounded text-[10px] text-center focus:border-amber-500 outline-none" 
+                                        value="${(savedTargets[subId] && savedTargets[subId][m.id]) || 0}">
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error("UI Render Error:", err);
     }
-
-    const classes = configSnap.data().classes || [];
-    const savedTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-
-    container.innerHTML = classes.map(cls => `
-        <div class="border rounded-xl p-4 bg-gray-50 mb-4">
-            <h3 class="font-bold text-indigo-700 mb-3 border-b pb-2 text-sm">${cls.name}</h3>
-            ${cls.subjects.map(sub => {
-                const subId = `${cls.name}_${sub}`.replace(/\s+/g, '_');
-                return `
-                <div class="mb-4 bg-white p-3 rounded-lg border">
-                    <p class="text-[12px] font-bold text-gray-700 mb-2">${sub}</p>
-                    <div class="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
-                        ${academicMonths.map(m => `
-                            <div>
-                                <label class="block text-[9px] uppercase font-bold text-gray-400 text-center">${m.name}</label>
-                                <input type="number" 
-                                    data-class="${cls.name}" 
-                                    data-subject="${sub}" 
-                                    data-month="${m.id}" 
-                                    class="monthly-target-input w-full p-1 border rounded text-[10px] text-center focus:border-amber-500 outline-none" 
-                                    value="${(savedTargets[subId] && savedTargets[subId][m.id]) || 0}">
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>`;
-            }).join('')}
-        </div>
-    `).join('');
 }
 
-// --- 1. Sabse pehle ye check karein ke renderMonthlyTargetsUI call ho raha hai ---
-
-// Initialize function jo page load par chalega
-async function initAcademicSystem() {
-    await loadAcademicSystem(); // Purana classes load karega
-    await renderMonthlyTargetsUI(); // Phir targets wala UI banayega
-}
-
-// Save Structure button ko update karein taake targets refresh hon
-const originalSaveSys = document.getElementById('btn-save-sys').onclick;
-document.getElementById('btn-save-sys').onclick = async () => {
-    // Pehle purana save logic chalne dein
-    const btn = document.getElementById('btn-save-sys');
+// --- 3. Save Button Logic ---
+document.getElementById('btn-save-monthly-targets').onclick = async () => {
+    const btn = document.getElementById('btn-save-monthly-targets');
     const originalText = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
-
-    const classes = [];
-    document.querySelectorAll('.academic-class-item').forEach(item => {
-        const name = item.querySelector('.class-name').value.trim();
-        const subjects = Array.from(item.querySelectorAll('.sub-name'))
-                              .map(inp => inp.value.trim())
-                              .filter(val => val !== "");
-        if (name) classes.push({ name, subjects });
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving...`;
+    
+    const targets = {};
+    const inputs = document.querySelectorAll('.monthly-target-input');
+    
+    inputs.forEach(inp => {
+        const cls = inp.dataset.class;
+        const sub = inp.dataset.subject;
+        const month = inp.dataset.month;
+        const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
+        
+        if(!targets[subId]) targets[subId] = {};
+        targets[subId][month] = parseInt(inp.value) || 0;
     });
 
     try {
-        await setDoc(sysRef, { 
-            classes: classes, 
-            lastUpdated: new Date(),
-            type: 'English-Only' 
+        await setDoc(doc(db, "settings", "monthly_page_targets"), { 
+            targets: targets,
+            lastUpdated: new Date()
         });
-        alert("Structure saved! Now loading monthly targets...");
-        
-        // YAHAN SE REFRESH HOGA
-        await renderMonthlyTargetsUI(); 
+        alert("Monthly Targets Saved Successfully!");
     } catch (e) { 
-        alert("Error: " + e.message); 
+        alert("Save Error: " + e.message); 
+        console.error(e);
     } finally { 
         btn.disabled = false; 
-        btn.innerHTML = originalText; 
+        btn.innerHTML = originalText;
     }
 };
+
+// --- 4. Page Load aur Save Structure par Refresh ka Logic ---
+// Page load par targets dikhao
+renderMonthlyTargetsUI();
+
+// Jab "Save Structure" dabayein to targets refresh hon
+const originalSaveSys = document.getElementById('btn-save-sys').onclick;
+document.getElementById('btn-save-sys').addEventListener('click', async () => {
+    // Thodi der baad refresh karein taake DB update ho jaye
+    setTimeout(() => {
+        renderMonthlyTargetsUI();
+    }, 1500);
+});
 
 // Start Everything
 initAcademicSystem();
