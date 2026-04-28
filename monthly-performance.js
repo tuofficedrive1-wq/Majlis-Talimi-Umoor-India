@@ -370,32 +370,43 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <tbody>`;
 
             jamiaData.teachers.forEach((teacher) => {
-                teacher.periods?.forEach((p, pIdx) => {
-                    // KEY MATCHING: Admin panel format (Class_Subject)
-                    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
-                    const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
-                    
-                    const achieved = 0; 
-                    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+    teacher.periods?.forEach((p, pIdx) => {
+        // --- KEY MATCHING FIX ---
+        // Admin panel mein hum 'Class_Subject' save kar rahe hain (spaces ke saath ya bina)
+        // Exact match ke liye hum dono side se spaces ko handle karenge
+        const cleanClass = p.className.trim();
+        const cleanBook = p.bookName.trim();
+        const subKey = `${cleanClass}_${cleanBook}`.replace(/\s+/g, '_');
+        
+        // Target nikalne ka logic
+        const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
+        
+        // Debugging ke liye console use karein agar ab bhi 0 aaye
+        // console.log(`Checking Target for: ${subKey} in ${selectedMonthId} -> Found: ${target}`);
+        
+        const achieved = 0; 
+        const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
 
-                    html += `
-                        <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                            <td class="p-4">
-                                <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
-                                <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
-                            </td>
-                            <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
-                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                            <td class="p-4 text-center">
-                                <input type="number" value="${achieved}" disabled 
-                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
-                                       oninput="calculateLiveStatus(this, ${target})">
-                            </td>
-                            <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
-                            <td class="p-4 text-center status-cell font-black text-red-500 italic">Munasib</td>
-                        </tr>`;
-                });
-            });
+        html += `
+            <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                <td class="p-4">
+                    <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
+                    <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
+                </td>
+                <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
+                <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                <td class="p-4 text-center">
+                    <input type="number" value="${achieved}" disabled 
+                           class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
+                           oninput="calculateLiveStatus(this, ${target})">
+                </td>
+                <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
+                <td class="p-4 text-center status-cell font-black ${getStatusStyles(percentage)} italic">
+                    ${calculateStatusText(percentage)}
+                </td>
+            </tr>`;
+    });
+});
 
             html += `</tbody></table></div></div>`;
         });
