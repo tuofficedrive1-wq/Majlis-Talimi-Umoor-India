@@ -309,20 +309,24 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const selectedJamia = document.getElementById('report-jamia').value;
 
     try {
-        // 1. Admin Targets Fetch Karein
-        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+        // 1. Admin Targets aur Active Year dono fetch karein
+        const [targetSnap, configSnap] = await Promise.all([
+            getDoc(doc(db, "settings", "monthly_page_targets")),
+            getDoc(doc(db, "settings", "academic_calendar"))
+        ]);
 
-        // 2. Month Mapping
+        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+        const activeYear = configSnap.exists() ? configSnap.data().activeYear : "2026-2027"; // Hardcode hataya
+
         const monthIdMap = {
             "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
             "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
         };
         const selectedMonthId = monthIdMap[selectedMonthIdx];
 
-        // 3. User Structure Fetch (Year "2026-2027" check karein agar sahi hai)
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
+        // Hardcoded year ki jagah activeYear variable use karein
+        const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
@@ -370,38 +374,35 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <tbody>`;
 
             jamiaData.teachers.forEach((teacher) => {
-    teacher.periods?.forEach((p, pIdx) => {
-    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
-    const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
-    
-    // Placeholder achieved (Jab data save hone lagega toh yahan dynamic value aayegi)
-    const achievedValue = 0; 
-    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-
-    // --- NAYA LOGIC CALL YAHAN HOGA ---
-    const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
-    // ----------------------------------
+                teacher.periods?.forEach((p, pIdx) => {
+                    // SAHI KEY: Admin file ke mutabiq Class aur Subject ke beech ka space underscore banna chahiye
+                    // Example: "Class 10th_Urdu"
+                    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
+                    
+                    // Target fetch karein
+                    const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
+                    
+                    const achievedValue = 0; 
+                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
 
     html += `
-        <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-            <td class="p-4">
-                <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
-                <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
-            </td>
-            <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
-            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-            <td class="p-4 text-center">
-                <input type="number" value="${achievedValue}" disabled 
-                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
-            </td>
-            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
-            
-            <td class="p-4 text-center italic ${result.colorClass}">
-                ${result.kaifiyat}
-            </td>
-        </tr>`;
-});
-});
+                        <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                            <td class="p-4">
+                                <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
+                                <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
+                            </td>
+                            <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
+                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                            <td class="p-4 text-center">
+                                <input type="number" value="${achievedValue}" disabled 
+                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+                            </td>
+                            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
+                            <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
+                        </tr>`;
+                });
+            });
 
             html += `</tbody></table></div></div>`;
         });
