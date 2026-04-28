@@ -309,23 +309,24 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const selectedJamia = document.getElementById('report-jamia').value;
 
     try {
-        // 1. Admin Targets aur Active Year dono fetch karein
-        const [targetSnap, configSnap] = await Promise.all([
+        // 1. Admin Targets aur Active Year fetch karein
+        const [targetSnap, calSnap] = await Promise.all([
             getDoc(doc(db, "settings", "monthly_page_targets")),
             getDoc(doc(db, "settings", "academic_calendar"))
         ]);
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-        const activeYear = configSnap.exists() ? configSnap.data().activeYear : "2026-2027"; // Hardcode hataya
+        const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
+        // 2. Month ID Mapping (Admin file ke mutabiq)
         const monthIdMap = {
             "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
             "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
         };
         const selectedMonthId = monthIdMap[selectedMonthIdx];
 
+        // 3. User Data Fetch karein (Hardcoded year ki jagah activeYear use karein)
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        // Hardcoded year ki jagah activeYear variable use karein
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
@@ -375,24 +376,26 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
-                    // SAHI KEY: Admin file ke mutabiq Class aur Subject ke beech ka space underscore banna chahiye
-                    // Example: "Class 10th_Urdu"
+                    
+                    // --- TARGET FETCHING LOGIC ---
+                    // Admin file (Line 524) ke mutabiq subKey banayein: "Class_Subject" (Spaces replaced by _)
                     const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
                     
-                    // Target fetch karein
+                    // Ab admin ka set kiya hua target uthayein
                     const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
                     
+                    // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
 
-    html += `
-                        <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                    html += `
+                        <tr class="border-b hover:bg-slate-50/50">
                             <td class="p-4">
                                 <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
                                 <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
                             </td>
-                            <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
+                            <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
                             <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
                             <td class="p-4 text-center">
                                 <input type="number" value="${achievedValue}" disabled 
@@ -403,14 +406,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         </tr>`;
                 });
             });
-
             html += `</tbody></table></div></div>`;
         });
-        container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Is Jamia ka koi data nahi mila.</div>';
+        container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Data nahi mila.</div>';
     } catch (e) {
         console.error("Load Error:", e);
-        container.innerHTML = `<div class="p-10 text-center text-red-500">Error: ${e.message}</div>`;
     }
+};
 };
 // Mahine ka number semester ke hisab se nikalne ke liye
 // Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
