@@ -309,9 +309,14 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const selectedJamia = document.getElementById('report-jamia').value; // Jamia filter value
     
     // Admin Calendar Fetch
-    const configSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-    if (!configSnap.exists()) return;
-    const config = configSnap.data();
+    const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+    const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+
+    const monthIdMap = {
+        "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
+        "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
+    };
+    const selectedMonthId = monthIdMap[selectedMonthIdx];
 
     const sem1Total = config.totals?.s1 || 1; 
     const sem2Total = config.totals?.s2 || 1;
@@ -370,14 +375,14 @@ html += `
                     </thead>
                     <tbody>`;
 
-        jamiaData.teachers.forEach((teacher, tIdx) => {
+       jamiaData.teachers.forEach((teacher, tIdx) => {
             teacher.periods?.forEach((p, pIdx) => {
-                const totalYearDays = (p.semester == "1") ? sem1Total : sem2Total;
-                const activeMonthDays = (p.semester == "1") ? monthDays.s1 : monthDays.s2;
-                const target = Math.round((p.totalPages / totalYearDays) * activeMonthDays) || 0;
+                // Naya Target Logic: Admin settings se direct uthayega
+                const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
+                const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
                 
-                // Placeholder achieved
-                const achieved = 0; 
+                // Baaki logic same rahega (Achieved aur Percentage calculation)
+                const achieved = 0; // Agar saved data hai toh wahan se ayega
                 const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
 
                 html += `
@@ -390,7 +395,7 @@ html += `
                         <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
                         <td class="p-4 text-center">
                             <input type="number" value="${achieved}" disabled 
-                                   class="achieved-input-${jamiaName} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
+                                   class="achieved-input-${getSafeId(jamiaName)} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
                                    oninput="calculateLiveStatus(this, ${target})">
                         </td>
                         <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
