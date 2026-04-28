@@ -371,41 +371,36 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
     teacher.periods?.forEach((p, pIdx) => {
-        // --- KEY MATCHING FIX ---
-        // Admin panel mein hum 'Class_Subject' save kar rahe hain (spaces ke saath ya bina)
-        // Exact match ke liye hum dono side se spaces ko handle karenge
-        const cleanClass = p.className.trim();
-        const cleanBook = p.bookName.trim();
-        const subKey = `${cleanClass}_${cleanBook}`.replace(/\s+/g, '_');
-        
-        // Target nikalne ka logic
-        const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
-        
-        // Debugging ke liye console use karein agar ab bhi 0 aaye
-        // console.log(`Checking Target for: ${subKey} in ${selectedMonthId} -> Found: ${target}`);
-        
-        const achieved = 0; 
-        const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
+    const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
+    
+    // Placeholder achieved (Jab data save hone lagega toh yahan dynamic value aayegi)
+    const achievedValue = 0; 
+    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
 
-        html += `
-            <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                <td class="p-4">
-                    <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
-                    <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
-                </td>
-                <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
-                <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                <td class="p-4 text-center">
-                    <input type="number" value="${achieved}" disabled 
-                           class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
-                           oninput="calculateLiveStatus(this, ${target})">
-                </td>
-                <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
-                <td class="p-4 text-center status-cell font-black ${getStatusStyles(percentage)} italic">
-                    ${calculateStatusText(percentage)}
-                </td>
-            </tr>`;
-    });
+    // --- NAYA LOGIC CALL YAHAN HOGA ---
+    const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
+    // ----------------------------------
+
+    html += `
+        <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+            <td class="p-4">
+                <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
+                <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
+            </td>
+            <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
+            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+            <td class="p-4 text-center">
+                <input type="number" value="${achievedValue}" disabled 
+                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+            </td>
+            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
+            
+            <td class="p-4 text-center italic ${result.colorClass}">
+                ${result.kaifiyat}
+            </td>
+        </tr>`;
+});
 });
 
             html += `</tbody></table></div></div>`;
@@ -415,6 +410,55 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         console.error("Load Error:", e);
         container.innerHTML = `<div class="p-10 text-center text-red-500">Error: ${e.message}</div>`;
     }
+};
+// Mahine ka number semester ke hisab se nikalne ke liye
+// Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
+// Sem 2: Sep(1), Oct(2), Nov(3), Dec(4), Jan(5), Feb/Mar (Extra)
+function getSemesterMonthNumber(monthIdx, semester) {
+    const s1Map = { "3": 1, "4": 2, "5": 3, "6": 4, "7": 5 }; // Apr-Aug
+    const s2Map = { "8": 1, "9": 2, "10": 3, "11": 4, "0": 5, "1": 6, "2": 7 }; // Sep-Mar
+    
+    if (semester == "1") return s1Map[monthIdx] || 0;
+    return s2Map[monthIdx] || 0;
+}
+
+// Aapka bataya hua main calculation logic
+const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
+    let kaifiyat = "Munasib"; 
+    let colorClass = "text-red-600"; // color-munasib ki jagah Tailwind class
+    
+    const monthNumber = getSemesterMonthNumber(monthIdx, semester);
+    
+    // 1. Mahine ke hisab se base Kaifiyat
+    if (monthNumber === 1) { 
+        if (achievement >= 70) kaifiyat = "Mumtaz";
+        else if (achievement >= 60) kaifiyat = "Behtar";
+    } 
+    else if (monthNumber === 2) { 
+        if (achievement >= 80) kaifiyat = "Mumtaz";
+        else if (achievement >= 70) kaifiyat = "Behtar";
+    } 
+    else if (monthNumber >= 3 && monthNumber < 5) { 
+        if (achievement >= 100) kaifiyat = "Mumtaz";
+        else if (achievement >= 90) kaifiyat = "Behtar";
+    } 
+    else if (monthNumber === 5) { 
+        if (achievement >= 90) kaifiyat = "Mumtaz";
+        else if (achievement >= 80) kaifiyat = "Behtar";
+    }
+
+    // 2. Over-achievement Adjustment
+    if (kaifiyat === "Mumtaz") {
+        if (achievement > 150) kaifiyat = "Munasib";
+        else if (achievement >= 121) kaifiyat = "Behtar";
+    }
+
+    // 3. Color mapping
+    if (kaifiyat === "Mumtaz") colorClass = "text-emerald-600 font-black";
+    else if (kaifiyat === "Behtar") colorClass = "text-blue-600 font-bold";
+    else colorClass = "text-red-600 font-bold";
+
+    return { kaifiyat, colorClass };
 };
 
 // --- Helpers ---
@@ -737,12 +781,6 @@ window.downloadJamiaExcel = (jamiaName) => {
     document.body.removeChild(link);
 };
 // --- In helper functions ko add karein taake error khatam ho jaye ---
-
-function getStatusStyles(percentage) {
-    if (percentage >= 90) return "text-emerald-600";
-    if (percentage >= 70) return "text-blue-600";
-    return "text-red-600";
-}
 
 function calculateStatusText(percentage) {
     if (percentage >= 90) return "Mumtaz";
