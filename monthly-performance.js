@@ -306,103 +306,104 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
-    const selectedJamia = document.getElementById('report-jamia').value; // Jamia filter value
-    
-    // Admin Calendar Fetch
-    const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-    const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+    const selectedJamia = document.getElementById('report-jamia').value;
 
-    const monthIdMap = {
-        "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
-        "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
-    };
-    const selectedMonthId = monthIdMap[selectedMonthIdx];
+    try {
+        // 1. Admin Targets Fetch Karein
+        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
 
-    // Structure Fetch
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
+        // 2. Month Mapping
+        const monthIdMap = {
+            "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
+            "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
+        };
+        const selectedMonthId = monthIdMap[selectedMonthIdx];
 
-    // Filter Logic: Agar "all" nahi hai toh sirf selected jamia dikhao
-    const filteredJamiaat = selectedJamia === "all" 
-        ? jamiaat 
-        : jamiaat.filter(j => j === selectedJamia);
+        // 3. User Structure Fetch (Year "2026-2027" check karein agar sahi hai)
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const karkardagi = userSnap.data().academicYears?.["2026-2027"]?.karkardagiStructure || [];
 
-    let html = "";
-    filteredJamiaat.forEach(jamiaName => {
-        const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
-        if (!jamiaData) return;
+        const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
-       // loadPerformanceTable function ke andar Jamia Header ka section:
-html += `
-<div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${jamiaName.replace(/\s+/g, '')}">
-    <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
-        <div>
-            <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                <i class="fas fa-link mr-1 text-indigo-500"></i> Link
-            </button>
-            <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                <i class="fas fa-image mr-1 text-rose-500"></i> Image
-            </button>
-            <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
-            </button>
-            <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${jamiaName.replace(/\s+/g, '')} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
-                <i class="fas fa-edit mr-1"></i> Edit
-            </button>
-        </div>
-    </div>
-    </div>
+        let html = "";
+        filteredJamiaat.forEach(jamiaName => {
+            const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
+            if (!jamiaData) return;
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
-                        <tr>
-                            <th class="p-4 border-b">Teacher & Subject</th>
-                            <th class="p-4 border-b text-center">Total</th>
-                            <th class="p-4 border-b text-center text-indigo-600">Target</th>
-                            <th class="p-4 border-b text-center">Achieved</th>
-                            <th class="p-4 border-b text-center">%</th>
-                            <th class="p-4 border-b text-center">Kaifiyat</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
+            const safeJamiaId = jamiaName.replace(/\s+/g, '');
 
-       jamiaData.teachers.forEach((teacher, tIdx) => {
-            teacher.periods?.forEach((p, pIdx) => {
-                // Naya Target Logic: Admin settings se direct uthayega
-                const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
-                const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
-                
-                // Baaki logic same rahega (Achieved aur Percentage calculation)
-                const achieved = 0; // Agar saved data hai toh wahan se ayega
-                const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+            html += `
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
+                <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                        <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                            <i class="fas fa-link mr-1 text-indigo-500"></i> Link
+                        </button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                            <i class="fas fa-image mr-1 text-rose-500"></i> Image
+                        </button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                            <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
+                        </button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
+                            <i class="fas fa-edit mr-1"></i> Edit
+                        </button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
+                            <tr>
+                                <th class="p-4 border-b">Teacher & Subject</th>
+                                <th class="p-4 border-b text-center">Total</th>
+                                <th class="p-4 border-b text-center text-indigo-600">Target</th>
+                                <th class="p-4 border-b text-center">Achieved</th>
+                                <th class="p-4 border-b text-center">%</th>
+                                <th class="p-4 border-b text-center">Kaifiyat</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
 
-                html += `
-                    <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                        <td class="p-4">
-                            <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
-                            <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
-                        </td>
-                        <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
-                        <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                        <td class="p-4 text-center">
-                            <input type="number" value="${achieved}" disabled 
-                                   class="achieved-input-${getSafeId(jamiaName)} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
-                                   oninput="calculateLiveStatus(this, ${target})">
-                        </td>
-                        <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
-                        <td class="p-4 text-center status-cell font-black text-red-500 italic">Munasib</td>
-                    </tr>`;
+            jamiaData.teachers.forEach((teacher) => {
+                teacher.periods?.forEach((p, pIdx) => {
+                    // KEY MATCHING: Admin panel format (Class_Subject)
+                    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
+                    const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
+                    
+                    const achieved = 0; 
+                    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+
+                    html += `
+                        <tr class="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                            <td class="p-4">
+                                <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
+                                <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
+                            </td>
+                            <td class="p-4 text-center font-medium text-slate-600">${p.totalPages}</td>
+                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                            <td class="p-4 text-center">
+                                <input type="number" value="${achieved}" disabled 
+                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent focus:ring-2 focus:ring-indigo-400 outline-none"
+                                       oninput="calculateLiveStatus(this, ${target})">
+                            </td>
+                            <td class="p-4 text-center perc-cell font-black text-slate-700">${percentage}%</td>
+                            <td class="p-4 text-center status-cell font-black text-red-500 italic">Munasib</td>
+                        </tr>`;
+                });
             });
-        });
 
-        html += `</tbody></table></div></div>`;
-    });
-    container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Is Jamia ka koi data nahi mila.</div>';
+            html += `</tbody></table></div></div>`;
+        });
+        container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Is Jamia ka koi data nahi mila.</div>';
+    } catch (e) {
+        console.error("Load Error:", e);
+        container.innerHTML = `<div class="p-10 text-center text-red-500">Error: ${e.message}</div>`;
+    }
 };
 
 // --- Helpers ---
