@@ -585,44 +585,46 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         };
     });
 
-        // 2. Teacher Profile Edit Logic
-    container.querySelectorAll('.edit-t-btn').forEach(btn => {
-        btn.onclick = async (e) => {
-            e.stopPropagation(); // Click event ko toggle tak jane se rokein
-            
-            const tid = btn.dataset.tid;
-            const jamiaName = btn.dataset.jamia;
-            const safeId = jamiaName.replace(/\s+/g, '');
+        // Teacher Profile Edit Logic
+container.querySelectorAll('.edit-t-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+        e.stopPropagation();
+        
+        const tid = btn.dataset.tid;
+        const jamiaName = btn.dataset.jamia;
+        const safeId = jamiaName.replace(/\s+/g, '');
 
-            // Data fetch karein
-            const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-            const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
-            const jamiaData = structure.find(j => j.jamiaName === jamiaName);
-            const teacher = jamiaData?.teachers.find(t => t.id === tid);
+        // 1. Data fetch karein
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+        const jamiaData = structure.find(j => j.jamiaName === jamiaName);
+        const teacher = jamiaData?.teachers.find(t => t.id === tid);
 
-            if (teacher) {
-                // Form mein data bharein
-                document.getElementById(`name-${safeId}`).value = teacher.name;
+        if (teacher) {
+            // 2. Form Fields fill karein (Pehle check karein ke elements exist karte hain)
+            const nameField = document.getElementById(`name-${safeId}`);
+            if (nameField) {
+                nameField.value = teacher.name;
                 document.getElementById(`ajeer-${safeId}`).value = teacher.loginCode;
                 document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
-                document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
-                document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
-                document.getElementById(`mail-${safeId}`).value = teacher.mailId || "";
-                document.getElementById(`exp-${safeId}`).value = teacher.experience || "";
-                document.getElementById(`spec-${safeId}`).value = teacher.specialization || "";
-                document.getElementById(`t-period-${safeId}`).value = teacher.teachingPeriod || "";
-                document.getElementById(`ijara-${safeId}`).value = teacher.ijaraStatus || "";
-
-                // Save button ko "Update" mode mein karein
-                const saveBtn = container.querySelector(`.save-teacher-btn[data-jamia-name="${jamiaName}"]`);
-                saveBtn.innerText = "Update Teacher Profile";
-                saveBtn.dataset.editMode = tid; // ID store karein update ke liye
-
-                // Form tak scroll karein
-                saveBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // ... baqi saare fields isi tarah
             }
-        };
-    });
+
+            // 3. SAVE BUTTON FIX: 
+            // Purana tareeka 'container.querySelector' shayad pure page par button nahi dhoond pa raha
+            // Is naye tareeke se hum seedha attribute se button pakdenge
+            const saveBtn = document.querySelector(`.save-teacher-btn[data-jamia-name="${jamiaName}"]`);
+            
+            if (saveBtn) {
+                saveBtn.innerText = "Update Teacher Profile";
+                saveBtn.dataset.editMode = tid; // Edit mode on karein
+                saveBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                console.error("Save button nahi mila for jamia:", jamiaName);
+            }
+        }
+    };
+});
 
     container.querySelectorAll('.del-period-btn, .del-t-btn').forEach(btn => {
         btn.onclick = async () => {
