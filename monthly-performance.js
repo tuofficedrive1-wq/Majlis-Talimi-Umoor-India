@@ -445,29 +445,29 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     
                     // --- TARGET FETCHING LOGIC ---
                     // Admin file (Line 524) ke mutabiq subKey banayein: "Class_Subject" (Spaces replaced by _)
-                   // --- TARGET FETCHING LOGIC ---
-                    console.log("Class:", p.className);
-                    console.log("Subject:", p.bookName);
-                    
-                    // 🔹 Direct key (admin jaisa hi)
-                    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
-                    
-                    // 🔹 Direct match
-                    let target = 0;
-                    
-                    if (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId] != null) {
-                        target = monthlyTargets[subKey][selectedMonthId];
-                    } 
-                    else {
-                        // 🔹 fallback (case-insensitive)
-                        const foundKey = Object.keys(monthlyTargets || {}).find(
-                            k => k.toLowerCase() === subKey.toLowerCase()
-                        );
-                    
-                        if (foundKey && monthlyTargets[foundKey][selectedMonthId] != null) {
-                            target = monthlyTargets[foundKey][selectedMonthId];
-                        }
-                    }
+                                     
+                    // --- FIXED TARGET FETCHING ---
+// Class aur Subject names se spaces hatakar underscore lagana
+const cleanClass = p.className.trim().replace(/\s+/g, '_');
+const cleanBook = p.bookName.trim().replace(/\s+/g, '_');
+const subKey = `${cleanClass}_${cleanBook}`;
+
+let target = 0;
+
+// Exact match check karein
+if (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId] != null) {
+    target = monthlyTargets[subKey][selectedMonthId];
+} 
+else {
+    // Agar exact match na mile to case-insensitive fallback chalayein
+    const foundKey = Object.keys(monthlyTargets || {}).find(
+        k => k.toLowerCase() === subKey.toLowerCase()
+    );
+
+    if (foundKey && monthlyTargets[foundKey][selectedMonthId] != null) {
+        target = monthlyTargets[foundKey][selectedMonthId];
+    }
+}
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
