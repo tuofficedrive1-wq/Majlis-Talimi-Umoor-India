@@ -449,24 +449,27 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     // --- FIXED TARGET FETCHING ---
 // Class aur Subject names se spaces hatakar underscore lagana
 // Dono ko alag alag sanitize karein phir jodein
+// --- Is logic ko use karein ---
 const cleanClass = p.className.trim().replace(/\s+/g, '_');
 const cleanSubject = p.bookName.trim().replace(/\s+/g, '_');
 const subKey = `${cleanClass}_${cleanSubject}`;
 
-let target = 0;
+// Screenshot ke mutabiq nesting check karein
+// monthlyTargets admin file mein { targets: { ... } } ke andar hota hai
+const targetsList = monthlyTargets || {}; 
 
-// Exact match check karein
-if (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId] != null) {
-    target = monthlyTargets[subKey][selectedMonthId];
-} 
-else {
-    // Agar exact match na mile to case-insensitive fallback chalayein
-    const foundKey = Object.keys(monthlyTargets || {}).find(
+let target = 0;
+const selectedMonthId = monthIdMap[selectedMonthIdx];
+
+if (targetsList[subKey] && targetsList[subKey][selectedMonthId] !== undefined) {
+    target = targetsList[subKey][selectedMonthId];
+} else {
+    // Case-insensitive check
+    const foundKey = Object.keys(targetsList).find(
         k => k.toLowerCase() === subKey.toLowerCase()
     );
-
-    if (foundKey && monthlyTargets[foundKey][selectedMonthId] != null) {
-        target = monthlyTargets[foundKey][selectedMonthId];
+    if (foundKey && targetsList[foundKey][selectedMonthId] !== undefined) {
+        target = targetsList[foundKey][selectedMonthId];
     }
 }
                     
