@@ -573,49 +573,56 @@ const attachDropdownEvents = (container, config) => {
 };
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
+    // 1. Teacher Toggle Logic (Expand/Collapse)
     container.querySelectorAll('.teacher-toggle').forEach(toggle => {
         toggle.onclick = (e) => {
-            if (e.target.closest('button')) return;
+            // Agar click edit ya delete button par hua hai, to toggle na chale
+            if (e.target.closest('.edit-t-btn') || e.target.closest('.del-t-btn')) {
+                return; 
+            }
             toggle.nextElementSibling.classList.toggle('hidden');
             toggle.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
         };
     });
 
-        container.querySelectorAll('.save-period-btn').forEach(btn => {
-    btn.onclick = async () => {
-        const panel = btn.closest('.period-container');
-        const data = {
-            className: panel.querySelector('.p-class').value,
-            bookName: panel.querySelector('.p-book').value,
-            semester: panel.querySelector('.p-sem').value,
-            totalPages: parseInt(panel.querySelector('.p-pages').value),
-            syllabus: panel.querySelector('.p-syllabus').value // Naya field
-        };
+        // 2. Teacher Profile Edit Logic
+    container.querySelectorAll('.edit-t-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.stopPropagation(); // Click event ko toggle tak jane se rokein
+            
+            const tid = btn.dataset.tid;
+            const jamiaName = btn.dataset.jamia;
+            const safeId = jamiaName.replace(/\s+/g, '');
 
-        if (!data.className || !data.bookName || !data.totalPages) return alert("Fill all details.");
+            // Data fetch karein
+            const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+            const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+            const jamiaData = structure.find(j => j.jamiaName === jamiaName);
+            const teacher = jamiaData?.teachers.find(t => t.id === tid);
 
-        await updateTeacherData(db, currentUser, btn.dataset.jamia, selectedYear, (teachers) => {
-            const t = teachers.find(teach => teach.id === btn.dataset.tid);
-            if (t) { 
-                if (!t.periods) t.periods = []; 
-                t.periods.push({ id: `p-${Date.now()}`, ...data }); 
+            if (teacher) {
+                // Form mein data bharein
+                document.getElementById(`name-${safeId}`).value = teacher.name;
+                document.getElementById(`ajeer-${safeId}`).value = teacher.loginCode;
+                document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
+                document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
+                document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
+                document.getElementById(`mail-${safeId}`).value = teacher.mailId || "";
+                document.getElementById(`exp-${safeId}`).value = teacher.experience || "";
+                document.getElementById(`spec-${safeId}`).value = teacher.specialization || "";
+                document.getElementById(`t-period-${safeId}`).value = teacher.teachingPeriod || "";
+                document.getElementById(`ijara-${safeId}`).value = teacher.ijaraStatus || "";
+
+                // Save button ko "Update" mode mein karein
+                const saveBtn = container.querySelector(`.save-teacher-btn[data-jamia-name="${jamiaName}"]`);
+                saveBtn.innerText = "Update Teacher Profile";
+                saveBtn.dataset.editMode = tid; // ID store karein update ke liye
+
+                // Form tak scroll karein
+                saveBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-            return teachers;
-        });
-
-        // UI Refresh
-        await loadAllTeachers(jamiaat, db, currentUser, selectedYear);
-        
-        // --- DROPDOWN OPEN RAKHNE KA LOGIC ---
-        // Refresh ke baad wahi teacher ka container dhoond kar open karein
-        const teacherRow = document.querySelector(`[data-tid="${btn.dataset.tid}"]`);
-        if (teacherRow) {
-            teacherRow.nextElementSibling.classList.remove('hidden');
-            // Jamia ka main container bhi open rahe ye ensure karein
-            teacherRow.closest('.jamia-content').classList.remove('hidden');
-        }
-    };
-});
+        };
+    });
 
     container.querySelectorAll('.del-period-btn, .del-t-btn').forEach(btn => {
         btn.onclick = async () => {
@@ -634,9 +641,6 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
     // Modal band karne ka helper
 window.closePeriodModal = () => document.getElementById('edit-period-modal').classList.add('hidden');
 
-// Edit Button Events
-// Edit Button click handler ke andar
-// Edit Period Button Logic
 // Edit Period Button Logic
 container.querySelectorAll('.edit-period-btn').forEach(btn => {
     btn.onclick = async () => {
