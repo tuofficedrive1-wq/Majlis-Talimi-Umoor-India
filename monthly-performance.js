@@ -384,26 +384,20 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     console.log("Class:", p.className);
                     console.log("Subject:", p.bookName);
                     
-                    // 🔹 Normalize function (sirf 1 baar)
-                    const normalize = (str) => str.toLowerCase().replace(/\s+/g, '_').trim();
-                    
-                    // 🔹 Generated key
+                   const normalize = (str) => (str || "").toString().toLowerCase().replace(/\s+/g, '_').trim();
+
                     const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
                     
-                    console.log("Generated Key:", subKey);
-                    console.log("Available Keys:", Object.keys(monthlyTargets));
-                    
-                    // 🔥 CASE-INSENSITIVE KEY MATCH
-                    const actualKey = Object.keys(monthlyTargets).find(
+                    // 🔹 Safe key match
+                    const actualKey = Object.keys(monthlyTargets || {}).find(
                         key => normalize(key) === subKey
                     );
                     
-                    // 🔹 Month data
                     const monthData = actualKey ? monthlyTargets[actualKey] : {};
                     
-                    // 🔥 Month match bhi normalize ke saath
-                    const targetKey = Object.keys(monthData).find(
-                        key => key.toLowerCase() === selectedMonthId.toLowerCase()
+                    // 🔹 SAFE month match
+                    const targetKey = Object.keys(monthData || {}).find(
+                        key => normalize(key) === normalize(selectedMonthId)
                     );
                     
                     const target = targetKey ? monthData[targetKey] : 0;
