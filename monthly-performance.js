@@ -637,6 +637,7 @@ window.closePeriodModal = () => document.getElementById('edit-period-modal').cla
 // Edit Button Events
 // Edit Button click handler ke andar
 // Edit Period Button Logic
+// Edit Period Button Logic
 container.querySelectorAll('.edit-period-btn').forEach(btn => {
     btn.onclick = async () => {
         const { pid, tid, jamia } = btn.dataset;
@@ -662,7 +663,7 @@ container.querySelectorAll('.edit-period-btn').forEach(btn => {
         const bookSelect = document.getElementById('edit-p-book');
         const updateBtn = document.getElementById('btn-update-period');
 
-        // Populate Dropdowns
+        // Dropdowns setup karein
         classSelect.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
         classSelect.value = period.className;
 
@@ -674,12 +675,12 @@ container.querySelectorAll('.edit-period-btn').forEach(btn => {
         bookSelect.value = period.bookName;
         classSelect.onchange = (e) => loadBooks(e.target.value);
 
-        // Fill Other Fields
+        // Fill fields
         document.getElementById('edit-p-sem').value = period.semester;
         document.getElementById('edit-p-pages').value = period.totalPages;
         document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
 
-        // --- UPDATE BUTTON LOGIC (FIXED) ---
+        // --- UPDATE BUTTON LOGIC ---
         updateBtn.onclick = async () => {
             updateBtn.disabled = true;
             updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
@@ -704,9 +705,12 @@ container.querySelectorAll('.edit-period-btn').forEach(btn => {
                 });
 
                 closePeriodModal();
-                // Yahan 'assignedJamiaat' wahi variable use karein jo renderSubTabContent se pass hua hai
-                loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear); 
-                alert("Data Updated Successfully!");
+                
+                // ERROR FIX: jamiaat list ko sahi variable se refresh karein
+                // Agar aapke pas global assignedJamiaat nahi hai, toh upar wala 'jamiaat' use karein
+                loadAllTeachers(jamiaat || assignedJamiaat, db, currentUser, selectedYear); 
+                
+                alert("Data Updated!");
             } catch (err) {
                 alert("Error: " + err.message);
             } finally {
