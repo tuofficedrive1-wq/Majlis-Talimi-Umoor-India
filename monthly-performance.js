@@ -26,6 +26,61 @@ const getStatusStyles = (status) => {
 };
 
 export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
+    // --- Modal ko JS se inject karne ka function ---
+const injectEditModal = () => {
+    if (document.getElementById('edit-period-modal')) return; // Agar pehle se hai to dubara na dalein
+
+    const modalHTML = `
+    <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-black text-indigo-950 text-lg">Edit Period Details</h3>
+                <button onclick="closePeriodModal()" class="h-8 w-8 rounded-full bg-slate-50 text-slate-400 hover:text-red-500 flex items-center justify-center">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Class</label>
+                    <select id="edit-p-class" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Subject</label>
+                    <select id="edit-p-book" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Semester</label>
+                        <select id="edit-p-sem" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                            <option value="1">Sem 1</option>
+                            <option value="2">Sem 2</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Total Pages</label>
+                        <input type="number" id="edit-p-pages" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Syllabus</label>
+                    <select id="edit-p-syllabus" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                        <option value="Majlis">Majlis</option>
+                        <option value="State">State</option>
+                        <option value="Approval">Approval</option>
+                    </select>
+                </div>
+                <button id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
+                    Update Period Data
+                </button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+};
+
+// Ise renderPerformanceTab ke andar call karein
+injectEditModal();
     const container = document.getElementById('performance-jamia-list');
     container.innerHTML = `
         <div class="mb-6">
@@ -287,8 +342,17 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                             <td class="p-2 border text-center">${p.semester}</td><td class="p-2 border text-center font-bold">${p.totalPages}</td>
                                             <td class="p-2 border text-center text-indigo-600 font-bold">${p.syllabus || 'Majlis'}</td>
                                             <td class="p-2 border text-center">
-                                                <button class="del-period-btn text-red-500" data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}"><i class="fas fa-times-circle"></i></button>
-                                            </td>
+                                            <div class="flex justify-center gap-2">
+                                                <button class="edit-period-btn text-indigo-500" 
+                                                        data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="del-period-btn text-red-500" 
+                                                        data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}">
+                                                    <i class="fas fa-times-circle"></i>
+                                                </button>
+                                            </div>
+                                        </td>
                                         </tr>`).join('')}
                                 </tbody>
                             </table>
@@ -567,6 +631,73 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
             loadAllTeachers(jamiaat, db, currentUser, selectedYear);
         };
     });
+    // Modal band karne ka helper
+window.closePeriodModal = () => document.getElementById('edit-period-modal').classList.add('hidden');
+
+// Edit Button Events
+container.querySelectorAll('.edit-period-btn').forEach(btn => {
+    btn.onclick = async () => {
+        const { pid, tid, jamia } = btn.dataset;
+        
+        // Data nikalein
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+        const jamiaData = structure.find(j => j.jamiaName === jamia);
+        const teacher = jamiaData.teachers.find(t => t.id === tid);
+        const period = teacher.periods.find(p => p.id === pid);
+
+        // Modal UI Elements
+        const classSelect = document.getElementById('edit-p-class');
+        const bookSelect = document.getElementById('edit-p-book');
+        const modal = document.getElementById('edit-period-modal');
+
+        // 1. Classes populate karein
+        classSelect.innerHTML = academicConfig.classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+        classSelect.value = period.className;
+
+        // 2. Books populate karne ka function
+        const loadBooks = (className) => {
+            const classData = academicConfig.classes.find(c => c.name === className);
+            bookSelect.innerHTML = classData ? classData.subjects.map(s => `<option value="${s}">${s}</option>`).join('') : '';
+        };
+
+        loadBooks(period.className);
+        bookSelect.value = period.bookName;
+
+        // Class change hone par subjects update hon
+        classSelect.onchange = (e) => loadBooks(e.target.value);
+
+        // 3. Baqi fields set karein
+        document.getElementById('edit-p-sem').value = period.semester;
+        document.getElementById('edit-p-pages').value = period.totalPages;
+        document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
+
+        // 4. Update Button Logic
+        document.getElementById('btn-update-period').onclick = async () => {
+            const updatedPeriod = {
+                id: pid, // Purani ID barkarar rakhein
+                className: classSelect.value,
+                bookName: bookSelect.value,
+                semester: document.getElementById('edit-p-sem').value,
+                totalPages: parseInt(document.getElementById('edit-p-pages').value),
+                syllabus: document.getElementById('edit-p-syllabus').value
+            };
+
+            await updateTeacherData(db, currentUser, jamia, selectedYear, (teachers) => {
+                const t = teachers.find(teach => teach.id === tid);
+                const pIdx = t.periods.findIndex(p => p.id === pid);
+                if (pIdx > -1) t.periods[pIdx] = updatedPeriod;
+                return teachers;
+            });
+
+            closePeriodModal();
+            loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear); // Refresh UI
+            alert("Period updated successfully!");
+        };
+
+        modal.classList.remove('hidden');
+    };
+});
 };
 
 async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updateFn) {
