@@ -381,26 +381,29 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     
                     // --- TARGET FETCHING LOGIC ---
                     // Admin file (Line 524) ke mutabiq subKey banayein: "Class_Subject" (Spaces replaced by _)
+                   // --- TARGET FETCHING LOGIC ---
                     console.log("Class:", p.className);
                     console.log("Subject:", p.bookName);
                     
-                   const normalize = (str) => (str || "").toString().toLowerCase().replace(/\s+/g, '_').trim();
-
-                    const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
+                    // 🔹 Direct key (admin jaisa hi)
+                    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
                     
-                    // 🔹 Safe key match
-                    const actualKey = Object.keys(monthlyTargets || {}).find(
-                        key => normalize(key) === subKey
-                    );
+                    // 🔹 Direct match
+                    let target = 0;
                     
-                    const monthData = actualKey ? monthlyTargets[actualKey] : {};
+                    if (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId] != null) {
+                        target = monthlyTargets[subKey][selectedMonthId];
+                    } 
+                    else {
+                        // 🔹 fallback (case-insensitive)
+                        const foundKey = Object.keys(monthlyTargets || {}).find(
+                            k => k.toLowerCase() === subKey.toLowerCase()
+                        );
                     
-                    // 🔹 SAFE month match
-                    const targetKey = Object.keys(monthData || {}).find(
-                        key => normalize(key) === normalize(selectedMonthId)
-                    );
-                    
-                    const target = targetKey ? monthData[targetKey] : 0;
+                        if (foundKey && monthlyTargets[foundKey][selectedMonthId] != null) {
+                            target = monthlyTargets[foundKey][selectedMonthId];
+                        }
+                    }
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
