@@ -384,23 +384,29 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     console.log("Class:", p.className);
                     console.log("Subject:", p.bookName);
                     
+                    // 🔹 Normalize function (sirf 1 baar)
                     const normalize = (str) => str.toLowerCase().replace(/\s+/g, '_').trim();
-
+                    
+                    // 🔹 Generated key
                     const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
                     
                     console.log("Generated Key:", subKey);
                     console.log("Available Keys:", Object.keys(monthlyTargets));
                     
-                    // Ab admin ka set kiya hua target uthayein
-                    const normalize = (str) => str.toLowerCase().trim();
-
-                    const monthData = monthlyTargets[subKey] || {};
+                    // 🔥 CASE-INSENSITIVE KEY MATCH
+                    const actualKey = Object.keys(monthlyTargets).find(
+                        key => normalize(key) === subKey
+                    );
                     
-                    const target = Object.keys(monthData).find(
-                        key => normalize(key) === normalize(selectedMonthId)
-                    )
-                        ? monthData[Object.keys(monthData).find(key => normalize(key) === normalize(selectedMonthId))]
-                        : 0;
+                    // 🔹 Month data
+                    const monthData = actualKey ? monthlyTargets[actualKey] : {};
+                    
+                    // 🔥 Month match bhi normalize ke saath
+                    const targetKey = Object.keys(monthData).find(
+                        key => key.toLowerCase() === selectedMonthId.toLowerCase()
+                    );
+                    
+                    const target = targetKey ? monthData[targetKey] : 0;
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
