@@ -381,7 +381,15 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     
                     // --- TARGET FETCHING LOGIC ---
                     // Admin file (Line 524) ke mutabiq subKey banayein: "Class_Subject" (Spaces replaced by _)
-                    const subKey = `${p.className}_${p.bookName}`.replace(/\s+/g, '_');
+                    console.log("Class:", p.className);
+                    console.log("Subject:", p.bookName);
+                    
+                    const normalize = (str) => str.toLowerCase().replace(/\s+/g, '_').trim();
+
+                    const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
+                    
+                    console.log("Generated Key:", subKey);
+                    console.log("Available Keys:", Object.keys(monthlyTargets));
                     
                     // Ab admin ka set kiya hua target uthayein
                     const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
