@@ -448,9 +448,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                      
                     // --- FIXED TARGET FETCHING ---
 // Class aur Subject names se spaces hatakar underscore lagana
+// Dono ko alag alag sanitize karein phir jodein
 const cleanClass = p.className.trim().replace(/\s+/g, '_');
-const cleanBook = p.bookName.trim().replace(/\s+/g, '_');
-const subKey = `${cleanClass}_${cleanBook}`;
+const cleanSubject = p.bookName.trim().replace(/\s+/g, '_');
+const subKey = `${cleanClass}_${cleanSubject}`;
 
 let target = 0;
 
