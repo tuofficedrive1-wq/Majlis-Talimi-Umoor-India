@@ -364,7 +364,9 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     <table class="w-full text-left">
                         <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
                             <tr>
-                                <th class="p-4 border-b">Teacher & Subject</th>
+                                <th class="p-4 border-b">Teacher</th>
+                                <th class="p-4 border-b">Class</th>
+                                <th class="p-4 border-b">Subject</th>
                                 <th class="p-4 border-b text-center">Total</th>
                                 <th class="p-4 border-b text-center text-indigo-600">Target</th>
                                 <th class="p-4 border-b text-center">Achieved</th>
@@ -391,9 +393,16 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
-                            <td class="p-4">
-                                <div class="font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</div>
-                                <div class="text-[11px] text-slate-500">${p.className} • ${p.bookName}</div>
+                            <td class="p-4 font-bold text-slate-800">
+                                ${pIdx === 0 ? teacher.name : ''}
+                            </td>
+                            
+                            <td class="p-4 text-slate-600">
+                                ${p.className}
+                            </td>
+                            
+                            <td class="p-4 text-slate-600">
+                                ${p.bookName}
                             </td>
                             <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
                             <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
