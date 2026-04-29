@@ -392,7 +392,15 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     console.log("Available Keys:", Object.keys(monthlyTargets));
                     
                     // Ab admin ka set kiya hua target uthayein
-                    const target = (monthlyTargets[subKey] && monthlyTargets[subKey][selectedMonthId]) || 0;
+                    const normalize = (str) => str.toLowerCase().trim();
+
+                    const monthData = monthlyTargets[subKey] || {};
+                    
+                    const target = Object.keys(monthData).find(
+                        key => normalize(key) === normalize(selectedMonthId)
+                    )
+                        ? monthData[Object.keys(monthData).find(key => normalize(key) === normalize(selectedMonthId))]
+                        : 0;
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
