@@ -125,12 +125,7 @@ if (tabName === 'performance') {
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex flex-col gap-1">
                     <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
-                    <select id="report-month" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[120px]">
-                        <option value="3">April</option><option value="4">May</option><option value="5">June</option>
-                        <option value="6">July</option><option value="7">August</option><option value="8">September</option>
-                        <option value="9">October</option><option value="10">November</option><option value="11">December</option>
-                        <option value="0">January</option><option value="1">February</option><option value="2">March</option>
-                    </select>
+                    <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50"></select>
                 </div>
 
                 <div class="flex flex-col gap-1">
@@ -367,18 +362,46 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
     } catch (e) { console.error("loadAllTeachers error:", e); }
 };
 
+const setupMonthDropdown = (calendarData) => {
+    const monthSelect = document.getElementById('report-month');
+    if (!calendarData || !monthSelect) return;
+
+    const months = [
+        { name: "April", id: "3", key: "apr" },
+        { name: "May", id: "4", key: "may" },
+        { name: "June", id: "5", key: "jun" },
+        { name: "July", id: "6", key: "jul" },
+        { name: "August", id: "7", key: "aug" },
+        { name: "September", id: "8", key: "sep" },
+        { name: "October", id: "9", key: "oct" },
+        { name: "November", id: "10", key: "nov" },
+        { name: "December", id: "11", key: "dec" },
+        { name: "January", id: "0", key: "jan" },
+        { name: "February", id: "1", key: "feb" },
+        { name: "March", id: "2", key: "mar" }
+    ];
+
+    // sirf active months (jahan days > 0)
+    const activeMonths = months.filter(m => {
+        const mData = calendarData.months?.[m.key];
+        return mData && ((mData.s1 || 0) + (mData.s2 || 0)) > 0;
+    });
+
+    monthSelect.innerHTML = activeMonths.map(m => 
+        `<option value="${m.id}">${m.name}</option>`
+    ).join('');
+};
+
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
+    const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+    const calendarData = calSnap.exists() ? calSnap.data() : {};
+    
+    setupMonthDropdown(calendarData);
     const container = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
     const selectedJamia = document.getElementById('report-jamia').value;
 
     try {
-        // 1. Admin Targets aur Active Year fetch karein
-        const [targetSnap, calSnap] = await Promise.all([
-            getDoc(doc(db, "settings", "monthly_page_targets")),
-            getDoc(doc(db, "settings", "academic_calendar"))
-        ]);
-
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
