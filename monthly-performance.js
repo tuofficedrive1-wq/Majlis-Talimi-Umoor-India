@@ -364,7 +364,7 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const setupMonthDropdown = (calendarData) => {
     const monthSelect = document.getElementById('report-month');
-    if (!calendarData || !monthSelect) return;
+    if (!monthSelect) return;
 
     const months = [
         { name: "April", id: "3", key: "apr" },
@@ -381,13 +381,33 @@ const setupMonthDropdown = (calendarData) => {
         { name: "March", id: "2", key: "mar" }
     ];
 
-    // sirf active months (jahan days > 0)
-    const activeMonths = months.filter(m => {
-        const mData = calendarData.months?.[m.key];
-        return mData && ((mData.s1 || 0) + (mData.s2 || 0)) > 0;
-    });
+    console.log("CalendarData FULL:", calendarData);
 
-    monthSelect.innerHTML = activeMonths.map(m => 
+    let activeMonths = [];
+
+    // ✅ CASE 1: months (admin system)
+    if (calendarData.months) {
+        activeMonths = months.filter(m => {
+            const mData = calendarData.months[m.key];
+            return mData && ((mData.s1 || 0) + (mData.s2 || 0)) > 0;
+        });
+    }
+
+    // ✅ CASE 2: monthDetails (karkardagi system)
+    else if (calendarData.monthDetails) {
+        activeMonths = months.filter(m => {
+            const idx = m.id;
+            const mData = calendarData.monthDetails[idx];
+            return mData && ((mData.s1 || 0) + (mData.s2 || 0)) > 0;
+        });
+    }
+
+    // ⚠️ fallback (agar dono nahi mila)
+    if (activeMonths.length === 0) {
+        activeMonths = months;
+    }
+
+    monthSelect.innerHTML = activeMonths.map(m =>
         `<option value="${m.id}">${m.name}</option>`
     ).join('');
 };
