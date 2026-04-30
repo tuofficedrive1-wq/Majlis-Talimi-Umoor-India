@@ -380,23 +380,24 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const selectedJamia = document.getElementById('report-jamia').value;
 
     try {
-        // 1. Admin Targets aur Active Year fetch karein
+        // 1. Database se Config aur Targets sirf EK baar fetch karein
         const [targetSnap, calSnap] = await Promise.all([
             getDoc(doc(db, "settings", "monthly_page_targets")),
             getDoc(doc(db, "settings", "academic_calendar"))
         ]);
 
-        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+        // "targets" field check karein (Screenshot ke mutabiq)
+        const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-        // 2. Month ID Mapping (Admin file ke mutabiq)
+        // 2. Month ID Mapping
         const monthIdMap = {
             "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
             "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
         };
         const selectedMonthId = monthIdMap[selectedMonthIdx];
 
-        // 3. User Data Fetch karein (Hardcoded year ki jagah activeYear use karein)
+        // 3. User Data Fetch karein
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -417,15 +418,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-link mr-1 text-indigo-500"></i> Link
-                        </button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-image mr-1 text-rose-500"></i> Image
-                        </button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
-                        </button>
                         <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
                             <i class="fas fa-edit mr-1"></i> Edit
                         </button>
@@ -438,7 +430,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <th class="p-4 border-b">Teacher</th>
                                 <th class="p-4 border-b">Class</th>
                                 <th class="p-4 border-b">Subject</th>
-                                <th class="p-4 border-b text-center">Total</th>
                                 <th class="p-4 border-b text-center text-indigo-600">Target</th>
                                 <th class="p-4 border-b text-center">Achieved</th>
                                 <th class="p-4 border-b text-center">%</th>
@@ -449,44 +440,36 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
-                    // 1. Key aur Month ID taiyar karein
-                const searchKey = getStandardKey(p.className, p.bookName);
-                const selectedMonthId = monthIdMap[selectedMonthIdx];
-                const targetsData = monthlyTargets || {};
-                
-                // 2. Target dhoondein (Case-Insensitive)
-                let target = 0;
-                const actualKey = Object.keys(targetsData).find(k => k.toLowerCase() === searchKey);
-                
-                if (actualKey && targetsData[actualKey][selectedMonthId] !== undefined) {
-                    target = Number(targetsData[actualKey][selectedMonthId]);
-                }
-                
-                // 3. Achieved Value (Filhal placeholder, baad mein fill-form se connect hoga)
-                // Aapne bataya ke ye form se aayega, abhi hum ise 0 rakhte hain
-                const achievedValue = 0;
-                    // 4. Percentage nikalein
-                const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                
-                // 5. Kaifiyat aur Style nikalein (Aapka purana function use hoga)
-                const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
+                    // --- Naya Target Logic ---
+                    const searchKey = getStandardKey(p.className, p.bookName);
+                    let target = 0;
                     
+                    // Case-insensitive search in database keys
+                    const actualKey = Object.keys(monthlyTargets).find(k => k.toLowerCase() === searchKey);
+                    
+                    if (actualKey && monthlyTargets[actualKey][selectedMonthId] !== undefined) {
+                        target = Number(monthlyTargets[actualKey][selectedMonthId]);
+                    }
+
+                    // Abhi placeholder achieved value
+                    const achievedValue = 0; 
+                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
+
                     html += `
-                    <tr class="border-b hover:bg-slate-50/50">
-                        <td class="p-4 font-bold text-slate-800">
-                            ${pIdx === 0 ? teacher.name : ''}
-                        </td>
-                        <td class="p-4 text-slate-600">${p.className}</td>
-                        <td class="p-4 text-slate-600">${p.bookName}</td>
-                        <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
-                        <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                        <td class="p-4 text-center">
-                            <input type="number" value="${achievedValue}" disabled 
-                                   class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
-                        </td>
-                        <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
-                        <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
-                    </tr>`;
+                        <tr class="border-b hover:bg-slate-50/50">
+                            <td class="p-4 font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</td>
+                            <td class="p-4 text-slate-600">${p.className}</td>
+                            <td class="p-4 text-slate-600">${p.bookName}</td>
+                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30 target-val">${target}</td>
+                            <td class="p-4 text-center">
+                                <input type="number" value="${achievedValue}" disabled 
+                                       oninput="updateLiveCalculation(this, ${target}, '${selectedMonthIdx}', '${p.semester}')"
+                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+                            </td>
+                            <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
+                            <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
+                        </tr>`;
                 });
             });
             html += `</tbody></table></div></div>`;
@@ -496,6 +479,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         console.error("Load Error:", e);
     }
 };
+
+// --- In Helpers ko bhu check kar lein (Monthly-performance.js mein add karein) ---
+
+const getStandardKey = (className, bookName) => {
+    return `${className.trim()}_${bookName.trim()}`.replace(/\s+/g, '_').toLowerCase();
+};
+
 
 // Mahine ka number semester ke hisab se nikalne ke liye
 // Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
@@ -970,3 +960,23 @@ function calculateStatusText(percentage) {
     if (percentage >= 70) return "Behtar";
     return "Munasib";
 }
+
+window.updateLiveCalculation = (input, target, monthIdx, semester) => {
+    const row = input.closest('tr');
+    const achieved = parseInt(input.value) || 0;
+    
+    // Percentage nikalein
+    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+    
+    // UI Update karein
+    const percCell = row.querySelector('td:nth-last-child(2)'); // % wala column
+    const statusCell = row.querySelector('td:last-child');      // Kaifiyat wala column
+    
+    percCell.textContent = percentage + "%";
+    
+    // Kaifiyat update karein (calculateKaifiyatAndStyle use karke)
+    const result = calculateKaifiyatAndStyle(percentage, monthIdx, semester);
+    statusCell.textContent = result.kaifiyat;
+    statusCell.className = `p-4 text-center italic ${result.colorClass}`;
+};
+
