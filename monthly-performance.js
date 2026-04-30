@@ -450,27 +450,31 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 // Class aur Subject names se spaces hatakar underscore lagana
 // Dono ko alag alag sanitize karein phir jodein
 // --- Is logic ko use karein ---
-const cleanClass = p.className.trim().replace(/\s+/g, '_');
-const cleanSubject = p.bookName.trim().replace(/\s+/g, '_');
-const subKey = `${cleanClass}_${cleanSubject}`;
+const normalize = (str) => (str || "")
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .trim();
+
+const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
 
 // Screenshot ke mutabiq nesting check karein
 // monthlyTargets admin file mein { targets: { ... } } ke andar hota hai
-const targetsList = monthlyTargets || {}; 
+    // --- NORMALIZE TARGETS ---
+const normalizedTargets = {};
 
+Object.keys(monthlyTargets || {}).forEach(key => {
+    normalizedTargets[key.toLowerCase()] = monthlyTargets[key];
+});
+
+// --- GET TARGET ---
 let target = 0;
-const selectedMonthId = monthIdMap[selectedMonthIdx];
 
-if (targetsList[subKey] && targetsList[subKey][selectedMonthId] !== undefined) {
-    target = targetsList[subKey][selectedMonthId];
-} else {
-    // Case-insensitive check
-    const foundKey = Object.keys(targetsList).find(
-        k => k.toLowerCase() === subKey.toLowerCase()
-    );
-    if (foundKey && targetsList[foundKey][selectedMonthId] !== undefined) {
-        target = targetsList[foundKey][selectedMonthId];
-    }
+if (
+    normalizedTargets[subKey] &&
+    normalizedTargets[subKey][selectedMonthId] !== undefined
+) {
+    target = normalizedTargets[subKey][selectedMonthId];
 }
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
