@@ -461,21 +461,31 @@ const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
 // Screenshot ke mutabiq nesting check karein
 // monthlyTargets admin file mein { targets: { ... } } ke andar hota hai
     // --- NORMALIZE TARGETS ---
-const normalizedTargets = {};
+const normalize = (str) => (str || "")
+    .toString()
+    .toLowerCase()
+    .trim();
 
-Object.keys(monthlyTargets || {}).forEach(key => {
-    normalizedTargets[key.toLowerCase()] = monthlyTargets[key];
-});
+const cls = normalize(p.className);
+const sub = normalize(p.bookName);
 
-// --- GET TARGET ---
 let target = 0;
 
-if (
-    normalizedTargets[subKey] &&
-    normalizedTargets[subKey][selectedMonthId] !== undefined
-) {
-    target = normalizedTargets[subKey][selectedMonthId];
-}
+// FULL LOOP (safe method)
+Object.keys(monthlyTargets || {}).forEach(classKey => {
+    if (normalize(classKey) === cls) {
+        const subjects = monthlyTargets[classKey];
+
+        Object.keys(subjects || {}).forEach(subKey => {
+            if (normalize(subKey) === sub) {
+                const monthData = subjects[subKey];
+                if (monthData[selectedMonthId] !== undefined) {
+                    target = monthData[selectedMonthId];
+                }
+            }
+        });
+    }
+});
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
