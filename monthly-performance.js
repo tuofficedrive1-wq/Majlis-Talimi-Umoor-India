@@ -427,8 +427,7 @@ if (!monthSelect.value) {
 const selectedMonthIdx = monthSelect.value;
 
     const container = document.getElementById('performance-table-body');
-    const selectedMonthIdx = document.getElementById('report-month').value; 
-    const selectedJamia = document.getElementById('report-jamia').value;
+        const selectedJamia = document.getElementById('report-jamia').value;
 
     try {
 
