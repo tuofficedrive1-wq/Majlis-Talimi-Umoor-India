@@ -367,6 +367,13 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
     } catch (e) { console.error("loadAllTeachers error:", e); }
 };
 
+// Is helper ko ek baar define kar dein
+const getStandardKey = (className, bookName) => {
+    const cleanCls = className.trim().replace(/\s+/g, '_');
+    const cleanSub = bookName.trim().replace(/\s+/g, '_');
+    return `${cleanCls}_${cleanSub}`.toLowerCase();
+};
+
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
@@ -442,64 +449,44 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
+                    // 1. Key aur Month ID taiyar karein
+                const searchKey = getStandardKey(p.className, p.bookName);
+                const selectedMonthId = monthIdMap[selectedMonthIdx];
+                const targetsData = monthlyTargets || {};
+                
+                // 2. Target dhoondein (Case-Insensitive)
+                let target = 0;
+                const actualKey = Object.keys(targetsData).find(k => k.toLowerCase() === searchKey);
+                
+                if (actualKey && targetsData[actualKey][selectedMonthId] !== undefined) {
+                    target = Number(targetsData[actualKey][selectedMonthId]);
+                }
+                
+                // 3. Achieved Value (Filhal placeholder, baad mein fill-form se connect hoga)
+                // Aapne bataya ke ye form se aayega, abhi hum ise 0 rakhte hain
+                const achievedValue = 0;
+                    // 4. Percentage nikalein
+                const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                
+                // 5. Kaifiyat aur Style nikalein (Aapka purana function use hoga)
+                const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
                     
-                    // --- TARGET FETCHING LOGIC ---
-                    // Admin file (Line 524) ke mutabiq subKey banayein: "Class_Subject" (Spaces replaced by _)
-                                     
-                    // --- FIXED TARGET FETCHING ---
-// Class aur Subject names se spaces hatakar underscore lagana
-// Dono ko alag alag sanitize karein phir jodein
-// --- Is logic ko use karein ---
-const cleanClass = p.className.trim().replace(/\s+/g, '_');
-const cleanSubject = p.bookName.trim().replace(/\s+/g, '_');
-const subKey = `${cleanClass}_${cleanSubject}`;
-
-// Screenshot ke mutabiq nesting check karein
-// monthlyTargets admin file mein { targets: { ... } } ke andar hota hai
-const targetsList = monthlyTargets || {}; 
-
-let target = 0;
-const selectedMonthId = monthIdMap[selectedMonthIdx];
-
-if (targetsList[subKey] && targetsList[subKey][selectedMonthId] !== undefined) {
-    target = targetsList[subKey][selectedMonthId];
-} else {
-    // Case-insensitive check
-    const foundKey = Object.keys(targetsList).find(
-        k => k.toLowerCase() === subKey.toLowerCase()
-    );
-    if (foundKey && targetsList[foundKey][selectedMonthId] !== undefined) {
-        target = targetsList[foundKey][selectedMonthId];
-    }
-}
-                    
-                    // Placeholder achieved value (Abhi DB se nahi aa rahi)
-                    const achievedValue = 0; 
-                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
-
                     html += `
-                        <tr class="border-b hover:bg-slate-50/50">
-                            <td class="p-4 font-bold text-slate-800">
-                                ${pIdx === 0 ? teacher.name : ''}
-                            </td>
-                            
-                            <td class="p-4 text-slate-600">
-                                ${p.className}
-                            </td>
-                            
-                            <td class="p-4 text-slate-600">
-                                ${p.bookName}
-                            </td>
-                            <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
-                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                            <td class="p-4 text-center">
-                                <input type="number" value="${achievedValue}" disabled 
-                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
-                            </td>
-                            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
-                            <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
-                        </tr>`;
+                    <tr class="border-b hover:bg-slate-50/50">
+                        <td class="p-4 font-bold text-slate-800">
+                            ${pIdx === 0 ? teacher.name : ''}
+                        </td>
+                        <td class="p-4 text-slate-600">${p.className}</td>
+                        <td class="p-4 text-slate-600">${p.bookName}</td>
+                        <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
+                        <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                        <td class="p-4 text-center">
+                            <input type="number" value="${achievedValue}" disabled 
+                                   class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+                        </td>
+                        <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
+                        <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
+                    </tr>`;
                 });
             });
             html += `</tbody></table></div></div>`;
