@@ -480,13 +480,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     }
 };
 
-// --- In Helpers ko bhu check kar lein (Monthly-performance.js mein add karein) ---
-
-const getStandardKey = (className, bookName) => {
-    return `${className.trim()}_${bookName.trim()}`.replace(/\s+/g, '_').toLowerCase();
-};
-
-
 // Mahine ka number semester ke hisab se nikalne ke liye
 // Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
 // Sem 2: Sep(1), Oct(2), Nov(3), Dec(4), Jan(5), Feb/Mar (Extra)
