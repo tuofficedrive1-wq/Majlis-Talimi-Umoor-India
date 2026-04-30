@@ -1,4 +1,4 @@
-import { 
+    import { 
     doc, 
     getDoc,
     updateDoc,
@@ -393,25 +393,29 @@ const setupMonthDropdown = (calendarData) => {
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
+
+    const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
     const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+
+    const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
     const calendarData = calSnap.exists() ? calSnap.data() : {};
-    
+
     setupMonthDropdown(calendarData);
+
     const container = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
     const selectedJamia = document.getElementById('report-jamia').value;
 
     try {
-        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-        // 2. Month ID Mapping (Admin file ke mutabiq)
         const monthIdMap = {
             "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
             "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
         };
-        const selectedMonthId = monthIdMap[selectedMonthIdx];
 
+        const selectedMonthId = monthIdMap[selectedMonthIdx];
         // 3. User Data Fetch karein (Hardcoded year ki jagah activeYear use karein)
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
