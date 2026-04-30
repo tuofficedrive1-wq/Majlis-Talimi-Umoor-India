@@ -444,22 +444,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 teacher.periods?.forEach((p, pIdx) => {
                     
                     // --- TARGET FETCHING LOGIC ---
-                    // Admin file (Line 524) ke mutabiq subKey banayein: "Class_Subject" (Spaces replaced by _)
-                                     
-                    // --- FIXED TARGET FETCHING ---
-// Class aur Subject names se spaces hatakar underscore lagana
-// Dono ko alag alag sanitize karein phir jodein
-// --- Is logic ko use karein ---
-const normalize = (str) => (str || "")
-    .toString()
-    .toLowerCase()
-    .replace(/\s+/g, '_')
-    .trim();
-
+                    
 const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
 
-// Screenshot ke mutabiq nesting check karein
-// monthlyTargets admin file mein { targets: { ... } } ke andar hota hai
+
     // --- NORMALIZE TARGETS ---
 const normalize = (str) => (str || "")
     .toString()
