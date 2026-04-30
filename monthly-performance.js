@@ -385,25 +385,24 @@ const setupMonthDropdown = (calendarData) => {
 
     let activeMonths = [];
 
-    // ✅ CASE 1: months (admin system)
     if (calendarData.months) {
         activeMonths = months.filter(m => {
             const mData = calendarData.months[m.key];
-            return mData && ((mData.s1 || 0) + (mData.s2 || 0)) > 0;
+
+            if (!mData) return false;
+
+            return (
+                (mData.s1 || 0) > 0 ||
+                (mData.s2 || 0) > 0 ||
+                (mData.sem1 || 0) > 0 ||
+                (mData.sem2 || 0) > 0 ||
+                (mData.days || 0) > 0
+            );
         });
     }
 
-    // ✅ CASE 2: monthDetails (karkardagi system)
-    else if (calendarData.monthDetails) {
-        activeMonths = months.filter(m => {
-            const idx = m.id;
-            const mData = calendarData.monthDetails[idx];
-            return mData && ((mData.s1 || 0) + (mData.s2 || 0)) > 0;
-        });
-    }
-
-    // ⚠️ fallback (agar dono nahi mila)
     if (activeMonths.length === 0) {
+        console.warn("⚠️ No active months found, fallback to all");
         activeMonths = months;
     }
 
