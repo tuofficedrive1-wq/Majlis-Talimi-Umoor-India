@@ -420,6 +420,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const calendarData = calSnap.exists() ? calSnap.data() : {};
 
     setupMonthDropdown(calendarData);
+if (!monthSelect.value) {
+    monthSelect.selectedIndex = 0;
+}
+
+const selectedMonthIdx = monthSelect.value;
 
     const container = document.getElementById('performance-table-body');
     const selectedMonthIdx = document.getElementById('report-month').value; 
