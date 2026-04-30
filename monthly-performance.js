@@ -448,22 +448,20 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             .toString()
                             .toLowerCase()
                             .trim();
-                        const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
-                        
-                        const cls = normalize(p.className);
-                        const sub = normalize(p.bookName);
                         
                         let target = 0;
                         
-                        // FULL LOOP (safe method)
                         Object.keys(monthlyTargets || {}).forEach(classKey => {
-                            if (normalize(classKey) === cls) {
+                            if (normalize(classKey) === normalize(p.className)) {
+                        
                                 const subjects = monthlyTargets[classKey];
                         
                                 Object.keys(subjects || {}).forEach(subKey => {
-                                    if (normalize(subKey) === sub) {
+                                    if (normalize(subKey) === normalize(p.bookName)) {
+                        
                                         const monthData = subjects[subKey];
-                                        if (monthData[selectedMonthId] !== undefined) {
+                        
+                                        if (monthData && monthData[selectedMonthId] !== undefined) {
                                             target = monthData[selectedMonthId];
                                         }
                                     }
