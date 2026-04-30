@@ -444,36 +444,32 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 teacher.periods?.forEach((p, pIdx) => {
                     
                     // --- TARGET FETCHING LOGIC ---
-                    
-const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
-
-
-    // --- NORMALIZE TARGETS ---
-const normalize = (str) => (str || "")
-    .toString()
-    .toLowerCase()
-    .trim();
-
-const cls = normalize(p.className);
-const sub = normalize(p.bookName);
-
-let target = 0;
-
-// FULL LOOP (safe method)
-Object.keys(monthlyTargets || {}).forEach(classKey => {
-    if (normalize(classKey) === cls) {
-        const subjects = monthlyTargets[classKey];
-
-        Object.keys(subjects || {}).forEach(subKey => {
-            if (normalize(subKey) === sub) {
-                const monthData = subjects[subKey];
-                if (monthData[selectedMonthId] !== undefined) {
-                    target = monthData[selectedMonthId];
-                }
-            }
-        });
-    }
-});
+                        const normalize = (str) => (str || "")
+                            .toString()
+                            .toLowerCase()
+                            .trim();
+                        const subKey = `${normalize(p.className)}_${normalize(p.bookName)}`;
+                        
+                        const cls = normalize(p.className);
+                        const sub = normalize(p.bookName);
+                        
+                        let target = 0;
+                        
+                        // FULL LOOP (safe method)
+                        Object.keys(monthlyTargets || {}).forEach(classKey => {
+                            if (normalize(classKey) === cls) {
+                                const subjects = monthlyTargets[classKey];
+                        
+                                Object.keys(subjects || {}).forEach(subKey => {
+                                    if (normalize(subKey) === sub) {
+                                        const monthData = subjects[subKey];
+                                        if (monthData[selectedMonthId] !== undefined) {
+                                            target = monthData[selectedMonthId];
+                                        }
+                                    }
+                                });
+                            }
+                        });
                     
                     // Placeholder achieved value (Abhi DB se nahi aa rahi)
                     const achievedValue = 0; 
