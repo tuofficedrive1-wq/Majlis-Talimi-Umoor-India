@@ -299,6 +299,7 @@
     <select id="modal-book-input" class="w-full p-2 border rounded-lg urdu-font text-right" required>
         <option value="">کتاب منتخب کریں</option>
     </select>
+    <input type="text" id="modal-custom-book-input" class="w-full mt-2 p-2 border rounded-lg urdu-font text-right hidden" placeholder="کتاب کا نام خود لکھیں">
 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -952,16 +953,15 @@ document.addEventListener('input', (e) => {
                     // Sirf Urdu naam dikhayenge
                     const nameToShow = sub.urdu || sub.eng;
                     return `<option value="${sub.eng}">${nameToShow}</option>`;
-                }).join('');
+                }).join('') + '<option value="other">دیگر</option>'; // <-- YAHAN ADD KIYA HAI
             bookDropdown.disabled = false;
         } else {
-            // Agar match nahi hota to dropdown khali rahega
-            bookDropdown.innerHTML = '<option value="">کتابیں نہیں ملیں</option>';
-            bookDropdown.disabled = true;
+            // Agar match nahi hota to dropdown khali na rahe, balki 'deegar' ka option de
+            bookDropdown.innerHTML = '<option value="">کتابیں نہیں ملیں</option><option value="other">دیگر</option>'; // <-- YAHAN BHI ADD KIYA HAI
+            bookDropdown.disabled = false; // <-- Ise false kar diya taake disable na ho
         }
     }
 });
-
           const handleSaveStructure = async () => {
     if (!currentUser || !activeYear) return;
     showLoader(true);
@@ -2165,6 +2165,7 @@ if (saveAcademicMonthsBtn) {
     <select class="period-book-input w-full p-2 border rounded-lg urdu-font text-right" required disabled>
         <option value="">کتاب منتخب کریں</option>
     </select>
+    <input type="text" class="custom-book-input w-full mt-2 p-2 border rounded-lg urdu-font text-right hidden" placeholder="کتاب کا نام خود لکھیں">
 </div>
                              <div class="border-t pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
@@ -2519,15 +2520,19 @@ const handleUpdateTeacherName = async (e) => {
 
   const classInput = form.querySelector('.period-class-input');
 const bookInput = form.querySelector('.period-book-input');
+const customBookInput = form.querySelector('.custom-book-input');
 const semesterSelect = form.querySelector('.period-semester-select');
 const totalPagesInput = form.querySelector('.period-total-pages-input');
+            // Book name decide karne ka naya logic:
+let finalBookName = bookInput.options[bookInput.selectedIndex].text;
+if (bookInput.value === 'other') {
+    finalBookName = customBookInput.value.trim();
+}
 
 const newPeriod = {
     id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
-    // className ab direct input ki value se aayega (e.g. "اول اے")
     className: classInput.value.trim(), 
-    // bookName dropdown se hi aayega kyunki wo abhi bhi select hi hai
-    bookName: bookInput.options[bookInput.selectedIndex].text,
+    bookName: finalBookName, // <-- Yahan finalBookName aayega
     semester: semesterSelect.value, 
     totalPages: parseInt(totalPagesInput.value, 10) || 0,
 };
@@ -2643,12 +2648,31 @@ const newPeriod = {
     const bookDropdown = document.getElementById('modal-book-input');
     const classData = adminAcademicConfig.classes.find(c => className.includes(c.classNameUrdu));
 
+    let isCustomBook = true;
+    
     if (classData && classData.subjects) {
         bookDropdown.innerHTML = classData.subjects.map(sub => {
             const nameToShow = sub.urdu || sub.eng;
+            // Agar saved naam list me mil gaya, to iska matlab custom nahi hai
+            if (nameToShow === currentBookName) isCustomBook = false; 
+            
             const isSelected = (nameToShow === currentBookName) ? 'selected' : '';
             return `<option value="${sub.eng}" ${isSelected}>${nameToShow}</option>`;
-        }).join('');
+        }).join('') + `<option value="other" ${isCustomBook ? 'selected' : ''}>دیگر</option>`;
+    } else {
+        bookDropdown.innerHTML = `<option value="">کتابیں نہیں ملیں</option><option value="other" selected>دیگر</option>`;
+    }
+
+    // Custom text box ko show ya hide karne ka logic
+    const customInputModal = document.getElementById('modal-custom-book-input');
+    if (isCustomBook && currentBookName) {
+        customInputModal.classList.remove('hidden');
+        customInputModal.value = currentBookName;
+        customInputModal.setAttribute('required', 'true');
+    } else {
+        customInputModal.classList.add('hidden');
+        customInputModal.value = '';
+        customInputModal.removeAttribute('required');
     }
 
     modalSemesterSelect.value = row.dataset.sem;
@@ -2685,9 +2709,11 @@ document.getElementById('modal-class-input').addEventListener('input', (e) => {
 
     if (classData && classData.subjects) {
         bookDropdown.innerHTML = '<option value="">کتاب منتخب کریں</option>' + 
-            classData.subjects.map(sub => `<option value="${sub.eng}">${sub.urdu || sub.eng}</option>`).join('');
+            classData.subjects.map(sub => `<option value="${sub.eng}">${sub.urdu || sub.eng}</option>`).join('') +
+            '<option value="other">دیگر</option>'; // <-- YAHAN ADD KIYA HAI
     } else {
-        bookDropdown.innerHTML = '<option value="">کتابیں نہیں ملیں</option>';
+        // Agar match nahi hota tab bhi dropdown me manual type karne ka option hona chahiye
+        bookDropdown.innerHTML = '<option value="">کتابیں نہیں ملیں</option><option value="other">دیگر</option>'; // <-- YAHAN BHI ADD KIYA HAI
     }
 });
         
@@ -2702,13 +2728,19 @@ document.getElementById('modal-class-input').addEventListener('input', (e) => {
     const periodId = modalPeriodId.value;
 
     const bookSelect = document.getElementById('modal-book-input');
+    const customBookInput = document.getElementById('modal-custom-book-input'); // Naya
+            // Book name decide karne ka naya logic:
+let finalBookName = bookSelect.options[bookSelect.selectedIndex].text;
+if (bookSelect.value === 'other') {
+    finalBookName = customBookInput.value.trim();
+}
     const updatedPeriod = {
-        id: periodId,
-        className: document.getElementById('modal-class-input').value.trim(),
-        bookName: bookSelect.options[bookSelect.selectedIndex].text, 
-        semester: modalSemesterSelect.value,
-        totalPages: parseInt(modalTotalPagesInput.value, 10) || 0,
-    };
+    id: periodId,
+    className: document.getElementById('modal-class-input').value.trim(),
+    bookName: finalBookName, // <-- Yahan finalBookName aayega
+    semester: modalSemesterSelect.value,
+    totalPages: parseInt(modalTotalPagesInput.value, 10) || 0,
+};
     
     // Structure ko direct access karein
     let structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
@@ -4414,6 +4446,34 @@ const downloadTeacherProfileImage = async (e) => {
                     showLoader(false);
                 }
             };
+
+        document.addEventListener('change', (e) => {
+    // Add Period Form ke liye
+    if (e.target.classList.contains('period-book-input')) {
+        const customInput = e.target.parentElement.querySelector('.custom-book-input');
+        if (e.target.value === 'other') {
+            customInput.classList.remove('hidden');
+            customInput.setAttribute('required', 'true');
+        } else {
+            customInput.classList.add('hidden');
+            customInput.removeAttribute('required');
+            customInput.value = '';
+        }
+    }
+
+    // Edit Modal ke liye
+    if (e.target.id === 'modal-book-input') {
+        const customInputModal = document.getElementById('modal-custom-book-input');
+        if (e.target.value === 'other') {
+            customInputModal.classList.remove('hidden');
+            customInputModal.setAttribute('required', 'true');
+        } else {
+            customInputModal.classList.add('hidden');
+            customInputModal.removeAttribute('required');
+            customInputModal.value = '';
+        }
+    }
+});
 
         // --- Init ---
         initApp();
