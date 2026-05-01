@@ -126,7 +126,7 @@ if (tabName === 'performance') {
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex flex-col gap-1">
                     <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
-                    <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50"></select>
+                    <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]"></select>
                 </div>
 
                 <div class="flex flex-col gap-1">
@@ -382,34 +382,17 @@ const setupMonthDropdown = (calendarData) => {
         { name: "March", id: "2", key: "mar" }
     ];
 
-    console.log("CalendarData FULL:", calendarData);
-
-    let activeMonths = [];
-
-    if (calendarData.months) {
-        activeMonths = months.filter(m => {
-            const mData = calendarData.months[m.key];
-
-            if (!mData) return false;
-
-            return (
-                (mData.s1 || 0) > 0 ||
-                (mData.s2 || 0) > 0 ||
-                (mData.sem1 || 0) > 0 ||
-                (mData.sem2 || 0) > 0 ||
-                (mData.days || 0) > 0
-            );
-        });
-    }
-
-    if (activeMonths.length === 0) {
-        console.warn("⚠️ No active months found, fallback to all");
-        activeMonths = months;
-    }
-
-    monthSelect.innerHTML = activeMonths.map(m =>
+    // Fallback logic: Agar database se data nahi mila to saare mahine dikhayein
+    monthSelect.innerHTML = months.map(m => 
         `<option value="${m.id}">${m.name}</option>`
     ).join('');
+
+    // Dashboard ke main month se match karne ke liye (Optional but Recommended)
+    const mainMonthInput = document.getElementById('report-month-main'); // Check your main input ID
+    if(mainMonthInput) {
+        const currentMonthIdx = new Date(mainMonthInput.value + "-01").getMonth();
+        monthSelect.value = currentMonthIdx.toString();
+    }
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
