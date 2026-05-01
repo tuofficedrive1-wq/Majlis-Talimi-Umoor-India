@@ -181,7 +181,9 @@
     <div id="sub-fill" class="sub-tab-content block">
         <div class="flex justify-between items-center mb-6">
             <h3 class="text-lg font-bold text-slate-800">Bulk Inspection Entry</h3>
-            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">April 2026</span>
+            <span id="inspection-month-badge" class="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">
+    Month
+</span>
         </div>
         
         <div id="inspection-list" class="space-y-4">
@@ -258,27 +260,31 @@ import {
             await initDashboard();
         });
 
-        // INIT DASHBOARD
-        async function initDashboard() {
-            showLoader(true);
-            const monthInput = document.getElementById('report-month');
-            if(!monthInput.value) {
-                const now = new Date();
-                monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            }
+      // INIT DASHBOARD - Current Month set karne ke liye
+async function initDashboard() {
+    showLoader(true);
+    const monthInput = document.getElementById('report-month');
+    
+    // Agar input khali hai, toh current month set karein
+    if(!monthInput.value) {
+        const now = new Date();
+        monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
 
-            const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-            if (userDoc.exists()) {
-                const data = userDoc.data();
-                assignedJamiaat = data.jamiaatList || [];
-                document.getElementById('inspector-name').textContent = data.name || "Inspector";
-                document.getElementById('stat-jamia-count').textContent = assignedJamiaat.length;
-                if (data.photoURL) document.getElementById('profile-photo').src = data.photoURL;
-            }
+    // Header mein current month ka naam dikhane ke liye
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const [year, month] = monthInput.value.split('-');
+    document.getElementById('current-month-text').textContent = `${monthNames[parseInt(month)-1]} ${year}`;
 
-            await loadStats();
-            showLoader(false);
-        }
+    // ... baaki ka user details fetch karne ka code ...
+    await loadStats();
+    showLoader(false);
+}
+
+// Month change hone par dashboard refresh karein
+document.getElementById('report-month').onchange = async () => {
+    await initDashboard();
+};
 
             // academic-inspector.html ke andar loadStats function ko replace karein
 async function loadStats() {
@@ -406,6 +412,8 @@ function renderMainCharts() {
 
        // academic-inspector.html mein renderInspectionList ko isse replace karein
 window.renderInspectionList = () => {
+    const monthInput = document.getElementById('report-month').value;
+    document.getElementById('inspection-month-badge').textContent = monthInput;
     const container = document.getElementById('inspection-list');
     const saved = reportsData.jaiza || [];
     
@@ -477,11 +485,12 @@ window.renderInspectionList = () => {
 
         // SAVE INSPECTIONS
         document.getElementById('save-jaiza-btn').onclick = async () => {
-            showLoader(true);
-            const month = document.getElementById('report-month').value;
-            const rows = document.querySelectorAll('.inspection-row');
-            const data = [];
-            rows.forEach(row => {
+    showLoader(true);
+    const selectedMonth = document.getElementById('report-month').value; // Ye select kiya hua mahina lega
+    
+    const rows = document.querySelectorAll('.inspection-row');
+    const data = [];
+    rows.forEach(row => {
                 const date = row.querySelector('.insp-date').value;
                 if(date) {
                     data.push({
@@ -492,9 +501,12 @@ window.renderInspectionList = () => {
                     });
                 }
             });
-
-            const reportId = `${currentUser.uid}_${month}`;
-            await setDoc(doc(db, "inspector_reports", reportId), { jaiza: data, updatedAt: serverTimestamp() }, { merge: true });
+       const reportId = `${currentUser.uid}_${selectedMonth}`;
+    await setDoc(doc(db, "inspector_reports", reportId), { 
+        jaiza: data, 
+        updatedAt: serverTimestamp(),
+        month: selectedMonth // Reference ke liye mahina bhi save karein
+    }, { merge: true });
             
             showLoader(false);
             alert("Reports updated!");
