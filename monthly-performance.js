@@ -441,9 +441,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('performance-table-body');
         const selectedJamia = document.getElementById('report-jamia').value;
 
-    try {
-
-        const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
+            const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
         const monthIdMap = {
             "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
