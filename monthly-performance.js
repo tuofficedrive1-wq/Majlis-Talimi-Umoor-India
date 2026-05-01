@@ -382,15 +382,15 @@ const setupMonthDropdown = (calendarData) => {
         { name: "March", id: "2", key: "mar" }
     ];
 
-    // Filter hata kar hamesha months dikhayein taaki dropdown khali na rahe
+    // Sabhi mahine render karein
     monthSelect.innerHTML = months.map(m =>
         `<option value="${m.id}">${m.name}</option>`
     ).join('');
 
-    // Dashboard ke main month ke hisab se auto-select karein
+    // Dashboard ke main input se current month auto-select karein
     const mainMonthInput = document.getElementById('report-month'); 
     if (mainMonthInput && mainMonthInput.value) {
-        // month index nikalne ka logic (e.g., "2026-05" -> 4 for May)[cite: 1]
+        // Example: "2026-05" se month extract karke select karein[cite: 1]
         const currentMonthIdx = new Date(mainMonthInput.value + "-01").getMonth();
         monthSelect.value = currentMonthIdx.toString();
     }
@@ -423,6 +423,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const selectedMonthIdx = monthSelect.value;
 
     const container = document.getElementById('performance-table-body');
+if (!container) {
+    console.error("performance-table-body element nahi mila!");
+    return;
+}
         const selectedJamia = document.getElementById('report-jamia').value;
 
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
