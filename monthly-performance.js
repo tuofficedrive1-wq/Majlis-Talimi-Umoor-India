@@ -382,14 +382,15 @@ const setupMonthDropdown = (calendarData) => {
         { name: "March", id: "2", key: "mar" }
     ];
 
-    // Fallback logic: Agar database se data nahi mila to saare mahine dikhayein
-    monthSelect.innerHTML = months.map(m => 
+    // Filter hata kar hamesha months dikhayein taaki dropdown khali na rahe
+    monthSelect.innerHTML = months.map(m =>
         `<option value="${m.id}">${m.name}</option>`
     ).join('');
 
-    // Dashboard ke main month se match karne ke liye (Optional but Recommended)
-    const mainMonthInput = document.getElementById('report-month-main'); // Check your main input ID
-    if(mainMonthInput) {
+    // Dashboard ke main month ke hisab se auto-select karein
+    const mainMonthInput = document.getElementById('report-month'); 
+    if (mainMonthInput && mainMonthInput.value) {
+        // month index nikalne ka logic (e.g., "2026-05" -> 4 for May)[cite: 1]
         const currentMonthIdx = new Date(mainMonthInput.value + "-01").getMonth();
         monthSelect.value = currentMonthIdx.toString();
     }
