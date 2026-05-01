@@ -7,6 +7,7 @@
 import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 let academicConfig = null;
+let monthSelect; 
 
 // Academic Admin ki settings fetch karne ka function
 async function getAcademicConfig(db) {
@@ -363,7 +364,7 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 };
 
 const setupMonthDropdown = (calendarData) => {
-    const monthSelect = document.getElementById('report-month');
+    monthSelect = document.getElementById('report-month');
     if (!monthSelect) return;
 
     const months = [
@@ -412,19 +413,30 @@ const setupMonthDropdown = (calendarData) => {
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
+    try {
+        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
-    const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-    const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+        const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-    const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-    const calendarData = calSnap.exists() ? calSnap.data() : {};
+        // --- ERROR FIX START ---
+        // Pehle dropdown setup karein
+        setupMonthDropdown(calendarData);
 
-    setupMonthDropdown(calendarData);
-if (!monthSelect.value) {
-    monthSelect.selectedIndex = 0;
-}
+        // monthSelect ko yahan define karein taaki niche wala code crash na ho
+        const monthSelect = document.getElementById('report-month');
 
-const selectedMonthIdx = monthSelect.value;
+        if (!monthSelect) {
+            console.error("Element 'report-month' nahi mila!");
+            return;
+        }
+
+        if (!monthSelect.value) {
+            monthSelect.selectedIndex = 0;
+        }
+
+        const selectedMonthIdx = monthSelect.value;
 
     const container = document.getElementById('performance-table-body');
         const selectedJamia = document.getElementById('report-jamia').value;
