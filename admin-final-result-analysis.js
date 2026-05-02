@@ -484,60 +484,62 @@ else if (layout === 'wazahat') {
     tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
 }
     else {
-        // ✅ ASATIZA WISE: Region aur User ke saath
-        thead.innerHTML = `
-            <th class="p-2 border">Sr.</th>
-            <th class="p-2 border">Region</th>
-            <th class="p-2 border">تعلیمی ذمہ دار</th>
-            <th class="p-2 border">جامعہ</th>
-            <th class="p-2 border">استاد</th>
-            <th class="p-2 border">مضمون</th>
-            <th class="p-2 border">کل</th>
-            <th class="p-2 border">کامیاب</th>
-            <th class="p-2 border">%</th>
-            <th class="p-2 border">کیفیت</th>
-            <th class="p-2 border bg-emerald-900 text-white">مجموعی %</th>
-            <th class="p-2 border bg-emerald-900 text-white">مجموعی کیفیت</th>`;
+    // ✅ ASATIZA WISE: Added Class Column
+    thead.innerHTML = `
+        <th class="p-2 border">Sr.</th>
+        <th class="p-2 border">Region</th>
+        <th class="p-2 border">تعلیمی ذمہ دار</th>
+        <th class="p-2 border">جامعہ</th>
+        <th class="p-2 border">استاد</th>
+        <th class="p-2 border">درجہ</th> <!-- Naya Column -->
+        <th class="p-2 border">مضمون</th>
+        <th class="p-2 border">کل</th>
+        <th class="p-2 border">کامیاب</th>
+        <th class="p-2 border">%</th>
+        <th class="p-2 border">کیفیت</th>
+        <th class="p-2 border bg-emerald-900 text-white">مجموعی %</th>
+        <th class="p-2 border bg-emerald-900 text-white">مجموعی کیفیت</th>`;
 
-        let srNo = 1;
-        data.forEach(d => {
-            const region = d.region || '-';
-            const userName = d.userName || '-';
+    let srNo = 1;
+    data.forEach(d => {
+        const region = d.region || '-';
+        const userName = d.userName || '-';
 
-            (d.data || []).forEach(tEntry => {
-                const ps = tEntry.periods || []; 
-                const rSpan = ps.length || 1;
-                let tT = 0, tP = 0; 
-                ps.forEach(p => { tT += num(p.total); tP += num(p.passed); });
-                const tPer = tT ? (tP / tT) * 100 : 0;
+        (d.data || []).forEach(tEntry => {
+            const ps = tEntry.periods || []; 
+            const rSpan = ps.length || 1;
+            let tT = 0, tP = 0; 
+            ps.forEach(p => { tT += num(p.total); tP += num(p.passed); });
+            const tPer = tT ? (tP / tT) * 100 : 0;
 
-                ps.forEach((p, idx) => {
-                    const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                    tbody.innerHTML += `
-                    <tr class="text-center border-b">
-                        ${idx === 0 ? `
-                            <td class="p-2 border font-bold" rowspan="${rSpan}">${srNo++}</td>
-                            <td class="p-2 border font-bold" rowspan="${rSpan}">${region}</td>
-                            <td class="p-2 border urdu-font" rowspan="${rSpan}">${userName}</td>
-                            <td class="p-2 border urdu-font" rowspan="${rSpan}">${d.jamia}</td>
-                            <td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>
-                        ` : ''}
-                        <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td>
-                        <td class="p-2 border">${num(p.total)}</td>
-                        <td class="p-2 border">${num(p.passed)}</td>
-                        <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
-                        <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
-                        ${idx === 0 ? `
-                            <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
-                            <td class="p-2 border bg-emerald-50 urdu-font font-bold" 
-                                style="color:${getKefiyatColor(tPer, 'teacher')}" rowspan="${rSpan}">
-                                ${getJamiaKefiyat(tPer, 'teacher')}
-                            </td>
-                        ` : ''}
-                    </tr>`;
-                });
+            ps.forEach((p, idx) => {
+                const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
+                tbody.innerHTML += `
+                <tr class="text-center border-b">
+                    ${idx === 0 ? `
+                        <td class="p-2 border font-bold" rowspan="${rSpan}">${srNo++}</td>
+                        <td class="p-2 border font-bold" rowspan="${rSpan}">${region}</td>
+                        <td class="p-2 border urdu-font" rowspan="${rSpan}">${userName}</td>
+                        <td class="p-2 border urdu-font" rowspan="${rSpan}">${d.jamia}</td>
+                        <td class="p-2 border font-bold text-blue-700" rowspan="${rSpan}">${tEntry.teacher}</td>
+                    ` : ''}
+                    <td class="p-2 border font-bold text-red-600 urdu-font">${p.class || '-'}</td> <!-- Class Data -->
+                    <td class="p-2 border text-right urdu-font">${p.subject || '-'}</td>
+                    <td class="p-2 border">${num(p.total)}</td>
+                    <td class="p-2 border">${num(p.passed)}</td>
+                    <td class="p-2 border font-bold">${sPer.toFixed(1)}%</td>
+                    <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td>
+                    ${idx === 0 ? `
+                        <td class="p-2 border bg-emerald-50 font-bold" rowspan="${rSpan}">${tPer.toFixed(1)}%</td>
+                        <td class="p-2 border bg-emerald-50 urdu-font font-bold" 
+                            style="color:${getKefiyatColor(tPer, 'teacher')}" rowspan="${rSpan}">
+                            ${getJamiaKefiyat(tPer, 'teacher')}
+                        </td>
+                    ` : ''}
+                </tr>`;
             });
         });
-    }
+    });
+}
         }
 }
