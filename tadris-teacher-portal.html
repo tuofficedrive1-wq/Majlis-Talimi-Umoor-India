@@ -103,6 +103,11 @@
                         <i class="fas fa-microphone"></i> ریکارڈنگ شروع کریں
                     </button>
                     
+                    <!-- Pause Button -->
+                    <button onclick="togglePause()" id="btn-pause" class="hidden w-full bg-yellow-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition flex items-center justify-center gap-2">
+                        <i id="pause-icon" class="fas fa-pause"></i> <span id="pause-text">وقفہ (Pause)</span>
+                    </button>
+                
                     <button onclick="stopRecording()" id="btn-stop" class="hidden w-full bg-gray-800 text-white py-3 rounded-xl font-bold shadow-md hover:bg-black transition flex items-center justify-center gap-2 animate-pulse">
                         <i class="fas fa-stop"></i> روک دیں (<span id="timer" class="dir-ltr">00:00</span>)
                     </button>
@@ -503,6 +508,93 @@ async function loadJamiaData(userId, year, jamiaName) {
             document.getElementById('loading-screen').innerHTML = 
                 `<p class="text-red-600 font-bold bg-red-50 p-4 rounded-lg border border-red-200">${msg}</p>`;
         }
+        // --- Updated Recording Logic ---
+            let isPaused = false; // Naya state track karne ke liye
+            
+            async function startRecording() {
+                document.getElementById('file-upload-input').value = "";
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+            
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const url = URL.createObjectURL(recordedBlob);
+                        const audio = document.getElementById('audio-preview');
+                        audio.src = url;
+                        
+                        document.getElementById('preview-area').classList.remove('hidden');
+                        document.getElementById('record-controls').classList.add('hidden');
+                        stream.getTracks().forEach(t => t.stop());
+                    };
+            
+                    mediaRecorder.start();
+                    
+                    // Buttons switch karein
+                    document.getElementById('btn-start').classList.add('hidden');
+                    document.getElementById('btn-pause').classList.remove('hidden');
+                    document.getElementById('btn-stop').classList.remove('hidden');
+            
+                    startTimer();
+            
+                } catch (err) {
+                    alert("مائکروفون کی اجازت نہیں ملی۔\n" + err.message);
+                }
+            }
+            
+            // Pause aur Resume ka naya function
+            function togglePause() {
+                if (mediaRecorder && mediaRecorder.state === "recording") {
+                    mediaRecorder.pause();
+                    isPaused = true;
+                    clearInterval(timerInterval);
+                    document.getElementById('pause-icon').className = "fas fa-play";
+                    document.getElementById('pause-text').innerText = "دوبارہ شروع کریں (Resume)";
+                    document.getElementById('btn-stop').classList.remove('animate-pulse');
+                } else if (mediaRecorder && mediaRecorder.state === "paused") {
+                    mediaRecorder.resume();
+                    isPaused = false;
+                    startTimer(); // Timer wahin se shuru hoga
+                    document.getElementById('pause-icon').className = "fas fa-pause";
+                    document.getElementById('pause-text').innerText = "وقفہ (Pause)";
+                    document.getElementById('btn-stop').classList.add('animate-pulse');
+                }
+            }
+            
+            let seconds = 0;
+            function startTimer() {
+                const timerEl = document.getElementById('timer');
+                timerInterval = setInterval(() => {
+                    seconds++;
+                    const m = Math.floor(seconds / 60).toString().padStart(2,'0');
+                    const s = (seconds % 60).toString().padStart(2,'0');
+                    timerEl.innerText = `${m}:${s}`;
+                }, 1000);
+            }
+            
+            function stopRecording() {
+                if(mediaRecorder) mediaRecorder.stop();
+                clearInterval(timerInterval);
+                seconds = 0; // Reset timer for next use
+                isPaused = false;
+            }
+            
+            function resetRecording() {
+                recordedBlob = null;
+                seconds = 0;
+                document.getElementById('timer').innerText = "00:00";
+                document.getElementById('preview-area').classList.add('hidden');
+                document.getElementById('record-controls').classList.remove('hidden');
+                document.getElementById('btn-start').classList.remove('hidden');
+                document.getElementById('btn-pause').classList.add('hidden');
+                document.getElementById('btn-stop').classList.add('hidden');
+                
+                // Pause button reset
+                document.getElementById('pause-icon').className = "fas fa-pause";
+                document.getElementById('pause-text').innerText = "وقفہ (Pause)";
+            }
 
     </script>
 </body>
