@@ -199,6 +199,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         elements.dashboardView.classList.remove("hidden"); elements.reportsView.classList.add("hidden");
         elements.dashboardFilters.classList.remove("hidden");
         elements.reportsLayoutFilter.classList.add("hidden");
+        elements.exportBtn.classList.add("hidden");
         elements.statsContainer.classList.remove("hidden");
     };
 
@@ -208,6 +209,10 @@ export async function initAdminResultAnalysis(db, containerId) {
         elements.dashboardFilters.classList.add("hidden");
         elements.reportsLayoutFilter.classList.remove("hidden");
         elements.statsContainer.classList.add("hidden");
+       const hasData = document.getElementById("admin-body").innerHTML !== "";
+        if (hasData) {
+            elements.exportBtn.classList.remove("hidden");
+        }
     };
 
     // 🔄 Region-User-Jamia Sync
@@ -274,15 +279,16 @@ export async function initAdminResultAnalysis(db, containerId) {
 
         if (activeTab === 'dashboard') {
             renderDashboard(dataList, document.getElementById("dashboard-result-type").value, allUsers);
+            elements.exportBtn.classList.add("hidden"); // Dashboard par hide rakhein
         } else {
             renderDetailedReports(dataList, layout);
+            elements.exportBtn.classList.remove("hidden"); // Reports par show kar dein
         }
     } catch (e) { 
         console.error("Fetch Error:", e); 
         alert("Data load nahi ho saka: " + e.message);
     }
     loader.classList.add("hidden");
-};
 
     // Excel Export
     elements.exportBtn.onclick = () => {
