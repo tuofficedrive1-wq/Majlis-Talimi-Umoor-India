@@ -175,11 +175,13 @@
         let activeYearGlobal = null;
         let wakeLock = null;
         
+        
         // Recording Vars
         let mediaRecorder = null;
         let audioChunks = [];
         let recordedBlob = null;
         let timerInterval = null;
+        let seconds = 0;
 
         // --- 1. INITIALIZE (Load URL Params) ---
         document.addEventListener('DOMContentLoaded', async () => {
@@ -422,13 +424,15 @@ async function loadJamiaData(userId, year, jamiaName) {
         // --- Updated Recording Logic ---
             let isPaused = false; // Naya state track karne ke liye
             
-            async function startRecording() {
-    document.getElementById('file-upload-input').value = "";
+async function startRecording() {
+    // 1. Shuru mein hi status message chhupa dein (Hataana zaroori hai)
     const status = document.getElementById('status-msg');
     status.innerText = "";
+    status.classList.add('hidden');
+
+    document.getElementById('file-upload-input').value = "";
 
     try {
-        // Screen ko off hone se rokna (Mobile Powerful feature)
         if ('wakeLock' in navigator) {
             try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
         }
@@ -439,26 +443,34 @@ async function loadJamiaData(userId, year, jamiaName) {
 
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
+
         mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        
         mediaRecorder.onstop = () => {
             recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
             document.getElementById('audio-preview').src = URL.createObjectURL(recordedBlob);
             document.getElementById('preview-area').classList.remove('hidden');
             document.getElementById('record-controls').classList.add('hidden');
             stream.getTracks().forEach(t => t.stop());
-            if (wakeLock) { wakeLock.release().then(() => wakeLock = null); } // Lock release
+            if (wakeLock) wakeLock.release().then(() => wakeLock = null);
         };
 
         mediaRecorder.start();
+
+        // 2. Buttons ko switch karein
         document.getElementById('btn-start').classList.add('hidden');
         document.getElementById('btn-pause').classList.remove('hidden');
-        document.getElementById('btn-stop').classList.remove('hidden').classList.add('animate-pulse');
-        startTimer();
-        status.innerText = "⏺ ریکارڈنگ جاری ہے...";
+        document.getElementById('btn-stop').classList.remove('hidden');
+        document.getElementById('btn-stop').classList.add('animate-pulse');
+
+        // 3. Timer shuru karein (Yeh line zaroori hai)
+        seconds = 0; // Global variable reset karein
+        clearInterval(timerInterval); // Purana koi chalta hua timer band karein
+        startTimer(); 
+
     } catch (err) {
-        // Asaan Permission Guidance
-        status.className = "text-center text-sm p-3 bg-yellow-100 text-yellow-800 rounded-lg border border-yellow-300";
+        // Agar mic allow nahi hoga tabhi ye dikhega
+        status.classList.remove('hidden');
+        status.className = "text-center text-sm p-3 bg-yellow-100 text-yellow-800 rounded-lg border border-yellow-300 mt-4";
         status.innerHTML = "مائیکروفون بلاک ہے! اوپر تالے 🔒 کے نشان پر کلک کر کے اجازت دیں۔";
     }
 }
@@ -482,7 +494,7 @@ async function loadJamiaData(userId, year, jamiaName) {
                 }
             }
             
-            let seconds = 0;
+            
             function startTimer() {
                 const timerEl = document.getElementById('timer');
                 timerInterval = setInterval(() => {
