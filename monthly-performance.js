@@ -1050,10 +1050,10 @@ function calculateStatusText(percentage) {
 const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('profiles-table-container');
     const config = await getAcademicConfig(db);
-    const selectedYear = config ? config.activeYear : "2026-2027";[cite: 1]
+    const selectedYear = config ? config.activeYear : "2026-2027";
 
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));[cite: 1]
-    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];[cite: 1]
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
 
     let html = "";
 
@@ -1075,7 +1075,7 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
                             <th class="p-3">Qualification</th>
                             <th class="p-3">Experience</th>
                             <th class="p-3">Specialization</th>
-                            <th class="p-3">Periods</th>
+                            <th class="p-3">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1094,7 +1094,7 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
                                 <td class="p-3 text-slate-600">${t.specialization || '-'}</td>
                                 <td class="p-3 text-center">
                                     <span class="bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-bold">
-                                        ${t.teachingPeriod || (t.periods ? t.periods.length : 0)}
+                                        ${t.teachingPeriod || '0'}
                                     </span>
                                 </td>
                             </tr>
@@ -1105,5 +1105,7 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
         </div>`;
     });
 
-    container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">No teachers registered yet.</div>';
+    if (container) {
+        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">No teachers registered yet.</div>';
+    }
 };
