@@ -218,14 +218,12 @@ if (tabName === 'performance') {
     } else if (tabName === 'profiles') {
     contentArea.innerHTML = `
         <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <div class="mb-6">
-                <h3 class="font-black text-indigo-950 text-lg">Teacher Directory</h3>
-                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Complete Profile Database</p>
-            </div>
-            <div id="profiles-table-container" class="space-y-8"></div>
+            <h3 class="font-black text-indigo-950 text-lg mb-4">Teacher Profile Directory</h3>
+            <div id="profiles-table-container"></div>
         </div>
     `;
-    loadTeacherProfilesTable(assignedJamiaat, db, currentUser);
+    // Sirf Profile wala function call karein
+    loadTeacherProfilesTable(assignedJamiaat, db, currentUser); 
 }
 };
 
@@ -443,9 +441,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const selectedMonthIdx = monthSelect.value;
 
     const container = document.getElementById('performance-table-body');
+
+// Agar container nahi milta, toh khamoshi se return ho jayein (Error na dikhayein)
 if (!container) {
-    console.error("performance-table-body element nahi mila!");
-    return;
+    return; 
 }
         const selectedJamia = document.getElementById('report-jamia').value;
 
