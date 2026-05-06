@@ -27,7 +27,6 @@ const getStatusStyles = (status) => {
 };
 
 export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
-    // --- Modal ko JS se inject karne ka function ---
 const injectEditModal = () => {
     if (document.getElementById('edit-period-modal')) return; // Agar pehle se hai to dubara na dalein
 
@@ -84,31 +83,6 @@ const injectEditModal = () => {
 injectEditModal();
     const container = document.getElementById('performance-jamia-list');
     container.innerHTML = `
-        <div class="mb-6">
-            <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
-                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
-            </div>
-        </div>
-        <div id="sub-tab-content" class="space-y-6"></div>
-    `;
-
-    const subTabBtns = container.querySelectorAll('.sub-tab-btn');
-    subTabBtns.forEach(btn => {
-        btn.onclick = () => {
-            subTabBtns.forEach(b => {
-                b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-                b.classList.add('text-slate-500');
-            });
-            btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-            renderSubTabContent(btn.dataset.sub, assignedJamiaat, currentUser, db);
-        };
-    });
-
-    renderSubTabContent('performance', assignedJamiaat, currentUser, db);
-    // monthly-performance.js ke renderPerformanceTab function mein:
-container.innerHTML = `
     <div class="mb-6">
         <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
             <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
@@ -119,6 +93,27 @@ container.innerHTML = `
     </div>
     <div id="sub-tab-content" class="space-y-6"></div>
 `;
+
+    const subTabBtns = container.querySelectorAll('.sub-tab-btn');
+subTabBtns.forEach(btn => {
+    btn.onclick = () => {
+        // Purane active classes hatayein
+        subTabBtns.forEach(b => {
+            b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+            b.classList.add('text-slate-500');
+        });
+        
+        // Naye button ko active karein
+        btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+        btn.classList.remove('text-slate-500');
+        
+        // Content render karein
+        const targetTab = btn.getAttribute('data-sub'); // data-sub se naam lein
+        renderSubTabContent(targetTab, assignedJamiaat, currentUser, db);
+    };
+});
+
+    renderSubTabContent('performance', assignedJamiaat, currentUser, db);
 };
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
