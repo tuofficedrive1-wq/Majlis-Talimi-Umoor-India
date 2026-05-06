@@ -410,24 +410,23 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-        // 1. Dropdown setup karke uski value lein
+        // 1. Dropdown se value lein (Jo ab "apr", "may" hai)
         const forcedMonthValue = setupMonthDropdown(calendarData);
         const monthSelect = document.getElementById('report-month');
 
         if (!monthSelect) return; 
 
-        // 2. YAHAN ADD KAREIN: selectedMonthId
-        // Yeh variable ensure karega ke hume "apr", "may" jaisi String IDs milein
+        // FIX: Ek hi baar declare karein
         const selectedMonthIdx = monthSelect.value || forcedMonthValue;
-        const selectedMonthId = selectedMonthIdx; // Direct ID use karein (apr, may, etc.)
+        const selectedMonthId = selectedMonthIdx; // Yeh "apr", "may" etc. hoga[cite: 3]
 
         const container = document.getElementById('performance-table-body');
         if (!container) return;
 
-       
         const selectedJamia = document.getElementById('report-jamia').value;
+        const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-            const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
+        // PURANA monthIdMap HATA DIYA GAYA HAI KYUNKI AB ZAROORAT NAHI HAI[cite: 3]
 
         const monthIdMap = {
             "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
