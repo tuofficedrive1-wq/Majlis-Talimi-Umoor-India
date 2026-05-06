@@ -1043,11 +1043,13 @@ function calculateStatusText(percentage) {
 }
 const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('profiles-table-container');
-    const config = await getAcademicConfig(db);
-    const selectedYear = config ? config.activeYear : "2026-2027";
+    if (!container) return;
 
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+    const config = await getAcademicConfig(db);
+    const selectedYear = config ? config.activeYear : "2026-2027";[cite: 1]
+
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));[cite: 1]
+    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];[cite: 1]
 
     let html = "";
 
@@ -1056,39 +1058,50 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
         if (!jamiaData || jamiaData.teachers.length === 0) return;
 
         html += `
-        <div class="mb-8">
-            <h4 class="text-sm font-black text-indigo-600 mb-3 flex items-center gap-2">
-                <i class="fas fa-mosque"></i> ${jamia}
-            </h4>
-            <div class="overflow-x-auto rounded-2xl border border-slate-100">
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-500 font-bold uppercase">
-                        <tr>
-                            <th class="p-3">Name & Code</th>
-                            <th class="p-3">Contact</th>
-                            <th class="p-3">Qualification</th>
-                            <th class="p-3">Experience</th>
-                            <th class="p-3">Specialization</th>
-                            <th class="p-3">Status</th>
+        <div class="mb-10">
+            <div class="flex items-center gap-3 mb-4 bg-indigo-50 p-3 rounded-2xl w-fit">
+                <i class="fas fa-university text-indigo-600"></i>
+                <h4 class="font-black text-indigo-950 uppercase tracking-wide text-sm">${jamia}</h4>
+            </div>
+            <div class="overflow-x-auto rounded-3xl border border-slate-200 shadow-sm bg-white">
+                <table class="w-full text-left border-collapse min-w-[1000px]">
+                    <thead>
+                        <tr class="bg-slate-50/80 text-slate-500 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
+                            <th class="p-4">Name & Code</th>
+                            <th class="p-4">Contact & Mail</th>
+                            <th class="p-4">Level & Qualification</th>
+                            <th class="p-4">Exp & Specialization</th>
+                            <th class="p-4 text-center">Periods</th>
+                            <th class="p-4">Ijara Status</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="text-[11px]">
                         ${jamiaData.teachers.map(t => `
-                            <tr class="border-b border-slate-50 hover:bg-slate-50/50">
-                                <td class="p-3 font-bold text-slate-800">
-                                    ${t.name} <br>
-                                    <span class="text-[9px] bg-indigo-50 text-indigo-500 px-1 rounded uppercase">ID: ${t.loginCode}</span>
+                            <tr class="border-b border-slate-50 hover:bg-slate-50/30 transition-colors">
+                                <td class="p-4">
+                                    <div class="font-black text-slate-800 text-sm">${t.name}</div>
+                                    <div class="text-indigo-600 font-bold mt-1 uppercase">ID: ${t.loginCode}</div>
                                 </td>
-                                <td class="p-3 text-slate-600">${t.contact || '-'}</td>
-                                <td class="p-3">
-                                    <div class="font-medium text-slate-700">${t.highestQualification || '-'}</div>
-                                    <div class="text-[10px] text-slate-400">${t.levelQualified || '-'}</div>
+                                <td class="p-4">
+                                    <div class="text-slate-700 font-bold"><i class="fas fa-phone-alt mr-1 text-[9px] text-slate-400"></i> ${t.contact || '-'}</div>
+                                    <div class="text-slate-400 mt-1 italic">${t.mailId || '-'}</div>
                                 </td>
-                                <td class="p-3 text-slate-600">${t.experience || '-'}</td>
-                                <td class="p-3 text-slate-600">${t.specialization || '-'}</td>
-                                <td class="p-3 text-center">
-                                    <span class="bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-bold">
+                                <td class="p-4">
+                                    <div class="text-slate-700 font-bold text-xs">${t.levelQualified || '-'}</div>
+                                    <div class="text-slate-500 mt-1">${t.highestQualification || '-'}</div>
+                                </td>
+                                <td class="p-4">
+                                    <div class="text-slate-700 font-bold">${t.experience || '-'} Exp</div>
+                                    <div class="text-indigo-500 mt-1 font-medium">${t.specialization || '-'}</div>
+                                </td>
+                                <td class="p-4 text-center">
+                                    <span class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-black text-[10px]">
                                         ${t.teachingPeriod || '0'}
+                                    </span>
+                                </td>
+                                <td class="p-4">
+                                    <span class="px-2 py-1 rounded-lg font-bold border ${t.ijaraStatus?.toLowerCase().includes('yes') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}">
+                                        ${t.ijaraStatus || '-'}
                                     </span>
                                 </td>
                             </tr>
@@ -1099,7 +1112,10 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
         </div>`;
     });
 
-    if (container) {
-        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">No teachers registered yet.</div>';
-    }
+    container.innerHTML = html || `
+        <div class="p-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+            <i class="fas fa-user-slash text-4xl text-slate-300 mb-4"></i>
+            <p class="text-slate-500 font-bold">Abhi koi teacher register nahi kiya gaya hai.</p>
+        </div>
+    `;
 };
