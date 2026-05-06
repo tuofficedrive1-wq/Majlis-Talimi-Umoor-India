@@ -380,65 +380,51 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const setupMonthDropdown = (calendarData) => {
     const monthSelect = document.getElementById('report-month');
-    
-    // SAFETY CHECK: Agar element nahi mila toh function yahi ruk jaye
-    if (!monthSelect) {
-        console.warn("Dropdown 'report-month' abhi DOM mein nahi hai.");
-        return "3"; // Default April ID return karein
-    }
+    if (!monthSelect) return "apr"; // Safe fallback
 
-    // Check karein ke options pehle se hain ya nahi (Safe way)
-    if (monthSelect.options && monthSelect.options.length > 0) {
-        return monthSelect.value;
-    }
-
+    // Admin sequence ke mutabiq IDs
     const months = [
-        { name: "April", id: "3" }, { name: "May", id: "4" }, { name: "June", id: "5" },
-        { name: "July", id: "6" }, { name: "August", id: "7" }, { name: "September", id: "8" },
-        { name: "October", id: "9" }, { name: "November", id: "10" }, { name: "December", id: "11" },
-        { name: "January", id: "0" }, { name: "February", id: "1" }, { name: "March", id: "2" }
+        { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
+        { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
+        { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
+        { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
     ];
 
-    monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    if (monthSelect.options.length === 0) {
+        monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        
+        // Aaj ke mahine ke hisab se auto-select
+        const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        const currentMonthId = monthNames[new Date().getMonth()];
+        monthSelect.value = currentMonthId;
+    }
     
-    // Current Month select karein
-    const currentMonth = new Date().getMonth().toString();
-    monthSelect.value = currentMonth;
-    
-    // Agar current month valid nahi, toh April (3) select karein
-    if (!monthSelect.value) monthSelect.value = "3";
-    
-    return monthSelect.value;
+    return monthSelect.value || "apr";
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     try {
-        // loadPerformanceTable ke andar ka badlaav:
-const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
-const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-const calendarData = calSnap.exists() ? calSnap.data() : {};
+        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+        const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-// Dropdown setup karein aur uski value lein
-// loadPerformanceTable ke andar ka sahi sequence:
+        // 1. Dropdown setup karke uski value lein
+        const forcedMonthValue = setupMonthDropdown(calendarData);
+        const monthSelect = document.getElementById('report-month');
 
-const forcedMonthValue = setupMonthDropdown(calendarData);
-const monthSelect = document.getElementById('report-month');
+        if (!monthSelect) return; 
 
-if (!monthSelect) return; 
+        // 2. YAHAN ADD KAREIN: selectedMonthId
+        // Yeh variable ensure karega ke hume "apr", "may" jaisi String IDs milein
+        const selectedMonthIdx = monthSelect.value || forcedMonthValue;
+        const selectedMonthId = selectedMonthIdx; // Direct ID use karein (apr, may, etc.)
 
-// FIX: Pehle forcedMonthValue ko priority dein agar dropdown abhi tak 
-// browser ne puri tarah render nahi kiya hai.
-let selectedMonthIdx = forcedMonthValue; 
+        const container = document.getElementById('performance-table-body');
+        if (!container) return;
 
-// Agar dropdown pehle se mojud hai aur usme koi value hai, tabhi use update karein
-if (monthSelect.value && monthSelect.value !== "") {
-    selectedMonthIdx = monthSelect.value;
-}
-
-const container = document.getElementById('performance-table-body');
-if (!container) return; // Tab change hone par exit karein
+       
         const selectedJamia = document.getElementById('report-jamia').value;
 
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
@@ -500,64 +486,51 @@ if (!container) return; // Tab change hone par exit karein
                         </thead>
                         <tbody>`;
 
-            jamiaData.teachers.forEach((teacher) => {
-                teacher.periods?.forEach((p, pIdx) => {
-                    
-                    // --- TARGET FETCHING LOGIC ---
-                        const normalize = (str) => (str || "")
-                            .toString()
-                            .toLowerCase()
-                            .trim();
-                        
-                        let target = 0;
-                        
-                        Object.keys(monthlyTargets || {}).forEach(classKey => {
-                            if (normalize(classKey) === normalize(p.className)) {
-                        
-                                const subjects = monthlyTargets[classKey];
-                        
-                                Object.keys(subjects || {}).forEach(subKey => {
-                                    if (normalize(subKey) === normalize(p.bookName)) {
-                        
-                                        const monthData = subjects[subKey];
-                        
-                                        if (monthData && monthData[selectedMonthId] !== undefined) {
-                                            target = monthData[selectedMonthId];
-                                        }
-                                    }
-                                });
-                            }
-                        });
-                    
-                    // Placeholder achieved value (Abhi DB se nahi aa rahi)
-                    const achievedValue = 0; 
-                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
+           jamiaData.teachers.forEach((teacher) => {
+    teacher.periods?.forEach((p, pIdx) => {
+        
+        // --- 1. ADMIN DATA KE SATH SYNC (CORRECTED LOGIC) ---
+        let target = 0;
+        
+        // Admin side par data "Class_Subject" format mein save hota hai (spaces -> underscores)
+        const cleanClassName = (p.className || "").trim();
+        const cleanBookName = (p.bookName || "").trim();
+        const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-                    html += `
-                        <tr class="border-b hover:bg-slate-50/50">
-                            <td class="p-4 font-bold text-slate-800">
-                                ${pIdx === 0 ? teacher.name : ''}
-                            </td>
-                            
-                            <td class="p-4 text-slate-600">
-                                ${p.className}
-                            </td>
-                            
-                            <td class="p-4 text-slate-600">
-                                ${p.bookName}
-                            </td>
-                            <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
-                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                            <td class="p-4 text-center">
-                                <input type="number" value="${achievedValue}" disabled 
-                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
-                            </td>
-                            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
-                            <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
-                        </tr>`;
-                });
-            });
+        // monthlyTargets se seedha subId aur selectedMonthId (apr, may, etc.) match karein
+        if (monthlyTargets && monthlyTargets[subId]) {
+            const monthData = monthlyTargets[subId];
+            if (monthData[selectedMonthId] !== undefined) {
+                target = parseInt(monthData[selectedMonthId]) || 0;
+            }
+        }
+        
+        // --- 2. BAAKI CALCULATION ---
+        const achievedValue = 0; // Placeholder
+        const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+        const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
+
+        html += `
+            <tr class="border-b hover:bg-slate-50/50">
+                <td class="p-4 font-bold text-slate-800">
+                    ${pIdx === 0 ? teacher.name : ''}
+                </td>
+                <td class="p-4 text-slate-600">${p.className}</td>
+                <td class="p-4 text-slate-600">${p.bookName}</td>
+                <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
+                
+                <!-- Target yahan sahi show hoga -->
+                <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                
+                <td class="p-4 text-center">
+                    <input type="number" value="${achievedValue}" disabled 
+                           class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+                </td>
+                <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
+                <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
+            </tr>`;
+    });
+});
             html += `</tbody></table></div></div>`;
         });
         container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Data nahi mila.</div>';
