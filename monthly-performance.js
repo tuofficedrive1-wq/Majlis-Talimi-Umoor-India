@@ -395,17 +395,21 @@ const setupMonthDropdown = (calendarData) => {
         { name: "March", id: "2", key: "mar" }
     ];
 
-    // Sabhi mahine render karein
+    // 1. Pehle dropdown ko options se bharrein
     monthSelect.innerHTML = months.map(m =>
         `<option value="${m.id}">${m.name}</option>`
     ).join('');
 
-    // Dashboard ke main input se current month auto-select karein
-    const mainMonthInput = document.getElementById('report-month'); 
-    if (mainMonthInput && mainMonthInput.value) {
-        // Example: "2026-05" se month extract karke select karein[cite: 1]
-        const currentMonthIdx = new Date(mainMonthInput.value + "-01").getMonth();
-        monthSelect.value = currentMonthIdx.toString();
+    // 2. Current Month auto-select karne ka sahi tareeka
+    const now = new Date();
+    const currentMonthIdx = now.getMonth(); // 0-11
+    
+    // Check karein ke kya ye month hamari list mein hai
+    monthSelect.value = currentMonthIdx.toString();
+
+    // 3. Agar value select nahi hui (null hai), toh pehla option (April) select kar dein
+    if (!monthSelect.value) {
+        monthSelect.selectedIndex = 0;
     }
 };
 
