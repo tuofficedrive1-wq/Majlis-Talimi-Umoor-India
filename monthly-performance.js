@@ -150,7 +150,9 @@ if (tabName === 'performance') {
     document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
     
     // Initial Load
-    loadPerformanceTable(assignedJamiaat, db, currentUser);
+    setTimeout(() => {
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
+    }, 10);
 } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -377,74 +379,51 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 };
 
 const setupMonthDropdown = (calendarData) => {
-    monthSelect = document.getElementById('report-month');
-    if (!monthSelect) return;
+    const monthSelect = document.getElementById('report-month');
+    if (!monthSelect) return null;
 
-    const months = [
-        { name: "April", id: "3", key: "apr" },
-        { name: "May", id: "4", key: "may" },
-        { name: "June", id: "5", key: "jun" },
-        { name: "July", id: "6", key: "jul" },
-        { name: "August", id: "7", key: "aug" },
-        { name: "September", id: "8", key: "sep" },
-        { name: "October", id: "9", key: "oct" },
-        { name: "November", id: "10", key: "nov" },
-        { name: "December", id: "11", key: "dec" },
-        { name: "January", id: "0", key: "jan" },
-        { name: "February", id: "1", key: "feb" },
-        { name: "March", id: "2", key: "mar" }
-    ];
-
-    // 1. Pehle dropdown ko options se bharrein
-    monthSelect.innerHTML = months.map(m =>
-        `<option value="${m.id}">${m.name}</option>`
-    ).join('');
-
-    // 2. Current Month auto-select karne ka sahi tareeka
-    const now = new Date();
-    const currentMonthIdx = now.getMonth(); // 0-11
-    
-    // Check karein ke kya ye month hamari list mein hai
-    monthSelect.value = currentMonthIdx.toString();
-
-    // 3. Agar value select nahi hui (null hai), toh pehla option (April) select kar dein
-    if (!monthSelect.value) {
-        monthSelect.selectedIndex = 0;
+    // Sirf tabhi bharrhein agar khali ho
+    if (monthSelect.options.length === 0) {
+        const months = [
+            { name: "April", id: "3" }, { name: "May", id: "4" }, { name: "June", id: "5" },
+            { name: "July", id: "6" }, { name: "August", id: "7" }, { name: "September", id: "8" },
+            { name: "October", id: "9" }, { name: "November", id: "10" }, { name: "December", id: "11" },
+            { name: "January", id: "0" }, { name: "February", id: "1" }, { name: "March", id: "2" }
+        ];
+        monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+        
+        // Default selection: Current Month
+        const currentMonth = new Date().getMonth().toString();
+        monthSelect.value = currentMonth;
+        
+        // Agar current month list mein nahi (e.g. invalid), toh April (3) select karein
+        if (!monthSelect.value) monthSelect.value = "3";
     }
+    
+    return monthSelect.value; // Yeh zaroori hai
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     try {
-        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-        const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+        // loadPerformanceTable ke andar ka badlaav:
+const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
-        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-        const calendarData = calSnap.exists() ? calSnap.data() : {};
+const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-        // --- ERROR FIX START ---
-        // Pehle dropdown setup karein
-        setupMonthDropdown(calendarData);
+// Dropdown setup karein aur uski value lein
+const forcedMonthValue = setupMonthDropdown(calendarData);
 
-        // monthSelect ko yahan define karein taaki niche wala code crash na ho
-        const monthSelect = document.getElementById('report-month');
+const monthSelect = document.getElementById('report-month');
+if (!monthSelect) return;
 
-        if (!monthSelect) {
-            console.error("Element 'report-month' nahi mila!");
-            return;
-        }
+// ASLI FIX: Agar monthSelect.value khali hai toh forcedMonthValue use karein
+const selectedMonthIdx = monthSelect.value || forcedMonthValue;
 
-        if (!monthSelect.value) {
-            monthSelect.selectedIndex = 0;
-        }
-
-        const selectedMonthIdx = monthSelect.value;
-
-    const container = document.getElementById('performance-table-body');
-
-// Agar container nahi milta, toh khamoshi se return ho jayein (Error na dikhayein)
-if (!container) {
-    return; 
-}
+const container = document.getElementById('performance-table-body');
+if (!container) return; // Exit if tab changed
+        
         const selectedJamia = document.getElementById('report-jamia').value;
 
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
