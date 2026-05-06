@@ -1046,10 +1046,10 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     if (!container) return;
 
     const config = await getAcademicConfig(db);
-    const selectedYear = config ? config.activeYear : "2026-2027";[cite: 1]
+    const selectedYear = config ? config.activeYear : "2026-2027";
 
-    const userSnap = await getDoc(doc(db, "users", currentUser.uid));[cite: 1]
-    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];[cite: 1]
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
 
     let html = "";
 
