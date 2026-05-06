@@ -494,18 +494,15 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         </thead>
                         <tbody>`;
 
-           jamiaData.teachers.forEach((teacher) => {
+          jamiaData.teachers.forEach((teacher) => {
     teacher.periods?.forEach((p, pIdx) => {
         
-        // --- 1. ADMIN DATA KE SATH SYNC (CORRECTED LOGIC) ---
+        // --- TARGET FETCHING LOGIC ---
         let target = 0;
-        
-        // Admin side par data "Class_Subject" format mein save hota hai (spaces -> underscores)
         const cleanClassName = (p.className || "").trim();
         const cleanBookName = (p.bookName || "").trim();
         const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-        // monthlyTargets se seedha subId aur selectedMonthId (apr, may, etc.) match karein
         if (monthlyTargets && monthlyTargets[subId]) {
             const monthData = monthlyTargets[subId];
             if (monthData[selectedMonthId] !== undefined) {
@@ -513,23 +510,19 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             }
         }
         
-        // --- 2. BAAKI CALCULATION ---
-        const achievedValue = 0; // Placeholder
+        const achievedValue = 0; 
         const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-        const result = calculateKaifiyatAndStyle(percentage, selectedMonthIdx, p.semester);
+
+        // FIXED LINE: selectedMonthId pass karein
+        const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
 
         html += `
             <tr class="border-b hover:bg-slate-50/50">
-                <td class="p-4 font-bold text-slate-800">
-                    ${pIdx === 0 ? teacher.name : ''}
-                </td>
+                <td class="p-4 font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</td>
                 <td class="p-4 text-slate-600">${p.className}</td>
                 <td class="p-4 text-slate-600">${p.bookName}</td>
                 <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
-                
-                <!-- Target yahan sahi show hoga -->
                 <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                
                 <td class="p-4 text-center">
                     <input type="number" value="${achievedValue}" disabled 
                            class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
