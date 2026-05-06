@@ -380,9 +380,18 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const setupMonthDropdown = (calendarData) => {
     const monthSelect = document.getElementById('report-month');
-    if (!monthSelect) return "apr"; // Safe fallback
+    
+    // Safety Check: Agar element nahi mila toh exit karein
+    if (!monthSelect) {
+        console.warn("Dropdown 'report-month' abhi DOM mein nahi hai.");
+        return "apr"; // Default month return karein
+    }
 
-    // Admin sequence ke mutabiq IDs
+    // Safe length check
+    if (monthSelect.options && monthSelect.options.length > 0) {
+        return monthSelect.value;
+    }
+
     const months = [
         { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
         { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
@@ -390,16 +399,16 @@ const setupMonthDropdown = (calendarData) => {
         { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
     ];
 
-    if (monthSelect.options.length === 0) {
-        monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-        
-        // Aaj ke mahine ke hisab se auto-select
-        const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-        const currentMonthId = monthNames[new Date().getMonth()];
-        monthSelect.value = currentMonthId;
-    }
+    monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
     
-    return monthSelect.value || "apr";
+    // Current Month select karein
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const currentMonthId = monthNames[new Date().getMonth()];
+    monthSelect.value = currentMonthId;
+    
+    if (!monthSelect.value) monthSelect.value = "apr";
+    
+    return monthSelect.value;
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
@@ -410,19 +419,19 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-        // 1. Dropdown se value lein (Jo ab "apr", "may" hai)
+        // Dropdown setup karein aur default value lein
         const forcedMonthValue = setupMonthDropdown(calendarData);
         const monthSelect = document.getElementById('report-month');
 
         if (!monthSelect) return; 
 
-        // FIX: Ek hi baar declare karein
-        const selectedMonthIdx = monthSelect.value || forcedMonthValue;
-        const selectedMonthId = selectedMonthIdx; // Yeh "apr", "may" etc. hoga[cite: 3]
+        // Sahi ID assignment
+        const selectedMonthId = monthSelect.value || forcedMonthValue;
 
         const container = document.getElementById('performance-table-body');
-        if (!container) return;
+        if (!container) return; // Tab change hone par ruk jayein
 
+       
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
