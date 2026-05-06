@@ -433,7 +433,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
         };
 
-        const selectedMonthId = monthIdMap[selectedMonthIdx];
+      
         // 3. User Data Fetch karein (Hardcoded year ki jagah activeYear use karein)
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
