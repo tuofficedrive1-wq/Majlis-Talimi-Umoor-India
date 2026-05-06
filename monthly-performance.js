@@ -380,27 +380,35 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const setupMonthDropdown = (calendarData) => {
     const monthSelect = document.getElementById('report-month');
-    if (!monthSelect) return null;
-
-    // Sirf tabhi bharrhein agar khali ho
-    if (monthSelect.options.length === 0) {
-        const months = [
-            { name: "April", id: "3" }, { name: "May", id: "4" }, { name: "June", id: "5" },
-            { name: "July", id: "6" }, { name: "August", id: "7" }, { name: "September", id: "8" },
-            { name: "October", id: "9" }, { name: "November", id: "10" }, { name: "December", id: "11" },
-            { name: "January", id: "0" }, { name: "February", id: "1" }, { name: "March", id: "2" }
-        ];
-        monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-        
-        // Default selection: Current Month
-        const currentMonth = new Date().getMonth().toString();
-        monthSelect.value = currentMonth;
-        
-        // Agar current month list mein nahi (e.g. invalid), toh April (3) select karein
-        if (!monthSelect.value) monthSelect.value = "3";
-    }
     
-    return monthSelect.value; // Yeh zaroori hai
+    // SAFETY CHECK: Agar element nahi mila toh function yahi ruk jaye
+    if (!monthSelect) {
+        console.warn("Dropdown 'report-month' abhi DOM mein nahi hai.");
+        return "3"; // Default April ID return karein
+    }
+
+    // Check karein ke options pehle se hain ya nahi (Safe way)
+    if (monthSelect.options && monthSelect.options.length > 0) {
+        return monthSelect.value;
+    }
+
+    const months = [
+        { name: "April", id: "3" }, { name: "May", id: "4" }, { name: "June", id: "5" },
+        { name: "July", id: "6" }, { name: "August", id: "7" }, { name: "September", id: "8" },
+        { name: "October", id: "9" }, { name: "November", id: "10" }, { name: "December", id: "11" },
+        { name: "January", id: "0" }, { name: "February", id: "1" }, { name: "March", id: "2" }
+    ];
+
+    monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    
+    // Current Month select karein
+    const currentMonth = new Date().getMonth().toString();
+    monthSelect.value = currentMonth;
+    
+    // Agar current month valid nahi, toh April (3) select karein
+    if (!monthSelect.value) monthSelect.value = "3";
+    
+    return monthSelect.value;
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
@@ -413,17 +421,24 @@ const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
 const calendarData = calSnap.exists() ? calSnap.data() : {};
 
 // Dropdown setup karein aur uski value lein
+// loadPerformanceTable ke andar ka sahi sequence:
+
 const forcedMonthValue = setupMonthDropdown(calendarData);
-
 const monthSelect = document.getElementById('report-month');
-if (!monthSelect) return;
 
-// ASLI FIX: Agar monthSelect.value khali hai toh forcedMonthValue use karein
-const selectedMonthIdx = monthSelect.value || forcedMonthValue;
+if (!monthSelect) return; 
+
+// FIX: Pehle forcedMonthValue ko priority dein agar dropdown abhi tak 
+// browser ne puri tarah render nahi kiya hai.
+let selectedMonthIdx = forcedMonthValue; 
+
+// Agar dropdown pehle se mojud hai aur usme koi value hai, tabhi use update karein
+if (monthSelect.value && monthSelect.value !== "") {
+    selectedMonthIdx = monthSelect.value;
+}
 
 const container = document.getElementById('performance-table-body');
-if (!container) return; // Exit if tab changed
-        
+if (!container) return; // Tab change hone par exit karein
         const selectedJamia = document.getElementById('report-jamia').value;
 
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
