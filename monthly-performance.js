@@ -107,13 +107,22 @@ injectEditModal();
     });
 
     renderSubTabContent('performance', assignedJamiaat, currentUser, db);
+    // monthly-performance.js ke renderPerformanceTab function mein:
+container.innerHTML = `
+    <div class="mb-6">
+        <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
+            <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
+            <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
+            <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
+            <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="profiles">Teacher Profile</button>
+        </div>
+    </div>
+    <div id="sub-tab-content" class="space-y-6"></div>
+`;
 };
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
-    
-    // monthly-performance.js ke renderSubTabContent mein jahan 'performance' tab ka HTML hai:
-
 // monthly-performance.js mein performance tab ka header section
 if (tabName === 'performance') {
     contentArea.innerHTML = `
@@ -206,7 +215,18 @@ if (tabName === 'performance') {
         const yearSelect = document.getElementById('structure-year-select');
         yearSelect.onchange = (e) => updateStructureView(e.target.value);
         updateStructureView(yearSelect.value);
-    }
+    } else if (tabName === 'profiles') {
+    contentArea.innerHTML = `
+        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="mb-6">
+                <h3 class="font-black text-indigo-950 text-lg">Teacher Directory</h3>
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Complete Profile Database</p>
+            </div>
+            <div id="profiles-table-container" class="space-y-8"></div>
+        </div>
+    `;
+    loadTeacherProfilesTable(assignedJamiaat, db, currentUser);
+}
 };
 
 const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selectedYear) => {
@@ -1027,3 +1047,63 @@ function calculateStatusText(percentage) {
     if (percentage >= 70) return "Behtar";
     return "Munasib";
 }
+const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
+    const container = document.getElementById('profiles-table-container');
+    const config = await getAcademicConfig(db);
+    const selectedYear = config ? config.activeYear : "2026-2027";[cite: 1]
+
+    const userSnap = await getDoc(doc(db, "users", currentUser.uid));[cite: 1]
+    const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];[cite: 1]
+
+    let html = "";
+
+    jamiaat.forEach(jamia => {
+        const jamiaData = structure.find(j => j.jamiaName === jamia);
+        if (!jamiaData || jamiaData.teachers.length === 0) return;
+
+        html += `
+        <div class="mb-8">
+            <h4 class="text-sm font-black text-indigo-600 mb-3 flex items-center gap-2">
+                <i class="fas fa-mosque"></i> ${jamia}
+            </h4>
+            <div class="overflow-x-auto rounded-2xl border border-slate-100">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-50 text-slate-500 font-bold uppercase">
+                        <tr>
+                            <th class="p-3">Name & Code</th>
+                            <th class="p-3">Contact</th>
+                            <th class="p-3">Qualification</th>
+                            <th class="p-3">Experience</th>
+                            <th class="p-3">Specialization</th>
+                            <th class="p-3">Periods</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${jamiaData.teachers.map(t => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50/50">
+                                <td class="p-3 font-bold text-slate-800">
+                                    ${t.name} <br>
+                                    <span class="text-[9px] bg-indigo-50 text-indigo-500 px-1 rounded uppercase">ID: ${t.loginCode}</span>
+                                </td>
+                                <td class="p-3 text-slate-600">${t.contact || '-'}</td>
+                                <td class="p-3">
+                                    <div class="font-medium text-slate-700">${t.highestQualification || '-'}</div>
+                                    <div class="text-[10px] text-slate-400">${t.levelQualified || '-'}</div>
+                                </td>
+                                <td class="p-3 text-slate-600">${t.experience || '-'}</td>
+                                <td class="p-3 text-slate-600">${t.specialization || '-'}</td>
+                                <td class="p-3 text-center">
+                                    <span class="bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-bold">
+                                        ${t.teachingPeriod || (t.periods ? t.periods.length : 0)}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">No teachers registered yet.</div>';
+};
