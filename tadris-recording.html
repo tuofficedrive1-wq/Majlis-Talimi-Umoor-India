@@ -257,6 +257,7 @@
     <th class="border px-2 py-1">Zimmedar Comment</th>
     <th class="border px-2 py-1">Status</th>
     <th class="border px-2 py-1">PDF</th>
+    <th class="border px-2 py-1 text-center">Action</th>
           </tr>
         </thead>
           <tbody id="saved-table-body"></tbody>
@@ -861,6 +862,14 @@
                     data-zimmedar-tasurat="${encodeURIComponent(rec.adminTasurat || '')}"> <i class="fas fa-file-pdf"></i>
                 </button>
             </td>
+            <td class="border px-2 py-2 text-center">
+     <button type="button" 
+        class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-2 rounded transition"
+        onclick="deleteRecording('${rec.id}')"
+        title="Delete Recording">
+        <i class="fas fa-trash-alt"></i>
+    </button>
+</td>
         `;
         tbody.appendChild(tr);
       });
@@ -1193,6 +1202,51 @@
         document.getElementById('comment-modal').classList.add('hidden');
         currentEditingId = null;
     };
+
+    window.deleteRecording = async function(recId) {
+    if (!confirm("Kya aap waqai is recording ko delete karna chahte hain?")) return;
+
+    showLoader(true);
+    try {
+        let targetReport = null;
+        let updatedData = [];
+
+        // 1. AllReports mein se wo recording dhundein
+        for (let report of allReports) {
+            if (report.tadrisRecording && report.tadrisRecording.data) {
+                const exists = report.tadrisRecording.data.some(r => r.id === recId);
+                if (exists) {
+                    targetReport = report;
+                    // Us specific ID ko nikaal kar baaki data rakhein
+                    updatedData = report.tadrisRecording.data.filter(r => r.id !== recId);
+                    break;
+                }
+            }
+        }
+
+        if (targetReport) {
+            // 2. Firebase Firestore update karein
+            const reportDocRef = doc(db, "monthly_reports", targetReport.id);
+            await updateDoc(reportDocRef, {
+                "tadrisRecording.data": updatedData
+            });
+
+            showNotification("Recording delete ho gayi!");
+            
+            // 3. UI update karne ke liye data refresh karein
+            // Note: onSnapshot khud hi allReports update kar dega, 
+            // bas table dobara render karni hogi
+            setTimeout(() => renderSavedTable(), 500);
+        } else {
+            showNotification("Recording nahi mili.", true);
+        }
+    } catch (error) {
+        console.error("Delete Error:", error);
+        showNotification("Delete karne mein masla aaya.", true);
+    } finally {
+        showLoader(false);
+    }
+};
 
     // Save Button Logic
     document.getElementById('modal-save-btn').addEventListener('click', async function() {
