@@ -350,41 +350,54 @@ async function loadJamiaData(userId, year, jamiaName) {
     const fileInput = document.getElementById('file-upload-input');
     const uploadedFile = fileInput.files[0];
 
-    if (!classVal || !dateVal) return alert("معلومات مکمل کریں۔");
-    if (!recordedBlob && !uploadedFile) return alert("ریکارڈنگ کریں یا فائل منتخب کریں۔");
+    // Basic Validation
+    if (!classVal || !dateVal) return alert("براء کرم کلاس اور تاریخ منتخب کریں۔");
+    if (!recordedBlob && !uploadedFile) return alert("پہلے ریکارڈنگ کریں یا فائل منتخب کریں۔");
 
     const btn = document.getElementById('btn-save');
     const status = document.getElementById('status-msg');
+    
+    // File details set karein
     const finalFile = uploadedFile || recordedBlob;
-    const fileName = uploadedFile ? `File_${Date.now()}_${uploadedFile.name}` : `Rec_${Date.now()}.webm`;
+    const extension = uploadedFile ? uploadedFile.name.split('.').pop() : 'webm';
+    const fileName = `Rec_${Date.now()}.${extension}`;
 
+    // UI Updates
     btn.disabled = true;
-    status.className = "text-center text-sm font-bold text-blue-600";
+    status.classList.remove('hidden');
+    status.className = "text-center text-sm font-bold text-blue-600 mt-2";
+    status.innerText = "اپلوڈ شروع ہو رہا ہے...";
 
-    // Pehle storage service ka instance lein
-const storageService = firebase.storage();
-const storageRef = storageService.ref().child(`recordings/teachers/${fileName}`);
+    try {
+        const storageRef = firebase.storage().ref().child(`recordings/teachers/${fileName}`);
+        const uploadTask = storageRef.put(finalFile);
 
-// Upload Task banayein taake progress track ho sake (Jo aapke UI mein 19% dikha raha hai)
-const uploadTask = storageRef.put(finalFile);
-
-// Wait karein jab tak upload khatam na ho jaye
-const snapshot = await uploadTask;
-const downloadURL = await snapshot.ref.getDownloadURL();
-
-    uploadTask.on('state_changed', 
-        (snap) => {
-            const progress = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-            status.innerText = `اپلوڈ ہو رہا ہے: ${progress}%`; // Percentage dikhayein[cite: 2]
-            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${progress}%`;
-        },
-        (err) => { alert("اپلوڈ میں خرابی آئی۔"); btn.disabled = false; },
-        async () => {
-            const url = await uploadTask.snapshot.ref.getDownloadURL();
-            const [className, bookName] = classVal.split('|');
-            await saveToFirestore(url, fileName, className, bookName, dateVal, btn, status);
-        }
-    );
+        // Progress Tracking
+        uploadTask.on('state_changed', 
+            (snapshot) => {
+                const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                status.innerText = `اپلوڈ ہو رہا ہے: ${progress}%`;
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${progress}%`;
+            }, 
+            (error) => {
+                console.error("Upload Error:", error);
+                alert("اپلوڈ میں خرابی آئی: " + error.message);
+                btn.disabled = false;
+                btn.innerHTML = '<span>محفوظ کریں (Save)</span> <i class="fas fa-cloud-upload-alt"></i>';
+            }, 
+            async () => {
+                // Jab upload khatam ho jaye
+                const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                const [className, bookName] = classVal.split('|');
+                
+                // Firestore mein save karein
+                await saveToFirestore(downloadURL, fileName, className, bookName, dateVal, btn, status);
+            }
+        );
+    } catch (err) {
+        alert("کچھ غلط ہو گیا: " + err.message);
+        btn.disabled = false;
+    }
 }
 
         async function saveToFirestore(url, fileName, className, bookName, dateVal, btn, status) {
