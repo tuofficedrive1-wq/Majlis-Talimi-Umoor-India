@@ -451,14 +451,20 @@
                 </td>
                 <td class="p-3 text-center text-xs text-gray-500">${r.date}</td>
                 <td class="p-3 text-center">${badge}</td>
-                <td class="p-3 text-center">
-                    <button type="button" 
-                        class="check-btn bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-md shadow-sm text-xs font-medium transition flex items-center gap-1 mx-auto"
-                        data-pid="${r.parentDocId}" 
-                        data-idx="${r.arrayIndex}">
-                        <i class="fas fa-edit pointer-events-none"></i> Check
-                    </button>
-                </td>
+                // renderTable function ke andar button wala hissa aise badlein:
+                    <td class="p-3 text-center flex justify-center gap-2">
+                        <button type="button" 
+                            class="check-btn bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"
+                            data-pid="${r.parentDocId}" 
+                            data-idx="${r.arrayIndex}">
+                            <i class="fas fa-edit"></i> Check
+                        </button>
+                        <button type="button" 
+                            onclick="deleteRecording('${r.parentDocId}', ${r.arrayIndex})"
+                            class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
             </tr>`;
         }).join('');
 
@@ -600,6 +606,48 @@
             if(pid && idx !== null) openReviewModal(pid, idx);
         }
     });
+             async function deleteRecording(pId, arrIdx) {
+    if (!confirm("Kya aap waqai is recording ko delete karna chahte hain? Ye har jagah se khatam ho jayegi.")) return;
+
+    try {
+        const reportRef = db.collection('monthly_reports').doc(pId);
+        const docSnap = await reportRef.get();
+        
+        if (!docSnap.exists) return alert("Report nahi mili!");
+
+        const data = docSnap.data();
+        let arr = data.tadrisRecording.data || [];
+        const recordingToDelete = arr[arrIdx];
+
+        // 1. Firebase Storage se file delete karna
+        if (recordingToDelete.url && recordingToDelete.url.includes("firebasestorage")) {
+            try {
+                // URL se file path nikalna
+                const storageRef = firebase.storage().refFromURL(recordingToDelete.url);
+                await storageRef.delete();
+                console.log("File deleted from storage");
+            } catch (storageErr) {
+                console.warn("Storage file delete nahi ho saki (shayad pehle hi deleted ho):", storageErr);
+            }
+        }
+
+        // 2. Firestore Array se remove karna
+        arr.splice(arrIdx, 1); // Specific index ko array se hatana
+
+        await reportRef.update({
+            "tadrisRecording.data": arr
+        });
+
+        alert("Recording kamyabi se delete ho gayi!");
+        
+        // UI Refresh karna
+        fetchReports(); 
+
+    } catch (error) {
+        console.error(error);
+        alert("Delete karne me galti hui: " + error.message);
+    }
+}
 
 </script>
 </body>
