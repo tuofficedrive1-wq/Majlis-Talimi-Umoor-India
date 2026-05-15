@@ -1144,177 +1144,152 @@ const downloadChartImage = (chartId, title, subtitle) => {
     showLoader(true);
     
     onAuthStateChanged(auth, async user => {
-        // Purane subscriptions khatam karein
         if (unsubscribeUserReports) { unsubscribeUserReports(); unsubscribeUserReports = null; }
         if (unsubscribeAnnouncements) { unsubscribeAnnouncements(); unsubscribeAnnouncements = null; }
         
+        if(typeof cleanupUserView === 'function') cleanupUserView();
         currentUser = user;
 
         if (user) {
             try {
-                // Admin Redirect
                 if (user.uid === ADMIN_UID) {
+                    showLoader(false);
                     if (!window.location.pathname.includes('admin.html')) {
                         window.location.href = 'admin.html';
                     }
                     return;
                 }
 
-                // Profile Data Fetching
                 const userDocRef = doc(db, 'users', user.uid);
                 const userDocSnap = await getDoc(userDocRef);
 
-                if (userDocSnap.exists()) {
-                    userProfileData = userDocSnap.data();
-                    
-                    // Role based redirection
-                    const role = userProfileData.role || 'standard';
-                    const targetPage = getTargetPage(role);
+                // index.html mein auth state check ke andar
+if (userDocSnap.exists()) {
+    userProfileData = userDocSnap.data();
+    const role = userProfileData.role || 'standard';
 
-                    if (targetPage && !window.location.pathname.includes(targetPage)) {
-                        window.location.href = targetPage;
-                        return;
-                    }
+    // 1. Target Page Decide Karein
+    let targetPage = '';
+    if (role === 'education_office') {
+        targetPage = 'academic-admin.html';
+    } else if (role === 'inspector' || role === 'Academic Inspector') {
+        targetPage = 'academic-inspector.html';
+    } else if (role === 'tadrisi_course_management') {
+        targetPage = 'tadrisi_course_admin.html';
+    } else if (role === 'tadrisi_course_mufattish') {
+        targetPage = 'tadrisi_course_mufattish.html';
+    } else if (role === 'recording_mufattish') {
+        targetPage = 'recording-dashboard.html';
+    }
 
-                    // Agar isi page par rehna hai to UI update karein
-                    initUserView(user); 
-                    
-                    userInfo.classList.remove('hidden');
-                    loginView.classList.add('hidden');
-                    dashboardView.classList.remove('hidden');
-                } else {
-                    showNotification("Profile data nahi mila!", true);
-                }
+    // 2. 🟢 REDIRECT EXECUTE (Dhyan dein: ye return hona chahiye)
+    if (targetPage && !window.location.pathname.includes(targetPage)) {
+        console.log("Redirecting to:", targetPage);
+        showLoader(false);
+        window.location.href = targetPage;
+        return; // Isse aage ka code nahi chalega
+    }
+
+    // 3. Agar koi redirect nahi hai, tabhi niche ka Standard User code chale
+    const jaizaBtn = document.getElementById('btn-jaiza-link');
+    const teacherBtn = document.getElementById('btn-teacher-link');
+    if(jaizaBtn) jaizaBtn.href = "jaiza-form.html";
+    if(teacherBtn) teacherBtn.href = "teacher-form.html";
+    
+    if(typeof initUserView === 'function') initUserView(user);
+}
             } catch (err) {
                 console.error("Init Error:", err);
-                showNotification("Data load karne mein masla hua.", true);
-            } finally {
-                showLoader(false);
             }
+            
+            // Dashboard UI setup
+            if(typeof userInfo !== 'undefined') userInfo.classList.remove('hidden');
+            if(typeof loginView !== 'undefined') loginView.classList.add('hidden');
+            if(typeof dashboardView !== 'undefined') dashboardView.classList.remove('hidden');
+            showLoader(false); 
         } else {
-            // Logout state
-            cleanupUserView();
             showLoader(false);
-            loginView.classList.remove('hidden');
-            userInfo.classList.add('hidden');
-            dashboardView.classList.add('hidden');
-            userView.classList.add('hidden');
+            if(typeof loginView !== 'undefined') loginView.classList.remove('hidden');
+            if(typeof userInfo !== 'undefined') userInfo.classList.add('hidden');
+            if(typeof dashboardView !== 'undefined') dashboardView.classList.add('hidden');
         }
     });
 };
-
-// Helper function for roles
-function getTargetPage(role) {
-    const roleMap = {
-        'education_office': 'academic-admin.html',
-        'inspector': 'academic-inspector.html',
-        'Academic Inspector': 'academic-inspector.html',
-        'tadrisi_course_management': 'tadrisi_course_admin.html',
-        'tadrisi_course_mufattish': 'tadrisi_course_mufattish.html',
-        'recording_mufattish': 'recording-dashboard.html'
-    };
-    return roleMap[role] || '';
-}
         
         // --- USER VIEW LOGIC ---
-      const initUserView = (user) => {
-    console.log("Initializing User View & Dashboard");
+        const initUserView = (user) => { 
+            console.log("Initializing User View & Dashboard");
+            // --- DASHBOARD SIGNATURE BUTTON LOGIC ---
+const dashSigBtn = document.getElementById('dash-manage-signatures-btn');
+const sigModal = document.getElementById('signature-modal');
+const closeSigBtn = document.getElementById('close-sig-modal');
+const closeSigBtnX = document.getElementById('close-sig-modal-x');
+const saveSigBtn = document.getElementById('save-sig-btn');
+const sigInput = document.getElementById('sig-taleemi-input');
 
-    // --- DOM Elements ---
-    const dashSigBtn = document.getElementById('dash-manage-signatures-btn');
-    const sigModal = document.getElementById('signature-modal');
-    const closeSigBtn = document.getElementById('close-sig-modal');
-    const closeSigBtnX = document.getElementById('close-sig-modal-x');
-    const saveSigBtn = document.getElementById('save-sig-btn');
-    const sigInput = document.getElementById('sig-taleemi-input');
-    const dashSigPreview = document.getElementById('dash-signature-preview');
-    const profilePhotoImg = document.getElementById('profile-details-photo');
-    const dashProfilePhoto = document.getElementById('dash-profile-photo');
+// 👇 YEH NAYA VARIABLE ADD KAREIN 👇
+const dashSigPreview = document.getElementById('dash-signature-preview');
 
-    // =====================================================
-    // PROFILE DATA CHECK
-    // =====================================================
-    if (userProfileData && Object.keys(userProfileData).length > 0) {
+// 1. Page Load hone par check karein (Agar pehle se save hai to dikhayein)
+if (userProfileData.signatureTaleemi && dashSigPreview) {
+    dashSigPreview.src = convertGoogleDriveURL(userProfileData.signatureTaleemi);
+    dashSigPreview.classList.remove('hidden');
+}
 
-        // 1. Photo Update
-        const convertedUrl = convertGoogleDriveURL(
-            userProfileData.photoURL ||
-            'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'
-        );
-
-        if (dashProfilePhoto) dashProfilePhoto.src = convertedUrl;
-        if (profilePhotoImg) profilePhotoImg.src = convertedUrl;
-
-        // 2. Signature Preview
-        if (userProfileData.signatureTaleemi && dashSigPreview) {
-            dashSigPreview.src = convertGoogleDriveURL(userProfileData.signatureTaleemi);
-            dashSigPreview.classList.remove('hidden');
-        } else if (dashSigPreview) {
-            dashSigPreview.classList.add('hidden');
-        }
-
-        // =====================================================
-        // EVENT LISTENERS
-        // =====================================================
-
-        if (dashSigBtn) {
-            dashSigBtn.onclick = () => {
-                sigInput.value = userProfileData.signatureTaleemi || '';
-                sigModal.classList.remove('hidden');
-            };
-        }
-
-        // Modal Close
-        const closeSigModal = () => sigModal.classList.add('hidden');
-
-        if (closeSigBtn) {
-            closeSigBtn.addEventListener('click', closeSigModal);
-        }
-
-        if (closeSigBtnX) {
-            closeSigBtnX.addEventListener('click', closeSigModal);
-        }
-
-        // Save Signature
-        if (saveSigBtn) {
-            saveSigBtn.addEventListener('click', async () => {
-                const tSig = sigInput.value.trim();
-
-                if (!currentUser) {
-                    showNotification("User login nahi hai.", true);
-                    return;
-                }
-
-                showLoader(true);
-
-               try {
-    const userDocRef = doc(db, 'users', currentUser.uid);
-
-    await updateDoc(userDocRef, {
-        signatureTaleemi: tSig
+// 2. Modal Open Karna
+if (dashSigBtn) {
+    dashSigBtn.addEventListener('click', () => {
+        sigInput.value = userProfileData.signatureTaleemi || '';
+        sigModal.classList.remove('hidden');
     });
+}
 
-    userProfileData.signatureTaleemi = tSig;
+// 3. Modal Close Karna
+const closeSigModal = () => sigModal.classList.add('hidden');
+if (closeSigBtn) closeSigBtn.addEventListener('click', closeSigModal);
+if (closeSigBtnX) closeSigBtnX.addEventListener('click', closeSigModal);
 
-    if (tSig && dashSigPreview) {
-        dashSigPreview.src = convertGoogleDriveURL(tSig);
-        dashSigPreview.classList.remove('hidden');
-    } else if (dashSigPreview) {
-        dashSigPreview.classList.add('hidden');
-        dashSigPreview.src = '';
-    }
+// 4. Signature Save Karna (Update Logic)
+if (saveSigBtn) {
+    saveSigBtn.addEventListener('click', async () => {
+        const tSig = sigInput.value.trim();
 
-    closeSigModal();
-    showNotification("Signature successfully save ho gaya!");
+        if (!currentUser) {
+            showNotification("User login nahi hai.", true);
+            return;
+        }
 
-} catch (error) {
+        showLoader(true);
+        try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
 
-    console.error("Error saving signature:", error);
-    showNotification("Signature save nahi ho saka.", true);
+            // Firebase Update
+            await updateDoc(userDocRef, {
+                signatureTaleemi: tSig
+            });
 
-} finally {
+            // Local Data Update
+            userProfileData.signatureTaleemi = tSig;
 
-    showLoader(false);
+            // 👇 YEH LOGIC ADD KAREIN: Dashboard par Image Update 👇
+            if (tSig && dashSigPreview) {
+                dashSigPreview.src = convertGoogleDriveURL(tSig);
+                dashSigPreview.classList.remove('hidden');
+            } else if (dashSigPreview) {
+                // Agar user ne link hata diya to image chhupa dein
+                dashSigPreview.classList.add('hidden');
+                dashSigPreview.src = '';
+            }
+
+            closeSigModal();
+            showNotification("Signature successfully save ho gaya!");
+        } catch (error) {
+            console.error("Error saving signature:", error);
+            showNotification("Signature save nahi ho saka.", true);
+        } finally {
+            showLoader(false);
+        }
+    });
 }
 
             // --- NAYA LOGIC: ENTRY MONTH SELECTOR & NAVIGATION ---
@@ -1367,15 +1342,16 @@ function getTargetPage(role) {
             }
 
             // 3. Back to Dashboard (Dashboard wala mahina wapas dikhaye)
-           backToDashboardBtn.addEventListener('click', () => {
-    userView.classList.add('hidden');
-    dashboardView.classList.remove('hidden');
-    
-    // Dashboard data ko refresh karein bina reload kiye
-    if (allUserReports.length > 0) {
-        renderDashboard(allUserReports, reportMonthSelector.value);
-    }
-});
+            backToDashboardBtn.addEventListener('click', () => {
+                tabHistory = [];
+                currentActiveTabId = null;
+
+                userView.classList.add('hidden');
+                dashboardView.classList.remove('hidden');
+                
+                // Dashboard wapas wahi dikhayega jo Dashboard Selector me tha (Entry selector ka asar yahan nahi hoga)
+                renderDashboard(allUserReports, reportMonthSelector.value);
+            });
 
             // 4. Section Status Buttons (Boxes par click karne par)
             document.querySelectorAll('.section-status-btn').forEach(button => {
@@ -1502,7 +1478,20 @@ document.getElementById('download-test-chart-btn')
                 }
                 if (!currentUser) { showNotification("User not logged in.", true); return; }
                 showLoader(true);
-                
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                try {
+                    await updateDoc(userDocRef, { academicStructure: parsedData });
+                    userProfileData.academicStructure = parsedData; 
+                    academicStructureSetup.classList.add('hidden');
+                    showNotification("Academic Structure saved successfully!");
+                    renderDashboard(allUserReports, selectedReportingDate); 
+                } catch (error) {
+                    console.error("Error saving academic structure:", error);
+                    showNotification("Failed to save structure.", true);
+                    structureError.textContent = "Error saving data to database.";
+                } finally { showLoader(false); }
+            });
+
             // --- Form Submit Handlers (Yeh sirf 'user-view' page par kaam karenge) ---
             document.getElementById('jaiza-form').addEventListener('submit', handleJaizaSubmit);
             document.getElementById('test-form').addEventListener('submit', handleTestFormSubmit); 
@@ -1531,7 +1520,10 @@ document.getElementById('download-test-chart-btn')
             });
             
             // --- Profile Data Load ---
-
+if (userProfileData && Object.keys(userProfileData).length > 0) {
+    const convertedUrl = convertGoogleDriveURL(
+        userProfileData.photoURL || 'https://placehold.co/150x150/e2e8f0/94a3b8?text=Photo'
+    );
 
     // ============================================================
     // UPDATED LOGIC: Count from Karkardagi Structure (Academic Years)
@@ -1632,80 +1624,69 @@ document.getElementById('download-test-chart-btn')
         });
     }
 
-   // ✅ Button click par naya page open karein (Jaiza)
-           if (openJaizaFormBtn) {
-                openJaizaFormBtn.onclick = () => {
-                    const jamiaName = jaizaFormJamiaSelect ? jaizaFormJamiaSelect.value : "";
-                    if (!jamiaName) {
-                        showNotification("Pehlay Jamia select karein.", true);
-                        return;
-                    }
-                    if (!selectedReportingDate) {
-                        showNotification("Report ka mahina select karein.", true);
-                        return;
-                    }
-                    const url = "jaiza-form.html?jamia=" + encodeURIComponent(jamiaName) + "&month=" + encodeURIComponent(selectedReportingDate);
-                    window.location.href = url;
-                };
+    // ✅ Button click par naya page open karein (Jaiza)
+    if (openJaizaFormBtn) {
+        openJaizaFormBtn.onclick = () => {
+            const jamiaName = jaizaFormJamiaSelect ? jaizaFormJamiaSelect.value : "";
+            if (!jamiaName) {
+                showNotification("Pehlay Jamia select karein.", true);
+                return;
+            }
+            if (!selectedReportingDate) {
+                showNotification("Report ka mahina select karein.", true);
+                return;
+            }
+            const url = "jaiza-form.html?jamia=" + encodeURIComponent(jamiaName) + "&month=" + encodeURIComponent(selectedReportingDate);
+            window.location.href = url;
+        };
+    }
+
+    // Report filters
+    populateReportFilters();
+
+} else {
+    // Profile not found
+    const userNameEl = document.getElementById("user-name");
+    if (userNameEl) userNameEl.textContent = "Profile Not Found";
+    if (dashUserName) dashUserName.textContent = "Profile Not Found";
+    showNotification("User profile could not be found.", true);
+    if(academicStructureSetup) academicStructureSetup.classList.remove("hidden");
+}
+
+            
+            filterSearchBtn.addEventListener('click', handleReportFilterSearch);
+
+            // --- Report Data Fetching ---
+            const reportsRef = collection(db, 'monthly_reports');
+            const q = query(reportsRef, where("userId", "==", user.uid));
+            
+            if (unsubscribeUserReports) {
+                unsubscribeUserReports();
+                unsubscribeUserReports = null; 
             }
 
-            // Report filters refresh karein
-            populateReportFilters();
-
-        } else {
-
-        const userNameEl = document.getElementById("user-name");
-
-        if (userNameEl) {
-            userNameEl.textContent = "Profile Not Found";
-        }
-
-        if (dashUserName) {
-            dashUserName.textContent = "Profile Not Found";
-        }
-
-        showNotification("User profile could not be found.", true);
-
-        if (academicStructureSetup) {
-            academicStructureSetup.classList.remove("hidden");
-        }
+            unsubscribeUserReports = onSnapshot(q, (snapshot) => {
+    allUserReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // 1. Main Dashboard Tiles update karein
+    renderDashboard(allUserReports, selectedReportingDate); 
+    
+    // --- FIX START ---
+    // 2. Agar User abhi "Form View" (Filling Page) par hai, to wahan bhi data render karein
+    if (!userView.classList.contains('hidden')) {
+        const currentInfo = getReportingMonthYearFromInput(selectedReportingDate);
+        renderUserDashboard(allUserReports, currentInfo);
     }
-        const reportsRef = collection(db, 'monthly_reports');
+    // --- FIX END ---
 
-    const q = query(
-        reportsRef,
-        where("userId", "==", user.uid)
-    );
-
-    if (unsubscribeUserReports) {
-        unsubscribeUserReports();
-        unsubscribeUserReports = null;
-    }
-
-    unsubscribeUserReports = onSnapshot(q, (snapshot) => {
-
-        allUserReports = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-
-        renderDashboard(allUserReports, selectedReportingDate);
-
-        if (userView && !userView.classList.contains('hidden')) {
-            const currentInfo = getReportingMonthYearFromInput(selectedReportingDate);
-            renderUserDashboard(allUserReports, currentInfo);
-        }
-
-    }, (error) => {
-
-        console.error("Error fetching user reports: ", error);
-        showNotification("Reports load nahi ho saki.", true);
-        renderDashboard([], selectedReportingDate);
-    });
-
-    listenForAnnouncements();
-    listenForUserTasks(user.uid);
-};
+}, (error) => {
+    console.error("Error fetching user reports: ", error);
+    showNotification("Could not load reports.", true);
+    renderDashboard([], selectedReportingDate); 
+});
+            
+            listenForAnnouncements();
+        };
         
         // ===============================================
 // ==  FINAL DASHBOARD RENDER (PROGRESS BAR & COUNT) ==
