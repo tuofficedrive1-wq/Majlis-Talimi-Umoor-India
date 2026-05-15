@@ -346,7 +346,9 @@ async function loadStats() {
     };
 
     updateUI('jaiza', (reportsData.jaiza || []).length);
+setTimeout(() => {
     renderMainCharts();
+}, 100);
     
     // Agar report section khula hai toh list refresh karein
     if(!document.getElementById('reports-section').classList.contains('hidden')) {
@@ -365,58 +367,75 @@ window.downloadChart = (chartId, fileName) => {
 
 // 2. Render Charts Function
 function renderMainCharts() {
-    // 1. Check karein ke canvas maujood hai ya nahi (Error se bachne ke liye)
+    // 1. IDs ko sahi se pakadna (Aapke HTML mein 'performanceChart' hai)
     const ctxJaiza = document.getElementById('inspectorChart');
-    const ctxTest = document.getElementById('Chart');
+    const ctxTest = document.getElementById('performanceChart'); // Yahan 'Chart' ki jagah 'performanceChart' kar diya
     
-    if (!ctxJaiza || !ctxTest) return; // Agar element nahi mila to function ruk jayega
+    if (!ctxJaiza || !ctxTest || !reportsData) return; 
 
-    // 2. Labels: Jo Jamiaat user ke hain wahi show honge
     const labels = assignedJamiaat && assignedJamiaat.length > 0 
                    ? assignedJamiaat 
                    : ['No Jamia Assigned'];
 
-    // 3. Data: Firestore se real score nikalna
+    // 2. Jaiza Scores dhoondna
     const jaizaScores = labels.map(name => {
+        // reportsData ke andar se is jamia ki entry dhoondna
         const entry = (reportsData.jaiza || []).find(s => s.name === name);
-        return entry ? parseInt(entry.score) || 0 : 0;
+        return entry ? parseFloat(entry.score) || 0 : 0;
+    });
+
+    // 3. Test Scores (Agar data hai to, warna 0)
+    const testScores = labels.map(name => {
+        const entry = (reportsData.tests || []).find(s => s.name === name);
+        return entry ? parseFloat(entry.score) || 0 : 0;
     });
 
     const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-            y: { beginAtZero: true, max: 100 },
+            y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } },
             x: { grid: { display: false } }
         },
-        plugins: { legend: { display: false } }
+        plugins: { 
+            legend: { display: false },
+            datalabels: { // Agar aapne plugin dala hai to score bar ke upar dikhega
+                anchor: 'end',
+                align: 'top',
+                formatter: (val) => val + '%'
+            }
+        }
     };
 
-    // Jaiza Chart Render
+    // Jaiza Chart
     if (window.myJaizaChart) window.myJaizaChart.destroy();
     window.myJaizaChart = new Chart(ctxJaiza.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
+                label: 'Inspection Score',
                 data: jaizaScores,
                 backgroundColor: '#4f46e5',
-                borderRadius: 8
+                borderRadius: 8,
+                barThickness: 30
             }]
         },
         options: commonOptions
     });
 
-    // Monthly Test Chart Render
+    // Monthly Test Chart
     if (window.myTestChart) window.myTestChart.destroy();
     window.myTestChart = new Chart(ctxTest.getContext('2d'), {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
-                data: labels.map(() => 0), // Filhal tests ka data 0 rakha hai
+                label: 'Test Score',
+                data: testScores,
                 backgroundColor: '#10b981',
-                borderRadius: 8
+                borderRadius: 8,
+                barThickness: 30
             }]
         },
         options: commonOptions
