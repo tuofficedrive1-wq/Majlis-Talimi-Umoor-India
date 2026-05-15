@@ -673,6 +673,56 @@ container.querySelectorAll('.edit-t-btn').forEach(btn => {
             loadAllTeachers(jamiaat, db, currentUser, selectedYear);
         };
     });
+    // --- NEW CODE: Save Period Button Logic ---
+container.querySelectorAll('.save-period-btn').forEach(btn => {
+    btn.onclick = async () => {
+        const tid = btn.dataset.tid;
+        const jamiaName = btn.dataset.jamia;
+        const card = document.getElementById(`teacher-card-${tid}`);
+        
+        // Input values nikalna
+        const className = card.querySelector('.p-class').value;
+        const bookName = card.querySelector('.p-book').value;
+        const semester = card.querySelector('.p-sem').value;
+        const totalPages = card.querySelector('.p-pages').value;
+        const syllabus = card.querySelector('.p-syllabus').value;
+
+        // Validation
+        if (!className || !bookName || !totalPages) {
+            return alert("Class, Subject aur Total Pages bharna zaroori hai!");
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Adding...";
+
+        try {
+            await updateTeacherData(db, currentUser, jamiaName, selectedYear, (teachers) => {
+                const t = teachers.find(teach => teach.id === tid);
+                if (t) {
+                    if (!t.periods) t.periods = [];
+                    t.periods.push({
+                        id: `p-${Date.now()}`,
+                        className,
+                        bookName,
+                        semester,
+                        totalPages: parseInt(totalPages),
+                        syllabus
+                    });
+                }
+                return teachers;
+            });
+
+            alert("Period Successfully Added!");
+            // List ko refresh karein
+            loadAllTeachers(jamiaat || assignedJamiaat, db, currentUser, selectedYear);
+        } catch (e) {
+            alert("Error adding period: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Add Period";
+        }
+    };
+});
     // Modal band karne ka helper
 window.closePeriodModal = () => document.getElementById('edit-period-modal').classList.add('hidden');
 
