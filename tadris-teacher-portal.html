@@ -350,48 +350,52 @@ async function loadJamiaData(userId, year, jamiaName) {
     const fileInput = document.getElementById('file-upload-input');
     const uploadedFile = fileInput.files[0];
 
-    // Basic Validation
     if (!classVal || !dateVal) return alert("براء کرم کلاس اور تاریخ منتخب کریں۔");
     if (!recordedBlob && !uploadedFile) return alert("پہلے ریکارڈنگ کریں یا فائل منتخب کریں۔");
 
     const btn = document.getElementById('btn-save');
     const status = document.getElementById('status-msg');
     
-    // File details set karein
+    btn.disabled = true;
+    status.classList.remove('hidden');
+    status.innerText = "فائل پروسیس ہو رہی ہے...";
+
+    // --- DURATION NIKALNE KA LOGIC ---
+    let finalDuration = "--:--";
+    
+    if (recordedBlob) {
+        // Live recording ke liye timer wale seconds use karein
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        finalDuration = `${mins}:${secs.toString().padStart(2, '0')}`;
+    } else if (uploadedFile) {
+        // Upload ki gayi file ki duration nikalne ke liye
+        finalDuration = await getFileDuration(uploadedFile);
+    }
+
     const finalFile = uploadedFile || recordedBlob;
     const extension = uploadedFile ? uploadedFile.name.split('.').pop() : 'webm';
     const fileName = `Rec_${Date.now()}.${extension}`;
-
-    // UI Updates
-    btn.disabled = true;
-    status.classList.remove('hidden');
-    status.className = "text-center text-sm font-bold text-blue-600 mt-2";
-    status.innerText = "اپلوڈ شروع ہو رہا ہے...";
 
     try {
         const storageRef = firebase.storage().ref().child(`recordings/teachers/${fileName}`);
         const uploadTask = storageRef.put(finalFile);
 
-        // Progress Tracking
         uploadTask.on('state_changed', 
             (snapshot) => {
                 const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
                 status.innerText = `اپلوڈ ہو رہا ہے: ${progress}%`;
-                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${progress}%`;
             }, 
             (error) => {
-                console.error("Upload Error:", error);
-                alert("اپلوڈ میں خرابی آئی: " + error.message);
+                alert("Error: " + error.message);
                 btn.disabled = false;
-                btn.innerHTML = '<span>محفوظ کریں (Save)</span> <i class="fas fa-cloud-upload-alt"></i>';
             }, 
             async () => {
-                // Jab upload khatam ho jaye
                 const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
                 const [className, bookName] = classVal.split('|');
                 
-                // Firestore mein save karein
-                await saveToFirestore(downloadURL, fileName, className, bookName, dateVal, btn, status);
+                // Firestore mein 'finalDuration' bhi bhejien
+                await saveToFirestore(downloadURL, fileName, className, bookName, dateVal, btn, status, finalDuration);
             }
         );
     } catch (err) {
@@ -547,6 +551,18 @@ async function startRecording() {
                 document.getElementById('pause-icon').className = "fas fa-pause";
                 document.getElementById('pause-text').innerText = "وقفہ (Pause)";
             }
+        function getFileDuration(file) {
+    return new Promise((resolve) => {
+        const audio = new Audio();
+        audio.src = URL.createObjectURL(file);
+        audio.addEventListener('loadedmetadata', () => {
+            const mins = Math.floor(audio.duration / 60);
+            const secs = Math.floor(audio.duration % 60);
+            resolve(`${mins}:${secs.toString().padStart(2, '0')}`);
+        });
+        audio.addEventListener('error', () => resolve("--:--"));
+    });
+}
 
     </script>
 </body>
