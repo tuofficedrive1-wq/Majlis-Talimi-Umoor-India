@@ -479,39 +479,20 @@
 
         // --- UPDATED UI FOR SUBJECT SELECTION ---
 window.handleClassChange = () => {
-    const clsName = document.getElementById('class-select').value;
+    const cls = document.getElementById('class-select').value;
     const container = document.getElementById('checkbox-container');
-    const selectionArea = document.getElementById('subject-selection-area');
-    const resultArea = document.getElementById('result-area');
-
     container.innerHTML = '';
-    resultArea.classList.add('hidden'); 
-    document.getElementById('students-body').innerHTML = ''; 
-
-    if (!clsName) { selectionArea.classList.add('hidden'); return; }
-
-    // Header Instruction Add Karein
-    if(!document.getElementById('eng-instruction')) {
-        const instr = document.createElement('p');
-        instr.id = 'eng-instruction';
-        instr.className = "text-sm text-red-600 font-bold mb-3 bg-red-50 p-2 rounded border border-red-200";
-        instr.innerHTML = '<i class="fas fa-keyboard"></i> Note: Subject select karein aur Report Card ke liye uska English naam neeche box me likhein.';
-        selectionArea.insertBefore(instr, document.getElementById('checkbox-container'));
-    }
-
-    const rawSubjectsSet = classBooksMap[clsName];
-    if (!rawSubjectsSet) return;
     
-    const filteredSubjects = Array.from(rawSubjectsSet).filter(s => {
-        const lower = s.toLowerCase();
-        return lower !== 'english' && lower !== 'maths';
-    });
+    if (!cls || !classBooksMap[cls]) return;
+
+    // Is class ke saare Urdu subjects ko nikalna
+    const filteredSubjects = Array.from(classBooksMap[cls]);
 
     filteredSubjects.forEach((sub) => {
         const wrapper = document.createElement('div');
         wrapper.className = "bg-white border rounded shadow-sm p-3 hover:shadow-md transition flex items-center justify-between";
 
-        // Checkbox & Urdu Name (Bina Text Input Ke)
+        // Checkbox aur Urdu Name (Bina English text input box ke)
         wrapper.innerHTML = `
             <span class="font-bold text-teal-700 urdu-font text-xl">${sub}</span>
             <input type="checkbox" value="${sub}" class="subject-checkbox w-5 h-5 text-teal-600 cursor-pointer" onchange="toggleSubjectInput(this)">
@@ -519,8 +500,8 @@ window.handleClassChange = () => {
         container.appendChild(wrapper);
     });
 
-    selectionArea.classList.remove('hidden');
-    checkExistingForClass(clsName);
+    // Pehle se agar koi columns (saved subjects) hain to unhe check mark lagana
+    checkExistingForClass(cls);
 };
 
 // Helper function to toggle input visibility
@@ -1662,17 +1643,28 @@ window.downloadReportCards = async () => {
         const displaySemester = getSemester(monthKey);
 
         const getSubjectNames = (originalName) => {
-            const lower = originalName.toLowerCase().trim();
-            const urduTxt = originalName.trim();
-            
-            if (dbSubjectMap[originalName]) return { en: dbSubjectMap[originalName], ur: originalName };
-            if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[originalName]) return { en: subjectTranslationMap[originalName], ur: originalName };
+    if (!originalName) return { en: "-", ur: "-" };
+    
+    const lower = originalName.toLowerCase().trim();
+    const urduTxt = originalName.trim();
+    
+    // 1. Pehle check karein agar Admin ki global setup se English naam mil jaye
+    if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[urduTxt]) {
+        return { en: subjectTranslationMap[urduTxt], ur: urduTxt };
+    }
+    
+    // 2. Agar sheet data ke andar saved map me maujood ho
+    if (dbSubjectMap && dbSubjectMap[urduTxt]) {
+        return { en: dbSubjectMap[urduTxt], ur: urduTxt };
+    }
 
-            if (lower.includes('english') || lower.includes('eng')) return { en: "English Language", ur: "انگریزی" };
-            if (lower.includes('math') || lower.includes('hisab')) return { en: "Mathematics", ur: "حساب" };
-            
-            return { en: originalName, ur: originalName };
-        };
+    // 3. English aur Maths ke liye automatic fallbacks
+    if (lower.includes('english') || lower.includes('eng')) return { en: "English Language", ur: "انگریزی" };
+    if (lower.includes('math') || lower.includes('hisab')) return { en: "Mathematics", ur: "حساب" };
+    
+    // 4. Agar kahin se naam nahi mila toh temporary Urdu naam hi print kar dein (Taaki khaali na dikhe)
+    return { en: originalName, ur: originalName };
+};
 
         const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
         const classTranslations = {
