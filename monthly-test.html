@@ -883,139 +883,106 @@ window.saveResult = async (isAutoSave = false) => {
     }
 };
 
-        // --- FIX: LOAD DATA AND SHOW ENGLISH INPUTS ---
-window.checkExistingForClass = async (clsName) => {
-    const cleanClass = clsName.split('_')[0]; 
-    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-    const resultArea = document.getElementById('result-area');
-    const studentsBody = document.getElementById('students-body');
-    const classSelect = document.getElementById('class-select');
-    const selectionArea = document.getElementById('subject-selection-area'); 
+    // --- LOAD DATA AND CHECK EXISTING STATUS (FIXED) ---
+        window.checkExistingForClass = async (clsName) => {
+            const cleanClass = clsName.split('_')[0]; 
+            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+            const resultArea = document.getElementById('result-area');
+            const studentsBody = document.getElementById('students-body');
+            const classSelect = document.getElementById('class-select');
+            const selectionArea = document.getElementById('subject-selection-area'); 
 
-    // Reset UI
-    finalSubjectsList = [];
-    studentsBody.innerHTML = '';
-    resultArea.classList.add('hidden'); 
-    document.getElementById('table-head').innerHTML = '';
-    
-    // Checkboxes reset
-    const checkboxesList = document.querySelectorAll('.subject-checkbox');
-    checkboxesList.forEach(chk => { 
-        if (savedVariableSubjects.includes(chk.value)) {
-            chk.checked = true; // Sirf checkbox ko checked karega, koi input box dhoondhega nahi
-        }
-    });
-    
-    classSelect.disabled = false; 
-
-    // Check View Mode
-    const params = new URLSearchParams(window.location.search);
-    const isViewMode = params.get('mode') === 'view';
-
-    try {
-        const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
-        
-        // --- SCENARIO 1: DATA EXISTS ---
-        if (snap.exists()) {
-            const data = snap.data(); 
+            finalSubjectsList = [];
+            studentsBody.innerHTML = '';
+            resultArea.classList.add('hidden'); 
+            document.getElementById('table-head').innerHTML = '';
             
-            // 1. English Names Load
-            subjectTranslationMap = data.subjectMap || {};
+            const checkboxesList = document.querySelectorAll('.subject-checkbox');
+            checkboxesList.forEach(chk => { chk.checked = false; });
+            classSelect.disabled = false; 
 
-            // 2. Checkboxes Check & Input Show
-            const savedVariableSubjects = data.subjects.filter(s => s !== 'English' && s !== 'Maths');
-            
-            checkboxesList.forEach(chk => { 
-                if (savedVariableSubjects.includes(chk.value)) {
-                    chk.checked = true;
-                    const wrapper = chk.closest('div');
-                    const input = wrapper.querySelector('.eng-name-input');
-                    if(input) {
-                        input.classList.remove('hidden');
-                        input.value = subjectTranslationMap[chk.value] || "";
+            const params = new URLSearchParams(window.location.search);
+            const isViewMode = params.get('mode') === 'view';
+
+            try {
+                const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
+                if (snap.exists()) {
+                    const data = snap.data(); 
+                    
+                    // Firestore se saved custom translations pehle load karein
+                    if (data.subjectMap) {
+                        subjectTranslationMap = { ...subjectTranslationMap, ...data.subjectMap };
+                    }
+                    
+                    // 🔥 VARIABLE SUBJECTS KO YAHA DEFINE KIYA HAI (ERROR FIX)
+                    const savedVariableSubjects = data.subjects ? data.subjects.filter(s => s !== 'English' && s !== 'Maths') : [];
+                    
+                    checkboxesList.forEach(chk => { 
+                        if (savedVariableSubjects.includes(chk.value)) {
+                            chk.checked = true;
+                        }
+                    });
+                    
+                    finalSubjectsList = data.subjects || [];
+                    totalMax = 0;
+                    finalSubjectsList.forEach(sub => {
+                        if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; else totalMax += 100;
+                    });
+                    
+                    renderTableHeaders(); 
+                    resultArea.classList.remove('hidden'); 
+                    selectionArea.classList.add('hidden'); 
+                    
+                    document.getElementById('students-body').innerHTML = ''; 
+                    data.students.forEach(s => addStudentRow(s.name, s.marks)); 
+                } 
+                else {
+                    if (isViewMode) {
+                        resultArea.classList.remove('hidden');
+                        document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
                     }
                 }
-            });
-            
-            finalSubjectsList = data.subjects;
-            
-            // Total Setup
-            totalMax = 0;
-            finalSubjectsList.forEach(sub => {
-                if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; else totalMax += 100;
-            });
-            
-            renderTableHeaders(); 
-            resultArea.classList.remove('hidden'); 
-            
-            // Teacher mode me selection hide, Admin me dikhega agar Edit dabaya
-            if (!isViewMode) {
-                 selectionArea.classList.add('hidden'); 
-            } else {
-                 selectionArea.classList.add('hidden'); 
-            }
-            
-            document.getElementById('students-body').innerHTML = ''; 
-            data.students.forEach(s => addStudentRow(s.name, s.marks)); 
-        } 
-        // --- SCENARIO 2: NO DATA (NEW CLASS) ---
-        else {
-            if (isViewMode) {
-                // Admin ko message dikhayein
-                resultArea.classList.remove('hidden');
-                document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
-            }
-        }
 
-        // --- VIEW MODE UI SETUP (BUTTON INJECTION) ---
-        if (isViewMode) {
-            const headerTitle = document.querySelector('h1');
-            
-            // 1. Edit Button Lagayein (Agar nahi hai)
-            if(headerTitle && !document.getElementById('edit-mode-btn')) {
-                const badge = document.getElementById('view-badge');
-                if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
+                if (isViewMode) {
+                    const headerTitle = document.querySelector('h1');
+                    if(headerTitle && !document.getElementById('edit-mode-btn')) {
+                        const badge = document.getElementById('view-badge');
+                        if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
+                        headerTitle.innerHTML += `
+                            <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
+                                <i class="fas fa-edit"></i> Enable Editing
+                            </button>`;
+                    }
+
+                    ['step-heading', 'step-instruction', 'class-select'].forEach(id => { 
+                        const el = document.getElementById(id); if(el) el.classList.add('hidden'); 
+                    });
+                    
+                    const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
+                    const saveBtn = document.querySelector('button[onclick="saveResult()"]');
+                    if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
+                    if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
+
+                    document.querySelectorAll('#students-body input').forEach(inp => {
+                        inp.disabled = true;
+                        inp.classList.add('view-mode-input');
+                        inp.style.backgroundColor = 'transparent';
+                        inp.style.border = 'none';
+                        inp.style.textAlign = 'center';
+                        inp.style.fontWeight = 'bold';
+                        inp.style.color = '#1f2937'; 
+                    });
+
+                    document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
+                    const headerTrash = document.querySelector('#table-head th:last-child');
+                    if(headerTrash) headerTrash.style.display = 'none';
+                }
                 
-                // 🔥 YE BUTTON MISSING THA 🔥
-                headerTitle.innerHTML += `
-                    <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
-                        <i class="fas fa-edit"></i> Enable Editing
-                    </button>`;
-            }
-
-            // 2. Teacher Controls Hide
-            ['step-heading', 'step-instruction', 'class-select'].forEach(id => { 
-                const el = document.getElementById(id); if(el) el.classList.add('hidden'); 
-            });
-            
-            const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
-            const saveBtn = document.querySelector('button[onclick="saveResult()"]');
-            if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
-            if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
-
-            // 3. Inputs Disable (Agar table bani hai)
-            document.querySelectorAll('#students-body input').forEach(inp => {
-                inp.disabled = true;
-                inp.classList.add('view-mode-input');
-                inp.style.backgroundColor = 'transparent';
-                inp.style.border = 'none';
-                inp.style.textAlign = 'center';
-                inp.style.fontWeight = 'bold';
-                inp.style.color = '#1f2937'; 
-            });
-
-            document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
-            const headerTrash = document.querySelector('#table-head th:last-child');
-            if(headerTrash) headerTrash.style.display = 'none';
-        }
-        
-        // Auto-Enable Logic (Agar class switch ki ho)
-        if (typeof isEditingMode !== 'undefined' && isEditingMode) {
-            enableEditMode(true); 
-        }
-
-    } catch(e) { console.log("New sheet or error loading:", e); }
-};
+                if (typeof isEditingMode !== 'undefined' && isEditingMode) {
+                    enableEditMode(true); 
+                }
+            } catch(e) { console.log("New sheet or error loading:", e); }
+        };
 
         // --- SUMMARY FEATURE LOGIC ---
         window.toggleSummary = async () => {
@@ -1646,23 +1613,23 @@ window.downloadReportCards = async () => {
     if (!originalName) return { en: "-", ur: "-" };
     
     const lower = originalName.toLowerCase().trim();
-    const urduTxt = originalName.trim();
+    const cleanName = originalName.trim();
     
-    // 1. Pehle check karein agar Admin ki global setup se English naam mil jaye
-    if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[urduTxt]) {
-        return { en: subjectTranslationMap[urduTxt], ur: urduTxt };
+    // 1. Pehle Admin ki global set ki hui mapping dhoondhein
+    if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[cleanName]) {
+        return { en: subjectTranslationMap[cleanName], ur: cleanName };
     }
     
-    // 2. Agar sheet data ke andar saved map me maujood ho
-    if (dbSubjectMap && dbSubjectMap[urduTxt]) {
-        return { en: dbSubjectMap[urduTxt], ur: urduTxt };
+    // 2. Agar current sheet data ke andar saved map me ho
+    if (typeof dbSubjectMap !== 'undefined' && dbSubjectMap && dbSubjectMap[cleanName]) {
+        return { en: dbSubjectMap[cleanName], ur: cleanName };
     }
 
-    // 3. English aur Maths ke liye automatic fallbacks
+    // 3. English aur Maths ke liye automatic hardcoded fallback
     if (lower.includes('english') || lower.includes('eng')) return { en: "English Language", ur: "انگریزی" };
     if (lower.includes('math') || lower.includes('hisab')) return { en: "Mathematics", ur: "حساب" };
     
-    // 4. Agar kahin se naam nahi mila toh temporary Urdu naam hi print kar dein (Taaki khaali na dikhe)
+    // 4. Default fallback agar dono jagah mapping na mile
     return { en: originalName, ur: originalName };
 };
 
