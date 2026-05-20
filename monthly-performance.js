@@ -437,7 +437,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         const container = document.getElementById('performance-table-body');
-        if (!container) return; 
+        const monthSelect = document.getElementById('report-month');
+        
+        if (!container || !monthSelect) return; 
+
+        // Hamesha current dropdown ki value fresh read karein taake month change par turant update ho
+        const selectedMonthId = monthSelect.value;
+        currentSelectedMonth = selectedMonthId; // Global variable ko update kar dein
 
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
@@ -454,9 +460,29 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             const safeJamiaId = jamiaName.replace(/\s+/g, '');
 
+            // Yahan Jamia ka naam aur saare buttons wapas add kar diye gaye hain
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
-                ...
+                <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                        <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                            <i class="fas fa-link mr-1 text-indigo-500"></i> Link
+                        </button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                            <i class="fas fa-image mr-1 text-rose-500"></i> Image
+                        </button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
+                            <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
+                        </button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
+                            <i class="fas fa-edit mr-1"></i> Edit
+                        </button>
+                    </div>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
                         <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
@@ -481,15 +507,15 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
                     if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][currentSelectedMonth] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][currentSelectedMonth]) || 0;
+                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
+                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
                         }
                     }
                     
-                    // Month wise achieved data load karne ke liye check
-                    const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
+                    // Month wise achieved data read karna
+                    const achievedValue = (p.achieved && p.achieved[selectedMonthId]) !== undefined ? p.achieved[selectedMonthId] : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
+                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -502,7 +528,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
                                        class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
-                                       oninput="updateRowStatusLive(this, ${target}, '${currentSelectedMonth}', '${p.semester}')">
+                                       oninput="updateRowStatusLive(this, ${target}, '${selectedMonthId}', '${p.semester}')">
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
