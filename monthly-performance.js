@@ -286,7 +286,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
                     const idx = jamiaData.teachers.findIndex(t => t.id === editId);
                     if (idx > -1) {
                         jamiaData.teachers[idx] = {
-                            ...jamiaData.teachers[idx],
+                            jamiaData.teachers[idx],
                             name, loginCode: ajeer, contact, levelQualified: level,
                             highestQualification: hQual, mailId: mail, experience: exp,
                             specialization: spec, teachingPeriod: tPeriod, ijaraStatus: ijara
