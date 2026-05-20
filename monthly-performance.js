@@ -120,6 +120,14 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     const contentArea = document.getElementById('sub-tab-content');
 // monthly-performance.js mein performance tab ka header section
 if (tabName === 'performance') {
+    // Mahinon ka HTML pehle hi bana lein
+    const monthsHtml = [
+        { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
+        { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
+        { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
+        { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
+    ].map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
             <div class="flex flex-col">
@@ -130,7 +138,9 @@ if (tabName === 'performance') {
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex flex-col gap-1">
                     <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
-                    <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]"></select>
+                    <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]">
+                        ${monthsHtml}
+                    </select>
                 </div>
 
                 <div class="flex flex-col gap-1">
@@ -144,6 +154,12 @@ if (tabName === 'performance') {
         </div>
         <div id="performance-table-body"></div>
     `;
+
+    // Current month set karna
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const currentMonthId = monthNames[new Date().getMonth()];
+    const monthDropdown = document.getElementById('report-month');
+    if(monthDropdown) monthDropdown.value = currentMonthId || "apr";
 
     // Event Listeners bind karein
     document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
@@ -417,33 +433,20 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-        const calendarData = calSnap.exists() ? calSnap.data() : {};
-
-        // Dropdown setup karein aur default value lein
-        const forcedMonthValue = setupMonthDropdown(calendarData);
         const monthSelect = document.getElementById('report-month');
 
         if (!monthSelect) return; 
 
-        // Sahi ID assignment
-        const selectedMonthId = monthSelect.value || forcedMonthValue;
+        // Safely selected month lein
+        const selectedMonthId = monthSelect.value || "apr";
 
         const container = document.getElementById('performance-table-body');
-        if (!container) return; // Tab change hone par ruk jayein
+        if (!container) return;
 
-       
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-        // PURANA monthIdMap HATA DIYA GAYA HAI KYUNKI AB ZAROORAT NAHI HAI[cite: 3]
-
-        const monthIdMap = {
-            "3": "apr", "4": "may", "5": "jun", "6": "jul", "7": "aug", "8": "sep",
-            "9": "oct", "10": "nov", "11": "dec", "0": "jan", "1": "feb", "2": "mar"
-        };
-
-      
-        // 3. User Data Fetch karein (Hardcoded year ki jagah activeYear use karein)
+        // User Data Fetch karein
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -464,18 +467,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-link mr-1 text-indigo-500"></i> Link
-                        </button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-image mr-1 text-rose-500"></i> Image
-                        </button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
-                        </button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
-                            <i class="fas fa-edit mr-1"></i> Edit
-                        </button>
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
                     </div>
                 </div>
                 <div class="overflow-x-auto">
@@ -494,44 +489,43 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         </thead>
                         <tbody>`;
 
-          jamiaData.teachers.forEach((teacher) => {
-    teacher.periods?.forEach((p, pIdx) => {
-        
-        // --- TARGET FETCHING LOGIC ---
-        let target = 0;
-        const cleanClassName = (p.className || "").trim();
-        const cleanBookName = (p.bookName || "").trim();
-        const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
+            jamiaData.teachers.forEach((teacher) => {
+                teacher.periods?.forEach((p, pIdx) => {
+                    
+                    // --- PRECISE TARGET FETCHING LOGIC ---
+                    let target = 0;
+                    const cleanClassName = (p.className || "").trim();
+                    const cleanBookName = (p.bookName || "").trim();
+                    const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-        if (monthlyTargets && monthlyTargets[subId]) {
-            const monthData = monthlyTargets[subId];
-            if (monthData[selectedMonthId] !== undefined) {
-                target = parseInt(monthData[selectedMonthId]) || 0;
-            }
-        }
-        
-        const achievedValue = 0; 
-        const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                    // Admin panel ke hisab se exact check
+                    if (monthlyTargets && monthlyTargets[subId]) {
+                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
+                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
+                        }
+                    }
+                    
+                    const achievedValue = 0; // Note: Agar aap user input save kar rahe hain toh yahan wo variable lagayein
+                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
 
-        // FIXED LINE: selectedMonthId pass karein
-        const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
+                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
 
-        html += `
-            <tr class="border-b hover:bg-slate-50/50">
-                <td class="p-4 font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</td>
-                <td class="p-4 text-slate-600">${p.className}</td>
-                <td class="p-4 text-slate-600">${p.bookName}</td>
-                <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
-                <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                <td class="p-4 text-center">
-                    <input type="number" value="${achievedValue}" disabled 
-                           class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
-                </td>
-                <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
-                <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
-            </tr>`;
-    });
-});
+                    html += `
+                        <tr class="border-b hover:bg-slate-50/50">
+                            <td class="p-4 font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</td>
+                            <td class="p-4 text-slate-600">${p.className}</td>
+                            <td class="p-4 text-slate-600">${p.bookName}</td>
+                            <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
+                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                            <td class="p-4 text-center">
+                                <input type="number" value="${achievedValue}" disabled 
+                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+                            </td>
+                            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
+                            <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
+                        </tr>`;
+                });
+            });
             html += `</tbody></table></div></div>`;
         });
         container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Data nahi mila.</div>';
@@ -543,12 +537,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 // Mahine ka number semester ke hisab se nikalne ke liye
 // Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
 // Sem 2: Sep(1), Oct(2), Nov(3), Dec(4), Jan(5), Feb/Mar (Extra)
-function getSemesterMonthNumber(monthIdx, semester) {
-    const s1Map = { "3": 1, "4": 2, "5": 3, "6": 4, "7": 5 }; // Apr-Aug
-    const s2Map = { "8": 1, "9": 2, "10": 3, "11": 4, "0": 5, "1": 6, "2": 7 }; // Sep-Mar
+// Mahine ki ID ko semester ke hisab se number me convert karne ke liye
+function getSemesterMonthNumber(monthId, semester) {
+    const s1Map = { "apr": 1, "may": 2, "jun": 3, "jul": 4, "aug": 5 }; 
+    const s2Map = { "sep": 1, "oct": 2, "nov": 3, "dec": 4, "jan": 5, "feb": 6, "mar": 7 }; 
     
-    if (semester == "1") return s1Map[monthIdx] || 0;
-    return s2Map[monthIdx] || 0;
+    if (semester == "1" || semester === 1) return s1Map[monthId] || 0;
+    return s2Map[monthId] || 0;
 }
 
 // Aapka bataya hua main calculation logic
