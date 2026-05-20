@@ -436,17 +436,27 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-        const container = document.getElementById('performance-table-body');
-        const monthSelect = document.getElementById('report-month');
-        
-        if (!container || !monthSelect) return; 
+        const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-        // DIRECT dropdown se current value read karein taake hamesha fresh month load ho
-        currentSelectedMonth = monthSelect.value;
+        // Aapki original file (2) wali logic: setupMonthDropdown ka use
+        const forcedMonthValue = setupMonthDropdown(calendarData);
+        const monthSelect = document.getElementById('report-month');
+
+        if (!monthSelect) return; 
+
+        // Sahi ID assignment (Aapki File 2 ki original logic)
+        const selectedMonthId = monthSelect.value || forcedMonthValue;
+        
+        // Global state update taake 'Edit/Save' me current month use ho
+        currentSelectedMonth = selectedMonthId;
+
+        const container = document.getElementById('performance-table-body');
+        if (!container) return; 
 
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
+        // User Data Fetch
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -459,7 +469,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             const safeJamiaId = jamiaName.replace(/\s+/g, '');
 
-            // YAHAN JAMIA KA NAAM AUR BUTTONS WAPAS ADD KIYE GAYE HAIN
+            // YAHAN JAMIA KA NAAM AUR BUTTONS WAPAS HAIN (Jaise aapki screenshot me hain)
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
                 <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
@@ -500,20 +510,26 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
+                    
+                    // --- TARGET FETCHING LOGIC (Bilkul Original File 2 Wali) ---
                     let target = 0;
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
                     if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][currentSelectedMonth] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][currentSelectedMonth]) || 0;
+                        const monthData = monthlyTargets[subId];
+                        if (monthData[selectedMonthId] !== undefined) {
+                            target = parseInt(monthData[selectedMonthId]) || 0;
                         }
                     }
                     
-                    const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
+                    // --- ACHIEVED VALUE LOGIC (Month change theek karne ke liye) ---
+                    // Pehle yahan "0" hardcoded tha, ab ye database se selected mahine ka data uthayega
+                    const achievedValue = (p.achieved && p.achieved[selectedMonthId]) !== undefined ? parseInt(p.achieved[selectedMonthId]) : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
+
+                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -526,7 +542,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
                                        class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
-                                       oninput="updateRowStatusLive(this, ${target}, '${currentSelectedMonth}', '${p.semester}')">
+                                       oninput="updateRowStatusLive(this, ${target}, '${selectedMonthId}', '${p.semester}')">
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
