@@ -283,16 +283,15 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
                 if (!jamiaData) { jamiaData = { jamiaName, teachers: [] }; structure.push(jamiaData); }
 
                 if (editId) {
-    const idx = jamiaData.teachers.findIndex(t => t.id === editId);
-    if (idx > -1) {
-        jamiaData.teachers[idx] = {
-            ...jamiaData.teachers[idx], // <-- Yahan 3 dots (...) add karein
-            name, loginCode: ajeer, contact, 
-            highestQualification: hQual,
-            specialization: spec, // baki ka code waisa hi rahega
-        };
-    }
-}
+                    const idx = jamiaData.teachers.findIndex(t => t.id === editId);
+                    if (idx > -1) {
+                        jamiaData.teachers[idx] = {
+                            ...jamiaData.teachers[idx],
+                            name, loginCode: ajeer, contact, levelQualified: level,
+                            highestQualification: hQual, mailId: mail, experience: exp,
+                            specialization: spec, teachingPeriod: tPeriod, ijaraStatus: ijara
+                        };
+                    }
                     delete btn.dataset.editMode;
                     btn.innerText = "Save Teacher Profile";
                 } else {
