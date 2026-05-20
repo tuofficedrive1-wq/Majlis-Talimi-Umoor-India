@@ -444,23 +444,20 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         if (!monthSelect) return; 
 
-        // Hamesha current dropdown ki value read karein taake month change par naya data load ho
+        // YAHAN FIX HAI: Ab ye directly dropdown se wohi mahina uthayega jo aapne select kiya hai
         const selectedMonthId = monthSelect.value || forcedMonthValue;
 
         const container = document.getElementById('performance-table-body');
-        if (!container) return; // Tab change hone par ruk jayein
+        if (!container) return; 
 
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
-      
-        // User Data Fetch karein 
+
+        // User Data Fetch
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
-
-        // Smart Matcher Helper: Case aur spaces ko ignore karne ke liye
-        const normalizeStr = (str) => (str || "").replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
         let html = "";
         filteredJamiaat.forEach(jamiaName => {
@@ -469,7 +466,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             const safeJamiaId = jamiaName.replace(/\s+/g, '');
 
-            // Aapke original Jamia ke naam aur Action Buttons wapas laga diye gaye hain
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
                 <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
@@ -511,27 +507,20 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
                     
-                    // --- PRECISE TARGET FETCHING (With Smart Match) ---
+                    // --- EXACT ADMIN MATCHING LOGIC (Bilkul Original) ---
                     let target = 0;
-                    if (monthlyTargets) {
-                        const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
-                        
-                        // Pehle Exact Match try karega
-                        if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][selectedMonthId] !== undefined) {
-                            target = parseInt(monthlyTargets[exactSubId][selectedMonthId]) || 0;
-                        } else {
-                            // Agar Capital/Small ya space ka issue ho, toh Smart Match chalega
-                            const expectedNormalized = normalizeStr(p.className) + "_" + normalizeStr(p.bookName);
-                            const matchedKey = Object.keys(monthlyTargets).find(k => normalizeStr(k) === expectedNormalized);
-                            
-                            if (matchedKey && monthlyTargets[matchedKey][selectedMonthId] !== undefined) {
-                                target = parseInt(monthlyTargets[matchedKey][selectedMonthId]) || 0;
-                            }
+                    const cls = (p.className || "").trim();
+                    const sub = (p.bookName || "").trim();
+                    const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
+
+                    if (monthlyTargets && monthlyTargets[subId]) {
+                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
+                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
                         }
                     }
                     
-                    // --- DYNAMIC ACHIEVED VALUE FETCHING ---
-                    // Hardcoded '0' ki jagah ab ye database se us particular mahine ka achieved data layega
+                    // --- ACHIEVED VALUE DYNAMIC LOGIC ---
+                    // Pehle yahan "const achievedValue = 0;" likha tha, isliye form change nahi hota tha
                     const achievedValue = (p.achieved && p.achieved[selectedMonthId] !== undefined) ? parseInt(p.achieved[selectedMonthId]) : 0;
                     
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
