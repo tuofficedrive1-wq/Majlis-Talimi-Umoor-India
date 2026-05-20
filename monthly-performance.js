@@ -134,7 +134,7 @@ if (tabName === 'performance') {
         { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
         { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
         { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-    ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
+    ].map(m => `<option value="${m.id}">${m.name}</option>`).join('');
 
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
@@ -163,10 +163,17 @@ if (tabName === 'performance') {
         <div id="performance-table-body"></div>
     `;
 
-    document.getElementById('report-month').onchange = (e) => {
-        currentSelectedMonth = e.target.value; // Global state me save karein
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
-    };
+    // Dropdown pe current mahina set karna (Sirf ek baar)
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const currentMonthId = monthNames[new Date().getMonth()];
+    const monthDropdown = document.getElementById('report-month');
+    if (monthDropdown) {
+        monthDropdown.value = currentMonthId;
+        if (!monthDropdown.value) monthDropdown.value = "apr";
+    }
+
+    // Dropdown change hone par table update karna
+    document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
     document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
     
     setTimeout(() => {
@@ -436,16 +443,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-        const calendarData = calSnap.exists() ? calSnap.data() : {};
-
-        // Dropdown setup karein aur default value lein
-        const forcedMonthValue = setupMonthDropdown(calendarData);
+        
         const monthSelect = document.getElementById('report-month');
-
         if (!monthSelect) return; 
 
-        // YAHAN FIX HAI: Ab ye directly dropdown se wohi mahina uthayega jo aapne select kiya hai
-        const selectedMonthId = monthSelect.value || forcedMonthValue;
+        // Seedha Dropdown se Month uthana (Bina reset kiye)
+        const selectedMonthId = monthSelect.value;
 
         const container = document.getElementById('performance-table-body');
         if (!container) return; 
@@ -453,7 +456,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-        // User Data Fetch
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -474,18 +476,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-link mr-1 text-indigo-500"></i> Link
-                        </button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-image mr-1 text-rose-500"></i> Image
-                        </button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm">
-                            <i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel
-                        </button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold">
-                            <i class="fas fa-edit mr-1"></i> Edit
-                        </button>
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
                     </div>
                 </div>
                 <div class="overflow-x-auto">
@@ -507,11 +501,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
                     
-                    // --- EXACT ADMIN MATCHING LOGIC (Bilkul Original) ---
                     let target = 0;
                     const cls = (p.className || "").trim();
                     const sub = (p.bookName || "").trim();
-                    const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
+                    const subId = `${cls}_${sub}`.replace(/\s+/g, '_'); // Aapka original Admin Logic
 
                     if (monthlyTargets && monthlyTargets[subId]) {
                         if (monthlyTargets[subId][selectedMonthId] !== undefined) {
@@ -519,8 +512,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         }
                     }
                     
-                    // --- ACHIEVED VALUE DYNAMIC LOGIC ---
-                    // Pehle yahan "const achievedValue = 0;" likha tha, isliye form change nahi hota tha
+                    // Achieved data ko bhi 'selectedMonthId' (jaise June/July) ke hisab se fetch karna
                     const achievedValue = (p.achieved && p.achieved[selectedMonthId] !== undefined) ? parseInt(p.achieved[selectedMonthId]) : 0;
                     
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
@@ -556,12 +548,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 // Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
 // Sem 2: Sep(1), Oct(2), Nov(3), Dec(4), Jan(5), Feb/Mar (Extra)
 // Mahine ki ID ko semester ke hisab se number me convert karne ke liye
-function getSemesterMonthNumber(monthId, semester) {
+function getSemesterMonthNumber(monthIdx, semester) {
     const s1Map = { "apr": 1, "may": 2, "jun": 3, "jul": 4, "aug": 5 }; 
     const s2Map = { "sep": 1, "oct": 2, "nov": 3, "dec": 4, "jan": 5, "feb": 6, "mar": 7 }; 
     
-    if (semester == "1" || semester === 1) return s1Map[monthId] || 0;
-    return s2Map[monthId] || 0;
+    if (semester == "1" || semester === 1) return s1Map[monthIdx] || 0;
+    return s2Map[monthIdx] || 0;
 }
 
 // Aapka bataya hua main calculation logic
