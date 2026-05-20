@@ -438,29 +438,29 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         const calendarData = calSnap.exists() ? calSnap.data() : {};
 
-        // Aapki original file (2) wali logic: setupMonthDropdown ka use
+        // Dropdown setup karein aur default value lein
         const forcedMonthValue = setupMonthDropdown(calendarData);
         const monthSelect = document.getElementById('report-month');
 
         if (!monthSelect) return; 
 
-        // Sahi ID assignment (Aapki File 2 ki original logic)
+        // Hamesha current dropdown ki value read karein taake month change par naya data load ho
         const selectedMonthId = monthSelect.value || forcedMonthValue;
-        
-        // Global state update taake 'Edit/Save' me current month use ho
-        currentSelectedMonth = selectedMonthId;
 
         const container = document.getElementById('performance-table-body');
-        if (!container) return; 
+        if (!container) return; // Tab change hone par ruk jayein
 
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
-
-        // User Data Fetch
+      
+        // User Data Fetch karein 
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
+
+        // Smart Matcher Helper: Case aur spaces ko ignore karne ke liye
+        const normalizeStr = (str) => (str || "").replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
         let html = "";
         filteredJamiaat.forEach(jamiaName => {
@@ -469,7 +469,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             const safeJamiaId = jamiaName.replace(/\s+/g, '');
 
-            // YAHAN JAMIA KA NAAM AUR BUTTONS WAPAS HAIN (Jaise aapki screenshot me hain)
+            // Aapke original Jamia ke naam aur Action Buttons wapas laga diye gaye hain
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
                 <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
@@ -511,24 +511,30 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
                     
-                    // --- TARGET FETCHING LOGIC (Bilkul Original File 2 Wali) ---
+                    // --- PRECISE TARGET FETCHING (With Smart Match) ---
                     let target = 0;
-                    const cleanClassName = (p.className || "").trim();
-                    const cleanBookName = (p.bookName || "").trim();
-                    const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
-
-                    if (monthlyTargets && monthlyTargets[subId]) {
-                        const monthData = monthlyTargets[subId];
-                        if (monthData[selectedMonthId] !== undefined) {
-                            target = parseInt(monthData[selectedMonthId]) || 0;
+                    if (monthlyTargets) {
+                        const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
+                        
+                        // Pehle Exact Match try karega
+                        if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][selectedMonthId] !== undefined) {
+                            target = parseInt(monthlyTargets[exactSubId][selectedMonthId]) || 0;
+                        } else {
+                            // Agar Capital/Small ya space ka issue ho, toh Smart Match chalega
+                            const expectedNormalized = normalizeStr(p.className) + "_" + normalizeStr(p.bookName);
+                            const matchedKey = Object.keys(monthlyTargets).find(k => normalizeStr(k) === expectedNormalized);
+                            
+                            if (matchedKey && monthlyTargets[matchedKey][selectedMonthId] !== undefined) {
+                                target = parseInt(monthlyTargets[matchedKey][selectedMonthId]) || 0;
+                            }
                         }
                     }
                     
-                    // --- ACHIEVED VALUE LOGIC (Month change theek karne ke liye) ---
-                    // Pehle yahan "0" hardcoded tha, ab ye database se selected mahine ka data uthayega
-                    const achievedValue = (p.achieved && p.achieved[selectedMonthId]) !== undefined ? parseInt(p.achieved[selectedMonthId]) : 0;
+                    // --- DYNAMIC ACHIEVED VALUE FETCHING ---
+                    // Hardcoded '0' ki jagah ab ye database se us particular mahine ka achieved data layega
+                    const achievedValue = (p.achieved && p.achieved[selectedMonthId] !== undefined) ? parseInt(p.achieved[selectedMonthId]) : 0;
+                    
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-
                     const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
 
                     html += `
