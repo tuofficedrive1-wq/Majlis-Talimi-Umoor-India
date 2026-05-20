@@ -165,12 +165,17 @@
                 </div>
 
                 <div id="result-area" class="hidden">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold text-gray-800 border-b-2 border-teal-500 pb-1">Result Sheet</h2>
-                        <button onclick="addStudentRow()" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">
-                            <i class="fas fa-plus"></i> Add Student
-                        </button>
-                    </div>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+    <h2 class="text-xl font-bold text-gray-800 border-b-2 border-teal-500 pb-1">Result Sheet</h2>
+    <div class="flex gap-2">
+        <button onclick="pasteFromExcel()" class="bg-teal-600 text-white px-4 py-2 rounded shadow hover:bg-teal-700 transition flex items-center gap-2">
+            <i class="fas fa-paste"></i> Paste Excel
+        </button>
+        <button onclick="addStudentRow()" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition flex items-center gap-2">
+            <i class="fas fa-plus"></i> Add Student
+        </button>
+    </div>
+</div>
 
                     <div class="overflow-x-auto border rounded-lg shadow-sm" id="print-area">
                         <table class="w-full text-sm text-left bg-white border-collapse">
@@ -2099,6 +2104,77 @@ window.addCustomSubject = () => {
     container.appendChild(label);
     input.value = "";
 };
+        // --- EXCEL PASTE LOGIC FOR MONTHLY TEST ---
+        window.pasteFromExcel = () => {
+            const modalHtml = `
+                <div id="paste-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 print:hidden">
+                    <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 flex flex-col transform transition-all">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 class="text-xl font-bold text-teal-800"><i class="fas fa-file-excel text-green-600 mr-2"></i> Paste Excel Data</h3>
+                            <button onclick="document.getElementById('paste-modal').remove()" class="text-gray-400 hover:text-red-500 text-2xl leading-none">&times;</button>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3 font-semibold">Excel se bachon ki list copy kar ke yahan box mein paste karein:</p>
+                        <textarea id="paste-area" class="flex-1 border-2 border-teal-100 rounded-lg p-3 text-sm font-mono min-h-[250px] outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition bg-gray-50" placeholder="Yahan paste karein..."></textarea>
+                        <div class="flex justify-end gap-3 mt-5">
+                            <button onclick="document.getElementById('paste-modal').remove()" class="bg-gray-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-gray-600 transition shadow-sm">Cancel</button>
+                            <button onclick="processPaste()" class="bg-teal-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-teal-700 transition shadow-md flex items-center gap-2">
+                                <i class="fas fa-download"></i> Import Students
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            document.getElementById('paste-area').focus();
+        };
+
+        window.processPaste = () => {
+            const text = document.getElementById('paste-area').value;
+            if(!text.trim()) {
+                alert("Data khali hai. Pehle kuch paste karein.");
+                return;
+            }
+            
+            const rows = text.trim().split('\n');
+            let count = 0;
+
+            // Purani khali rows ko saaf karne ke liye
+            document.getElementById('students-body').innerHTML = '';
+
+            rows.forEach(rowLine => {
+                const cols = rowLine.split('\t');
+                let finalStudentName = "";
+
+                // Agar standard Result/Report file copy ki gayi hai (Jisme kai columns hote hain)
+                if (cols.length >= 4) {
+                    // Aam taur par Col 1 = Name Urdu, Col 3 = Father Urdu
+                    const nameUr = cols[1]?.trim() || "";
+                    const fatherUr = cols[3]?.trim() || "";
+                    
+                    // Header row ("اردو میں نام") ko ignore karne ke liye
+                    if (nameUr !== "اردو میں نام" && nameUr !== "Name" && nameUr !== "") {
+                        if (fatherUr && fatherUr !== "ولدیت" && fatherUr !== "Father") {
+                            finalStudentName = `${nameUr} بن ${fatherUr}`; // Dono naam jod diye
+                        } else {
+                            finalStudentName = nameUr;
+                        }
+                    }
+                } 
+                // Agar sirf ek hi column paste kiya ho
+                else if (cols.length > 0) {
+                    finalStudentName = cols[0]?.trim();
+                }
+
+                // Agar naam valid hai toh row add kar do
+                if (finalStudentName && finalStudentName !== "اردو میں نام" && finalStudentName !== "Name") {
+                    addStudentRow(finalStudentName, {});
+                    count++;
+                }
+            });
+            
+            document.getElementById('paste-modal').remove();
+            alert(`Kamiyabi se ${count} students import ho gaye hain!`);
+        };
     </script>
 </body>
 </html>
