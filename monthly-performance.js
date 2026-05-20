@@ -7,7 +7,12 @@
 import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 let academicConfig = null;
-let monthSelect; 
+let gDb = null;
+let gCurrentUser = null;
+let gAssignedJamiaat = [];
+
+// Yeh variable state ko dashboard par back jaane par bhi safe rakhega
+let currentSelectedMonth = monthNames[new Date().getMonth()]; 
 
 // Academic Admin ki settings fetch karne ka function
 async function getAcademicConfig(db) {
@@ -27,6 +32,9 @@ const getStatusStyles = (status) => {
 };
 
 export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
+    gDb = db;
+    gCurrentUser = currentUser;
+    gAssignedJamiaat = assignedJamiaat;
 const injectEditModal = () => {
     if (document.getElementById('edit-period-modal')) return; // Agar pehle se hai to dubara na dalein
 
@@ -120,13 +128,12 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     const contentArea = document.getElementById('sub-tab-content');
 // monthly-performance.js mein performance tab ka header section
 if (tabName === 'performance') {
-    // Mahinon ka HTML pehle hi bana lein
     const monthsHtml = [
         { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
         { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
         { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
         { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-    ].map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
 
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
@@ -155,17 +162,12 @@ if (tabName === 'performance') {
         <div id="performance-table-body"></div>
     `;
 
-    // Current month set karna
-    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    const currentMonthId = monthNames[new Date().getMonth()];
-    const monthDropdown = document.getElementById('report-month');
-    if(monthDropdown) monthDropdown.value = currentMonthId || "apr";
-
-    // Event Listeners bind karein
-    document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+    document.getElementById('report-month').onchange = (e) => {
+        currentSelectedMonth = e.target.value; // Global state me save karein
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
+    };
     document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
     
-    // Initial Load
     setTimeout(() => {
         loadPerformanceTable(assignedJamiaat, db, currentUser);
     }, 10);
@@ -433,20 +435,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
-        const monthSelect = document.getElementById('report-month');
-
-        if (!monthSelect) return; 
-
-        // Safely selected month lein
-        const selectedMonthId = monthSelect.value || "apr";
-
         const container = document.getElementById('performance-table-body');
-        if (!container) return;
+        if (!container) return; 
 
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-        // User Data Fetch karein
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
@@ -461,18 +455,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
-                <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
-                    <div>
-                        <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
-                    </div>
-                </div>
+                ...
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
                         <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
@@ -491,24 +474,21 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
                 teacher.periods?.forEach((p, pIdx) => {
-                    
-                    // --- PRECISE TARGET FETCHING LOGIC ---
                     let target = 0;
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-                    // Admin panel ke hisab se exact check
                     if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
+                        if (monthlyTargets[subId][currentSelectedMonth] !== undefined) {
+                            target = parseInt(monthlyTargets[subId][currentSelectedMonth]) || 0;
                         }
                     }
                     
-                    const achievedValue = 0; // Note: Agar aap user input save kar rahe hain toh yahan wo variable lagayein
+                    // Month wise achieved data load karne ke liye check
+                    const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-
-                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
+                    const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -519,10 +499,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
                             <td class="p-4 text-center">
                                 <input type="number" value="${achievedValue}" disabled 
-                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent">
+                                       data-tid="${teacher.id}" data-pid="${p.id}"
+                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
+                                       oninput="updateRowStatusLive(this, ${target}, '${currentSelectedMonth}', '${p.semester}')">
                             </td>
-                            <td class="p-4 text-center font-black text-slate-700">${percentage}%</td>
-                            <td class="p-4 text-center italic ${result.colorClass}">${result.kaifiyat}</td>
+                            <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
+                            <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
                         </tr>`;
                 });
             });
@@ -822,25 +804,82 @@ async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updat
 // 1. Toggle Edit Mode (Lock/Unlock)
 // Edit Mode Toggle (Lock/Unlock)
 // 1. Edit/Save Toggle Logic
-window.toggleEditMode = (jamiaName) => {
-    const inputs = document.querySelectorAll(`.achieved-input-${jamiaName}`);
-    const btn = document.querySelector(`.edit-btn-${jamiaName}`);
+window.updateRowStatusLive = (input, target, monthId, semester) => {
+    const row = input.closest('tr');
+    const achieved = parseInt(input.value) || 0;
+    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
+    
+    const percCell = row.querySelector('.perc-cell');
+    const statusCell = row.querySelector('.status-cell');
+    
+    if (percCell) percCell.textContent = percentage + "%";
+    
+    if (statusCell) {
+        const result = calculateKaifiyatAndStyle(percentage, monthId, semester);
+        statusCell.textContent = result.kaifiyat;
+        statusCell.className = `p-4 text-center italic status-cell ${result.colorClass}`;
+    }
+};
+
+window.toggleEditMode = async (jamiaName) => {
+    const safeId = jamiaName.replace(/\s+/g, '');
+    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
+    const btn = document.querySelector(`.edit-btn-${safeId}`);
+
+    if (!inputs || inputs.length === 0) return;
     const isLocked = inputs[0].disabled;
 
-    inputs.forEach(inp => {
-        inp.disabled = !isLocked;
-        inp.classList.toggle('bg-white', isLocked);
-        inp.classList.toggle('border-indigo-200', isLocked);
-        inp.classList.toggle('shadow-sm', isLocked);
-    });
-
     if (isLocked) {
-        btn.innerHTML = `<i class="fas fa-check-circle mr-1"></i> Done`;
-        btn.className = `edit-btn-${jamiaName} bg-emerald-500 text-white text-[11px] px-4 py-2 rounded-xl shadow-lg transition font-bold`;
+        inputs.forEach(inp => {
+            inp.disabled = false;
+            inp.style.backgroundColor = "white";
+            inp.style.border = "1px solid #6366f1";
+        });
+        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
+        btn.style.backgroundColor = "#1e293b";
     } else {
+        inputs.forEach(inp => {
+            inp.disabled = true;
+            inp.style.backgroundColor = "transparent";
+            inp.style.border = "1px solid transparent";
+        });
         btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.className = `edit-btn-${jamiaName} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl shadow-md transition font-bold`;
-        // Yahan aap database update logic call kar sakte hain
+        btn.style.backgroundColor = "#4f46e5";
+        
+        // Save to Firebase logic month wise
+        try {
+            const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
+            const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
+
+            const userRef = doc(gDb, "users", gCurrentUser.uid);
+            const userSnap = await getDoc(userRef);
+            let academicYears = userSnap.data().academicYears || {};
+            let structure = academicYears[activeYear]?.karkardagiStructure || [];
+            let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+
+            if (!jamiaData) return;
+
+            inputs.forEach(inp => {
+                const tid = inp.dataset.tid;
+                const pid = inp.dataset.pid;
+                const val = parseInt(inp.value) || 0;
+
+                const teacher = jamiaData.teachers.find(t => t.id === tid);
+                if (teacher) {
+                    const period = teacher.periods.find(p => p.id === pid);
+                    if (period) {
+                        if (!period.achieved) period.achieved = {};
+                        period.achieved[currentSelectedMonth] = val; // State tracking month wise
+                    }
+                }
+            });
+
+            await updateDoc(userRef, { academicYears });
+            alert("Data successfully saved for " + currentSelectedMonth.toUpperCase());
+            loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
+        } catch (err) {
+            alert("Error saving: " + err.message);
+        }
     }
 };
 
