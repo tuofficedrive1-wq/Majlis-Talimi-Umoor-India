@@ -9,6 +9,7 @@ import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-fires
 let academicConfig = null;
 let gDb = null;
 let gCurrentUser = null;
+const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 let gAssignedJamiaat = [];
 
 // Yeh variable state ko dashboard par back jaane par bhi safe rakhega
