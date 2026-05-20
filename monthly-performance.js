@@ -164,21 +164,39 @@ if (tabName === 'performance') {
     `;
 
     // Dropdown pe current mahina set karna (Sirf ek baar)
-    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    const currentMonthId = monthNames[new Date().getMonth()];
-    const monthDropdown = document.getElementById('report-month');
-    if (monthDropdown) {
-        monthDropdown.value = currentMonthId;
-        if (!monthDropdown.value) monthDropdown.value = "apr";
+// Saved selected month ko restore karo
+// Saved selected month ko restore karo
+const monthDropdown = document.getElementById('report-month');
+
+if (monthDropdown) {
+    monthDropdown.value = currentSelectedMonth || 'apr';
+
+    // Agar invalid ho to fallback
+    if (!monthDropdown.value) {
+        monthDropdown.value = 'apr';
+        currentSelectedMonth = 'apr';
     }
 
-    // Dropdown change hone par table update karna
-    document.getElementById('report-month').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
-    document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
-    
-    setTimeout(() => {
+    // Month change event
+    monthDropdown.onchange = () => {
+        currentSelectedMonth = monthDropdown.value;
         loadPerformanceTable(assignedJamiaat, db, currentUser);
-    }, 10);
+    };
+}
+
+// Jamia filter change
+const jamiaDropdown = document.getElementById('report-jamia');
+
+if (jamiaDropdown) {
+    jamiaDropdown.onchange = () => {
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
+    };
+}
+
+// Initial load
+setTimeout(() => {
+    loadPerformanceTable(assignedJamiaat, db, currentUser);
+}, 10);
 } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -502,15 +520,35 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 teacher.periods?.forEach((p, pIdx) => {
                     
                     let target = 0;
-                    const cls = (p.className || "").trim();
-                    const sub = (p.bookName || "").trim();
-                    const subId = `${cls}_${sub}`.replace(/\s+/g, '_'); // Aapka original Admin Logic
 
-                    if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
-                        }
-                    }
+const cls = (p.className || '')
+    .trim()
+    .toLowerCase();
+
+const sub = (p.bookName || '')
+    .trim()
+    .toLowerCase();
+
+// Admin panel jaisa exact key format
+const subId = `${className}_${subjectName}`
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/__+/g, '_');
+
+// Debug
+console.log('Checking Target Key:', subId);
+console.log('Available Targets:', monthlyTargets);
+
+if (
+    monthlyTargets &&
+    monthlyTargets[subId] &&
+    monthlyTargets[subId][selectedMonthId] !== undefined
+) {
+    target = parseInt(
+        monthlyTargets[subId][selectedMonthId]
+    ) || 0;
+}
                     
                     // Achieved data ko bhi 'selectedMonthId' (jaise June/July) ke hisab se fetch karna
                     const achievedValue = (p.achieved && p.achieved[selectedMonthId] !== undefined) ? parseInt(p.achieved[selectedMonthId]) : 0;
