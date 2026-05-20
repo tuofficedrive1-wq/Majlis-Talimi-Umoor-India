@@ -441,9 +441,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         
         if (!container || !monthSelect) return; 
 
-        // Hamesha current dropdown ki value fresh read karein taake month change par turant update ho
-        const selectedMonthId = monthSelect.value;
-        currentSelectedMonth = selectedMonthId; // Global variable ko update kar dein
+        // FAILSAFE 1: Mahine ke naam ko properly database ID me convert karna
+        let rawMonth = monthSelect.value || 'apr';
+        // 'June' ko 'jun', 'April' ko 'apr' me convert kar dega
+        const safeMonthId = rawMonth.substring(0, 3).toLowerCase(); 
+        currentSelectedMonth = safeMonthId;
 
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
@@ -460,7 +462,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             const safeJamiaId = jamiaName.replace(/\s+/g, '');
 
-            // Yahan Jamia ka naam aur saare buttons wapas add kar diye gaye hain
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
                 <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
@@ -506,16 +507,24 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const cleanBookName = (p.bookName || "").trim();
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-                    if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
+                    // FAILSAFE 2: Deep Matcher
+                    if (monthlyTargets && monthlyTargets[subId] && monthlyTargets[subId][safeMonthId] !== undefined) {
+                        target = parseInt(monthlyTargets[subId][safeMonthId]) || 0;
+                    } else if (monthlyTargets) {
+                        // Agar underscore ya kisi invisible character ki wajah se mismatch ho to ye usko theek karega
+                        const normalize = (str) => str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                        const normalizedSubId = normalize(`${cleanClassName}${cleanBookName}`);
+                        
+                        const matchedKey = Object.keys(monthlyTargets).find(k => normalize(k) === normalizedSubId);
+                        
+                        if (matchedKey && monthlyTargets[matchedKey][safeMonthId] !== undefined) {
+                            target = parseInt(monthlyTargets[matchedKey][safeMonthId]) || 0;
                         }
                     }
                     
-                    // Month wise achieved data read karna
-                    const achievedValue = (p.achieved && p.achieved[selectedMonthId]) !== undefined ? p.achieved[selectedMonthId] : 0;
+                    const achievedValue = (p.achieved && p.achieved[safeMonthId]) !== undefined ? p.achieved[safeMonthId] : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
+                    const result = calculateKaifiyatAndStyle(percentage, safeMonthId, p.semester);
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -528,7 +537,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
                                        class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
-                                       oninput="updateRowStatusLive(this, ${target}, '${selectedMonthId}', '${p.semester}')">
+                                       oninput="updateRowStatusLive(this, ${target}, '${safeMonthId}', '${p.semester}')">
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
