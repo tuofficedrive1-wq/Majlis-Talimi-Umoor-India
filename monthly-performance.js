@@ -9,7 +9,6 @@ import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-fires
 let academicConfig = null;
 let gDb = null;
 let gCurrentUser = null;
-const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 let gAssignedJamiaat = [];
 
 // Yeh variable state ko dashboard par back jaane par bhi safe rakhega
@@ -128,14 +127,13 @@ subTabBtns.forEach(btn => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
 // monthly-performance.js mein performance tab ka header section
-// Performance Tab HTML Generation
 if (tabName === 'performance') {
     const monthsHtml = [
         { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
         { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
         { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
         { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-    ].map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
 
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
@@ -164,24 +162,15 @@ if (tabName === 'performance') {
         <div id="performance-table-body"></div>
     `;
 
-    // Dropdown change hone par table update karega
-    document.getElementById('report-month').addEventListener('change', () => {
+    document.getElementById('report-month').onchange = (e) => {
+        currentSelectedMonth = e.target.value; // Global state me save karein
         loadPerformanceTable(assignedJamiaat, db, currentUser);
-    });
-    
-    document.getElementById('report-jamia').addEventListener('change', () => {
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
-    });
+    };
+    document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
     
     setTimeout(() => {
-        // Automatically current month select karna
-        const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-        const currentMonthId = monthNames[new Date().getMonth()];
-        const monthDropdown = document.getElementById('report-month');
-        if (monthDropdown) monthDropdown.value = currentMonthId || "apr";
-        
         loadPerformanceTable(assignedJamiaat, db, currentUser);
-    }, 50);
+    }, 10);
 } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -447,12 +436,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         const container = document.getElementById('performance-table-body');
-        const monthSelect = document.getElementById('report-month');
-        
-        if (!container || !monthSelect) return; 
+        if (!container) return; 
 
-        // Current dropdown value le raha hai (jaise hi month change hoga, ye naya month lega)
-        const selectedMonthId = monthSelect.value;
         const selectedJamia = document.getElementById('report-jamia').value;
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
@@ -470,26 +455,18 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
-                <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
-                    <div>
-                        <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
-                    </div>
-                </div>
+                ...
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
                         <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
                             <tr>
-                                <th class="p-4 border-b">Teacher</th><th class="p-4 border-b">Class</th>
-                                <th class="p-4 border-b">Subject</th><th class="p-4 border-b text-center">Total</th>
+                                <th class="p-4 border-b">Teacher</th>
+                                <th class="p-4 border-b">Class</th>
+                                <th class="p-4 border-b">Subject</th>
+                                <th class="p-4 border-b text-center">Total</th>
                                 <th class="p-4 border-b text-center text-indigo-600">Target</th>
-                                <th class="p-4 border-b text-center">Achieved</th><th class="p-4 border-b text-center">%</th>
+                                <th class="p-4 border-b text-center">Achieved</th>
+                                <th class="p-4 border-b text-center">%</th>
                                 <th class="p-4 border-b text-center">Kaifiyat</th>
                             </tr>
                         </thead>
@@ -502,17 +479,16 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const cleanBookName = (p.bookName || "").trim();
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-                    // Wahi original code jis se aapke targets fetch ho rahe the
                     if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][selectedMonthId] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
+                        if (monthlyTargets[subId][currentSelectedMonth] !== undefined) {
+                            target = parseInt(monthlyTargets[subId][currentSelectedMonth]) || 0;
                         }
                     }
                     
-                    // Selected month ke hisab se achieved data (User Database)
-                    const achievedValue = (p.achieved && p.achieved[selectedMonthId]) !== undefined ? p.achieved[selectedMonthId] : 0;
+                    // Month wise achieved data load karne ke liye check
+                    const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
+                    const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -525,7 +501,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
                                        class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
-                                       oninput="updateRowStatusLive(this, ${target}, '${selectedMonthId}', '${p.semester}')">
+                                       oninput="updateRowStatusLive(this, ${target}, '${currentSelectedMonth}', '${p.semester}')">
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
@@ -1197,91 +1173,4 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
             <p class="text-slate-500 font-bold">Abhi koi teacher register nahi kiya gaya hai.</p>
         </div>
     `;
-};
-
-window.updateRowStatusLive = (input, target, monthId, semester) => {
-    const row = input.closest('tr');
-    const achieved = parseInt(input.value) || 0;
-    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
-    
-    const percCell = row.querySelector('.perc-cell');
-    const statusCell = row.querySelector('.status-cell');
-    
-    if (percCell) percCell.textContent = percentage + "%";
-    
-    if (statusCell) {
-        const result = calculateKaifiyatAndStyle(percentage, monthId, semester);
-        statusCell.textContent = result.kaifiyat;
-        statusCell.className = `p-4 text-center italic status-cell ${result.colorClass}`;
-    }
-};
-
-window.toggleEditMode = async (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
-    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
-    const btn = document.querySelector(`.edit-btn-${safeId}`);
-    
-    // Direct dropdown se mahina parhna
-    const currentSelectedMonth = document.getElementById('report-month').value;
-
-    if (!inputs || inputs.length === 0) return;
-    const isLocked = inputs[0].disabled;
-
-    if (isLocked) {
-        inputs.forEach(inp => {
-            inp.disabled = false;
-            inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #6366f1";
-        });
-        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
-        btn.style.backgroundColor = "#10b981"; // Emerald-500 (Save ka color)
-    } else {
-        inputs.forEach(inp => {
-            inp.disabled = true;
-            inp.style.backgroundColor = "transparent";
-            inp.style.border = "1px solid transparent";
-        });
-        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.style.backgroundColor = "#4f46e5"; // Indigo-600
-        
-        // Save to Firebase logic
-        try {
-            // Humhe global variables use nahi karne parein isliye humne yahan auth object call kar liya
-            const currentDb = firebase.firestore(); 
-            const currentUser = firebase.auth().currentUser;
-
-            const calSnap = await getDoc(doc(currentDb, "settings", "academic_calendar"));
-            const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
-
-            const userRef = doc(currentDb, "users", currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            let academicYears = userSnap.data().academicYears || {};
-            let structure = academicYears[activeYear]?.karkardagiStructure || [];
-            let jamiaData = structure.find(j => j.jamiaName === jamiaName);
-
-            if (!jamiaData) return;
-
-            inputs.forEach(inp => {
-                const tid = inp.dataset.tid;
-                const pid = inp.dataset.pid;
-                const val = parseInt(inp.value) || 0;
-
-                const teacher = jamiaData.teachers.find(t => t.id === tid);
-                if (teacher) {
-                    const period = teacher.periods.find(p => p.id === pid);
-                    if (period) {
-                        if (!period.achieved) period.achieved = {};
-                        // Current month (jaise 'apr') par specific data save hoga
-                        period.achieved[currentSelectedMonth] = val; 
-                    }
-                }
-            });
-
-            await updateDoc(userRef, { academicYears });
-            alert(currentSelectedMonth.toUpperCase() + " ka Data successfully save ho gaya hai!");
-            
-        } catch (err) {
-            alert("Error saving: " + err.message);
-        }
-    }
 };
