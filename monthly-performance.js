@@ -119,7 +119,7 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
 
-    if (tabName === 'performance') {
+  if (tabName === 'performance') {
         const monthsHtml = [
             { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
             { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
@@ -154,20 +154,33 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             <div id="performance-table-body"></div>
         `;
 
-        const monthSelect = document.getElementById('report-month');
-        const jamiaSelect = document.getElementById('report-jamia');
+        // Yahan thoda sa delay (setTimeout) de rahe hain taaki DOM poori tarah ready ho jaye
+        setTimeout(() => {
+            const monthSelect = document.getElementById('report-month');
+            const jamiaSelect = document.getElementById('report-jamia');
 
-        if (monthSelect) {
-            monthSelect.onchange = (e) => {
-                currentSelectedMonth = e.target.value; 
-                loadPerformanceTable(assignedJamiaat, db, currentUser);
-            };
-        }
-        if (jamiaSelect) {
-            jamiaSelect.onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
-        }
-        
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
+            if (monthSelect) {
+                // Purane listener ko clear karke naya lagaya
+                monthSelect.onchange = null; 
+                monthSelect.onchange = (e) => {
+                    // Global variable ko naye month se update kiya
+                    currentSelectedMonth = e.target.value; 
+                    console.log("Month changed to:", currentSelectedMonth); // Debugging ke liye
+                    // Fir se fresh data load kiya
+                    loadPerformanceTable(assignedJamiaat, db, currentUser);
+                };
+            }
+
+            if (jamiaSelect) {
+                jamiaSelect.onchange = null;
+                jamiaSelect.onchange = () => {
+                    loadPerformanceTable(assignedJamiaat, db, currentUser);
+                };
+            }
+            
+            // First time loading for the current view
+            loadPerformanceTable(assignedJamiaat, db, currentUser);
+        }, 50);
 
     } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
