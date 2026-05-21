@@ -154,11 +154,19 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             <div id="performance-table-body"></div>
         `;
 
-        document.getElementById('report-month').onchange = (e) => {
-            currentSelectedMonth = e.target.value; // Global state updates perfectly
-            loadPerformanceTable(assignedJamiaat, db, currentUser);
-        };
-        document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+        // Safe Event Binding after HTML injection
+        const monthSelect = document.getElementById('report-month');
+        const jamiaSelect = document.getElementById('report-jamia');
+
+        if (monthSelect) {
+            monthSelect.onchange = (e) => {
+                currentSelectedMonth = e.target.value; 
+                loadPerformanceTable(assignedJamiaat, db, currentUser);
+            };
+        }
+        if (jamiaSelect) {
+            jamiaSelect.onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+        }
         
         loadPerformanceTable(assignedJamiaat, db, currentUser);
 
@@ -392,7 +400,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const container = document.getElementById('performance-table-body');
         if (!container) return; 
 
-        const selectedJamia = document.getElementById('report-jamia').value;
+        // Safe Fallback check for Dropdown value
+        const jamiaSelectElem = document.getElementById('report-jamia');
+        const selectedJamia = jamiaSelectElem ? jamiaSelectElem.value : "all";
+        
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
@@ -442,6 +453,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     let target = 0;
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
+                    
+                    // Fixed Format Matching with Target DB
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
                     if (monthlyTargets && monthlyTargets[subId]) {
@@ -632,7 +645,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                 loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear);
             } catch (e) {
                 alert("Error adding period: " + e.message);
-            } finally {
+            } $.finally {
                 btn.disabled = false;
                 btn.innerText = "Add Period";
             }
@@ -730,7 +743,6 @@ async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updat
     }
 }
 
-// --- Dynamic Row Live Update Sync ---
 window.updateRowStatusLive = (input, target, monthId, semester) => {
     const row = input.closest('tr');
     const achieved = parseInt(input.value) || 0;
@@ -760,7 +772,6 @@ window.toggleEditMode = async (jamiaName) => {
     const savingMonthId = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
 
     if (isLocked) {
-        // 🔓 Edit Mode: Unlock inputs
         inputs.forEach(inp => {
             inp.disabled = false;
             inp.style.backgroundColor = "white";
@@ -769,12 +780,10 @@ window.toggleEditMode = async (jamiaName) => {
         btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
         btn.style.backgroundColor = "#10b981"; 
     } else {
-        // 💾 Save Mode: Data Firebase me push karna
         btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving...`;
         btn.disabled = true;
         
         try {
-            // State se current active configurations uthana
             const databaseInstance = gDb;
             const userInstance = gCurrentUser;
 
@@ -814,12 +823,10 @@ window.toggleEditMode = async (jamiaName) => {
                     }
                 });
 
-                // Firebase me update push karna
                 await updateDoc(userRef, { 
                     academicYears: academicYears 
                 });
                 
-                // UI ko wapas safely lock karna
                 inputs.forEach(inp => {
                     inp.disabled = true;
                     inp.style.backgroundColor = "transparent";
@@ -831,8 +838,6 @@ window.toggleEditMode = async (jamiaName) => {
                 btn.disabled = false;
                 
                 alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
-                
-                // Naye loaded data ko stable karne ke liye dynamic re-render
                 loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
             } else {
                 alert("Jamia ka data nahi mila.");
@@ -850,7 +855,6 @@ window.toggleEditMode = async (jamiaName) => {
     }
 };
 
-// --- Link, Image & Excel Share Helpers ---
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
 window.copyTeacherFormLink = (jamiaName) => {
