@@ -86,11 +86,11 @@
     </div>
 
     <script type="module">
-        // Firebase modules import karein (Apne config ke mutabik version check kar lein)
-        // Firebase modules import karein
-// Galat URL ko hata kar ye sahi imports lagayein:
+        
+                // Firebase modules import karein (Version 10+ CDN standard)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
 // TODO: Yahan apni actual Firebase Project Configuration daalein
 const firebaseConfig = {
     apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -126,21 +126,17 @@ const periodContainer = document.getElementById('period-container');
 const btnAddPeriod = document.getElementById('btn-add-period');
 const performanceForm = document.getElementById('performance-form');
 
-// Verification Logic (Ab koi bhi 5-digit number valid mana jayega)
+// Verification Logic
 btnVerify.addEventListener('click', () => {
     const enteredId = loginIdInput.value.trim();
     
-    // Check validation: Code khali nahi hona chahiye aur pure 5 digits ka hona chahiye
     if(enteredId.length === 5 && !isNaN(enteredId)) {
-        // Switch screen
         loginContainer.classList.add('hidden');
         mainFormContainer.classList.remove('hidden');
         
-        // Hidden fields aur UI me entered ID set karna
         document.getElementById('hidden-jamia-id').value = enteredId;
         document.getElementById('hidden-jamia-name').value = urlJamiaName;
         
-        // Header dynamically update
         displayJamia.innerHTML = `<span class="text-indigo-600">Jamia:</span> ${urlJamiaName} (${enteredId})`;
         displayMonth.innerHTML = `<span class="text-indigo-600">Month:</span> --`;
         displayTeacher.innerHTML = `<span class="text-indigo-600">Teacher:</span> --`;
@@ -155,6 +151,8 @@ teacherNameInput.addEventListener('input', (e) => {
 });
 
 reportMonthSelect.addEventListener('change', (e) => {
+    // Inspector dashboard me months shortform (jan, feb, mar...) me lowercase me save hote hain
+    const shortMonth = e.target.value.substring(0, 3).toLowerCase();
     displayMonth.innerHTML = `<span class="text-indigo-600">Month:</span> ${e.target.value || '--'}`;
 });
 
@@ -176,7 +174,6 @@ btnAddPeriod.addEventListener('click', () => {
     toggleRemoveButtons();
 });
 
-// Row delete karne ke liye event delegation
 periodContainer.addEventListener('click', (e) => {
     if(e.target.closest('.btn-remove-row')) {
         e.target.closest('.period-row').remove();
@@ -186,7 +183,7 @@ periodContainer.addEventListener('click', (e) => {
 
 function toggleRemoveButtons() {
     const rows = periodContainer.querySelectorAll('.period-row');
-    rows.forEach((row, index) => {
+    rows.forEach((row) => {
         const deleteBtn = row.querySelector('.btn-remove-row');
         if(rows.length === 1) {
             deleteBtn.classList.add('hidden');
@@ -196,47 +193,72 @@ function toggleRemoveButtons() {
     });
 }
 
-// Form Submit aur Firestore data saving logic
+// FORM SUBMIT: Dashboard ke mutabik Data Structure sync kiya gaya hai
 performanceForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const jamiaId = document.getElementById('hidden-jamia-id').value;
-    const jamiaName = document.getElementById('hidden-jamia-name').value;
-    const teacherName = teacherNameInput.value;
-    const selectedMonth = reportMonthSelect.value;
+    const teacherName = teacherNameInput.value.trim();
+    const selectedFullMonth = reportMonthSelect.value;
     
-    const periodsData = [];
+    // Dashboard ke logic ke hisab se month ko 3 letters lowercase me convert karna (e.g., "May" -> "may")
+    const dbMonthFormat = selectedFullMonth.substring(0, 3).toLowerCase(); 
+    
+    // Periods detail ko MAP/OBJECT structure me convert karna jaisa dashboard read karta hai
+    // Format: { "period_1": { class: "1", subject: "Urdu", page_from: 1, page_to: 10 } }
+    const periodsDetailMap = {};
     const rows = periodContainer.querySelectorAll('.period-row');
     
-    rows.forEach(row => {
-        periodsData.push({
-            class: row.querySelector('.input-class').value,
-            subject: row.querySelector('.input-subject').value,
-            pageFrom: parseInt(row.querySelector('.input-page-from').value),
-            pageTo: parseInt(row.querySelector('.input-page-to').value)
-        });
+    rows.forEach((row, index) => {
+        const periodKey = `period_${index + 1}`;
+        periodsDetailMap[periodKey] = {
+            class: row.querySelector('.input-class').value.trim(),
+            subject: row.querySelector('.input-subject').value.trim(),
+            page_from: parseInt(row.querySelector('.input-page-from').value) || 0,
+            page_to: parseInt(row.querySelector('.input-page-to').value) || 0
+        };
     });
 
-    const performancePayload = {
-        jamiaId: jamiaId,
-        jamiaName: jamiaName,
-        teacherName: teacherName,
-        month: selectedMonth,
-        periodsDetail: periodsData,
-        submittedAt: new Date().toISOString()
-    };
-
     try {
-        // Document ID format: jamiaId_Month (e.g., 12545_May)
-        const docId = `${jamiaId}_${selectedMonth}`;
+        // Dashboard rules ke mutabik collection ka naam "academic_performance" hoga aur doc ID sirf JamiaID hogi
+        const docRef = doc(db, "academic_performance", jamiaId);
         
-        await setDoc(doc(db, "monthly_performances", docId), performancePayload);
+        // Pehle se maujud data check karein taaki purani months ka data delete na ho jaye
+        const docSnap = await getDoc(docRef);
+        let existingData = {};
+        if (docSnap.exists()) {
+            existingData = docSnap.data();
+        }
+
+        // Naya structure map taiyar karna jo aapke js file ke read function se match kare
+        const newTeacherData = {
+            name: teacherName,
+            designation: "Teacher", // Default designation
+            periods_detail: periodsDetailMap
+        };
+
+        // Agar us mahine ka data pehle se hai to teachers array check karein ya naya array banayein
+        let monthData = existingData[dbMonthFormat] || { teachers: [] };
         
-        alert('Performance data kamyabi se save ho gaya hai!');
+        // Purane same naam ke teacher ka record hataiye agar dubara submit ho raha hai
+        let updatedTeachers = (monthData.teachers || []).filter(t => t.name.toLowerCase() !== teacherName.toLowerCase());
+        updatedTeachers.push(newTeacherData);
+
+        // Month data object ko update karein
+        existingData[dbMonthFormat] = {
+            teachers: updatedTeachers,
+            updated_at: new Date().toISOString()
+        };
+
+        // Final Save back to Firestore
+        await setDoc(docRef, existingData, { merge: true });
+        
+        alert('Performance data kamyabi se save ho gaya hai! Dashboard par ab ye auto-load ho jayega.');
+        
+        // Form Reset System
         performanceForm.reset();
         displayTeacher.innerHTML = `<span class="text-indigo-600">Teacher:</span> --`;
         displayMonth.innerHTML = `<span class="text-indigo-600">Month:</span> --`;
-        
         periodContainer.innerHTML = `
             <div class="period-row grid grid-cols-1 md:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border relative">
                 <input type="text" placeholder="Class" class="input-class p-2.5 border rounded-lg text-sm" required>
@@ -250,8 +272,8 @@ performanceForm.addEventListener('submit', async (e) => {
             </div>
         `;
     } catch (error) {
-        console.error("Error saving document: ", error);
-        alert("Data save karne me koi dikkat aayi.");
+        console.error("Error saving to Firestore: ", error);
+        alert("Data save karne me koi error aayi. Kripya rules aur console check karein.");
     }
 });
     </script>
