@@ -460,14 +460,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
+        // Admin file ke mutabiq data 'targets' object ke andar hai
         const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
         
         const monthSelect = document.getElementById('report-month');
         if (!monthSelect) return; 
 
-        // Dropdown se selected month uthana
         const selectedMonthId = monthSelect.value;
-
         const container = document.getElementById('performance-table-body');
         if (!container) return; 
 
@@ -480,6 +479,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
         let html = "";
+
         filteredJamiaat.forEach(jamiaName => {
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) return;
@@ -521,18 +521,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     
                     let target = 0;
 
-                    // ✅ FIXED: Sahi variables use kiye gaye hain
+                    // Exact match of Admin trimming
                     const cls = (p.className || '').trim();
                     const sub = (p.bookName || '').trim();
 
-                    // Admin panel jaisa exact key format
-                    const subId = `${cls}_${sub}`
-                        .toLowerCase()
-                        .replace(/\s+/g, '_')
-                        .replace(/__+/g, '_');
-
-                    // Debugging ke liye console log (optional)
-                    // console.log(`Checking Target Key: ${subId} for Month: ${selectedMonthId}`);
+                    // 🚨 EXACT ADMIN LOGIC: Bina toLowerCase() ke
+                    const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
 
                     if (
                         monthlyTargets &&
@@ -542,8 +536,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
                     }
                     
-                    // Achieved data ko bhi selectedMonthId ke hisab se fetch karna
-                    const achievedValue = (p.achieved && p.achieved[selectedMonthId] !== undefined) ? parseInt(p.achieved[selectedMonthId]) : 0;
+                    const achievedValue = (p.achieved && p.achieved[selectedMonthId] != null) ? parseInt(p.achieved[selectedMonthId]) : 0;
                     
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
@@ -568,9 +561,9 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             });
             html += `</tbody></table></div></div>`;
         });
-        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">Koi data nahi mila.</div>';
+        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">Is mahine ka data nahi mila.</div>';
     } catch (e) {
-        console.error("Load Error:", e);
+        console.error("Load Performance Table Error:", e);
     }
 };
 
