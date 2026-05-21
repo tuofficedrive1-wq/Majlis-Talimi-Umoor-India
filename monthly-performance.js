@@ -465,7 +465,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const monthSelect = document.getElementById('report-month');
         if (!monthSelect) return; 
 
-        // Seedha Dropdown se Month uthana (Bina reset kiye)
+        // Dropdown se selected month uthana
         const selectedMonthId = monthSelect.value;
 
         const container = document.getElementById('performance-table-body');
@@ -521,36 +521,28 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     
                     let target = 0;
 
-const cls = (p.className || '')
-    .trim()
-    .toLowerCase();
+                    // ✅ FIXED: Sahi variables use kiye gaye hain
+                    const cls = (p.className || '').trim();
+                    const sub = (p.bookName || '').trim();
 
-const sub = (p.bookName || '')
-    .trim()
-    .toLowerCase();
+                    // Admin panel jaisa exact key format
+                    const subId = `${cls}_${sub}`
+                        .toLowerCase()
+                        .replace(/\s+/g, '_')
+                        .replace(/__+/g, '_');
 
-// Admin panel jaisa exact key format
-const subId = `${className}_${subjectName}`
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_')
-    .replace(/__+/g, '_');
+                    // Debugging ke liye console log (optional)
+                    // console.log(`Checking Target Key: ${subId} for Month: ${selectedMonthId}`);
 
-// Debug
-console.log('Checking Target Key:', subId);
-console.log('Available Targets:', monthlyTargets);
-
-if (
-    monthlyTargets &&
-    monthlyTargets[subId] &&
-    monthlyTargets[subId][selectedMonthId] !== undefined
-) {
-    target = parseInt(
-        monthlyTargets[subId][selectedMonthId]
-    ) || 0;
-}
+                    if (
+                        monthlyTargets &&
+                        monthlyTargets[subId] &&
+                        monthlyTargets[subId][selectedMonthId] !== undefined
+                    ) {
+                        target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
+                    }
                     
-                    // Achieved data ko bhi 'selectedMonthId' (jaise June/July) ke hisab se fetch karna
+                    // Achieved data ko bhi selectedMonthId ke hisab se fetch karna
                     const achievedValue = (p.achieved && p.achieved[selectedMonthId] !== undefined) ? parseInt(p.achieved[selectedMonthId]) : 0;
                     
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
@@ -576,7 +568,7 @@ if (
             });
             html += `</tbody></table></div></div>`;
         });
-        container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Data nahi mila.</div>';
+        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">Koi data nahi mila.</div>';
     } catch (e) {
         console.error("Load Error:", e);
     }
