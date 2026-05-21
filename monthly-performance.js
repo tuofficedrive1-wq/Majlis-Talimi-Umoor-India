@@ -163,30 +163,31 @@ if (tabName === 'performance') {
         <div id="performance-table-body"></div>
     `;
 
-    const monthDropdown = document.getElementById('report-month');
-    const jamiaDropdown = document.getElementById('report-jamia');
+    // Mahina select karne ka dropdown
+const monthDropdown = document.getElementById('report-month');
+if (monthDropdown) {
+    // Current mahina set karein
+    monthDropdown.value = currentSelectedMonth || 'apr';
 
-    // DOM se current month set karein taaki hamesha sync rahe
-    if (monthDropdown) {
-        monthDropdown.value = window.currentSelectedMonth || monthNames[new Date().getMonth()] || 'apr';
-        
-        // Strict OnChange Event
-        monthDropdown.onchange = () => {
-            window.currentSelectedMonth = monthDropdown.value; // State update
-            loadPerformanceTable(assignedJamiaat, db, currentUser);
-        };
-    }
-
-    if (jamiaDropdown) {
-        jamiaDropdown.onchange = () => {
-            loadPerformanceTable(assignedJamiaat, db, currentUser);
-        };
-    }
-
-    // Initial Load
-    setTimeout(() => {
+    // Dropdown change hone par state update karein aur table reload karein
+    monthDropdown.onchange = (e) => {
+        currentSelectedMonth = e.target.value; 
         loadPerformanceTable(assignedJamiaat, db, currentUser);
-    }, 50);
+    };
+}
+
+// Jamia select karne ka dropdown
+const jamiaDropdown = document.getElementById('report-jamia');
+if (jamiaDropdown) {
+    jamiaDropdown.onchange = () => {
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
+    };
+}
+
+// Initial load (10 millisecond delay ke sath taaki UI set ho jaye)
+setTimeout(() => {
+    loadPerformanceTable(assignedJamiaat, db, currentUser);
+}, 10);
 } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -450,13 +451,14 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
-        // Admin database se exactly targets object uthana
+        // Admin ke 'targets' object ko safely fetch karna
         const targetData = targetSnap.exists() ? targetSnap.data() : {};
         const monthlyTargets = targetData.targets || targetData || {};
         
         const monthSelect = document.getElementById('report-month');
         if (!monthSelect) return; 
 
+        // Current selected month dropdown se uthana
         const selectedMonthId = monthSelect.value;
         const container = document.getElementById('performance-table-body');
         if (!container) return; 
@@ -465,13 +467,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        const userData = userSnap.data();
-        const karkardagi = userData?.academicYears?.[activeYear]?.karkardagiStructure || [];
+        const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
 
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
         let html = "";
-
         filteredJamiaat.forEach(jamiaName => {
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData || !jamiaData.teachers) return;
@@ -483,9 +483,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
                     <div>
                         <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Performance: ${selectedMonthId.toUpperCase()}</p>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
                         <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
                     </div>
                 </div>
@@ -507,18 +510,21 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
             jamiaData.teachers.forEach((teacher) => {
                 (teacher.periods || []).forEach((p, pIdx) => {
+                    
                     let target = 0;
 
-                    // STRICT ADMIN MATCHING LOGIC
+                    // EXACT ADMIN LOGIC: Bina toLowerCase() aur strict spacing fix
                     const cls = (p.className || '').trim();
                     const sub = (p.bookName || '').trim();
                     const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
 
-                    if (monthlyTargets[subId] && monthlyTargets[subId][selectedMonthId] !== undefined) {
+                    if (monthlyTargets && monthlyTargets[subId] && monthlyTargets[subId][selectedMonthId] !== undefined) {
                         target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
                     }
                     
+                    // Selected mahine ka data fetch karein
                     const achievedValue = (p.achieved && p.achieved[selectedMonthId] != null) ? parseInt(p.achieved[selectedMonthId]) : 0;
+                    
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
 
@@ -542,10 +548,9 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             });
             html += `</tbody></table></div></div>`;
         });
-        
-        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold bg-white rounded-3xl border border-slate-200">Is mahine ka koi data nahi mila.</div>';
+        container.innerHTML = html || '<div class="p-10 text-center text-slate-400 font-bold">Data nahi mila.</div>';
     } catch (e) {
-        console.error("Load Performance Error:", e);
+        console.error("Load Performance Table Error:", e);
     }
 };
 
