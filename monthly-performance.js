@@ -392,17 +392,20 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     try {
-        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-        const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+        // Targets aur Calendar dono documents ko fetch kar rahe hain
+        const [targetSnap, calSnap] = await Promise.all([
+            getDoc(doc(db, "settings", "monthly_page_targets")),
+            getDoc(doc(db, "settings", "academic_calendar"))
+        ]);
 
-        const monthlyTargets = targetSnap.exists() ? targetSnap.data().targets : {};
+        const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
         const container = document.getElementById('performance-table-body');
         if (!container) return; 
 
         const jamiaSelectElem = document.getElementById('report-jamia');
         const selectedJamia = jamiaSelectElem ? jamiaSelectElem.value : "all";
         
-        const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
+        const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
 
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
@@ -452,17 +455,21 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
                     
+                    // ID generation logic matching Firebase setup
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
+                    // Global selected month ko lowercase me check karenge safety ke liye
+                    const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
+
                     if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][currentSelectedMonth] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][currentSelectedMonth]) || 0;
+                        if (monthlyTargets[subId][targetMonthKey] !== undefined) {
+                            target = parseInt(monthlyTargets[subId][targetMonthKey]) || 0;
                         }
                     }
                     
-                    const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
+                    const achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
+                    const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -475,7 +482,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
                                        class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
-                                       oninput="updateRowStatusLive(this, ${target}, '${currentSelectedMonth}', '${p.semester}')">
+                                       oninput="updateRowStatusLive(this, ${target}, '${targetMonthKey}', '${p.semester}')">
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
