@@ -978,9 +978,24 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
 };
 
 // Yeh function main dashboard call karega jab bhi wahan month change hoga
+// Dashboard se connected handler function (Updated with Safety Check)
 export const handleDashboardMonthChange = (newMonth, assignedJamiaat, db, currentUser) => {
     currentSelectedMonth = newMonth.toLowerCase().trim();
-    console.log("Performance tab synced with dashboard month:", currentSelectedMonth);
-    // Table ko naye month ke sath reload karein
-    loadPerformanceTable(assignedJamiaat || gAssignedJamiaat, db || gDb, currentUser || gCurrentUser);
+    console.log("Performance Tab Synced with Dashboard Month:", currentSelectedMonth);
+    
+    // Global variables ko safe rakhne ke liye backup parameters set kar rahe hain
+    if (assignedJamiaat) gAssignedJamiaat = assignedJamiaat;
+    if (db) gDb = db;
+    if (currentUser) gCurrentUser = currentUser;
+
+    // CRITICAL SAFETY CHECK: Agar user abhi main dashboard par hai aur performance tab khula hi nahi hai,
+    // toh table load nahi chalayenge, varna loader hamesha ghumta rahega.
+    const tableBody = document.getElementById('performance-table-body');
+    if (!tableBody) {
+        console.log("Performance table body not found in DOM yet. Skipping table render.");
+        return; // Yahan se safe exit kar jayega, code crash nahi hoga
+    }
+    
+    // Agar element mil jata hai (yaani user performance tab par hai), tabhi load chalega
+    loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
 };
