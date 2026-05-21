@@ -109,7 +109,7 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
             btn.classList.remove('text-slate-500');
             
             const targetTab = btn.getAttribute('data-sub');
-            renderSubTabContent(targetTab, assignedJamiaat, currentUser, db);
+            renderSubTabContent(targetTab, gAssignedJamiaat, gCurrentUser, gDb);
         };
     });
 
@@ -154,7 +154,6 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             <div id="performance-table-body"></div>
         `;
 
-        // Safe Event Binding after HTML injection
         const monthSelect = document.getElementById('report-month');
         const jamiaSelect = document.getElementById('report-jamia');
 
@@ -400,7 +399,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const container = document.getElementById('performance-table-body');
         if (!container) return; 
 
-        // Safe Fallback check for Dropdown value
         const jamiaSelectElem = document.getElementById('report-jamia');
         const selectedJamia = jamiaSelectElem ? jamiaSelectElem.value : "all";
         
@@ -454,7 +452,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
                     
-                    // Fixed Format Matching with Target DB
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
                     if (monthlyTargets && monthlyTargets[subId]) {
@@ -645,7 +642,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                 loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear);
             } catch (e) {
                 alert("Error adding period: " + e.message);
-            } $.finally {
+            } finally {
                 btn.disabled = false;
                 btn.innerText = "Add Period";
             }
