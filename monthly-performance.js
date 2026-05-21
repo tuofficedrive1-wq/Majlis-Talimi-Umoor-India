@@ -1118,7 +1118,7 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     `;
 };
 
-// --- Asal Data Save Karne Wala Edit/Lock Function ---
+// --- 100% Safe Data Save Karne Wala Edit/Lock Function ---
 window.toggleEditMode = async (jamiaName) => {
     // Spaces hatakar safe ID banana
     const safeId = jamiaName ? jamiaName.replace(/\s+/g, '') : 'id';
@@ -1128,9 +1128,9 @@ window.toggleEditMode = async (jamiaName) => {
     if (!inputs || inputs.length === 0) return;
     const isLocked = inputs[0].disabled;
 
-    // Current selected month dropdown se nikalna 
+    // Current selected month dropdown se nikalna (Safe Fallback ke sath)
     const monthSelect = document.getElementById('report-month');
-    const savingMonthId = monthSelect ? monthSelect.value : currentSelectedMonth;
+    const savingMonthId = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
 
     if (isLocked) {
         // 🔓 Edit Mode: Unlock inputs
@@ -1154,11 +1154,19 @@ window.toggleEditMode = async (jamiaName) => {
             // Current User ka data reference
             const userRef = doc(gDb, "users", gCurrentUser.uid);
             const userSnap = await getDoc(userRef);
-            let academicYears = userSnap.data().academicYears || {};
-            let structure = academicYears[activeYear]?.karkardagiStructure || [];
+            
+            // Data safely nikalna taaki undefined error na aaye
+            let userData = userSnap.exists() ? userSnap.data() : {};
+            let academicYears = userData.academicYears || {};
+            
+            if (!academicYears[activeYear]) {
+                academicYears[activeYear] = { karkardagiStructure: [] };
+            }
+            
+            let structure = academicYears[activeYear].karkardagiStructure;
             let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
-            // Agar jamia ka data milta hai, to loop chala kar saare inputs ki value save karein
+            // Agar jamia ka data milta hai, to usme values set karein
             if (jamiaData) {
                 inputs.forEach(inp => {
                     const tid = inp.dataset.tid;
@@ -1170,14 +1178,16 @@ window.toggleEditMode = async (jamiaName) => {
                         const period = teacher.periods.find(p => p.id === pid);
                         if (period) {
                             if (!period.achieved) period.achieved = {};
-                            // Exact us mahine ke andar data save karein
                             period.achieved[savingMonthId] = val; 
                         }
                     }
                 });
 
-                // Firebase Update command
-                await updateDoc(userRef, { academicYears });
+                // 🚨 FIX: updateDoc ki jagah setDoc (merge: true) use kiya hai
+                // Yeh syntax assure karta hai ki object kabhi 'empty' mark nahi hoga
+                await setDoc(userRef, { 
+                    academicYears: academicYears 
+                }, { merge: true });
                 
                 // Save hone ke baad UI ko wapas lock karna
                 inputs.forEach(inp => {
@@ -1189,10 +1199,14 @@ window.toggleEditMode = async (jamiaName) => {
                 btn.style.backgroundColor = "#4f46e5"; // Wapas indigo color
                 
                 alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
+            } else {
+                alert("Jamia ka data nahi mila. Pehle structure tab se teacher save karein.");
             }
         } catch (err) {
-            console.error(err);
+            console.error("Firebase Save Error:", err);
             alert("Error saving data: " + err.message);
+            
+            // Error aane par button ko wapas Save mode me laana
             btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
             btn.style.backgroundColor = "#10b981";
         } finally {
