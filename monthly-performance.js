@@ -749,62 +749,103 @@ window.updateRowStatusLive = (input, target, monthId, semester) => {
 };
 
 window.toggleEditMode = async (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
+    const safeId = jamiaName ? jamiaName.replace(/\s+/g, '') : 'id';
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
     const btn = document.querySelector(`.edit-btn-${safeId}`);
 
     if (!inputs || inputs.length === 0) return;
     const isLocked = inputs[0].disabled;
 
+    const monthSelect = document.getElementById('report-month');
+    const savingMonthId = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
+
     if (isLocked) {
+        // 🔓 Edit Mode: Unlock inputs
         inputs.forEach(inp => {
             inp.disabled = false;
             inp.style.backgroundColor = "white";
             inp.style.border = "1px solid #6366f1";
         });
-        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
-        btn.style.backgroundColor = "#1e293b";
+        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
+        btn.style.backgroundColor = "#10b981"; 
     } else {
-        inputs.forEach(inp => {
-            inp.disabled = true;
-            inp.style.backgroundColor = "transparent";
-            inp.style.border = "1px solid transparent";
-        });
-        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.style.backgroundColor = "#4f46e5";
+        // 💾 Save Mode: Data Firebase me push karna
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving...`;
+        btn.disabled = true;
         
         try {
-            const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
+            // State se current active configurations uthana
+            const databaseInstance = gDb;
+            const userInstance = gCurrentUser;
+
+            if (!databaseInstance || !userInstance) {
+                throw new Error("Database ya User session nahi mila. Please page refresh karein.");
+            }
+
+            const calSnap = await getDoc(doc(databaseInstance, "settings", "academic_calendar"));
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-            const userRef = doc(gDb, "users", gCurrentUser.uid);
+            const userRef = doc(databaseInstance, "users", userInstance.uid);
             const userSnap = await getDoc(userRef);
-            let academicYears = userSnap.data().academicYears || {};
-            let structure = academicYears[activeYear]?.karkardagiStructure || [];
+            
+            let userData = userSnap.exists() ? userSnap.data() : {};
+            let academicYears = userData.academicYears || {};
+            
+            if (!academicYears[activeYear]) {
+                academicYears[activeYear] = { karkardagiStructure: [] };
+            }
+            
+            let structure = academicYears[activeYear].karkardagiStructure;
             let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
-            if (!jamiaData) return;
+            if (jamiaData) {
+                inputs.forEach(inp => {
+                    const tid = inp.dataset.tid;
+                    const pid = inp.dataset.pid;
+                    const val = parseInt(inp.value) || 0;
 
-            inputs.forEach(inp => {
-                const tid = inp.dataset.tid;
-                const pid = inp.dataset.pid;
-                const val = parseInt(inp.value) || 0;
-
-                const teacher = jamiaData.teachers.find(t => t.id === tid);
-                if (teacher) {
-                    const period = teacher.periods.find(p => p.id === pid);
-                    if (period) {
-                        if (!period.achieved) period.achieved = {};
-                        period.achieved[currentSelectedMonth] = val; // Saves month-wise properly
+                    const teacher = jamiaData.teachers.find(t => t.id === tid);
+                    if (teacher) {
+                        const period = teacher.periods.find(p => p.id === pid);
+                        if (period) {
+                            if (!period.achieved) period.achieved = {};
+                            period.achieved[savingMonthId] = val; 
+                        }
                     }
-                }
-            });
+                });
 
-            await updateDoc(userRef, { academicYears });
-            alert("Data successfully saved for " + currentSelectedMonth.toUpperCase());
-            loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
+                // Firebase me update push karna
+                await updateDoc(userRef, { 
+                    academicYears: academicYears 
+                });
+                
+                // UI ko wapas safely lock karna
+                inputs.forEach(inp => {
+                    inp.disabled = true;
+                    inp.style.backgroundColor = "transparent";
+                    inp.style.border = "1px solid transparent";
+                });
+                
+                btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
+                btn.style.backgroundColor = "#4f46e5"; 
+                btn.disabled = false;
+                
+                alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
+                
+                // Naye loaded data ko stable karne ke liye dynamic re-render
+                loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
+            } else {
+                alert("Jamia ka data nahi mila.");
+                btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
+                btn.style.backgroundColor = "#4f46e5";
+                btn.disabled = false;
+            }
         } catch (err) {
-            alert("Error saving: " + err.message);
+            console.error("Firebase Save Error:", err);
+            alert("Error saving data: " + err.message);
+            btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
+            btn.style.backgroundColor = "#10b981";
+            btn.disabled = false;
         }
     }
 };
