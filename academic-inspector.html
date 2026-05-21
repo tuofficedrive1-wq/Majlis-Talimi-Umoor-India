@@ -264,51 +264,58 @@ import {
 // academic-inspector.html ke script section mein ye add/update karein
 
 async function initDashboard() {
-    showLoader(true);
-    const monthInput = document.getElementById('report-month');
-    
-    // 1. Current Month set karna (YYYY-MM format mein)
-    const now = new Date();
-    const currentMonthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    
-    if(!monthInput.value) {
-        monthInput.value = currentMonthValue;
-    }
-
-    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const [year, month] = monthInput.value.split('-');
-    const selectedMonthFull = `${monthNames[parseInt(month)-1]} ${year}`;
-
-    // 2. Header text ko update karna
-    const headerText = document.getElementById('current-month-text');
-    if (headerText) {
-        headerText.textContent = selectedMonthFull;
-    }
-
-    // 3. User details aur Jamiaat list fetch karna
-    const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-    if (userDoc.exists()) {
-        const userData = userDoc.data();
+    try {
+        showLoader(true);
+        const monthInput = document.getElementById('report-month');
         
-        // Inspector ka naam update karna
-        const nameElement = document.getElementById('inspector-name');
-        if (nameElement) {
-            nameElement.textContent = userData.name || "Inspector";
+        // 1. Current Month set karna (YYYY-MM format mein)
+        const now = new Date();
+        const currentMonthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        
+        if(!monthInput.value) {
+            monthInput.value = currentMonthValue;
         }
 
-        assignedJamiaat = userData.jamiaatList || [];
-        document.getElementById('stat-jamia-count').textContent = assignedJamiaat.length;
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const [year, month] = monthInput.value.split('-');
+        const selectedMonthFull = `${monthNames[parseInt(month)-1]} ${year}`;
+
+        // 2. Header text ko update karna
+        const headerText = document.getElementById('current-month-text');
+        if (headerText) {
+            headerText.textContent = selectedMonthFull;
+        }
+
+        // 3. User details aur Jamiaat list fetch karna
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            
+            // Inspector ka naam update karna
+            const nameElement = document.getElementById('inspector-name');
+            if (nameElement) {
+                nameElement.textContent = userData.name || "Inspector";
+            }
+
+            assignedJamiaat = userData.jamiaatList || [];
+            const countElem = document.getElementById('stat-jamia-count');
+            if (countElem) countElem.textContent = assignedJamiaat.length;
+        }
+
+        // --- CRITICAL SYNC LOGIC FOR PERFORMANCE TAB ---
+        const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        const currentShortMonth = shortMonths[parseInt(month) - 1];
+        handleDashboardMonthChange(currentShortMonth, assignedJamiaat, db, currentUser);
+        // ------------------------------------------------
+
+        // 4. LoadStats ko call karna
+        await loadStats(); 
+    } catch (err) {
+        console.error("Dashboard Initialization Error:", err);
+    } finally {
+        // FIXED: Kisi bhi haal me dashboard ready hote hi loader band hoga
+        showLoader(false); 
     }
-
-    // --- CRITICAL SYNC LOGIC FOR PERFORMANCE TAB ---
-    // Yahan hum main dashboard wale input ki value ko JS file ke short format ('apr', 'may') mein convert karke bhej rahe hain
-    const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    const currentShortMonth = shortMonths[parseInt(month) - 1];
-    handleDashboardMonthChange(currentShortMonth, assignedJamiaat, db, currentUser);
-    // ------------------------------------------------
-
-    // 4. LoadStats ko call karna
-    await loadStats(); 
 }
 
 // Mahina badalne par dashboard ko reload karne ke liye ye listener zaroori hai
@@ -333,63 +340,69 @@ document.getElementById('report-month').addEventListener('change', (e) => {
 
             // academic-inspector.html ke andar loadStats function ko replace karein
 async function loadStats() {
-    const month = document.getElementById('report-month').value; // Example: "2026-05"
-    const reportId = `${currentUser.uid}_${month}`;
-    
-    // 1. Inspector Reports se us mahine ka saved data lein
-    const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
-    reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
+    try {
+        const monthInput = document.getElementById('report-month');
+        if (!monthInput || !monthInput.value) return;
+        
+        const month = monthInput.value; 
+        const reportId = `${currentUser.uid}_${month}`;
+        
+        // 1. Inspector Reports se us mahine ka saved data lein
+        const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
+        reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
 
-    // 2. NAYA LOGIC: Har Jamia ke liye us specific mahine ki inspection dhoondein
-    for (let jamia of assignedJamiaat) {
-        // Firestore mein "academic_inspections" collection mein query karein
-        // Jahan jamiaName aur month dono match karte hon
-        const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`; // ID mein month add karein
-        const detailSnap = await getDoc(doc(db, "academic_inspections", inspectionId));
+        // 2. Har Jamia ke liye us specific mahine ki inspection dhoondein
+        for (let jamia of assignedJamiaat) {
+            const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`; 
+            const detailSnap = await getDoc(doc(db, "academic_inspections", inspectionId));
 
-        if (detailSnap.exists()) {
-            const detailData = detailSnap.data();
-            
-            // Check karein ke kya is jamia ka record pehle se reportsData mein hai?
-            let existingJaiza = reportsData.jaiza.find(j => j.name === jamia);
-            
-            if (existingJaiza) {
-                // Agar form bhar diya gaya hai, toh score aur date update karein
-                existingJaiza.score = detailData.overallPercentage.replace('%', '');
-                if(detailData.inspectionDate) {
-                    const d = detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate() : new Date(detailData.inspectionDate);
-                    existingJaiza.date = d.toISOString().split('T')[0];
+            if (detailSnap.exists()) {
+                const detailData = detailSnap.data();
+                if (!reportsData.jaiza) reportsData.jaiza = [];
+                
+                let existingJaiza = reportsData.jaiza.find(j => j.name === jamia);
+                
+                if (existingJaiza) {
+                    existingJaiza.score = detailData.overallPercentage ? detailData.overallPercentage.replace('%', '') : '0';
+                    if(detailData.inspectionDate) {
+                        const d = detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate() : new Date(detailData.inspectionDate);
+                        existingJaiza.date = d.toISOString().split('T')[0];
+                    }
+                } else {
+                    reportsData.jaiza.push({
+                        name: jamia,
+                        score: detailData.overallPercentage ? detailData.overallPercentage.replace('%', '') : '0',
+                        type: "Inspection",
+                        date: detailData.inspectionDate ? (detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate().toISOString().split('T')[0] : detailData.inspectionDate) : ""
+                    });
                 }
-            } else {
-                // Nayi entry add karein agar record nahi tha
-                reportsData.jaiza.push({
-                    name: jamia,
-                    score: detailData.overallPercentage.replace('%', ''),
-                    type: "Inspection",
-                    date: detailData.inspectionDate ? (detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate().toISOString().split('T')[0] : detailData.inspectionDate) : ""
-                });
             }
         }
-    }
 
-    // Baaki UI update logic
-    const total = assignedJamiaat.length;
-    const updateUI = (prefix, count) => {
-        const percent = total > 0 ? Math.round((count / total) * 100) : 0;
-        const displayPercent = document.getElementById(`prog-${prefix}-percent`);
-        const bar = document.getElementById(`prog-${prefix}-bar`);
-        if(displayPercent) displayPercent.textContent = `${percent}%`;
-        if(bar) bar.style.width = `${percent}%`;
-    };
+        // UI update logic
+        const total = assignedJamiaat.length;
+        const updateUI = (prefix, count) => {
+            const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+            const displayPercent = document.getElementById(`prog-${prefix}-percent`);
+            const bar = document.getElementById(`prog-${prefix}-bar`);
+            if(displayPercent) displayPercent.textContent = `${percent}%`;
+            if(bar) bar.style.width = `${percent}%`;
+        };
 
-    updateUI('jaiza', (reportsData.jaiza || []).length);
-setTimeout(() => {
-    renderMainCharts();
-}, 100);
-    
-    // Agar report section khula hai toh list refresh karein
-    if(!document.getElementById('reports-section').classList.contains('hidden')) {
-        window.renderInspectionList();
+        updateUI('jaiza', (reportsData.jaiza || []).length);
+        
+        // Chart rendering with protection
+        setTimeout(() => {
+            renderMainCharts();
+        }, 100);
+        
+        // Agar report section khula hai toh list refresh karne ke liye
+        const reportSec = document.getElementById('reports-section');
+        if (reportSec && !reportSec.classList.contains('hidden')) {
+            window.renderInspectionList();
+        }
+    } catch (statsErr) {
+        console.error("Error in loadStats:", statsErr);
     }
 }
 
@@ -478,23 +491,25 @@ function renderMainCharts() {
         return entry ? parseFloat(entry.score) || 0 : 0;
     });
 
-    const commonOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } },
-            x: { grid: { display: false } }
-        },
-        plugins: {
-    datalabels: {
-        display: true,
-        anchor: 'end',
-        align: 'top',
-        formatter: (value) => value + '%', // Isse har bar ke upar % likha aayega
-        font: { weight: 'bold' }
+    // Is block ko renderMainCharts() function ke andar commonOptions me update karein
+const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+        y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } },
+        x: { grid: { display: false } }
+    },
+    plugins: {
+        // Safely check if datalabels plugin is available
+        datalabels: typeof ChartDataLabels !== 'undefined' ? {
+            display: true,
+            anchor: 'end',
+            align: 'top',
+            formatter: (value) => value + '%',
+            font: { weight: 'bold' }
+        } : { display: false }
     }
-}
-    };
+};
 
     // Jaiza Chart
     if (window.myJaizaChart) window.myJaizaChart.destroy();
