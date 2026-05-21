@@ -163,15 +163,16 @@ if (tabName === 'performance') {
         const monthSelect = document.getElementById('report-month');
         const jamiaSelect = document.getElementById('report-jamia');
 
-        // 3. Month Change Event Listener (Andar ka Dropdown)
         if (monthSelect) {
-            // Forcefully state sync kar rahe hain
+            // Dropdown bante hi current state ko set karein
             monthSelect.value = currentSelectedMonth;
 
-            monthSelect.onchange = (e) => {
-                // Jaise hi andar se month badlega, global variable update hoga aur table refresh hogi
+            // FIXED: onchange ke andar direct value lock kar rahe hain
+            monthSelect.onchange = function(e) {
                 currentSelectedMonth = e.target.value;
-                console.log("Month changed inside Performance Tab:", currentSelectedMonth);
+                console.log("Performance inside dropdown changed to:", currentSelectedMonth);
+                
+                // Table ko naye month ke sath forcefully reload karein
                 loadPerformanceTable(assignedJamiaat, db, currentUser);
             };
         }
@@ -470,11 +471,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
                     
-                    // ID generation logic matching Firebase setup
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-                    // Global selected month ko lowercase me check karenge safety ke liye
-                    const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
+                    // PUKKTA ILAJ: Pehle live dropdown se value nikalenge, agar dropdown nahi mila tab global variable use karenge
+                    const liveMonthElem = document.getElementById('report-month');
+                    const targetMonthKey = (liveMonthElem ? liveMonthElem.value : currentSelectedMonth).toLowerCase().trim();
 
                     if (monthlyTargets && monthlyTargets[subId]) {
                         if (monthlyTargets[subId][targetMonthKey] !== undefined) {
