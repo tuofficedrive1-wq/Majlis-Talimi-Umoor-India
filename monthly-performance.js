@@ -119,7 +119,8 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
 
-  if (tabName === 'performance') {
+if (tabName === 'performance') {
+        // Months ka array aur unka order
         const monthsHtml = [
             { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
             { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
@@ -154,31 +155,28 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             <div id="performance-table-body"></div>
         `;
 
-        // Yahan thoda sa delay (setTimeout) de rahe hain taaki DOM poori tarah ready ho jaye
+        // DOM ready hone ka wait karenge taaki synchronization perfect ho
         setTimeout(() => {
             const monthSelect = document.getElementById('report-month');
             const jamiaSelect = document.getElementById('report-jamia');
 
             if (monthSelect) {
-                // Purane listener ko clear karke naya lagaya
-                monthSelect.onchange = null; 
+                // CRITICAL FIX: Tab change hone par forcefully dropdown ko global month par set kar rahe hain
+                monthSelect.value = currentSelectedMonth;
+
                 monthSelect.onchange = (e) => {
-                    // Global variable ko naye month se update kiya
                     currentSelectedMonth = e.target.value; 
-                    console.log("Month changed to:", currentSelectedMonth); // Debugging ke liye
-                    // Fir se fresh data load kiya
                     loadPerformanceTable(assignedJamiaat, db, currentUser);
                 };
             }
 
             if (jamiaSelect) {
-                jamiaSelect.onchange = null;
                 jamiaSelect.onchange = () => {
                     loadPerformanceTable(assignedJamiaat, db, currentUser);
                 };
             }
             
-            // First time loading for the current view
+            // Ab table load hogi toh dono values (Target aur Achieved) 100% ek hi month ki load hongi
             loadPerformanceTable(assignedJamiaat, db, currentUser);
         }, 50);
 
