@@ -442,22 +442,52 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {try {
                         </thead>
                         <tbody>`;
 
-            jamiaData.teachers.forEach((teacher) => {
-                teacher.periods?.forEach((p, pIdx) => {
-                    let target = 0;
-                    const cleanClassName = (p.className || "").trim();
-                    const cleanBookName = (p.bookName || "").trim();
-                    const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
+            // loadPerformanceTable ke andar jahan targets loop chal raha hai:
+jamiaData.teachers.forEach((teacher) => {
+    teacher.periods?.forEach((p, pIdx) => {
+        let target = 0;
+        const cleanClassName = (p.className || "").trim();
+        const cleanBookName = (p.bookName || "").trim();
+        const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
-                    if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][currentSelectedMonth] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][currentSelectedMonth]) || 0;
-                        }
-                    }
-                    
-                    const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
-                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                    const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
+        // 🔥 MONTH STRING CHECK KO FOOLPROOF BANAYEIN
+        // Agar dropdown me "apr" hai aur Firebase me "apr" ya "April" kuch bhi ho, dono ko check karein
+        const mIdSmall = currentSelectedMonth.toLowerCase().trim(); // e.g. "apr"
+        
+        if (monthlyTargets && monthlyTargets[subId]) {
+            // Dropdown ID se check karein (apr)
+            if (monthlyTargets[subId][mIdSmall] !== undefined) {
+                target = parseInt(monthlyTargets[subId][mIdSmall]) || 0;
+            } 
+            // Agar database me poora naam ho (jaise "April", "June")
+            else {
+                // Dropdown ID "apr" ko proper name "April" me match karne ka fallback
+                const fullMonthNames = { apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", oct: "October", nov: "November", dec: "December", jan: "January", feb: "February", mar: "March" };
+                const mNameFull = fullMonthNames[mIdSmall];
+                if (monthlyTargets[subId][mNameFull] !== undefined) {
+                    target = parseInt(monthlyTargets[subId][mNameFull]) || 0;
+                }
+            }
+        }
+        
+        // 🔥 SAME TO SAME ACHIEVED VALUE KE LIYE BHI CHECK KAREIN
+        let achievedValue = 0;
+        if (p.achieved) {
+            if (p.achieved[mIdSmall] !== undefined) {
+                achievedValue = parseInt(p.achieved[mIdSmall]) || 0;
+            } else {
+                const fullMonthNames = { apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", oct: "October", nov: "November", dec: "December", jan: "January", feb: "February", mar: "March" };
+                const mNameFull = fullMonthNames[mIdSmall];
+                if (p.achieved[mNameFull] !== undefined) {
+                    achievedValue = parseInt(p.achieved[mNameFull]) || 0;
+                }
+            }
+        }
+
+        const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+        const result = calculateKaifiyatAndStyle(percentage, mIdSmall, p.semester);
+
+        // Baaki ka table row HTML niche jo render ho raha hai, woh bilkul same rahega...
 
                     html += `
                         <tr class="border-b hover:bg-slate-50/50">
@@ -794,20 +824,24 @@ window.toggleEditMode = async (jamiaName) => {
 
             if (!jamiaData) return;
 
-            inputs.forEach(inp => {
-                const tid = inp.dataset.tid;
-                const pid = inp.dataset.pid;
-                const val = parseInt(inp.value) || 0;
+           // toggleEditMode ke andar loops ke andar:
+inputs.forEach(inp => {
+    const tid = inp.dataset.tid;
+    const pid = inp.dataset.pid;
+    const val = parseInt(inp.value) || 0;
 
-                const teacher = jamiaData.teachers.find(t => t.id === tid);
-                if (teacher) {
-                    const period = teacher.periods.find(p => p.id === pid);
-                    if (period) {
-                        if (!period.achieved) period.achieved = {};
-                        period.achieved[currentSelectedMonth] = val; // Saves month-wise properly
-                    }
-                }
-            });
+    const teacher = jamiaData.teachers.find(t => t.id === tid);
+    if (teacher) {
+        const period = teacher.periods.find(p => p.id === pid);
+        if (period) {
+            if (!period.achieved) period.achieved = {};
+            
+            // Hamesha lowercase key me save karein taaki consistency rahe
+            const dynamicMonthKey = currentSelectedMonth.toLowerCase().trim();
+            period.achieved[dynamicMonthKey] = val; 
+        }
+    }
+});
 
             await updateDoc(userRef, { academicYears });
             alert("Data successfully saved for " + currentSelectedMonth.toUpperCase());
