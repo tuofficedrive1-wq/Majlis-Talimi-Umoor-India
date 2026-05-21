@@ -1117,7 +1117,6 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     `;
 };
 
-// --- Version Mismatch Fixed: Safe Edit/Save Function ---
 window.toggleEditMode = async (jamiaName) => {
     const safeId = jamiaName ? jamiaName.replace(/\s+/g, '') : 'id';
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
@@ -1144,10 +1143,18 @@ window.toggleEditMode = async (jamiaName) => {
         btn.disabled = true;
         
         try {
-            const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
+            // State se current active configurations uthana
+            const databaseInstance = gDb;
+            const userInstance = gCurrentUser;
+
+            if (!databaseInstance || !userInstance) {
+                throw new Error("Database ya User session nahi mila. Please page refresh karein.");
+            }
+
+            const calSnap = await getDoc(doc(databaseInstance, "settings", "academic_calendar"));
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-            const userRef = doc(gDb, "users", gCurrentUser.uid);
+            const userRef = doc(databaseInstance, "users", userInstance.uid);
             const userSnap = await getDoc(userRef);
             
             let userData = userSnap.exists() ? userSnap.data() : {};
@@ -1176,32 +1183,37 @@ window.toggleEditMode = async (jamiaName) => {
                     }
                 });
 
-                // ✅ Same SDK version ke sath safe data nested tree push
+                // Firebase me update push karna
                 await updateDoc(userRef, { 
                     academicYears: academicYears 
                 });
                 
+                // UI ko wapas safely lock karna
                 inputs.forEach(inp => {
                     inp.disabled = true;
                     inp.style.backgroundColor = "transparent";
                     inp.style.border = "1px solid transparent";
                 });
+                
                 btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
                 btn.style.backgroundColor = "#4f46e5"; 
+                btn.disabled = false;
                 
                 alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
                 
-                // Table ko refresh karein taaki calculations naye data ke sath reload hon
-                loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
+                // Naye loaded data ko stable karne ke liye dynamic re-render
+                loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
             } else {
                 alert("Jamia ka data nahi mila.");
+                btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
+                btn.style.backgroundColor = "#4f46e5";
+                btn.disabled = false;
             }
         } catch (err) {
             console.error("Firebase Save Error:", err);
             alert("Error saving data: " + err.message);
             btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
             btn.style.backgroundColor = "#10b981";
-        } finally {
             btn.disabled = false;
         }
     }
