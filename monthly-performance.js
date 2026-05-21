@@ -512,7 +512,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     
                     let target = 0;
 
-                    // EXACT ADMIN LOGIC: Bina toLowerCase() aur strict spacing fix
+                    // EXACT ADMIN MATCHING LOGIC
                     const cls = (p.className || '').trim();
                     const sub = (p.bookName || '').trim();
                     const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
@@ -521,8 +521,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
                     }
                     
-                    // Selected mahine ka data fetch karein
-                    const achievedValue = (p.achieved && p.achieved[selectedMonthId] != null) ? parseInt(p.achieved[selectedMonthId]) : 0;
+                    // ✅ FIXED LOGIC: Selected month ke hisab se exact value render karna
+                    let achievedValue = 0;
+                    if (p.achieved && p.achieved[selectedMonthId] !== undefined && p.achieved[selectedMonthId] !== null) {
+                        achievedValue = parseInt(p.achieved[selectedMonthId]);
+                    }
                     
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, selectedMonthId, p.semester);
