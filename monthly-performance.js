@@ -383,8 +383,13 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
     } catch (e) { console.error("loadAllTeachers error:", e); }
 };
 
-const loadPerformanceTable = async (jamiaat, db, currentUser) => {
-    try {
+const loadPerformanceTable = async (jamiaat, db, currentUser) => {try {
+        // 🔥 SABSE MUHIM FIX: Har baar table load hone par live dropdown se mahina uthayein
+        const monthDropdown = document.getElementById('report-month');
+        if (monthDropdown) {
+            currentSelectedMonth = monthDropdown.value; 
+        }
+
         const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
 
@@ -462,8 +467,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
                             <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
                             <td class="p-4 text-center">
-                                <input type="number" value="${achievedValue}" disabled 
-                                       data-tid="${teacher.id}" data-pid="${p.id}"
+                                <input type="number" 
+                                       value="${achievedValue}" 
+                                       defaultValue="${achievedValue}" 
+                                       disabled 
+                                       data-tid="${teacher.id}" 
+                                       data-pid="${p.id}"
                                        class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
                                        oninput="updateRowStatusLive(this, ${target}, '${currentSelectedMonth}', '${p.semester}')">
                             </td>
