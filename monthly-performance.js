@@ -120,66 +120,38 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     const contentArea = document.getElementById('sub-tab-content');
 
 if (tabName === 'performance') {
-        // Months ka array aur unka order
-        const monthsHtml = [
-            { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
-            { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
-            { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
-            { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-        ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
-
-        contentArea.innerHTML = `
-            <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
-                <div class="flex flex-col">
-                    <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
-                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
-                </div>
-                
-                <div class="flex flex-wrap items-center gap-3">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
-                        <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]">
-                            ${monthsHtml}
-                        </select>
+        // Agar HTML pehle se nahi bana hai toh hi render karenge (taaki table body destroy na ho)
+        if (!document.getElementById('report-jamia')) {
+            contentArea.innerHTML = `
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
+                    <div class="flex flex-col">
+                        <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Jamia (Month controlled by Main Dashboard)</p>
                     </div>
-
-                    <div class="flex flex-col gap-1">
-                        <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
-                        <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
-                            <option value="all">All Jamiaat (Show All)</option>
-                            ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
-                        </select>
+                    
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
+                            <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
+                                <option value="all">All Jamiaat (Show All)</option>
+                                ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
+                            </select>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div id="performance-table-body"></div>
-        `;
+                <div id="performance-table-body"></div>
+            `;
+        }
 
-        // DOM ready hone ka wait karenge taaki synchronization perfect ho
-        setTimeout(() => {
-            const monthSelect = document.getElementById('report-month');
-            const jamiaSelect = document.getElementById('report-jamia');
-
-            if (monthSelect) {
-                // CRITICAL FIX: Tab change hone par forcefully dropdown ko global month par set kar rahe hain
-                monthSelect.value = currentSelectedMonth;
-
-                monthSelect.onchange = (e) => {
-                    currentSelectedMonth = e.target.value; 
-                    loadPerformanceTable(assignedJamiaat, db, currentUser);
-                };
-            }
-
-            if (jamiaSelect) {
-                jamiaSelect.onchange = () => {
-                    loadPerformanceTable(assignedJamiaat, db, currentUser);
-                };
-            }
-            
-            // Ab table load hogi toh dono values (Target aur Achieved) 100% ek hi month ki load hongi
-            loadPerformanceTable(assignedJamiaat, db, currentUser);
-        }, 50);
-
+        const jamiaSelect = document.getElementById('report-jamia');
+        if (jamiaSelect) {
+            jamiaSelect.onchange = () => {
+                loadPerformanceTable(assignedJamiaat, db, currentUser);
+            };
+        }
+        
+        // Pehli baar table load karte waqt main dashboard wala selected month hi use hoga
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
     } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -1003,4 +975,12 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
             <p class="text-slate-500 font-bold">Abhi koi teacher register nahi kiya gaya hai.</p>
         </div>
     `;
+};
+
+// Yeh function main dashboard call karega jab bhi wahan month change hoga
+export const handleDashboardMonthChange = (newMonth, assignedJamiaat, db, currentUser) => {
+    currentSelectedMonth = newMonth.toLowerCase().trim();
+    console.log("Performance tab synced with dashboard month:", currentSelectedMonth);
+    // Table ko naye month ke sath reload karein
+    loadPerformanceTable(assignedJamiaat || gAssignedJamiaat, db || gDb, currentUser || gCurrentUser);
 };
