@@ -843,76 +843,6 @@ async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updat
 // Edit Mode Toggle (Lock/Unlock)
 // 1. Edit/Save Toggle Logic
 
-window.toggleEditMode = async (jamiaName) => {
-    const safeId = jamiaName.replace(/\s+/g, '');
-    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
-    const btn = document.querySelector(`.edit-btn-${safeId}`);
-
-    if (!inputs || inputs.length === 0) return;
-    const isLocked = inputs[0].disabled;
-
-    // Current selected month DOM se nikalna (100% accurate)
-    const monthSelect = document.getElementById('report-month');
-    const savingMonthId = monthSelect ? monthSelect.value : 'apr';
-
-    if (isLocked) {
-        // Edit mode on
-        inputs.forEach(inp => {
-            inp.disabled = false;
-            inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #6366f1";
-        });
-        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
-        btn.style.backgroundColor = "#10b981"; // Emerald green for save
-    } else {
-        // Save mode
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving...`;
-        
-        try {
-            const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
-            const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
-
-            const userRef = doc(gDb, "users", gCurrentUser.uid);
-            const userSnap = await getDoc(userRef);
-            let academicYears = userSnap.data().academicYears || {};
-            let structure = academicYears[activeYear]?.karkardagiStructure || [];
-            let jamiaData = structure.find(j => j.jamiaName === jamiaName);
-
-            if (jamiaData) {
-                inputs.forEach(inp => {
-                    const tid = inp.dataset.tid;
-                    const pid = inp.dataset.pid;
-                    const val = parseInt(inp.value) || 0;
-
-                    const teacher = jamiaData.teachers.find(t => t.id === tid);
-                    if (teacher) {
-                        const period = teacher.periods.find(p => p.id === pid);
-                        if (period) {
-                            if (!period.achieved) period.achieved = {};
-                            period.achieved[savingMonthId] = val; 
-                        }
-                    }
-                });
-
-                await updateDoc(userRef, { academicYears });
-                
-                inputs.forEach(inp => {
-                    inp.disabled = true;
-                    inp.style.backgroundColor = "transparent";
-                    inp.style.border = "1px solid transparent";
-                });
-                btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-                btn.style.backgroundColor = "#4f46e5";
-                
-                alert(`Data saved successfully for ${savingMonthId.toUpperCase()}`);
-            }
-        } catch (err) {
-            alert("Error saving data: " + err.message);
-            btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
-        }
-    }
-};
-
 window.updateRowStatusLive = (input, target, monthId, semester) => {
     const row = input.closest('tr');
     const achieved = parseInt(input.value) || 0;
@@ -1056,40 +986,6 @@ window.copyTeacherFormLink = (jamiaName) => {
 };
 
 // --- 2. Edit/Lock Toggle Function ---
-window.toggleEditMode = (jamiaName) => {
-    const safeId = getSafeId(jamiaName);
-    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
-    const btn = document.querySelector(`.edit-btn-${safeId}`);
-
-    // Error handling: Check karein agar inputs mile ya nahi
-    if (!inputs || inputs.length === 0) {
-        console.error("Inputs nahi mile for:", safeId);
-        return;
-    }
-
-    const isLocked = inputs[0].disabled;
-
-    if (isLocked) {
-        // Unlock karna
-        inputs.forEach(inp => {
-            inp.disabled = false;
-            inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #6366f1";
-        });
-        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
-        btn.style.backgroundColor = "#1e293b"; // Slate-800
-    } else {
-        // Lock karna
-        inputs.forEach(inp => {
-            inp.disabled = true;
-            inp.style.backgroundColor = "transparent";
-            inp.style.border = "1px solid transparent";
-        });
-        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.style.backgroundColor = "#4f46e5"; // Indigo-600
-        alert("Data successfully lock kar diya gaya.");
-    }
-};
 
 // --- 3. Image Download Function ---
 window.downloadJamiaImage = (jamiaName) => {
@@ -1220,4 +1116,87 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
             <p class="text-slate-500 font-bold">Abhi koi teacher register nahi kiya gaya hai.</p>
         </div>
     `;
+};
+
+// --- Asal Data Save Karne Wala Edit/Lock Function ---
+window.toggleEditMode = async (jamiaName) => {
+    // Spaces hatakar safe ID banana
+    const safeId = jamiaName ? jamiaName.replace(/\s+/g, '') : 'id';
+    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
+    const btn = document.querySelector(`.edit-btn-${safeId}`);
+
+    if (!inputs || inputs.length === 0) return;
+    const isLocked = inputs[0].disabled;
+
+    // Current selected month dropdown se nikalna 
+    const monthSelect = document.getElementById('report-month');
+    const savingMonthId = monthSelect ? monthSelect.value : currentSelectedMonth;
+
+    if (isLocked) {
+        // 🔓 Edit Mode: Unlock inputs
+        inputs.forEach(inp => {
+            inp.disabled = false;
+            inp.style.backgroundColor = "white";
+            inp.style.border = "1px solid #6366f1"; // Indigo border
+        });
+        btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
+        btn.style.backgroundColor = "#10b981"; // Emerald green for save button
+    } else {
+        // 💾 Save Mode: Firebase me data push karna
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving...`;
+        btn.disabled = true;
+        
+        try {
+            // Academic year nikalna
+            const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
+            const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
+
+            // Current User ka data reference
+            const userRef = doc(gDb, "users", gCurrentUser.uid);
+            const userSnap = await getDoc(userRef);
+            let academicYears = userSnap.data().academicYears || {};
+            let structure = academicYears[activeYear]?.karkardagiStructure || [];
+            let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+
+            // Agar jamia ka data milta hai, to loop chala kar saare inputs ki value save karein
+            if (jamiaData) {
+                inputs.forEach(inp => {
+                    const tid = inp.dataset.tid;
+                    const pid = inp.dataset.pid;
+                    const val = parseInt(inp.value) || 0; // Empty input ko 0 maane
+
+                    const teacher = jamiaData.teachers.find(t => t.id === tid);
+                    if (teacher) {
+                        const period = teacher.periods.find(p => p.id === pid);
+                        if (period) {
+                            if (!period.achieved) period.achieved = {};
+                            // Exact us mahine ke andar data save karein
+                            period.achieved[savingMonthId] = val; 
+                        }
+                    }
+                });
+
+                // Firebase Update command
+                await updateDoc(userRef, { academicYears });
+                
+                // Save hone ke baad UI ko wapas lock karna
+                inputs.forEach(inp => {
+                    inp.disabled = true;
+                    inp.style.backgroundColor = "transparent";
+                    inp.style.border = "1px solid transparent";
+                });
+                btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
+                btn.style.backgroundColor = "#4f46e5"; // Wapas indigo color
+                
+                alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error saving data: " + err.message);
+            btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
+            btn.style.backgroundColor = "#10b981";
+        } finally {
+            btn.disabled = false;
+        }
+    }
 };
