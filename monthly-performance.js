@@ -4,7 +4,6 @@
     updateDoc,
     serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 let academicConfig = null;
 let gDb = null;
@@ -1118,9 +1117,8 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     `;
 };
 
-// --- 100% Safe Data Save Karne Wala Edit/Lock Function ---
+// --- Version Mismatch Fixed: Safe Edit/Save Function ---
 window.toggleEditMode = async (jamiaName) => {
-    // Spaces hatakar safe ID banana
     const safeId = jamiaName ? jamiaName.replace(/\s+/g, '') : 'id';
     const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
     const btn = document.querySelector(`.edit-btn-${safeId}`);
@@ -1128,7 +1126,6 @@ window.toggleEditMode = async (jamiaName) => {
     if (!inputs || inputs.length === 0) return;
     const isLocked = inputs[0].disabled;
 
-    // Current selected month dropdown se nikalna (Safe Fallback ke sath)
     const monthSelect = document.getElementById('report-month');
     const savingMonthId = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
 
@@ -1137,25 +1134,22 @@ window.toggleEditMode = async (jamiaName) => {
         inputs.forEach(inp => {
             inp.disabled = false;
             inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #6366f1"; // Indigo border
+            inp.style.border = "1px solid #6366f1";
         });
         btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
-        btn.style.backgroundColor = "#10b981"; // Emerald green for save button
+        btn.style.backgroundColor = "#10b981"; 
     } else {
-        // 💾 Save Mode: Firebase me data push karna
+        // 💾 Save Mode: Data Firebase me push karna
         btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving...`;
         btn.disabled = true;
         
         try {
-            // Academic year nikalna
             const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
 
-            // Current User ka data reference
             const userRef = doc(gDb, "users", gCurrentUser.uid);
             const userSnap = await getDoc(userRef);
             
-            // Data safely nikalna taaki undefined error na aaye
             let userData = userSnap.exists() ? userSnap.data() : {};
             let academicYears = userData.academicYears || {};
             
@@ -1166,12 +1160,11 @@ window.toggleEditMode = async (jamiaName) => {
             let structure = academicYears[activeYear].karkardagiStructure;
             let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
-            // Agar jamia ka data milta hai, to usme values set karein
             if (jamiaData) {
                 inputs.forEach(inp => {
                     const tid = inp.dataset.tid;
                     const pid = inp.dataset.pid;
-                    const val = parseInt(inp.value) || 0; // Empty input ko 0 maane
+                    const val = parseInt(inp.value) || 0;
 
                     const teacher = jamiaData.teachers.find(t => t.id === tid);
                     if (teacher) {
@@ -1183,30 +1176,29 @@ window.toggleEditMode = async (jamiaName) => {
                     }
                 });
 
-                // 🚨 FIX: updateDoc ki jagah setDoc (merge: true) use kiya hai
-                // Yeh syntax assure karta hai ki object kabhi 'empty' mark nahi hoga
-                await setDoc(userRef, { 
+                // ✅ Same SDK version ke sath safe data nested tree push
+                await updateDoc(userRef, { 
                     academicYears: academicYears 
-                }, { merge: true });
+                });
                 
-                // Save hone ke baad UI ko wapas lock karna
                 inputs.forEach(inp => {
                     inp.disabled = true;
                     inp.style.backgroundColor = "transparent";
                     inp.style.border = "1px solid transparent";
                 });
                 btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-                btn.style.backgroundColor = "#4f46e5"; // Wapas indigo color
+                btn.style.backgroundColor = "#4f46e5"; 
                 
                 alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
+                
+                // Table ko refresh karein taaki calculations naye data ke sath reload hon
+                loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
             } else {
-                alert("Jamia ka data nahi mila. Pehle structure tab se teacher save karein.");
+                alert("Jamia ka data nahi mila.");
             }
         } catch (err) {
             console.error("Firebase Save Error:", err);
             alert("Error saving data: " + err.message);
-            
-            // Error aane par button ko wapas Save mode me laana
             btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
             btn.style.backgroundColor = "#10b981";
         } finally {
