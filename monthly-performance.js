@@ -510,12 +510,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             jamiaData.teachers.forEach((teacher) => {
                 (teacher.periods || []).forEach((p, pIdx) => {
                     
-                    let target = 0;
-
-                    // EXACT ADMIN MATCHING LOGIC
-                    const cls = (p.className || '').trim();
-                    const sub = (p.bookName || '').trim();
-                    const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
+                   let target = 0;
+                    const cleanClassName = (p.className || "").trim();
+                    const cleanBookName = (p.bookName || "").trim();
+                    const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
 
                     if (monthlyTargets && monthlyTargets[subId] && monthlyTargets[subId][selectedMonthId] !== undefined) {
                         target = parseInt(monthlyTargets[subId][selectedMonthId]) || 0;
