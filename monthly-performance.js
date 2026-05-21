@@ -134,7 +134,7 @@ if (tabName === 'performance') {
         { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
         { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
         { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-    ].map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
 
     contentArea.innerHTML = `
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
