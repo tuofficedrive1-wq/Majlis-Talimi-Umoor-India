@@ -1009,41 +1009,7 @@ window.copyTeacherFormLink = (jamiaName) => {
     });
 };
 
-// --- 2. Edit/Lock Toggle Function ---
-window.toggleEditMode = (jamiaName) => {
-    const safeId = getSafeId(jamiaName);
-    const inputs = document.querySelectorAll(`.achieved-input-${safeId}`);
-    const btn = document.querySelector(`.edit-btn-${safeId}`);
 
-    // Error handling: Check karein agar inputs mile ya nahi
-    if (!inputs || inputs.length === 0) {
-        console.error("Inputs nahi mile for:", safeId);
-        return;
-    }
-
-    const isLocked = inputs[0].disabled;
-
-    if (isLocked) {
-        // Unlock karna
-        inputs.forEach(inp => {
-            inp.disabled = false;
-            inp.style.backgroundColor = "white";
-            inp.style.border = "1px solid #6366f1";
-        });
-        btn.innerHTML = `<i class="fas fa-lock mr-1"></i> Lock`;
-        btn.style.backgroundColor = "#1e293b"; // Slate-800
-    } else {
-        // Lock karna
-        inputs.forEach(inp => {
-            inp.disabled = true;
-            inp.style.backgroundColor = "transparent";
-            inp.style.border = "1px solid transparent";
-        });
-        btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-        btn.style.backgroundColor = "#4f46e5"; // Indigo-600
-        alert("Data successfully lock kar diya gaya.");
-    }
-};
 
 // --- 3. Image Download Function ---
 window.downloadJamiaImage = (jamiaName) => {
