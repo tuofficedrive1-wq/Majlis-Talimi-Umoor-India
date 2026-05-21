@@ -1,10 +1,9 @@
-    import { 
+import { 
     doc, 
     getDoc,
     updateDoc,
     serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 let academicConfig = null;
 let gDb = null;
@@ -12,7 +11,7 @@ let gCurrentUser = null;
 const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 let gAssignedJamiaat = [];
 
-// Yeh variable state ko dashboard par back jaane par bhi safe rakhega
+// Current month default set rahega
 let currentSelectedMonth = monthNames[new Date().getMonth()]; 
 
 // Academic Admin ki settings fetch karne ka function
@@ -26,153 +25,144 @@ async function getAcademicConfig(db) {
     return null;
 }
 
-const getStatusStyles = (status) => {
-    if (status === 'Mumtaz') return 'text-emerald-600 font-black';
-    if (status === 'Behtar') return 'text-blue-600 font-bold';
-    return 'text-red-600 font-bold';
-};
-
 export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     gDb = db;
     gCurrentUser = currentUser;
     gAssignedJamiaat = assignedJamiaat;
-const injectEditModal = () => {
-    if (document.getElementById('edit-period-modal')) return; // Agar pehle se hai to dubara na dalein
 
-    const modalHTML = `
-    <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="font-black text-indigo-950 text-lg">Edit Period Details</h3>
-                <button onclick="closePeriodModal()" class="h-8 w-8 rounded-full bg-slate-50 text-slate-400 hover:text-red-500 flex items-center justify-center">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="space-y-4">
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Class</label>
-                    <select id="edit-p-class" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
+    const injectEditModal = () => {
+        if (document.getElementById('edit-period-modal')) return;
+
+        const modalHTML = `
+        <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-black text-indigo-950 text-lg">Edit Period Details</h3>
+                    <button onclick="closePeriodModal()" class="h-8 w-8 rounded-full bg-slate-50 text-slate-400 hover:text-red-500 flex items-center justify-center">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Subject</label>
-                    <select id="edit-p-book" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Semester</label>
-                        <select id="edit-p-sem" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
-                            <option value="1">Sem 1</option>
-                            <option value="2">Sem 2</option>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Class</label>
+                        <select id="edit-p-class" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Subject</label>
+                        <select id="edit-p-book" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Semester</label>
+                            <select id="edit-p-sem" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                                <option value="1">Sem 1</option>
+                                <option value="2">Sem 2</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Total Pages</label>
+                            <input type="number" id="edit-p-pages" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Syllabus</label>
+                        <select id="edit-p-syllabus" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                            <option value="Majlis">Majlis</option>
+                            <option value="State">State</option>
+                            <option value="Approval">Approval</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Total Pages</label>
-                        <input type="number" id="edit-p-pages" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
-                    </div>
+                    <button id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
+                        Update Period Data
+                    </button>
                 </div>
-                <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Syllabus</label>
-                    <select id="edit-p-syllabus" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
-                        <option value="Majlis">Majlis</option>
-                        <option value="State">State</option>
-                        <option value="Approval">Approval</option>
-                    </select>
-                </div>
-                <button id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
-                    Update Period Data
-                </button>
             </div>
-        </div>
-    </div>`;
+        </div>`;
 
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-};
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    };
 
-// Ise renderPerformanceTab ke andar call karein
-injectEditModal();
+    injectEditModal();
+    
     const container = document.getElementById('performance-jamia-list');
     container.innerHTML = `
-    <div class="mb-6">
-        <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
-            <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
-            <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
-            <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
-            <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="profiles">Teacher Profile</button>
+        <div class="mb-6">
+            <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
+                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
+                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
+                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
+                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="profiles">Teacher Profile</button>
+            </div>
         </div>
-    </div>
-    <div id="sub-tab-content" class="space-y-6"></div>
-`;
+        <div id="sub-tab-content" class="space-y-6"></div>
+    `;
 
     const subTabBtns = container.querySelectorAll('.sub-tab-btn');
-subTabBtns.forEach(btn => {
-    btn.onclick = () => {
-        // Purane active classes hatayein
-        subTabBtns.forEach(b => {
-            b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-            b.classList.add('text-slate-500');
-        });
-        
-        // Naye button ko active karein
-        btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
-        btn.classList.remove('text-slate-500');
-        
-        // Content render karein
-        const targetTab = btn.getAttribute('data-sub'); // data-sub se naam lein
-        renderSubTabContent(targetTab, assignedJamiaat, currentUser, db);
-    };
-});
+    subTabBtns.forEach(btn => {
+        btn.onclick = () => {
+            subTabBtns.forEach(b => {
+                b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+                b.classList.add('text-slate-500');
+            });
+            
+            btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+            btn.classList.remove('text-slate-500');
+            
+            const targetTab = btn.getAttribute('data-sub');
+            renderSubTabContent(targetTab, assignedJamiaat, currentUser, db);
+        };
+    });
 
     renderSubTabContent('performance', assignedJamiaat, currentUser, db);
 };
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
-// monthly-performance.js mein performance tab ka header section
-if (tabName === 'performance') {
-    const monthsHtml = [
-        { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
-        { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
-        { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
-        { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-    ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
 
-    contentArea.innerHTML = `
-        <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
-            <div class="flex flex-col">
-                <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
-                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
-            </div>
-            
-            <div class="flex flex-wrap items-center gap-3">
-                <div class="flex flex-col gap-1">
-                    <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
-                    <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]">
-                        ${monthsHtml}
-                    </select>
+    if (tabName === 'performance') {
+        const monthsHtml = [
+            { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
+            { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
+            { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
+            { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
+        ].map(m => `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`).join('');
+
+        contentArea.innerHTML = `
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
+                <div class="flex flex-col">
+                    <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
                 </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
+                        <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]">
+                            ${monthsHtml}
+                        </select>
+                    </div>
 
-                <div class="flex flex-col gap-1">
-                    <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
-                    <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
-                        <option value="all">All Jamiaat (Show All)</option>
-                        ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
-                    </select>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
+                        <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
+                            <option value="all">All Jamiaat (Show All)</option>
+                            ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
+                        </select>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div id="performance-table-body"></div>
-    `;
+            <div id="performance-table-body"></div>
+        `;
 
-    document.getElementById('report-month').onchange = (e) => {
-        currentSelectedMonth = e.target.value; // Global state me save karein
+        document.getElementById('report-month').onchange = (e) => {
+            currentSelectedMonth = e.target.value; // Global state updates perfectly
+            loadPerformanceTable(assignedJamiaat, db, currentUser);
+        };
+        document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+        
         loadPerformanceTable(assignedJamiaat, db, currentUser);
-    };
-    document.getElementById('report-jamia').onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
-    
-    setTimeout(() => {
-        loadPerformanceTable(assignedJamiaat, db, currentUser);
-    }, 10);
-} else if (tabName === 'structure') {
+
+    } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
 
@@ -231,16 +221,16 @@ if (tabName === 'performance') {
         const yearSelect = document.getElementById('structure-year-select');
         yearSelect.onchange = (e) => updateStructureView(e.target.value);
         updateStructureView(yearSelect.value);
+
     } else if (tabName === 'profiles') {
-    contentArea.innerHTML = `
-        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <h3 class="font-black text-indigo-950 text-lg mb-4">Teacher Profile Directory</h3>
-            <div id="profiles-table-container"></div>
-        </div>
-    `;
-    // Sirf Profile wala function call karein
-    loadTeacherProfilesTable(assignedJamiaat, db, currentUser); 
-}
+        contentArea.innerHTML = `
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-black text-indigo-950 text-lg mb-4">Teacher Profile Directory</h3>
+                <div id="profiles-table-container"></div>
+            </div>
+        `;
+        loadTeacherProfilesTable(assignedJamiaat, db, currentUser); 
+    }
 };
 
 const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selectedYear) => {
@@ -315,12 +305,10 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
 const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
     try {
         const [configSnap, userSnap] = await Promise.all([
-            // SAHI PATH: 'academic_admin_config' jo admin file me use hua hai
             getDoc(doc(db, "settings", "academic_admin_config")), 
             getDoc(doc(db, "users", currentUser.uid))
         ]);
         
-        // Agar data mil jaye to theek, warna empty array
         const academicConfig = configSnap.exists() ? configSnap.data() : { classes: [] };
         const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
         
@@ -330,7 +318,6 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
             const jamiaData = structure.find(j => j.jamiaName === jamia);
             if (!listDiv || !jamiaData) return;
 
-            // Class options for the dropdown
             const classOptions = academicConfig.classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
 
             listDiv.innerHTML = jamiaData.teachers.map(t => `
@@ -391,43 +378,9 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                 </div>`).join('');
             
             attachDropdownEvents(listDiv, academicConfig);
-            // Yahan hum 'jamiaat' ko pass kar rahe hain taaki ReferenceError na aaye
             attachTeacherEvents(listDiv, db, currentUser, jamiaat, selectedYear);
         });
     } catch (e) { console.error("loadAllTeachers error:", e); }
-};
-
-const setupMonthDropdown = (calendarData) => {
-    const monthSelect = document.getElementById('report-month');
-    
-    // Safety Check: Agar element nahi mila toh exit karein
-    if (!monthSelect) {
-        console.warn("Dropdown 'report-month' abhi DOM mein nahi hai.");
-        return "apr"; // Default month return karein
-    }
-
-    // Safe length check
-    if (monthSelect.options && monthSelect.options.length > 0) {
-        return monthSelect.value;
-    }
-
-    const months = [
-        { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
-        { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
-        { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
-        { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
-    ];
-
-    monthSelect.innerHTML = months.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-    
-    // Current Month select karein
-    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    const currentMonthId = monthNames[new Date().getMonth()];
-    monthSelect.value = currentMonthId;
-    
-    if (!monthSelect.value) monthSelect.value = "apr";
-    
-    return monthSelect.value;
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
@@ -497,7 +450,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         }
                     }
                     
-                    // Month wise achieved data load karne ke liye check
                     const achievedValue = (p.achieved && p.achieved[currentSelectedMonth]) !== undefined ? p.achieved[currentSelectedMonth] : 0;
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, currentSelectedMonth, p.semester);
@@ -528,10 +480,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     }
 };
 
-// Mahine ka number semester ke hisab se nikalne ke liye
-// Sem 1: Apr(1), May(2), Jun(3), Jul(4), Aug(5)
-// Sem 2: Sep(1), Oct(2), Nov(3), Dec(4), Jan(5), Feb/Mar (Extra)
-// Mahine ki ID ko semester ke hisab se number me convert karne ke liye
 function getSemesterMonthNumber(monthId, semester) {
     const s1Map = { "apr": 1, "may": 2, "jun": 3, "jul": 4, "aug": 5 }; 
     const s2Map = { "sep": 1, "oct": 2, "nov": 3, "dec": 4, "jan": 5, "feb": 6, "mar": 7 }; 
@@ -540,14 +488,12 @@ function getSemesterMonthNumber(monthId, semester) {
     return s2Map[monthId] || 0;
 }
 
-// Aapka bataya hua main calculation logic
 const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
     let kaifiyat = "Munasib"; 
-    let colorClass = "text-red-600"; // color-munasib ki jagah Tailwind class
+    let colorClass = "text-red-600 font-bold";
     
     const monthNumber = getSemesterMonthNumber(monthIdx, semester);
     
-    // 1. Mahine ke hisab se base Kaifiyat
     if (monthNumber === 1) { 
         if (achievement >= 70) kaifiyat = "Mumtaz";
         else if (achievement >= 60) kaifiyat = "Behtar";
@@ -565,21 +511,17 @@ const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
         else if (achievement >= 80) kaifiyat = "Behtar";
     }
 
-    // 2. Over-achievement Adjustment
     if (kaifiyat === "Mumtaz") {
         if (achievement > 150) kaifiyat = "Munasib";
         else if (achievement >= 121) kaifiyat = "Behtar";
     }
 
-    // 3. Color mapping
     if (kaifiyat === "Mumtaz") colorClass = "text-emerald-600 font-black";
     else if (kaifiyat === "Behtar") colorClass = "text-blue-600 font-bold";
     else colorClass = "text-red-600 font-bold";
 
     return { kaifiyat, colorClass };
 };
-
-// --- Helpers ---
 
 const attachDropdownEvents = (container, config) => {
     container.querySelectorAll('.p-class').forEach(sel => {
@@ -596,57 +538,47 @@ const attachDropdownEvents = (container, config) => {
 };
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
-    // 1. Teacher Toggle Logic (Expand/Collapse)
     container.querySelectorAll('.teacher-toggle').forEach(toggle => {
         toggle.onclick = (e) => {
-            // Agar click edit ya delete button par hua hai, to toggle na chale
-            if (e.target.closest('.edit-t-btn') || e.target.closest('.del-t-btn')) {
-                return; 
-            }
+            if (e.target.closest('.edit-t-btn') || e.target.closest('.del-t-btn')) return; 
             toggle.nextElementSibling.classList.toggle('hidden');
             toggle.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
         };
     });
 
-        // Teacher Profile Edit Logic
-// Teacher Profile Edit Logic ko update karein
-container.querySelectorAll('.edit-t-btn').forEach(btn => {
-    btn.onclick = async (e) => {
-        e.stopPropagation();
-        
-        const tid = btn.dataset.tid;
-        const jamiaName = btn.dataset.jamia;
-        const safeId = jamiaName.replace(/\s+/g, '');
+    container.querySelectorAll('.edit-t-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            const tid = btn.dataset.tid;
+            const jamiaName = btn.dataset.jamia;
+            const safeId = jamiaName.replace(/\s+/g, '');
 
-        // 1. Data fetch karein
-        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
-        const jamiaData = structure.find(j => j.jamiaName === jamiaName);
-        const teacher = jamiaData?.teachers.find(t => t.id === tid);
+            const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+            const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+            const jamiaData = structure.find(j => j.jamiaName === jamiaName);
+            const teacher = jamiaData?.teachers.find(t => t.id === tid);
 
-        if (teacher) {
-            // 2. SARE 10 FIELDS KO FILL KAREIN
-            document.getElementById(`name-${safeId}`).value = teacher.name || "";
-            document.getElementById(`ajeer-${safeId}`).value = teacher.loginCode || "";
-            document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
-            document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
-            document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
-            document.getElementById(`mail-${safeId}`).value = teacher.mailId || "";
-            document.getElementById(`exp-${safeId}`).value = teacher.experience || "";
-            document.getElementById(`spec-${safeId}`).value = teacher.specialization || "";
-            document.getElementById(`t-period-${safeId}`).value = teacher.teachingPeriod || "";
-            document.getElementById(`ijara-${safeId}`).value = teacher.ijaraStatus || "";
+            if (teacher) {
+                document.getElementById(`name-${safeId}`).value = teacher.name || "";
+                document.getElementById(`ajeer-${safeId}`).value = teacher.loginCode || "";
+                document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
+                document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
+                document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
+                document.getElementById(`mail-${safeId}`).value = teacher.mailId || "";
+                document.getElementById(`exp-${safeId}`).value = teacher.experience || "";
+                document.getElementById(`spec-${safeId}`).value = teacher.specialization || "";
+                document.getElementById(`t-period-${safeId}`).value = teacher.teachingPeriod || "";
+                document.getElementById(`ijara-${safeId}`).value = teacher.ijaraStatus || "";
 
-            // 3. Save button ko Update mode mein karein
-            const saveBtn = document.querySelector(`.save-teacher-btn[data-jamia-name="${jamiaName}"]`);
-            if (saveBtn) {
-                saveBtn.innerText = "Update Teacher Profile";
-                saveBtn.dataset.editMode = tid; // Edit mode ID set karein
-                saveBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const saveBtn = document.querySelector(`.save-teacher-btn[data-jamia-name="${jamiaName}"]`);
+                if (saveBtn) {
+                    saveBtn.innerText = "Update Teacher Profile";
+                    saveBtn.dataset.editMode = tid;
+                    saveBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
             }
-        }
-    };
-});
+        };
+    });
 
     container.querySelectorAll('.del-period-btn, .del-t-btn').forEach(btn => {
         btn.onclick = async () => {
@@ -662,144 +594,128 @@ container.querySelectorAll('.edit-t-btn').forEach(btn => {
             loadAllTeachers(jamiaat, db, currentUser, selectedYear);
         };
     });
-    // --- NEW CODE: Save Period Button Logic ---
-container.querySelectorAll('.save-period-btn').forEach(btn => {
-    btn.onclick = async () => {
-        const tid = btn.dataset.tid;
-        const jamiaName = btn.dataset.jamia;
-        const card = document.getElementById(`teacher-card-${tid}`);
-        
-        // Input values nikalna
-        const className = card.querySelector('.p-class').value;
-        const bookName = card.querySelector('.p-book').value;
-        const semester = card.querySelector('.p-sem').value;
-        const totalPages = card.querySelector('.p-pages').value;
-        const syllabus = card.querySelector('.p-syllabus').value;
 
-        // Validation
-        if (!className || !bookName || !totalPages) {
-            return alert("Class, Subject aur Total Pages bharna zaroori hai!");
-        }
+    container.querySelectorAll('.save-period-btn').forEach(btn => {
+        btn.onclick = async () => {
+            const tid = btn.dataset.tid;
+            const jamiaName = btn.dataset.jamia;
+            const card = document.getElementById(`teacher-card-${tid}`);
+            
+            const className = card.querySelector('.p-class').value;
+            const bookName = card.querySelector('.p-book').value;
+            const semester = card.querySelector('.p-sem').value;
+            const totalPages = card.querySelector('.p-pages').value;
+            const syllabus = card.querySelector('.p-syllabus').value;
 
-        btn.disabled = true;
-        btn.innerText = "Adding...";
+            if (!className || !bookName || !totalPages) {
+                return alert("Class, Subject aur Total Pages bharna zaroori hai!");
+            }
 
-        try {
-            await updateTeacherData(db, currentUser, jamiaName, selectedYear, (teachers) => {
-                const t = teachers.find(teach => teach.id === tid);
-                if (t) {
-                    if (!t.periods) t.periods = [];
-                    t.periods.push({
-                        id: `p-${Date.now()}`,
-                        className,
-                        bookName,
-                        semester,
-                        totalPages: parseInt(totalPages),
-                        syllabus
-                    });
-                }
-                return teachers;
-            });
-
-            alert("Period Successfully Added!");
-            // List ko refresh karein
-            loadAllTeachers(jamiaat || assignedJamiaat, db, currentUser, selectedYear);
-        } catch (e) {
-            alert("Error adding period: " + e.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerText = "Add Period";
-        }
-    };
-});
-    // Modal band karne ka helper
-window.closePeriodModal = () => document.getElementById('edit-period-modal').classList.add('hidden');
-
-// Edit Period Button Logic
-container.querySelectorAll('.edit-period-btn').forEach(btn => {
-    btn.onclick = async () => {
-        const { pid, tid, jamia } = btn.dataset;
-        
-        // Data Load karein
-        const [configSnap, userSnap] = await Promise.all([
-            getDoc(doc(db, "settings", "academic_admin_config")),
-            getDoc(doc(db, "users", currentUser.uid))
-        ]);
-
-        if (!configSnap.exists()) return alert("Config not found!");
-
-        const currentConfig = configSnap.data();
-        const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
-        const jamiaData = structure.find(j => j.jamiaName === jamia);
-        const teacher = jamiaData?.teachers.find(t => t.id === tid);
-        const period = teacher?.periods.find(p => p.id === pid);
-
-        if (!period) return alert("Period not found!");
-
-        // UI Elements
-        const classSelect = document.getElementById('edit-p-class');
-        const bookSelect = document.getElementById('edit-p-book');
-        const updateBtn = document.getElementById('btn-update-period');
-
-        // Dropdowns setup karein
-        classSelect.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-        classSelect.value = period.className;
-
-        const loadBooks = (val) => {
-            const cls = currentConfig.classes.find(c => c.name === val);
-            bookSelect.innerHTML = cls ? cls.subjects.map(s => `<option value="${s}">${s}</option>`).join('') : '';
-        };
-        loadBooks(period.className);
-        bookSelect.value = period.bookName;
-        classSelect.onchange = (e) => loadBooks(e.target.value);
-
-        // Fill fields
-        document.getElementById('edit-p-sem').value = period.semester;
-        document.getElementById('edit-p-pages').value = period.totalPages;
-        document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
-
-        // --- UPDATE BUTTON LOGIC ---
-        updateBtn.onclick = async () => {
-            updateBtn.disabled = true;
-            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
-
-            const updatedObj = {
-                id: pid,
-                className: classSelect.value,
-                bookName: bookSelect.value,
-                semester: document.getElementById('edit-p-sem').value,
-                totalPages: parseInt(document.getElementById('edit-p-pages').value),
-                syllabus: document.getElementById('edit-p-syllabus').value
-            };
+            btn.disabled = true;
+            btn.innerText = "Adding...";
 
             try {
-                await updateTeacherData(db, currentUser, jamia, selectedYear, (teachers) => {
-                    const tIndex = teachers.findIndex(teach => teach.id === tid);
-                    if (tIndex > -1) {
-                        const pIndex = teachers[tIndex].periods.findIndex(p => p.id === pid);
-                        if (pIndex > -1) teachers[tIndex].periods[pIndex] = updatedObj;
+                await updateTeacherData(db, currentUser, jamiaName, selectedYear, (teachers) => {
+                    const t = teachers.find(teach => teach.id === tid);
+                    if (t) {
+                        if (!t.periods) t.periods = [];
+                        t.periods.push({
+                            id: `p-${Date.now()}`,
+                            className, bookName, semester,
+                            totalPages: parseInt(totalPages), syllabus
+                        });
                     }
                     return teachers;
                 });
 
-                closePeriodModal();
-                
-                // ERROR FIX: jamiaat list ko sahi variable se refresh karein
-                // Agar aapke pas global assignedJamiaat nahi hai, toh upar wala 'jamiaat' use karein
-                loadAllTeachers(jamiaat || assignedJamiaat, db, currentUser, selectedYear); 
-                
-                alert("Data Updated!");
-            } catch (err) {
-                alert("Error: " + err.message);
+                alert("Period Successfully Added!");
+                loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear);
+            } catch (e) {
+                alert("Error adding period: " + e.message);
             } finally {
-                updateBtn.disabled = false;
-                updateBtn.innerText = 'Update Period Data';
+                btn.disabled = false;
+                btn.innerText = "Add Period";
             }
         };
+    });
 
-        document.getElementById('edit-period-modal').classList.remove('hidden');
-    };
-});
+    window.closePeriodModal = () => document.getElementById('edit-period-modal').classList.add('hidden');
+
+    container.querySelectorAll('.edit-period-btn').forEach(btn => {
+        btn.onclick = async () => {
+            const { pid, tid, jamia } = btn.dataset;
+            
+            const [configSnap, userSnap] = await Promise.all([
+                getDoc(doc(db, "settings", "academic_admin_config")),
+                getDoc(doc(db, "users", currentUser.uid))
+            ]);
+
+            if (!configSnap.exists()) return alert("Config not found!");
+
+            const currentConfig = configSnap.data();
+            const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+            const jamiaData = structure.find(j => j.jamiaName === jamia);
+            const teacher = jamiaData?.teachers.find(t => t.id === tid);
+            const period = teacher?.periods.find(p => p.id === pid);
+
+            if (!period) return alert("Period not found!");
+
+            const classSelect = document.getElementById('edit-p-class');
+            const bookSelect = document.getElementById('edit-p-book');
+            const updateBtn = document.getElementById('btn-update-period');
+
+            classSelect.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+            classSelect.value = period.className;
+
+            const loadBooks = (val) => {
+                const cls = currentConfig.classes.find(c => c.name === val);
+                bookSelect.innerHTML = cls ? cls.subjects.map(s => `<option value="${s}">${s}</option>`).join('') : '';
+            };
+            loadBooks(period.className);
+            bookSelect.value = period.bookName;
+            classSelect.onchange = (e) => loadBooks(e.target.value);
+
+            document.getElementById('edit-p-sem').value = period.semester;
+            document.getElementById('edit-p-pages').value = period.totalPages;
+            document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
+
+            updateBtn.onclick = async () => {
+                updateBtn.disabled = true;
+                updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+                const updatedObj = {
+                    id: pid,
+                    className: classSelect.value,
+                    bookName: bookSelect.value,
+                    semester: document.getElementById('edit-p-sem').value,
+                    totalPages: parseInt(document.getElementById('edit-p-pages').value),
+                    syllabus: document.getElementById('edit-p-syllabus').value
+                };
+
+                try {
+                    await updateTeacherData(db, currentUser, jamia, selectedYear, (teachers) => {
+                        const tIndex = teachers.findIndex(teach => teach.id === tid);
+                        if (tIndex > -1) {
+                            const pIndex = teachers[tIndex].periods.findIndex(p => p.id === pid);
+                            if (pIndex > -1) teachers[tIndex].periods[pIndex] = updatedObj;
+                        }
+                        return teachers;
+                    });
+
+                    closePeriodModal();
+                    loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear); 
+                    alert("Data Updated!");
+                } catch (err) {
+                    alert("Error: " + err.message);
+                } finally {
+                    updateBtn.disabled = false;
+                    updateBtn.innerText = 'Update Period Data';
+                }
+            };
+
+            document.getElementById('edit-period-modal').classList.remove('hidden');
+        };
+    });
 };
 
 async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updateFn) {
@@ -813,9 +729,8 @@ async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updat
         await updateDoc(userRef, { academicYears });
     }
 }
-// 1. Toggle Edit Mode (Lock/Unlock)
-// Edit Mode Toggle (Lock/Unlock)
-// 1. Edit/Save Toggle Logic
+
+// --- Dynamic Row Live Update Sync ---
 window.updateRowStatusLive = (input, target, monthId, semester) => {
     const row = input.closest('tr');
     const achieved = parseInt(input.value) || 0;
@@ -858,7 +773,6 @@ window.toggleEditMode = async (jamiaName) => {
         btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
         btn.style.backgroundColor = "#4f46e5";
         
-        // Save to Firebase logic month wise
         try {
             const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
             const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
@@ -881,7 +795,7 @@ window.toggleEditMode = async (jamiaName) => {
                     const period = teacher.periods.find(p => p.id === pid);
                     if (period) {
                         if (!period.achieved) period.achieved = {};
-                        period.achieved[currentSelectedMonth] = val; // State tracking month wise
+                        period.achieved[currentSelectedMonth] = val; // Saves month-wise properly
                     }
                 }
             });
@@ -895,123 +809,13 @@ window.toggleEditMode = async (jamiaName) => {
     }
 };
 
-// 2. Live Kaifiyat (Mumtaz/Behtar/Munasib)
-window.calculateLiveStatus = (input, target) => {
-    const row = input.closest('tr');
-    const achieved = parseInt(input.value) || 0;
-    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
-    
-    const percCell = row.querySelector('.perc-cell');
-    const statusCell = row.querySelector('.status-cell');
-    
-    percCell.textContent = percentage + "%";
-    
-    if (percentage >= 90) {
-        statusCell.textContent = "Mumtaz";
-        statusCell.className = "p-4 text-center status-cell font-black text-emerald-600 italic";
-    } else if (percentage >= 75) {
-        statusCell.textContent = "Behtar";
-        statusCell.className = "p-4 text-center status-cell font-black text-blue-600 italic";
-    } else {
-        statusCell.textContent = "Munasib";
-        statusCell.className = "p-4 text-center status-cell font-black text-red-500 italic";
-    }
-};
-
-// 3. Link Copy Function
-window.copyTeacherLink = (jamiaName) => {
-    const monthIdx = document.getElementById('report-month').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('inspector.html', '');
-    const url = `${baseUrl}teacher-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${monthIdx}`;
-    
-    navigator.clipboard.writeText(url).then(() => {
-        alert("Teacher Form Link Copied!");
-    });
-};
-
-// Live Percentage aur Kaifiyat Calculation
-window.calculateLiveStatus = (input, target) => {
-    const row = input.closest('tr');
-    const achieved = parseInt(input.value) || 0;
-    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
-    
-    const percCell = row.querySelector('.perc-cell');
-    const statusCell = row.querySelector('.status-cell');
-    
-    percCell.textContent = percentage + "%";
-    
-    if (percentage >= 90) {
-        statusCell.textContent = "Mumtaz";
-        statusCell.className = "p-4 text-center status-cell font-black text-emerald-600 italic";
-    } else if (percentage >= 70) {
-        statusCell.textContent = "Behtar";
-        statusCell.className = "p-4 text-center status-cell font-black text-blue-600 italic";
-    } else {
-        statusCell.textContent = "Munasib";
-        statusCell.className = "p-4 text-center status-cell font-black text-red-500 italic";
-    }
-};
-
-// 2. Copy Teacher Form Link
-window.copyTeacherLink = (jamiaName) => {
-    const monthIdx = document.getElementById('report-month').value;
-    const baseUrl = window.location.href.split('inspector.html')[0];
-    const params = new URLSearchParams({
-        jamiaId: jamiaName,
-        userId: currentUser.uid, // Global currentUser variable
-        monthIndex: monthIdx,
-        activeYear: "2026-2027" // Dynamic karna behtar hai
-    });
-    const link = `${baseUrl}teacher-form.html?${params.toString()}`;
-    
-    navigator.clipboard.writeText(link).then(() => {
-        alert("Teacher Form Link Copied for " + jamiaName);
-    });
-};
-
-// 3. Image Download Logic (html2canvas require hoga)
-window.downloadJamiaImage = async (jamiaName) => {
-    const container = document.getElementById('performance-table-container');
-    // Isme hum sirf us Jamia ka data filter karke image banate hain jese karkardagi.html me tha
-    alert("Image generation starting for " + jamiaName);
-    // html2canvas logic yahan aayega...
-};
-window.updateRowStatus = (input, target) => {
-    const row = input.closest('tr');
-    const achieved = parseInt(input.value) || 0;
-    const percentage = target > 0 ? Math.round((achieved / target) * 100) : 0;
-    
-    const percCell = row.querySelector('.perc-cell');
-    const statusCell = row.querySelector('.status-cell');
-    
-    percCell.textContent = percentage + "%";
-    
-    if (percentage >= 90) {
-        statusCell.textContent = "Mumtaz";
-        statusCell.className = "p-3 text-center status-cell font-black text-emerald-600";
-    } else if (percentage >= 70) {
-        statusCell.textContent = "Behtar";
-        statusCell.className = "p-3 text-center status-cell font-black text-blue-600";
-    } else {
-        statusCell.textContent = "Munasib";
-        statusCell.className = "p-3 text-center status-cell font-black text-red-600";
-    }
-};
-
-// monthly-performance.js ke aakhir mein ye functions replace karein
-
-// --- Helper: Safe ID banana (Spaces hatane ke liye) ---
+// --- Link, Image & Excel Share Helpers ---
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
-// --- 1. Link Copy Function ---
 window.copyTeacherFormLink = (jamiaName) => {
     const monthIdx = document.getElementById('report-month').value;
-    // Base URL nikalne ka sahi tarika
     const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    
-    // Yahan hum global auth se UID lenge taaki 'currentUser' ki error na aaye
-    const auth = firebase.auth().currentUser; 
-    const inspectorId = auth ? auth.uid : 'anonymous';
+    const inspectorId = gCurrentUser ? gCurrentUser.uid : 'anonymous';
 
     const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&inspectorId=${inspectorId}`;
     
@@ -1020,9 +824,6 @@ window.copyTeacherFormLink = (jamiaName) => {
     });
 };
 
-
-
-// --- 3. Image Download Function ---
 window.downloadJamiaImage = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const card = document.getElementById(`card-${safeId}`);
@@ -1038,10 +839,8 @@ window.downloadJamiaImage = (jamiaName) => {
     });
 };
 
-// --- 4. Excel/CSV Download Function ---
 window.downloadJamiaExcel = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
-    // Table element ko dhoondne ka sahi tarika
     const card = document.getElementById(`card-${safeId}`);
     const table = card ? card.querySelector("table") : null;
 
@@ -1067,13 +866,7 @@ window.downloadJamiaExcel = (jamiaName) => {
     link.click();
     document.body.removeChild(link);
 };
-// --- In helper functions ko add karein taake error khatam ho jaye ---
 
-function calculateStatusText(percentage) {
-    if (percentage >= 90) return "Mumtaz";
-    if (percentage >= 70) return "Behtar";
-    return "Munasib";
-}
 const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('profiles-table-container');
     if (!container) return;
@@ -1085,7 +878,6 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
 
     let html = "";
-
     jamiaat.forEach(jamia => {
         const jamiaData = structure.find(j => j.jamiaName === jamia);
         if (!jamiaData || jamiaData.teachers.length === 0) return;
