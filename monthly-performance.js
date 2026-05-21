@@ -120,37 +120,69 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     const contentArea = document.getElementById('sub-tab-content');
 
 if (tabName === 'performance') {
-        // Agar HTML pehle se nahi bana hai toh hi render karenge (taaki table body destroy na ho)
-        if (!document.getElementById('report-jamia')) {
-            contentArea.innerHTML = `
-                <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
-                    <div class="flex flex-col">
-                        <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Jamia (Month controlled by Main Dashboard)</p>
+        // 1. Months ka array jo dropdown me dikhega
+        const monthsArray = [
+            { name: "April", id: "apr" }, { name: "May", id: "may" }, { name: "June", id: "jun" },
+            { name: "July", id: "jul" }, { name: "August", id: "aug" }, { name: "September", id: "sep" },
+            { name: "October", id: "oct" }, { name: "November", id: "nov" }, { name: "December", id: "dec" },
+            { name: "January", id: "jan" }, { name: "February", id: "feb" }, { name: "March", id: "mar" }
+        ];
+
+        // 2. HTML Inject karte waqt check karenge ki jo month pehle se selected hai, wahi dropdown me 'selected' dikhe
+        const monthsHtml = monthsArray.map(m => 
+            `<option value="${m.id}" ${m.id === currentSelectedMonth ? 'selected' : ''}>${m.name}</option>`
+        ).join('');
+
+        contentArea.innerHTML = `
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
+                <div class="flex flex-col">
+                    <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2">SELECT MONTH</label>
+                        <select id="report-month" class="p-2.5 border rounded-2xl text-sm font-bold bg-slate-50 min-w-[120px]">
+                            ${monthsHtml}
+                        </select>
                     </div>
-                    
-                    <div class="flex flex-wrap items-center gap-3">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
-                            <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
-                                <option value="all">All Jamiaat (Show All)</option>
-                                ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
-                            </select>
-                        </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
+                        <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
+                            <option value="all">All Jamiaat (Show All)</option>
+                            ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
+                        </select>
                     </div>
                 </div>
-                <div id="performance-table-body"></div>
-            `;
+            </div>
+            <div id="performance-table-body"></div>
+        `;
+
+        const monthSelect = document.getElementById('report-month');
+        const jamiaSelect = document.getElementById('report-jamia');
+
+        // 3. Month Change Event Listener (Andar ka Dropdown)
+        if (monthSelect) {
+            // Forcefully state sync kar rahe hain
+            monthSelect.value = currentSelectedMonth;
+
+            monthSelect.onchange = (e) => {
+                // Jaise hi andar se month badlega, global variable update hoga aur table refresh hogi
+                currentSelectedMonth = e.target.value;
+                console.log("Month changed inside Performance Tab:", currentSelectedMonth);
+                loadPerformanceTable(assignedJamiaat, db, currentUser);
+            };
         }
 
-        const jamiaSelect = document.getElementById('report-jamia');
         if (jamiaSelect) {
             jamiaSelect.onchange = () => {
                 loadPerformanceTable(assignedJamiaat, db, currentUser);
             };
         }
         
-        // Pehli baar table load karte waqt main dashboard wala selected month hi use hoga
+        // Table data load karenge
         loadPerformanceTable(assignedJamiaat, db, currentUser);
     } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
