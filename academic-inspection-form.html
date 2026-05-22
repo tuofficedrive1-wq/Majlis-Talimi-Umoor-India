@@ -91,42 +91,29 @@
     }
 });
 
+        function getAcademicYear() {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+}
+        
     async function loadJamiaStructure() {
-    const activeYear = getAcademicYear(); // Yahan dynamic year aa jayega
-    console.log("Fetching data for Year:", activeYear); // Debug ke liye
-
+    const activeYear = getAcademicYear();
     const userRef = doc(db, "users", currentUser.uid);
     const userSnap = await getDoc(userRef);
-    
+
     if (userSnap.exists()) {
         const userData = userSnap.data();
-        
-        // Dynamic key use karein
         const academicData = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
         
-        console.log(`Searching in ${activeYear}:`, academicData);
-
+        // Jamia match (apne jamiaName variable ko yahan verify kar lein)
         const jamiaData = academicData.find(j => j.jamiaName.trim() === jamiaName.trim());
         
         if (jamiaData) {
             fullStructure = jamiaData.teachers;
             console.log("Structure Loaded Successfully for:", activeYear);
-        } else {
-            console.warn(`Is Jamia ke liye ${activeYear} mein koi data nahi mila.`);
         }
-    }
-}
-        // Ye function yahan hona zaroori hai taaki aapka code ise access kar sake
-async function getMasterConfig(db) {
-    try {
-        const snap = await getDoc(doc(db, "settings", "academic_admin_config"));
-        if (snap.exists()) {
-            return snap.data(); // Isme { classes: [...] } data hona chahiye
-        }
-        return { classes: [] };
-    } catch (e) {
-        console.error("Config fetch error:", e);
-        return { classes: [] };
     }
 }
 
@@ -134,12 +121,10 @@ async function getMasterConfig(db) {
 
     document.getElementById('add-class-btn').onclick = () => {
     const classId = Date.now();
-    
-    // Extract unique classes (Safe way)
+    // Unique classes nikalna
     const classes = [...new Set(fullStructure.flatMap(t => t.periods?.map(p => p.className) || []))];
     const classOptions = classes.map(c => `<option value="${c}">${c}</option>`).join('');
 
-    // Naya Template (Pura structure)
     const classTemplate = `
         <div class="class-card bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden mb-8" id="class-${classId}">
             <div class="bg-slate-50 p-5 border-b flex justify-between items-center">
@@ -152,21 +137,12 @@ async function getMasterConfig(db) {
                 </div>
                 <div class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold shadow-sm">Class Score: <span class="class-avg">0%</span></div>
             </div>
-
             <div class="p-8">
                 <div class="grid grid-cols-2 gap-8 mb-8 bg-indigo-50/30 p-6 rounded-2xl border border-indigo-50">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Total Students</label>
-                        <input type="number" class="total-students w-full p-3 bg-white border rounded-xl font-bold outline-none" placeholder="e.g. 30" oninput="updateCalculations()">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Present Students</label>
-                        <input type="number" class="present-students w-full p-3 bg-white border rounded-xl font-bold outline-none" placeholder="e.g. 25" oninput="updateCalculations()">
-                    </div>
+                    <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Total Students</label><input type="number" class="total-students w-full p-3 bg-white border rounded-xl font-bold outline-none" placeholder="e.g. 30" oninput="updateCalculations()"></div>
+                    <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Present Students</label><input type="number" class="present-students w-full p-3 bg-white border rounded-xl font-bold outline-none" placeholder="e.g. 25" oninput="updateCalculations()"></div>
                 </div>
-
-                <div class="books-container space-y-6"></div>
-
+                <div class="books-container space-y-6"></div> 
                 <div class="mt-8 flex justify-start">
                     <button onclick="addBookRow(${classId})" type="button" class="bg-amber-500 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-amber-600 active:scale-95 transition-all flex items-center gap-2">
                         <i class="fas fa-plus"></i> Add Subject
@@ -176,66 +152,47 @@ async function getMasterConfig(db) {
         </div>`;
     
     document.getElementById('classes-list').insertAdjacentHTML('beforeend', classTemplate);
-    updateCalculations();
-};
-        window.updateSubjectsList = (selectElem, classId, classesData) => {
-    const card = document.getElementById(`class-${classId}`);
-    card.dataset.selectedClass = selectElem.value;
-    
-    // Subjects container ko khali karein
-    card.querySelector('.books-container').innerHTML = '';
 };
 
     window.updateTeachers = (selectElem, classId) => {
-    const selectedClass = selectElem.value;
     const card = document.getElementById(`class-${classId}`);
+    card.dataset.selectedClass = selectElem.value;
     
-    if (!card) {
-        console.error("Card nahi mila:", `class-${classId}`);
-        return;
-    }
-
-    card.dataset.selectedClass = selectedClass;
-
-    // Safety Check: Pehle dhoondho, fir change karo
+    // Sirf container ko clear karein, baki functions safe rahenge
     const container = card.querySelector('.books-container');
     if (container) {
-        container.innerHTML = ''; // Yahan error aa raha tha
-        addBookRow(classId); // Subjects tabhi load honge jab container sahi milega
-    } else {
-        console.error("Error: .books-container nahi mila card ke andar!");
-        // HTML check karein ke kya card ke andar wahi div majood hai?
-        console.log("Card ka HTML:", card.innerHTML);
+        container.innerHTML = ''; 
     }
 };
 
-    window.addBookRow = async (classId) => {
-    const card = document.getElementById(`class-${classId}`);
-    const selectedClassName = card.dataset.selectedClass;
-    if(!selectedClassName) return alert("Pehle Class select karein!");
+    window.addBookRow = (classId) => {
+        const card = document.getElementById(`class-${classId}`);
+        const selectedClass = card.dataset.selectedClass;
+        if(!selectedClass) return alert("Please select a class first!");
 
-    // Config fetch karein (ya global variable use karein)
-    const config = await getMasterConfig(db);
-    const selectedClassData = config.classes.find(c => c.name === selectedClassName);
-    const subjects = selectedClassData ? selectedClassData.subjects : [];
+        const bookId = Date.now();
+        const teachersInClass = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
+        const teacherOptions = teachersInClass.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
 
-    const bookId = Date.now();
-    const subjectOptions = subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+        const bookRow = `
+            <div class="book-row grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100" id="book-${bookId}">
+                <div class="col-span-1 text-center"><button onclick="this.closest('.book-row').remove(); updateCalculations();" class="text-slate-300 hover:text-red-500">×</button></div>
+                <div class="col-span-3">
+                    <select class="teacher-select w-full p-2 border-b outline-none text-sm" onchange="updateBooks(this, ${bookId}, '${selectedClass}')">
+                        <option value="">Select Teacher</option>${teacherOptions}
+                    </select>
+                </div>
+                <div class="col-span-3">
+                    <select class="book-select w-full p-2 border-b outline-none text-sm font-medium">
+                        <option value="">Select Subject</option>
+                    </select>
+                </div>
+                                <div class="col-span-2 text-center text-lg font-black text-slate-300 book-percent">0%</div>
+            </div>`;
+        
+        card.querySelector('.books-container').insertAdjacentHTML('beforeend', bookRow);
+    };
 
-    const bookRow = `
-        <div class="book-row grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-white p-4 rounded-2xl border border-slate-100" id="book-${bookId}">
-            <div class="col-span-1 text-center"><button onclick="this.closest('.book-row').remove(); updateCalculations();" class="text-slate-300 hover:text-red-500">×</button></div>
-            <div class="col-span-5">
-                <select class="book-select w-full p-2 border-b outline-none text-sm font-medium" onchange="showQuestionsArea(${bookId}, this.value)">
-                    <option value="">Select Subject</option>
-                    ${subjectOptions}
-                </select>
-            </div>
-            <div class="col-span-2 text-center text-lg font-black text-slate-300 book-percent">0%</div>
-        </div>`;
-    
-    card.querySelector('.books-container').insertAdjacentHTML('beforeend', bookRow);
-};
     window.updateBooks = (teacherSelect, bookRowId, className) => {
     const teacherId = teacherSelect.value;
     const teacher = fullStructure.find(t => t.id === teacherId);
@@ -542,19 +499,6 @@ function renderSavedBook(classId, sData, container) {
     sData.evaluations.forEach((evalData, index) => {
         if(qInputs[index]) qInputs[index].value = evalData.score;
     });
-}
-        function getAcademicYear() {
-    const now = new Date();
-    const month = now.getMonth() + 1; // 1 = Jan, 4 = April, etc.
-    const year = now.getFullYear();
-
-    // Agar month 4 (April) ya uske baad hai, to current year-next year
-    if (month >= 4) {
-        return `${year}-${year + 1}`;
-    } else {
-        // April se pehle, to last year-current year
-        return `${year - 1}-${year}`;
-    }
 }
         
 </script>
