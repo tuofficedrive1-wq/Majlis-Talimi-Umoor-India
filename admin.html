@@ -2126,6 +2126,7 @@ document.getElementById('transfer-jamia-select').addEventListener('change', (e) 
 });
 
 // 3. Transfer Execute Karna
+// 3. Transfer Execute Karna (A to Z Full Transfer)
 document.getElementById('btn-execute-transfer').addEventListener('click', async () => {
     const jamiaName = document.getElementById('transfer-jamia-select').value;
     const oldUserId = document.getElementById('transfer-old-user-id').value;
@@ -2134,31 +2135,176 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
     if(!jamiaName || !newUserId) { alert("Tamam malumat select karein."); return; }
     if(oldUserId === newUserId) { alert("Purana aur naya user same nahi ho sakte."); return; }
 
-    if(!confirm(`Kya aap waqai ${jamiaName} ko naye user ko dena chahte hain? Purana record naye user ko shift ho jayega.`)) return;
+    if(!confirm(`Kya aap waqai ${jamiaName} ka A to Z saara data (Jaiza, Tests, Exams, Recordings, Structure) naye user ko transfer karna chahte hain? Yeh amal data ko puri tarah shift kar dega.`)) return;
 
     showLoader(true);
     try {
         const batch = writeBatch(db);
         
-        // Old User se Jamia hatana
+        // ==========================================
+        // 1. USERS COLLECTION (Structure & List Transfer)
+        // ==========================================
         const oldUserRef = doc(db, 'users', oldUserId);
-        const oldU = allUsersData.find(u => u.id === oldUserId);
-        const updatedOldList = (oldU.jamiaatList || []).filter(j => (typeof j === 'object' ? j.name : j) !== jamiaName);
-        batch.update(oldUserRef, { jamiaatList: updatedOldList });
-
-        // New User mein Jamia jodna
         const newUserRef = doc(db, 'users', newUserId);
+        const oldU = allUsersData.find(u => u.id === oldUserId);
         const newU = allUsersData.find(u => u.id === newUserId);
+        const newUserName = newU.name || newU.email;
+
+        // Jamiaat List update karein
+        const updatedOldList = (oldU.jamiaatList || []).filter(j => (typeof j === 'object' ? j.name : j) !== jamiaName);
         let updatedNewList = [...(newU.jamiaatList || [])];
         if(!updatedNewList.includes(jamiaName)) updatedNewList.push(jamiaName);
-        batch.update(newUserRef, { jamiaatList: updatedNewList });
 
+        // Academic Structure Transfer karein
+        let oldAcademicYears = oldU.academicYears ? JSON.parse(JSON.stringify(oldU.academicYears)) : {};
+        let newAcademicYears = newU.academicYears ? JSON.parse(JSON.stringify(newU.academicYears)) : {};
+
+        Object.keys(oldAcademicYears).forEach(year => {
+            let oldStructure = oldAcademicYears[year].karkardagiStructure || [];
+            const jamiaIndex = oldStructure.findIndex(j => j.jamiaName === jamiaName);
+            
+            if (jamiaIndex !== -1) {
+                const jamiaDataToTransfer = oldStructure.splice(jamiaIndex, 1)[0];
+                if (!newAcademicYears[year]) newAcademicYears[year] = { karkardagiStructure: [] };
+                if (!newAcademicYears[year].karkardagiStructure) newAcademicYears[year].karkardagiStructure = [];
+                
+                const newJamiaIndex = newAcademicYears[year].karkardagiStructure.findIndex(j => j.jamiaName === jamiaName);
+                if (newJamiaIndex !== -1) {
+                    newAcademicYears[year].karkardagiStructure[newJamiaIndex] = jamiaDataToTransfer;
+                } else {
+                    newAcademicYears[year].karkardagiStructure.push(jamiaDataToTransfer);
+                }
+            }
+        });
+
+        batch.update(oldUserRef, { jamiaatList: updatedOldList, academicYears: oldAcademicYears });
+        batch.update(newUserRef, { jamiaatList: updatedNewList, academicYears: newAcademicYears });
+
+        // ==========================================
+        // 2. JAIZA FORMS (Detailed Forms Transfer)
+        // ==========================================
+        const jaizaQ = query(collection(db, 'jaiza_forms'), where('createdBy', '==', oldUserId));
+        const jaizaSnap = await getDocs(jaizaQ);
+        jaizaSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if ((data.jamiaId || '').trim().toLowerCase() === jamiaName.trim().toLowerCase()) {
+                batch.update(docSnap.ref, { createdBy: newUserId });
+            }
+        });
+
+        // ==========================================
+        // 3. MONTHLY TEST SHEETS (Tests Transfer)
+        // ==========================================
+        const testQ = query(collection(db, 'monthly_test_sheets'), where('adminUid', '==', oldUserId));
+        const testSnap = await getDocs(testQ);
+        testSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if ((data.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase()) {
+                batch.update(docSnap.ref, { adminUid: newUserId });
+            }
+        });
+
+        // ==========================================
+        // 4. CLASS WISE RESULTS (Ibtidaiya & Final Exams)
+        // ==========================================
+        const examQ = query(collection(db, 'class_wise_results'), where('userId', '==', oldUserId));
+        const examSnap = await getDocs(examQ);
+        examSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if ((data.jamia || '').trim().toLowerCase() === jamiaName.trim().toLowerCase()) {
+                batch.update(docSnap.ref, { 
+                    userId: newUserId,
+                    userName: newUserName 
+                });
+            }
+        });
+
+        // ==========================================
+        // 5. MONTHLY REPORTS (Main Summary Array Transfer)
+        // ==========================================
+        const oldReportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', oldUserId));
+        const oldReportsSnap = await getDocs(oldReportsQ);
+
+        // Naye user ki existing reports nikalein taake usme merge kar sakein
+        const newReportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', newUserId));
+        const newReportsSnap = await getDocs(newReportsQ);
+        const newReportsMap = {};
+        newReportsSnap.forEach(d => {
+            const data = d.data();
+            newReportsMap[`${data.month}_${data.year}`] = { id: d.id, ...data };
+        });
+
+        for (const docSnap of oldReportsSnap.docs) {
+            const oldReport = docSnap.data();
+            const monthKey = `${oldReport.month}_${oldReport.year}`;
+
+            let oldJaiza = oldReport.jaizaReport?.data || [];
+            let oldTadris = oldReport.tadrisRecording?.data || [];
+            let oldTest = oldReport.monthlyTest?.data || [];
+            let oldKkd = oldReport.karkardagiReport?.data || [];
+
+            // Function to check if entry belongs to the transferred Jamia
+            const isTargetJamia = (name) => (name || '').trim().toLowerCase() === jamiaName.trim().toLowerCase();
+
+            // Extract Jamia specific entries
+            const transferredJaiza = oldJaiza.filter(j => isTargetJamia(j.name || j.jamiaName || j.jamiaId));
+            const transferredTadris = oldTadris.filter(j => isTargetJamia(j.jamiaName));
+            const transferredTest = oldTest.filter(j => isTargetJamia(j.name || j.jamiaName));
+            const transferredKkd = oldKkd.filter(j => isTargetJamia(j.jamiaName || j.jamiaId));
+
+            // Agar is mahine is Jamia ka koi bhi data tha
+            if (transferredJaiza.length || transferredTadris.length || transferredTest.length || transferredKkd.length) {
+                
+                // Purane user ke array se nikal dein
+                batch.update(docSnap.ref, {
+                    'jaizaReport.data': oldJaiza.filter(j => !isTargetJamia(j.name || j.jamiaName || j.jamiaId)),
+                    'tadrisRecording.data': oldTadris.filter(j => !isTargetJamia(j.jamiaName)),
+                    'monthlyTest.data': oldTest.filter(j => !isTargetJamia(j.name || j.jamiaName)),
+                    'karkardagiReport.data': oldKkd.filter(j => !isTargetJamia(j.jamiaName || j.jamiaId))
+                });
+
+                // Naye user ki report me shamil karein
+                if (newReportsMap[monthKey]) {
+                    // Agar naye user ki us mahine ki report pehle se hai toh Arrays me add karein
+                    const nrRef = doc(db, 'monthly_reports', newReportsMap[monthKey].id);
+                    batch.update(nrRef, {
+                        'jaizaReport.data': [...(newReportsMap[monthKey].jaizaReport?.data || []), ...transferredJaiza],
+                        'tadrisRecording.data': [...(newReportsMap[monthKey].tadrisRecording?.data || []), ...transferredTadris],
+                        'monthlyTest.data': [...(newReportsMap[monthKey].monthlyTest?.data || []), ...transferredTest],
+                        'karkardagiReport.data': [...(newReportsMap[monthKey].karkardagiReport?.data || []), ...transferredKkd]
+                    });
+                } else {
+                    // Agar naye user ki report us mahine nahi hai, toh Nayi report create karein
+                    const newReportRef = doc(collection(db, 'monthly_reports'));
+                    batch.set(newReportRef, {
+                        userId: newUserId,
+                        userEmail: newU.email || '',
+                        month: oldReport.month,
+                        year: oldReport.year,
+                        monthNum: oldReport.monthNum,
+                        yearNum: oldReport.yearNum,
+                        createdAt: serverTimestamp(),
+                        jaizaReport: { data: transferredJaiza, status: 'Done' },
+                        tadrisRecording: { data: transferredTadris, status: 'Done' },
+                        monthlyTest: { data: transferredTest, status: 'Done' },
+                        karkardagiReport: { data: transferredKkd, status: 'Done' }
+                    });
+                    newReportsMap[monthKey] = { id: newReportRef.id };
+                }
+            }
+        }
+
+        // Commit Saare Updates Ek Saath
         await batch.commit();
-        showNotification("Jamia aur History successfully transfer ho gayi!");
+        showNotification("Jamia aur uski A-to-Z saari history successfully transfer ho gayi!");
         initTransferTab(); // Reset dropdowns
+        
+        // Refresh users list to reflect changes
+        if(typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers();
+        
     } catch (err) {
-        console.error(err);
-        showNotification("Transfer fail ho gaya.", true);
+        console.error("Transfer Error: ", err);
+        showNotification("Transfer fail ho gaya. Console mein error dekhein.", true);
     } finally {
         showLoader(false);
     }
