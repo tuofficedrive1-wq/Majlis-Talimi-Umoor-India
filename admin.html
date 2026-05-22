@@ -2227,75 +2227,89 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
         });
 
         // ==========================================
-        // 5. MONTHLY REPORTS (Main Summary Array Transfer)
+        // ==========================================
+        // 5. MONTHLY REPORTS (Main Arrays)
         // ==========================================
         const oldReportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', oldUserId));
         const oldReportsSnap = await getDocs(oldReportsQ);
 
-        // Naye user ki existing reports nikalein taake usme merge kar sakein
         const newReportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', newUserId));
         const newReportsSnap = await getDocs(newReportsQ);
         const newReportsMap = {};
         newReportsSnap.forEach(d => {
             const data = d.data();
-            newReportsMap[`${data.month}_${data.year}`] = { id: d.id, ...data };
+            const m = data.month || 'Unknown';
+            const y = data.year || 'Unknown';
+            newReportsMap[`${m}_${y}`] = { id: d.id, ...data };
         });
 
         for (const docSnap of oldReportsSnap.docs) {
             const oldReport = docSnap.data();
-            const monthKey = `${oldReport.month}_${oldReport.year}`;
+            
+            // 🟢 ERROR FIX: Firebase 'undefined' accept nahi karta, isliye hum defaults set kar rahe hain
+            const safeMonth = oldReport.month || 'Unknown';
+            const safeYear = oldReport.year || new Date().getFullYear();
+            const safeMonthNum = oldReport.monthNum !== undefined ? oldReport.monthNum : null;
+            const safeYearNum = oldReport.yearNum !== undefined ? oldReport.yearNum : null;
+            
+            const monthKey = `${safeMonth}_${safeYear}`;
 
-            let oldJaiza = oldReport.jaizaReport?.data || [];
-            let oldTadris = oldReport.tadrisRecording?.data || [];
-            let oldTest = oldReport.monthlyTest?.data || [];
-            let oldKkd = oldReport.karkardagiReport?.data || [];
+            // Arrays ko safely handle karna
+            let oldJaiza = Array.isArray(oldReport.jaizaReport?.data) ? oldReport.jaizaReport.data : [];
+            let oldTadris = Array.isArray(oldReport.tadrisRecording?.data) ? oldReport.tadrisRecording.data : [];
+            let oldTest = Array.isArray(oldReport.monthlyTest?.data) ? oldReport.monthlyTest.data : [];
+            let oldKkd = Array.isArray(oldReport.karkardagiReport?.data) ? oldReport.karkardagiReport.data : [];
 
-            // Function to check if entry belongs to the transferred Jamia
-            const isTargetJamia = (name) => (name || '').trim().toLowerCase() === jamiaName.trim().toLowerCase();
+            const transferredJaiza = oldJaiza.filter(j => j && isTargetJamia(j.name || j.jamiaName || j.jamiaId));
+            const transferredTadris = oldTadris.filter(j => j && isTargetJamia(j.jamiaName));
+            const transferredTest = oldTest.filter(j => j && isTargetJamia(j.name || j.jamiaName));
+            const transferredKkd = oldKkd.filter(j => j && isTargetJamia(j.jamiaName || j.jamiaId));
 
-            // Extract Jamia specific entries
-            const transferredJaiza = oldJaiza.filter(j => isTargetJamia(j.name || j.jamiaName || j.jamiaId));
-            const transferredTadris = oldTadris.filter(j => isTargetJamia(j.jamiaName));
-            const transferredTest = oldTest.filter(j => isTargetJamia(j.name || j.jamiaName));
-            const transferredKkd = oldKkd.filter(j => isTargetJamia(j.jamiaName || j.jamiaId));
-
-            // Agar is mahine is Jamia ka koi bhi data tha
             if (transferredJaiza.length || transferredTadris.length || transferredTest.length || transferredKkd.length) {
                 
-                // Purane user ke array se nikal dein
-                batch.update(docSnap.ref, {
-                    'jaizaReport.data': oldJaiza.filter(j => !isTargetJamia(j.name || j.jamiaName || j.jamiaId)),
-                    'tadrisRecording.data': oldTadris.filter(j => !isTargetJamia(j.jamiaName)),
-                    'monthlyTest.data': oldTest.filter(j => !isTargetJamia(j.name || j.jamiaName)),
-                    'karkardagiReport.data': oldKkd.filter(j => !isTargetJamia(j.jamiaName || j.jamiaId))
-                });
+                // Old report ko safely update karein
+                batch.update(docSnap.ref, JSON.parse(JSON.stringify({
+                    'jaizaReport.data': oldJaiza.filter(j => !j || !isTargetJamia(j.name || j.jamiaName || j.jamiaId)),
+                    'tadrisRecording.data': oldTadris.filter(j => !j || !isTargetJamia(j.jamiaName)),
+                    'monthlyTest.data': oldTest.filter(j => !j || !isTargetJamia(j.name || j.jamiaName)),
+                    'karkardagiReport.data': oldKkd.filter(j => !j || !isTargetJamia(j.jamiaName || j.jamiaId))
+                })));
 
-                // Naye user ki report me shamil karein
+                // New report mein merge karein
                 if (newReportsMap[monthKey]) {
-                    // Agar naye user ki us mahine ki report pehle se hai toh Arrays me add karein
                     const nrRef = doc(db, 'monthly_reports', newReportsMap[monthKey].id);
-                    batch.update(nrRef, {
-                        'jaizaReport.data': [...(newReportsMap[monthKey].jaizaReport?.data || []), ...transferredJaiza],
-                        'tadrisRecording.data': [...(newReportsMap[monthKey].tadrisRecording?.data || []), ...transferredTadris],
-                        'monthlyTest.data': [...(newReportsMap[monthKey].monthlyTest?.data || []), ...transferredTest],
-                        'karkardagiReport.data': [...(newReportsMap[monthKey].karkardagiReport?.data || []), ...transferredKkd]
-                    });
+                    
+                    const existJaiza = Array.isArray(newReportsMap[monthKey].jaizaReport?.data) ? newReportsMap[monthKey].jaizaReport.data : [];
+                    const existTadris = Array.isArray(newReportsMap[monthKey].tadrisRecording?.data) ? newReportsMap[monthKey].tadrisRecording.data : [];
+                    const existTest = Array.isArray(newReportsMap[monthKey].monthlyTest?.data) ? newReportsMap[monthKey].monthlyTest.data : [];
+                    const existKkd = Array.isArray(newReportsMap[monthKey].karkardagiReport?.data) ? newReportsMap[monthKey].karkardagiReport.data : [];
+
+                    batch.update(nrRef, JSON.parse(JSON.stringify({
+                        'jaizaReport.data': [...existJaiza, ...transferredJaiza],
+                        'tadrisRecording.data': [...existTadris, ...transferredTadris],
+                        'monthlyTest.data': [...existTest, ...transferredTest],
+                        'karkardagiReport.data': [...existKkd, ...transferredKkd]
+                    })));
                 } else {
-                    // Agar naye user ki report us mahine nahi hai, toh Nayi report create karein
+                    // Agar report nahi bani hui toh nai banayein (JSON Parse trick applied to remove all undefineds safely)
                     const newReportRef = doc(collection(db, 'monthly_reports'));
-                    batch.set(newReportRef, {
+                    
+                    const safePayload = JSON.parse(JSON.stringify({
                         userId: newUserId,
                         userEmail: newU.email || '',
-                        month: oldReport.month,
-                        year: oldReport.year,
-                        monthNum: oldReport.monthNum,
-                        yearNum: oldReport.yearNum,
-                        createdAt: serverTimestamp(),
+                        month: safeMonth,
+                        year: safeYear,
+                        monthNum: safeMonthNum,
+                        yearNum: safeYearNum,
                         jaizaReport: { data: transferredJaiza, status: 'Done' },
                         tadrisRecording: { data: transferredTadris, status: 'Done' },
                         monthlyTest: { data: transferredTest, status: 'Done' },
                         karkardagiReport: { data: transferredKkd, status: 'Done' }
-                    });
+                    }));
+                    // Timestamp hamesha JSON parse ke baad add karna hota hai
+                    safePayload.createdAt = serverTimestamp();
+
+                    batch.set(newReportRef, safePayload);
                     newReportsMap[monthKey] = { id: newReportRef.id };
                 }
             }
