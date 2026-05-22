@@ -2127,7 +2127,6 @@ document.getElementById('transfer-jamia-select').addEventListener('change', (e) 
 
 // 3. Transfer Execute Karna
 // 3. Transfer Execute Karna (A to Z Full Transfer)
-document.getElementById('btn-execute-transfer').addEventListener('click', async () => {// 3. Transfer Execute Karna (A to Z Full Transfer)
 document.getElementById('btn-execute-transfer').addEventListener('click', async () => {
     const jamiaName = document.getElementById('transfer-jamia-select').value;
     const oldUserId = document.getElementById('transfer-old-user-id').value;
@@ -2156,19 +2155,23 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
         let updatedNewList = [...(newU.jamiaatList || [])];
         if(!updatedNewList.includes(jamiaName)) updatedNewList.push(jamiaName);
 
-        // Academic Structure Transfer karein
+       // Academic Structure Transfer karein
         let oldAcademicYears = oldU.academicYears ? JSON.parse(JSON.stringify(oldU.academicYears)) : {};
         let newAcademicYears = newU.academicYears ? JSON.parse(JSON.stringify(newU.academicYears)) : {};
 
         Object.keys(oldAcademicYears).forEach(year => {
-            // 🟢 ERROR FIX: Safety check
+            // 🟢 ERROR FIX: Safety check lagaya gaya hai. Agar saal ka data undefined/null hai toh skip kar dega.
             if (!oldAcademicYears[year]) return;
 
             let oldStructure = oldAcademicYears[year].karkardagiStructure || [];
+            
+            // Jamia ka naam match karte waqt spaces aur case-sensitivity ko ignore kiya hai
             const jamiaIndex = oldStructure.findIndex(j => (j.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
             
             if (jamiaIndex !== -1) {
                 const jamiaDataToTransfer = oldStructure.splice(jamiaIndex, 1)[0];
+                
+                // Naye user me safety check
                 if (!newAcademicYears[year]) newAcademicYears[year] = { karkardagiStructure: [] };
                 if (!newAcademicYears[year].karkardagiStructure) newAcademicYears[year].karkardagiStructure = [];
                 
@@ -2229,6 +2232,7 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
         const oldReportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', oldUserId));
         const oldReportsSnap = await getDocs(oldReportsQ);
 
+        // Naye user ki existing reports nikalein taake usme merge kar sakein
         const newReportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', newUserId));
         const newReportsSnap = await getDocs(newReportsQ);
         const newReportsMap = {};
@@ -2246,15 +2250,19 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
             let oldTest = oldReport.monthlyTest?.data || [];
             let oldKkd = oldReport.karkardagiReport?.data || [];
 
+            // Function to check if entry belongs to the transferred Jamia
             const isTargetJamia = (name) => (name || '').trim().toLowerCase() === jamiaName.trim().toLowerCase();
 
+            // Extract Jamia specific entries
             const transferredJaiza = oldJaiza.filter(j => isTargetJamia(j.name || j.jamiaName || j.jamiaId));
             const transferredTadris = oldTadris.filter(j => isTargetJamia(j.jamiaName));
             const transferredTest = oldTest.filter(j => isTargetJamia(j.name || j.jamiaName));
             const transferredKkd = oldKkd.filter(j => isTargetJamia(j.jamiaName || j.jamiaId));
 
+            // Agar is mahine is Jamia ka koi bhi data tha
             if (transferredJaiza.length || transferredTadris.length || transferredTest.length || transferredKkd.length) {
                 
+                // Purane user ke array se nikal dein
                 batch.update(docSnap.ref, {
                     'jaizaReport.data': oldJaiza.filter(j => !isTargetJamia(j.name || j.jamiaName || j.jamiaId)),
                     'tadrisRecording.data': oldTadris.filter(j => !isTargetJamia(j.jamiaName)),
@@ -2262,7 +2270,9 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
                     'karkardagiReport.data': oldKkd.filter(j => !isTargetJamia(j.jamiaName || j.jamiaId))
                 });
 
+                // Naye user ki report me shamil karein
                 if (newReportsMap[monthKey]) {
+                    // Agar naye user ki us mahine ki report pehle se hai toh Arrays me add karein
                     const nrRef = doc(db, 'monthly_reports', newReportsMap[monthKey].id);
                     batch.update(nrRef, {
                         'jaizaReport.data': [...(newReportsMap[monthKey].jaizaReport?.data || []), ...transferredJaiza],
@@ -2271,6 +2281,7 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
                         'karkardagiReport.data': [...(newReportsMap[monthKey].karkardagiReport?.data || []), ...transferredKkd]
                     });
                 } else {
+                    // Agar naye user ki report us mahine nahi hai, toh Nayi report create karein
                     const newReportRef = doc(collection(db, 'monthly_reports'));
                     batch.set(newReportRef, {
                         userId: newUserId,
@@ -2290,10 +2301,12 @@ document.getElementById('btn-execute-transfer').addEventListener('click', async 
             }
         }
 
+        // Commit Saare Updates Ek Saath
         await batch.commit();
         showNotification("Jamia aur uski A-to-Z saari history successfully transfer ho gayi!");
-        initTransferTab();
+        initTransferTab(); // Reset dropdowns
         
+        // Refresh users list to reflect changes
         if(typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers();
         
     } catch (err) {
