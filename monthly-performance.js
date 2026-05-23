@@ -629,6 +629,27 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                 });
 
                 alert("Period Successfully Added!");
+                const tbody = card.querySelector('tbody');
+
+                    tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="border-b">
+                        <td class="p-2 border">${className}</td>
+                        <td class="p-2 border">${bookName}</td>
+                        <td class="p-2 border text-center">${semester}</td>
+                        <td class="p-2 border text-center font-bold">${totalPages}</td>
+                        <td class="p-2 border text-center text-indigo-600 font-bold">${syllabus}</td>
+                        <td class="p-2 border text-center">
+                            <div class="flex justify-center gap-2">
+                                <button class="text-indigo-500">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="text-red-500">
+                                    <i class="fas fa-times-circle"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    `);
                 // sirf fields reset hongi, section close nahi hoga
                 card.querySelector('.p-book').innerHTML = `<option value="">Select Subject</option>`;
                 card.querySelector('.p-book').disabled = true;
