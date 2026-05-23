@@ -10,16 +10,36 @@
 <body class="bg-slate-50 p-4 md:p-8">
 
     <div id="login-container" class="max-w-md mx-auto bg-white rounded-3xl shadow-lg p-6 mt-12">
-        <h2 class="text-2xl font-bold text-indigo-600 mb-4 text-center"><i class="fas fa-lock mr-2"></i>Login Verification</h2>
-        <p class="text-slate-500 text-sm mb-6 text-center">Apni 5-digit Jamia ID enter karke form open karein.</p>
-        
-        <div class="space-y-4">
-            <input type="text" id="login-id" maxlength="5" placeholder="Enter 5-Digit ID (e.g., 12345)" class="w-full p-3 border rounded-xl text-center font-bold text-xl tracking-widest outline-indigo-500">
-            <button id="btn-verify" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-indigo-700 transition">
-                VERIFY & OPEN FORM
-            </button>
-        </div>
+
+    <h2 class="text-2xl font-bold text-indigo-600 mb-4 text-center">
+        <i class="fas fa-user-lock mr-2"></i>
+        Teacher Login
+    </h2>
+
+    <p class="text-slate-500 text-sm mb-6 text-center">
+        Apna 5 digit Teacher Code enter karein
+    </p>
+
+    <div class="space-y-4">
+
+        <input 
+            type="text"
+            id="teacher-code"
+            maxlength="5"
+            placeholder="Teacher Code"
+            class="w-full p-3 border rounded-xl text-center font-bold text-xl tracking-widest outline-indigo-500"
+        >
+
+        <button 
+            id="btn-login"
+            class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-indigo-700 transition"
+        >
+            LOGIN
+        </button>
+
     </div>
+
+</div>
 
     <div id="main-form-container" class="max-w-4xl mx-auto bg-white rounded-3xl shadow-lg p-6 hidden">
         <div class="border-b pb-4 mb-6 bg-indigo-50 p-4 rounded-2xl">
@@ -38,7 +58,10 @@
             <div class="border-b pb-6">
                 <h3 class="font-bold text-lg mb-4 text-slate-700"><i class="fas fa-user-tie mr-2"></i> Teacher Details</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" id="teacher-name" placeholder="Teacher Name" class="p-3 border rounded-xl outline-indigo-500" required>
+                   <input 
+    type="text" 
+    id="teacher-name"
+    readonly placeholder="Teacher Name" class="p-3 border rounded-xl outline-indigo-500" required>
                     <select id="report-month" class="p-3 border rounded-xl outline-indigo-500" required>
                         <option value="">Select Month</option>
                         <option value="January">January</option>
@@ -60,7 +83,10 @@
             <div>
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-lg text-slate-700"><i class="fas fa-clock mr-2"></i> Periods Detail (Tafsil)</h3>
-                    <button type="button" id="btn-add-period" class="bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-sm font-bold hover:bg-emerald-600">
+                    <button 
+                        type="button" 
+                        id="btn-add-period"
+                        class="hidden bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-sm font-bold hover:bg-emerald-600">
                         <i class="fas fa-plus mr-1"></i> Add Period
                     </button>
                 </div>
@@ -89,7 +115,17 @@
         
                 // Firebase modules import karein (Version 10+ CDN standard)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { 
+    getFirestore, 
+    doc, 
+    setDoc, 
+    getDoc 
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+import { 
+    getAuth, 
+    signInAnonymously 
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 // TODO: Yahan apni actual Firebase Project Configuration daalein
 const firebaseConfig = {
@@ -105,16 +141,31 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+
+signInAnonymously(auth)
+.then(() => {
+    console.log("Anonymous Login Success");
+})
+.catch((error) => {
+    console.error("Auth Error:", error);
+});
 
 // URL parameters get karne ke liye
 const urlParams = new URLSearchParams(window.location.search);
 const urlJamiaName = urlParams.get('jamiaName') || 'Jamia';
+const userId = urlParams.get('userId');
+const activeYear = urlParams.get('activeYear');
 
 // DOM Elements
 const loginContainer = document.getElementById('login-container');
 const mainFormContainer = document.getElementById('main-form-container');
 const loginIdInput = document.getElementById('login-id');
-const btnVerify = document.getElementById('btn-verify');
+const teacherCodeInput = document.getElementById('teacher-code');
+const btnLogin = document.getElementById('btn-login');
+
+let currentTeacher = null;
+let currentJamia = null;
 
 const displayJamia = document.getElementById('display-jamia');
 const displayMonth = document.getElementById('display-month');
@@ -127,22 +178,84 @@ const btnAddPeriod = document.getElementById('btn-add-period');
 const performanceForm = document.getElementById('performance-form');
 
 // Verification Logic
-btnVerify.addEventListener('click', () => {
-    const enteredId = loginIdInput.value.trim();
-    
-    if(enteredId.length === 5 && !isNaN(enteredId)) {
+btnLogin.addEventListener('click', async () => {
+
+    const code = teacherCodeInput.value.trim();
+
+    if(code.length !== 5) {
+        alert("5 digit teacher code enter karein");
+        return;
+    }
+
+    try {
+
+        const userRef = doc(db, "users", userId);
+        const userSnap = await getDoc(userRef);
+
+        if(!userSnap.exists()) {
+            alert("User data nahi mila");
+            return;
+        }
+
+        const userData = userSnap.data();
+
+        const academicYears = userData.academicYears || {};
+
+        const yearData = academicYears[activeYear];
+
+        if(!yearData) {
+            alert("Academic year data missing");
+            return;
+        }
+
+        const structure = yearData.karkardagiStructure || [];
+
+        let foundTeacher = null;
+        let foundJamia = null;
+
+        structure.forEach(jamia => {
+
+            const teacher = (jamia.teachers || []).find(t =>
+                String(t.loginCode) === code
+            );
+
+            if(teacher) {
+                foundTeacher = teacher;
+                foundJamia = jamia;
+            }
+
+        });
+
+        if(!foundTeacher) {
+            alert("Teacher code invalid");
+            return;
+        }
+
+        currentTeacher = foundTeacher;
+        currentJamia = foundJamia;
+
         loginContainer.classList.add('hidden');
         mainFormContainer.classList.remove('hidden');
-        
-        document.getElementById('hidden-jamia-id').value = enteredId;
-        document.getElementById('hidden-jamia-name').value = urlJamiaName;
-        
-        displayJamia.innerHTML = `<span class="text-indigo-600">Jamia:</span> ${urlJamiaName} (${enteredId})`;
-        displayMonth.innerHTML = `<span class="text-indigo-600">Month:</span> --`;
-        displayTeacher.innerHTML = `<span class="text-indigo-600">Teacher:</span> --`;
-    } else {
-        alert('Kripya ek sahi 5-digit Jamia Code enter karein!');
+
+        document.getElementById('hidden-jamia-id').value = foundJamia.jamiaName;
+
+        displayJamia.innerHTML =
+            `<span class="text-indigo-600">Jamia:</span> ${foundJamia.jamiaName}`;
+
+        displayTeacher.innerHTML =
+            `<span class="text-indigo-600">Teacher:</span> ${foundTeacher.name}`;
+
+        teacherNameInput.value = foundTeacher.name;
+
+        loadTeacherPeriods(foundTeacher);
+
+    } catch(error) {
+
+        console.error(error);
+        alert("Login error");
+
     }
+
 });
 
 // Header sync jab user inputs change kare
@@ -276,6 +389,74 @@ performanceForm.addEventListener('submit', async (e) => {
         alert("Data save karne me koi error aayi. Kripya rules aur console check karein.");
     }
 });
+
+        function loadTeacherPeriods(teacher) {
+
+    periodContainer.innerHTML = "";
+
+    const periods = teacher.periods || [];
+
+    if(periods.length === 0) {
+
+        periodContainer.innerHTML = `
+            <div class="text-center text-red-500 font-bold">
+                No periods assigned
+            </div>
+        `;
+
+        return;
+    }
+
+    periods.forEach(period => {
+
+        const row = document.createElement('div');
+
+        row.className =
+        "period-row grid grid-cols-1 md:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border relative";
+
+        row.innerHTML = `
+
+            <input
+                type="text"
+                value="${period.className || ''}"
+                class="input-class p-2.5 border rounded-lg text-sm bg-gray-100"
+                readonly
+            >
+
+            <input
+                type="text"
+                value="${period.bookName || ''}"
+                class="input-subject p-2.5 border rounded-lg text-sm bg-gray-100"
+                readonly
+            >
+
+            <div class="flex gap-1 items-center col-span-1 md:col-span-2">
+
+                <input
+                    type="number"
+                    placeholder="Page From"
+                    class="input-page-from w-full p-2.5 border rounded-lg text-sm"
+                    required
+                >
+
+                <span class="text-slate-400 text-xs">to</span>
+
+                <input
+                    type="number"
+                    placeholder="Page To"
+                    class="input-page-to w-full p-2.5 border rounded-lg text-sm"
+                    required
+                >
+
+            </div>
+        `;
+
+        periodContainer.appendChild(row);
+
+    });
+
+}
+        
     </script>
 </body>
 </html>
