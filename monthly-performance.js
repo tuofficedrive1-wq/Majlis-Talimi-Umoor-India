@@ -629,7 +629,14 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                 });
 
                 alert("Period Successfully Added!");
-                loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear);
+                // sirf fields reset hongi, section close nahi hoga
+                card.querySelector('.p-book').innerHTML = `<option value="">Select Subject</option>`;
+                card.querySelector('.p-book').disabled = true;
+                
+                card.querySelector('.p-class').value = "";
+                card.querySelector('.p-sem').value = "1";
+                card.querySelector('.p-pages').value = "";
+                card.querySelector('.p-syllabus').value = "Majlis";
             } catch (e) {
                 alert("Error adding period: " + e.message);
             } finally {
