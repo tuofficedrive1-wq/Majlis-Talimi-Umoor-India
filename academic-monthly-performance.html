@@ -62,8 +62,8 @@
     type="text" 
     id="teacher-name"
     readonly placeholder="Teacher Name" class="p-3 border rounded-xl outline-indigo-500" required>
-                    <select id="report-month" class="hidden"
-class="hidden p-3 border rounded-xl outline-indigo-500"
+                    <select id="report-month"
+class="hidden"
 required>
                         <option value="">Select Month</option>
                         <option value="January">January</option>
@@ -107,7 +107,7 @@ required>
                 </div>
             </div>
 
-            <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition">
+            <button type="submit"class="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition">
                 SAVE PERFORMANCE DATA
             </button>
         </form>
@@ -202,11 +202,14 @@ nahi aa raha
     console.error("Missing userId or activeYear");
 
 }
+        
 
+        
+        
+        
 // DOM Elements
 const loginContainer = document.getElementById('login-container');
 const mainFormContainer = document.getElementById('main-form-container');
-const loginIdInput = document.getElementById('login-id');
 const teacherCodeInput = document.getElementById('teacher-code');
 const btnLogin = document.getElementById('btn-login');
 
@@ -329,12 +332,14 @@ btnAddPeriod.addEventListener('click', () => {
     newRow.innerHTML = `
         <input type="text" placeholder="Class" class="input-class p-2.5 border rounded-lg text-sm" required>
         <input type="text" placeholder="Subject" class="input-subject p-2.5 border rounded-lg text-sm" required>
-        <div class="flex gap-1 items-center col-span-1 md:col-span-2">
-            <input type="number" placeholder="Page From" class="input-page-from w-full p-2.5 border rounded-lg text-sm" required>
-            <span class="text-slate-400 text-xs">to</span>
-            <input type="number" placeholder="Page To" class="input-page-to w-full p-2.5 border rounded-lg text-sm" required>
-            <button type="button" class="btn-remove-row text-red-500 px-2 hover:text-red-700"><i class="fas fa-trash"></i></button>
-        </div>
+        <div class="flex gap-2 items-center col-span-1 md:col-span-2">
+    <input 
+        type="number"
+        placeholder="Total Pages"
+        class="input-achieved-pages w-full p-2.5 border rounded-lg text-sm"
+        required
+    >
+</div>
     `;
     periodContainer.appendChild(newRow);
     toggleRemoveButtons();
@@ -382,53 +387,98 @@ performanceForm.addEventListener('submit', async (e) => {
     
     rows.forEach((row, index) => {
         const periodKey = `period_${index + 1}`;
-        periodsDetailMap[periodKey] = {
-            class: row.querySelector('.input-class').value.trim(),
-            subject: row.querySelector('.input-subject').value.trim(),
-            page_from: parseInt(row.querySelector('.input-page-from').value) || 0,
-            page_to: parseInt(row.querySelector('.input-page-to').value) || 0
-        };
+       const achievedPages =
+parseInt(
+    row.querySelector('.input-achieved-pages').value
+) || 0;
+
+periodsDetailMap[periodKey] = {
+    class: row.querySelector('.input-class').value.trim(),
+    subject: row.querySelector('.input-subject').value.trim(),
+    achieved: achievedPages
+};
     });
 
     try {
         // Dashboard rules ke mutabik collection ka naam "academic_performance" hoga aur doc ID sirf JamiaID hogi
-        const docRef = doc(db, "academic_performance", jamiaId);
-        
-        // Pehle se maujud data check karein taaki purani months ka data delete na ho jaye
-        const docSnap = await getDoc(docRef);
-        let existingData = {};
-        if (docSnap.exists()) {
-            existingData = docSnap.data();
+        const userRef = doc(db, "users", userId);
+
+const userSnap = await getDoc(userRef);
+
+if(!userSnap.exists()){
+
+    alert("User not found");
+    return;
+
+}
+
+const userData = userSnap.data();
+
+const academicYears = userData.academicYears || {};
+
+const structure =
+academicYears[activeYear]?.karkardagiStructure || [];
+
+const jamiaData =
+structure.find(j => j.jamiaName === currentJamia.jamiaName);
+
+if(!jamiaData){
+
+    alert("Jamia data missing");
+    return;
+
+}
+
+const teacher =
+jamiaData.teachers.find(
+    t => t.id === currentTeacher.id
+);
+
+if(!teacher){
+
+    alert("Teacher missing");
+    return;
+
+}
+
+rows.forEach((row, index) => {
+
+    const achievedPages =
+    parseInt(
+        row.querySelector('.input-achieved-pages').value
+    ) || 0;
+
+    if(teacher.periods[index]){
+
+        if(!teacher.periods[index].achieved){
+
+            teacher.periods[index].achieved = {};
+
         }
 
-        // Naya structure map taiyar karna jo aapke js file ke read function se match kare
-        const newTeacherData = {
-            name: teacherName,
-            designation: "Teacher", // Default designation
-            periods_detail: periodsDetailMap
-        };
+        teacher.periods[index].achieved[
+            selectedFullMonth.substring(0,3).toLowerCase()
+        ] = achievedPages;
 
-        // Agar us mahine ka data pehle se hai to teachers array check karein ya naya array banayein
-        let monthData = existingData[dbMonthFormat] || { teachers: [] };
-        
-        // Purane same naam ke teacher ka record hataiye agar dubara submit ho raha hai
-        let updatedTeachers = (monthData.teachers || []).filter(t => t.name.toLowerCase() !== teacherName.toLowerCase());
-        updatedTeachers.push(newTeacherData);
+    }
 
-        // Month data object ko update karein
-        existingData[dbMonthFormat] = {
-            teachers: updatedTeachers,
-            updated_at: new Date().toISOString()
-        };
+});
 
-        // Final Save back to Firestore
-        await setDoc(docRef, existingData, { merge: true });
+await setDoc(userRef, {
+    academicYears
+}, { merge: true });
         
         alert('Performance data kamyabi se save ho gaya hai! Dashboard par ab ye auto-load ho jayega.');
         
         // Form Reset System
         performanceForm.reset();
         displayTeacher.innerHTML = `<span class="text-indigo-600">Teacher:</span> --`;
+        teacherNameInput.value = foundTeacher.name;
+
+displayMonth.innerHTML =
+`<span class="text-indigo-600">Month:</span> ${autoMonth}`;
+
+loadTeacherPeriods(foundTeacher);
         displayMonth.innerHTML =
 `<span class="text-indigo-600">Month:</span> ${autoMonth || '--'}`;
         periodContainer.innerHTML = `
@@ -436,9 +486,12 @@ performanceForm.addEventListener('submit', async (e) => {
                 <input type="text" placeholder="Class" class="input-class p-2.5 border rounded-lg text-sm" required>
                 <input type="text" placeholder="Subject" class="input-subject p-2.5 border rounded-lg text-sm" required>
                 <div class="flex gap-1 items-center col-span-1 md:col-span-2">
-                    <input type="number" placeholder="Page From" class="input-page-from w-full p-2.5 border rounded-lg text-sm" required>
-                    <span class="text-slate-400 text-xs">to</span>
-                    <input type="number" placeholder="Page To" class="input-page-to w-full p-2.5 border rounded-lg text-sm" required>
+                    <input
+                        type="number"
+                        placeholder="Total Pages"
+                        class="input-achieved-pages w-full p-2.5 border rounded-lg text-sm"
+                        required
+                    >
                     <button type="button" class="btn-remove-row text-red-500 px-2 hover:text-red-700 hidden"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
@@ -492,20 +545,11 @@ performanceForm.addEventListener('submit', async (e) => {
             <div class="flex gap-1 items-center col-span-1 md:col-span-2">
 
                 <input
-                    type="number"
-                    placeholder="Page From"
-                    class="input-page-from w-full p-2.5 border rounded-lg text-sm"
-                    required
-                >
-
-                <span class="text-slate-400 text-xs">to</span>
-
-                <input
-                    type="number"
-                    placeholder="Page To"
-                    class="input-page-to w-full p-2.5 border rounded-lg text-sm"
-                    required
-                >
+    type="number"
+    placeholder="Total Pages"
+    class="input-achieved-pages w-full p-2.5 border rounded-lg text-sm"
+    required
+>
 
             </div>
         `;
