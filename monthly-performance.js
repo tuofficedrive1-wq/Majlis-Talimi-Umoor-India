@@ -322,8 +322,23 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                     </div>
                     <div class="period-container hidden p-5 bg-white border-t space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-5 gap-3 bg-emerald-50/50 p-4 rounded-xl">
-                            <select class="p-class p-2 border rounded-lg text-sm"><option value="">Select Class</option>${classOptions}</select>
-                            <select class="p-book p-2 border rounded-lg text-sm" disabled><option value="">Select Subject</option></select>
+                                                        <input type="text"
+                                   list="class-list-${t.id}"
+                                   class="p-class p-2 border rounded-lg text-sm w-full"
+                                   placeholder="Type or Select Class">
+                            
+                            <datalist id="class-list-${t.id}">
+                                ${academicConfig.classes.map(c =>
+                                    `<option value="${c.name}">`
+                                ).join('')}
+                            </datalist>
+                            <select class="p-book p-2 border rounded-lg text-sm">
+                                <option value="">Select Subject</option>
+                            </select>
+                            
+                            <input type="text"
+                                   class="custom-book hidden p-2 border rounded-lg text-sm"
+                                   placeholder="Enter Custom Subject">
                             <select class="p-sem p-2 border rounded-lg text-sm"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
                             <input type="number" placeholder="Pages" class="p-pages p-2 border rounded-lg text-sm">
                             <select class="p-syllabus p-2 border rounded-lg text-sm">
@@ -523,19 +538,61 @@ const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
     return { kaifiyat, colorClass };
 };
 
-const attachDropdownEvents = (container, config) => {
-    container.querySelectorAll('.p-class').forEach(sel => {
-        sel.onchange = () => {
-            const bookSel = sel.parentElement.querySelector('.p-book');
-            bookSel.innerHTML = `<option value="">Select Subject</option>`;
-            const classData = config.classes.find(c => c.name === sel.value);
-            if (classData?.subjects) {
-                classData.subjects.forEach(sub => bookSel.innerHTML += `<option value="${sub}">${sub}</option>`);
-                bookSel.disabled = false;
-            } else { bookSel.disabled = true; }
+container.querySelectorAll('.p-class').forEach(sel => {
+
+    sel.oninput = () => {
+
+        const wrapper = sel.parentElement;
+
+        const bookSel = wrapper.querySelector('.p-book');
+
+        const customBook = wrapper.querySelector('.custom-book');
+
+        bookSel.innerHTML = `<option value="">Select Subject</option>`;
+
+        const classData = config.classes.find(c => c.name === sel.value);
+
+        if (classData?.subjects) {
+
+            classData.subjects.forEach(sub => {
+
+                bookSel.innerHTML += `
+                    <option value="${sub}">
+                        ${sub}
+                    </option>
+                `;
+            });
+
+            // OTHER OPTION
+            bookSel.innerHTML += `
+                <option value="other">Other</option>
+            `;
+
+            bookSel.disabled = false;
+
+        } else {
+
+            bookSel.innerHTML += `
+                <option value="other">Other</option>
+            `;
+
+            bookSel.disabled = false;
+        }
+
+        // subject change
+        bookSel.onchange = () => {
+
+            if (bookSel.value === 'other') {
+
+                customBook.classList.remove('hidden');
+
+            } else {
+
+                customBook.classList.add('hidden');
+            }
         };
-    });
-};
+    };
+});
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
     container.querySelectorAll('.teacher-toggle').forEach(toggle => {
@@ -602,7 +659,11 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
             const card = document.getElementById(`teacher-card-${tid}`);
             
             const className = card.querySelector('.p-class').value;
-            const bookName = card.querySelector('.p-book').value;
+            let bookName = card.querySelector('.p-book').value;
+
+            if (bookName === 'other') {
+                bookName = card.querySelector('.custom-book').value.trim();
+            }
             const semester = card.querySelector('.p-sem').value;
             const totalPages = card.querySelector('.p-pages').value;
             const syllabus = card.querySelector('.p-syllabus').value;
