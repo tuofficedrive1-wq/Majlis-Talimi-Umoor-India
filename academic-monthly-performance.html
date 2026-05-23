@@ -1,3 +1,13 @@
+Bhai, samajh gaya galti kahan hui! Screenshot me jo URL dikh raha hai, usme parameters ke naam thode alag hain jo dashboard (`monthly-performance.js`) generate kar raha hai.
+
+* **Pehli galti:** Dashboard URL me **`userId`** bhej raha hai (`&userId=PL6NYP...`), jabki naye code me hum `inspectorId` check kar rahe the.
+* **Doosri galti:** Dashboard month ko format me bhej raha hai jaise **`2026-05`**, jabki dashboard ke backend data structure ko sirf 3-letter short month name chaiye hota hai (`may`).
+
+Maine code ko update kar diya hai taaki ye `userId` ko automatically accept kare aur `2026-05` jaise month format se automatically **"may"** nikal kar badge me bhi sahi dikhaye aur database me bhi sahi jagah save kare.
+
+Aap is poore updated code ko fir se copy karke replace kar lijiye:
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,7 +47,7 @@
             border-top: 3px solid #fff;
             width: 20px;
             height: 20px;
-            -webkit-animation: spin 1s linear infinite; /* Safari */
+            -webkit-animation: spin 1s linear infinite;
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
@@ -60,7 +70,7 @@
             </div>
             <div class="bg-white/20 backdrop-blur-md rounded-xl p-3 text-center">
                 <p class="text-[10px] text-white/80 uppercase font-black tracking-widest mb-1">Month</p>
-                <p id="display-month" class="font-bold text-sm truncate capitalize">Loading...</p>
+                <p id="display-month" class="font-bold text-sm truncate uppercase">Loading...</p>
             </div>
         </div>
     </div>
@@ -119,7 +129,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Yahan apni Firebase Config rakhein
         const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
             authDomain: "data-f15ab.firebaseapp.com",
@@ -133,11 +142,24 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --- URL PARAMS SE DATA NIKALNA ---
+        // --- URL PARAMS SE DATA NIKALNA (SYNCED WITH YOUR DASHBOARD) ---
         const urlParams = new URLSearchParams(window.location.search);
         const urlJamiaName = urlParams.get('jamiaName');
-        const urlMonthIndex = urlParams.get('monthIndex'); // Dashboard "apr", "may" bhej raha hai
-        const inspectorId = urlParams.get('inspectorId');
+        const urlMonthIndex = urlParams.get('monthIndex'); // e.g., "2026-05"
+        const inspectorId = urlParams.get('userId'); // Dashboard se 'userId' aata hai
+
+        const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        let dbMonthKey = ""; // Isme short form save hoga (e.g., "may")
+
+        // Month parsing logic (Agar "2026-05" format hai)
+        if (urlMonthIndex && urlMonthIndex.includes('-')) {
+            const monthPart = parseInt(urlMonthIndex.split('-')[1], 10);
+            if (monthPart >= 1 && monthPart <= 12) {
+                dbMonthKey = monthNames[monthPart - 1]; // "may"
+            }
+        } else if (urlMonthIndex) {
+            dbMonthKey = urlMonthIndex.toLowerCase().substring(0, 3);
+        }
 
         // DOM Elements
         const displayJamia = document.getElementById('display-jamia');
@@ -158,21 +180,21 @@
         let gJamiaIndex = -1;
         let gTeacherIndex = -1;
 
-        // UI Setup
-        if(urlJamiaName) displayJamia.innerText = urlJamiaName;
-        if(urlMonthIndex) displayMonth.innerText = urlMonthIndex;
+        // URL Parameters Safety Validation
+        if (urlJamiaName) displayJamia.innerText = urlJamiaName;
+        if (dbMonthKey) displayMonth.innerText = dbMonthKey;
 
         // --- LOGIN & VERIFICATION LOGIC ---
         btnVerify.addEventListener('click', async () => {
             const enteredCode = loginCodeInput.value.trim();
             
-            if(!enteredCode) {
+            if (!enteredCode) {
                 alert("Kripya apna Teacher Code enter karein.");
                 return;
             }
 
-            if(!inspectorId || !urlJamiaName || !urlMonthIndex) {
-                alert("URL me inspector ID, Jamia Name ya Month missing hai. Kripya naya link mangwayein.");
+            if (!inspectorId || !urlJamiaName || !dbMonthKey) {
+                alert("URL me Admin ID, Jamia Name ya Month missing/invalid hai. Kripya naya link generate karein.");
                 return;
             }
 
@@ -193,7 +215,7 @@
                 const userSnap = await getDoc(userRef);
 
                 if (!userSnap.exists()) {
-                    throw new Error("Admin data nahi mila.");
+                    throw new Error("Admin data nahi mila. URL galat ho sakti hai.");
                 }
 
                 gUserData = userSnap.data();
@@ -201,13 +223,13 @@
                 
                 // 3. Find Jamia and Teacher
                 gJamiaIndex = structure.findIndex(j => j.jamiaName === urlJamiaName);
-                if (gJamiaIndex === -1) throw new Error(`Is system me ${urlJamiaName} nahi mila.`);
+                if (gJamiaIndex === -1) throw new Error(`Is system me "${urlJamiaName}" nahi mila.`);
 
                 const jamiaTeachers = structure[gJamiaIndex].teachers || [];
-                gTeacherIndex = jamiaTeachers.findIndex(t => t.loginCode.toLowerCase() === enteredCode.toLowerCase());
+                gTeacherIndex = jamiaTeachers.findIndex(t => t.loginCode.trim().toLowerCase() === enteredCode.toLowerCase());
 
                 if (gTeacherIndex === -1) {
-                    throw new Error("Teacher Code galat hai. Kripya check karein.");
+                    throw new Error("Teacher Code galat hai. Kripya sahi Ajeer Code enter karein.");
                 }
 
                 gTeacherData = jamiaTeachers[gTeacherIndex];
@@ -231,20 +253,21 @@
 
         // --- RENDER PERIODS UI ---
         function renderPeriodsUI(periods) {
-            periodContainer.innerHTML = ''; // Clear container
+            periodContainer.innerHTML = ''; 
 
-            if(periods.length === 0) {
-                periodContainer.innerHTML = `<div class="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+            if (periods.length === 0) {
+                periodContainer.innerHTML = `
+                <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                     <i class="fas fa-folder-open text-3xl mb-2"></i>
-                    <p class="font-bold">Aapki koi class assign nahi hai.</p>
+                    <p class="font-bold">Aapki koi class aur subject assign nahi hai.</p>
                 </div>`;
                 btnSave.classList.add('hidden');
                 return;
             }
 
-            periods.forEach((p, index) => {
-                // Pehle se save kiya hua data (agar ho) nikalne ke liye
-                const existingAchieved = (p.achieved && p.achieved[urlMonthIndex.toLowerCase()]) ? p.achieved[urlMonthIndex.toLowerCase()] : '';
+            periods.forEach((p) => {
+                // Pehle se save kiya hua data load karna safety ke sath
+                const existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : '';
 
                 const row = document.createElement('div');
                 row.className = "bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 shadow-sm relative";
@@ -276,47 +299,43 @@
         performanceForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            // Button Loading State
             const originalBtnContent = btnSave.innerHTML;
             btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Saving Data...</span>';
             btnSave.disabled = true;
 
             try {
-                // Get all inputs
                 const inputs = document.querySelectorAll('.achieved-input');
                 
-                // Hum main JSON object me values modify karenge
                 inputs.forEach(input => {
                     const periodId = input.getAttribute('data-period-id');
                     const achievedValue = parseInt(input.value) || 0;
 
-                    // Find corresponding period in gUserData memory
+                    // Data object memory me dhund kar update karna
                     const periodIndex = gUserData.academicYears[gActiveYear].karkardagiStructure[gJamiaIndex].teachers[gTeacherIndex].periods.findIndex(p => p.id === periodId);
                     
                     if (periodIndex > -1) {
                         let periodRef = gUserData.academicYears[gActiveYear].karkardagiStructure[gJamiaIndex].teachers[gTeacherIndex].periods[periodIndex];
                         
-                        // Agar achieved object nahi hai to banayein
                         if (!periodRef.achieved) {
                             periodRef.achieved = {};
                         }
                         
-                        // Us mahine me value save karein (e.g. "apr": 15)
-                        periodRef.achieved[urlMonthIndex.toLowerCase()] = achievedValue;
+                        // Direct usi short month name par value overwrite karega (e.g. achieved.may = 12)
+                        periodRef.achieved[dbMonthKey] = achievedValue;
                     }
                 });
 
-                // Update the entire document back to Firestore
+                // Firestore doc save back update system
                 const userRef = doc(db, "users", inspectorId);
                 await updateDoc(userRef, {
                     academicYears: gUserData.academicYears
                 });
 
-                alert(`🎉 MashaAllah! Aapki karkardagi (${urlMonthIndex.toUpperCase()}) successfully save ho gayi hai.`);
+                alert(`🎉 MashaAllah! Aapki karkardagi (${dbMonthKey.toUpperCase()}) successfully save ho gayi hai.`);
                 
             } catch (error) {
                 console.error("Error saving data:", error);
-                alert("Data save hone me error aayi. Kripya apna internet check karein.");
+                alert("Data save hone me error aayi. Please connection check karein.");
             } finally {
                 btnSave.innerHTML = originalBtnContent;
                 btnSave.disabled = false;
