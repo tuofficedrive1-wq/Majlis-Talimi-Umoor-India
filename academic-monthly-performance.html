@@ -73,7 +73,10 @@
             <form id="performance-form">
                 <input type="hidden" id="hidden-jamia-id">
                 <input type="hidden" id="hidden-jamia-name">
-                <input type="hidden" id="hidden-report-month"> <div class="app-card p-5">
+                <input type="hidden" id="hidden-report-month">
+                <input type="hidden" id="hidden-db-month-format">
+
+                <div class="app-card p-5">
                     <h3 class="font-bold text-slate-700 mb-4 flex items-center">
                         <span class="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mr-2"><i class="fas fa-user"></i></span>
                         Teacher Detail
@@ -136,12 +139,31 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // URL Params Logic
+        // --- URL PARAMS EXTRACTION LOGIC ---
         const urlParams = new URLSearchParams(window.location.search);
-        const urlJamiaName = urlParams.get('jamiaName') || 'Unknown Jamia';
         
-        // Month URL se aayega (e.g., ?jamiaName=Test&month=March)
-        const urlMonth = urlParams.get('month'); 
+        const urlJamiaName = urlParams.get('jamiaName') || 'Unknown Jamia';
+        const urlMonthIndex = urlParams.get('monthIndex'); // e.g., "2026-05"
+        
+        // Agar zaroorat ho to inhe bhi future use ke liye get kar sakte hain:
+        const userId = urlParams.get('userId'); 
+        const activeYear = urlParams.get('activeYear');
+
+        // Month Names Array
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        let displayMonthStr = "Not Found";
+        let dbMonthFormatStr = "";
+
+        // URL format "2026-05" se month nikalna
+        if(urlMonthIndex && urlMonthIndex.includes('-')) {
+            const monthNumber = parseInt(urlMonthIndex.split('-')[1], 10); // "05" ban jayega 5
+            
+            if(monthNumber >= 1 && monthNumber <= 12) {
+                displayMonthStr = monthNames[monthNumber - 1]; // "May"
+                dbMonthFormatStr = displayMonthStr.substring(0, 3).toLowerCase(); // "may"
+            }
+        }
 
         // DOM Elements
         const loginContainer = document.getElementById('login-container');
@@ -155,21 +177,23 @@
         const btnAddPeriod = document.getElementById('btn-add-period');
         const performanceForm = document.getElementById('performance-form');
         const hiddenReportMonth = document.getElementById('hidden-report-month');
+        const hiddenDbMonthFormat = document.getElementById('hidden-db-month-format');
 
-        // Initial setup for Month
-        if(urlMonth) {
-            hiddenReportMonth.value = urlMonth;
-            displayMonth.innerText = urlMonth;
+        // Initial setup for Month Display
+        if(dbMonthFormatStr !== "") {
+            hiddenReportMonth.value = displayMonthStr;
+            hiddenDbMonthFormat.value = dbMonthFormatStr;
+            displayMonth.innerText = displayMonthStr;
         } else {
-            displayMonth.innerHTML = "<span class='text-red-300'>Not Found</span>";
+            displayMonth.innerHTML = "<span class='text-red-300'>Invalid Month in URL</span>";
         }
 
         // Verification
         btnVerify.addEventListener('click', () => {
             const enteredId = loginIdInput.value.trim();
             
-            if(!urlMonth) {
-                alert('URL mein month specify nahi hai. Kripya sahi link use karein.');
+            if(dbMonthFormatStr === "") {
+                alert('URL mein month specify nahi hai ya galat format me hai. Kripya naya link generate karein.');
                 return;
             }
 
@@ -180,7 +204,7 @@
                 
                 document.getElementById('hidden-jamia-id').value = enteredId;
                 document.getElementById('hidden-jamia-name').value = urlJamiaName;
-                displayJamia.innerText = `${urlJamiaName} (${enteredId})`;
+                displayJamia.innerText = `${urlJamiaName}`;
             } else {
                 alert('Kripya ek sahi 5-digit ID enter karein!');
             }
@@ -239,10 +263,7 @@
 
             const jamiaId = document.getElementById('hidden-jamia-id').value;
             const teacherName = document.getElementById('teacher-name').value.trim();
-            const selectedFullMonth = hiddenReportMonth.value;
-            
-            // Convert to 3 letter lowercase (jan, feb, mar)
-            const dbMonthFormat = selectedFullMonth.substring(0, 3).toLowerCase(); 
+            const dbMonthFormat = document.getElementById('hidden-db-month-format').value; // e.g. "may"
             
             const periodsDetailMap = {};
             const rows = periodContainer.querySelectorAll('.period-row');
