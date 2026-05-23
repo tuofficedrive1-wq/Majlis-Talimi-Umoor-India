@@ -538,61 +538,64 @@ const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
     return { kaifiyat, colorClass };
 };
 
-container.querySelectorAll('.p-class').forEach(sel => {
+const attachDropdownEvents = (container, config) => {
 
-    sel.oninput = () => {
+    container.querySelectorAll('.p-class').forEach(sel => {
 
-        const wrapper = sel.parentElement;
+        sel.oninput = () => {
 
-        const bookSel = wrapper.querySelector('.p-book');
+            const wrapper = sel.parentElement;
 
-        const customBook = wrapper.querySelector('.custom-book');
+            const bookSel = wrapper.querySelector('.p-book');
 
-        bookSel.innerHTML = `<option value="">Select Subject</option>`;
+            const customBook = wrapper.querySelector('.custom-book');
 
-        const classData = config.classes.find(c => c.name === sel.value);
+            bookSel.innerHTML = `<option value="">Select Subject</option>`;
 
-        if (classData?.subjects) {
+            const classData = config.classes.find(c => c.name === sel.value);
 
-            classData.subjects.forEach(sub => {
+            if (classData?.subjects) {
 
+                classData.subjects.forEach(sub => {
+
+                    bookSel.innerHTML += `
+                        <option value="${sub}">
+                            ${sub}
+                        </option>
+                    `;
+                });
+
+                // OTHER OPTION
                 bookSel.innerHTML += `
-                    <option value="${sub}">
-                        ${sub}
-                    </option>
+                    <option value="other">Other</option>
                 `;
-            });
 
-            // OTHER OPTION
-            bookSel.innerHTML += `
-                <option value="other">Other</option>
-            `;
-
-            bookSel.disabled = false;
-
-        } else {
-
-            bookSel.innerHTML += `
-                <option value="other">Other</option>
-            `;
-
-            bookSel.disabled = false;
-        }
-
-        // subject change
-        bookSel.onchange = () => {
-
-            if (bookSel.value === 'other') {
-
-                customBook.classList.remove('hidden');
+                bookSel.disabled = false;
 
             } else {
 
-                customBook.classList.add('hidden');
+                bookSel.innerHTML += `
+                    <option value="other">Other</option>
+                `;
+
+                bookSel.disabled = false;
             }
+
+            // Subject change
+            bookSel.onchange = () => {
+
+                if (bookSel.value === 'other') {
+
+                    customBook.classList.remove('hidden');
+
+                } else {
+
+                    customBook.classList.add('hidden');
+                }
+            };
         };
-    };
-});
+    });
+};
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
     container.querySelectorAll('.teacher-toggle').forEach(toggle => {
