@@ -406,7 +406,25 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
 
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        const karkardagi = userSnap.data().academicYears?.[activeYear]?.karkardagiStructure || [];
+        const userData = userSnap.data() || {};
+
+const academicYears = userData.academicYears || {};
+
+if(!academicYears[activeYear]){
+
+    console.error("Academic Year Missing:", activeYear);
+
+    container.innerHTML = `
+        <div class="p-10 text-center text-red-500 font-bold">
+            Academic Year Data Missing
+        </div>
+    `;
+
+    return;
+}
+
+const karkardagi =
+academicYears[activeYear]?.karkardagiStructure || [];
 
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
@@ -940,8 +958,9 @@ window.copyTeacherFormLink = (jamiaName) => {
     const monthIdx = document.getElementById('report-month').value;
     const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
     const inspectorId = gCurrentUser ? gCurrentUser.uid : 'anonymous';
+    const activeYear = "2025-2026";
 
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&inspectorId=${inspectorId}`;
+    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&userId=${inspectorId}&activeYear=${activeYear}`;
     
     navigator.clipboard.writeText(url).then(() => {
         alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
