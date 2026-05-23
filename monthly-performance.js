@@ -954,19 +954,57 @@ window.toggleEditMode = async (jamiaName) => {
 
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
-window.copyTeacherFormLink = (jamiaName) => {
-    const monthIdx = document.getElementById('report-month').value;
-    const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
-    const inspectorId = gCurrentUser ? gCurrentUser.uid : 'anonymous';
-    const activeYear = "2025-2026";
+window.copyTeacherFormLink = async (jamiaName) => {
 
-    const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&userId=${inspectorId}&activeYear=${activeYear}`;
-    
-    navigator.clipboard.writeText(url).then(() => {
-        alert(`${jamiaName} ke liye Teacher Form link copy ho gayi hai!`);
-    });
+    try {
+
+        const monthIdx =
+        document.getElementById('report-month').value;
+
+        const baseUrl =
+        window.location.origin +
+        window.location.pathname.replace(
+            'academic-inspector.html',
+            ''
+        );
+
+        const inspectorId =
+        gCurrentUser ? gCurrentUser.uid : 'anonymous';
+
+        // ADMIN ACTIVE YEAR FETCH
+        const calSnap = await getDoc(
+            doc(gDb, "settings", "academic_calendar")
+        );
+
+        let activeYear = "2026-2027";
+
+        if(calSnap.exists()){
+
+            activeYear =
+            calSnap.data().activeYear || "2026-2027";
+
+        }
+
+        const url =
+`${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&userId=${inspectorId}&activeYear=${activeYear}`;
+
+        navigator.clipboard.writeText(url);
+
+        alert(`
+Teacher Form Link Copied
+
+Year:
+${activeYear}
+        `);
+
+    } catch(error){
+
+        console.error(error);
+        alert("Link generate error");
+
+    }
+
 };
-
 window.downloadJamiaImage = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const card = document.getElementById(`card-${safeId}`);
