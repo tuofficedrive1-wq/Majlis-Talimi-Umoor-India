@@ -167,11 +167,28 @@
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Region (Ilaqa)</label>
-                    <input type="text" id="new-jamia-region" placeholder="e.g. Chhatarpur" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                    <select id="new-jamia-region" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+                        <option value="">Select Region...</option>
+                        <option value="AJMER">Ajmer</option>
+                        <option value="DEHLI">Dehli</option>
+                        <option value="MUMBAI">Mumbai</option>
+                        <option value="HYDERABAD">Hyderabad</option>
+                        <option value="BENGALORE">Bengalore</option>
+                        <option value="KOLKATA">Kolkata</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Jamia Name</label>
                     <input type="text" id="new-jamia-name" placeholder="Enter Jamia Name" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div class="mt-8 bg-white rounded-xl shadow-sm border p-6 border-t-4 border-amber-500 col-span-1 md:col-span-3">
+                    <h3 class="font-bold text-amber-800 border-b pb-2 mb-4 flex items-center gap-2">
+                        <i class="fas fa-exclamation-triangle text-amber-500"></i> Existing Jamiaat (Pending Categorization)
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-4 italic">Yeh wo Jamiaat hain jo inspectors ke paas pehle se added hain par inka State/Region set nahi hai. Yahan se inka State aur Region set karein:</p>
+                    
+                    <div id="pending-jamia-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        </div>
                 </div>
                 <button id="btn-save-jamia" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow-md">
                     Save to Directory
@@ -325,6 +342,7 @@ const loadInspectors = () => {
         inspectors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderInspectors();      
         renderTeacherTable();    
+        renderPendingJamiaat(); // <--- Yeh line add karein
     });
 };
         const renderInspectors = () => {
@@ -784,6 +802,7 @@ const loadMasterJamiaat = () => {
     onSnapshot(jamiaDirectoryRef, (snap) => {
         masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderMasterJamiaat();
+        renderPendingJamiaat(); // <--- Yeh line add karein
     });
 };
 
@@ -857,7 +876,91 @@ window.deleteMasterJamia = async (id) => {
 
 // Initialize
 loadMasterJamiaat();
+        // --- 1. Purani Jamiaat ko Filter aur Render karne ka function ---
+// --- 1. Purani Jamiaat ko Filter aur Render karne ka function ---
+const renderPendingJamiaat = () => {
+    const container = document.getElementById('pending-jamia-list');
+    if(!container) return;
+
+    let allExistingJamias = [];
+    inspectors.forEach(ins => {
+        if(ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
+            allExistingJamias.push(...ins.jamiaatList);
+        }
+    });
+    allExistingJamias = [...new Set(allExistingJamias)]; 
+
+    const masterNames = masterJamiaat.map(j => j.jamiaName.trim().toUpperCase());
+    const uncategorized = allExistingJamias.filter(j => !masterNames.includes(j.trim().toUpperCase()));
+
+    if(uncategorized.length === 0) {
+        container.innerHTML = `
+            <div class="col-span-full text-center py-6 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 font-medium text-sm">
+                <i class="fas fa-check-circle mr-2"></i> Sabhi purani Jamiaat kamiyabi se categorize ho chuki hain!
+            </div>`;
+        return;
+    }
+
+    // Region dropdown ki list yahan banayi gayi hai
+    const regionOptions = `
+        <option value="">Select Region</option>
+        <option value="AJMER">Ajmer</option>
+        <option value="DEHLI">Dehli</option>
+        <option value="MUMBAI">Mumbai</option>
+        <option value="HYDERABAD">Hyderabad</option>
+        <option value="BENGALORE">Bengalore</option>
+        <option value="KOLKATA">Kolkata</option>
+    `;
+
+    container.innerHTML = uncategorized.map((jamia, idx) => `
+        <div class="p-4 border rounded-xl bg-amber-50/40 border-amber-100 flex flex-col justify-between gap-3 shadow-sm hover:shadow transition">
+            <div>
+                <p class="font-bold text-gray-800 text-sm truncate flex items-center gap-2">
+                    <i class="fas fa-university text-amber-600 text-xs"></i> ${jamia}
+                </p>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <input type="text" id="pending-state-${idx}" placeholder="State" class="p-1.5 border rounded text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500">
+                <select id="pending-region-${idx}" class="p-1.5 border rounded text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500">
+                    ${regionOptions}
+                </select>
+            </div>
+            <button onclick="categorizeExistingJamia('${jamia.replace(/'/g, "\\'")}', ${idx})" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 rounded text-xs transition shadow-sm">
+                Save & Link
+            </button>
+        </div>
+    `).join('');
+};
+
+// --- 2. Pending Jamia ko Master me Save karne ka function ---
+window.categorizeExistingJamia = async (jamiaName, idx) => {
+    const stateInp = document.getElementById(`pending-state-${idx}`);
+    const regionInp = document.getElementById(`pending-region-${idx}`);
+    
+    const state = stateInp.value.trim().toUpperCase();
+    const region = regionInp.value.trim().toUpperCase();
+    const name = jamiaName.trim().toUpperCase();
+
+    if(!state || !region) {
+        alert("Is Jamia ke liye State aur Region bharna zaroori hai!");
+        return;
+    }
+
+    try {
+        // Master collection me document add karein
+        await addDoc(collection(db, "jamiaat_master"), {
+            state: state,
+            region: region,
+            jamiaName: name,
+            addedAt: new Date()
+        });
         
+        alert(`Jamia "${name}" ko successfully categorize kar diya gaya hai!`);
+        // Note: Realtime listener chalne ki wajah se UI se yeh card khud gayab ho jayega.
+    } catch (e) {
+        alert("Error saving: " + e.message);
+    }
+};
         
     </script>
 </body>
