@@ -33,6 +33,7 @@
     <div class="max-w-7xl mx-auto flex px-4">
         <button class="tab-btn px-6 py-4 text-sm font-semibold tab-active" data-tab="inspectors">Manage Inspectors</button>
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="academic-system">Academic System</button>
+        <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="jamia-directory">Jamia Directory</button>
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="teacher-details">Teacher Detail</button>
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="reports">Inspection Reports</button>
     </div>
@@ -154,6 +155,52 @@
         </div>
     </div>
 </div>
+        <div id="tab-jamia-directory" class="tab-content hidden">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <div class="bg-white rounded-xl shadow-sm border p-5 h-fit">
+            <h2 class="font-bold text-indigo-800 border-b pb-2 mb-4">Add New Jamia</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">State (Riyasat)</label>
+                    <input type="text" id="new-jamia-state" placeholder="e.g. Madhya Pradesh" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Region (Ilaqa)</label>
+                    <input type="text" id="new-jamia-region" placeholder="e.g. Chhatarpur" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Jamia Name</label>
+                    <input type="text" id="new-jamia-name" placeholder="Enter Jamia Name" class="w-full p-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <button id="btn-save-jamia" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow-md">
+                    Save to Directory
+                </button>
+            </div>
+        </div>
+
+        <div class="md:col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                <h2 class="font-bold text-gray-700">Registered Jamiaat</h2>
+                <input type="text" id="search-master-jamia" placeholder="Search State, Region or Name..." class="border rounded-lg px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+            </div>
+            <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 text-[11px] font-bold uppercase text-gray-400 border-b sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">State</th>
+                            <th class="px-4 py-3">Region</th>
+                            <th class="px-4 py-3">Jamia Name</th>
+                            <th class="px-4 py-3 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="master-jamia-list" class="divide-y text-sm text-gray-700">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
             </main>
 
     <div id="edit-modal" class="fixed inset-0 bg-black/60 hidden z-[60] flex items-center justify-center p-4">
@@ -209,9 +256,21 @@
 
     <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    // Yahan saare functions add kar diye gaye hain
-    import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+// Updated Imports with addDoc and deleteDoc
+import { 
+    getFirestore, 
+    collection, 
+    query, 
+    where, 
+    onSnapshot, 
+    doc, 
+    updateDoc, 
+    getDoc, 
+    setDoc, 
+    addDoc, 
+    deleteDoc 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
             const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -716,7 +775,88 @@ window.viewFullDetail = (teacherId) => {
 };
 
 // Jab Inspector load ho jayein tab table refresh karein
-// loadInspectors function ke onSnapshot ke andar renderTeacherTable() ko call karein
+// --- MASTER JAMIA DIRECTORY LOGIC ---
+const jamiaDirectoryRef = collection(db, "jamiaat_master");
+let masterJamiaat = [];
+
+// 1. Load Jamiaat Realtime
+const loadMasterJamiaat = () => {
+    onSnapshot(jamiaDirectoryRef, (snap) => {
+        masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderMasterJamiaat();
+    });
+};
+
+// 2. Render Table
+const renderMasterJamiaat = () => {
+    const list = document.getElementById('master-jamia-list');
+    list.innerHTML = masterJamiaat.map(j => `
+        <tr class="hover:bg-gray-50 transition border-b">
+            <td class="px-4 py-3 font-medium text-indigo-600">${j.state}</td>
+            <td class="px-4 py-3 text-gray-600">${j.region}</td>
+            <td class="px-4 py-3 font-bold text-gray-800">${j.jamiaName}</td>
+            <td class="px-4 py-3 text-center">
+                <button onclick="deleteMasterJamia('${j.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+};
+
+// 3. Save New Jamia
+document.getElementById('btn-save-jamia').onclick = async () => {
+    const stateInput = document.getElementById('new-jamia-state');
+    const regionInput = document.getElementById('new-jamia-region');
+    const nameInput = document.getElementById('new-jamia-name');
+    
+    const state = stateInput.value.trim().toUpperCase();
+    const region = regionInput.value.trim().toUpperCase();
+    const jamiaName = nameInput.value.trim().toUpperCase();
+
+    if(!state || !region || !jamiaName) {
+        alert("Please fill all fields (State, Region, Jamia Name)!");
+        return;
+    }
+
+    const btn = document.getElementById('btn-save-jamia');
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
+    try {
+        await addDoc(jamiaDirectoryRef, {
+            state: state,
+            region: region,
+            jamiaName: jamiaName,
+            addedAt: new Date()
+        });
+        
+        // Clear inputs after save
+        nameInput.value = ''; 
+        // State aur Region clear nahi kar rahe taake ek hi city ki multiple jamia easily add ho sakein.
+        
+        alert("Jamia added to Master Directory!");
+    } catch (e) {
+        alert("Error: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `Save to Directory`;
+    }
+};
+
+// 4. Delete Jamia
+window.deleteMasterJamia = async (id) => {
+    if(confirm("Are you sure you want to delete this Jamia from Master list?")) {
+        try {
+            await deleteDoc(doc(db, "jamiaat_master", id));
+        } catch(e) {
+            alert("Delete Error: " + e.message);
+        }
+    }
+};
+
+// Initialize
+loadMasterJamiaat();
         
         
     </script>
