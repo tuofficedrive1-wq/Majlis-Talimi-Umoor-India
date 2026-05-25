@@ -314,7 +314,10 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
             listDiv.innerHTML = jamiaData.teachers.map(t => `
                 <div class="border rounded-2xl bg-slate-50 mb-4 overflow-hidden shadow-sm" id="teacher-card-${t.id}">
                     <div class="teacher-toggle flex justify-between items-center p-4 cursor-pointer bg-white" data-tid="${t.id}" data-jamia="${jamia}">
-                        <div class="flex flex-col"><span class="font-bold text-slate-800">${t.name}</span><span class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded w-fit mt-1 uppercase">CODE: ${t.loginCode}</span></div>
+                        <div class="flex flex-col">
+                            <span class="font-bold text-slate-800">${t.name}</span>
+                            <span class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded w-fit mt-1 uppercase">CODE: ${t.loginCode}</span>
+                        </div>
                         <div class="flex items-center gap-3">
                             <button class="edit-t-btn text-indigo-500" data-tid="${t.id}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
                             <button class="del-t-btn text-red-500" data-tid="${t.id}" data-jamia="${jamia}"><i class="fas fa-trash-alt"></i></button>
@@ -323,23 +326,8 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                     </div>
                     <div class="period-container hidden p-5 bg-white border-t space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-5 gap-3 bg-emerald-50/50 p-4 rounded-xl">
-                                                        <input type="text"
-                                   list="class-list-${t.id}"
-                                   class="p-class p-2 border rounded-lg text-sm w-full"
-                                   placeholder="Type or Select Class">
-                            
-                            <datalist id="class-list-${t.id}">
-                                ${academicConfig.classes.map(c =>
-                                    `<option value="${c.name}">`
-                                ).join('')}
-                            </datalist>
-                            <select class="p-book p-2 border rounded-lg text-sm">
-                                <option value="">Select Subject</option>
-                            </select>
-                            
-                            <input type="text"
-                                   class="custom-book hidden p-2 border rounded-lg text-sm"
-                                   placeholder="Enter Custom Subject">
+                            <select class="p-class p-2 border rounded-lg text-sm"><option value="">Select Class</option>${classOptions}</select>
+                            <select class="p-book p-2 border rounded-lg text-sm" disabled><option value="">Select Subject</option></select>
                             <select class="p-sem p-2 border rounded-lg text-sm"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
                             <input type="number" placeholder="Pages" class="p-pages p-2 border rounded-lg text-sm">
                             <select class="p-syllabus p-2 border rounded-lg text-sm">
@@ -353,29 +341,34 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                             <table class="w-full text-[10px] border-collapse">
                                 <thead>
                                     <tr class="bg-slate-50 text-slate-400 uppercase font-black">
-                                        <th class="p-2 border text-left">Class</th><th class="p-2 border text-left">Book</th>
-                                        <th class="p-2 border text-center">Sem</th><th class="p-2 border text-center">Pages</th>
-                                        <th class="p-2 border text-center">Syllabus</th><th class="p-2 border text-center">Action</th>
+                                        <th class="p-2 border text-left">Class</th>
+                                        <th class="p-2 border text-left">Book</th>
+                                        <th class="p-2 border text-center">Sem</th>
+                                        <th class="p-2 border text-center">Pages</th>
+                                        <th class="p-2 border text-center">Syllabus</th>
+                                        <th class="p-2 border text-center">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${(t.periods || []).map(p => `
                                         <tr class="border-b">
-                                            <td class="p-2 border">${p.className}</td><td class="p-2 border">${p.bookName}</td>
-                                            <td class="p-2 border text-center">${p.semester}</td><td class="p-2 border text-center font-bold">${p.totalPages}</td>
+                                            <td class="p-2 border">${p.className}</td>
+                                            <td class="p-2 border">${p.bookName}</td>
+                                            <td class="p-2 border text-center">${p.semester}</td>
+                                            <td class="p-2 border text-center font-bold">${p.totalPages}</td>
                                             <td class="p-2 border text-center text-indigo-600 font-bold">${p.syllabus || 'Majlis'}</td>
                                             <td class="p-2 border text-center">
-                                            <div class="flex justify-center gap-2">
-                                                <button class="edit-period-btn text-indigo-500" 
-                                                        data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="del-period-btn text-red-500" 
-                                                        data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}">
-                                                    <i class="fas fa-times-circle"></i>
-                                                </button>
-                                            </div>
-                                        </td>
+                                                <div class="flex justify-center gap-2">
+                                                    <button class="edit-period-btn text-indigo-500 hover:text-indigo-700" 
+                                                            data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+                                                    <button class="del-period-btn text-red-500 hover:text-red-700" 
+                                                            data-pid="${p.id}" data-tid="${t.id}" data-jamia="${jamia}">
+                                                        <i class="fas fa-times-circle"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>`).join('')}
                                 </tbody>
                             </table>
@@ -384,8 +377,14 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                 </div>`).join('');
             
             attachDropdownEvents(listDiv, academicConfig);
-            attachTeacherEvents(listDiv, db, currentUser, jamiaat, selectedYear);
         });
+
+        // Sabhi jamiaat ke render hone ke baad aik hi baar pooray container par events fresh attach karein
+        const mainStructureContainer = document.getElementById('structure-display-area');
+        if (mainStructureContainer) {
+            attachTeacherEvents(mainStructureContainer, db, currentUser, jamiaat, selectedYear);
+        }
+
     } catch (e) { console.error("loadAllTeachers error:", e); }
 };
 
