@@ -910,6 +910,16 @@ window.toggleEditMode = async (jamiaName) => {
             let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
             if (jamiaData) {
+                // Jamia ID nikalenge Public Performance document update karne ke liye
+                const match = jamiaName.match(/\d+/);
+                const jamiaDocId = match ? match[0] : "001";
+                const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
+                const perfSnap = await getDoc(perfDocRef);
+                let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
+
+                // Map banayenge Teacher-wise periods detail ko public collection ke liye format karne ke liye
+                let teacherUpdatesMap = {};
+
                 inputs.forEach(inp => {
                     const tid = inp.dataset.tid;
                     const pid = inp.dataset.pid;
@@ -922,14 +932,55 @@ window.toggleEditMode = async (jamiaName) => {
                             if (!period.achieved) period.achieved = {};
                             period.achieved[savingMonthId] = val; 
                             
-                            // Yahan is month key ke liye lock set kiya
                             if (!period.locked) period.locked = {};
                             period.locked[savingMonthId] = true; 
+
+                            // Public collection ke format mein store karne ke liye temp array
+                            if (!teacherUpdatesMap[teacher.name]) {
+                                teacherUpdatesMap[teacher.name] = [];
+                            }
+                            teacherUpdatesMap[teacher.name].push({
+                                className: period.className,
+                                bookName: period.bookName,
+                                page_to: val
+                            });
                         }
                     }
                 });
 
+                // 1. Inspector Dashboard Structure update kiya (users collection)
                 await updateDoc(userRef, { academicYears: academicYears });
+
+                // 2. Public Form Structure update kiya (academic_performance collection)
+                let monthSection = currentPerfData[savingMonthId] || { teachers: [] };
+                let updatedPublicTeachers = monthSection.teachers || [];
+
+                Object.keys(teacherUpdatesMap).forEach(tName => {
+                    let periodsDetailMap = {};
+                    teacherUpdatesMap[tName].forEach((pObj, idx) => {
+                        periodsDetailMap[`period_${idx + 1}`] = {
+                            class: pObj.className,
+                            subject: pObj.bookName,
+                            page_from: 0,
+                            page_to: pObj.page_to
+                        };
+                    });
+
+                    // Purane data ko remove karke naya modified entry daalenge
+                    updatedPublicTeachers = updatedPublicTeachers.filter(t => t.name.toLowerCase() !== tName.toLowerCase());
+                    updatedPublicTeachers.push({
+                        name: tName,
+                        designation: "Teacher",
+                        periods_detail: periodsDetailMap
+                    });
+                });
+
+                currentPerfData[savingMonthId] = {
+                    teachers: updatedPublicTeachers,
+                    updated_at: new Date().toISOString()
+                };
+
+                await setDoc(perfDocRef, currentPerfData, { merge: true });
                 
                 inputs.forEach(inp => {
                     inp.disabled = true;
@@ -941,11 +992,12 @@ window.toggleEditMode = async (jamiaName) => {
                 btn.style.backgroundColor = "#4f46e5"; 
                 btn.disabled = false;
                 
-                alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
+                alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data final save aur lock ho gaya hai.`);
                 loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
             }
         } catch (err) {
-            console.error(err);
+            console.error("Save Error:", err);
+            alert("Error saving data: " + err.message);
             btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
             btn.style.backgroundColor = "#10b981";
             btn.disabled = false;
