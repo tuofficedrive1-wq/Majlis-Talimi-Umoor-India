@@ -175,7 +175,7 @@
             gJamiaId = match ? match[0] : "001"; 
         }
 
-        btnVerify.addEventListener('click', async () => {
+       btnVerify.addEventListener('click', async () => {
             const enteredCode = loginCodeInput.value.trim();
             
             if (!enteredCode) {
@@ -220,7 +220,8 @@
                 loginContainer.classList.add('hidden');
                 mainFormContainer.classList.remove('hidden');
                 
-                renderPeriodsUI(gTeacherData.periods || []);
+                // --- UPDATE: Pure teacher object ko bhej rahe hain taaki lock status check ho sake ---
+                renderPeriodsUI(gTeacherData);
 
             } catch (error) {
                 console.error(error);
@@ -232,8 +233,9 @@
             }
         });
 
-        function renderPeriodsUI(periods) {
+       function renderPeriodsUI(teacherData) {
             periodContainer.innerHTML = ''; 
+            const periods = teacherData.periods || [];
 
             if (periods.length === 0) {
                 periodContainer.innerHTML = `
@@ -244,8 +246,24 @@
                 return;
             }
 
+            let formHasLockedField = false;
+
             periods.forEach((p) => {
-                const existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : '';
+                // 1. Check karein kya Inspector ne is month ko lock kiya hai?
+                const isLockedByInspector = p.locked && p.locked[dbMonthKey] === true;
+                
+                let existingAchieved = '';
+                let isDisabledAttr = '';
+
+                if (isLockedByInspector) {
+                    // Agar Inspector ne lock kar diya, toh Inspector wala data hi uthayenge aur readonly karenge
+                    existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : 0;
+                    isDisabledAttr = 'disabled style="background-color: #e2e8f0; color: #475569;"';
+                    formHasLockedField = true;
+                } else {
+                    // Agar lock nahi hai, toh purana public collection ka fallback logic chalega
+                    existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : '';
+                }
 
                 const row = document.createElement('div');
                 row.className = "flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-3";
@@ -253,17 +271,30 @@
                     <div class="flex-1 min-w-0">
                         <h4 class="font-extrabold text-slate-800 text-xs truncate">${p.className}</h4>
                         <p class="text-[11px] font-bold text-slate-500 truncate mt-0.5">${p.bookName}</p>
+                        ${isLockedByInspector ? '<span class="text-[9px] bg-red-100 text-red-600 font-bold px-1.5 py-0.2 rounded mt-1 inline-block uppercase tracking-wider"><i class="fas fa-lock mr-1"></i> Verified & Locked</span>' : ''}
                     </div>
                     
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <div class="flex items-center gap-1.5">
                             <label class="text-[9px] font-black text-slate-400 uppercase leading-none text-right">Pages<br>Padhaye:</label>
-                            <input type="number" data-period-id="${p.id}" value="${existingAchieved}" class="achieved-input w-16 p-1.5 text-center text-sm font-black text-indigo-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all" placeholder="0" required>
+                            <input type="number" data-period-id="${p.id}" value="${existingAchieved}" ${isDisabledAttr} class="achieved-input w-16 p-1.5 text-center text-sm font-black text-indigo-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all" placeholder="0" required>
                         </div>
                     </div>
                 `;
                 periodContainer.appendChild(row);
             });
+
+            // Agar poora form ya koi bhi field locked hai, toh button ko hamesha ke liye hide kar denge
+            if (formHasLockedField) {
+                btnSave.classList.add('hidden');
+                // Ek top notification banner alert laga dete hain aesthetics ke liye
+                const lockedBanner = document.createElement('div');
+                lockedBanner.className = "p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-center text-xs font-bold mb-4";
+                lockedBanner.innerHTML = `<i class="fas fa-exclamation-triangle mr-1"></i> Yeh data Inspector dwara check aur lock kiya ja chuka hai. Isme ab badlav nahi ho sakta.`;
+                periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
+            } else {
+                btnSave.classList.remove('hidden');
+            }
         }
 
         performanceForm.addEventListener('submit', async (e) => {
