@@ -246,36 +246,44 @@
             }
 
             let formHasLockedField = false;
+            const currentMonthKey = dbMonthKey.toLowerCase().trim();
 
             // --- LIVE SUBMISSION FALLBACK FETCH ---
-            // Public collection se pehle check karenge ki kya teacher ne pehle se kuch submit kiya hai?
             let publicTeacherData = null;
             try {
                 const perfDocRef = doc(db, "academic_performance", gJamiaId);
                 const perfSnap = await getDoc(perfDocRef);
-                if (perfSnap.exists() && perfSnap.data()[dbMonthKey]) {
-                    const monthData = perfSnap.data()[dbMonthKey];
-                    // Yahan monthSection ki jagah monthData kar diya hai:
+                if (perfSnap.exists() && perfSnap.data()[currentMonthKey]) {
+                    const monthData = perfSnap.data()[currentMonthKey];
                     publicTeacherData = (monthData.teachers || []).find(t => t.name.toLowerCase() === teacherData.name.toLowerCase());
                 }
             } catch (e) {
                 console.log("Public performance read fallback active", e);
             }
-            // --------------------------------------
 
             periods.forEach((p, idx) => {
-                const isLockedByInspector = p.locked && p.locked[dbMonthKey] === true;
+                // --- LOCK CHECKING WITH DEBUG LOGS ---
+                // Agar p.locked exist karta hai aur usme current month true hai
+                let isLockedByInspector = false;
+                if (p.locked && p.locked[currentMonthKey] !== undefined) {
+                    if (p.locked[currentMonthKey] === true || p.locked[currentMonthKey] === "true") {
+                        isLockedByInspector = true;
+                    }
+                }
+
+                // Console me check karne ke liye ki kya status aa raha hai
+                console.log(`Period ${idx} Lock Status for ${currentMonthKey}:`, isLockedByInspector, p.locked);
                 
                 let existingAchieved = '';
                 let isDisabledAttr = '';
 
                 if (isLockedByInspector) {
-                    // Condition 1: Agar Inspector lock kar chuka hai toh verified data dikhao
-                    existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : 0;
-                    isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900;"';
+                    // Condition 1: Agar Inspector lock kar chuka hai
+                    existingAchieved = (p.achieved && p.achieved[currentMonthKey]) !== undefined ? p.achieved[currentMonthKey] : 0;
+                    isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900; border: 1px solid #cbd5e1;"';
                     formHasLockedField = true;
                 } else {
-                    // Condition 2: Agar Inspector ne save nahi kiya hai, toh check karo kya Teacher ne pehle form bhara tha?
+                    // Condition 2: Agar Inspector ne lock nahi kiya, toh Teacher ka purana data dhoondo
                     if (publicTeacherData && publicTeacherData.periods_detail) {
                         const matchedKey = Object.keys(publicTeacherData.periods_detail).find(key => {
                             const d = publicTeacherData.periods_detail[key];
@@ -286,9 +294,9 @@
                         }
                     }
                     
-                    // Condition 3: Agar dono jagah kuch nahi mila toh Admin structure ka safe integer check lagayenge
-                    if (existingAchieved === '' && p.achieved && p.achieved[dbMonthKey] !== undefined) {
-                        existingAchieved = p.achieved[dbMonthKey];
+                    // Condition 3: Safe integer check from local array
+                    if (existingAchieved === '' && p.achieved && p.achieved[currentMonthKey] !== undefined) {
+                        existingAchieved = p.achieved[currentMonthKey];
                     }
                 }
 
@@ -311,14 +319,24 @@
                 periodContainer.appendChild(row);
             });
 
+            // --- BUTTON HIDE LOGIC ---
             if (formHasLockedField) {
+                btnSave.style.display = 'none'; // DOM se poori tarah invisible karne ke liye
                 btnSave.classList.add('hidden');
-                const lockedBanner = document.createElement('div');
-                lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
-                lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Inspector dwara check karke freeze (lock) kar di gayi hai.`;
-                periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
+                
+                // Agar banner pehle se nahi hai toh hi add karein
+                if (!document.getElementById('freeze-banner')) {
+                    const lockedBanner = document.createElement('div');
+                    lockedBanner.id = "freeze-banner";
+                    lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
+                    lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Inspector dwara check karke freeze (lock) kar di gayi hai.`;
+                    periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
+                }
             } else {
+                btnSave.style.display = 'flex';
                 btnSave.classList.remove('hidden');
+                const existingBanner = document.getElementById('freeze-banner');
+                if (existingBanner) existingBanner.remove();
             }
         }
 
