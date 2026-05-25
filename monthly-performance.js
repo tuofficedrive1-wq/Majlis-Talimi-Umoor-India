@@ -390,7 +390,6 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     try {
-        // 1. Puraane snapshots ke saath academic_performance docs ko bhi parallel fetch karenge
         const [targetSnap, calSnap, userSnap] = await Promise.all([
             getDoc(doc(db, "settings", "monthly_page_targets")),
             getDoc(doc(db, "settings", "academic_calendar")),
@@ -416,33 +415,26 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         const karkardagi = academicYears[activeYear]?.karkardagiStructure || [];
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
-
-        // Global selected month key
         const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
         let html = "";
 
-        // Loop through each Jamia
         for (const jamiaName of filteredJamiaat) {
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) continue;
 
-            const safeJamiaId = jamiaName.replace(/\s+/g, '');
-            
-            // --- LIVE SYNC FROM PUBLIC COLLECTION ---
-            // Jamia Name se ID nikalenge jaise HTML form me nikala tha ("DEMO 001" -> "001")
+            const safeId = jamiaName.replace(/\s+/g, '');
             const match = jamiaName.match(/\d+/);
             const jamiaDocId = match ? match[0] : "001";
             
-            // Public collection se is Jamia ka fresh performance data uthayenge
+            // Public collection se fresh data sync
             const publicPerfSnap = await getDoc(doc(db, "academic_performance", jamiaDocId));
             let publicMonthData = null;
             if (publicPerfSnap.exists()) {
                 publicMonthData = publicPerfSnap.data()[targetMonthKey] || null;
             }
-            // ----------------------------------------
 
             html += `
-            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeId}">
                 <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
                     <div>
                         <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
@@ -452,7 +444,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
                         <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
                         <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeJamiaId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
                     </div>
                 </div>
                 <div class="overflow-x-auto">
@@ -472,32 +464,22 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <tbody>`;
 
             jamiaData.teachers.forEach((teacher) => {
-                // Public collection me se is specific teacher ka data dhoondhein
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
 
                 teacher.periods?.forEach((p, pIdx) => {
                     let target = 0;
-                    const cleanClassName = (p.className || "").trim();
-                    const cleanBookName = (p.bookName || "").trim();
-                    
-                    const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
+                    const subId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
 
-                    if (monthlyTargets && monthlyTargets[subId]) {
-                        if (monthlyTargets[subId][targetMonthKey] !== undefined) {
-                            target = parseInt(monthlyTargets[subId][targetMonthKey]) || 0;
-                        }
+                    if (monthlyTargets && monthlyTargets[subId] && monthlyTargets[subId][targetMonthKey] !== undefined) {
+                        target = parseInt(monthlyTargets[subId][targetMonthKey]) || 0;
                     }
                     
-                    // --- DIG DOWM TO PUBLIC VALUE OR FALLBACK TO LOCAL VALUE ---
                     let achievedValue = 0;
-                    
                     if (publicTeacher && publicTeacher.periods_detail) {
-                        // Form ke andar `period_1`, `period_2` format me save ho raha hai, toh match dhoondhte hain
                         const matchedPeriodKey = Object.keys(publicTeacher.periods_detail).find(key => {
                             const detail = publicTeacher.periods_detail[key];
                             return detail.class === p.className && detail.subject === p.bookName;
                         });
-                        
                         if (matchedPeriodKey) {
                             achievedValue = publicTeacher.periods_detail[matchedPeriodKey].page_to || 0;
                         } else {
@@ -506,7 +488,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     } else {
                         achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
                     }
-                    // ------------------------------------------------------------
 
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
@@ -521,7 +502,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             <td class="p-4 text-center">
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
-                                       class="achieved-input-${safeJamiaId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
+                                       class="achieved-input-${safeId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
                                        oninput="updateRowStatusLive(this, ${target}, '${targetMonthKey}', '${p.semester}')">
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
@@ -941,16 +922,14 @@ window.toggleEditMode = async (jamiaName) => {
                             if (!period.achieved) period.achieved = {};
                             period.achieved[savingMonthId] = val; 
                             
-                            // --- YAHAN LOCK FLAG SET KIYA ---
+                            // Yahan is month key ke liye lock set kiya
                             if (!period.locked) period.locked = {};
-                            period.locked[savingMonthId] = true; // Is month ke liye lock true kiya
+                            period.locked[savingMonthId] = true; 
                         }
                     }
                 });
 
-                await updateDoc(userRef, { 
-                    academicYears: academicYears 
-                });
+                await updateDoc(userRef, { academicYears: academicYears });
                 
                 inputs.forEach(inp => {
                     inp.disabled = true;
@@ -964,15 +943,9 @@ window.toggleEditMode = async (jamiaName) => {
                 
                 alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data successfully save ho gaya hai.`);
                 loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
-            } else {
-                alert("Jamia ka data nahi mila.");
-                btn.innerHTML = `<i class="fas fa-edit mr-1"></i> Edit`;
-                btn.style.backgroundColor = "#4f46e5";
-                btn.disabled = false;
             }
         } catch (err) {
-            console.error("Firebase Save Error:", err);
-            alert("Error saving data: " + err.message);
+            console.error(err);
             btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
             btn.style.backgroundColor = "#10b981";
             btn.disabled = false;
