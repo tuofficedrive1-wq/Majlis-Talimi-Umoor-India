@@ -2,6 +2,7 @@ import {
     doc, 
     getDoc,
     updateDoc,
+    setDoc,
     serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
