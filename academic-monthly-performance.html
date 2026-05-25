@@ -246,15 +246,21 @@
             }
 
             let formHasLockedField = false;
-            const currentMonthKey = dbMonthKey.toLowerCase().trim();
+            
+            // Dono keys nikalenge safety ke liye
+            const shortMonthKey = dbMonthKey.toLowerCase().trim(); // e.g., "may"
+            const fullMonthUrlKey = urlMonthIndex ? urlMonthIndex.toLowerCase().trim() : shortMonthKey; // e.g., "2026-05"
 
             // --- LIVE SUBMISSION FALLBACK FETCH ---
             let publicTeacherData = null;
             try {
                 const perfDocRef = doc(db, "academic_performance", gJamiaId);
                 const perfSnap = await getDoc(perfDocRef);
-                if (perfSnap.exists() && perfSnap.data()[currentMonthKey]) {
-                    const monthData = perfSnap.data()[currentMonthKey];
+                // Pehle short key check karein, fir full key se data check karein
+                let rawData = perfSnap.exists() ? perfSnap.data() : {};
+                let monthData = rawData[shortMonthKey] || rawData[fullMonthUrlKey] || null;
+                
+                if (monthData) {
                     publicTeacherData = (monthData.teachers || []).find(t => t.name.toLowerCase() === teacherData.name.toLowerCase());
                 }
             } catch (e) {
@@ -262,28 +268,35 @@
             }
 
             periods.forEach((p, idx) => {
-                // --- LOCK CHECKING WITH DEBUG LOGS ---
-                // Agar p.locked exist karta hai aur usme current month true hai
+                // --- MULTI-FORMAT LOCK CHECKING ---
                 let isLockedByInspector = false;
-                if (p.locked && p.locked[currentMonthKey] !== undefined) {
-                    if (p.locked[currentMonthKey] === true || p.locked[currentMonthKey] === "true") {
+                
+                if (p.locked) {
+                    // Format 1: Agar full path format pe lock ho (e.g., "2026-05")
+                    if (p.locked[fullMonthUrlKey] === true || p.locked[fullMonthUrlKey] === "true") {
+                        isLockedByInspector = true;
+                    }
+                    // Format 2: Agar short month format pe lock ho (e.g., "may")
+                    else if (p.locked[shortMonthKey] === true || p.locked[shortMonthKey] === "true") {
                         isLockedByInspector = true;
                     }
                 }
-
-                // Console me check karne ke liye ki kya status aa raha hai
-                console.log(`Period ${idx} Lock Status for ${currentMonthKey}:`, isLockedByInspector, p.locked);
                 
                 let existingAchieved = '';
                 let isDisabledAttr = '';
 
                 if (isLockedByInspector) {
-                    // Condition 1: Agar Inspector lock kar chuka hai
-                    existingAchieved = (p.achieved && p.achieved[currentMonthKey]) !== undefined ? p.achieved[currentMonthKey] : 0;
+                    // Data fetch karne ke liye bhi dono keys ka fallback check karenge
+                    if (p.achieved) {
+                        existingAchieved = p.achieved[fullMonthUrlKey] !== undefined ? p.achieved[fullMonthUrlKey] : (p.achieved[shortMonthKey] !== undefined ? p.achieved[shortMonthKey] : 0);
+                    } else {
+                        existingAchieved = 0;
+                    }
+                    
                     isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900; border: 1px solid #cbd5e1;"';
                     formHasLockedField = true;
                 } else {
-                    // Condition 2: Agar Inspector ne lock nahi kiya, toh Teacher ka purana data dhoondo
+                    // Agar Inspector ne lock nahi kiya, toh Teacher ka purana saved data dhoondo
                     if (publicTeacherData && publicTeacherData.periods_detail) {
                         const matchedKey = Object.keys(publicTeacherData.periods_detail).find(key => {
                             const d = publicTeacherData.periods_detail[key];
@@ -294,9 +307,9 @@
                         }
                     }
                     
-                    // Condition 3: Safe integer check from local array
-                    if (existingAchieved === '' && p.achieved && p.achieved[currentMonthKey] !== undefined) {
-                        existingAchieved = p.achieved[currentMonthKey];
+                    // Fallback to local achieved map if available
+                    if (existingAchieved === '' && p.achieved) {
+                        existingAchieved = p.achieved[fullMonthUrlKey] !== undefined ? p.achieved[fullMonthUrlKey] : (p.achieved[shortMonthKey] !== undefined ? p.achieved[shortMonthKey] : '');
                     }
                 }
 
@@ -319,12 +332,11 @@
                 periodContainer.appendChild(row);
             });
 
-            // --- BUTTON HIDE LOGIC ---
+            // --- UI BUTTON & BANNER TOGGLE ---
             if (formHasLockedField) {
-                btnSave.style.display = 'none'; // DOM se poori tarah invisible karne ke liye
+                btnSave.style.setProperty('display', 'none', 'important');
                 btnSave.classList.add('hidden');
                 
-                // Agar banner pehle se nahi hai toh hi add karein
                 if (!document.getElementById('freeze-banner')) {
                     const lockedBanner = document.createElement('div');
                     lockedBanner.id = "freeze-banner";
@@ -333,7 +345,7 @@
                     periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
                 }
             } else {
-                btnSave.style.display = 'flex';
+                btnSave.style.setProperty('display', 'flex', 'important');
                 btnSave.classList.remove('hidden');
                 const existingBanner = document.getElementById('freeze-banner');
                 if (existingBanner) existingBanner.remove();
