@@ -232,66 +232,94 @@
     }
 };
 
-       function renderPeriodsUI(teacherData) {
-    periodContainer.innerHTML = ''; 
-    const periods = teacherData.periods || [];
+       async function renderPeriodsUI(teacherData) {
+            periodContainer.innerHTML = ''; 
+            const periods = teacherData.periods || [];
 
-    if (periods.length === 0) {
-        periodContainer.innerHTML = `
-        <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-            <p class="font-bold text-xs">Aapki koi class assign nahi hai.</p>
-        </div>`;
-        btnSave.classList.add('hidden');
-        return;
-    }
+            if (periods.length === 0) {
+                periodContainer.innerHTML = `
+                <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <p class="font-bold text-xs">Aapki koi class assign nahi hai.</p>
+                </div>`;
+                btnSave.classList.add('hidden');
+                return;
+            }
 
-    let formHasLockedField = false;
+            let formHasLockedField = false;
 
-    periods.forEach((p, idx) => {
-        const isLockedByInspector = p.locked && p.locked[dbMonthKey] === true;
-        
-        let existingAchieved = '';
-        let isDisabledAttr = '';
+            // --- LIVE SUBMISSION FALLBACK FETCH ---
+            // Public collection se pehle check karenge ki kya teacher ne pehle se kuch submit kiya hai?
+            let publicTeacherData = null;
+            try {
+                const perfDocRef = doc(db, "academic_performance", gJamiaId);
+                const perfSnap = await getDoc(perfDocRef);
+                if (perfSnap.exists() && perfSnap.data()[dbMonthKey]) {
+                    const monthData = perfSnap.data()[dbMonthKey];
+                    publicTeacherData = (monthSection.teachers || []).find(t => t.name.toLowerCase() === teacherData.name.toLowerCase());
+                }
+            } catch (e) {
+                console.log("Public performance read fallback active");
+            }
+            // --------------------------------------
 
-        if (isLockedByInspector) {
-            // Agar locked hai toh direct inspector ka approved data uthayega aur style lagayega
-            existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : 0;
-            isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900;"';
-            formHasLockedField = true;
-        } else {
-            existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : '';
+            periods.forEach((p, idx) => {
+                const isLockedByInspector = p.locked && p.locked[dbMonthKey] === true;
+                
+                let existingAchieved = '';
+                let isDisabledAttr = '';
+
+                if (isLockedByInspector) {
+                    // Condition 1: Agar Inspector lock kar chuka hai toh verified data dikhao
+                    existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : 0;
+                    isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900;"';
+                    formHasLockedField = true;
+                } else {
+                    // Condition 2: Agar Inspector ne save nahi kiya hai, toh check karo kya Teacher ne pehle form bhara tha?
+                    if (publicTeacherData && publicTeacherData.periods_detail) {
+                        const matchedKey = Object.keys(publicTeacherData.periods_detail).find(key => {
+                            const d = publicTeacherData.periods_detail[key];
+                            return d.class === p.className && d.subject === p.bookName;
+                        });
+                        if (matchedKey) {
+                            existingAchieved = publicTeacherData.periods_detail[matchedKey].page_to || 0;
+                        }
+                    }
+                    
+                    // Condition 3: Agar dono jagah kuch nahi mila toh Admin structure ka safe integer check lagayenge
+                    if (existingAchieved === '' && p.achieved && p.achieved[dbMonthKey] !== undefined) {
+                        existingAchieved = p.achieved[dbMonthKey];
+                    }
+                }
+
+                const row = document.createElement('div');
+                row.className = "flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-3";
+                row.innerHTML = `
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-extrabold text-slate-800 text-xs truncate">${p.className}</h4>
+                        <p class="text-[11px] font-bold text-slate-500 truncate mt-0.5">${p.bookName}</p>
+                        ${isLockedByInspector ? '<span class="text-[9px] bg-emerald-100 text-emerald-700 font-black px-1.5 py-0.5 rounded mt-1 inline-block uppercase tracking-wider"><i class="fas fa-check-circle mr-1"></i> Verified by Inspector</span>' : ''}
+                    </div>
+                    
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <div class="flex items-center gap-1.5">
+                            <label class="text-[9px] font-black text-slate-400 uppercase leading-none text-right">Pages<br>Padhaye:</label>
+                            <input type="number" data-period-id="${p.id}" id="input-period-${idx}" value="${existingAchieved}" ${isDisabledAttr} class="achieved-input w-16 p-1.5 text-center text-sm font-black text-indigo-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all" placeholder="0" required>
+                        </div>
+                    </div>
+                `;
+                periodContainer.appendChild(row);
+            });
+
+            if (formHasLockedField) {
+                btnSave.classList.add('hidden');
+                const lockedBanner = document.createElement('div');
+                lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
+                lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Inspector dwara check karke freeze (lock) kar di gayi hai.`;
+                periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
+            } else {
+                btnSave.classList.remove('hidden');
+            }
         }
-
-        const row = document.createElement('div');
-        row.className = "flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-3";
-        row.innerHTML = `
-            <div class="flex-1 min-w-0">
-                <h4 class="font-extrabold text-slate-800 text-xs truncate">${p.className}</h4>
-                <p class="text-[11px] font-bold text-slate-500 truncate mt-0.5">${p.bookName}</p>
-                ${isLockedByInspector ? '<span class="text-[9px] bg-emerald-100 text-emerald-700 font-black px-1.5 py-0.5 rounded mt-1 inline-block uppercase tracking-wider"><i class="fas fa-check-circle mr-1"></i> Verified by Inspector</span>' : ''}
-            </div>
-            
-            <div class="flex items-center gap-2 flex-shrink-0">
-                <div class="flex items-center gap-1.5">
-                    <label class="text-[9px] font-black text-slate-400 uppercase leading-none text-right">Pages<br>Padhaye:</label>
-                    <input type="number" data-period-id="${p.id}" id="input-period-${idx}" value="${existingAchieved}" ${isDisabledAttr} class="achieved-input w-16 p-1.5 text-center text-sm font-black text-indigo-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all" placeholder="0" required>
-                </div>
-            </div>
-        `;
-        periodContainer.appendChild(row);
-    });
-
-    if (formHasLockedField) {
-        btnSave.classList.add('hidden');
-        
-        const lockedBanner = document.createElement('div');
-        lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
-        lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Inspector dwara check karke freeze (lock) kar di gayi hai.`;
-        periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
-    } else {
-        btnSave.classList.remove('hidden');
-    }
-}
 
         performanceForm.onsubmit = async (e) => {
     e.preventDefault();
