@@ -175,61 +175,81 @@
             gJamiaId = match ? match[0] : "001"; 
         }
 
-       btnVerify.addEventListener('click', async () => {
-            const enteredCode = loginCodeInput.value.trim();
-            
-            if (!enteredCode) {
-                alert("Kripya apna Teacher Code enter karein.");
+       btnSave.addEventListener('click', async () => {
+            // Agar pehle se hi lock banner aa chuka hai toh save trigger nahi hoga
+            if(btnSave.classList.contains('hidden')) return;
+
+            const inputs = document.querySelectorAll('.achieved-input');
+            let isValid = true;
+
+            inputs.forEach(inp => {
+                if (!inp.value && !inp.disabled) {
+                    isValid = false;
+                    inp.classList.add('border-red-500');
+                } else {
+                    inp.classList.remove('border-red-500');
+                }
+            });
+
+            if (!isValid) {
+                alert("Kripya sabhi fields me pages enter karein.");
                 return;
             }
 
-            if (!inspectorId || !urlJamiaName || !dbMonthKey) {
-                alert("URL me Parameters missing hain. Naya link generate karein.");
-                return;
-            }
-
-            btnVerify.disabled = true;
-            document.getElementById('btn-verify-text').innerText = "Verifying...";
-            document.getElementById('btn-verify-icon').className = "spinner";
+            const originalBtnContent = btnSave.innerHTML;
+            btnSave.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving Report...`;
+            btnSave.disabled = true;
 
             try {
-                const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-                if (calSnap.exists()) {
-                    gActiveYear = calSnap.data().activeYear || "2026-2027";
-                }
+                const match = urlJamiaName.match(/\d+/);
+                const gJamiaId = match ? match[0] : "001";
 
-                const userRef = doc(db, "users", inspectorId);
-                const userSnap = await getDoc(userRef);
+                const perfDocRef = doc(db, "academic_performance", gJamiaId);
+                const perfSnap = await getDoc(perfDocRef);
+                let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
 
-                if (!userSnap.exists()) throw new Error("Admin data nahi mila.");
+                let periodsDetailMap = {};
+                const periods = gTeacherData.periods || [];
 
-                gUserData = userSnap.data();
-                const structure = gUserData.academicYears?.[gActiveYear]?.karkardagiStructure || [];
+                periods.forEach((p, idx) => {
+                    const inputField = document.getElementById(`input-period-${idx}`);
+                    const newVal = inputField ? (parseInt(inputField.value) || 0) : 0;
+                    
+                    periodsDetailMap[`period_${idx + 1}`] = {
+                        class: p.className,
+                        subject: p.bookName,
+                        page_from: 0, 
+                        page_to: newVal 
+                    };
+                });
+
+                const newTeacherEntry = {
+                    name: gTeacherData.name,
+                    designation: "Teacher",
+                    periods_detail: periodsDetailMap
+                };
+
+                let monthSection = currentPerfData[dbMonthKey] || { teachers: [] };
+                let targetTeachers = (monthSection.teachers || []).filter(t => t.name.toLowerCase() !== gTeacherData.name.toLowerCase());
+                targetTeachers.push(newTeacherEntry);
+
+                currentPerfData[dbMonthKey] = {
+                    teachers: targetTeachers,
+                    updated_at: new Date().toISOString()
+                };
+
+                await setDoc(perfDocRef, currentPerfData, { merge: true });
+                alert(`🎉 MashaAllah! Aapka monthly report data successfully save ho gaya hai.`);
                 
-                gJamiaIndex = structure.findIndex(j => j.jamiaName === urlJamiaName);
-                if (gJamiaIndex === -1) throw new Error(`Jamia nahi mila.`);
-
-                const jamiaTeachers = structure[gJamiaIndex].teachers || [];
-                gTeacherIndex = jamiaTeachers.findIndex(t => t.loginCode.trim().toLowerCase() === enteredCode.toLowerCase());
-
-                if (gTeacherIndex === -1) throw new Error("Teacher Code galat hai.");
-
-                gTeacherData = jamiaTeachers[gTeacherIndex];
-
-                displayTeacherName.innerText = gTeacherData.name;
-                loginContainer.classList.add('hidden');
-                mainFormContainer.classList.remove('hidden');
+                // Form ko refresh ya live lock update state me daal denge
+                location.reload();
                 
-                // --- UPDATE: Pure teacher object ko bhej rahe hain taaki lock status check ho sake ---
-                renderPeriodsUI(gTeacherData);
-
             } catch (error) {
-                console.error(error);
-                alert(error.message);
+                console.error("Error saving data:", error);
+                alert("Data save hone me error aayi: " + error.message);
             } finally {
-                btnVerify.disabled = false;
-                document.getElementById('btn-verify-text').innerText = "Verify & Open Form";
-                document.getElementById('btn-verify-icon').className = "fas fa-arrow-right text-xs";
+                btnSave.innerHTML = originalBtnContent;
+                btnSave.disabled = false;
             }
         });
 
