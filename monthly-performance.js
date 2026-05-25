@@ -31,57 +31,59 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     gCurrentUser = currentUser;
     gAssignedJamiaat = assignedJamiaat;
 
-    const injectEditModal = () => {
-        if (document.getElementById('edit-period-modal')) return;
+   const injectEditModal = () => {
+    if (document.getElementById('edit-period-modal')) return; // Dubara render na ho
 
-        const modalHTML = `
-        <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="font-black text-indigo-950 text-lg">Edit Period Details</h3>
-                    <button onclick="closePeriodModal()" class="h-8 w-8 rounded-full bg-slate-50 text-slate-400 hover:text-red-500 flex items-center justify-center">
-                        <i class="fas fa-times"></i>
-                    </button>
+    const modalHTML = `
+    <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-black text-indigo-950 text-lg">Edit Period Details</h3>
+                <button onclick="closePeriodModal()" class="h-8 w-8 rounded-full bg-slate-50 text-slate-400 hover:text-red-500 flex items-center justify-center">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Class</label>
+                    <input type="text" id="edit-p-class" list="edit-class-suggestions" autocomplete="off" placeholder="Type or Select Class" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:border-indigo-500">
+                    <datalist id="edit-class-suggestions"></datalist>
                 </div>
-                <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Subject / Book</label>
+                    <input type="text" id="edit-p-book" list="edit-book-suggestions" autocomplete="off" placeholder="Type or Select Subject" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:border-indigo-500">
+                    <datalist id="edit-book-suggestions"></datalist>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Class</label>
-                        <select id="edit-p-class" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Subject</label>
-                        <select id="edit-p-book" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none"></select>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Semester</label>
-                            <select id="edit-p-sem" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
-                                <option value="1">Sem 1</option>
-                                <option value="2">Sem 2</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Total Pages</label>
-                            <input type="number" id="edit-p-pages" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Syllabus</label>
-                        <select id="edit-p-syllabus" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
-                            <option value="Majlis">Majlis</option>
-                            <option value="State">State</option>
-                            <option value="Approval">Approval</option>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Semester</label>
+                        <select id="edit-p-sem" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                            <option value="1">Sem 1</option>
+                            <option value="2">Sem 2</option>
                         </select>
                     </div>
-                    <button id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
-                        Update Period Data
-                    </button>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Total Pages</label>
+                        <input type="number" id="edit-p-pages" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                    </div>
                 </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Syllabus</label>
+                    <select id="edit-p-syllabus" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                        <option value="Majlis">Majlis</option>
+                        <option value="State">State</option>
+                        <option value="Approval">Approval</option>
+                    </select>
+                </div>
+                <button id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
+                    Update Period Data
+                </button>
             </div>
-        </div>`;
+        </div>
+    </div>`;
 
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    };
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+};
 
     injectEditModal();
     
@@ -756,13 +758,17 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         const bookDatalist = document.getElementById('edit-book-suggestions');
         const updateBtn = document.getElementById('btn-update-period');
 
+        // Safety check: Agar DOM abhi ready nahi hai toh validation alert dein aur innerHTML break na ho
+        if (!classInput || !bookInput || !classDatalist || !bookDatalist) {
+            return alert("Modal elements DOM mein nahi mile. Please page refresh karein.");
+        }
+
         // Class suggestions load karein
         classDatalist.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}"></option>`).join('');
         classInput.value = period.className;
 
         // Modal ke liye book filtering function
         const loadModalBooks = (className) => {
-            if (!bookDatalist) return;
             bookDatalist.innerHTML = '';
             const cls = currentConfig.classes.find(c => c.name === className);
             if (cls?.subjects) {
@@ -781,8 +787,8 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         classInput.onchange = (e) => loadModalBooks(e.target.value);
 
         // Baaki fields fill karein
-        document.getElementById('edit-p-sem').value = period.semester;
-        document.getElementById('edit-p-pages').value = period.totalPages;
+        document.getElementById('edit-p-sem').value = period.semester || "1";
+        document.getElementById('edit-p-pages').value = period.totalPages || 0;
         document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
 
         // --- UPDATE BUTTON ACTION ---
@@ -811,7 +817,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
 
                 closePeriodModal();
                 loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear); 
-                alert("Data Updated!");
+                alert("Data Updated Successfully!");
             } catch (err) {
                 alert("Error: " + err.message);
             } finally {
