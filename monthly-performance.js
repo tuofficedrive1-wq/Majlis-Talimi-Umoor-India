@@ -417,6 +417,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const karkardagi = academicYears[activeYear]?.karkardagiStructure || [];
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
         const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
+        
+        // Formats check karne ke liye (may aur 2026-05 dono)
+        const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(targetMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(targetMonthKey) + 1) : monthNames.indexOf(targetMonthKey) + 1}`;
+
         let html = "";
 
         for (const jamiaName of filteredJamiaat) {
@@ -427,11 +431,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             const match = jamiaName.match(/\d+/);
             const jamiaDocId = match ? match[0] : "001";
             
-            // Public collection se fresh data sync
+            // Public collection se data fetch kiya backup ke liye
             const publicPerfSnap = await getDoc(doc(db, "academic_performance", jamiaDocId));
             let publicMonthData = null;
             if (publicPerfSnap.exists()) {
-                publicMonthData = publicPerfSnap.data()[targetMonthKey] || null;
+                publicMonthData = publicPerfSnap.data()[targetMonthKey] || publicPerfSnap.data()[currentYearMonthPrefix] || null;
             }
 
             html += `
@@ -476,18 +480,22 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     }
                     
                     let achievedValue = 0;
-                    if (publicTeacher && publicTeacher.periods_detail) {
+
+                    // --- PRIORITY LOGIC: Pehle Inspector ka khud ka saved data users structure se check karenge ---
+                    if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
+                        achievedValue = p.achieved[currentYearMonthPrefix];
+                    } else if (p.achieved && p.achieved[targetMonthKey] !== undefined) {
+                        achievedValue = p.achieved[targetMonthKey];
+                    } 
+                    // Fallback: Agar users me nahi mila toh public performance collection se uthayenge
+                    else if (publicTeacher && publicTeacher.periods_detail) {
                         const matchedPeriodKey = Object.keys(publicTeacher.periods_detail).find(key => {
                             const detail = publicTeacher.periods_detail[key];
                             return detail.class === p.className && detail.subject === p.bookName;
                         });
                         if (matchedPeriodKey) {
                             achievedValue = publicTeacher.periods_detail[matchedPeriodKey].page_to || 0;
-                        } else {
-                            achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
                         }
-                    } else {
-                        achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
                     }
 
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
