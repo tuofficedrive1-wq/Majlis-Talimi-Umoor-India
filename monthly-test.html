@@ -1477,36 +1477,59 @@
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking Signatures...';
     btn.disabled = true;
 
-    // Local Helper Function: Scope issue fix karne ke liye function ke andar hi define kiya
+    // Advance Helper Function: Multiple fallback mechanisms ke sath image download karne ke liye
     const convertUrlToBase64 = async (url) => {
         if (!url) return null;
+        
+        // Strategy 1: Seedhe fetch karne ki koshish (Agar Firebase CORS enabled ho)
         try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        } catch (err) {
-            console.error("Image base64 conversion failed:", err);
-            return null;
+            const response = await fetch(url, { mode: 'cors' });
+            if (response.ok) {
+                const blob = await response.blob();
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+        } catch (e) {
+            console.warn("Direct fetch template failed, switching to backup proxy...", e);
         }
+
+        // Strategy 2: Dusra behtar proxy channel (CORS-Anywhere Alternative)
+        try {
+            const backupProxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+            const response = await fetch(backupProxyUrl);
+            if (response.ok) {
+                const blob = await response.blob();
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+        } catch (err) {
+            console.error("All proxies failed for image:", err);
+        }
+
+        // Strategy 3: Agar Base64 bilkul na bane, toh original URL hi wapas bhej dein
+        return url; 
     };
 
     try {
+        // Safe Direct Firebase/Drive URL Parser
         const getCorsFriendlyUrl = (url) => {
             if (!url) return null;
-            let directUrl = url;
             if (url.includes("drive.google.com")) {
                 let id = null;
                 let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
                 if (match) id = match[1];
                 else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
-                if (id) directUrl = `https://drive.google.com/thumbnail?id=${id}&sz=w500`; 
+                if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w500`; 
             }
-            return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
+            return url; // Proxy wrapper ko yahan se hata diya gaya hai, helper handle karega
         };
 
         // --- 1. SIGNATURES FETCHING & BASE64 CONVERSION ---
@@ -1556,8 +1579,12 @@
         // --- 2. REVIEW & STATUS MODAL WINDOW ---
         const showReviewModal = () => {
             return new Promise((resolve) => {
-                const pStatus = principalSigBase64 ? '<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Successfully Loaded</span>' : '<span class="text-red-600 font-bold"><i class="fas fa-times-circle"></i> Not Found / Failed</span>';
-                const tStatus = taleemiSigBase64 ? '<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Successfully Loaded</span>' : '<span class="text-red-600 font-bold"><i class="fas fa-times-circle"></i> Not Found / Failed</span>';
+                // Agar string base64 data hai ya valid url hai toh loaded dikhayein
+                const isPValid = principalSigBase64 && principalSigBase64.length > 5;
+                const isTValid = taleemiSigBase64 && taleemiSigBase64.length > 5;
+
+                const pStatus = isPValid ? '<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Ready</span>' : '<span class="text-red-600 font-bold"><i class="fas fa-times-circle"></i> Missing</span>';
+                const tStatus = isTValid ? '<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Ready</span>' : '<span class="text-red-600 font-bold"><i class="fas fa-times-circle"></i> Missing</span>';
                 
                 const modalHtml = `
                     <div id="review-sig-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 print:hidden">
@@ -1579,7 +1606,7 @@
                             </div>
 
                             <p class="text-xs text-orange-600 font-semibold mb-5 text-center bg-orange-50 p-2 rounded border border-orange-200">
-                                <i class="fas fa-exclamation-triangle"></i> Agar koi signature 'Failed' hai, toh report card me signature nahi aayega.
+                                <i class="fas fa-exclamation-triangle"></i> Note: Agar images network error ki wajah se load nahi ho paayi hain, tab bhi 'Proceed' karne par direct link render karne ki koshish ki jayegi.
                             </p>
 
                             <div class="flex gap-3 justify-end">
@@ -1789,6 +1816,7 @@
                 `;
             }
 
+            // Agar Base64 load nahi ho paya toh fallback ke liye image par allowTaint/crossOrigin options diye hain
             container.innerHTML = `
                 <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
                     <div style="border: 4px double #0f766e; height: 100%; padding: 5px; box-sizing: border-box; position: relative;">
@@ -1865,7 +1893,7 @@
                             <div style="position: absolute; bottom: 55px; width: 100%; padding: 0 40px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
                                 <div style="text-align: center; width: 180px; position: relative;">
                                     <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                        ${ principalSigBase64 ? `<img src="${principalSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
+                                        ${ principalSigBase64 ? `<img src="${principalSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;" crossorigin="anonymous">` : '' }
                                     </div>
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Principal Signature</p>
@@ -1879,7 +1907,7 @@
 
                                 <div style="text-align: center; width: 180px; position: relative;">
                                     <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                        ${ taleemiSigBase64 ? `<img src="${taleemiSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
+                                        ${ taleemiSigBase64 ? `<img src="${taleemiSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;" crossorigin="anonymous">` : '' }
                                     </div>
                                     <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                     <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Taleemi Zimmedar</p>
