@@ -1462,440 +1462,421 @@
         };
 
         window.downloadReportCards = async () => {
-            if (!window.html2canvas) { alert("Library missing."); return; }
-            const rows = document.querySelectorAll('#students-body tr');
-            if(rows.length === 0) { alert("Koi data nahi hai."); return; }
+    if (!window.html2canvas) { alert("Library missing."); return; }
+    const rows = document.querySelectorAll('#students-body tr');
+    if(rows.length === 0) { alert("Koi data nahi hai."); return; }
 
-            if (typeof globalUserData === 'undefined') {
-                console.error("Error: globalUserData missing.");
-                alert("System Error: Page refresh karein.");
-                return;
-            }
+    if (typeof globalUserData === 'undefined') {
+        console.error("Error: globalUserData missing.");
+        alert("System Error: Page refresh karein.");
+        return;
+    }
 
-            const btn = document.querySelector('button[onclick="downloadReportCards()"]');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching Data...';
-            btn.disabled = true;
+    const btn = document.querySelector('button[onclick="downloadReportCards()"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking Signatures...';
+    btn.disabled = true;
 
-            try {
-                let dbSubjectMap = {}; 
-                try {
-                    const rawClass = document.getElementById('class-select').value;
-                    if(rawClass) {
-                        const cleanClass = rawClass.split('_')[0]; 
-                        const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-                        const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
-                        if (docSnap.exists()) {
-                            dbSubjectMap = docSnap.data().subjectMap || {};
-                        }
-                    }
-                } catch (err) { console.log("Map fetch error:", err); }
-
-                const getCorsFriendlyUrl = (url) => {
-                    if (!url) return null;
-                    let directUrl = url;
-                    if (url.includes("drive.google.com")) {
-                        let id = null;
-                        let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-                        if (match) id = match[1];
-                        else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
-                        if (id) directUrl = `https://drive.google.com/thumbnail?id=${id}&sz=w500`; 
-                    }
-                    return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
-                };
-
-                // Image ko Base64 me convert karne ka helper function
-const imageToBase64 = async (url) => {
-    if (!url) return null;
     try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (err) {
-        console.error("Image base64 conversion failed:", err);
-        return null; // Agar fail ho jaye toh normal flow na tute
-    }
-};
-
-                const formatMonthYear = (yyyyMm) => {
-                    if (!yyyyMm) return "";
-                    const [year, month] = yyyyMm.split('-');
-                    const monthNames = ["January", "February", "March", "April", "May", "June", 
-                                        "July", "August", "September", "October", "November", "December"];
-                    return `${monthNames[parseInt(month) - 1]} ${year}`;
-                };
-
-                const getSemester = (yyyyMm) => {
-                    if (!yyyyMm) return "";
-                    const month = parseInt(yyyyMm.split('-')[1]);
-                    if (month >= 4 && month <= 9) return "1st SEMESTER";
-                    else return "2nd SEMESTER";
-                };
-
-                const getNameFontSize = (name) => {
-                    if (!name) return '28px';
-                    const len = name.length;
-                    if (len > 30) return '16px';      
-                    else if (len > 20) return '20px'; 
-                    else if (len > 15) return '24px'; 
-                    return '28px';                    
-                };
-
-                const displayMonth = formatMonthYear(monthKey);
-                const displaySemester = getSemester(monthKey);
-
-                const getSubjectNames = (originalName) => {
-                    if (!originalName) return { en: "-", ur: "-" };
-                    
-                    const lower = originalName.toLowerCase().trim();
-                    const cleanName = originalName.trim();
-                    
-                    if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[cleanName]) {
-                        return { en: subjectTranslationMap[cleanName], ur: cleanName };
-                    }
-                    
-                    if (typeof dbSubjectMap !== 'undefined' && dbSubjectMap && dbSubjectMap[cleanName]) {
-                        return { en: dbSubjectMap[cleanName], ur: cleanName };
-                    }
-
-                    if (lower.includes('english') || lower.includes('eng')) return { en: "English Language", ur: "انگریزی" };
-                    if (lower.includes('math') || lower.includes('hisab')) return { en: "Mathematics", ur: "حساب" };
-                    
-                    return { en: originalName, ur: originalName };
-                };
-
-                const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
-                const classTranslations = {
-                    "ابتدائیہ": "Ibtedaiyah(Primary)", "سال اول": "Pre Darse Nizami 1st year",
-                    "سال دوم": "Pre Darse Nizami 2nd Year", "اولى": "Ula(1st Year)", 
-                    "اولٰى": "Ula(1st Year)", "ثانیہ": "Saniyah(2nd Year)", "ثالثہ": "Salisah(3rd year)", "رابعہ": "Rabiah(4th year)", 
-                    "خامسہ": "Khamisah(5th year)", "سادسہ": "Sadisah(6th year)", "سابعہ": "Sabiah(7th Year)",
-                    "دورہ حدیث": "Daura-e-Hadith(Final year)", "مدنی": "Madani", "بنین": "Banin"
-                };
-                
-                let englishClassName = classTranslations[urduClassName] || urduClassName;
-                for (const [key, val] of Object.entries(classTranslations)) {
-                    if (urduClassName.includes(key)) { englishClassName = val; break; }
-                }
-
-                // Loop se pehle hi Base64 me convert karein taaki loading delay khatam ho jaye
-const taleemiSigRaw = globalUserData.signatureTaleemi || null;
-let taleemiSigBase64 = null;
-if(taleemiSigRaw) {
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading Taleemi Signature...';
-    taleemiSigBase64 = await imageToBase64(getCorsFriendlyUrl(taleemiSigRaw));
-}
-
-let principalSigUrlRaw = null;
-try {
-    const [yStr, mStr] = monthKey.split('-');
-    const y = parseInt(yStr);
-    const m = parseInt(mStr) - 1; 
-    const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-    
-    if (globalUserData.academicYears && 
-        globalUserData.academicYears[acYear] && 
-        globalUserData.academicYears[acYear].karkardagiStructure) {
-        
-        const structure = globalUserData.academicYears[acYear].karkardagiStructure;
-        const structEntry = structure.find(j => j.jamiaName === jamiaName);
-        
-        if (structEntry && structEntry.principalSignature) {
-            principalSigUrlRaw = getCorsFriendlyUrl(structEntry.principalSignature);
-        }
-    }
-
-    if (!principalSigUrlRaw) {
-        const reportId = `${adminUid}_${acYear}_${y}_${m}`;
-        const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
-        if (reportSnap.exists()) {
-            const reportData = reportSnap.data();
-            const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
-            if (jamiaEntry && jamiaEntry.signature) {
-                principalSigUrlRaw = getCorsFriendlyUrl(jamiaEntry.signature);
+        // --- 1. SIGNATURES FETCHING & BASE64 CONVERSION ---
+        const getCorsFriendlyUrl = (url) => {
+            if (!url) return null;
+            let directUrl = url;
+            if (url.includes("drive.google.com")) {
+                let id = null;
+                let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                if (match) id = match[1];
+                else { match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (match) id = match[1]; }
+                if (id) directUrl = `https://drive.google.com/thumbnail?id=${id}&sz=w500`; 
             }
+            return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
+        };
+
+        // Fetch Taleemi Signature
+        const taleemiSigRaw = globalUserData.signatureTaleemi || null;
+        let taleemiSigBase64 = null;
+        if(taleemiSigRaw) {
+            taleemiSigBase64 = await imageToBase64(getCorsFriendlyUrl(taleemiSigRaw));
         }
-    }
-} catch (err) { console.error("Sig fetch error:", err); }
 
-let principalSigBase64 = null;
-if(principalSigUrlRaw) {
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading Principal Signature...';
-    principalSigBase64 = await imageToBase64(principalSigUrlRaw);
-}
-
-                try {
-                    const [yStr, mStr] = monthKey.split('-');
-                    const y = parseInt(yStr);
-                    const m = parseInt(mStr) - 1; 
-                    const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-                    
-                    if (globalUserData.academicYears && 
-                        globalUserData.academicYears[acYear] && 
-                        globalUserData.academicYears[acYear].karkardagiStructure) {
-                        
-                        const structure = globalUserData.academicYears[acYear].karkardagiStructure;
-                        const structEntry = structure.find(j => j.jamiaName === jamiaName);
-                        
-                        if (structEntry && structEntry.principalSignature) {
-                            principalSigUrl = getCorsFriendlyUrl(structEntry.principalSignature);
-                        }
-                    }
-
-                    if (!principalSigUrl) {
-                        const reportId = `${adminUid}_${acYear}_${y}_${m}`;
-                        const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
-                        if (reportSnap.exists()) {
-                            const reportData = reportSnap.data();
-                            const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
-                            if (jamiaEntry && jamiaEntry.signature) {
-                                principalSigUrl = getCorsFriendlyUrl(jamiaEntry.signature);
-                            }
-                        }
-                    }
-                } catch (err) { console.error("Sig fetch error:", err); }
-
-                let studentsData = [];
-                rows.forEach((row, index) => {
-                    const name = row.querySelector('.std-name').value.trim();
-                    if(!name) return;
-                    const marks = {};
-                    row.querySelectorAll('.mark-input').forEach(inp => {
-                        marks[inp.dataset.sub] = inp.value.trim().toUpperCase();
-                    });
-                    const totalObtained = parseFloat(row.querySelector('.total-val').textContent) || 0;
-                    const percentage = parseFloat(row.querySelector('.perc-val').textContent) || 0;
-                    let grade = row.querySelector('.grade-val').textContent;
-
-                    studentsData.push({
-                        index: index + 1, name: name, marks: marks,
-                        obtained: totalObtained, percentage: percentage, grade: grade
-                    });
-                });
-
-                studentsData.sort((a, b) => b.percentage - a.percentage);
-                studentsData.forEach((std, i) => { std.rank = i + 1; });
-
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
-                const pageWidth = 210;
-                const pageHeight = 297;
-
-                let container = document.getElementById('report-card-container');
-                if(!container) {
-                    container = document.createElement('div');
-                    container.id = 'report-card-container';
-                    document.body.appendChild(container);
+        // Fetch Principal Signature
+        let principalSigUrlRaw = null;
+        try {
+            const [yStr, mStr] = monthKey.split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr) - 1; 
+            const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+            
+            if (globalUserData.academicYears && 
+                globalUserData.academicYears[acYear] && 
+                globalUserData.academicYears[acYear].karkardagiStructure) {
+                
+                const structure = globalUserData.academicYears[acYear].karkardagiStructure;
+                const structEntry = structure.find(j => j.jamiaName === jamiaName);
+                
+                if (structEntry && structEntry.principalSignature) {
+                    principalSigUrlRaw = getCorsFriendlyUrl(structEntry.principalSignature);
                 }
-                container.style.position = 'absolute'; container.style.left = '0px'; container.style.top = '0px'; container.style.zIndex = '-100';
+            }
 
-                const totalStudentsCount = studentsData.length;
-
-                for (let i = 0; i < totalStudentsCount; i++) {
-                    // Update live tracking message directly on the button UI
-                    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generating (${i + 1}/${totalStudentsCount})...`;
-
-                    const std = studentsData[i];
-                    let grandTotalMax = 0;
-                    let rowsHTML = "";
-                    let failedSubjectsCount = 0;
-                    let failedSubjectNames = [];
-
-                    finalSubjectsList.forEach(sub => {
-                        const subLower = sub.toLowerCase();
-                        const isSmall = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab');
-                        const max = isSmall ? 25 : 100;
-                        grandTotalMax += max;
-                        
-                        let obtStr = std.marks[sub] || '-';
-                        let obtVal = 0;
-                        let isAbsent = false;
-
-                        if(obtStr === 'A') {
-                            obtStr = 'Abs';
-                            isAbsent = true;
-                        } else {
-                            obtVal = parseFloat(obtStr) || 0;
-                        }
-
-                        const passingMarks = max * 0.40;
-                        let isFail = false;
-                        if (isAbsent || (!isNaN(obtVal) && obtVal < passingMarks)) {
-                            failedSubjectsCount++;
-                            isFail = true;
-                        }
-
-                        const names = getSubjectNames(sub);
-                        if (isFail) { failedSubjectNames.push(names.en); }
-
-                        const markCellStyle = isFail 
-                            ? 'padding: 10px; text-align: center; font-weight: bold; color: #991b1b; background-color: #fee2e2; border-right: 1px solid #e2e8f0;' 
-                            : 'padding: 10px; text-align: center; font-weight: bold; color: #2b6cb0; border-right: 1px solid #e2e8f0;' ;
-
-                        rowsHTML += `
-                            <tr style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 10px; text-align: left; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0; font-size: 14px;">${names.en}</td>
-                                <td style="padding: 10px; text-align: center; color: #4a5568; border-right: 1px solid #e2e8f0;">${max}</td>
-                                <td style="${markCellStyle}">${obtStr}</td>
-                                <td style="padding: 10px; text-align: right; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 18px; color: #2d3748;">${names.ur}</td> 
-                            </tr>
-                        `;
-                    });
-
-                    const subKeys = Object.keys(std.marks);
-                    const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
-                    let statusColor = '#38a169'; let statusText = 'PASS'; let finalGrade = std.grade;
-
-                    if (isFullAbsent) { statusColor = '#718096'; statusText = 'ABSENT'; finalGrade = 'Absent'; } 
-                    else if (failedSubjectsCount > 2) { statusColor = '#e53e3e'; statusText = 'FAIL'; finalGrade = 'Nakam'; } 
-                    else if (std.grade.includes('Nakam') || std.grade === 'Fail') { statusColor = '#e53e3e'; statusText = 'FAIL'; }
-
-                    const nameFontSize = getNameFontSize(std.name);
-
-                    let failNoteHTML = "";
-                    if (failedSubjectNames.length > 0) {
-                        failNoteHTML = `
-                            <div style="margin-top: 15px; padding: 8px 15px; border: 1px solid #feb2b2; background-color: #fff5f5; border-radius: 8px; text-align: center;">
-                                <span style="color: #c53030; font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                    <i class="fas fa-exclamation-circle"></i> Failed in:
-                                </span>
-                                <span style="color: #e53e3e; font-weight: 600; font-size: 14px; margin-left: 5px;">
-                                    ${failedSubjectNames.join(", ")}
-                                </span>
-                            </div>
-                        `;
+            if (!principalSigUrlRaw) {
+                const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+                const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
+                if (reportSnap.exists()) {
+                    const reportData = reportSnap.data();
+                    const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
+                    if (jamiaEntry && jamiaEntry.signature) {
+                        principalSigUrlRaw = getCorsFriendlyUrl(jamiaEntry.signature);
                     }
+                }
+            }
+        } catch (err) { console.error("Sig fetch error:", err); }
 
-                    container.innerHTML = `
-                        <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
-                            <div style="border: 4px double #0f766e; height: 100%; padding: 5px; box-sizing: border-box; position: relative;">
-                                <div style="border: 1px solid #d4af37; height: 100%; padding: 20px; box-sizing: border-box; background: linear-gradient(to bottom, #ffffff, #fafdff);">
-                                    
-                                    <div style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #d4af37; padding-bottom: 15px;">
-                                        <h1 style="color: #2c5282; font-weight: 900; font-size: 42px; margin: 0; letter-spacing: 2px; text-transform: uppercase;">MONTHLY TEST RESULT</h1>
-                                        <h2 style="color: #0f766e; font-weight: 700; font-size: 28px; margin: 5px 0 10px 0; text-transform: uppercase;">JAMIA TUL MADINA INDIA</h2>
-                                        <div style="margin-top: 5px;">
-                                            <span style="color: #d69e2e; font-weight: 800; font-size: 24px; text-transform: uppercase;">MONTH: </span>
-                                            <span style="color: #000000; font-weight: 800; font-size: 24px;">${displayMonth}</span>
-                                            <span style="color: #cbd5e0; margin: 0 10px;">|</span>
-                                            <span style="color: #0f766e; font-weight: 800; font-size: 24px; text-transform: uppercase;">${displaySemester}</span>
-                                        </div>
-                                    </div>
+        let principalSigBase64 = null;
+        if(principalSigUrlRaw) {
+            principalSigBase64 = await imageToBase64(principalSigUrlRaw);
+        }
 
-                                    <div style="display: flex; justify-content: space-between; margin-bottom: 25px; background-color: #f0fdfa; border: 1px solid #b2f5ea; border-radius: 10px; padding: 15px 20px;">
-                                        <div style="width: 60%;">
-                                            <p style="margin: 0; font-size: 12px; color: #555; text-transform: uppercase;">Student Name</p>
-                                            <h2 style="margin: 5px 0; font-family: 'Jameel Noori Nastaleeq', serif; font-size: ${nameFontSize}; color: #2d3748; white-space: nowrap; overflow: visible;">${std.name}</h2>
-                                            <div style="margin-top: 10px;">
-                                                <span style="font-size: 12px; color: #555; text-transform: uppercase;">Class: </span>
-                                                <span style="font-size: 18px; font-weight: 700; color: #2c5282;">${englishClassName}</span>
-                                            </div>
-                                        </div>
-                                        <div style="width: 35%; text-align: right; border-left: 2px dashed #cbd5e0; padding-left: 20px;">
-                                            <div style="margin-bottom: 10px;">
-                                                <span style="font-size: 12px; color: #555; text-transform: uppercase;">Roll No: </span>
-                                                <span style="font-size: 20px; font-weight: 700;">${std.index}</span>
-                                            </div>
-                                            <div>
-                                                <span style="font-size: 12px; color: #555; text-transform: uppercase;">Branch: </span>
-                                                <span style="font-family: 'Jameel Noori Nastaleeq', serif; font-size: 18px; font-weight: 600;">${jamiaName}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-                                        <thead style="background-color: #0f766e; color: #ffffff;">
-                                            <tr>
-                                                <th style="padding: 12px; text-align: left; border-right: 1px solid #1ba193; width: 40%;">Subjects</th>
-                                                <th style="padding: 12px; text-align: center; border-right: 1px solid #1ba193;">Total</th>
-                                                <th style="padding: 12px; text-align: center; border-right: 1px solid #1ba193;">Obtained</th>
-                                                <th style="padding: 12px; text-align: right; font-family: 'Jameel Noori Nastaleeq'; font-size: 18px; width: 30%;">مضمون</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody style="background-color: #fff;">${rowsHTML}</tbody>
-                                    </table>
-
-                                    <div style="display: flex; gap: 15px; margin-bottom: 10px;">
-                                        <div style="flex: 1; border: 2px solid #d4af37; border-radius: 12px; padding: 15px; background: #fffdf0;">
-                                            <table style="width: 100%;">
-                                                <tr><td style="color: #555; font-size: 14px;">Total Marks:</td><td style="text-align: right; font-weight: bold; font-size: 16px;">${grandTotalMax}</td></tr>
-                                                <tr><td style="color: #555; font-size: 14px;">Obtained:</td><td style="text-align: right; font-weight: bold; color: #2b6cb0; font-size: 16px;">${std.obtained}</td></tr>
-                                                <tr><td style="color: #555; font-size: 14px;">Percentage:</td><td style="text-align: right; font-weight: bold; color: #2b6cb0; font-size: 16px;">${std.percentage.toFixed(2)}%</td></tr>
-                                            </table>
-                                        </div>
-                                        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: ${statusColor}; color: white; border-radius: 12px;">
-                                            <div style="text-align: center;">
-                                                <p style="margin: 0; font-size: 12px; opacity: 0.9; letter-spacing: 2px;">RESULT</p>
-                                                <h1 style="margin: 0; font-size: 32px; font-weight: 800; letter-spacing: 1px;">${statusText}</h1>
-                                            </div>
-                                        </div>
-                                        <div style="flex: 1; border: 2px solid #0f766e; border-radius: 12px; padding: 15px; background: #f0fdfa;">
-                                            <table style="width: 100%;">
-                                                <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Grade:</td><td style="text-align: right; font-weight: 800; font-size: 18px;">${finalGrade}</td></tr>
-                                                <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Class Rank:</td><td style="text-align: right; font-weight: 800; font-size: 24px; color: #d69e2e;">#${std.rank}</td></tr>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    ${failNoteHTML}
-
-                                    <div style="position: absolute; bottom: 55px; width: 100%; padding: 0 40px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
-                                        <div style="text-align: center; width: 180px; position: relative;">
-                                            <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                                ${ principalSigBase64 ? `<img src="${principalSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
-                                            </div>
-                                            <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
-                                            <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Principal Signature</p>
-                                        </div>
-
-                                        <div style="text-align: center; width: 180px; position: relative;">
-                                            <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;"></div>
-                                            <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
-                                            <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Parents Signature</p>
-                                        </div>
-
-                                        <div style="text-align: center; width: 180px; position: relative;">
-                                                <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                                ${ taleemiSigBase64 ? `<img src="${taleemiSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
-                                            </div>
-                                            <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
-                                            <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Taleemi Zimmedar</p>
-                                            <p style="margin: 0; font-size: 11px; color: #555;">(Signature)</p>
-                                        </div>
-                                    </div>
-
-                                    <div style="position: absolute; bottom: 20px; width: 100%; text-align: center; left: 0;">
-                                        <p style="margin: 0; font-size: 14px; color: #0f766e; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;">MAJLIS TALIMI UMOOR INDIA</p>
-                                    </div>
-
+        // --- 2. REVIEW & STATUS MODAL WINDOW ---
+        const showReviewModal = () => {
+            return new Promise((resolve) => {
+                const pStatus = principalSigBase64 ? '<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Successfully Loaded</span>' : '<span class="text-red-600 font-bold"><i class="fas fa-times-circle"></i> Not Found / Failed</span>';
+                const tStatus = taleemiSigBase64 ? '<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Successfully Loaded</span>' : '<span class="text-red-600 font-bold"><i class="fas fa-times-circle"></i> Not Found / Failed</span>';
+                
+                const modalHtml = `
+                    <div id="review-sig-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 print:hidden">
+                        <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 md:w-1/2 max-w-md border border-teal-100">
+                            <div class="border-b pb-3 mb-4 text-center">
+                                <h3 class="text-xl font-bold text-teal-800"><i class="fas fa-search text-teal-600 mr-1"></i> Signature Review Panel</h3>
+                                <p class="text-xs text-gray-500 mt-1">PDF generate karne se pehle signatures verification</p>
+                            </div>
+                            
+                            <div class="space-y-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <div class="flex justify-between items-center border-b pb-2">
+                                    <span class="font-medium text-gray-700">Principal Signature:</span>
+                                    <span>${pStatus}</span>
+                                </div>
+                                <div class="flex justify-between items-center pt-1">
+                                    <span class="font-medium text-gray-700">Taleemi Zimmedar:</span>
+                                    <span>${tStatus}</span>
                                 </div>
                             </div>
+
+                            <p class="text-xs text-orange-600 font-semibold mb-5 text-center bg-orange-50 p-2 rounded border border-orange-200">
+                                <i class="fas fa-exclamation-triangle"></i> Agar koi signature 'Failed' hai, toh report card me signature nahi aayega.
+                            </p>
+
+                            <div class="flex gap-3 justify-end">
+                                <button id="modal-cancel-btn" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition shadow-sm">Cancel</button>
+                                <button id="modal-proceed-btn" class="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-lg font-bold transition shadow-md">Proceed & Download</button>
+                            </div>
                         </div>
-                    `;
-                    
-                    // Direct rendering without additional artificial timeout delays
-                    const element = document.getElementById(`rc-template-${i}`);
-                    if (i > 0) pdf.addPage();
-                    
-                    const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, allowTaint: true, backgroundColor: "#ffffff" });
-                    const imgData = canvas.toDataURL('image/jpeg', 0.8);
-                    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight);
-                }
+                    </div>
+                `;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-                container.innerHTML = ''; container.style.left = '-9999px';
-                pdf.save(`Report_Cards_${jamiaName}_${monthKey}.pdf`);
-
-            } catch (e) {
-                console.error(e); alert("Error: " + e.message);
-            } finally {
-                btn.innerHTML = originalText; btn.disabled = false;
-            }
+                document.getElementById('modal-cancel-btn').onclick = () => {
+                    document.getElementById('review-sig-modal').remove();
+                    resolve(false);
+                };
+                document.getElementById('modal-proceed-btn').onclick = () => {
+                    document.getElementById('review-sig-modal').remove();
+                    resolve(true);
+                };
+            });
         };
+
+        // Modal dikhayein aur user ka choice wait karein
+        const userChoice = await showReviewModal();
+        if (!userChoice) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            return; // Agar user ne cancel kiya toh process rok dein
+        }
+
+        // --- 3. REPORT CARD GENERATION (Aage ka flow tabhi chalega jab user click karega) ---
+        let dbSubjectMap = {}; 
+        try {
+            const rawClass = document.getElementById('class-select').value;
+            if(rawClass) {
+                const cleanClass = rawClass.split('_')[0]; 
+                const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+                const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+                if (docSnap.exists()) { dbSubjectMap = docSnap.data().subjectMap || {}; }
+            }
+        } catch (err) { console.log("Map fetch error:", err); }
+
+        const formatMonthYear = (yyyyMm) => {
+            if (!yyyyMm) return "";
+            const [year, month] = yyyyMm.split('-');
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            return `${monthNames[parseInt(month) - 1]} ${year}`;
+        };
+
+        const getSemester = (yyyyMm) => {
+            if (!yyyyMm) return "";
+            const month = parseInt(yyyyMm.split('-')[1]);
+            return (month >= 4 && month <= 9) ? "1st SEMESTER" : "2nd SEMESTER";
+        };
+
+        const getNameFontSize = (name) => {
+            if (!name) return '28px';
+            const len = name.length;
+            if (len > 30) return '16px';      
+            else if (len > 20) return '20px'; 
+            else if (len > 15) return '24px'; 
+            return '28px';                    
+        };
+
+        const displayMonth = formatMonthYear(monthKey);
+        const displaySemester = getSemester(monthKey);
+
+        const getSubjectNames = (originalName) => {
+            if (!originalName) return { en: "-", ur: "-" };
+            const lower = originalName.toLowerCase().trim();
+            const cleanName = originalName.trim();
+            if (typeof subjectTranslationMap !== 'undefined' && subjectTranslationMap[cleanName]) return { en: subjectTranslationMap[cleanName], ur: cleanName };
+            if (typeof dbSubjectMap !== 'undefined' && dbSubjectMap && dbSubjectMap[cleanName]) return { en: dbSubjectMap[cleanName], ur: cleanName };
+            if (lower.includes('english') || lower.includes('eng')) return { en: "English Language", ur: "انگریزی" };
+            if (lower.includes('math') || lower.includes('hisab')) return { en: "Mathematics", ur: "حساب" };
+            return { en: originalName, ur: originalName };
+        };
+
+        const urduClassName = document.getElementById('class-select').value.split('_')[0].trim();
+        const classTranslations = {
+            "ابتدائیہ": "Ibtedaiyah(Primary)", "سال اول": "Pre Darse Nizami 1st year", "سال دوم": "Pre Darse Nizami 2nd Year", 
+            "اولى": "Ula(1st Year)", "اولٰى": "Ula(1st Year)", "ثانیہ": "Saniyah(2nd Year)", "ثالثہ": "Salisah(3rd year)", 
+            "رابعہ": "Rabiah(4th year)", "خامسہ": "Khamisah(5th year)", "سادسہ": "Sadisah(6th year)", "سابعہ": "Sabiah(7th Year)",
+            "دورہ حدیث": "Daura-e-Hadith(Final year)", "مدنی": "Madani", "بنین": "Banin"
+        };
+        
+        let englishClassName = classTranslations[urduClassName] || urduClassName;
+        for (const [key, val] of Object.entries(classTranslations)) {
+            if (urduClassName.includes(key)) { englishClassName = val; break; }
+        }
+
+        let studentsData = [];
+        rows.forEach((row, index) => {
+            const name = row.querySelector('.std-name').value.trim();
+            if(!name) return;
+            const marks = {};
+            row.querySelectorAll('.mark-input').forEach(inp => { marks[inp.dataset.sub] = inp.value.trim().toUpperCase(); });
+            const totalObtained = parseFloat(row.querySelector('.total-val').textContent) || 0;
+            const percentage = parseFloat(row.querySelector('.perc-val').textContent) || 0;
+            let grade = row.querySelector('.grade-val').textContent;
+
+            studentsData.push({ index: index + 1, name: name, marks: marks, obtained: totalObtained, percentage: percentage, grade: grade });
+        });
+
+        studentsData.sort((a, b) => b.percentage - a.percentage);
+        studentsData.forEach((std, i) => { std.rank = i + 1; });
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+        const pageWidth = 210;
+        const pageHeight = 297;
+
+        let container = document.getElementById('report-card-container');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'report-card-container';
+            document.body.appendChild(container);
+        }
+        container.style.position = 'absolute'; container.style.left = '0px'; container.style.top = '0px'; container.style.zIndex = '-100';
+
+        const totalStudentsCount = studentsData.length;
+
+        for (let i = 0; i < totalStudentsCount; i++) {
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generating (${i + 1}/${totalStudentsCount})...`;
+
+            const std = studentsData[i];
+            let grandTotalMax = 0;
+            let rowsHTML = "";
+            let failedSubjectsCount = 0;
+            let failedSubjectNames = [];
+
+            finalSubjectsList.forEach(sub => {
+                const subLower = sub.toLowerCase();
+                const isSmall = subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab');
+                const max = isSmall ? 25 : 100;
+                grandTotalMax += max;
+                
+                let obtStr = std.marks[sub] || '-';
+                let obtVal = 0;
+                let isAbsent = false;
+
+                if(obtStr === 'A') { obtStr = 'Abs'; isAbsent = true; } 
+                else { obtVal = parseFloat(obtStr) || 0; }
+
+                const passingMarks = max * 0.40;
+                let isFail = false;
+                if (isAbsent || (!isNaN(obtVal) && obtVal < passingMarks)) { failedSubjectsCount++; isFail = true; }
+
+                const names = getSubjectNames(sub);
+                if (isFail) { failedSubjectNames.push(names.en); }
+
+                const markCellStyle = isFail 
+                    ? 'padding: 10px; text-align: center; font-weight: bold; color: #991b1b; background-color: #fee2e2; border-right: 1px solid #e2e8f0;' 
+                    : 'padding: 10px; text-align: center; font-weight: bold; color: #2b6cb0; border-right: 1px solid #e2e8f0;' ;
+
+                rowsHTML += `
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <td style="padding: 10px; text-align: left; font-weight: 600; color: #2d3748; border-right: 1px solid #e2e8f0; font-size: 14px;">${names.en}</td>
+                        <td style="padding: 10px; text-align: center; color: #4a5568; border-right: 1px solid #e2e8f0;">${max}</td>
+                        <td style="${markCellStyle}">${obtStr}</td>
+                        <td style="padding: 10px; text-align: right; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 18px; color: #2d3748;">${names.ur}</td> 
+                    </tr>
+                `;
+            });
+
+            const subKeys = Object.keys(std.marks);
+            const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
+            let statusColor = '#38a169'; let statusText = 'PASS'; let finalGrade = std.grade;
+
+            if (isFullAbsent) { statusColor = '#718096'; statusText = 'ABSENT'; finalGrade = 'Absent'; } 
+            else if (failedSubjectsCount > 2) { statusColor = '#e53e3e'; statusText = 'FAIL'; finalGrade = 'Nakam'; } 
+            else if (std.grade.includes('Nakam') || std.grade === 'Fail') { statusColor = '#e53e3e'; statusText = 'FAIL'; }
+
+            const nameFontSize = getNameFontSize(std.name);
+
+            let failNoteHTML = "";
+            if (failedSubjectNames.length > 0) {
+                failNoteHTML = `
+                    <div style="margin-top: 15px; padding: 8px 15px; border: 1px solid #feb2b2; background-color: #fff5f5; border-radius: 8px; text-align: center;">
+                        <span style="color: #c53030; font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <i class="fas fa-exclamation-circle"></i> Failed in:
+                        </span>
+                        <span style="color: #e53e3e; font-weight: 600; font-size: 14px; margin-left: 5px;">
+                            ${failedSubjectNames.join(", ")}
+                        </span>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = `
+                <div id="rc-template-${i}" style="width: 794px; height: 1123px; padding: 30px; background-color: #fff; font-family: 'Poppins', sans-serif; position: relative;">
+                    <div style="border: 4px double #0f766e; height: 100%; padding: 5px; box-sizing: border-box; position: relative;">
+                        <div style="border: 1px solid #d4af37; height: 100%; padding: 20px; box-sizing: border-box; background: linear-gradient(to bottom, #ffffff, #fafdff);">
+                            
+                            <div style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #d4af37; padding-bottom: 15px;">
+                                <h1 style="color: #2c5282; font-weight: 900; font-size: 42px; margin: 0; letter-spacing: 2px; text-transform: uppercase;">MONTHLY TEST RESULT</h1>
+                                <h2 style="color: #0f766e; font-weight: 700; font-size: 28px; margin: 5px 0 10px 0; text-transform: uppercase;">JAMIA TUL MADINA INDIA</h2>
+                                <div style="margin-top: 5px;">
+                                    <span style="color: #d69e2e; font-weight: 800; font-size: 24px; text-transform: uppercase;">MONTH: </span>
+                                    <span style="color: #000000; font-weight: 800; font-size: 24px;">${displayMonth}</span>
+                                    <span style="color: #cbd5e0; margin: 0 10px;">|</span>
+                                    <span style="color: #0f766e; font-weight: 800; font-size: 24px; text-transform: uppercase;">${displaySemester}</span>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 25px; background-color: #f0fdfa; border: 1px solid #b2f5ea; border-radius: 10px; padding: 15px 20px;">
+                                <div style="width: 60%;">
+                                    <p style="margin: 0; font-size: 12px; color: #555; text-transform: uppercase;">Student Name</p>
+                                    <h2 style="margin: 5px 0; font-family: 'Jameel Noori Nastaleeq', serif; font-size: ${nameFontSize}; color: #2d3748; white-space: nowrap; overflow: visible;">${std.name}</h2>
+                                    <div style="margin-top: 10px;">
+                                        <span style="font-size: 12px; color: #555; text-transform: uppercase;">Class: </span>
+                                        <span style="font-size: 18px; font-weight: 700; color: #2c5282;">${englishClassName}</span>
+                                    </div>
+                                </div>
+                                <div style="width: 35%; text-align: right; border-left: 2px dashed #cbd5e0; padding-left: 20px;">
+                                    <div style="margin-bottom: 10px;">
+                                        <span style="font-size: 12px; color: #555; text-transform: uppercase;">Roll No: </span>
+                                        <span style="font-size: 20px; font-weight: 700;">${std.index}</span>
+                                    </div>
+                                    <div>
+                                        <span style="font-size: 12px; color: #555; text-transform: uppercase;">Branch: </span>
+                                        <span style="font-family: 'Jameel Noori Nastaleeq', serif; font-size: 18px; font-weight: 600;">${jamiaName}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                                <thead style="background-color: #0f766e; color: #ffffff;">
+                                    <tr>
+                                        <th style="padding: 12px; text-align: left; border-right: 1px solid #1ba193; width: 40%;">Subjects</th>
+                                        <th style="padding: 12px; text-align: center; border-right: 1px solid #1ba193;">Total</th>
+                                        <th style="padding: 12px; text-align: center; border-right: 1px solid #1ba193;">Obtained</th>
+                                        <th style="padding: 12px; text-align: right; font-family: 'Jameel Noori Nastaleeq'; font-size: 18px; width: 30%;">مضمون</th>
+                                    </tr>
+                                </thead>
+                                <tbody style="background-color: #fff;">${rowsHTML}</tbody>
+                            </table>
+
+                            <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                                <div style="flex: 1; border: 2px solid #d4af37; border-radius: 12px; padding: 15px; background: #fffdf0;">
+                                    <table style="width: 100%;">
+                                        <tr><td style="color: #555; font-size: 14px;">Total Marks:</td><td style="text-align: right; font-weight: bold; font-size: 16px;">${grandTotalMax}</td></tr>
+                                        <tr><td style="color: #555; font-size: 14px;">Obtained:</td><td style="text-align: right; font-weight: bold; color: #2b6cb0; font-size: 16px;">${std.obtained}</td></tr>
+                                        <tr><td style="color: #555; font-size: 14px;">Percentage:</td><td style="text-align: right; font-weight: bold; color: #2b6cb0; font-size: 16px;">${std.percentage.toFixed(2)}%</td></tr>
+                                    </table>
+                                </div>
+                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: ${statusColor}; color: white; border-radius: 12px;">
+                                    <div style="text-align: center;">
+                                        <p style="margin: 0; font-size: 12px; opacity: 0.9; letter-spacing: 2px;">RESULT</p>
+                                        <h1 style="margin: 0; font-size: 32px; font-weight: 800; letter-spacing: 1px;">${statusText}</h1>
+                                    </div>
+                                </div>
+                                <div style="flex: 1; border: 2px solid #0f766e; border-radius: 12px; padding: 15px; background: #f0fdfa;">
+                                    <table style="width: 100%;">
+                                        <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Grade:</td><td style="text-align: right; font-weight: 800; font-size: 18px;">${finalGrade}</td></tr>
+                                        <tr><td style="color: #0f766e; font-weight: bold; font-size: 14px;">Class Rank:</td><td style="text-align: right; font-weight: 800; font-size: 24px; color: #d69e2e;">#${std.rank}</td></tr>
+                                    </table>
+                                </div>
+                            </div>
+
+                            ${failNoteHTML}
+
+                            <div style="position: absolute; bottom: 55px; width: 100%; padding: 0 40px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
+                                <div style="text-align: center; width: 180px; position: relative;">
+                                    <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
+                                        ${ principalSigBase64 ? `<img src="${principalSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
+                                    </div>
+                                    <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
+                                    <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Principal Signature</p>
+                                </div>
+
+                                <div style="text-align: center; width: 180px; position: relative;">
+                                    <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;"></div>
+                                    <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
+                                    <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Parents Signature</p>
+                                </div>
+
+                                <div style="text-align: center; width: 180px; position: relative;">
+                                    <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
+                                        ${ taleemiSigBase64 ? `<img src="${taleemiSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
+                                    </div>
+                                    <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
+                                    <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Taleemi Zimmedar</p>
+                                    <p style="margin: 0; font-size: 11px; color: #555;">(Signature)</p>
+                                </div>
+                            </div>
+
+                            <div style="position: absolute; bottom: 20px; width: 100%; text-align: center; left: 0;">
+                                <p style="margin: 0; font-size: 14px; color: #0f766e; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;">MAJLIS TALIMI UMOOR INDIA</p>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const element = document.getElementById(`rc-template-${i}`);
+            if (i > 0) pdf.addPage();
+            
+            const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, allowTaint: true, backgroundColor: "#ffffff" });
+            const imgData = canvas.toDataURL('image/jpeg', 0.8);
+            pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight);
+        }
+
+        container.innerHTML = ''; container.style.left = '-9999px';
+        pdf.save(`Report_Cards_${jamiaName}_${monthKey}.pdf`);
+
+    } catch (e) {
+        console.error(e); alert("Error: " + e.message);
+    } finally {
+        btn.innerHTML = originalText; btn.disabled = false;
+    }
+};
 
         window.enableEditMode = (skipAlert = false) => {
             if(typeof isEditingMode !== 'undefined') isEditingMode = true;
