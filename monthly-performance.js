@@ -575,61 +575,23 @@ const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
 };
 
 const attachDropdownEvents = (container, config) => {
+    container.querySelectorAll('.p-class').forEach(inputField => {
+        const uniqueId = inputField.closest('[id^="teacher-card-"]').id.replace('teacher-card-', '');
+        const bookDatalist = document.getElementById(`books-${uniqueId}`);
 
-    container.querySelectorAll('.p-class').forEach(sel => {
-
-        sel.oninput = () => {
-
-            const wrapper = sel.parentElement;
-
-            const bookSel = wrapper.querySelector('.p-book');
-
-            const customBook = wrapper.querySelector('.custom-book');
-
-            bookSel.innerHTML = `<option value="">Select Subject</option>`;
-
-            const classData = config.classes.find(c => c.name === sel.value);
-
+        const filterBooks = (className) => {
+            if (!bookDatalist) return;
+            bookDatalist.innerHTML = '';
+            const classData = config.classes.find(c => c.name === className);
             if (classData?.subjects) {
-
                 classData.subjects.forEach(sub => {
-
-                    bookSel.innerHTML += `
-                        <option value="${sub}">
-                            ${sub}
-                        </option>
-                    `;
+                    bookDatalist.innerHTML += `<option value="${sub}"></option>`;
                 });
-
-                // OTHER OPTION
-                bookSel.innerHTML += `
-                    <option value="other">Other</option>
-                `;
-
-                bookSel.disabled = false;
-
-            } else {
-
-                bookSel.innerHTML += `
-                    <option value="other">Other</option>
-                `;
-
-                bookSel.disabled = false;
             }
-
-            // Subject change
-            bookSel.onchange = () => {
-
-                if (bookSel.value === 'other') {
-
-                    customBook.classList.remove('hidden');
-
-                } else {
-
-                    customBook.classList.add('hidden');
-                }
-            };
         };
+
+        inputField.onchange = (e) => filterBooks(e.target.value);
+        inputField.oninput = (e) => filterBooks(e.target.value);
     });
 };
 
