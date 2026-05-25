@@ -390,10 +390,11 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     try {
-        // Targets aur Calendar dono documents ko fetch kar rahe hain
-        const [targetSnap, calSnap] = await Promise.all([
+        // 1. Puraane snapshots ke saath academic_performance docs ko bhi parallel fetch karenge
+        const [targetSnap, calSnap, userSnap] = await Promise.all([
             getDoc(doc(db, "settings", "monthly_page_targets")),
-            getDoc(doc(db, "settings", "academic_calendar"))
+            getDoc(doc(db, "settings", "academic_calendar")),
+            getDoc(doc(db, "users", currentUser.uid))
         ]);
 
         const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
@@ -404,36 +405,41 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const selectedJamia = jamiaSelectElem ? jamiaSelectElem.value : "all";
         
         const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
-
-        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
         const userData = userSnap.data() || {};
+        const academicYears = userData.academicYears || {};
 
-const academicYears = userData.academicYears || {};
+        if(!academicYears[activeYear]){
+            console.error("Academic Year Missing:", activeYear);
+            container.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Academic Year Data Missing</div>`;
+            return;
+        }
 
-if(!academicYears[activeYear]){
-
-    console.error("Academic Year Missing:", activeYear);
-
-    container.innerHTML = `
-        <div class="p-10 text-center text-red-500 font-bold">
-            Academic Year Data Missing
-        </div>
-    `;
-
-    return;
-}
-
-const karkardagi =
-academicYears[activeYear]?.karkardagiStructure || [];
-
+        const karkardagi = academicYears[activeYear]?.karkardagiStructure || [];
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
 
+        // Global selected month key
+        const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
         let html = "";
-        filteredJamiaat.forEach(jamiaName => {
+
+        // Loop through each Jamia
+        for (const jamiaName of filteredJamiaat) {
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
-            if (!jamiaData) return;
+            if (!jamiaData) continue;
 
             const safeJamiaId = jamiaName.replace(/\s+/g, '');
+            
+            // --- LIVE SYNC FROM PUBLIC COLLECTION ---
+            // Jamia Name se ID nikalenge jaise HTML form me nikala tha ("DEMO 001" -> "001")
+            const match = jamiaName.match(/\d+/);
+            const jamiaDocId = match ? match[0] : "001";
+            
+            // Public collection se is Jamia ka fresh performance data uthayenge
+            const publicPerfSnap = await getDoc(doc(db, "academic_performance", jamiaDocId));
+            let publicMonthData = null;
+            if (publicPerfSnap.exists()) {
+                publicMonthData = publicPerfSnap.data()[targetMonthKey] || null;
+            }
+            // ----------------------------------------
 
             html += `
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeJamiaId}">
@@ -466,16 +472,15 @@ academicYears[activeYear]?.karkardagiStructure || [];
                         <tbody>`;
 
             jamiaData.teachers.forEach((teacher) => {
+                // Public collection me se is specific teacher ka data dhoondhein
+                const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
+
                 teacher.periods?.forEach((p, pIdx) => {
                     let target = 0;
                     const cleanClassName = (p.className || "").trim();
                     const cleanBookName = (p.bookName || "").trim();
                     
-                    // ID generation logic matching Firebase setup
                     const subId = `${cleanClassName}_${cleanBookName}`.replace(/\s+/g, '_');
-
-                    // Global selected month ko lowercase me check karenge safety ke liye
-                    const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
 
                     if (monthlyTargets && monthlyTargets[subId]) {
                         if (monthlyTargets[subId][targetMonthKey] !== undefined) {
@@ -483,7 +488,26 @@ academicYears[activeYear]?.karkardagiStructure || [];
                         }
                     }
                     
-                    const achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
+                    // --- DIG DOWM TO PUBLIC VALUE OR FALLBACK TO LOCAL VALUE ---
+                    let achievedValue = 0;
+                    
+                    if (publicTeacher && publicTeacher.periods_detail) {
+                        // Form ke andar `period_1`, `period_2` format me save ho raha hai, toh match dhoondhte hain
+                        const matchedPeriodKey = Object.keys(publicTeacher.periods_detail).find(key => {
+                            const detail = publicTeacher.periods_detail[key];
+                            return detail.class === p.className && detail.subject === p.bookName;
+                        });
+                        
+                        if (matchedPeriodKey) {
+                            achievedValue = publicTeacher.periods_detail[matchedPeriodKey].page_to || 0;
+                        } else {
+                            achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
+                        }
+                    } else {
+                        achievedValue = (p.achieved && p.achieved[targetMonthKey]) !== undefined ? p.achieved[targetMonthKey] : 0;
+                    }
+                    // ------------------------------------------------------------
+
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
 
@@ -506,7 +530,7 @@ academicYears[activeYear]?.karkardagiStructure || [];
                 });
             });
             html += `</tbody></table></div></div>`;
-        });
+        }
         container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Data nahi mila.</div>';
     } catch (e) {
         console.error("Load Error:", e);
