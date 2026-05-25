@@ -175,205 +175,198 @@
             gJamiaId = match ? match[0] : "001"; 
         }
 
-       btnVerify.addEventListener('click', async () => {
-            const enteredCode = loginCodeInput.value.trim();
-            
-            if (!enteredCode) {
-                alert("Kripya apna Teacher Code enter karein.");
-                return;
-            }
+       btnVerify.onclick = async () => {
+    const enteredCode = loginCodeInput.value.trim();
+    
+    if (!enteredCode) {
+        alert("Kripya apna Teacher Code enter karein.");
+        return;
+    }
 
-            if (!inspectorId || !urlJamiaName || !dbMonthKey) {
-                alert("URL me Parameters missing hain. Naya link generate karein.");
-                return;
-            }
+    if (!inspectorId || !urlJamiaName || !dbMonthKey) {
+        alert("URL me Parameters missing hain. Naya link generate karein.");
+        return;
+    }
 
-            btnVerify.disabled = true;
-            document.getElementById('btn-verify-text').innerText = "Verifying...";
-            document.getElementById('btn-verify-icon').className = "spinner";
+    btnVerify.disabled = true;
+    document.getElementById('btn-verify-text').innerText = "Verifying...";
+    document.getElementById('btn-verify-icon').className = "spinner";
 
-            try {
-                const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-                if (calSnap.exists()) {
-                    gActiveYear = calSnap.data().activeYear || "2026-2027";
-                }
-
-                const userRef = doc(db, "users", inspectorId);
-                const userSnap = await getDoc(userRef);
-
-                if (!userSnap.exists()) throw new Error("Admin data nahi mila.");
-
-                gUserData = userSnap.data();
-                const structure = gUserData.academicYears?.[gActiveYear]?.karkardagiStructure || [];
-                
-                gJamiaIndex = structure.findIndex(j => j.jamiaName === urlJamiaName);
-                if (gJamiaIndex === -1) throw new Error(`Jamia nahi mila.`);
-
-                const jamiaTeachers = structure[gJamiaIndex].teachers || [];
-                gTeacherIndex = jamiaTeachers.findIndex(t => t.loginCode.trim().toLowerCase() === enteredCode.toLowerCase());
-
-                if (gTeacherIndex === -1) throw new Error("Teacher Code galat hai.");
-
-                gTeacherData = jamiaTeachers[gTeacherIndex];
-
-                displayTeacherName.innerText = gTeacherData.name;
-                loginContainer.classList.add('hidden');
-                mainFormContainer.classList.remove('hidden');
-                
-                // --- UPDATE: Pure teacher object ko bhej rahe hain taaki lock status check ho sake ---
-                renderPeriodsUI(gTeacherData);
-
-            } catch (error) {
-                console.error(error);
-                alert(error.message);
-            } finally {
-                btnVerify.disabled = false;
-                document.getElementById('btn-verify-text').innerText = "Verify & Open Form";
-                document.getElementById('btn-verify-icon').className = "fas fa-arrow-right text-xs";
-            }
-        });
-
-       function renderPeriodsUI(teacherData) {
-            periodContainer.innerHTML = ''; 
-            const periods = teacherData.periods || [];
-
-            if (periods.length === 0) {
-                periodContainer.innerHTML = `
-                <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                    <p class="font-bold text-xs">Aapki koi class assign nahi hai.</p>
-                </div>`;
-                btnSave.classList.add('hidden');
-                return;
-            }
-
-            let formHasLockedField = false;
-
-            periods.forEach((p, idx) => {
-                // 1. Check karein kya Inspector ne is month ko lock kiya hai?
-                const isLockedByInspector = p.locked && p.locked[dbMonthKey] === true;
-                
-                let existingAchieved = '';
-                let isDisabledAttr = '';
-
-                if (isLockedByInspector) {
-                    // Agar Inspector ne lock kar diya, toh Inspector wale data (`p.achieved[dbMonthKey]`) ko uthayenge
-                    existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : 0;
-                    isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900;"';
-                    formHasLockedField = true;
-                } else {
-                    // Agar lock nahi hai, toh purana logic (jo teacher ne pehle submit kiya hoga)
-                    existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : '';
-                }
-
-                const row = document.createElement('div');
-                row.className = "flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-3";
-                row.innerHTML = `
-                    <div class="flex-1 min-w-0">
-                        <h4 class="font-extrabold text-slate-800 text-xs truncate">${p.className}</h4>
-                        <p class="text-[11px] font-bold text-slate-500 truncate mt-0.5">${p.bookName}</p>
-                        ${isLockedByInspector ? '<span class="text-[9px] bg-emerald-100 text-emerald-700 font-black px-1.5 py-0.5 rounded mt-1 inline-block uppercase tracking-wider"><i class="fas fa-check-circle mr-1"></i> Verified by Inspector</span>' : ''}
-                    </div>
-                    
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                        <div class="flex items-center gap-1.5">
-                            <label class="text-[9px] font-black text-slate-400 uppercase leading-none text-right">Pages<br>Padhaye:</label>
-                            <input type="number" data-period-id="${p.id}" id="input-period-${idx}" value="${existingAchieved}" ${isDisabledAttr} class="achieved-input w-16 p-1.5 text-center text-sm font-black text-indigo-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all" placeholder="0" required>
-                        </div>
-                    </div>
-                `;
-                periodContainer.appendChild(row);
-            });
-
-            // Agar poora form ya koi bhi field locked hai, toh button ko hamesha ke liye hide kar denge
-            if (formHasLockedField) {
-                btnSave.classList.add('hidden');
-                
-                const lockedBanner = document.createElement('div');
-                lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
-                lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Inspector dwara check karke freeze (lock) kar di gayi hai.`;
-                periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
-            } else {
-                btnSave.classList.remove('hidden');
-            }
+    try {
+        const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+        if (calSnap.exists()) {
+            gActiveYear = calSnap.data().activeYear || "2026-2027";
         }
 
-        btnSave.addEventListener('click', async () => {
-            // Agar pehle se hi lock banner aa chuka hai toh save trigger nahi hoga
-            if(btnSave.classList.contains('hidden')) return;
+        const userRef = doc(db, "users", inspectorId);
+        const userSnap = await getDoc(userRef);
 
-            const inputs = document.querySelectorAll('.achieved-input');
-            let isValid = true;
+        if (!userSnap.exists()) throw new Error("Admin data nahi mila.");
 
-            inputs.forEach(inp => {
-                if (!inp.value && !inp.disabled) {
-                    isValid = false;
-                    inp.classList.add('border-red-500');
-                } else {
-                    inp.classList.remove('border-red-500');
-                }
-            });
+        gUserData = userSnap.data();
+        const structure = gUserData.academicYears?.[gActiveYear]?.karkardagiStructure || [];
+        
+        gJamiaIndex = structure.findIndex(j => j.jamiaName === urlJamiaName);
+        if (gJamiaIndex === -1) throw new Error(`Jamia nahi mila.`);
 
-            if (!isValid) {
-                alert("Kripya sabhi fields me pages enter karein.");
-                return;
-            }
+        const jamiaTeachers = structure[gJamiaIndex].teachers || [];
+        gTeacherIndex = jamiaTeachers.findIndex(t => t.loginCode.trim().toLowerCase() === enteredCode.toLowerCase());
 
-            const originalBtnContent = btnSave.innerHTML;
-            btnSave.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving Report...`;
-            btnSave.disabled = true;
+        if (gTeacherIndex === -1) throw new Error("Teacher Code galat hai.");
 
-            try {
-                const match = urlJamiaName.match(/\d+/);
-                const gJamiaId = match ? match[0] : "001";
+        gTeacherData = jamiaTeachers[gTeacherIndex];
 
-                const perfDocRef = doc(db, "academic_performance", gJamiaId);
-                const perfSnap = await getDoc(perfDocRef);
-                let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
+        displayTeacherName.innerText = gTeacherData.name;
+        loginContainer.classList.add('hidden');
+        mainFormContainer.classList.remove('hidden');
+        
+        renderPeriodsUI(gTeacherData);
 
-                let periodsDetailMap = {};
-                const periods = gTeacherData.periods || [];
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    } finally {
+        btnVerify.disabled = false;
+        document.getElementById('btn-verify-text').innerText = "Verify & Open Form";
+        document.getElementById('btn-verify-icon').className = "fas fa-arrow-right text-xs";
+    }
+};
 
-                periods.forEach((p, idx) => {
-                    const inputField = document.getElementById(`input-period-${idx}`);
-                    const newVal = inputField ? (parseInt(inputField.value) || 0) : 0;
-                    
-                    periodsDetailMap[`period_${idx + 1}`] = {
-                        class: p.className,
-                        subject: p.bookName,
-                        page_from: 0, 
-                        page_to: newVal 
-                    };
-                });
+       function renderPeriodsUI(teacherData) {
+    periodContainer.innerHTML = ''; 
+    const periods = teacherData.periods || [];
 
-                const newTeacherEntry = {
-                    name: gTeacherData.name,
-                    designation: "Teacher",
-                    periods_detail: periodsDetailMap
-                };
+    if (periods.length === 0) {
+        periodContainer.innerHTML = `
+        <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <p class="font-bold text-xs">Aapki koi class assign nahi hai.</p>
+        </div>`;
+        btnSave.classList.add('hidden');
+        return;
+    }
 
-                let monthSection = currentPerfData[dbMonthKey] || { teachers: [] };
-                let targetTeachers = (monthSection.teachers || []).filter(t => t.name.toLowerCase() !== gTeacherData.name.toLowerCase());
-                targetTeachers.push(newTeacherEntry);
+    let formHasLockedField = false;
 
-                currentPerfData[dbMonthKey] = {
-                    teachers: targetTeachers,
-                    updated_at: new Date().toISOString()
-                };
+    periods.forEach((p, idx) => {
+        const isLockedByInspector = p.locked && p.locked[dbMonthKey] === true;
+        
+        let existingAchieved = '';
+        let isDisabledAttr = '';
 
-                await setDoc(perfDocRef, currentPerfData, { merge: true });
-                alert(`🎉 MashaAllah! Aapka monthly report data successfully save ho gaya hai.`);
-                
-                // Form ko refresh ya live lock update state me daal denge
-                location.reload();
-                
-            } catch (error) {
-                console.error("Error saving data:", error);
-                alert("Data save hone me error aayi: " + error.message);
-            } finally {
-                btnSave.innerHTML = originalBtnContent;
-                btnSave.disabled = false;
-            }
+        if (isLockedByInspector) {
+            // Agar locked hai toh direct inspector ka approved data uthayega aur style lagayega
+            existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : 0;
+            isDisabledAttr = 'disabled style="background-color: #f1f5f9; color: #1e293b; font-weight: 900;"';
+            formHasLockedField = true;
+        } else {
+            existingAchieved = (p.achieved && p.achieved[dbMonthKey]) !== undefined ? p.achieved[dbMonthKey] : '';
+        }
+
+        const row = document.createElement('div');
+        row.className = "flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-3";
+        row.innerHTML = `
+            <div class="flex-1 min-w-0">
+                <h4 class="font-extrabold text-slate-800 text-xs truncate">${p.className}</h4>
+                <p class="text-[11px] font-bold text-slate-500 truncate mt-0.5">${p.bookName}</p>
+                ${isLockedByInspector ? '<span class="text-[9px] bg-emerald-100 text-emerald-700 font-black px-1.5 py-0.5 rounded mt-1 inline-block uppercase tracking-wider"><i class="fas fa-check-circle mr-1"></i> Verified by Inspector</span>' : ''}
+            </div>
+            
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <div class="flex items-center gap-1.5">
+                    <label class="text-[9px] font-black text-slate-400 uppercase leading-none text-right">Pages<br>Padhaye:</label>
+                    <input type="number" data-period-id="${p.id}" id="input-period-${idx}" value="${existingAchieved}" ${isDisabledAttr} class="achieved-input w-16 p-1.5 text-center text-sm font-black text-indigo-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all" placeholder="0" required>
+                </div>
+            </div>
+        `;
+        periodContainer.appendChild(row);
+    });
+
+    if (formHasLockedField) {
+        btnSave.classList.add('hidden');
+        
+        const lockedBanner = document.createElement('div');
+        lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
+        lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Inspector dwara check karke freeze (lock) kar di gayi hai.`;
+        periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
+    } else {
+        btnSave.classList.remove('hidden');
+    }
+}
+
+        performanceForm.onsubmit = async (e) => {
+    e.preventDefault();
+
+    if (btnSave.classList.contains('hidden')) return;
+
+    const inputs = document.querySelectorAll('.achieved-input');
+    let isValid = true;
+
+    inputs.forEach(inp => {
+        if (inp.value === "" && !inp.disabled) {
+            isValid = false;
+            inp.classList.add('border-red-500');
+        } else {
+            inp.classList.remove('border-red-500');
+        }
+    });
+
+    if (!isValid) {
+        alert("Kripya sabhi fields me pages enter karein.");
+        return;
+    }
+
+    const originalBtnContent = btnSave.innerHTML;
+    btnSave.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving Report...`;
+    btnSave.disabled = true;
+
+    try {
+        const perfDocRef = doc(db, "academic_performance", gJamiaId);
+        const perfSnap = await getDoc(perfDocRef);
+        let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
+
+        let periodsDetailMap = {};
+        const periods = gTeacherData.periods || [];
+
+        periods.forEach((p, idx) => {
+            const inputField = document.getElementById(`input-period-${idx}`);
+            const newVal = inputField ? (parseInt(inputField.value) || 0) : 0;
+            
+            periodsDetailMap[`period_${idx + 1}`] = {
+                class: p.className,
+                subject: p.bookName,
+                page_from: 0, 
+                page_to: newVal 
+            };
         });
+
+        const newTeacherEntry = {
+            name: gTeacherData.name,
+            designation: "Teacher",
+            periods_detail: periodsDetailMap
+        };
+
+        let monthSection = currentPerfData[dbMonthKey] || { teachers: [] };
+        let targetTeachers = (monthSection.teachers || []).filter(t => t.name.toLowerCase() !== gTeacherData.name.toLowerCase());
+        targetTeachers.push(newTeacherEntry);
+
+        currentPerfData[dbMonthKey] = {
+            teachers: targetTeachers,
+            updated_at: new Date().toISOString()
+        };
+
+        await setDoc(perfDocRef, currentPerfData, { merge: true });
+        alert(`🎉 MashaAllah! Aapka monthly report data successfully save ho gaya hai.`);
+        
+        location.reload();
+        
+    } catch (error) {
+        console.error("Error saving data:", error);
+        alert("Data save hone me error aayi: " + error.message);
+    } {
+        btnSave.innerHTML = originalBtnContent;
+        btnSave.disabled = false;
+    }
+};
     </script>
 </body>
 </html>
