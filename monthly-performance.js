@@ -940,6 +940,10 @@ window.toggleEditMode = async (jamiaName) => {
                         if (period) {
                             if (!period.achieved) period.achieved = {};
                             period.achieved[savingMonthId] = val; 
+                            
+                            // --- YAHAN LOCK FLAG SET KIYA ---
+                            if (!period.locked) period.locked = {};
+                            period.locked[savingMonthId] = true; // Is month ke liye lock true kiya
                         }
                     }
                 });
