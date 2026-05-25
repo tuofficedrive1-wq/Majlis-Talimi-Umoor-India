@@ -1504,6 +1504,24 @@
                     return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
                 };
 
+                // Image ko Base64 me convert karne ka helper function
+const imageToBase64 = async (url) => {
+    if (!url) return null;
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (err) {
+        console.error("Image base64 conversion failed:", err);
+        return null; // Agar fail ho jaye toh normal flow na tute
+    }
+};
+
                 const formatMonthYear = (yyyyMm) => {
                     if (!yyyyMm) return "";
                     const [year, month] = yyyyMm.split('-');
@@ -1565,10 +1583,51 @@
                     if (urduClassName.includes(key)) { englishClassName = val; break; }
                 }
 
-                const taleemiSigRaw = globalUserData.signatureTaleemi || null;
-                const taleemiSigUrl = getCorsFriendlyUrl(taleemiSigRaw);
-                
-                let principalSigUrl = null;
+                // Loop se pehle hi Base64 me convert karein taaki loading delay khatam ho jaye
+const taleemiSigRaw = globalUserData.signatureTaleemi || null;
+let taleemiSigBase64 = null;
+if(taleemiSigRaw) {
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading Taleemi Signature...';
+    taleemiSigBase64 = await imageToBase64(getCorsFriendlyUrl(taleemiSigRaw));
+}
+
+let principalSigUrlRaw = null;
+try {
+    const [yStr, mStr] = monthKey.split('-');
+    const y = parseInt(yStr);
+    const m = parseInt(mStr) - 1; 
+    const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+    
+    if (globalUserData.academicYears && 
+        globalUserData.academicYears[acYear] && 
+        globalUserData.academicYears[acYear].karkardagiStructure) {
+        
+        const structure = globalUserData.academicYears[acYear].karkardagiStructure;
+        const structEntry = structure.find(j => j.jamiaName === jamiaName);
+        
+        if (structEntry && structEntry.principalSignature) {
+            principalSigUrlRaw = getCorsFriendlyUrl(structEntry.principalSignature);
+        }
+    }
+
+    if (!principalSigUrlRaw) {
+        const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+        const reportSnap = await getDoc(doc(db, 'monthly_reports', reportId));
+        if (reportSnap.exists()) {
+            const reportData = reportSnap.data();
+            const jamiaEntry = reportData.monthlyTest?.data?.find(j => j.name.trim() === jamiaName.trim());
+            if (jamiaEntry && jamiaEntry.signature) {
+                principalSigUrlRaw = getCorsFriendlyUrl(jamiaEntry.signature);
+            }
+        }
+    }
+} catch (err) { console.error("Sig fetch error:", err); }
+
+let principalSigBase64 = null;
+if(principalSigUrlRaw) {
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading Principal Signature...';
+    principalSigBase64 = await imageToBase64(principalSigUrlRaw);
+}
 
                 try {
                     const [yStr, mStr] = monthKey.split('-');
@@ -1787,8 +1846,9 @@
 
                                     <div style="position: absolute; bottom: 55px; width: 100%; padding: 0 40px; box-sizing: border-box; display: flex; justify-content: space-between; left: 0;">
                                         <div style="text-align: center; width: 180px; position: relative;">
+                                           // Principal Signature ka hissa
                                             <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                                ${ principalSigUrl ? `<img src="${principalSigUrl}" style="max-height: 75px; max-width: 160px; object-fit: contain;" crossorigin="anonymous">` : '' }
+                                                ${ principalSigBase64 ? `<img src="${principalSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
                                             </div>
                                             <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                             <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Principal Signature</p>
@@ -1801,8 +1861,9 @@
                                         </div>
 
                                         <div style="text-align: center; width: 180px; position: relative;">
+                                            // Taleemi Zimmedar ka hissa
                                             <div style="height: 80px; display: flex; align-items: end; justify-content: center; margin-bottom: 5px;">
-                                                ${ taleemiSigUrl ? `<img src="${taleemiSigUrl}" style="max-height: 75px; max-width: 160px; object-fit: contain;" crossorigin="anonymous">` : '' }
+                                                ${ taleemiSigBase64 ? `<img src="${taleemiSigBase64}" style="max-height: 75px; max-width: 160px; object-fit: contain;">` : '' }
                                             </div>
                                             <div style="width: 100%; border-bottom: 2px solid #333; margin-bottom: 5px;"></div>
                                             <p style="margin: 0; font-weight: 600; color: #555; font-size: 14px;">Taleemi Zimmedar</p>
