@@ -417,8 +417,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const karkardagi = academicYears[activeYear]?.karkardagiStructure || [];
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
         const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
-        
-        // Formats check karne ke liye (may aur 2026-05 dono)
         const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(targetMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(targetMonthKey) + 1) : monthNames.indexOf(targetMonthKey) + 1}`;
 
         let html = "";
@@ -431,7 +429,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             const match = jamiaName.match(/\d+/);
             const jamiaDocId = match ? match[0] : "001";
             
-            // Public collection se data fetch kiya backup ke liye
             const publicPerfSnap = await getDoc(doc(db, "academic_performance", jamiaDocId));
             let publicMonthData = null;
             if (publicPerfSnap.exists()) {
@@ -464,12 +461,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                                 <th class="p-4 border-b text-center">Achieved</th>
                                 <th class="p-4 border-b text-center">%</th>
                                 <th class="p-4 border-b text-center">Kaifiyat</th>
-                            </tr>
+                                <th class="p-4 border-b text-center">Action</th> </tr>
                         </thead>
                         <tbody>`;
 
             jamiaData.teachers.forEach((teacher) => {
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
+                const totalPeriodsCount = teacher.periods?.length || 0;
 
                 teacher.periods?.forEach((p, pIdx) => {
                     let target = 0;
@@ -480,15 +478,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     }
                     
                     let achievedValue = 0;
-
-                    // --- PRIORITY LOGIC: Pehle Inspector ka khud ka saved data users structure se check karenge ---
                     if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
                         achievedValue = p.achieved[currentYearMonthPrefix];
                     } else if (p.achieved && p.achieved[targetMonthKey] !== undefined) {
                         achievedValue = p.achieved[targetMonthKey];
-                    } 
-                    // Fallback: Agar users me nahi mila toh public performance collection se uthayenge
-                    else if (publicTeacher && publicTeacher.periods_detail) {
+                    } else if (publicTeacher && publicTeacher.periods_detail) {
                         const matchedPeriodKey = Object.keys(publicTeacher.periods_detail).find(key => {
                             const detail = publicTeacher.periods_detail[key];
                             return detail.class === p.className && detail.subject === p.bookName;
@@ -501,8 +495,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
 
+                    // Unique row selector banayenge teacher image capture ke liye
+                    const teacherRowId = `row-${safeId}-${teacher.id}`;
+
                     html += `
-                        <tr class="border-b hover:bg-slate-50/50">
+                        <tr class="border-b hover:bg-slate-50/50 ${teacherRowId}">
                             <td class="p-4 font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</td>
                             <td class="p-4 text-slate-600">${p.className}</td>
                             <td class="p-4 text-slate-600">${p.bookName}</td>
@@ -516,6 +513,19 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             </td>
                             <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
+                            
+                            ${pIdx === 0 ? `
+                            <td class="p-4 text-center border-l bg-slate-50/30" rowspan="${totalPeriodsCount}">
+                                <div class="flex flex-col gap-2 items-center justify-center">
+                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[10px] px-2.5 py-1.5 rounded-lg hover:bg-rose-50 transition font-bold shadow-sm flex items-center gap-1" title="Teacher Ki Report Image Download Karein">
+                                        <i class="fas fa-image"></i> Image
+                                    </button>
+                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="bg-white border border-red-200 text-red-500 text-[10px] px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition font-bold shadow-sm flex items-center gap-1" title="Report Reset Aur Form Unlock Karein">
+                                        <i class="fas fa-sync-alt"></i> Reset
+                                    </button>
+                                </div>
+                            </td>
+                            ` : ''}
                         </tr>`;
                 });
             });
@@ -1209,4 +1219,141 @@ export const handleDashboardMonthChange = (newMonth, assignedJamiaat, db, curren
     
     // Agar element mil jata hai (yaani user performance tab par hai), tabhi load chalega
     loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
+};
+
+window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
+    if (!confirm(`Kya aap waqai ${teacherName} ka is mahine ka data RESET karke form UNLOCK karna chahte hain?`)) return;
+
+    try {
+        const databaseInstance = gDb;
+        const userInstance = gCurrentUser;
+
+        if (!databaseInstance || !userInstance) {
+            alert("Database session missing. Page refresh karein.");
+            return;
+        }
+
+        const monthSelect = document.getElementById('report-month');
+        const activeMonthKey = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
+
+        const calSnap = await getDoc(doc(databaseInstance, "settings", "academic_calendar"));
+        const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
+        const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(activeMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(activeMonthKey) + 1) : monthNames.indexOf(activeMonthKey) + 1}`;
+
+        // 1. CLEAR FROM INSPECTOR STRUCTURE (users collection)
+        const userRef = doc(databaseInstance, "users", userInstance.uid);
+        const userSnap = await getDoc(userRef);
+        let userData = userSnap.data() || {};
+        let academicYears = userData.academicYears || {};
+        let structure = academicYears[activeYear]?.karkardagiStructure || [];
+        let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+
+        if (jamiaData) {
+            const teacher = jamiaData.teachers.find(t => t.id === teacherId);
+            if (teacher && teacher.periods) {
+                teacher.periods.forEach(p => {
+                    if (p.achieved) {
+                        delete p.achieved[activeMonthKey];
+                        delete p.achieved[currentYearMonthPrefix];
+                    }
+                    if (p.locked) {
+                        delete p.locked[activeMonthKey];
+                        delete p.locked[currentYearMonthPrefix];
+                    }
+                });
+            }
+        }
+        await updateDoc(userRef, { academicYears: academicYears });
+
+        // 2. CLEAR FROM PUBLIC COLLECTION (academic_performance)
+        const match = jamiaName.match(/\d+/);
+        const jamiaDocId = match ? match[0] : "001";
+        const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
+        const perfSnap = await getDoc(perfDocRef);
+
+        if (perfSnap.exists()) {
+            let currentPerfData = perfSnap.data();
+            
+            // Dono possible keys ke andar se delete chalayenge
+            [activeMonthKey, currentYearMonthPrefix].forEach(mKey => {
+                if (currentPerfData[mKey] && currentPerfData[mKey].teachers) {
+                    currentPerfData[mKey].teachers = currentPerfData[mKey].teachers.filter(
+                        t => t.name.toLowerCase() !== teacherName.toLowerCase()
+                    );
+                }
+            });
+            await setDoc(perfDocRef, currentPerfData, { merge: true });
+        }
+
+        alert(`MashaAllah! ${teacherName} ka report clear ho gaya hai aur form wapas UNLOCK ho gaya hai.`);
+        loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
+
+    } catch (err) {
+        console.error("Reset Error:", err);
+        alert("Reset karne me error aayi: " + err.message);
+    }
+};
+
+window.downloadTeacherReportImage = (rowClass, teacherName) => {
+    // Ek temporary element banayenge taaki pure jamia ki jagah sirf us teacher ka specific part capture ho sake
+    const rows = document.querySelectorAll(`.${rowClass}`);
+    if (rows.length === 0) return alert("Rows nahi mili!");
+
+    if (typeof html2canvas === 'undefined') return alert("html2canvas library load nahi hui hai!");
+
+    // Ek naya virtual wrapper table banate hain taaki isolated standard table view mile image me
+    const tempContainer = document.createElement('div');
+    tempContainer.style.padding = "20px";
+    tempContainer.style.background = "#ffffff";
+    tempContainer.style.position = "absolute";
+    tempContainer.style.left = "-9999px";
+    
+    let tableHtml = `<table style="width:100%; border-collapse:collapse; text-align:left; font-family:sans-serif; font-size:12px;">
+        <thead style="background:#f8fafc; color:#64748b;">
+            <tr>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0;">Teacher</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0;">Class</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0;">Subject</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Total</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Target</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Achieved</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">%</th>
+                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Kaifiyat</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    rows.forEach(row => {
+        // Clone the rows and remove the action column for cleaner data presentation inside image
+        const clonedRow = row.cloneNode(true);
+        const lastCell = clonedRow.querySelector('td[rowspan], td:last-child');
+        if (lastCell && lastCell.getAttribute('rowspan')) lastCell.remove(); // remove action buttons panel
+        
+        // Input numbers ko replace karenge text node se taaki print flawless aaye
+        const input = clonedRow.querySelector('input');
+        if(input) {
+            const parent = input.parentElement;
+            parent.innerHTML = `<span style="font-weight:bold;">${input.value || 0}</span>`;
+        }
+        
+        tableHtml += `<tr style="border-b:1px solid #f1f5f9;">${clonedRow.innerHTML}</tr>`;
+    });
+
+    tableHtml += `</tbody></table>`;
+    tempContainer.innerHTML = `
+        <div style="margin-bottom:15px;">
+            <h3 style="margin:0; color:#0f172a; font-size:16px;">${teacherName} - Monthly Report</h3>
+            <p style="margin:2px 0 0 0; color:#94a3b8; font-size:10px;">GENERATED ON: ${new Date().toLocaleDateString()}</p>
+        </div>
+    ` + tableHtml;
+
+    document.body.appendChild(tempContainer);
+
+    html2canvas(tempContainer, { scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${teacherName}_Monthly_Performance.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        document.body.removeChild(tempContainer);
+    });
 };
