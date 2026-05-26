@@ -713,34 +713,31 @@ async function renderMonthlyTargetsUI() {
 
     try {
         const configSnap = await getDoc(sysRef); // Academic System Structure Doc
-        // Alag collection "page_targets" me dynamic document check karna
-        // Naya updated hissa:
-            let targetSnap = await getDoc(doc(db, "page_targets", currentTargetDocId));
-            let savedTargets = {};
-            
-            if (targetSnap.exists()) {
-                savedTargets = targetSnap.data().targets;
-            } else if (currentTargetDocId === "global_targets") {
-                // Agar naye folder me global data nahi mila, toh purane folder se check karein
-                const oldGlobalSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-                if (oldGlobalSnap.exists()) {
-                    savedTargets = oldGlobalSnap.data().targets || {};
-                }
-            }
-        
-        if (!configSnap.exists()) {
-            container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein.</p>`;
-            return;
+    
+    if (!configSnap.exists()) {
+        container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein.</p>`;
+        return;
+    }
+
+    // NAYE PATH SE TARGETS CHECK KAREIN
+    let targetSnap = await getDoc(doc(db, "page_targets", currentTargetDocId));
+    let savedTargets = {};
+
+    if (targetSnap.exists()) {
+        savedTargets = targetSnap.data().targets || {};
+    } else if (currentTargetDocId === "global_targets") {
+        // FALLBACK: Agar naye collection me data nahi mila, toh purane collection se auto-load karein
+        const oldGlobalSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        if (oldGlobalSnap.exists()) {
+            savedTargets = oldGlobalSnap.data().targets || {};
         }
+    }
 
-        const classes = configSnap.data().classes || [];
-        
-
-        if (classes.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Koi class ya subject nahi mila. Pehle uper structure banayein.</p>`;
-            return;
-        }
-
+    const classes = configSnap.data().classes || [];
+    if (classes.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Koi class ya subject nahi mila. Pehle uper structure banayein.</p>`;
+        return;
+    }
         // Accordion Base UI Generator
         container.innerHTML = classes.map((cls, index) => {
             const classSafeId = `target-cls-${index}`;
@@ -832,6 +829,8 @@ document.getElementById('btn-save-monthly-targets').onclick = async () => {
 // --- 5. INITIALIZATION TRIGGER ---
 // Jab Jamia Directory se data fully load ho jaye tab isko refresh karein
 // Taki dropdowns me correct States aur Regions populate ho sakein
+// --- 5. INITIALIZATION & REFRESH TRIGGER (UPDATED FIX) ---
+// Jamia Directory ka data jab bhi load ya update hoga, yeh bina structure ko disturb kiye targets reload karega
 const originalLoadMasterJamiaat = loadMasterJamiaat;
 loadMasterJamiaat = () => {
     onSnapshot(jamiaDirectoryRef, (snap) => {
@@ -839,8 +838,11 @@ loadMasterJamiaat = () => {
         renderMasterJamiaat();
         renderPendingJamiaat();
         
-        // Dynamic targets dropdown ko updated master data provide karne ke liye:
-        renderMonthlyTargetsUI(); 
+        // FIX: Pehle check karo kya classes load ho chuki hain, tabhi targets ka UI render karo
+        const container = document.getElementById('monthly-targets-container');
+        if (container && container.innerHTML.trim() !== "") {
+            renderMonthlyTargetsUI(); 
+        }
     });
 };
 
