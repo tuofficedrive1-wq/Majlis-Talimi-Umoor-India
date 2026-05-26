@@ -291,840 +291,702 @@
 
     <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-// Updated Imports with addDoc and deleteDoc
-import { 
-    getFirestore, 
-    collection, 
-    query, 
-    where, 
-    onSnapshot, 
-    doc, 
-    updateDoc, 
-    getDoc, 
-    setDoc, 
-    addDoc, 
-    deleteDoc 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-            const firebaseConfig = {
-            apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-            authDomain: "data-f15ab.firebaseapp.com",
-            projectId: "data-f15ab",
-            storageBucket: "data-f15ab.appspot.com",
-            messagingSenderId: "449137002393",
-            appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-
-        let inspectors = [];
-        let currentId = null;
-        let tempJamias = [];
-        let currentTargetDocId = "global_targets";
-
-        // Logout
-        document.getElementById('btn-logout').onclick = async () => {
-            if(confirm("Are you sure you want to logout?")) {
-                try {
-                    await signOut(auth);
-                    window.location.replace('index.html');
-                } catch (err) { console.error(err); }
-            }
-        };
-
-        // Tab Switch
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.onclick = () => {
-        document.querySelectorAll('.tab-btn').forEach(b => {
-            b.classList.remove('tab-active', 'text-indigo-600');
-            b.classList.add('text-gray-500');
-        });
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.replace('block', 'hidden'));
-        btn.classList.add('tab-active', 'text-indigo-600');
-        btn.classList.remove('text-gray-500');
-        
-        const targetTab = document.getElementById(`tab-${btn.dataset.tab}`);
-        if(targetTab) targetTab.classList.replace('hidden', 'block');
-
-        if(btn.dataset.tab === 'teacher-details') {
-            renderTeacherTable(); // Extra text hata diya gaya hai
-        }
+    // 1. Firebase Configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+        authDomain: "data-f15ab.firebaseapp.com",
+        projectId: "data-f15ab",
+        storageBucket: "data-f15ab.appspot.com",
+        messagingSenderId: "449137002393",
+        appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
     };
-});
-       // Load Data function ko is tarah update karein
-const loadInspectors = () => {
-    const q = query(collection(db, "users"), where("role", "==", "inspector"));
-    onSnapshot(q, (snap) => {
-        inspectors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        renderInspectors();      
-        renderTeacherTable();    
-        renderPendingJamiaat(); // <--- Yeh line add karein
-    });
-};
-        const renderInspectors = () => {
-            const list = document.getElementById('inspectors-list');
-            list.innerHTML = inspectors.map(ins => `
-                <tr class="hover:bg-gray-50 transition border-b">
-                    <td class="px-6 py-4">
-                        <img src="${ins.photoURL || 'https://placehold.co/40'}" class="w-10 h-10 rounded-full object-cover border shadow-sm">
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="font-bold text-gray-800">${ins.name || 'Anonymous'}</div>
-                        <div class="text-[10px] text-gray-400 font-medium">${ins.email || '-'}</div>
-                    </td>
-                    <td class="px-6 py-4 text-gray-600 font-medium">${ins.region || '-'}</td>
-                    <td class="px-6 py-4">
-                        <div class="flex flex-wrap gap-1">
-                            ${(ins.jamiaatList || []).map(j => `<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100">${j}</span>`).join('')}
-                        </div>
-                    </td>
-                    <td class="px-6 py-4 text-center">
-                        <button onclick="window.editIns('${ins.id}')" class="text-indigo-600 hover:bg-indigo-50 px-3 py-1 rounded-lg font-bold border border-indigo-200 text-xs transition">EDIT</button>
-                    </td>
-                </tr>
-            `).join('');
-        };
 
-        window.editIns = (id) => {
-            const ins = inspectors.find(i => i.id === id);
-            if(!ins) return;
-            currentId = id;
-            tempJamias = [...(ins.jamiaatList || [])];
-            document.getElementById('edit-name').value = ins.name || '';
-            document.getElementById('edit-email').value = ins.email || '';
-            document.getElementById('edit-ajeer').value = ins.ajeerCode || '';
-            document.getElementById('edit-region').value = ins.region || '';
-            document.getElementById('edit-contact').value = ins.contact || '';
-            document.getElementById('edit-photo').value = ins.photoURL || '';
-            renderTags();
-            document.getElementById('edit-modal').classList.remove('hidden');
-        };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
-        window.closeModal = () => document.getElementById('edit-modal').classList.add('hidden');
+    // 2. State & Variables (Sare Global Variables Sabse Pehle Declare Honge)
+    let inspectors = [];
+    let currentId = null;
+    let tempJamias = [];
+    let masterJamiaat = []; // Master directory ka data store karne ke liye
+    let currentTargetDocId = "global_targets"; // Target system ke liye
 
-        const renderTags = () => {
-            const container = document.getElementById('jamia-tags');
-            container.innerHTML = tempJamias.map((j, idx) => `
-                <div class="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs flex items-center gap-2 shadow-sm">
-                    <span class="font-bold">${j}</span>
-                    <button onclick="window.removeJ(${idx})" class="hover:text-red-200 transition font-bold">&times;</button>
-                </div>
-            `).join('');
-        };
+    const academicMonths = [
+        { name: "Apr", id: "apr" }, { name: "May", id: "may" }, { name: "Jun", id: "jun" },
+        { name: "Jul", id: "jul" }, { name: "Aug", id: "aug" }, { name: "Sep", id: "sep" },
+        { name: "Oct", id: "oct" }, { name: "Nov", id: "nov" }, { name: "Dec", id: "dec" },
+        { name: "Jan", id: "jan" }, { name: "Feb", id: "feb" }, { name: "Mar", id: "mar" }
+    ];
 
-        window.addJamiaTag = () => {
-            const inp = document.getElementById('new-jamia-input');
-            const val = inp.value.trim().toUpperCase();
-            if(val && !tempJamias.includes(val)) {
-                tempJamias.push(val);
-                renderTags();
-                inp.value = '';
-            }
-        };
+    // Firestore References
+    const calendarRef = doc(db, "settings", "academic_calendar");
+    const sysRef = doc(db, "settings", "academic_admin_config");
+    const jamiaDirectoryRef = collection(db, "jamiaat_master");
 
-        window.removeJ = (i) => {
-            tempJamias.splice(i, 1);
-            renderTags();
-        };
+    // 3. Teacher Management & Table Rendering Functions
+    const renderTeacherTable = () => {
+        const listBody = document.getElementById('teacher-list-body');
+        if (!listBody) return;
+        let teacherRowHtml = '';
+        let counter = 1;
 
-        document.getElementById('btn-save').onclick = async () => {
-            const btn = document.getElementById('btn-save');
-            btn.disabled = true;
-            btn.innerHTML = `<div class="loader mx-auto"></div>`;
-            try {
-                await updateDoc(doc(db, "users", currentId), {
-                    name: document.getElementById('edit-name').value,
-                    email: document.getElementById('edit-email').value,
-                    ajeerCode: document.getElementById('edit-ajeer').value,
-                    region: document.getElementById('edit-region').value,
-                    contact: document.getElementById('edit-contact').value,
-                    photoURL: document.getElementById('edit-photo').value,
-                    jamiaatList: tempJamias
+        inspectors.forEach(ins => {
+            if (ins.teacherData && Array.isArray(ins.teacherData)) {
+                ins.teacherData.forEach(t => {
+                    teacherRowHtml += `
+                        <tr class="hover:bg-gray-50 transition border-b">
+                            <td class="px-6 py-4 font-medium">${counter++}</td>
+                            <td class="px-6 py-4">${ins.region || '-'}</td>
+                            <td class="px-6 py-4 font-semibold text-indigo-600">${ins.name}</td>
+                            <td class="px-6 py-4">${t.jamiaName || '-'}</td>
+                            <td class="px-6 py-4">${t.teacherName || '-'}</td>
+                            <td class="px-6 py-4 text-center">
+                                <button onclick="viewFullDetail('${t.id}')" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded text-xs font-bold transition">
+                                    <i class="fas fa-eye mr-1"></i> Full Detail
+                                </button>
+                            </td>
+                        </tr>
+                    `;
                 });
-                alert("Profile and Email updated!");
-                closeModal();
-            } catch (e) { alert("Error: " + e.message); }
-            finally { btn.disabled = false; btn.innerHTML = "Save Changes"; }
-        };
-
-        loadInspectors();
-
-        // Calendar Configuration
-const academicMonths = [
-    { name: "Apr", id: "apr" }, { name: "May", id: "may" }, { name: "Jun", id: "jun" },
-    { name: "Jul", id: "jul" }, { name: "Aug", id: "aug" }, { name: "Sep", id: "sep" },
-    { name: "Oct", id: "oct" }, { name: "Nov", id: "nov" }, { name: "Dec", id: "dec" },
-    { name: "Jan", id: "jan" }, { name: "Feb", id: "feb" }, { name: "Mar", id: "mar" }
-];
-
-const calendarRef = doc(db, "settings", "academic_calendar");
-
-// 1. UI Render Function
-function initCalendarUI() {
-    const grid = document.getElementById('calendar-months-grid');
-    grid.innerHTML = academicMonths.map(m => `
-        <div class="p-2 border rounded-lg bg-gray-50 text-center month-box" data-month="${m.id}">
-            <p class="text-[11px] font-bold text-gray-600 mb-1">${m.name}</p>
-            <div class="flex gap-1">
-                <input type="number" placeholder="S1" class="s1-in w-1/2 p-1 text-xs border rounded text-center font-semibold" title="Sem 1">
-                <input type="number" placeholder="S2" class="s2-in w-1/2 p-1 text-xs border rounded text-center font-semibold" title="Sem 2">
-            </div>
-        </div>
-    `).join('');
-
-    grid.querySelectorAll('input').forEach(inp => {
-        inp.addEventListener('input', updateCalendarTotals);
-    });
-}
-
-// 2. Total Calculate Karna
-function updateCalendarTotals() {
-    let s1 = 0, s2 = 0;
-    document.querySelectorAll('.month-box').forEach(box => {
-        s1 += parseInt(box.querySelector('.s1-in').value) || 0;
-        s2 += parseInt(box.querySelector('.s2-in').value) || 0;
-    });
-    document.getElementById('cal-sem1-total').innerText = s1;
-    document.getElementById('cal-sem2-total').innerText = s2;
-}
-
-// 3. Save Function
-document.getElementById('btn-save-calendar').onclick = async () => {
-    const btn = document.getElementById('btn-save-calendar');
-    btn.disabled = true;
-    btn.innerHTML = "Saving...";
-
-    const monthsData = {};
-    document.querySelectorAll('.month-box').forEach(box => {
-        monthsData[box.dataset.month] = {
-            s1: parseInt(box.querySelector('.s1-in').value) || 0,
-            s2: parseInt(box.querySelector('.s2-in').value) || 0
-        };
-    });
-
-    try {
-        await setDoc(calendarRef, {
-            activeYear: document.getElementById('cal-active-year').value,
-            totals: {
-                s1: parseInt(document.getElementById('cal-sem1-total').innerText),
-                s2: parseInt(document.getElementById('cal-sem2-total').innerText)
-            },
-            months: monthsData
-        });
-        alert("Calendar Data Saved!");
-    } catch (e) {
-        alert("Save Error: " + e.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<i class="fas fa-calendar-check mr-2"></i> Save Calendar`;
-    }
-};
-
-// 4. Data Load Karna (Initialize ke waqt call karein)
-async function loadCalendar() {
-    initCalendarUI();
-    const snap = await getDoc(calendarRef);
-    if(snap.exists()){
-        const d = snap.data();
-        document.getElementById('cal-active-year').value = d.activeYear || "";
-        document.querySelectorAll('.month-box').forEach(box => {
-            const mId = box.dataset.month;
-            if(d.months && d.months[mId]){
-                box.querySelector('.s1-in').value = d.months[mId].s1;
-                box.querySelector('.s2-in').value = d.months[mId].s2;
             }
         });
-        updateCalendarTotals();
-    }
-}
 
-// Ise page load hone par call karein
-loadCalendar();
-
-        // --- ACADEMIC SYSTEM LOGIC ---
-const sysRef = doc(db, "settings", "academic_admin_config");
-
-// Subject Input Create Karna (Only English)
-function addSubjectRow(parent, value = '') {
-    const div = document.createElement('div');
-    div.className = "flex gap-2 items-center mb-2 academic-sub-row";
-    div.innerHTML = `
-        <div class="flex-1 relative">
-            <i class="fas fa-book text-gray-300 absolute left-3 top-3 text-xs"></i>
-            <input type="text" placeholder="Subject Name" class="sub-name p-2 pl-8 border rounded-lg text-sm w-full focus:ring-1 focus:ring-indigo-500 outline-none" value="${value}">
-        </div>
-        <button class="text-gray-300 hover:text-red-500 px-2 remove-sub transition"><i class="fas fa-times"></i></button>
-    `;
-    div.querySelector('.remove-sub').onclick = () => div.remove();
-    parent.appendChild(div);
-}
-
-// Class Block Create Karna (Only English)
-function addClassBlock(data = { name: '', subjects: [] }) {
-    const container = document.getElementById('classes-container');
-    const div = document.createElement('div');
-    div.className = "academic-class-item bg-gray-50 border rounded-2xl p-5 relative shadow-sm";
-    div.innerHTML = `
-        <button class="absolute top-4 right-4 text-gray-300 hover:text-red-500 remove-class transition"><i class="fas fa-trash-alt"></i></button>
-        
-        <div class="mb-4">
-            <label class="block text-[10px] font-bold text-indigo-400 uppercase mb-1 ml-1">Class Name</label>
-            <input type="text" placeholder="e.g. Class 10th" class="class-name p-2.5 border rounded-xl font-bold w-full md:w-1/2 shadow-sm focus:ring-2 focus:ring-indigo-200 outline-none" value="${data.name}">
-        </div>
-
-        <div class="bg-white p-4 rounded-xl border border-indigo-50">
-            <label class="block text-[10px] font-bold text-gray-400 uppercase mb-3">Subject List</label>
-            <div class="subs-list"></div>
-            <button class="add-sub-btn text-indigo-600 text-xs font-bold mt-3 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition">+ Add Subject</button>
-        </div>
-    `;
-
-    const subsList = div.querySelector('.subs-list');
-    div.querySelector('.add-sub-btn').onclick = () => addSubjectRow(subsList);
-    div.querySelector('.remove-class').onclick = () => {
-        if(confirm("Delete this class and all its subjects?")) div.remove();
+        listBody.innerHTML = teacherRowHtml || '<tr><td colspan="6" class="p-10 text-center text-gray-400">No teacher data found.</td></tr>';
     };
 
-    if(data.subjects.length > 0) {
-        data.subjects.forEach(s => addSubjectRow(subsList, s));
-    } else {
-        addSubjectRow(subsList);
-    }
-    container.appendChild(div);
-}
+    window.viewFullDetail = (teacherId) => {
+        alert("Teacher details functional logic yahan aaygi. ID: " + teacherId);
+    };
 
-// Load System
-async function loadAcademicSystem() {
-    try {
-        const snap = await getDoc(sysRef);
-        if(snap.exists()) {
-            const d = snap.data();
-            document.getElementById('classes-container').innerHTML = '';
-            if(d.classes) d.classes.forEach(c => addClassBlock({ name: c.name, subjects: c.subjects }));
+    // 4. Inspector Management Functions
+    const renderInspectors = () => {
+        const list = document.getElementById('inspectors-list');
+        if (!list) return;
+        list.innerHTML = inspectors.map(ins => `
+            <tr class="hover:bg-gray-50 transition border-b">
+                <td class="px-6 py-4">
+                    <img src="${ins.photoURL || 'https://placehold.co/40'}" class="w-10 h-10 rounded-full object-cover border shadow-sm">
+                </td>
+                <td class="px-6 py-4">
+                    <div class="font-bold text-gray-800">${ins.name || 'Anonymous'}</div>
+                    <div class="text-[10px] text-gray-400 font-medium">${ins.email || '-'}</div>
+                </td>
+                <td class="px-6 py-4 text-gray-600 font-medium">${ins.region || '-'}</td>
+                <td class="px-6 py-4">
+                    <div class="flex flex-wrap gap-1">
+                        ${(ins.jamiaatList || []).map(j => `<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100">${j}</span>`).join('')}
+                    </div>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <button onclick="window.editIns('${ins.id}')" class="text-indigo-600 hover:bg-indigo-50 px-3 py-1 rounded-lg font-bold border border-indigo-200 text-xs transition">EDIT</button>
+                </td>
+            </tr>
+        `).join('');
+    };
+
+    window.editIns = (id) => {
+        const ins = inspectors.find(i => i.id === id);
+        if(!ins) return;
+        currentId = id;
+        tempJamias = [...(ins.jamiaatList || [])];
+        document.getElementById('edit-name').value = ins.name || '';
+        document.getElementById('edit-email').value = ins.email || '';
+        document.getElementById('edit-ajeer').value = ins.ajeerCode || '';
+        document.getElementById('edit-region').value = ins.region || '';
+        document.getElementById('edit-contact').value = ins.contact || '';
+        document.getElementById('edit-photo').value = ins.photoURL || '';
+        renderTags();
+        document.getElementById('edit-modal').classList.remove('hidden');
+    };
+
+    window.closeModal = () => document.getElementById('edit-modal').classList.add('hidden');
+
+    const renderTags = () => {
+        const container = document.getElementById('jamia-tags');
+        if (!container) return;
+        container.innerHTML = tempJamias.map((j, idx) => `
+            <div class="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs flex items-center gap-2 shadow-sm">
+                <span class="font-bold">${j}</span>
+                <button onclick="window.removeJ(${idx})" class="hover:text-red-200 transition font-bold">&times;</button>
+            </div>
+        `).join('');
+    };
+
+    window.addJamiaTag = () => {
+        const inp = document.getElementById('new-jamia-input');
+        const val = inp.value.trim().toUpperCase();
+        if(val && !tempJamias.includes(val)) {
+            tempJamias.push(val);
+            renderTags();
+            inp.value = '';
         }
-    } catch (e) { console.error("Load Error:", e); }
-}
+    };
 
-// Save System
-// Save System Logic
-document.getElementById('btn-save-sys').onclick = async () => {
-    const btn = document.getElementById('btn-save-sys');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+    window.removeJ = (i) => {
+        tempJamias.splice(i, 1);
+        renderTags();
+    };
 
-    const classes = [];
-    // Har class block ko scan karna
-    document.querySelectorAll('.academic-class-item').forEach(item => {
-        const name = item.querySelector('.class-name').value.trim();
-        // Sirf wahi subjects lena jo khali nahi hain
-        const subjects = Array.from(item.querySelectorAll('.sub-name'))
-                              .map(inp => inp.value.trim())
-                              .filter(val => val !== "");
+    document.getElementById('btn-save').onclick = async () => {
+        const btn = document.getElementById('btn-save');
+        btn.disabled = true;
+        btn.innerHTML = `<div class="loader mx-auto"></div>`;
+        try {
+            await updateDoc(doc(db, "users", currentId), {
+                name: document.getElementById('edit-name').value,
+                email: document.getElementById('edit-email').value,
+                ajeerCode: document.getElementById('edit-ajeer').value,
+                region: document.getElementById('edit-region').value,
+                contact: document.getElementById('edit-contact').value,
+                photoURL: document.getElementById('edit-photo').value,
+                jamiaatList: tempJamias
+            });
+            alert("Profile and Email updated!");
+            closeModal();
+        } catch (e) { alert("Error: " + e.message); }
+        finally { btn.disabled = false; btn.innerHTML = "Save Changes"; }
+    };
 
-        if (name) {
-            classes.push({ name, subjects });
-        }
-    });
-
-    try {
-        // Firebase mein save karna (setDoc ab kaam karega)
-        await setDoc(sysRef, { 
-            classes: classes, 
-            lastUpdated: new Date(),
-            type: 'English-Only' 
+    const loadInspectors = () => {
+        const q = query(collection(db, "users"), where("role", "==", "inspector"));
+        onSnapshot(q, (snap) => {
+            inspectors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            renderInspectors();      
+            renderTeacherTable();    
+            if (typeof renderPendingJamiaat === 'function') renderPendingJamiaat();
         });
-        alert("Academic System Configuration saved successfully!");
-    } catch (e) { 
-        alert("Error saving: " + e.message); 
-    } finally { 
-        btn.disabled = false; 
-        btn.innerHTML = originalText; 
-    }
-};
+    };
 
-document.getElementById('btn-add-class').onclick = () => addClassBlock();
-
-document.getElementById('target-level').addEventListener('change', (e) => {
-    const val = e.target.value;
-    const container = document.getElementById('target-specific-container');
-    const specificSelect = document.getElementById('target-specific-name');
-    const label = document.getElementById('specific-label');
-
-    if (val === 'global') {
-        container.classList.add('hidden');
-        currentTargetDocId = 'global_targets';
-        renderMonthlyTargetsUI(); // Turant global data load karo
-    } else {
-        container.classList.remove('hidden');
-        let optionsArray = [];
-
-        // Master directory se unique values nikalna taake dropdown me dikha sakein
-        if (val === 'state') {
-            label.innerText = "Select State";
-            optionsArray = [...new Set(masterJamiaat.map(j => j.state).filter(Boolean))];
-        } else if (val === 'region') {
-            label.innerText = "Select Region";
-            optionsArray = [...new Set(masterJamiaat.map(j => j.region).filter(Boolean))];
-        } else if (val === 'jamia') {
-            label.innerText = "Select Jamia";
-            optionsArray = [...new Set(masterJamiaat.map(j => j.jamiaName).filter(Boolean))];
+    // 5. Logout & Tab Switch UI Logic
+    document.getElementById('btn-logout').onclick = async () => {
+        if(confirm("Are you sure you want to logout?")) {
+            try {
+                await signOut(auth);
+                window.location.replace('index.html');
+            } catch (err) { console.error(err); }
         }
+    };
 
-        // Dropdown me options bharo
-        if (optionsArray.length > 0) {
-            specificSelect.innerHTML = optionsArray.map(opt => `<option value="${opt}">${opt}</option>`).join('');
-        } else {
-            specificSelect.innerHTML = `<option value="">No Registered Data Found</option>`;
-        }
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('tab-active', 'text-indigo-600');
+                b.classList.add('text-gray-500');
+            });
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.replace('block', 'hidden'));
+            btn.classList.add('tab-active', 'text-indigo-600');
+            btn.classList.remove('text-gray-500');
             
-        updateCurrentTargetDoc(); // Document ID badlo aur data load karo
-    }
-});
+            const targetTab = document.getElementById(`tab-${btn.dataset.tab}`);
+            if(targetTab) targetTab.classList.replace('hidden', 'block');
 
-// Jab specific name (jaise Riyasat ya Ilaqe ka naam) badlega
-document.getElementById('target-specific-name').addEventListener('change', updateCurrentTargetDoc);
+            if(btn.dataset.tab === 'teacher-details') {
+                renderTeacherTable();
+            }
+        };
+    });
 
-// Firestore Document path set karne ka helper function
-function updateCurrentTargetDoc() {
-    const level = document.getElementById('target-level').value;
-    const specificName = document.getElementById('target-specific-name').value;
-    
-    if (level !== 'global' && specificName) {
-        // Spaces ko underscore se badal rahe hain taake Firestore ID clean rahe (e.g., state_MADHYA_PRADESH_targets)
-        const cleanName = specificName.trim().toUpperCase().replace(/\s+/g, '_');
-        currentTargetDocId = `${level}_${cleanName}_targets`; 
-    } else {
-        currentTargetDocId = 'global_targets';
-    }
-    renderMonthlyTargetsUI(); // Nayi ID ke sath UI refresh karo
-}
-
-
-// --- 3. UI RENDER FUNCTION (SHURU SE UPDATED) ---
-async function renderMonthlyTargetsUI() {
-    const container = document.getElementById('monthly-targets-container');
-    if (!container) return;
-    
-    container.innerHTML = `<div class="text-center py-6 text-amber-600 font-medium"><i class="fas fa-spinner fa-spin mr-2"></i> Fetching Targets (${currentTargetDocId})...</div>`;
-
-    try {
-        const configSnap = await getDoc(sysRef); // Academic System Structure Doc
-    
-    if (!configSnap.exists()) {
-        container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein.</p>`;
-        return;
-    }
-
-    // NAYE PATH SE TARGETS CHECK KAREIN
-    let targetSnap = await getDoc(doc(db, "page_targets", currentTargetDocId));
-    let savedTargets = {};
-
-    if (targetSnap.exists()) {
-        savedTargets = targetSnap.data().targets || {};
-    } else if (currentTargetDocId === "global_targets") {
-        // FALLBACK: Agar naye collection me data nahi mila, toh purane collection se auto-load karein
-        const oldGlobalSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-        if (oldGlobalSnap.exists()) {
-            savedTargets = oldGlobalSnap.data().targets || {};
-        }
-    }
-
-    const classes = configSnap.data().classes || [];
-    if (classes.length === 0) {
-        container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Koi class ya subject nahi mila. Pehle uper structure banayein.</p>`;
-        return;
-    }
-        // Accordion Base UI Generator
-        container.innerHTML = classes.map((cls, index) => {
-            const classSafeId = `target-cls-${index}`;
-            return `
-            <div class="border border-gray-200 rounded-xl mb-3 overflow-hidden shadow-sm bg-white">
-                <button onclick="document.getElementById('${classSafeId}').classList.toggle('hidden')" 
-                        class="w-full flex justify-between items-center p-4 bg-indigo-50/70 hover:bg-indigo-100/70 transition-colors">
-                    <span class="font-bold text-indigo-900 flex items-center gap-2">
-                        <i class="fas fa-layer-group text-indigo-400"></i> ${cls.name}
-                    </span>
-                    <i class="fas fa-chevron-down text-indigo-400 text-xs"></i>
-                </button>
-
-                <div id="${classSafeId}" class="hidden p-4 space-y-4 border-t border-indigo-100">
-                    ${cls.subjects.map(sub => {
-                        const subId = `${cls.name}_${sub}`.replace(/\s+/g, '_');
-                        return `
-                        <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            <p class="text-[12px] font-bold text-gray-700 mb-3 flex items-center gap-2">
-                                <i class="fas fa-book-open text-amber-600 text-xs"></i> ${sub}
-                            </p>
-                            <div class="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
-                                ${academicMonths.map(m => `
-                                    <div class="flex flex-col items-center">
-                                        <label class="text-[9px] uppercase font-black text-gray-400 mb-1">${m.name}</label>
-                                        <input type="number" 
-                                            data-class="${cls.name}" 
-                                            data-subject="${sub}" 
-                                            data-month="${m.id}" 
-                                            class="monthly-target-input w-full p-1.5 border border-gray-300 rounded text-[11px] text-center font-bold text-gray-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none transition-all" 
-                                            value="${(savedTargets[subId] && savedTargets[subId][m.id]) || 0}">
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>`;
-                    }).join('')}
+    // 6. Calendar Configuration Logic
+    function initCalendarUI() {
+        const grid = document.getElementById('calendar-months-grid');
+        if (!grid) return;
+        grid.innerHTML = academicMonths.map(m => `
+            <div class="p-2 border rounded-lg bg-gray-50 text-center month-box" data-month="${m.id}">
+                <p class="text-[11px] font-bold text-gray-600 mb-1">${m.name}</p>
+                <div class="flex gap-1">
+                    <input type="number" placeholder="S1" class="s1-in w-1/2 p-1 text-xs border rounded text-center font-semibold" title="Sem 1">
+                    <input type="number" placeholder="S2" class="s2-in w-1/2 p-1 text-xs border rounded text-center font-semibold" title="Sem 2">
                 </div>
-            </div>`;
-        }).join('');
-    } catch (err) {
-        console.error("UI Render Error:", err);
-        container.innerHTML = `<p class="text-center text-red-500 py-4">Target load karne me error aaya.</p>`;
-    }
-}
+            </div>
+        `).join('');
 
-
-// --- 4. SAVE BUTTON LOGIC (SHURU SE UPDATED) ---
-document.getElementById('btn-save-monthly-targets').onclick = async () => {
-    const btn = document.getElementById('btn-save-monthly-targets');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving Targets...`;
-    
-    const targets = {};
-    const inputs = document.querySelectorAll('.monthly-target-input');
-    
-    inputs.forEach(inp => {
-        const month = inp.dataset.month;
-        const cls = inp.dataset.class.trim();
-        const sub = inp.dataset.subject.trim(); 
-        const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
-        
-        if (!targets[subId]) targets[subId] = {};
-        targets[subId][month] = parseInt(inp.value) || 0;
-    });
-
-    try {
-        const selectedLevel = document.getElementById('target-level').value;
-        const selectedSpecificName = document.getElementById('target-specific-name').value || 'GLOBAL';
-
-        // Firestore ki "page_targets" collection me target data save ho raha hai
-        await setDoc(doc(db, "page_targets", currentTargetDocId), { 
-            targets: targets,
-            targetLevel: selectedLevel,
-            specificName: selectedSpecificName.toUpperCase(),
-            lastUpdated: new Date()
+        grid.querySelectorAll('input').forEach(inp => {
+            inp.addEventListener('input', updateCalendarTotals);
         });
-        
-        alert(`Targets successfully saved for [${selectedLevel.toUpperCase()}: ${selectedSpecificName}]!`);
-    } catch (e) { 
-        alert("Save Error: " + e.message); 
-        console.error(e);
-    } finally { 
-        btn.disabled = false; 
-        btn.innerHTML = originalText;
     }
-};
 
-// --- 5. INITIALIZATION & REFRESH TRIGGER (FIXED) ---
+    function updateCalendarTotals() {
+        let s1 = 0, s2 = 0;
+        document.querySelectorAll('.month-box').forEach(box => {
+            s1 += parseInt(box.querySelector('.s1-in').value) || 0;
+            s2 += parseInt(box.querySelector('.s2-in').value) || 0;
+        });
+        document.getElementById('cal-sem1-total').innerText = s1;
+        document.getElementById('cal-sem2-total').innerText = s2;
+    }
 
-// Naya aur safe loadMasterJamiaat function
-const loadMasterJamiaatSafe = () => {
-    onSnapshot(jamiaDirectoryRef, (snap) => {
-        masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Master table aur pending list ko refresh karna
-        if (typeof renderMasterJamiaat === 'function') renderMasterJamiaat();
-        if (typeof renderPendingJamiaat === 'function') renderPendingJamiaat();
-        
-        // Dropdown me data tabhi aayega jab yeh list bhari hogi
-        // Agar targets UI load ho chuka hai, toh usey nayi list ke sath refresh karein
-        const container = document.getElementById('monthly-targets-container');
-        if (container && container.innerHTML.trim() !== "") {
-            renderMonthlyTargetsUI(); 
+    document.getElementById('btn-save-calendar').onclick = async () => {
+        const btn = document.getElementById('btn-save-calendar');
+        btn.disabled = true;
+        btn.innerHTML = "Saving...";
+
+        const monthsData = {};
+        document.querySelectorAll('.month-box').forEach(box => {
+            monthsData[box.dataset.month] = {
+                s1: parseInt(box.querySelector('.s1-in').value) || 0,
+                s2: parseInt(box.querySelector('.s2-in').value) || 0
+            };
+        });
+
+        try {
+            await setDoc(calendarRef, {
+                activeYear: document.getElementById('cal-active-year').value,
+                totals: {
+                    s1: parseInt(document.getElementById('cal-sem1-total').innerText),
+                    s2: parseInt(document.getElementById('cal-sem2-total').innerText)
+                },
+                months: monthsData
+            });
+            alert("Calendar Data Saved!");
+        } catch (e) {
+            alert("Save Error: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-calendar-check mr-2"></i> Save Calendar`;
         }
-    });
-};
+    };
 
-// Page load hone par saare modules ko ek sath sahi tarteeb me chalane ka function
-async function initAcademicSystem() {
-    try {
-        await loadAcademicSystem(); // 1. Pehle Classes/Subjects ka structure load hoga (Upar wala hissa)
-        await renderMonthlyTargetsUI(); // 2. Phir Monthly Targets ka accordion load hoga (Niche wala hissa)
-    } catch (err) {
-        console.error("Initialization Error:", err);
+    async function loadCalendar() {
+        initCalendarUI();
+        const snap = await getDoc(calendarRef);
+        if(snap.exists()){
+            const d = snap.data();
+            document.getElementById('cal-active-year').value = d.activeYear || "";
+            document.querySelectorAll('.month-box').forEach(box => {
+                const mId = box.dataset.month;
+                if(d.months && d.months[mId]){
+                    box.querySelector('.s1-in').value = d.months[mId].s1;
+                    box.querySelector('.s2-in').value = d.months[mId].s2;
+                }
+            });
+            updateCalendarTotals();
+        }
     }
-}
 
-// === SAB KUCH YAHAN SE START HOGA ===
-loadMasterJamiaatSafe(); // Database se Jamia/State/Region ki list layega
-initAcademicSystem(); // Classes aur Targets ka UI set karega
+    // 7. Academic Configuration Structure (Classes & Subjects)
+    function addSubjectRow(parent, value = '') {
+        const div = document.createElement('div');
+        div.className = "flex gap-2 items-center mb-2 academic-sub-row";
+        div.innerHTML = `
+            <div class="flex-1 relative">
+                <i class="fas fa-book text-gray-300 absolute left-3 top-3 text-xs"></i>
+                <input type="text" placeholder="Subject Name" class="sub-name p-2 pl-8 border rounded-lg text-sm w-full focus:ring-1 focus:ring-indigo-500 outline-none" value="${value}">
+            </div>
+            <button class="text-gray-300 hover:text-red-500 px-2 remove-sub transition"><i class="fas fa-times"></i></button>
+        `;
+        div.querySelector('.remove-sub').onclick = () => div.remove();
+        parent.appendChild(div);
+    }
 
+    function addClassBlock(data = { name: '', subjects: [] }) {
+        const container = document.getElementById('classes-container');
+        if (!container) return;
+        const div = document.createElement('div');
+        div.className = "academic-class-item bg-gray-50 border rounded-2xl p-5 relative shadow-sm";
+        div.innerHTML = `
+            <button class="absolute top-4 right-4 text-gray-300 hover:text-red-500 remove-class transition"><i class="fas fa-trash-alt"></i></button>
+            <div class="mb-4">
+                <label class="block text-[10px] font-bold text-indigo-400 uppercase mb-1 ml-1">Class Name</label>
+                <input type="text" placeholder="e.g. Class 10th" class="class-name p-2.5 border rounded-xl font-bold w-full md:w-1/2 shadow-sm focus:ring-2 focus:ring-indigo-200 outline-none" value="${data.name}">
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-indigo-50">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase mb-3">Subject List</label>
+                <div class="subs-list"></div>
+                <button class="add-sub-btn text-indigo-600 text-xs font-bold mt-3 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition">+ Add Subject</button>
+            </div>
+        `;
 
-        // Teacher list render karne ka function
-const renderTeacherTable = () => {
-    const listBody = document.getElementById('teacher-list-body');
-    let teacherRowHtml = '';
-    let counter = 1;
+        const subsList = div.querySelector('.subs-list');
+        div.querySelector('.add-sub-btn').onclick = () => addSubjectRow(subsList);
+        div.querySelector('.remove-class').onclick = () => {
+            if(confirm("Delete this class and all its subjects?")) div.remove();
+        };
 
-    // Inspectors array se data iterate karna
-    inspectors.forEach(ins => {
-        // Maan lijiye inspector ke setup mein 'teacherData' naam ki list hai
-        if (ins.teacherData && Array.isArray(ins.teacherData)) {
-            ins.teacherData.forEach(t => {
-                teacherRowHtml += `
-                    <tr class="hover:bg-gray-50 transition border-b">
-                        <td class="px-6 py-4 font-medium">${counter++}</td>
-                        <td class="px-6 py-4">${ins.region || '-'}</td>
-                        <td class="px-6 py-4 font-semibold text-indigo-600">${ins.name}</td>
-                        <td class="px-6 py-4">${t.jamiaName || '-'}</td>
-                        <td class="px-6 py-4">${t.teacherName || '-'}</td>
-                        <td class="px-6 py-4 text-center">
-                            <button onclick="viewFullDetail('${t.id}')" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded text-xs font-bold transition">
-                                <i class="fas fa-eye mr-1"></i> Full Detail
-                            </button>
-                        </td>
-                    </tr>
-                `;
+        if(data.subjects.length > 0) {
+            data.subjects.forEach(s => addSubjectRow(subsList, s));
+        } else {
+            addSubjectRow(subsList);
+        }
+        container.appendChild(div);
+    }
+
+    async function loadAcademicSystem() {
+        try {
+            const snap = await getDoc(sysRef);
+            if(snap.exists()) {
+                const d = snap.data();
+                const container = document.getElementById('classes-container');
+                if (container) container.innerHTML = '';
+                if(d.classes) d.classes.forEach(c => addClassBlock({ name: c.name, subjects: c.subjects }));
+            }
+        } catch (e) { console.error("Load Error:", e); }
+    }
+
+    document.getElementById('btn-save-sys').onclick = async () => {
+        const btn = document.getElementById('btn-save-sys');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
+        const classes = [];
+        document.querySelectorAll('.academic-class-item').forEach(item => {
+            const name = item.querySelector('.class-name').value.trim();
+            const subjects = Array.from(item.querySelectorAll('.sub-name'))
+                                  .map(inp => inp.value.trim())
+                                  .filter(val => val !== "");
+            if (name) { classes.push({ name, subjects }); }
+        });
+
+        try {
+            await setDoc(sysRef, { classes: classes, lastUpdated: new Date(), type: 'English-Only' });
+            alert("Academic System Configuration saved successfully!");
+            setTimeout(() => { renderMonthlyTargetsUI(); }, 1500);
+        } catch (e) { alert("Error saving: " + e.message); }
+        finally { btn.disabled = false; btn.innerHTML = originalText; }
+    };
+
+    document.getElementById('btn-add-class').onclick = () => addClassBlock();
+
+    // 8. Master Jamia Directory Logic (Searching & Sorting Enabled)
+    const renderMasterJamiaat = (searchTerm = '') => {
+        const list = document.getElementById('master-jamia-list');
+        if (!list) return;
+
+        let processedData = [...masterJamiaat].sort((a, b) => {
+            const stateA = (a.state || '').toUpperCase();
+            const stateB = (b.state || '').toUpperCase();
+            const regionA = (a.region || '').toUpperCase();
+            const regionB = (b.region || '').toUpperCase();
+            if (stateA < stateB) return -1;
+            if (stateA > stateB) return 1;
+            if (regionA < regionB) return -1;
+            if (regionA > regionB) return 1;
+            return 0;
+        });
+
+        if (searchTerm) {
+            const lowerSearch = searchTerm.toLowerCase();
+            processedData = processedData.filter(j => {
+                return (j.state || '').toLowerCase().includes(lowerSearch) || 
+                       (j.region || '').toLowerCase().includes(lowerSearch) || 
+                       (j.jamiaName || '').toLowerCase().includes(lowerSearch);
             });
         }
+
+        if (processedData.length === 0) {
+            list.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400 italic">No matching Jamia found.</td></tr>`;
+            return;
+        }
+
+        list.innerHTML = processedData.map(j => `
+            <tr class="hover:bg-gray-50 transition border-b">
+                <td class="px-4 py-3 font-medium text-indigo-600">${j.state}</td>
+                <td class="px-4 py-3 text-gray-600">${j.region}</td>
+                <td class="px-4 py-3 font-bold text-gray-800">${j.jamiaName}</td>
+                <td class="px-4 py-3 text-center">
+                    <button onclick="deleteMasterJamia('${j.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    };
+
+    document.getElementById('search-master-jamia').addEventListener('input', (e) => {
+        renderMasterJamiaat(e.target.value.trim());
     });
 
-    listBody.innerHTML = teacherRowHtml || '<tr><td colspan="6" class="p-10 text-center text-gray-400">No teacher data found.</td></tr>';
-};
-
-// Full detail button click par action
-window.viewFullDetail = (teacherId) => {
-    alert("Teacher details functional logic yahan aaygi. ID: " + teacherId);
-};
-
-// Jab Inspector load ho jayein tab table refresh karein
-// --- MASTER JAMIA DIRECTORY LOGIC ---
-const jamiaDirectoryRef = collection(db, "jamiaat_master");
-let masterJamiaat = [];
-
-// 1. Load Jamiaat Realtime
-const loadMasterJamiaat = () => {
-    onSnapshot(jamiaDirectoryRef, (snap) => {
-        masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderMasterJamiaat();
-        renderPendingJamiaat(); // <--- Yeh line add karein
-    });
-};
-
-// 2. Render Table
-// --- 2. Render Table with Sorting and Searching ---
-const renderMasterJamiaat = (searchTerm = '') => {
-    const list = document.getElementById('master-jamia-list');
-    if (!list) return;
-
-    // Step A: Data ko State aur Region ke hisab se A-Z sort karna
-    let processedData = [...masterJamiaat].sort((a, b) => {
-        const stateA = (a.state || '').toUpperCase();
-        const stateB = (b.state || '').toUpperCase();
-        const regionA = (a.region || '').toUpperCase();
-        const regionB = (b.region || '').toUpperCase();
-
-        // Pehle State ke hisab se sort karein
-        if (stateA < stateB) return -1;
-        if (stateA > stateB) return 1;
+    document.getElementById('btn-save-jamia').onclick = async () => {
+        const stateInput = document.getElementById('new-jamia-state');
+        const regionInput = document.getElementById('new-jamia-region');
+        const nameInput = document.getElementById('new-jamia-name');
         
-        // Agar State same ho, toh Region ke hisab se sort karein
-        if (regionA < regionB) return -1;
-        if (regionA > regionB) return 1;
-        
-        return 0;
-    });
+        const state = stateInput.value.trim().toUpperCase();
+        const region = regionInput.value.trim().toUpperCase();
+        const jamiaName = nameInput.value.trim().toUpperCase();
 
-    // Step B: Agar search box me kuch type kiya gaya hai, toh data filter karein
-    if (searchTerm) {
-        const lowerSearch = searchTerm.toLowerCase();
-        processedData = processedData.filter(j => {
-            const s = (j.state || '').toLowerCase();
-            const r = (j.region || '').toLowerCase();
-            const n = (j.jamiaName || '').toLowerCase();
-            
-            return s.includes(lowerSearch) || r.includes(lowerSearch) || n.includes(lowerSearch);
-        });
-    }
+        if(!state || !region || !jamiaName) {
+            alert("Please fill all fields (State, Region, Jamia Name)!");
+            return;
+        }
 
-    // Step C: Table me data show karna
-    if (processedData.length === 0) {
-        list.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400 italic">No matching Jamia found.</td></tr>`;
-        return;
-    }
+        const btn = document.getElementById('btn-save-jamia');
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
 
-    list.innerHTML = processedData.map(j => `
-        <tr class="hover:bg-gray-50 transition border-b">
-            <td class="px-4 py-3 font-medium text-indigo-600">${j.state}</td>
-            <td class="px-4 py-3 text-gray-600">${j.region}</td>
-            <td class="px-4 py-3 font-bold text-gray-800">${j.jamiaName}</td>
-            <td class="px-4 py-3 text-center">
-                <button onclick="deleteMasterJamia('${j.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition" title="Delete">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        </tr>
-    `).join('');
-};
-
-// --- Search Box Event Listener ---
-// Yeh search box me type karte hi table ko update karega
-document.getElementById('search-master-jamia').addEventListener('input', (e) => {
-    const searchValue = e.target.value.trim();
-    renderMasterJamiaat(searchValue);
-});
-
-// 3. Save New Jamia
-document.getElementById('btn-save-jamia').onclick = async () => {
-    const stateInput = document.getElementById('new-jamia-state');
-    const regionInput = document.getElementById('new-jamia-region');
-    const nameInput = document.getElementById('new-jamia-name');
-    
-    const state = stateInput.value.trim().toUpperCase();
-    const region = regionInput.value.trim().toUpperCase();
-    const jamiaName = nameInput.value.trim().toUpperCase();
-
-    if(!state || !region || !jamiaName) {
-        alert("Please fill all fields (State, Region, Jamia Name)!");
-        return;
-    }
-
-    const btn = document.getElementById('btn-save-jamia');
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
-
-    try {
-        await addDoc(jamiaDirectoryRef, {
-            state: state,
-            region: region,
-            jamiaName: jamiaName,
-            addedAt: new Date()
-        });
-        
-        // Clear inputs after save
-        nameInput.value = ''; 
-        // State aur Region clear nahi kar rahe taake ek hi city ki multiple jamia easily add ho sakein.
-        
-        alert("Jamia added to Master Directory!");
-    } catch (e) {
-        alert("Error: " + e.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = `Save to Directory`;
-    }
-};
-
-// 4. Delete Jamia
-window.deleteMasterJamia = async (id) => {
-    if(confirm("Are you sure you want to delete this Jamia from Master list?")) {
         try {
-            await deleteDoc(doc(db, "jamiaat_master", id));
-        } catch(e) {
-            alert("Delete Error: " + e.message);
+            await addDoc(jamiaDirectoryRef, { state, region, jamiaName, addedAt: new Date() });
+            nameInput.value = ''; 
+            alert("Jamia added to Master Directory!");
+        } catch (e) { alert("Error: " + e.message); }
+        finally { btn.disabled = false; btn.innerHTML = `Save to Directory`; }
+    };
+
+    window.deleteMasterJamia = async (id) => {
+        if(confirm("Are you sure you want to delete this Jamia from Master list?")) {
+            try { await deleteDoc(doc(db, "jamiaat_master", id)); } 
+            catch(e) { alert("Delete Error: " + e.message); }
         }
-    }
-};
+    };
 
-// Initialize
-loadMasterJamiaat();
-        // --- 1. Purani Jamiaat ko Filter aur Render karne ka function ---
-// --- 1. Purani Jamiaat ko Filter aur Render karne ka function ---
-// --- 1. Purani Jamiaat ko Filter aur Render karne ka function (UPDATED) ---
-const renderPendingJamiaat = () => {
-    const container = document.getElementById('pending-jamia-list');
-    if(!container) return;
+    // 9. Uncategorized Pending Jamiaat System
+    const renderPendingJamiaat = () => {
+        const container = document.getElementById('pending-jamia-list');
+        if(!container) return;
 
-    // Saare inspectors ki jamiaat ikatthi karna
-    let allExistingJamias = [];
-    inspectors.forEach(ins => {
-        if(ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
-            allExistingJamias.push(...ins.jamiaatList);
+        let allExistingJamias = [];
+        inspectors.forEach(ins => {
+            if(ins.jamiaatList && Array.isArray(ins.jamiaatList)) { allExistingJamias.push(...ins.jamiaatList); }
+        });
+        allExistingJamias = [...new Set(allExistingJamias)]; 
+
+        const normalizeStr = (str) => str ? str.trim().toUpperCase().replace(/\s+/g, ' ') : '';
+        const masterNames = masterJamiaat.map(j => normalizeStr(j.jamiaName));
+        const uncategorized = allExistingJamias.filter(j => !masterNames.includes(normalizeStr(j)));
+
+        if(uncategorized.length === 0) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-6 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 font-medium text-sm">
+                    <i class="fas fa-check-circle mr-2"></i> Sabhi purani Jamiaat kamiyabi se categorize ho chuki hain!
+                </div>`;
+            return;
+        }
+
+        const regionOptions = `
+            <option value="">Select Region</option>
+            <option value="AJMER">Ajmer</option>
+            <option value="DEHLI">Dehli</option>
+            <option value="MUMBAI">Mumbai</option>
+            <option value="HYDERABAD">Hyderabad</option>
+            <option value="BENGALORE">Bengalore</option>
+        `;
+
+        container.innerHTML = uncategorized.map((jamia, idx) => `
+            <div class="p-4 border rounded-xl bg-amber-50/40 border-amber-200 flex flex-col justify-between gap-3 shadow-sm hover:shadow-md transition">
+                <div>
+                    <p class="font-bold text-gray-900 text-sm break-words flex items-start gap-2 leading-tight">
+                        <i class="fas fa-university text-amber-600 mt-1 text-[10px]"></i> ${jamia}
+                    </p>
+                </div>
+                <div class="flex flex-col gap-2 mt-2">
+                    <input type="text" id="pending-state-${idx}" placeholder="State (Riyasat)" class="w-full p-2 border border-gray-300 rounded text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500">
+                    <select id="pending-region-${idx}" class="w-full p-2 border border-gray-300 rounded text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500">
+                        ${regionOptions}
+                    </select>
+                </div>
+                <button onclick="categorizeExistingJamia('${jamia.replace(/'/g, "\\'")}', ${idx})" class="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-xs transition shadow-sm">
+                    Save & Link
+                </button>
+            </div>
+        `).join('');
+    };
+
+    window.categorizeExistingJamia = async (jamiaName, idx) => {
+        const stateInp = document.getElementById(`pending-state-${idx}`);
+        const regionInp = document.getElementById(`pending-region-${idx}`);
+        const state = stateInp.value.trim().toUpperCase();
+        const region = regionInp.value.trim().toUpperCase();
+        const name = jamiaName.trim().toUpperCase();
+
+        if(!state || !region) {
+            alert("Is Jamia ke liye State aur Region bharna zaroori hai!");
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, "jamiaat_master"), { state, region, jamiaName: name, addedAt: new Date() });
+            alert(`Jamia "${name}" ko successfully categorize kar diya gaya hai!`);
+        } catch (e) { alert("Error saving: " + e.message); }
+    };
+
+    // 10. Dynamic Monthly Targets Module (Global, State, Region, Jamia)
+    document.getElementById('target-level').addEventListener('change', (e) => {
+        const val = e.target.value;
+        const container = document.getElementById('target-specific-container');
+        const specificSelect = document.getElementById('target-specific-name');
+        const label = document.getElementById('specific-label');
+
+        if (val === 'global') {
+            container.classList.add('hidden');
+            currentTargetDocId = 'global_targets';
+            renderMonthlyTargetsUI();
+        } else {
+            container.classList.remove('hidden');
+            let optionsArray = [];
+
+            if (val === 'state') {
+                label.innerText = "Select State";
+                optionsArray = [...new Set(masterJamiaat.map(j => j.state).filter(Boolean))];
+            } else if (val === 'region') {
+                label.innerText = "Select Region";
+                optionsArray = [...new Set(masterJamiaat.map(j => j.region).filter(Boolean))];
+            } else if (val === 'jamia') {
+                label.innerText = "Select Jamia";
+                optionsArray = [...new Set(masterJamiaat.map(j => j.jamiaName).filter(Boolean))];
+            }
+
+            if (optionsArray.length > 0) {
+                specificSelect.innerHTML = optionsArray.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+            } else {
+                specificSelect.innerHTML = `<option value="">No Registered Data Found</option>`;
+            }
+            updateCurrentTargetDoc();
         }
     });
-    allExistingJamias = [...new Set(allExistingJamias)]; 
 
-    // NAYA LOGIC: Faltu spaces aur case issues ko fix karne ke liye ek helper function
-    const normalizeStr = (str) => str ? str.trim().toUpperCase().replace(/\s+/g, ' ') : '';
-    
-    // Master directory ke naam normalize karke list banayein
-    const masterNames = masterJamiaat.map(j => normalizeStr(j.jamiaName));
-    
-    // Sirf unhe filter karein jo exactly match nahi hote
-    const uncategorized = allExistingJamias.filter(j => !masterNames.includes(normalizeStr(j)));
+    document.getElementById('target-specific-name').addEventListener('change', updateCurrentTargetDoc);
 
-    // Agar koi pending nahi bacha
-    if(uncategorized.length === 0) {
-        container.innerHTML = `
-            <div class="col-span-full text-center py-6 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 font-medium text-sm">
-                <i class="fas fa-check-circle mr-2"></i> Sabhi purani Jamiaat kamiyabi se categorize ho chuki hain!
-            </div>`;
-        return;
-    }
-
-    const regionOptions = `
-        <option value="">Select Region</option>
-        <option value="AJMER">Ajmer</option>
-        <option value="DEHLI">Dehli</option>
-        <option value="MUMBAI">Mumbai</option>
-        <option value="HYDERABAD">Hyderabad</option>
-        <option value="BENGALORE">Bengalore</option>
-        <option value="KOLKATA">Kolkata</option>
-    `;
-
-    // Cards ko naye design me render karna
-    // 'truncate' hata diya gaya hai aur inputs ko upar-niche (stack) kar diya gaya hai
-    container.innerHTML = uncategorized.map((jamia, idx) => `
-        <div class="p-4 border rounded-xl bg-amber-50/40 border-amber-200 flex flex-col justify-between gap-3 shadow-sm hover:shadow-md transition">
-            <div>
-                <p class="font-bold text-gray-900 text-sm break-words flex items-start gap-2 leading-tight">
-                    <i class="fas fa-university text-amber-600 mt-1 text-[10px]"></i> ${jamia}
-                </p>
-            </div>
-            
-            <div class="flex flex-col gap-2 mt-2">
-                <input type="text" id="pending-state-${idx}" placeholder="State (Riyasat)" class="w-full p-2 border border-gray-300 rounded text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500">
-                <select id="pending-region-${idx}" class="w-full p-2 border border-gray-300 rounded text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500">
-                    ${regionOptions}
-                </select>
-            </div>
-            
-            <button onclick="categorizeExistingJamia('${jamia.replace(/'/g, "\\'")}', ${idx})" class="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-xs transition shadow-sm">
-                Save & Link
-            </button>
-        </div>
-    `).join('');
-};
-
-// --- 2. Pending Jamia ko Master me Save karne ka function ---
-window.categorizeExistingJamia = async (jamiaName, idx) => {
-    const stateInp = document.getElementById(`pending-state-${idx}`);
-    const regionInp = document.getElementById(`pending-region-${idx}`);
-    
-    const state = stateInp.value.trim().toUpperCase();
-    const region = regionInp.value.trim().toUpperCase();
-    const name = jamiaName.trim().toUpperCase();
-
-    if(!state || !region) {
-        alert("Is Jamia ke liye State aur Region bharna zaroori hai!");
-        return;
-    }
-
-    try {
-        // Master collection me document add karein
-        await addDoc(collection(db, "jamiaat_master"), {
-            state: state,
-            region: region,
-            jamiaName: name,
-            addedAt: new Date()
-        });
+    function updateCurrentTargetDoc() {
+        const level = document.getElementById('target-level').value;
+        const specificName = document.getElementById('target-specific-name').value;
         
-        alert(`Jamia "${name}" ko successfully categorize kar diya gaya hai!`);
-        // Note: Realtime listener chalne ki wajah se UI se yeh card khud gayab ho jayega.
-    } catch (e) {
-        alert("Error saving: " + e.message);
+        if (level !== 'global' && specificName) {
+            const cleanName = specificName.trim().toUpperCase().replace(/\s+/g, '_');
+            currentTargetDocId = `${level}_${cleanName}_targets`; 
+        } else {
+            currentTargetDocId = 'global_targets';
+        }
+        renderMonthlyTargetsUI();
     }
-};
+
+    async function renderMonthlyTargetsUI() {
+        const container = document.getElementById('monthly-targets-container');
+        if (!container) return;
+        
+        container.innerHTML = `<div class="text-center py-6 text-amber-600 font-medium"><i class="fas fa-spinner fa-spin mr-2"></i> Fetching Targets (${currentTargetDocId})...</div>`;
+
+        try {
+            const configSnap = await getDoc(sysRef); 
+            if (!configSnap.exists()) {
+                container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Pehle upar Classes aur Subjects save karein.</p>`;
+                return;
+            }
+
+            let targetSnap = await getDoc(doc(db, "page_targets", currentTargetDocId));
+            let savedTargets = {};
+
+            if (targetSnap.exists()) {
+                savedTargets = targetSnap.data().targets || {};
+            } else if (currentTargetDocId === "global_targets") {
+                const oldGlobalSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+                if (oldGlobalSnap.exists()) {
+                    savedTargets = oldGlobalSnap.data().targets || {};
+                }
+            }
+
+            const classes = configSnap.data().classes || [];
+            if (classes.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 py-4 italic">Koi class ya subject nahi mila. Pehle uper structure banayein.</p>`;
+                return;
+            }
+
+            container.innerHTML = classes.map((cls, index) => {
+                const classSafeId = `target-cls-${index}`;
+                return `
+                <div class="border border-gray-200 rounded-xl mb-3 overflow-hidden shadow-sm bg-white">
+                    <button onclick="document.getElementById('${classSafeId}').classList.toggle('hidden')" 
+                            class="w-full flex justify-between items-center p-4 bg-indigo-50/70 hover:bg-indigo-100/70 transition-colors">
+                        <span class="font-bold text-indigo-900 flex items-center gap-2">
+                            <i class="fas fa-layer-group text-indigo-400"></i> ${cls.name}
+                        </span>
+                        <i class="fas fa-chevron-down text-indigo-400 text-xs"></i>
+                    </button>
+                    <div id="${classSafeId}" class="hidden p-4 space-y-4 border-t border-indigo-100">
+                        ${cls.subjects.map(sub => {
+                            const subId = `${cls.name}_${sub}`.replace(/\s+/g, '_');
+                            return `
+                            <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <p class="text-[12px] font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                    <i class="fas fa-book-open text-amber-600 text-xs"></i> ${sub}
+                                </p>
+                                <div class="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+                                    ${academicMonths.map(m => `
+                                        <div class="flex flex-col items-center">
+                                            <label class="text-[9px] uppercase font-black text-gray-400 mb-1">${m.name}</label>
+                                            <input type="number" 
+                                                data-class="${cls.name}" 
+                                                data-subject="${sub}" 
+                                                data-month="${m.id}" 
+                                                class="monthly-target-input w-full p-1.5 border border-gray-300 rounded text-[11px] text-center font-bold text-gray-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none transition-all" 
+                                                value="${(savedTargets[subId] && savedTargets[subId][m.id]) || 0}">
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            console.error("UI Render Error:", err);
+            container.innerHTML = `<p class="text-center text-red-500 py-4">Target load karne me error aaya.</p>`;
+        }
+    }
+
+    document.getElementById('btn-save-monthly-targets').onclick = async () => {
+        const btn = document.getElementById('btn-save-monthly-targets');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Saving Targets...`;
+        
+        const targets = {};
+        const inputs = document.querySelectorAll('.monthly-target-input');
+        
+        inputs.forEach(inp => {
+            const month = inp.dataset.month;
+            const cls = inp.dataset.class.trim();
+            const sub = inp.dataset.subject.trim(); 
+            const subId = `${cls}_${sub}`.replace(/\s+/g, '_');
+            if (!targets[subId]) targets[subId] = {};
+            targets[subId][month] = parseInt(inp.value) || 0;
+        });
+
+        try {
+            const selectedLevel = document.getElementById('target-level').value;
+            const selectedSpecificName = document.getElementById('target-specific-name').value || 'GLOBAL';
+            await setDoc(doc(db, "page_targets", currentTargetDocId), { 
+                targets: targets,
+                targetLevel: selectedLevel,
+                specificName: selectedSpecificName.toUpperCase(),
+                lastUpdated: new Date()
+            });
+            alert(`Targets successfully saved for [${selectedLevel.toUpperCase()}: ${selectedSpecificName}]!`);
+        } catch (e) { alert("Save Error: " + e.message); console.error(e); }
+        finally { btn.disabled = false; btn.innerHTML = originalText; }
+    };
+
+
+    // 11. CENTRALIZED BOOTSTRAPPER (Sare Realtime Snapshot Listeners Yahan Hain)
+    const initMasterSystem = () => {
+        // A. Realtime Master Jamia Snapshot
+        onSnapshot(jamiaDirectoryRef, (snap) => {
+            masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderMasterJamiaat();
+            renderPendingJamiaat();
+            
+            // Safe execution taake classes load hone se pehle targets container blast na ho
+            const container = document.getElementById('monthly-targets-container');
+            if (container && container.innerHTML.trim() !== "") {
+                renderMonthlyTargetsUI(); 
+            }
+        });
+
+        // B. Realtime Inspectors Data Load
+        loadInspectors();
+
+        // C. Normal Configuration Loading
+        loadCalendar();
+        loadAcademicSystem().then(() => {
+            renderMonthlyTargetsUI(); // Classes structural load hote hi targets UI active hoga
+        });
+    };
+
+    // START EVERYTHING SECURELY
+    initMasterSystem();
         
     </script>
 </body>
