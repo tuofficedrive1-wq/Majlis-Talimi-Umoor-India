@@ -75,9 +75,9 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
                         <option value="Approval">Approval</option>
                     </select>
                 </div>
-                <button id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
-                    Update Period Data
-                </button>
+                <button type="button" id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
+    Update Period Data
+</button>
             </div>
         </div>
     </div>`;
@@ -715,8 +715,8 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                     </tr>
                     `);
                 // sirf fields reset hongi, section close nahi hoga
-                card.querySelector('.p-book').innerHTML = `<option value="">Select Subject</option>`;
-                card.querySelector('.p-book').disabled = true;
+               card.querySelector('.p-book').value = ""; // Text input hai, isliye value ko empty karna hai
+                card.querySelector('.p-book').disabled = false; // Disabled nahi karna hai taaki dubara type ho sake
                 
                 card.querySelector('.p-class').value = "";
                 card.querySelector('.p-sem').value = "1";
@@ -792,9 +792,11 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
 
         // --- UPDATE BUTTON ACTION ---
-        updateBtn.onclick = async () => {
-            updateBtn.disabled = true;
-            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+        // --- UPDATE BUTTON ACTION ---
+updateBtn.onclick = async (e) => {
+    e.preventDefault(); // Yeh line page ko refresh hone se rokegi
+    updateBtn.disabled = true;
+    updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
 
             const updatedObj = {
                 id: pid,
