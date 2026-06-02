@@ -1148,56 +1148,71 @@ const downloadChartImage = (chartId, title, subtitle) => {
         if (unsubscribeAnnouncements) { unsubscribeAnnouncements(); unsubscribeAnnouncements = null; }
         
         if(typeof cleanupUserView === 'function') cleanupUserView();
-        currentUser = user;
+        
+        // ==========================================
+        // 🟢 NAYA LOGIC: Admin Impersonation Setup
+        // ==========================================
+        let activeUserId = user ? user.uid : null;
+        currentUser = user; 
 
         if (user) {
             try {
+                // Check karein kya Admin kisi aur ka dashboard dekh raha hai?
+                const impersonateId = sessionStorage.getItem('impersonateUserId');
+                
                 if (user.uid === ADMIN_UID) {
-                    showLoader(false);
-                    if (!window.location.pathname.includes('admin.html')) {
-                        window.location.href = 'admin.html';
+                    if (impersonateId) {
+                        activeUserId = impersonateId; // Admin ki jagah us user ki ID laga di
+                        // Code ko trick karne ke liye currentUser ko overwrite kar diya
+                        currentUser = { uid: activeUserId, email: user.email }; 
+                        showImpersonationBanner(); // Upar warning patti dikhayen
+                    } else {
+                        // Agar admin waise hi index.html par aa gaya hai toh usay admin panel par wapas bhej dein
+                        showLoader(false);
+                        if (!window.location.pathname.includes('admin.html')) {
+                            window.location.href = 'admin.html';
+                        }
+                        return;
                     }
-                    return;
                 }
 
-                const userDocRef = doc(db, 'users', user.uid);
+                // Ab user.uid ki jagah activeUserId se data aayega!
+                const userDocRef = doc(db, 'users', activeUserId);
                 const userDocSnap = await getDoc(userDocRef);
 
-                // index.html mein auth state check ke andar
-if (userDocSnap.exists()) {
-    userProfileData = userDocSnap.data();
-    const role = userProfileData.role || 'standard';
+                if (userDocSnap.exists()) {
+                    userProfileData = userDocSnap.data();
+                    const role = userProfileData.role || 'standard';
 
-    // 1. Target Page Decide Karein
-    let targetPage = '';
-    if (role === 'education_office') {
-        targetPage = 'academic-admin.html';
-    } else if (role === 'inspector' || role === 'Academic Inspector') {
-        targetPage = 'academic-inspector.html';
-    } else if (role === 'tadrisi_course_management') {
-        targetPage = 'tadrisi_course_admin.html';
-    } else if (role === 'tadrisi_course_mufattish') {
-        targetPage = 'tadrisi_course_mufattish.html';
-    } else if (role === 'recording_mufattish') {
-        targetPage = 'recording-dashboard.html';
-    }
+                    // 1. Target Page Decide Karein
+                    let targetPage = '';
+                    if (role === 'education_office') {
+                        targetPage = 'academic-admin.html';
+                    } else if (role === 'inspector' || role === 'Academic Inspector') {
+                        targetPage = 'academic-inspector.html';
+                    } else if (role === 'tadrisi_course_management') {
+                        targetPage = 'tadrisi_course_admin.html';
+                    } else if (role === 'tadrisi_course_mufattish') {
+                        targetPage = 'tadrisi_course_mufattish.html';
+                    } else if (role === 'recording_mufattish') {
+                        targetPage = 'recording-dashboard.html';
+                    }
 
-    // 2. 🟢 REDIRECT EXECUTE (Dhyan dein: ye return hona chahiye)
-    if (targetPage && !window.location.pathname.includes(targetPage)) {
-        console.log("Redirecting to:", targetPage);
-        showLoader(false);
-        window.location.href = targetPage;
-        return; // Isse aage ka code nahi chalega
-    }
+                    if (targetPage && !window.location.pathname.includes(targetPage)) {
+                        console.log("Redirecting to:", targetPage);
+                        showLoader(false);
+                        window.location.href = targetPage;
+                        return; 
+                    }
 
-    // 3. Agar koi redirect nahi hai, tabhi niche ka Standard User code chale
-    const jaizaBtn = document.getElementById('btn-jaiza-link');
-    const teacherBtn = document.getElementById('btn-teacher-link');
-    if(jaizaBtn) jaizaBtn.href = "jaiza-form.html";
-    if(teacherBtn) teacherBtn.href = "teacher-form.html";
-    
-    if(typeof initUserView === 'function') initUserView(user);
-}
+                    const jaizaBtn = document.getElementById('btn-jaiza-link');
+                    const teacherBtn = document.getElementById('btn-teacher-link');
+                    if(jaizaBtn) jaizaBtn.href = "jaiza-form.html";
+                    if(teacherBtn) teacherBtn.href = "teacher-form.html";
+                    
+                    // 🟢 FIX: Yahan normal 'user' ki jagah humne spoof kiya hua 'currentUser' pass kiya hai
+                    if(typeof initUserView === 'function') initUserView(currentUser);
+                }
             } catch (err) {
                 console.error("Init Error:", err);
             }
@@ -4369,6 +4384,26 @@ auth.onAuthStateChanged(user => {
         listenForUserTasks(user.uid);
     }
 });
+        // =======================================================
+        // 🟢 NAYA FUNCTION: Admin Impersonation Banner & Exit
+        // =======================================================
+        function showImpersonationBanner() {
+            const banner = document.createElement('div');
+            banner.className = "fixed top-0 left-0 w-full bg-yellow-500 text-black text-center py-2 z-[100] font-bold shadow-md text-sm flex justify-center items-center gap-4";
+            banner.innerHTML = `
+                <span><i class="fas fa-user-secret mr-2"></i> Admin Mode: Aap is waqt ek Zimmedar ka Dashboard dekh rahe hain.</span>
+                <button onclick="exitAdminMode()" class="bg-gray-900 hover:bg-black text-white px-4 py-1 rounded-lg text-xs transition">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Wapas Admin Panel
+                </button>
+            `;
+            document.body.prepend(banner);
+        }
+
+        window.exitAdminMode = () => {
+            sessionStorage.removeItem('impersonateUserId'); // Session clear kar diya
+            window.location.href = 'admin.html'; // Wapas admin panel par bhej diya
+        };
+        
         // --- Init ---
         initApp();
     </script>
