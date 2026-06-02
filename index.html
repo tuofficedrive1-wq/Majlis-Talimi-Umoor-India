@@ -2176,6 +2176,12 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
               placeholder="Majmui %"
               class="jaiza-percentage w-full sm:flex-1 p-2 border rounded-lg"
             >
+            <!-- Naya Wazahat ka input box jo shuru me hidden rahega -->
+            <input
+              type="text"
+              placeholder="Nahi hua ki wazahat"
+              class="jaiza-wazahat hidden w-full sm:flex-1 p-2 border rounded-lg urdu-font bg-red-50"
+            >
             <button
               type="button"
               class="open-jaiza-form-btn px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm"
@@ -2190,11 +2196,13 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
     `).join('');
 
     // Type ke hisab se date / percentage enable/disable
+    // Type ke hisab se date / percentage / wazahat enable/disable
     jaizaFormContainer.querySelectorAll('.jaiza-type').forEach(selectElement => {
       selectElement.addEventListener('change', (e) => {
         const row = e.target.closest('.jaiza-row');
         const dateInput = row.querySelector('.jaiza-date');
         const percentageInput = row.querySelector('.jaiza-percentage');
+        const wazahatInput = row.querySelector('.jaiza-wazahat'); // Naya field get kiya
         const selectedValue = e.target.value;
 
         const isNahiHua = (selectedValue === 'Nahi Hua');
@@ -2206,7 +2214,14 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
         if (isNahiHua) {
           dateInput.value = '';
           percentageInput.value = '';
+          percentageInput.classList.add('hidden'); // % ka box chhupayen
+          wazahatInput.classList.remove('hidden'); // wazahat ka box dikhayen
+        } else {
+          percentageInput.classList.remove('hidden'); // % ka box wapas layen
+          wazahatInput.classList.add('hidden'); // wazahat ka box chhupayen
+          wazahatInput.value = ''; // clear kar dein
         }
+        
         if (isVisit) {
           percentageInput.value = '';
         }
@@ -2275,7 +2290,10 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
     <tr>
       <td class="px-6 py-4 urdu-font">${item.name}</td>
       <td class="px-6 py-4">${item.date || '-'}</td>
-      <td class="px-6 py-4">${item.type}</td>
+      <td class="px-6 py-4">
+    ${item.type}
+    ${item.type === 'Nahi Hua' && item.wazahat ? `<br><span class="text-xs text-red-500 urdu-font">Wazahat: ${item.wazahat}</span>` : ''}
+</td>
       <td class="px-6 py-4">${item.percentage || '-'}</td>
       <td class="px-6 py-4">
         <button
@@ -3173,17 +3191,17 @@ const handleJaizaSubmit = async (e) => {
     e.preventDefault();
 
     const filledJaizaat = [];
-    let validationFailed = false;
-    let targetDateInput = null; // Target month track karne ke liye
+    let validationFailed = false; // Check karne ke liye flag
+    let targetDateInput = null; 
 
     document.querySelectorAll('#jaiza-list-container .jaiza-row').forEach(row => {
         const name = row.querySelector('.font-semibold').textContent.trim();
         const typeSelect = row.querySelector('.jaiza-type');
         const dateInput = row.querySelector('.jaiza-date');
         const percentageInput = row.querySelector('.jaiza-percentage');
+        const wazahatInput = row.querySelector('.jaiza-wazahat'); // Wazahat input catch kiya
         const selectedType = typeSelect.value;
 
-        // Logic to extract date and push to array
         if (selectedType === 'Visit' && dateInput.value) {
            if(!targetDateInput) targetDateInput = dateInput.value.substring(0, 7);
            filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '' });
@@ -3191,11 +3209,19 @@ const handleJaizaSubmit = async (e) => {
            if(!targetDateInput) targetDateInput = dateInput.value.substring(0, 7);
            filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageInput.value });
         } else if (selectedType === 'Nahi Hua') {
-             filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '' });
+           // Yahan WAZAHAT CHECK ho rahi hai
+           const wazahatVal = wazahatInput.value.trim();
+           if (!wazahatVal) {
+               validationFailed = true;
+               alert(`${name} ka Jaiza "Nahi Hua" select kiya gaya hai, isliye wazahat likhna zaroori hai!`);
+               return; // Is loop se exit
+           }
+           filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '', wazahat: wazahatVal });
         }
-        
-        // ... (Validation logic same rahega) ...
     });
+
+    // Agar kisi bhi jamia me wazahat missing hui to yahan se process ruk jayega aur save nahi hoga
+    if (validationFailed) return;
 
     if (filledJaizaat.length === 0) {
       showNotification("Kam se kam ek Jamia ki detail fill karke save karein.", true);
@@ -3204,8 +3230,6 @@ const handleJaizaSubmit = async (e) => {
 
     showLoader(true);
     try {
-      // CHANGE: targetDateInput pass kiya
-      // Agar 'Nahi Hua' select hai aur date nahi hai, to ye 'null' hoga aur dashboard ki date use karega
       await saveReportData({}, targetDateInput);
 
       const docSnap = await getDoc(reportRef);
@@ -3584,7 +3608,7 @@ const showReportModal = (report, isAdmin = false) => {
                             <tr class="text-sm">
                                 <td class="px-6 py-4 urdu-font">${item.name}</td>
                                 <td class="px-6 py-4">${item.date || '-'}</td>
-                                <td class="px-6 py-4">${item.type}</td>
+                                <td class="px-6 py-4">     ${item.type}     ${item.type === 'Nahi Hua' && item.wazahat ? `<br><span class="text-xs text-red-500 urdu-font">Wazahat: ${item.wazahat}</span>` : ''} </td>
                                 <td class="px-6 py-4">${item.percentage || '-'}</td>
                             </tr>`;
                         jaizaResultsBody.innerHTML += row;
