@@ -3540,48 +3540,42 @@ const renderDedicatedKkdSummary = (reports) => {
 
          // === KKD IMAGE DOWNLOAD (Unchanged) ===
          const handleKkdImageDownload = () => { /* ... (Logic for KKd Image download) ... */ };
-         
-         const fetchAndRenderAdminUsers = (initialLoad = false) => {
-              if(!adminUsersTbody) return;
-              // Reset to "Loading" state whenever fetch is called
-              adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading users...</td></tr>';
-             const usersRef = collection(db, 'users');
-             const q = query(usersRef); 
-             if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
-             
-             // Using onSnapshot for real-time updates
-             unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
-                  allUsersData = snapshot.docs
-                    .map(doc => ({ id: doc.id, ...doc.data() }))
-                    .filter(user => user.id !== ADMIN_UID);
+         // --- FIX 1: Auto-refresh aur Button loop ko rokna ---
+const fetchAndRenderAdminUsers = (initialLoad = false) => {
+    if(!adminUsersTbody) return;
+    adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Loading users...</td></tr>';
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef); 
+    if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
+    
+    unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
+        allUsersData = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(user => user.id !== ADMIN_UID);
 
-                 // 🔥 YE LINE ADD KAREIN: Taake JS file ise dekh sake
-                    window.allUsersData = allUsersData;
-                    
-                  renderAdminUsersTable(allUsersData);
-                  
-                  // NEW: Collect unique regions
-                  const regions = [...new Set(allUsersData.map(u => u.region).filter(r => r && r.trim() !== ''))];
+        window.allUsersData = allUsersData;
+        renderAdminUsersTable(allUsersData);
+        
+        const regions = [...new Set(allUsersData.map(u => u.region).filter(r => r && r.trim() !== ''))];
 
-                  // FIX 2: Populate Filters after fetching User Data
-                  populateUserFilterDropdown(summaryUserFilter, allUsersData);
-                  populateUserFilterDropdown(kkdSummaryUserFilter, allUsersData); 
-                  populateUserFilterDropdown(adminUserFilterSelect, allUsersData); 
-                  populateRegionFilterDropdown(adminRegionFilterSelect, regions); // Populate Region Filter
-                  
-                   // Initial Reports fetch user data aane ke baad hi karein
-                  if (initialLoad) {
-                       fetchAndRenderAdminReports(); 
-                  }
-                  showLoader(false); // Data aate hi loader hide karein
-             }, (error) => {
-                 console.error("Error fetching users for admin:", error);
-                 // Render error state on table body
-                 adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Error loading users.</td></tr>';
-                 adminReportsSummaryContainer.innerHTML = '<p class="text-center py-4 text-red-500 col-span-full">Error loading user data needed for reports.</p>'; // Updated element
-                 showLoader(false); // Error par bhi loader hide karein
-             });
-         };
+        populateUserFilterDropdown(summaryUserFilter, allUsersData);
+        populateUserFilterDropdown(kkdSummaryUserFilter, allUsersData); 
+        populateUserFilterDropdown(adminUserFilterSelect, allUsersData); 
+        populateRegionFilterDropdown(adminRegionFilterSelect, regions); 
+        
+        if (initialLoad) {
+            fetchAndRenderAdminReports(); 
+            // 🟢 NAYA FIX: Isko false kar diya taake page baar baar auto-refresh na ho
+            initialLoad = false; 
+        }
+        showLoader(false); 
+    }, (error) => {
+        console.error("Error fetching users for admin:", error);
+        adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">Error loading users.</td></tr>';
+        if (adminReportsSummaryContainer) adminReportsSummaryContainer.innerHTML = '<p class="text-center py-4 text-red-500 col-span-full">Error loading user data needed for reports.</p>'; 
+        showLoader(false); 
+    });
+};    
          
          // --- 1. User Dropdown Fix ---
 // --- 1. User Dropdown Fix ---
@@ -4377,19 +4371,32 @@ const renderFullUserAnalysis = (user, userReports) => {
             const uniqueSubmitted = new Set(kkdDataForJamia.map(k => k.teacherId)).size;
             
             // Is jamia ka Jaiza kaisa raha?
+            // Is jamia ka Jaiza kaisa raha?
             const jaizaEntry = (report?.jaizaReport?.data || []).find(j => (j.name || j.jamiaName) === jName);
             let jaizaStatus = '<span class="text-red-500 font-bold text-xs"><i class="fas fa-times-circle"></i> Pending</span>';
+            
             if (jaizaEntry) {
-                if (jaizaEntry.percentage > 0 || jaizaEntry.status === 'Done') jaizaStatus = `<span class="text-green-600 font-bold text-xs"><i class="fas fa-check-circle"></i> Done (${jaizaEntry.percentage}%)</span>`;
-                else if (jaizaEntry.type?.includes('nahi hua')) jaizaStatus = '<span class="text-red-500 font-bold text-xs">Nahi Hua</span>';
-                else jaizaStatus = '<span class="text-blue-600 font-bold text-xs"><i class="fas fa-walking"></i> Visit Only</span>';
+                // 🟢 FIX 2: Case-sensitivity hatane ke liye toLowerCase() add kiya
+                const jaizaType = (jaizaEntry.type || '').toLowerCase();
+                const jaizaStat = (jaizaEntry.status || '').toLowerCase();
+                
+                if (jaizaEntry.percentage > 0 || jaizaStat === 'done') {
+                    jaizaStatus = `<span class="text-green-600 font-bold text-xs"><i class="fas fa-check-circle"></i> Done (${parseFloat(jaizaEntry.percentage)}%)</span>`;
+                } 
+                else if (jaizaType.includes('nahi hua') || jaizaStat.includes('nahi hua')) {
+                    jaizaStatus = '<span class="text-red-500 font-bold text-xs"><i class="fas fa-times-circle"></i> Nahi Hua</span>';
+                } 
+                else {
+                    jaizaStatus = '<span class="text-blue-600 font-bold text-xs"><i class="fas fa-walking"></i> Visit Only</span>';
+                }
             }
 
             // Is jamia ka Test result kaisa raha?
             const testEntry = (report?.monthlyTest?.data || []).find(t => (t.name || t.jamiaName) === jName);
             let testStatus = '<span class="text-gray-400">-</span>';
             if (testEntry) {
-                testStatus = `<span class="${parseFloat(testEntry.percentage) >= 40 ? 'text-green-600' : 'text-red-600'} font-bold text-xs">${testEntry.percentage}%</span>`;
+                // 🟢 FIX 3: Double %% hatane ke liye parseFloat lagaya taake pehle se mojood % hat jaye
+                testStatus = `<span class="${parseFloat(testEntry.percentage) >= 40 ? 'text-green-600' : 'text-red-600'} font-bold text-xs">${parseFloat(testEntry.percentage)}%</span>`;
             }
 
             // Table Row
