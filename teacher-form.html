@@ -470,95 +470,137 @@
     }
 
     async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
-    try {
-        // 🔹 previous month calculate
-        let pm = currentMonth - 1;
-        let py = currentYear;
-        if (pm < 0) {
-            pm = 11;
-            py -= 1;
-        }
+        try {
+            // 🔹 previous month calculate
+            let pm = currentMonth - 1;
+            let py = currentYear;
+            if (pm < 0) {
+                pm = 11;
+                py -= 1;
+            }
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const activeYear = urlParams.get('activeYear');
-        const userId     = urlParams.get('userId');
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeYear = urlParams.get('activeYear');
+            const userId     = urlParams.get('userId');
 
-        const submissionsRef = db.collection('teacher_submissions');
+            const submissionsRef = db.collection('teacher_submissions');
 
-        // 🔹 STEP 1: teacher submissions check
-        const snap = await submissionsRef
-            .where('jamiaId', '==', jamiaName)
-            .where('teacherId', '==', teacherId)
-            .where('submissionMonth', '==', pm)
-            .where('submissionYear', '==', py)
-            .get();
+            // 🔹 STEP 1: Fetch all submissions for previous month (Teacher + Admin dono ka data)
+            const snap = await submissionsRef
+                .where('jamiaId', '==', jamiaName)
+                .where('teacherId', '==', teacherId)
+                .where('submissionMonth', '==', pm)
+                .where('submissionYear', '==', py)
+                .get();
 
-        let periodData = {};
+            let periodData = {};
+            let adminUpdates = [];
 
-        if (!snap.empty) {
-            // ✅ CASE A: teacher data mila
-            snap.forEach(doc => {
-                const d = doc.data();
-                if (!d.periodId) return;
+            if (!snap.empty) {
+                // ✅ CASE A: Teacher ya Admin ka data mila
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    
+                    // Agar admin ka update hai to list me alag se save kar lo
+                    if (d.role === 'user_update') {
+                        adminUpdates.push(d);
+                    } 
+                    // Agar teacher ka original data hai to pehle use load karo
+                    else if (d.periodId) {
+                        if (!periodData[d.periodId]) {
+                            periodData[d.periodId] = {
+                                pages: 0,
+                                lastIbarat: d.lastIbarat || '-',
+                                lastPageNo: d.lastPageNo || '-'
+                            };
+                        }
+                        periodData[d.periodId].pages += parseInt(d.pagesTaught || 0, 10);
+                        
+                        if (d.lastIbarat) periodData[d.periodId].lastIbarat = d.lastIbarat;
+                        if (d.lastPageNo) periodData[d.periodId].lastPageNo = d.lastPageNo;
+                    }
+                });
 
-                if (!periodData[d.periodId]) {
-                    periodData[d.periodId] = {
-                        pages: 0,
-                        lastIbarat: d.lastIbarat || '-',
-                        lastPageNo: d.lastPageNo || '-'
-                    };
+                // ✅ STEP 2: Admin ke updates ko Teacher ke data par Override karo
+                if (adminUpdates.length > 0) {
+                    // Sort by time (purane se naya) taake sabse aakhri (latest) update apply ho
+                    adminUpdates.sort((a, b) => {
+                        const ta = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0;
+                        const tb = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0;
+                        return ta - tb;
+                    });
+
+                    adminUpdates.forEach(updateDoc => {
+                        if (Array.isArray(updateDoc.changedValues)) {
+                            updateDoc.changedValues.forEach(cv => {
+                                const pid = cv.periodId;
+                                if (!pid) return;
+
+                                if (!periodData[pid]) {
+                                    periodData[pid] = { pages: 0, lastIbarat: '-', lastPageNo: '-' };
+                                }
+                                
+                                // Sirf wahi values update karo jo Admin ne badli hain
+                                if (cv.pagesTaught !== undefined && cv.pagesTaught !== null) {
+                                    periodData[pid].pages = parseInt(cv.pagesTaught, 10); // Direct replace
+                                }
+                                if (cv.lastIbarat !== undefined && cv.lastIbarat !== null) {
+                                    periodData[pid].lastIbarat = cv.lastIbarat;
+                                }
+                                if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) {
+                                    periodData[pid].lastPageNo = cv.lastPageNo;
+                                }
+                            });
+                        }
+                    });
                 }
-                periodData[d.periodId].pages += parseInt(d.pagesTaught || 0, 10);
+            } else {
+                // ❗ CASE B: admin fallback (Agar submissions collection me kuch na mile)
+                const userRef = db.collection('users').doc(userId);
+                const userSnap = await userRef.get();
+                if (!userSnap.exists) return;
+
+                const yearData = userSnap.data().academicYears?.[activeYear];
+                if (!yearData) return;
+
+                const jamia = yearData.karkardagiStructure?.find(j => j.jamiaName === jamiaName);
+                if (!jamia) return;
+
+                const teacher = jamia.teachers?.find(t => t.id === teacherId);
+                if (!teacher || !Array.isArray(teacher.periods)) return;
+
+                teacher.periods.forEach(p => {
+                    if (!Array.isArray(p.monthlyData)) return;
+
+                    const m = p.monthlyData.find(x => x.monthIndex === pm);
+                    if (!m) return;
+
+                    periodData[p.id] = {
+                        pages: parseInt(m.pagesTaught || 0, 10),
+                        lastIbarat: m.lastIbarat || '-',
+                        lastPageNo: m.lastPageNo || '-'
+                    };
+                });
+            }
+
+            // 🔹 FINAL RENDER (Blue Box Me Data Dikhana)
+            Object.keys(periodData).forEach(pid => {
+                const box = document.getElementById(`prev-record-${pid}`);
+                if (!box) return;
+
+                const d = periodData[pid];
+                box.querySelector('.content').innerHTML = `
+                    <div>پڑھائے گئے صفحات: <b style="color: #1d4ed8;">${d.pages}</b></div>
+                    <div>آخری عبارت: <span class="urdu-font">${d.lastIbarat}</span></div>
+                    <div>صفحہ نمبر: <span>${d.lastPageNo}</span></div>
+                `;
+                box.classList.remove('hidden');
             });
-        } else {
-            // ❗ CASE B: teacher data nahi mila → ADMIN karkardagi uthao
-            const userRef = db.collection('users').doc(userId);
-            const userSnap = await userRef.get();
-            if (!userSnap.exists) return;
 
-            const yearData = userSnap.data().academicYears?.[activeYear];
-            if (!yearData) return;
-
-            const jamia = yearData.karkardagiStructure
-                ?.find(j => j.jamiaName === jamiaName);
-            if (!jamia) return;
-
-            const teacher = jamia.teachers
-                ?.find(t => t.id === teacherId);
-            if (!teacher || !Array.isArray(teacher.periods)) return;
-
-            teacher.periods.forEach(p => {
-                if (!Array.isArray(p.monthlyData)) return;
-
-                const m = p.monthlyData.find(x => x.monthIndex === pm);
-                if (!m) return;
-
-                periodData[p.id] = {
-                    pages: parseInt(m.pagesTaught || 0, 10),
-                    lastIbarat: m.lastIbarat || '-',
-                    lastPageNo: m.lastPageNo || '-'
-                };
-            });
+        } catch (e) {
+            console.error('Previous record load error:', e);
         }
-
-        // 🔹 FINAL RENDER (blue box)
-        Object.keys(periodData).forEach(pid => {
-            const box = document.getElementById(`prev-record-${pid}`);
-            if (!box) return;
-
-            const d = periodData[pid];
-            box.querySelector('.content').innerHTML = `
-                <div>پڑھائے گئے صفحات: <b>${d.pages}</b></div>
-                <div>آخری عبارت: ${d.lastIbarat}</div>
-                <div>صفحہ نمبر: ${d.lastPageNo}</div>
-            `;
-            box.classList.remove('hidden');
-        });
-
-    } catch (e) {
-        console.error('Previous record load error:', e);
-    }
-}  
+    }  
 // ----------------- REDESIGNED & FILTERED UPDATE FUNCTION (FIXED) -----------------
 async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
     try {
