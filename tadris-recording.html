@@ -428,17 +428,45 @@
     window.KARKARDAGI_STRUCTURE = [];
 
     // ============================
+    // ============================
     // 4. AUTH & INITIALIZATION
     // ============================
+    const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
+    
+    window.exitAdminMode = () => {
+        sessionStorage.removeItem('impersonateUserId');
+        window.location.href = 'admin.html';
+    };
+
+    function showImpersonationBanner() {
+        if (document.getElementById('admin-banner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'admin-banner';
+        banner.className = "fixed top-0 left-0 w-full bg-yellow-500 text-black text-center py-2 z-[100] font-bold shadow-md text-sm flex justify-center items-center gap-4";
+        banner.innerHTML = `<span><i class="fas fa-user-secret mr-2"></i> Admin Mode: Aap Zimmedar ka page dekh rahe hain.</span><button onclick="exitAdminMode()" class="bg-gray-900 text-white px-3 py-1 rounded-lg text-xs">Wapas Admin Panel</button>`;
+        document.body.prepend(banner);
+    }
+
     onAuthStateChanged(auth, async (user) => {
       showLoader(true);
       if (!user) {
         window.location.href = "index.html";
         return;
       }
-      currentUser = user;
+      
+      // 🟢 NAYA LOGIC: Admin Check
+      let activeUserId = user.uid;
+      const impersonateId = sessionStorage.getItem('impersonateUserId');
+      if (user.uid === ADMIN_UID && impersonateId) {
+          activeUserId = impersonateId;
+          showImpersonationBanner();
+      }
+      
+      // System ko trick kar diya naye user se
+      currentUser = { uid: activeUserId, email: user.email }; 
+
       try {
-        const userDocRef = doc(db, "users", user.uid);
+        const userDocRef = doc(db, "users", activeUserId);
         const snap = await getDoc(userDocRef);
         if (snap.exists()) {
           userProfileData = snap.data();
@@ -452,7 +480,7 @@
         updateMonthLabel();
 
         const reportsRef = collection(db, "monthly_reports");
-        const qReports = query(reportsRef, where("userId", "==", user.uid));
+        const qReports = query(reportsRef, where("userId", "==", activeUserId));
         onSnapshot(qReports, (snapshot) => {
             allReports = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
             renderForCurrentMonth();
