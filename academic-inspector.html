@@ -201,31 +201,50 @@
 </div>
                 <div id="tab-recording" class="tab-content hidden p-20 text-center text-slate-400">Recording form coming soon...</div>
                 <div id="tab-test" class="tab-content hidden p-6">
-    <div class="flex justify-between items-center mb-6">
-        <h3 class="text-lg font-bold text-slate-800">Monthly Test Summary (Eng & Math)</h3>
-        <button onclick="window.loadInspectorTestSummary()" class="text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center gap-2">
-            <i class="fas fa-sync-alt"></i> Refresh Data
-        </button>
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <div>
+                <h3 class="text-xl font-bold text-slate-800">Jamiaat Wise Asri Result Dashboard</h3>
+                <p class="text-xs text-slate-500 mt-1">English aur Maths ke imtihanat ka kul khulasa</p>
+            </div>
+            <button onclick="window.loadInspectorTestSummary()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition whitespace-nowrap">
+                <i class="fas fa-sync-alt"></i> Refresh Dashboard
+            </button>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="w-full text-center border-collapse">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-700 text-sm font-semibold border-b border-slate-100">
+                        <th class="p-4 text-left">Jamia Name</th>
+                        <th class="p-4">Total Classes</th>
+                        <th class="p-4">Total Students</th>
+                        <th class="p-4">Overall Asri %</th>
+                        <th class="p-4">Overall Grade</th>
+                        <th class="p-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inspector-test-summary-body" class="text-sm text-slate-600 divide-y divide-slate-100">
+                    <tr><td colspan="6" class="p-8 text-slate-400 font-medium">Barahe karam Month select karke Refresh Dashboard par click karein...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
-    
-    <div class="overflow-x-auto bg-white rounded-3xl shadow-sm border border-slate-200">
-        <table class="w-full text-center border-collapse">
-            <thead>
-                <tr class="bg-indigo-50 text-indigo-900 text-sm font-bold border-b border-indigo-100">
-                    <th class="p-4 text-left">Jamia</th>
-                    <th class="p-4 text-left">Class</th>
-                    <th class="p-4">Total</th>
-                    <th class="p-4">Present (Asri)</th>
-                    <th class="p-4">Pass</th>
-                    <th class="p-4">Fail</th>
-                    <th class="p-4">Percent</th>
-                    <th class="p-4">Grade</th>
-                </tr>
-            </thead>
-            <tbody id="inspector-test-summary-body" class="text-sm text-slate-700">
-                <tr><td colspan="8" class="p-8 text-slate-400 font-medium">Click on Tab or Refresh to load data...</td></tr>
-            </tbody>
-        </table>
+
+    <div id="asri-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[99] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div>
+                    <h4 id="asri-modal-title" class="text-lg font-bold text-slate-800">Jamia Result Details</h4>
+                    <p id="asri-modal-subtitle" class="text-xs text-slate-500 mt-0.5"></p>
+                </div>
+                <button onclick="window.closeAsriModal()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+            <div id="asri-modal-body" class="p-6 overflow-y-auto max-h-[calc(85vh-140px)] bg-slate-50/30">
+                </div>
+        </div>
     </div>
 </div>
                 <div id="tab-enroll" class="tab-content hidden p-20 text-center text-slate-400">Enrollment form coming soon...</div>
@@ -797,21 +816,22 @@ async function loadInspectionSummary() {
         container.innerHTML = `<p class="text-red-500">Summary load nahi ho saki. Check if 'inspection-summary-view.html' exists.</p>`;
     }
 }
-        window.loadInspectorTestSummary = async () => {
+        // Data ko temporary save rakhne ke liye global object taaki modal click par refetching na ho
+window.currentInspectorTestData = {};
+
+window.loadInspectorTestSummary = async () => {
     const tbody = document.getElementById('inspector-test-summary-body');
     const monthInput = document.getElementById('report-month').value;
     
     if (!monthInput || !assignedJamiaat || assignedJamiaat.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-slate-400">No Jamia assigned or month not selected.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-slate-400 text-center">No Jamia assigned or month not selected.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i> Linked Jamiaat Se Data Load ho raha hai...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-indigo-500 font-bold text-center"><i class="fas fa-spinner fa-spin mr-2"></i> Linked Jamiaat ka data calculate ho raha hai...</td></tr>';
 
-    let rowsHTML = "";
-    
     try {
-        // 1. Logged-in Inspector ka document fetch karke Admin ki banayi hui mapping (links) nikalna
+        // 1. Logged-in Inspector ki mapping (links) nikalna
         const inspectorUid = auth.currentUser ? auth.currentUser.uid : null;
         let jamiaatMapping = {};
         
@@ -822,122 +842,267 @@ async function loadInspectionSummary() {
             }
         }
 
-        // 2. Is mahine (month) ki saari test sheets ek baar mein mangwayein
-        const q = query(
-            collection(db, "monthly_test_sheets"), 
-            where("month", "==", monthInput)
-        );
-        
+        // 2. Is mahine ka saara test data ek sath uthana
+        const q = query(collection(db, "monthly_test_sheets"), where("month", "==", monthInput));
         const querySnapshot = await getDocs(q);
         const allSheets = [];
         querySnapshot.forEach(doc => allSheets.push(doc.data()));
 
-        // Naamo ko compare karne ke liye safai function (Spaces aur case ignore karne ke liye)
         const normalizeName = (name) => (name || "").trim().toLowerCase();
+        window.currentInspectorTestData = {};
+        let rowsHTML = "";
 
-        // 3. Inspector ke apne assigned Jamiaat par loop chalayein
+        // 3. Assigned Jamiaat par loop chala kar data group karna
         for (let jamia of assignedJamiaat) {
-            
-            // SMART LINKING CHECK: 
-            // Agar Admin ne is Jamia ko kisi Standard Jamia se joda hai (e.g. Nagpur -> Mumbai) 
-            // toh code background mein "Mumbai" ka data dhoondega, warna original naam hi use karega.
             const sourceStandardJamia = jamiaatMapping[jamia] || jamia;
             const normSourceJamia = normalizeName(sourceStandardJamia);
             
-            // Background sheets se matched data nikalna
+            // Filter sheets that match the linked standard jamia name
             const jamiaSheets = allSheets.filter(sheet => normalizeName(sheet.jamiaName) === normSourceJamia);
             
             if (jamiaSheets.length === 0) {
                 rowsHTML += `
                 <tr class="border-b border-slate-100">
-                    <td class="p-4 font-bold text-slate-700 text-left">${jamia}</td>
-                    <td colspan="7" class="p-4 text-slate-400 italic text-center">Is mahine ka test data submit nahi hua</td>
+                    <td class="p-4 font-bold text-slate-800 text-left">${jamia}</td>
+                    <td colspan="5" class="p-4 text-slate-400 italic text-center">Is mahine ka koi test data submit nahi hua</td>
                 </tr>`;
                 continue;
             }
 
-            // Agar data mil jaye toh English & Math (Asri) numbers calculate karein
-            jamiaSheets.forEach((data) => {
-                const className = data.class || "Unknown";
-                const students = data.students || [];
-                
-                if (students.length === 0) return;
+            // Global mapping data store karein taaki buttons kaam kar saken
+            window.currentInspectorTestData[jamia] = jamiaSheets;
 
-                let aTotal = students.length; 
-                let aPresent = 0; 
-                let aPass = 0; 
-                let aFail = 0;
-                let hasAsriSubjects = false;
+            // Jamiaat level par grand aggregates nikalein (Combined English & Maths)
+            let totalStudentsCount = 0;
+            let grandPresent = 0;
+            let grandPass = 0;
+            let grandFail = 0;
+
+            jamiaSheets.forEach(sheet => {
+                const students = sheet.students || [];
+                totalStudentsCount += students.length;
 
                 students.forEach(std => {
                     let engMark = std.marks['English'];
                     let mathMark = std.marks['Maths'];
                     
                     if (engMark !== undefined || mathMark !== undefined) {
-                        hasAsriSubjects = true;
-                        
-                        let asriFullAbsent = false;
-                        if (engMark === 'A' && mathMark === 'A') {
-                            asriFullAbsent = true;
-                        } else if (engMark === 'A' && mathMark === undefined) {
-                            asriFullAbsent = true;
-                        } else if (mathMark === 'A' && engMark === undefined) {
-                            asriFullAbsent = true;
-                        }
+                        let asriFullAbsent = (engMark === 'A' && mathMark === 'A') || 
+                                             (engMark === 'A' && mathMark === undefined) || 
+                                             (mathMark === 'A' && engMark === undefined);
 
                         if (!asriFullAbsent) {
-                            aPresent++;
-                            let isFailAsri = false;
+                            grandPresent++;
+                            let isFail = false;
+                            if (engMark === 'A' || mathMark === 'A') isFail = true;
+                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFail = true;
+                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFail = true;
                             
-                            // Passing marks rule check (40%)
-                            if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
-                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
-                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
-                            
-                            if (isFailAsri) aFail++; else aPass++;
+                            if (isFail) grandFail++; else grandPass++;
                         }
                     }
                 });
-
-                if (hasAsriSubjects) {
-                    let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
-                    
-                    let grade = "Kamzoor";
-                    let badgeClass = "bg-red-50 text-red-600 border border-red-200";
-                    const p = parseFloat(aPerc);
-                    if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-200"; }
-                    else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border border-teal-200"; }
-                    else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border border-blue-200"; }
-                    else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-200"; }
-                    else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border border-orange-200"; }
-
-                    // UI DISPLAY NOTE: Table row mein hum Inspector ka apna assigned naam hi dikhayenge (e.g. Nagpur) 
-                    // taake Inspector confuse na ho, jabki data pichhe se linked jamia (e.g. Mumbai) ka chal raha hoga!
-                    rowsHTML += `
-                    <tr class="border-b border-slate-100 hover:bg-indigo-50/30 transition-colors">
-                        <td class="p-4 font-bold text-slate-800 text-left">${jamia}</td>
-                        <td class="p-4 font-medium text-slate-600 text-left">${className}</td>
-                        <td class="p-4 font-medium text-slate-600">${aTotal}</td>
-                        <td class="p-4 font-medium text-slate-600">${aPresent}</td>
-                        <td class="p-4 font-black text-emerald-600">${aPass}</td>
-                        <td class="p-4 font-black text-red-600">${aFail}</td>
-                        <td class="p-4 font-bold text-slate-700">${aPerc}%</td>
-                        <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${grade}</span></td>
-                    </tr>`;
-                }
             });
+
+            let overallPerc = grandPresent > 0 ? ((grandPass / grandPresent) * 100).toFixed(1) : "0.0";
+            
+            let grade = "Kamzoor";
+            let badgeClass = "bg-red-50 text-red-600 border border-red-100";
+            const p = parseFloat(overallPerc);
+            if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-100"; }
+            else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border border-teal-100"; }
+            else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border border-blue-100"; }
+            else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-100"; }
+            else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border border-orange-100"; }
+
+            rowsHTML += `
+            <tr class="hover:bg-slate-50/80 transition-colors border-b border-slate-100">
+                <td class="p-4 font-bold text-slate-800 text-left">${jamia}</td>
+                <td class="p-4 font-medium text-slate-600">${jamiaSheets.length} Classes</td>
+                <td class="p-4 font-medium text-slate-600">${totalStudentsCount} Students</td>
+                <td class="p-4 font-bold text-indigo-600 text-base">${overallPerc}%</td>
+                <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${grade}</span></td>
+                <td class="p-4 flex justify-center gap-2">
+                    <button onclick="window.openJamiaStudentResults('${jamia}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-sm transition flex items-center gap-1">
+                        <i class="fas fa-user-grad"></i> View Result
+                    </button>
+                    <button onclick="window.openJamiaSummaryReport('${jamia}')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 transition flex items-center gap-1">
+                        <i class="fas fa-chart-pie"></i> Summary
+                    </button>
+                </td>
+            </tr>`;
         }
-        
-        if(rowsHTML === "") {
-            tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-slate-500 text-center">Asri subjects ka data kisi class mein nahi mila.</td></tr>';
-        } else {
-            tbody.innerHTML = rowsHTML;
-        }
+
+        tbody.innerHTML = rowsHTML || '<tr><td colspan="6" class="p-8 text-slate-400 text-center">Koi data maujood nahi hai.</td></tr>';
 
     } catch (error) {
-        console.error("Error loading test summary:", error);
-        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-red-500 font-bold text-center">Data fetch karne mein masla aaya, dobara koshish karein.</td></tr>';
+        console.error("Dashboard calculation error:", error);
+        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-red-500 font-bold text-center">Data processing mein masla aaya hai.</td></tr>';
     }
+};
+
+// --- ACTION 1: View Result Modal Handler (Har class ke har student ka Eng/Math result) ---
+window.openJamiaStudentResults = (jamiaName) => {
+    const sheets = window.currentInspectorTestData[jamiaName];
+    if (!sheets) return;
+
+    document.getElementById('asri-modal-title').textContent = `${jamiaName} - Student Results`;
+    document.getElementById('asri-modal-subtitle').textContent = "Sirf English aur Maths ke numbers ka darja-war (class-wise) mukammal khulasa";
+
+    let modalBodyHTML = `<div class="space-y-6">`;
+
+    sheets.forEach(sheet => {
+        const className = sheet.class || "Unknown Class";
+        const students = sheet.students || [];
+
+        modalBodyHTML += `
+        <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+            <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
+                <span class="urdu-font">Darjah / Class: ${className}</span>
+                <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md font-semibold">Total: ${students.length} Students</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-center border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50 text-slate-500 text-xs font-semibold border-b border-slate-200">
+                            <th class="p-3 text-left">Student Name</th>
+                            <th class="p-3">English (Max: 25)</th>
+                            <th class="p-3">Maths (Max: 25)</th>
+                            <th class="p-3">Total Obtained</th>
+                            <th class="p-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-xs divide-y divide-slate-100 text-slate-600">`;
+
+        students.forEach((std, index) => {
+            let eng = std.marks['English'];
+            let math = std.marks['Maths'];
+
+            let engDisp = eng === undefined ? '-' : (eng === 'A' ? '<span class="text-red-500 font-bold">A</span>' : eng);
+            let mathDisp = math === undefined ? '-' : (math === 'A' ? '<span class="text-red-500 font-bold">A</span>' : math);
+
+            let isAbsent = (eng === 'A' && math === 'A') || (eng === 'A' && math === undefined) || (math === 'A' && eng === undefined);
+            let statusBadge = '<span class="text-emerald-600 font-bold">Pass</span>';
+            let totalObt = 0;
+
+            if (isAbsent) {
+                statusBadge = '<span class="text-slate-400 italic">Absent</span>';
+                totalObt = '-';
+            } else {
+                let numEng = typeof eng === 'number' ? eng : 0;
+                let numMath = typeof math === 'number' ? math : 0;
+                totalObt = numEng + numMath;
+
+                let failed = false;
+                if (eng === 'A' || math === 'A') failed = true;
+                if (eng !== undefined && typeof eng === 'number' && eng < 10) failed = true;
+                if (math !== undefined && typeof math === 'number' && math < 10) failed = true;
+
+                if (failed) statusBadge = '<span class="text-red-500 font-bold">Fail</span>';
+            }
+
+            modalBodyHTML += `
+            <tr class="hover:bg-slate-50/40">
+                <td class="p-3 text-left font-medium text-slate-700">${std.name || `Student ${index+1}`}</td>
+                <td class="p-3 font-semibold">${engDisp}</td>
+                <td class="p-3 font-semibold">${mathDisp}</td>
+                <td class="p-3 font-bold text-slate-700">${totalObt}</td>
+                <td class="p-3">${statusBadge}</td>
+            </tr>`;
+        });
+
+        modalBodyHTML += `</tbody></table></div></div>`;
+    });
+
+    modalBodyHTML += `</div>`;
+    document.getElementById('asri-modal-body').innerHTML = modalBodyHTML;
+    document.getElementById('asri-modal').classList.remove('hidden');
+};
+
+// --- ACTION 2: Summary Modal Handler (Class-wise summary numbers calculation) ---
+window.openJamiaSummaryReport = (jamiaName) => {
+    const sheets = window.currentInspectorTestData[jamiaName];
+    if (!sheets) return;
+
+    document.getElementById('asri-modal-title').textContent = `${jamiaName} - Subjects Summary`;
+    document.getElementById('asri-modal-subtitle').textContent = "English aur Maths subject ki har darje (class) ki alag consolidated summary report";
+
+    let modalBodyHTML = `
+    <div class="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
+        <table class="w-full text-center border-collapse">
+            <thead>
+                <tr class="bg-slate-50 text-slate-700 text-sm font-semibold border-b border-slate-200">
+                    <th class="p-4 text-left">Class</th>
+                    <th class="p-4">Total Students</th>
+                    <th class="p-4">Present</th>
+                    <th class="p-4">Pass</th>
+                    <th class="p-4">Fail</th>
+                    <th class="p-4">Percentage</th>
+                    <th class="p-4">Grade</th>
+                </tr>
+            </thead>
+            <tbody class="text-sm divide-y divide-slate-100 text-slate-600">`;
+
+    sheets.forEach(sheet => {
+        const className = sheet.class || "Unknown";
+        const students = sheet.students || [];
+
+        let aTotal = students.length; 
+        let aPresent = 0; 
+        let aPass = 0; 
+        let aFail = 0;
+
+        students.forEach(std => {
+            let eng = std.marks['English'];
+            let math = std.marks['Maths'];
+            
+            if (eng !== undefined || math !== undefined) {
+                let asriFullAbsent = (eng === 'A' && math === 'A') || 
+                                     (eng === 'A' && math === undefined) || 
+                                     (math === 'A' && eng === undefined);
+
+                if (!asriFullAbsent) {
+                    aPresent++;
+                    let isFailAsri = false;
+                    if (eng === 'A' || math === 'A') isFailAsri = true;
+                    if (eng !== undefined && typeof eng === 'number' && eng < 10) isFailAsri = true;
+                    if (math !== undefined && typeof math === 'number' && math < 10) isFailAsri = true;
+                    
+                    if (isFailAsri) aFail++; else aPass++;
+                }
+            }
+        });
+
+        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
+        
+        let grade = "Kamzoor";
+        let badgeClass = "bg-red-50 text-red-600 border border-red-100";
+        const p = parseFloat(aPerc);
+        if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-100"; }
+        else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border border-teal-100"; }
+        else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border border-blue-100"; }
+        else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-100"; }
+        else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border border-orange-100"; }
+
+        modalBodyHTML += `
+        <tr class="hover:bg-slate-50/60">
+            <td class="p-4 font-bold text-slate-700 text-left">${className}</td>
+            <td class="p-4 font-medium text-slate-600">${aTotal}</td>
+            <td class="p-4 font-medium text-slate-600">${aPresent}</td>
+            <td class="p-4 font-bold text-emerald-600">${aPass}</td>
+            <td class="p-4 font-bold text-red-500">${aFail}</td>
+            <td class="p-4 font-bold text-slate-700">${aPerc}%</td>
+            <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${grade}</span></td>
+        </tr>`;
+    });
+
+    modalBodyHTML += `</tbody></table></div>`;
+    document.getElementById('asri-modal-body').innerHTML = modalBodyHTML;
+    document.getElementById('asri-modal').classList.remove('hidden');
+};
+
+window.closeAsriModal = () => {
+    document.getElementById('asri-modal').classList.add('hidden');
 };
         
     </script>
