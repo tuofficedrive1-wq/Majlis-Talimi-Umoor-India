@@ -200,7 +200,34 @@
     </div>
 </div>
                 <div id="tab-recording" class="tab-content hidden p-20 text-center text-slate-400">Recording form coming soon...</div>
-                <div id="tab-test" class="tab-content hidden p-20 text-center text-slate-400">Test form coming soon...</div>
+                <div id="tab-test" class="tab-content hidden p-6">
+    <div class="flex justify-between items-center mb-6">
+        <h3 class="text-lg font-bold text-slate-800">Monthly Test Summary (Eng & Math)</h3>
+        <button onclick="window.loadInspectorTestSummary()" class="text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center gap-2">
+            <i class="fas fa-sync-alt"></i> Refresh Data
+        </button>
+    </div>
+    
+    <div class="overflow-x-auto bg-white rounded-3xl shadow-sm border border-slate-200">
+        <table class="w-full text-center border-collapse">
+            <thead>
+                <tr class="bg-indigo-50 text-indigo-900 text-sm font-bold border-b border-indigo-100">
+                    <th class="p-4 text-left">Jamia</th>
+                    <th class="p-4 text-left">Class</th>
+                    <th class="p-4">Total</th>
+                    <th class="p-4">Present (Asri)</th>
+                    <th class="p-4">Pass</th>
+                    <th class="p-4">Fail</th>
+                    <th class="p-4">Percent</th>
+                    <th class="p-4">Grade</th>
+                </tr>
+            </thead>
+            <tbody id="inspector-test-summary-body" class="text-sm text-slate-700">
+                <tr><td colspan="8" class="p-8 text-slate-400 font-medium">Click on Tab or Refresh to load data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
                 <div id="tab-enroll" class="tab-content hidden p-20 text-center text-slate-400">Enrollment form coming soon...</div>
                 <div id="tab-performance" class="tab-content hidden p-6">
     <h3 class="text-lg font-bold text-slate-800 mb-6 text-center">Monthly Performance Management</h3>
@@ -336,6 +363,13 @@ document.getElementById('report-month').addEventListener('change', (e) => {
     
     // Agar koi aur stats load karne ho dashboard ke toh:
     if (typeof loadStats === "function") loadStats();
+    // Agar Test tab open hai toh naye mahine ka data laaye
+const testTab = document.getElementById('tab-test');
+if (testTab && !testTab.classList.contains('hidden')) {
+    if (typeof window.loadInspectorTestSummary === "function") {
+        window.loadInspectorTestSummary();
+    }
+}
 });
 
             // academic-inspector.html ke andar loadStats function ko replace karein
@@ -664,20 +698,25 @@ window.renderInspectionList = () => {
         document.getElementById('logout-btn').onclick = () => signOut(auth);
 
         // TAB LOGIC
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.onclick = () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-indigo-600', 'text-white'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-                btn.classList.add('active', 'bg-indigo-600', 'text-white');
-                document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
-                document.getElementById('active-tab-title').textContent = `Section: ${btn.textContent}`;
-               // Dashboard ki script ke andar jahan tab switch hota hai:
-if (btn.dataset.tab === 'performance') {
-    // Sirf yeh line naye module ko trigger karegi
-    renderPerformanceTab(assignedJamiaat, currentUser, db); 
-}
-            };
-        });
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-indigo-600', 'text-white'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        btn.classList.add('active', 'bg-indigo-600', 'text-white');
+        document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
+        document.getElementById('active-tab-title').textContent = `Section: ${btn.textContent}`;
+        
+        if (btn.dataset.tab === 'performance') {
+            renderPerformanceTab(assignedJamiaat, currentUser, db); 
+        }
+        
+        // ---- NAYA CODE YAHAN ADD KAREIN ----
+        if (btn.dataset.tab === 'test') {
+            window.loadInspectorTestSummary();
+        }
+        // -----------------------------------
+    };
+});
 
         
         document.getElementById('photo-input').onchange = async (e) => {
@@ -758,6 +797,122 @@ async function loadInspectionSummary() {
         container.innerHTML = `<p class="text-red-500">Summary load nahi ho saki. Check if 'inspection-summary-view.html' exists.</p>`;
     }
 }
+        window.loadInspectorTestSummary = async () => {
+    const tbody = document.getElementById('inspector-test-summary-body');
+    const monthInput = document.getElementById('report-month').value;
+    
+    if (!monthInput || !assignedJamiaat || assignedJamiaat.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-slate-400">No Jamia assigned or month not selected.</td></tr>';
+        return;
+    }
+
+    // Loading State
+    tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i> Asri Result Data Load ho raha hai...</td></tr>';
+
+    let rowsHTML = "";
+    
+    try {
+        // Har Jamia ke liye loop chalayenge
+        for (let jamia of assignedJamiaat) {
+            const q = query(
+                collection(db, "monthly_test_sheets"), 
+                where("jamiaName", "==", jamia),
+                where("month", "==", monthInput)
+            );
+            
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+                // Agar us Jamia ka data nahi mila
+                rowsHTML += `<tr class="border-b border-slate-100"><td class="p-4 font-bold text-slate-700 text-left">${jamia}</td><td colspan="7" class="p-4 text-slate-400 italic">Is mahine ka test data submit nahi hua</td></tr>`;
+                continue;
+            }
+
+            // Har class ki sheet ko check karenge
+            querySnapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                const className = data.class || "Unknown";
+                const students = data.students || [];
+                
+                if (students.length === 0) return;
+
+                let aTotal = students.length; 
+                let aPresent = 0; 
+                let aPass = 0; 
+                let aFail = 0;
+                let hasAsriSubjects = false;
+
+                // Eng aur Math ke number count karenge
+                students.forEach(std => {
+                    let engMark = std.marks['English'];
+                    let mathMark = std.marks['Maths'];
+                    
+                    if (engMark !== undefined || mathMark !== undefined) {
+                        hasAsriSubjects = true;
+                        
+                        let asriFullAbsent = false;
+                        if (engMark === 'A' && mathMark === 'A') {
+                            asriFullAbsent = true;
+                        } else if (engMark === 'A' && mathMark === undefined) {
+                            asriFullAbsent = true;
+                        } else if (mathMark === 'A' && engMark === undefined) {
+                            asriFullAbsent = true;
+                        }
+
+                        if (!asriFullAbsent) {
+                            aPresent++;
+                            let isFailAsri = false;
+                            
+                            // Passing marks check (25 ka 40% = 10)
+                            if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                            
+                            if (isFailAsri) aFail++; else aPass++;
+                        }
+                    }
+                });
+
+                if (hasAsriSubjects) {
+                    let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
+                    
+                    // Grade logic set karna
+                    let grade = "Kamzoor";
+                    let badgeClass = "bg-red-50 text-red-600 border border-red-200";
+                    const p = parseFloat(aPerc);
+                    if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-200"; }
+                    else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border border-teal-200"; }
+                    else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border border-blue-200"; }
+                    else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-200"; }
+                    else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border border-orange-200"; }
+
+                    // Row HTML design karna
+                    rowsHTML += `
+                    <tr class="border-b border-slate-100 hover:bg-indigo-50/30 transition-colors">
+                        <td class="p-4 font-bold text-slate-800 text-left">${jamia}</td>
+                        <td class="p-4 font-medium text-slate-600 text-left">${className}</td>
+                        <td class="p-4 font-medium text-slate-600">${aTotal}</td>
+                        <td class="p-4 font-medium text-slate-600">${aPresent}</td>
+                        <td class="p-4 font-black text-emerald-600">${aPass}</td>
+                        <td class="p-4 font-black text-red-600">${aFail}</td>
+                        <td class="p-4 font-bold text-slate-700">${aPerc}%</td>
+                        <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${grade}</span></td>
+                    </tr>`;
+                }
+            });
+        }
+        
+        if(rowsHTML === "") {
+            tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-slate-500">Asri subjects ka data kisi class mein nahi mila.</td></tr>';
+        } else {
+            tbody.innerHTML = rowsHTML;
+        }
+
+    } catch (error) {
+        console.error("Error loading test summary:", error);
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-red-500 font-bold">Data fetch karne mein masla aaya, dobara koshish karein.</td></tr>';
+    }
+};
         
     </script>
 </body>
