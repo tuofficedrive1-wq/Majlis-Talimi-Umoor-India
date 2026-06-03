@@ -379,71 +379,84 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                             <td class="no-print">-</td>
                         </tr>`;
             } else if (layoutLevel === 'teacher') {
-    thead.innerHTML = `
-        <tr class="bg-gray-200">
-            <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
-            <th class="border p-3">مضمون</th><th class="border p-3">درجہ</th>
-            <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
-            <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
-            <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
-            <th class="border p-3 no-print text-red-600">حذف</th>
-        </tr>`;
+                // Table head mein 'Action' column ko thoda bada kiya gaya hai
+                thead.innerHTML = `
+                    <tr class="bg-gray-200">
+                        <th class="border p-3">جامعہ</th><th class="border p-3">استاد</th>
+                        <th class="border p-3">مضمون</th><th class="border p-3">درجہ</th>
+                        <th class="border p-3">کل</th><th class="border p-3 text-green-700">کامیاب</th>
+                        <th class="border p-3 text-red-600">ناکام</th><th class="border p-3">فیصد</th>
+                        <th class="border p-3">کیفیت</th><th class="border p-3 bg-teal-100">مجموعی</th>
+                        <th class="border p-3 no-print w-32">ایکشن</th>
+                    </tr>`;
 
-    latestDataMap.forEach((d) => {
-        if (d.data && Array.isArray(d.data)) {
-            d.data.forEach((tEntry, tIdx) => {
-                const periods = tEntry.periods || [];
-                const pCount = periods.length || 1;
-                let tT = 0, tP = 0;
-                
-                periods.forEach(p => { 
-                    tT += parseInt(p.total) || 0; 
-                    tP += parseInt(p.passed) || 0; 
-                });
-                
-                const tPer = tT > 0 ? (tP / tT) * 100 : 0;
-                const tCol = getKefiyatColor(tPer);
+                latestDataMap.forEach((d) => {
+                    if (d.data && Array.isArray(d.data)) {
+                        d.data.forEach((tEntry, tIdx) => {
+                            const periods = tEntry.periods || [];
+                            const pCount = periods.length || 1;
+                            let tT = 0, tP = 0;
+                            
+                            periods.forEach(p => { 
+                                tT += parseInt(p.total) || 0; 
+                                tP += parseInt(p.passed) || 0; 
+                            });
+                            
+                            const tPer = tT > 0 ? (tP / tT) * 100 : 0;
+                            const tCol = getKefiyatColor(tPer);
+                            const majmooiKefiyat = getJamiaKefiyat(tPer); // Majmooi Kefiyat check karne ke liye
 
-                totals.kul += tT; 
-                totals.passed += tP;
+                            totals.kul += tT; 
+                            totals.passed += tP;
 
-                periods.forEach((p, pIdx) => {
-                    const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
-                    
-                    rowsHtml += `
-                        <tr class="hover:bg-gray-50 border-b text-center">
-                            ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-right" rowspan="${pCount}">${d.jamia}</td>` : ''}
-                            ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
-                            <td class="border p-3 text-right">${p.subject || '-'}</td>
-                            <td class="border p-3">${p.class || p['class'] || '-'}</td>
-                            <td class="border p-3">${p.total || '0'}</td>
-                            <td class="border p-3 text-green-700">${p.passed || '0'}</td>
-                            <td class="border p-3 text-red-600">${f}</td>
-                            <td class="border p-3 font-bold">${p.percentage || '0%'}</td>
-                            <td class="border p-3">${p.kaifiyat || '-'}</td>
-                            ${pIdx === 0 ? `
-                                <td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}">
-                                    <div style="color:${tCol}">${tPer.toFixed(1)}%</div>
-                                    <div class="text-[11px]" style="color:${tCol}">${getJamiaKefiyat(tPer)}</div>
-                                </td>` : ''}
-                            <td class="border p-3 align-middle no-print">
-                                <button onclick="deleteSubjectRow('${d.docId}', ${tIdx}, ${pIdx})" class="text-orange-600 hover:text-orange-800 p-1" title="Sirf ye subject delete karein">
-                                    <i class="fas fa-minus-circle"></i>
-                                </button>
+                            periods.forEach((p, pIdx) => {
+                                const f = (parseInt(p.total) - parseInt(p.passed)) || 0;
                                 
-                                ${pIdx === 0 ? `
-                                <button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="text-red-600 hover:text-red-800 p-1 ml-1" title="Pura record delete karein">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>` : ''}
-                            </td>
-                        </tr>`;
+                                rowsHtml += `
+                                    <tr class="hover:bg-gray-50 border-b text-center">
+                                        ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-right" rowspan="${pCount}">${d.jamia}</td>` : ''}
+                                        ${pIdx === 0 ? `<td class="border p-3 font-bold align-middle text-blue-700" rowspan="${pCount}">${tEntry.teacher || "-"}</td>` : ''}
+                                        <td class="border p-3 text-right">${p.subject || '-'}</td>
+                                        <td class="border p-3">${p.class || p['class'] || '-'}</td>
+                                        <td class="border p-3">${p.total || '0'}</td>
+                                        <td class="border p-3 text-green-700">${p.passed || '0'}</td>
+                                        <td class="border p-3 text-red-600">${f}</td>
+                                        <td class="border p-3 font-bold">${p.percentage || '0%'}</td>
+                                        <td class="border p-3">${p.kaifiyat || '-'}</td>
+                                        ${pIdx === 0 ? `
+                                            <td class="border p-3 bg-teal-50 align-middle font-bold" rowspan="${pCount}">
+                                                <div style="color:${tCol}">${tPer.toFixed(1)}%</div>
+                                                <div class="text-[11px]" style="color:${tCol}">${majmooiKefiyat}</div>
+                                            </td>` : ''}
+                                            
+                                        <td class="border p-3 align-middle no-print">
+                                            <div class="flex flex-col gap-1.5 items-center justify-center">
+                                                <!-- Row / Subject Delete Button -->
+                                                <button onclick="deleteSubjectRow('${d.docId}', ${tIdx}, ${pIdx})" class="bg-orange-50 text-orange-600 hover:bg-orange-100 hover:text-orange-700 border border-orange-200 w-full py-1 px-2 rounded text-[11px] font-bold shadow-sm flex items-center justify-center gap-1 transition-colors" title="Sirf ye subject delete karein">
+                                                    <i class="fas fa-eraser"></i> مضمون حذف
+                                                </button>
+                                                
+                                                ${pIdx === 0 ? `
+                                                <!-- Full Record / Teacher Delete Button -->
+                                                <button onclick="deleteEntry('${d.docId}', 'asatiza_wise_results')" class="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border border-red-200 w-full py-1 px-2 rounded text-[11px] font-bold shadow-sm flex items-center justify-center gap-1 transition-colors" title="Pura record delete karein">
+                                                    <i class="fas fa-trash-alt"></i> مکمل حذف
+                                                </button>` : ''}
+
+                                                ${pIdx === 0 && majmooiKefiyat.includes('ممتاز') ? `
+                                                <!-- Appreciation Letter Button (Sirf Mumtaz walo ke liye) -->
+                                                <button onclick="generateAppreciationLetter('${tEntry.teacher || '-'}', '${d.jamia}', '${examType}', '${examYear}')" class="bg-yellow-50 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-300 w-full py-1 px-2 rounded text-[11px] font-bold shadow-sm flex items-center justify-center gap-1 mt-1 transition-colors" title="Appreciation Letter Download Karein">
+                                                    <i class="fas fa-award"></i> تعریفی سند
+                                                </button>` : ''}
+                                            </div>
+                                        </td>
+                                    </tr>`;
+                            });
+                        });
+                    }
                 });
-            });
-        }
-    });
-    const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
-    tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
-}
+                const overallPerc = totals.kul > 0 ? (totals.passed / totals.kul) * 100 : 0;
+                tfoot.innerHTML = `<tr><td colspan="4" class="p-3 text-right">TOTAL SUMMARY</td><td>${totals.kul}</td><td>${totals.passed}</td><td>${totals.kul - totals.passed}</td><td>${overallPerc.toFixed(2)}%</td><td>${getJamiaKefiyat(overallPerc)}</td><td colspan="2">-</td></tr>`;
+            }
     // --- Baki ka purana code upar wese hi rahega ---
 
 else if (layoutLevel === 'wazahat') {
@@ -729,5 +742,137 @@ window.generateTop3Poster = async (topData, year, exam) => {
         link.href = canvas.toDataURL("image/png");
         link.click();
         document.body.removeChild(posterDiv);
+    }
+};
+
+// --- APPRECIATION LETTER FUNCTION ---
+window.generateAppreciationLetter = async (teacherName, jamiaName, examType, examYear) => {
+    // State Name Popup
+    const stateName = prompt("Apni State ka naam likhein (e.g., Rajasthan, Bihar):", "Rajasthan");
+    if (!stateName) return;
+
+    const letterDiv = document.createElement('div');
+    letterDiv.style.position = 'fixed';
+    letterDiv.style.top = '-9999px';
+    letterDiv.style.width = '800px'; 
+    letterDiv.style.height = '1130px'; 
+    document.body.appendChild(letterDiv);
+
+    // Date Format: DD Month YYYY
+    const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    
+    // Exam English Name aur Year
+    let engExamType = examType.includes("سالانہ") ? "ANNUAL RESULT" : "HALF-YEARLY RESULT";
+    let shortYear = examYear.split('-')[0] || examYear;
+
+    letterDiv.innerHTML = `
+        <div id="final-letter" style="width: 100%; height: 100%; background-color: #ffffff; position: relative; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; box-sizing: border-box; padding: 60px;">
+            
+            <!-- Border and Corner Designs -->
+            <div style="position: absolute; top: 20px; left: 20px; right: 20px; bottom: 20px; border: 2px solid #c29d5b; z-index: 1;"></div>
+            
+            <!-- Top Left Corner -->
+            <div style="position: absolute; top: 0; left: 0; width: 220px; height: 220px; background: #0b1a30; transform: rotate(45deg) translate(-110px, -110px); z-index: 2;"></div>
+            <div style="position: absolute; top: 15px; left: 30px; width: 150px; height: 8px; background: #c29d5b; transform: rotate(-45deg); z-index: 3;"></div>
+
+            <!-- Bottom Right Corner -->
+            <div style="position: absolute; bottom: 0; right: 0; width: 260px; height: 260px; background: #0b1a30; transform: rotate(45deg) translate(130px, 130px); z-index: 2;"></div>
+            <div style="position: absolute; bottom: 40px; right: 10px; width: 200px; height: 8px; background: #c29d5b; transform: rotate(-45deg); z-index: 3;"></div>
+            
+            <!-- Bottom Left Decorative Lines -->
+            <div style="position: absolute; bottom: 40px; left: 40px; width: 80px; height: 80px; border-bottom: 2px solid #c29d5b; border-left: 2px solid #c29d5b; z-index: 2;"></div>
+            
+            <!-- Top Right Decorative Lines -->
+            <div style="position: absolute; top: 40px; right: 40px; width: 80px; height: 80px; border-top: 2px solid #c29d5b; border-right: 2px solid #c29d5b; z-index: 2;"></div>
+
+            <!-- Content -->
+            <div style="position: relative; z-index: 10; text-align: center; margin-top: 50px; padding: 0 40px;">
+                
+                <!-- Trophy Icon -->
+                <div style="font-size: 85px; color: #c29d5b; margin-bottom: 20px;">
+                    <i class="fas fa-trophy"></i>
+                </div>
+                
+                <!-- Title -->
+                <h1 style="color: #0b1a30; font-size: 46px; font-weight: 900; letter-spacing: 2px; margin: 0; margin-bottom: 10px;">APPRECIATION LETTER</h1>
+                
+                <!-- Subtitle (Exam Type & Year) -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 40px;">
+                    <div style="height: 2px; width: 50px; background-color: #c29d5b;"></div>
+                    <h3 style="color: #c29d5b; font-size: 22px; font-weight: bold; margin: 0; letter-spacing: 1.5px;">${engExamType} ${shortYear}</h3>
+                    <div style="height: 2px; width: 50px; background-color: #c29d5b;"></div>
+                </div>
+
+                <!-- Teacher Details -->
+                <p style="color: #333; font-size: 20px; margin-bottom: 5px; font-weight: 600;">Mohtaram</p>
+                <h2 style="color: #0b1a30; font-size: 38px; font-weight: 800; margin: 0 0 10px 0;">${teacherName}</h2>
+                <p style="color: #444; font-size: 20px; margin-bottom: 45px; font-weight: 500;">Jamia: ${jamiaName}</p>
+
+                <!-- Letter Body (Matching Image Text) -->
+                <div style="text-align: left; line-height: 1.8; color: #222; font-size: 20px;">
+                    <p style="font-weight: 600; margin-bottom: 20px;">Assalamu Alaikum Wa Rahmatullahi Wa Barakatuh</p>
+                    
+                    <p style="margin-bottom: 20px;">
+                        Hamein yeh baat khushi aur musarrat ke saath pesh karte hue fakhr mehsoos ho raha hai ke aap ne ${engExamType} ${examYear} mein apni behtareen mehnat, lagan aur zimmedari ka muzahira karte hue <strong style="color: #c29d5b;">"Mumtaz Kefiyat"</strong> hasil ki hai.
+                    </p>
+                    
+                    <p style="margin-bottom: 35px;">
+                        Aap ki musalsal koshishon aur taleemi khidmaat ne jamia ki karkardagi ko behtar banane mein aham kirdar ada kiya hai. Is qabil-e-tareef kamyabi par hum aap ko dili mubarakbad pesh karte hain aur aap ke liye mazeed taraqqi aur kamyabi ki dua karte hain.
+                    </p>
+                    
+                    <!-- Dua Section -->
+                    <div style="display: flex; gap: 15px; align-items: flex-start; padding-left: 10px;">
+                        <i class="fas fa-praying-hands" style="color: #c29d5b; font-size: 28px; margin-top: 5px;"></i>
+                        <p style="margin: 0; font-weight: 500;">
+                            Allah Ta'ala aap ki khidmaat ko qubool farmaye aur mazeed barkat ata farmaye. Aameen.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Footer Signatures -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 80px; text-align: left;">
+                    
+                    <!-- Date Section -->
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <i class="far fa-calendar-alt" style="font-size: 35px; color: #0b1a30;"></i>
+                        <div>
+                            <div style="font-size: 16px; font-weight: bold; color: #555;">Date:</div>
+                            <div style="font-size: 18px; font-weight: bold; color: #0b1a30;">${currentDate}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Department Section -->
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <i class="fas fa-book-open" style="font-size: 40px; color: #0b1a30;"></i>
+                        <div>
+                            <div style="font-size: 20px; font-weight: 900; color: #0b1a30; letter-spacing: 1px;">MAJLIS TALIMI UMOOR</div>
+                            <div style="font-size: 16px; font-weight: bold; color: #c29d5b; letter-spacing: 2px;">${stateName.toUpperCase()} STATE</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Download Image via html2canvas
+    if(window.html2canvas) {
+        try {
+            const canvas = await html2canvas(letterDiv.querySelector('#final-letter'), { 
+                scale: 3, // Quality increase karne ke liye
+                useCORS: true 
+            });
+            const link = document.createElement("a");
+            link.download = `Appreciation_Letter_${teacherName.replace(/\\s+/g, '_')}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        } catch (e) {
+            alert("Image generate karne mein masla hua: " + e.message);
+        } finally {
+            document.body.removeChild(letterDiv); // Hidden div ko wapas delete kar dein
+        }
+    } else {
+        alert("html2canvas library load nahi hui hai.");
+        document.body.removeChild(letterDiv);
     }
 };
