@@ -353,18 +353,36 @@ export async function initAdminResultAnalysis(db, containerId) {
             <th class="p-2 border">کیفیت</th>`;
         
         let jamiaStats = {};
+        
+        // 🟢 NAYA LOGIC: Grand Total calculate karne ke liye variables
+        let grandTotalHazir = 0;
+        let grandTotalPass = 0;
+
         data.forEach(d => {
             if (!jamiaStats[d.jamia]) {
                 jamiaStats[d.jamia] = { h: 0, p: 0, region: d.region || '-', user: d.userName || '-' };
             }
             const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
             const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+            
             jamiaStats[d.jamia].h += h; 
             jamiaStats[d.jamia].p += p;
+
+            // Har jamia ka Hazir aur Pass grand total mein jodein
+            grandTotalHazir += h;
+            grandTotalPass += p;
         });
 
-        Object.entries(jamiaStats).forEach(([name, s], i) => {
+        // 🟢 Rank ke hisab se sort karna (Zyada percentage wala upar)
+        let sortedJamia = Object.entries(jamiaStats).map(([name, s]) => {
             const per = s.h ? (s.p / s.h) * 100 : 0;
+            return { name, s, per };
+        });
+
+        sortedJamia.sort((a, b) => b.per - a.per);
+
+        sortedJamia.forEach((item, i) => {
+            const { name, s, per } = item;
             tbody.innerHTML += `<tr>
                 <td class="p-2 border">${i + 1}</td>
                 <td class="p-2 border font-bold">${s.region}</td>
@@ -376,6 +394,18 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'jamia')}">${getJamiaKefiyat(per, 'jamia')}</td>
             </tr>`;
         });
+
+        // 🟢 NAYA LOGIC: Table ke niche (tfoot mein) Total dikhana
+        const grandPer = grandTotalHazir ? (grandTotalPass / grandTotalHazir) * 100 : 0;
+        tfoot.innerHTML = `
+            <tr class="bg-gray-800 text-white font-bold text-center">
+                <td colspan="4" class="p-3 border text-right urdu-font text-lg pr-5">کل میزان (Total):</td>
+                <td class="p-3 border text-lg">${grandTotalHazir}</td>
+                <td class="p-3 border text-green-400 text-lg">${grandTotalPass}</td>
+                <td class="p-3 border text-lg">${grandPer.toFixed(1)}%</td>
+                <td class="p-3 border urdu-font text-lg" style="color:${getKefiyatColor(grandPer, 'jamia')}">${getJamiaKefiyat(grandPer, 'jamia')}</td>
+            </tr>
+        `;
     } 
     else if (layout === 'class') {
         // ✅ CLASS WISE: Region aur User ke saath
