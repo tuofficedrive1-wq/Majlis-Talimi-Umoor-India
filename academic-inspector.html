@@ -432,6 +432,64 @@ async function loadStats() {
             }
         }
 
+        // =========================================================
+        // 3. NAYA CODE: Graph ke liye Monthly Test (Eng & Math) Data aur Mapping
+        // =========================================================
+        const qTest = query(collection(db, "monthly_test_sheets"), where("month", "==", month));
+        const testSnap = await getDocs(qTest);
+        const allSheets = [];
+        testSnap.forEach(doc => allSheets.push(doc.data()));
+
+        const inspDocSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const jamiaatMapping = inspDocSnap.exists() ? (inspDocSnap.data().jamiaatMapping || {}) : {};
+        const normalizeName = (name) => (name || "").trim().toLowerCase();
+
+        reportsData.tests = []; // Graph ka array clear kiya
+        let completedTestCount = 0; // Progress bar ke liye
+
+        for (let jamia of assignedJamiaat) {
+            const sourceStandardJamia = jamiaatMapping[jamia] || jamia;
+            const normSourceJamia = normalizeName(sourceStandardJamia);
+            
+            const jamiaSheets = allSheets.filter(sheet => normalizeName(sheet.jamiaName) === normSourceJamia);
+            
+            if (jamiaSheets.length > 0) completedTestCount++; // Agar koi sheet mili to count badhao
+
+            let grandPresent = 0;
+            let grandPass = 0;
+
+            // Same Eng/Math calculation jo table mein hoti hai
+            jamiaSheets.forEach(sheet => {
+                const students = sheet.students || [];
+                students.forEach(std => {
+                    let eng = std.marks['English'];
+                    let math = std.marks['Maths'];
+                    if (eng !== undefined || math !== undefined) {
+                        let asriFullAbsent = (eng === 'A' && math === 'A') || 
+                                             (eng === 'A' && math === undefined) || 
+                                             (math === 'A' && eng === undefined);
+                        if (!asriFullAbsent) {
+                            grandPresent++;
+                            let isFail = false;
+                            if (eng === 'A' || math === 'A') isFail = true;
+                            if (eng !== undefined && typeof eng === 'number' && eng < 10) isFail = true;
+                            if (math !== undefined && typeof math === 'number' && math < 10) isFail = true;
+                            if (!isFail) grandPass++;
+                        }
+                    }
+                });
+            });
+
+            let overallPerc = grandPresent > 0 ? ((grandPass / grandPresent) * 100).toFixed(1) : "0";
+            
+            // Graph ke data mein result save kar diya
+            reportsData.tests.push({
+                name: jamia,
+                score: overallPerc
+            });
+        }
+        // =========================================================
+
         // UI update logic
         const total = assignedJamiaat.length;
         const updateUI = (prefix, count) => {
@@ -443,6 +501,7 @@ async function loadStats() {
         };
 
         updateUI('jaiza', (reportsData.jaiza || []).length);
+        updateUI('test', completedTestCount); // Monthly test ka Progress Bar bhi update hoga!
         
         // Chart rendering with protection
         setTimeout(() => {
