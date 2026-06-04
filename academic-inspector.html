@@ -1020,83 +1020,200 @@ window.openJamiaStudentResults = (jamiaName) => {
 };
 
 // --- ACTION 2: Summary Modal Handler (Class-wise summary numbers calculation) ---
+// --- ACTION 2: Summary Modal Handler (Subject-wise & Class-wise Detail Summary) ---
 window.openJamiaSummaryReport = (jamiaName) => {
     const sheets = window.currentInspectorTestData[jamiaName];
     if (!sheets) return;
 
-    document.getElementById('asri-modal-title').textContent = `${jamiaName} - Subjects Summary`;
-    document.getElementById('asri-modal-subtitle').textContent = "English aur Maths subject ki har darje (class) ki alag consolidated summary report";
+    document.getElementById('asri-modal-title').textContent = `${jamiaName} - Detailed Subjects Summary`;
+    document.getElementById('asri-modal-subtitle').textContent = "Har darje (class) ka English, Maths aur majmui (overall) result";
 
-    let modalBodyHTML = `
-    <div class="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
-        <table class="w-full text-center border-collapse">
-            <thead>
-                <tr class="bg-slate-50 text-slate-700 text-sm font-semibold border-b border-slate-200">
-                    <th class="p-4 text-left">Class</th>
-                    <th class="p-4">Total Students</th>
-                    <th class="p-4">Present</th>
-                    <th class="p-4">Pass</th>
-                    <th class="p-4">Fail</th>
-                    <th class="p-4">Percentage</th>
-                    <th class="p-4">Grade</th>
-                </tr>
-            </thead>
-            <tbody class="text-sm divide-y divide-slate-100 text-slate-600">`;
+    // Jamia Grand Totals ke variables
+    let gTotalStds = 0;
+    let gPresent = 0;
+    let gPass = 0;
+    let gFail = 0;
 
+    let modalBodyHTML = `<div class="space-y-6">`;
+    let classesHTML = '';
+
+    // Har class par loop
     sheets.forEach(sheet => {
         const className = sheet.class || "Unknown";
         const students = sheet.students || [];
 
-        let aTotal = students.length; 
-        let aPresent = 0; 
-        let aPass = 0; 
-        let aFail = 0;
+        let cTotalStds = students.length;
+
+        // Class ke alag-alag stats
+        let engPresent = 0, engPass = 0, engFail = 0;
+        let mathPresent = 0, mathPass = 0, mathFail = 0;
+        let cPresent = 0, cPass = 0, cFail = 0; // Class Overall
 
         students.forEach(std => {
             let eng = std.marks['English'];
             let math = std.marks['Maths'];
-            
-            if (eng !== undefined || math !== undefined) {
+
+            let hasEng = eng !== undefined;
+            let hasMath = math !== undefined;
+
+            // --- English Calculation ---
+            if (hasEng) {
+                if (eng === 'A') {
+                    engFail++;
+                } else {
+                    engPresent++;
+                    if (typeof eng === 'number' && eng < 10) engFail++;
+                    else engPass++;
+                }
+            }
+
+            // --- Maths Calculation ---
+            if (hasMath) {
+                if (math === 'A') {
+                    mathFail++;
+                } else {
+                    mathPresent++;
+                    if (typeof math === 'number' && math < 10) mathFail++;
+                    else mathPass++;
+                }
+            }
+
+            // --- Class Overall Calculation (Combined) ---
+            if (hasEng || hasMath) {
                 let asriFullAbsent = (eng === 'A' && math === 'A') || 
-                                     (eng === 'A' && math === undefined) || 
-                                     (math === 'A' && eng === undefined);
+                                     (eng === 'A' && !hasMath) || 
+                                     (math === 'A' && !hasEng);
 
                 if (!asriFullAbsent) {
-                    aPresent++;
-                    let isFailAsri = false;
-                    if (eng === 'A' || math === 'A') isFailAsri = true;
-                    if (eng !== undefined && typeof eng === 'number' && eng < 10) isFailAsri = true;
-                    if (math !== undefined && typeof math === 'number' && math < 10) isFailAsri = true;
+                    cPresent++;
+                    let isFailOverall = false;
                     
-                    if (isFailAsri) aFail++; else aPass++;
+                    if (eng === 'A' || math === 'A') isFailOverall = true;
+                    if (hasEng && typeof eng === 'number' && eng < 10) isFailOverall = true;
+                    if (hasMath && typeof math === 'number' && math < 10) isFailOverall = true;
+
+                    if (isFailOverall) cFail++; else cPass++;
                 }
             }
         });
 
-        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
-        
-        let grade = "Kamzoor";
-        let badgeClass = "bg-red-50 text-red-600 border border-red-100";
-        const p = parseFloat(aPerc);
-        if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-100"; }
-        else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border border-teal-100"; }
-        else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border border-blue-100"; }
-        else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-100"; }
-        else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border border-orange-100"; }
+        // Grand Totals mein class ka result add karein
+        gTotalStds += cTotalStds;
+        gPresent += cPresent;
+        gPass += cPass;
+        gFail += cFail;
 
-        modalBodyHTML += `
-        <tr class="hover:bg-slate-50/60">
-            <td class="p-4 font-bold text-slate-700 text-left">${className}</td>
-            <td class="p-4 font-medium text-slate-600">${aTotal}</td>
-            <td class="p-4 font-medium text-slate-600">${aPresent}</td>
-            <td class="p-4 font-bold text-emerald-600">${aPass}</td>
-            <td class="p-4 font-bold text-red-500">${aFail}</td>
-            <td class="p-4 font-bold text-slate-700">${aPerc}%</td>
-            <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${grade}</span></td>
-        </tr>`;
+        // Percentages nikalna
+        let engPerc = engPresent > 0 ? ((engPass / engPresent) * 100).toFixed(1) : "0.0";
+        let mathPerc = mathPresent > 0 ? ((mathPass / mathPresent) * 100).toFixed(1) : "0.0";
+        let cPerc = cPresent > 0 ? ((cPass / cPresent) * 100).toFixed(1) : "0.0";
+
+        // Grade Badge Design
+        const getGradeBadge = (perc) => {
+            let grade = "Kamzoor";
+            let badgeClass = "bg-red-50 text-red-600 border-red-200";
+            const p = parseFloat(perc);
+            if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200"; }
+            else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border-teal-200"; }
+            else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border-blue-200"; }
+            else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border-indigo-200"; }
+            else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border-orange-200"; }
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeClass}">${grade}</span>`;
+        };
+
+        // Har class ka alag Card/Table
+        classesHTML += `
+        <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+            <div class="bg-slate-100 px-4 py-3 border-b border-slate-200 font-bold text-slate-800 flex justify-between items-center">
+                <span class="urdu-font text-lg">Darjah: ${className}</span>
+                <span class="text-xs bg-white text-slate-600 px-3 py-1 rounded border border-slate-200 shadow-sm font-semibold">Total Students: ${cTotalStds}</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-center border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-500 text-xs font-semibold border-b border-slate-100">
+                            <th class="p-3 text-left">Subject</th>
+                            <th class="p-3">Present</th>
+                            <th class="p-3">Pass</th>
+                            <th class="p-3">Fail</th>
+                            <th class="p-3">Percentage</th>
+                            <th class="p-3">Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm divide-y divide-slate-100 text-slate-600">
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="p-3 text-left font-semibold text-slate-700">English</td>
+                            <td class="p-3">${engPresent}</td>
+                            <td class="p-3 text-emerald-600 font-bold">${engPass}</td>
+                            <td class="p-3 text-red-500 font-bold">${engFail}</td>
+                            <td class="p-3 font-semibold">${engPerc}%</td>
+                            <td class="p-3">${getGradeBadge(engPerc)}</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="p-3 text-left font-semibold text-slate-700">Maths</td>
+                            <td class="p-3">${mathPresent}</td>
+                            <td class="p-3 text-emerald-600 font-bold">${mathPass}</td>
+                            <td class="p-3 text-red-500 font-bold">${mathFail}</td>
+                            <td class="p-3 font-semibold">${mathPerc}%</td>
+                            <td class="p-3">${getGradeBadge(mathPerc)}</td>
+                        </tr>
+                        <tr class="bg-indigo-50/50 border-t-2 border-indigo-100">
+                            <td class="p-3 text-left font-bold text-indigo-800">Class Overall</td>
+                            <td class="p-3 font-bold text-indigo-900">${cPresent}</td>
+                            <td class="p-3 font-black text-emerald-600">${cPass}</td>
+                            <td class="p-3 font-black text-red-600">${cFail}</td>
+                            <td class="p-3 font-black text-indigo-700">${cPerc}%</td>
+                            <td class="p-3">${getGradeBadge(cPerc)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
     });
 
-    modalBodyHTML += `</tbody></table></div>`;
+    // --- JAMIA GRAND TOTAL BANNER ---
+    let gPerc = gPresent > 0 ? ((gPass / gPresent) * 100).toFixed(1) : "0.0";
+    
+    const getGrandBadge = (perc) => {
+        let grade = "Kamzoor";
+        const p = parseFloat(perc);
+        if (p >= 80) grade = "Mumtaz"; 
+        else if (p >= 70) grade = "Jayyid Jiddan"; 
+        else if (p >= 60) grade = "Jayyid"; 
+        else if (p >= 50) grade = "Maqbul"; 
+        else if (p >= 40) grade = "Pass"; 
+        return grade;
+    };
+
+    let grandTotalHTML = `
+    <div class="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-xl p-5 text-white shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="text-center md:text-left">
+            <h3 class="text-xl font-black tracking-wide uppercase">Jamia Grand Total</h3>
+            <p class="text-indigo-200 text-sm font-medium mt-1">Total Classes: ${sheets.length} | Total Students: ${gTotalStds}</p>
+        </div>
+        <div class="flex flex-wrap justify-center gap-4 sm:gap-8 text-center bg-white/10 rounded-lg p-3 border border-white/20">
+            <div>
+                <p class="text-xs text-indigo-200 uppercase font-bold tracking-wider mb-0.5">Present</p>
+                <p class="text-2xl font-bold">${gPresent}</p>
+            </div>
+            <div>
+                <p class="text-xs text-emerald-300 uppercase font-bold tracking-wider mb-0.5">Pass</p>
+                <p class="text-2xl font-bold text-emerald-400">${gPass}</p>
+            </div>
+            <div>
+                <p class="text-xs text-red-300 uppercase font-bold tracking-wider mb-0.5">Fail</p>
+                <p class="text-2xl font-bold text-red-400">${gFail}</p>
+            </div>
+            <div class="border-l border-white/20 pl-4 sm:pl-8">
+                <p class="text-xs text-indigo-200 uppercase font-bold tracking-wider mb-0.5">Overall %</p>
+                <p class="text-2xl font-black text-yellow-300">${gPerc}%</p>
+                <p class="text-[10px] font-bold bg-white/20 rounded px-2 mt-1 py-0.5 inline-block">${getGrandBadge(gPerc)}</p>
+            </div>
+        </div>
+    </div>`;
+
+    // Final HTML Join Karna
+    modalBodyHTML += grandTotalHTML + classesHTML + `</div>`;
     document.getElementById('asri-modal-body').innerHTML = modalBodyHTML;
     document.getElementById('asri-modal').classList.remove('hidden');
 };
