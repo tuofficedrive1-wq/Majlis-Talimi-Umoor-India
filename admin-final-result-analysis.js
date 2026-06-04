@@ -580,3 +580,4 @@ else if (layout === 'wazahat') {
 }
         }
 }
+
