@@ -467,11 +467,39 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
                 teacher.periods?.forEach((p, pIdx) => {
                     let target = 0;
-                    const subId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
+const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
 
-                    if (monthlyTargets && monthlyTargets[subId] && monthlyTargets[subId][targetMonthKey] !== undefined) {
-                        target = parseInt(monthlyTargets[subId][targetMonthKey]) || 0;
-                    }
+// 1. Pehle Direct Match Check Karein (Agar user aur admin ki class bilkul same ho)
+if (monthlyTargets && monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
+    target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
+} 
+// 2. Agar exact match na mile, toh Partial Match check karein
+else if (monthlyTargets) {
+    const userClassNameLower = (p.className || "").toLowerCase();
+    const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
+
+    for (const adminKey in monthlyTargets) {
+        const adminKeyLower = adminKey.toLowerCase();
+        
+        // Step A: Check karein ki kya book (subject) ka naam aakhiri me match ho raha hai
+        if (adminKeyLower.endsWith(`_${userBookNameFormatted}`)) {
+            
+            // Step B: Admin key se book ka naam hata kar sirf admin class ka naam nikal lein
+            const adminClassPart = adminKeyLower.replace(`_${userBookNameFormatted}`, '').replace(/_/g, ' ');
+            
+            // Step C: Word Boundary Regex lagayein (Taaki 'Primary' word check ho, 'Preprimary' match na ho jaye)
+            const regex = new RegExp(`\\b${adminClassPart}\\b`);
+            
+            // Step D: Agar user ki class (e.g., "Primary A") me admin ki class ("Primary") shamil hai
+            if (regex.test(userClassNameLower)) {
+                if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
+                    target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
+                    break; // Target milte hi loop rok dijiye
+                }
+            }
+        }
+    }
+}
                     
                     let achievedValue = 0;
                     if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
