@@ -134,7 +134,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <option value="class">Class Wise</option>
                         <option value="teacher">Asatiza Wise</option>
                         <option value="wazahat">Kamzor Result (Wazahat)</option> </select>
-                        <option value="ibtidaiya">ابتدائیہ (Student Wise)</option>
                     </select>
                 </div>
             </div>
@@ -363,7 +362,72 @@ export async function initAdminResultAnalysis(db, containerId) {
         tfoot.innerHTML = "";
         const num = (v) => parseInt(v) || 0;
 
-    if (layout === 'jamia') {
+        if (layout === 'ibtidaiya') {
+            // 🟢 NAYA IBTIDAIYA LAYOUT
+            thead.innerHTML = `
+                <tr class="bg-indigo-900 text-white text-[13px] font-bold urdu-font">
+                    <th class="p-2 border border-indigo-700">Sr.</th>
+                    <th class="p-2 border border-indigo-700">Region</th>
+                    <th class="p-2 border border-indigo-700">تعلیمی ذمہ دار</th>
+                    <th class="p-2 border border-indigo-700">جامعہ</th>
+                    <th class="p-2 border border-indigo-700">داخلہ</th>
+                    <th class="p-2 border border-indigo-700 min-w-[120px]">طالب علم کا نام</th>
+                    <th class="p-2 border border-indigo-700 min-w-[120px]">ولدیت</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">تجوید</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ورک بک</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">اردو</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ہم نصابی</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">املا</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">Eng(W)</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">Eng(O)</th>
+                    <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ریاضی</th>
+                    <th class="p-2 border border-indigo-700 bg-gray-800">کل</th>
+                    <th class="p-2 border border-indigo-700 bg-blue-900">حاصل</th>
+                    <th class="p-2 border border-indigo-700 bg-green-900">%</th>
+                    <th class="p-2 border border-indigo-700">کیفیت</th>
+                </tr>
+            `;
+
+            let sr = 1;
+            data.forEach(d => {
+                const students = d.students || [];
+                
+                students.forEach(stu => {
+                    const getM = (val) => val === 'A' ? '<span class="text-red-500 font-bold">A</span>' : (val || '-');
+
+                    tbody.innerHTML += `
+                        <tr class="text-center hover:bg-gray-50 border-b">
+                            <td class="p-2 border">${sr++}</td>
+                            <td class="p-2 border font-bold text-gray-700">${d.region || '-'}</td>
+                            <td class="p-2 border urdu-font text-blue-700">${d.userName || '-'}</td>
+                            <td class="p-2 border urdu-font font-bold text-indigo-700">${d.jamiaName || '-'}</td>
+                            <td class="p-2 border text-gray-600">${stu.dakhila || '-'}</td>
+                            <td class="p-2 border urdu-font font-bold text-right">${stu.name || '-'}</td>
+                            <td class="p-2 border urdu-font text-right">${stu.fatherName || '-'}</td>
+                            
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.tajweed)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.workbook)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.urdu)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.ham_nisabi)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.imla)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.eng_written)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.eng_oral)}</td>
+                            <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.riyazi)}</td>
+                            
+                            <td class="p-2 border font-bold text-gray-500 bg-gray-100">500</td>
+                            <td class="p-2 border font-bold text-blue-700 bg-blue-50">${stu.obtained || 0}</td>
+                            <td class="p-2 border font-bold text-green-700 bg-green-50">${stu.percent || '0%'}</td>
+                            <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(stu.percent, 'jamia')}">${stu.status || '-'}</td>
+                        </tr>
+                    `;
+                });
+            });
+
+            if (sr === 1) {
+                tbody.innerHTML = `<tr><td colspan="19" class="p-10 text-center text-red-500 font-bold urdu-font text-lg">کوئی ریکارڈ نہیں ملا</td></tr>`;
+            }
+        }
+        else if (layout === 'jamia') {
         // ✅ JAMIA WISE: Region aur User ke saath
         thead.innerHTML = `
             <th class="p-2 border">Sr.</th>
@@ -541,72 +605,7 @@ else if (layout === 'wazahat') {
     tableContainer.prepend(summaryDiv); // Table ke bilkul upar rounded bar lagayega
 
     tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
-} else if (layout === 'ibtidaiya') {
-        // ✅ IBTIDAIYA STUDENT WISE RESULT
-        thead.innerHTML = `
-            <tr class="bg-indigo-900 text-white text-[13px] font-bold urdu-font">
-                <th class="p-2 border border-indigo-700">Sr.</th>
-                <th class="p-2 border border-indigo-700">Region</th>
-                <th class="p-2 border border-indigo-700">تعلیمی ذمہ دار</th>
-                <th class="p-2 border border-indigo-700">جامعہ</th>
-                <th class="p-2 border border-indigo-700">داخلہ</th>
-                <th class="p-2 border border-indigo-700 min-w-[120px]">طالب علم کا نام</th>
-                <th class="p-2 border border-indigo-700 min-w-[120px]">ولدیت</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">تجوید</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ورک بک</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">اردو</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ہم نصابی</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">املا</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">Eng(W)</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">Eng(O)</th>
-                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ریاضی</th>
-                <th class="p-2 border border-indigo-700 bg-gray-800">کل</th>
-                <th class="p-2 border border-indigo-700 bg-blue-900">حاصل</th>
-                <th class="p-2 border border-indigo-700 bg-green-900">%</th>
-                <th class="p-2 border border-indigo-700">کیفیت</th>
-            </tr>
-        `;
-
-        let sr = 1;
-        data.forEach(d => {
-            const students = d.students || [];
-            
-            students.forEach(stu => {
-                // Agar absent hai to background red ya bold karne ke liye chota sa check
-                const getM = (val) => val === 'A' ? '<span class="text-red-500 font-bold">A</span>' : (val || '-');
-
-                tbody.innerHTML += `
-                    <tr class="text-center hover:bg-gray-50 border-b">
-                        <td class="p-2 border">${sr++}</td>
-                        <td class="p-2 border font-bold text-gray-700">${d.region || '-'}</td>
-                        <td class="p-2 border urdu-font text-blue-700">${d.userName || '-'}</td>
-                        <td class="p-2 border urdu-font font-bold text-indigo-700">${d.jamiaName || '-'}</td>
-                        <td class="p-2 border text-gray-600">${stu.dakhila || '-'}</td>
-                        <td class="p-2 border urdu-font font-bold text-right">${stu.name || '-'}</td>
-                        <td class="p-2 border urdu-font text-right">${stu.fatherName || '-'}</td>
-                        
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.tajweed)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.workbook)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.urdu)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.ham_nisabi)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.imla)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.eng_written)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.eng_oral)}</td>
-                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.riyazi)}</td>
-                        
-                        <td class="p-2 border font-bold text-gray-500 bg-gray-100">500</td>
-                        <td class="p-2 border font-bold text-blue-700 bg-blue-50">${stu.obtained || 0}</td>
-                        <td class="p-2 border font-bold text-green-700 bg-green-50">${stu.percent || '0%'}</td>
-                        <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(stu.percent, 'jamia')}">${stu.status || '-'}</td>
-                    </tr>
-                `;
-            });
-        });
-
-        if (sr === 1) {
-            tbody.innerHTML = `<tr><td colspan="19" class="p-10 text-center text-red-500 font-bold urdu-font text-lg">کوئی ریکارڈ نہیں ملا</td></tr>`;
-        }
-    }
+}
     else {
         thead.innerHTML = `
             <th class="p-2 border">Sr.</th>
@@ -668,4 +667,3 @@ else if (layout === 'wazahat') {
 }
         }
 }
-
