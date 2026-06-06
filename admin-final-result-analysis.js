@@ -134,6 +134,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <option value="class">Class Wise</option>
                         <option value="teacher">Asatiza Wise</option>
                         <option value="wazahat">Kamzor Result (Wazahat)</option> </select>
+                        <option value="ibtidaiya">ابتدائیہ (Student Wise)</option>
                     </select>
                 </div>
             </div>
@@ -243,11 +244,21 @@ export async function initAdminResultAnalysis(db, containerId) {
     loader.classList.remove("hidden");
     
     try {
-        // Layout ke mutabiq sahi collection select karein
-        const colName = (layout === 'teacher' || layout === 'wazahat') ? "asatiza_wise_results" : "class_wise_results";
-        const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
+        let snapshot;
         
-        const snapshot = await getDocs(q);
+        // 🟢 NAYI LOGIC: Ibtidaiya aur Baqi forms ki alag alag query
+        if (layout === 'ibtidaiya') {
+            const ibtidaiyaExam = examType === "ششماہی امتحان" ? "Shashmahi" : "Salana";
+            const cleanYear = examYear.replace(/[^a-zA-Z0-9]/g, ''); // Jaise "202526"
+            
+            // Ibtidaiya exams fetch karein
+            const q = query(collection(db, "ibtidaiya_exams"), where("examType", "==", ibtidaiyaExam));
+            snapshot = await getDocs(q);
+        } else {
+            const colName = (layout === 'teacher' || layout === 'wazahat') ? "asatiza_wise_results" : "class_wise_results";
+            const q = query(collection(db, colName), where("examType", "==", examType), where("examYear", "==", examYear), orderBy("timestamp", "desc"));
+            snapshot = await getDocs(q);
+        }
         
         // Latest Data Map: Duplicacy khatam karne ke liye
         let latestDataMap = new Map();
@@ -255,21 +266,29 @@ export async function initAdminResultAnalysis(db, containerId) {
         snapshot.forEach(doc => {
             const d = doc.data();
             d.id = doc.id;
-            const context = getJamiaContext(d.jamia);
+            
+            // Ibtidaiya ka jamia name "jamiaName" field me hota hai
+            const currentJamia = layout === 'ibtidaiya' ? (d.jamiaName || "") : (d.jamia || "");
+            const context = getJamiaContext(currentJamia);
 
-            // Filtering Logic (Manual definition to avoid ReferenceError)
+            // Filtering Logic
             const matchRegion = (selRegion === "all" || context.region === selRegion);
             const matchUser = (selUser === "all" || context.userName === selUser);
-            const matchJamia = (selJamia === "all" || d.jamia.toLowerCase().includes(selJamia));
+            const matchJamia = (selJamia === "all" || currentJamia.toLowerCase().includes(selJamia));
 
             if (matchRegion && matchUser && matchJamia) {
-                // Unique Key: Jamia + Class + Teacher taake naya record purane ko overwrite kare
-                let uniqueKey = (layout === 'teacher' || layout === 'wazahat') 
-                    ? `${d.jamia}_${d.teacher}`.toLowerCase() 
-                    : `${d.jamia}_${d.darjah || d.class}`.toLowerCase();
+                if (layout === 'ibtidaiya') {
+                    // Ibtidaiya ke liye unique key sirf doc ID hai
+                    latestDataMap.set(d.id, { ...d, ...context });
+                } else {
+                    // Purana logic baqi forms ke liye
+                    let uniqueKey = (layout === 'teacher' || layout === 'wazahat') 
+                        ? `${d.jamia}_${d.teacher}`.toLowerCase() 
+                        : `${d.jamia}_${d.darjah || d.class}`.toLowerCase();
 
-                if (!latestDataMap.has(uniqueKey)) {
-                    latestDataMap.set(uniqueKey, { ...d, ...context });
+                    if (!latestDataMap.has(uniqueKey)) {
+                        latestDataMap.set(uniqueKey, { ...d, ...context });
+                    }
                 }
             }
         });
@@ -321,7 +340,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                 if (userJamiaat.length === 0) return "";
                 const jamiaRows = userJamiaat.map(j => {
                     const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                    const isSub = data.some(d => d.jamia.trim().toLowerCase() === jName.trim().toLowerCase());
+                    // Check dono logic ke hisab se (Ibtidaiya & Others)
+                    const isSub = data.some(d => {
+                        const dJamia = d.jamia || d.jamiaName || "";
+                        return dJamia.trim().toLowerCase() === jName.trim().toLowerCase();
+                    });
                     return `<div class="flex justify-between p-2 border-b text-xs"><span class="urdu-font">${jName}</span>${isSub ? '<span class="text-green-600">✅ Received</span>' : '<span class="text-red-500">❌ Missing</span>'}</div>`;
                 }).join('');
                 return `<div class="bg-white p-4 rounded-lg border shadow-sm"><h5 class="font-bold text-indigo-700 border-b pb-2 mb-2 text-sm">${u.name || u.email}</h5>${jamiaRows}</div>`;
@@ -331,14 +354,14 @@ export async function initAdminResultAnalysis(db, containerId) {
     }
 
     function renderDetailedReports(data, layout) {
-  const thead = document.getElementById("admin-head");
-    const tbody = document.getElementById("admin-body");
-    const tfoot = document.getElementById("admin-foot");
-    
-    // UI Reset
-    tbody.innerHTML = ""; 
-    tfoot.innerHTML = "";
-    const num = (v) => parseInt(v) || 0;
+        const thead = document.getElementById("admin-head");
+        const tbody = document.getElementById("admin-body");
+        const tfoot = document.getElementById("admin-foot");
+        
+        // UI Reset
+        tbody.innerHTML = ""; 
+        tfoot.innerHTML = "";
+        const num = (v) => parseInt(v) || 0;
 
     if (layout === 'jamia') {
         // ✅ JAMIA WISE: Region aur User ke saath
@@ -518,7 +541,72 @@ else if (layout === 'wazahat') {
     tableContainer.prepend(summaryDiv); // Table ke bilkul upar rounded bar lagayega
 
     tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
-}
+} else if (layout === 'ibtidaiya') {
+        // ✅ IBTIDAIYA STUDENT WISE RESULT
+        thead.innerHTML = `
+            <tr class="bg-indigo-900 text-white text-[13px] font-bold urdu-font">
+                <th class="p-2 border border-indigo-700">Sr.</th>
+                <th class="p-2 border border-indigo-700">Region</th>
+                <th class="p-2 border border-indigo-700">تعلیمی ذمہ دار</th>
+                <th class="p-2 border border-indigo-700">جامعہ</th>
+                <th class="p-2 border border-indigo-700">داخلہ</th>
+                <th class="p-2 border border-indigo-700 min-w-[120px]">طالب علم کا نام</th>
+                <th class="p-2 border border-indigo-700 min-w-[120px]">ولدیت</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">تجوید</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ورک بک</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">اردو</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ہم نصابی</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">املا</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">Eng(W)</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">Eng(O)</th>
+                <th class="p-2 border border-indigo-700 bg-indigo-800 text-[11px]">ریاضی</th>
+                <th class="p-2 border border-indigo-700 bg-gray-800">کل</th>
+                <th class="p-2 border border-indigo-700 bg-blue-900">حاصل</th>
+                <th class="p-2 border border-indigo-700 bg-green-900">%</th>
+                <th class="p-2 border border-indigo-700">کیفیت</th>
+            </tr>
+        `;
+
+        let sr = 1;
+        data.forEach(d => {
+            const students = d.students || [];
+            
+            students.forEach(stu => {
+                // Agar absent hai to background red ya bold karne ke liye chota sa check
+                const getM = (val) => val === 'A' ? '<span class="text-red-500 font-bold">A</span>' : (val || '-');
+
+                tbody.innerHTML += `
+                    <tr class="text-center hover:bg-gray-50 border-b">
+                        <td class="p-2 border">${sr++}</td>
+                        <td class="p-2 border font-bold text-gray-700">${d.region || '-'}</td>
+                        <td class="p-2 border urdu-font text-blue-700">${d.userName || '-'}</td>
+                        <td class="p-2 border urdu-font font-bold text-indigo-700">${d.jamiaName || '-'}</td>
+                        <td class="p-2 border text-gray-600">${stu.dakhila || '-'}</td>
+                        <td class="p-2 border urdu-font font-bold text-right">${stu.name || '-'}</td>
+                        <td class="p-2 border urdu-font text-right">${stu.fatherName || '-'}</td>
+                        
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.tajweed)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.workbook)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.urdu)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.ham_nisabi)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.imla)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.eng_written)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.eng_oral)}</td>
+                        <td class="p-2 border text-[13px] bg-indigo-50/30">${getM(stu.marks?.riyazi)}</td>
+                        
+                        <td class="p-2 border font-bold text-gray-500 bg-gray-100">500</td>
+                        <td class="p-2 border font-bold text-blue-700 bg-blue-50">${stu.obtained || 0}</td>
+                        <td class="p-2 border font-bold text-green-700 bg-green-50">${stu.percent || '0%'}</td>
+                        <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(stu.percent, 'jamia')}">${stu.status || '-'}</td>
+                    </tr>
+                `;
+            });
+        });
+
+        if (sr === 1) {
+            tbody.innerHTML = `<tr><td colspan="19" class="p-10 text-center text-red-500 font-bold urdu-font text-lg">کوئی ریکارڈ نہیں ملا</td></tr>`;
+        }
+    }
     else {
         thead.innerHTML = `
             <th class="p-2 border">Sr.</th>
