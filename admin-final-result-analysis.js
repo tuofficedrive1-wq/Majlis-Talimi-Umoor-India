@@ -133,7 +133,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <option value="jamia">Jamia Wise</option>
                         <option value="class">Class Wise</option>
                         <option value="teacher">Asatiza Wise</option>
-                        <option value="wazahat">Kamzor Result (Wazahat)</option> </select>
+                        <option value="wazahat">Kamzor Result (Wazahat)</option>
                         <option value="ibtidaiya">Ibtidaiya (Student Wise)</option>
                     </select>
                 </div>
