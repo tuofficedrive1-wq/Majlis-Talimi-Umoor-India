@@ -465,42 +465,39 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
                 const totalPeriodsCount = teacher.periods?.length || 0;
 
+                // NAYI CHEEZ: Total calculate karne ke liye variables
+                let totalTeacherTarget = 0;
+                let totalTeacherAchieved = 0;
+                let firstPeriodSemester = 1;
+
                 teacher.periods?.forEach((p, pIdx) => {
                     let target = 0;
-const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
+                    const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
 
-// 1. Pehle Direct Match Check Karein (Agar user aur admin ki class bilkul same ho)
-if (monthlyTargets && monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
-    target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
-} 
-// 2. Agar exact match na mile, toh Partial Match check karein
-else if (monthlyTargets) {
-    const userClassNameLower = (p.className || "").toLowerCase();
-    const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
+                    if (monthlyTargets && monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
+                        target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
+                    } 
+                    else if (monthlyTargets) {
+                        const userClassNameLower = (p.className || "").toLowerCase();
+                        const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
 
-    for (const adminKey in monthlyTargets) {
-        const adminKeyLower = adminKey.toLowerCase();
-        
-        // Step A: Check karein ki kya book (subject) ka naam aakhiri me match ho raha hai
-        if (adminKeyLower.endsWith(`_${userBookNameFormatted}`)) {
-            
-            // Step B: Admin key se book ka naam hata kar sirf admin class ka naam nikal lein
-            const adminClassPart = adminKeyLower.replace(`_${userBookNameFormatted}`, '').replace(/_/g, ' ');
-            
-            // Step C: Word Boundary Regex lagayein (Taaki 'Primary' word check ho, 'Preprimary' match na ho jaye)
-            const regex = new RegExp(`\\b${adminClassPart}\\b`);
-            
-            // Step D: Agar user ki class (e.g., "Primary A") me admin ki class ("Primary") shamil hai
-            if (regex.test(userClassNameLower)) {
-                if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
-                    target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
-                    break; // Target milte hi loop rok dijiye
-                }
-            }
-        }
-    }
-}
-                    
+                        for (const adminKey in monthlyTargets) {
+                            const adminKeyLower = adminKey.toLowerCase();
+                            
+                            if (adminKeyLower.endsWith(`_${userBookNameFormatted}`)) {
+                                const adminClassPart = adminKeyLower.replace(`_${userBookNameFormatted}`, '').replace(/_/g, ' ');
+                                const regex = new RegExp(`\\b${adminClassPart}\\b`);
+                                
+                                if (regex.test(userClassNameLower)) {
+                                    if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
+                                        target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
+                                        break; 
+                                    }
+                                }
+                            }
+                        }
+                    }
+                                        
                     let achievedValue = 0;
                     if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
                         achievedValue = p.achieved[currentYearMonthPrefix];
@@ -516,10 +513,14 @@ else if (monthlyTargets) {
                         }
                     }
 
+                    // NAYI CHEEZ: Har subject ka target aur achieved value total mein jodna
+                    totalTeacherTarget += target;
+                    totalTeacherAchieved += achievedValue;
+                    if (pIdx === 0) firstPeriodSemester = p.semester;
+
                     const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
 
-                    // Unique row selector banayenge teacher image capture ke liye
                     const teacherRowId = `row-${safeId}-${teacher.id}`;
 
                     html += `
@@ -539,7 +540,7 @@ else if (monthlyTargets) {
                             <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
                             
                             ${pIdx === 0 ? `
-                            <td class="p-4 text-center border-l bg-slate-50/30" rowspan="${totalPeriodsCount}">
+                            <td class="p-4 text-center border-l bg-slate-50/30" rowspan="${totalPeriodsCount + 1}">
                                 <div class="flex flex-col gap-2 items-center justify-center">
                                     <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[10px] px-2.5 py-1.5 rounded-lg hover:bg-rose-50 transition font-bold shadow-sm flex items-center gap-1" title="Teacher Ki Report Image Download Karein">
                                         <i class="fas fa-image"></i> Image
@@ -552,6 +553,24 @@ else if (monthlyTargets) {
                             ` : ''}
                         </tr>`;
                 });
+
+                // NAYI CHEEZ: Total Summary Wali Line 
+                if (totalPeriodsCount > 0) {
+                    const overallPercentage = totalTeacherTarget > 0 ? Math.round((totalTeacherAchieved / totalTeacherTarget) * 100) : 0;
+                    const overallResult = calculateKaifiyatAndStyle(overallPercentage, targetMonthKey, firstPeriodSemester);
+
+                    const teacherRowId = `row-${safeId}-${teacher.id}`; // Taki image download me yeh row bhi aaye
+
+                    html += `
+                        <tr class="bg-indigo-50/50 border-b-2 border-indigo-200 ${teacherRowId}">
+                            <td colspan="4" class="p-4 text-right font-black text-indigo-900 uppercase text-[10px]">Total Summary (${teacher.name}):</td>
+                            <td class="p-4 text-center font-black text-indigo-700 bg-indigo-100/50">${totalTeacherTarget}</td>
+                            <td class="p-4 text-center font-black text-indigo-700 bg-indigo-100/50">${totalTeacherAchieved}</td>
+                            <td class="p-4 text-center font-black text-slate-800">${overallPercentage}%</td>
+                            <td class="p-4 text-center italic status-cell ${overallResult.colorClass}">${overallResult.kaifiyat}</td>
+                        </tr>
+                    `;
+                }
             });
             html += `</tbody></table></div></div>`;
         }
