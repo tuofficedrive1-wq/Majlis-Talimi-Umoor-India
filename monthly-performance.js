@@ -465,7 +465,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
                 const totalPeriodsCount = teacher.periods?.length || 0;
 
-                // NAYI CHEEZ: Total calculate karne ke liye variables
                 let totalTeacherTarget = 0;
                 let totalTeacherAchieved = 0;
                 let firstPeriodSemester = 1;
@@ -474,21 +473,31 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     let target = 0;
                     const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
 
+                    // 1. Pehle Direct Match Check Karein
                     if (monthlyTargets && monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
                         target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
                     } 
+                    // 2. Agar exact match na mile, toh naya aur mazboot Partial Match check karein
                     else if (monthlyTargets) {
-                        const userClassNameLower = (p.className || "").toLowerCase();
+                        const userClassNameLower = (p.className || "").trim().toLowerCase();
                         const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
 
                         for (const adminKey in monthlyTargets) {
                             const adminKeyLower = adminKey.toLowerCase();
+                            const suffix = `_${userBookNameFormatted}`;
                             
-                            if (adminKeyLower.endsWith(`_${userBookNameFormatted}`)) {
-                                const adminClassPart = adminKeyLower.replace(`_${userBookNameFormatted}`, '').replace(/_/g, ' ');
-                                const regex = new RegExp(`\\b${adminClassPart}\\b`);
+                            // A: Agar key ke end me exactly hamari subject aati hai
+                            if (adminKeyLower.endsWith(suffix)) {
                                 
-                                if (regex.test(userClassNameLower)) {
+                                // B: Subject hata kar sirf class ka hissa nikal lein safely
+                                const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
+                                const adminClassClean = adminClassKeyPart.replace(/_/g, ' ').trim();
+                                
+                                // C: Check karein ki user ki class exact hai, ya uske aage space/dash laga kar A ya B likha hai
+                                if (userClassNameLower === adminClassClean || 
+                                    userClassNameLower.startsWith(adminClassClean + " ") || 
+                                    userClassNameLower.startsWith(adminClassClean + "-")) {
+                                    
                                     if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
                                         target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
                                         break; 
@@ -513,7 +522,6 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         }
                     }
 
-                    // NAYI CHEEZ: Har subject ka target aur achieved value total mein jodna
                     totalTeacherTarget += target;
                     totalTeacherAchieved += achievedValue;
                     if (pIdx === 0) firstPeriodSemester = p.semester;
@@ -554,12 +562,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         </tr>`;
                 });
 
-                // NAYI CHEEZ: Total Summary Wali Line 
                 if (totalPeriodsCount > 0) {
                     const overallPercentage = totalTeacherTarget > 0 ? Math.round((totalTeacherAchieved / totalTeacherTarget) * 100) : 0;
                     const overallResult = calculateKaifiyatAndStyle(overallPercentage, targetMonthKey, firstPeriodSemester);
 
-                    const teacherRowId = `row-${safeId}-${teacher.id}`; // Taki image download me yeh row bhi aaye
+                    const teacherRowId = `row-${safeId}-${teacher.id}`; 
 
                     html += `
                         <tr class="bg-indigo-50/50 border-b-2 border-indigo-200 ${teacherRowId}">
