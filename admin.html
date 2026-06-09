@@ -614,6 +614,9 @@
                     <input type="text" id="user-search-input" placeholder="Search by name or email..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 bg-slate-50">
                     <i class="fas fa-search absolute left-3 top-2.5 text-gray-400"></i>
                 </div>
+                <button id="open-add-user-modal-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">
+    <i class="fas fa-user-plus mr-1"></i> Add New User
+</button>
             </div>
             <div class="flex flex-wrap gap-2 mb-6 bg-slate-100 p-1.5 rounded-lg w-fit border border-slate-200">
                 <button class="user-role-filter-btn px-4 py-1.5 text-sm font-medium rounded-md active bg-white shadow text-teal-700" data-role="all">All Users</button>
@@ -964,7 +967,31 @@
          </div>
     </div>
     
-   
+   <div id="add-user-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-[60]">
+    <div class="relative top-1/2 -translate-y-1/2 mx-4 sm:mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <form id="add-user-form">
+            <h3 class="text-xl font-medium text-gray-900 text-center mb-4">Create New User</h3>
+            <div class="space-y-4 text-left">
+                <div><label class="block text-sm font-medium">Name</label><input type="text" id="add-user-name" class="w-full p-2 border rounded urdu-font" required></div>
+                <div><label class="block text-sm font-medium">Email</label><input type="email" id="add-user-email" class="w-full p-2 border rounded" required></div>
+                <div><label class="block text-sm font-medium">Password</label><input type="password" id="add-user-password" class="w-full p-2 border rounded" minlength="6" required></div>
+                <div>
+                    <label class="block text-sm font-medium">Role</label>
+                    <select id="add-user-role" class="w-full p-2 border rounded">
+                        <option value="standard">Standard User (Teacher/Zimmedar)</option>
+                        <option value="inspector">Academic Inspector (Mufattish)</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+            <p id="add-user-error" class="text-red-500 text-sm mt-2"></p>
+            <div class="flex gap-3 border-t mt-4 pt-4">
+                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md w-full hover:bg-indigo-700 font-bold">Create User</button>
+                <button type="button" id="close-add-user-modal" class="px-4 py-2 bg-gray-500 text-white rounded-md w-full hover:bg-gray-600">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
 
     <div id="comment-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
          <div class="relative top-1/2 -translate-y-1/2 mx-4 sm:mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
@@ -1081,6 +1108,7 @@
         import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, updateDoc, getDocs, deleteField, Timestamp, addDoc, orderBy, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";   
         import { initAdminResultAnalysis } from "./admin-final-result-analysis.js";
         import { initAcademicYearSetup } from "./admin-academic-setup.js";
+        import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // --- GLOBAL VARIABLES & CONFIG ---
         const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2"; 
@@ -1169,6 +1197,97 @@ const assignTaskBtn = document.getElementById('assign-task-btn');
         // Global variables define karein taake errors na aayein
 const finalAnalysisContainer = document.getElementById('final-analysis-container');
 const deadlineModal = document.getElementById('deadline-modal') || document.createElement('div'); // ReferenceError fix
+
+        // --- 1. Password Reset Email Bhejna ---
+const handleResetPassword = async (email) => {
+    if (confirm(`Kya aap ${email} par password reset link bhejna chahte hain?`)) {
+        showLoader(true);
+        try {
+            await sendPasswordResetEmail(auth, email);
+            showNotification(`Reset link ${email} par bhej diya gaya hai!`);
+        } catch (error) {
+            console.error(error);
+            showNotification("Link bhejne mein masla aaya.", true);
+        } finally {
+            showLoader(false);
+        }
+    }
+};
+
+// --- 2. User ko Activate/Deactivate Karna ---
+const handleToggleUserStatus = async (userId, isActive) => {
+    const actionText = isActive ? "Activate" : "Deactivate";
+    if (confirm(`Kya aap is user ko ${actionText} karna chahte hain? Inactive user reports mein shamil nahi honge.`)) {
+        showLoader(true);
+        try {
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, { isActive: isActive });
+            showNotification(`User successfully ${actionText}d.`);
+        } catch (error) {
+            console.error(error);
+            showNotification("Status update fail ho gaya.", true);
+        } finally {
+            showLoader(false);
+        }
+    }
+};
+
+// --- 3. Naya User Create Karna (Without Logging Admin Out) ---
+const addUserModal = document.getElementById('add-user-modal');
+const addUserForm = document.getElementById('add-user-form');
+const openAddUserBtn = document.getElementById('open-add-user-modal-btn');
+const closeAddUserBtn = document.getElementById('close-add-user-modal');
+
+if(openAddUserBtn) openAddUserBtn.addEventListener('click', () => addUserModal.classList.remove('hidden'));
+if(closeAddUserBtn) closeAddUserBtn.addEventListener('click', () => addUserModal.classList.add('hidden'));
+
+if (addUserForm) {
+    addUserForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errorMsg = document.getElementById('add-user-error');
+        errorMsg.textContent = '';
+        
+        const name = document.getElementById('add-user-name').value;
+        const email = document.getElementById('add-user-email').value;
+        const password = document.getElementById('add-user-password').value;
+        const role = document.getElementById('add-user-role').value;
+
+        showLoader(true);
+        
+        // Trick: Ek secondary Firebase app instance banayein taake Admin logout na ho
+        const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
+        const secondaryAuth = getAuth(secondaryApp);
+
+        try {
+            // 1. Auth mein user banayein
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+            const newUserId = userCredential.user.uid;
+
+            // 2. Firestore mein user ka data save karein
+            await setDoc(doc(db, 'users', newUserId), {
+                name: name,
+                email: email,
+                role: role,
+                isActive: true, // Naya user default active hoga
+                createdAt: serverTimestamp(),
+                jamiaatList: [] // Khali list shuru ke liye
+            });
+
+            showNotification("Naya User kamyabi se ban gaya!");
+            addUserForm.reset();
+            addUserModal.classList.add('hidden');
+
+            // Secondary app ko sign out kar dein taake memory clean rahe
+            await signOut(secondaryAuth);
+
+        } catch (error) {
+            console.error("Error creating user:", error);
+            errorMsg.textContent = error.message;
+        } finally {
+            showLoader(false);
+        }
+    });
+}
         
         // --- Application State ---
         let currentUser = null;
@@ -3574,9 +3693,10 @@ const fetchAndRenderAdminUsers = (initialLoad = false) => {
     if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
     
     unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
-        allUsersData = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(user => user.id !== ADMIN_UID);
+        // Jab snapshot aata hai:
+allUsersData = snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(user => user.id !== ADMIN_UID && user.isActive !== false); // Inactive ko hata diya
 
         window.allUsersData = allUsersData;
         renderAdminUsersTable(allUsersData);
@@ -3661,41 +3781,59 @@ const populateRegionFilterDropdown = (selectElement, regions) => {
 const renderAdminUsersTable = (users) => {
     if (!adminUsersTbody) return;
     if (users.length === 0) {
-        adminUsersTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No users found.</td></tr>'; 
+        adminUsersTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">No users found.</td></tr>'; 
         return;
     }
     
-    adminUsersTbody.innerHTML = users
-        .map(user => {
-            const displayName = user.name || user.displayName || user.email || 'N/A';
-            const regionText = user.region ? ` | ${user.region}` : ''; 
-            
-            return `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap urdu-font font-medium">${displayName}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${user.email || 'N/A'}</td> 
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 urdu-font">${user.zimmedari || 'N/A'}${regionText}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="flex gap-3">
-                            <!-- 🟢 NAYA BUTTON: User Dashboard par jane ke liye -->
-                            <button class="admin-login-as-btn text-indigo-600 hover:text-indigo-800 text-sm font-bold bg-indigo-50 px-2 py-1 rounded" data-user-id="${user.id}">
-                                <i class="fas fa-sign-in-alt"></i> View Dashboard
-                            </button>
-                            <button class="admin-edit-user-btn text-blue-600 hover:text-blue-800 text-sm font-bold" data-user-id="${user.id}">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="admin-delete-user-btn text-red-600 hover:text-red-800 text-sm font-bold" data-user-id="${user.id}">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+    adminUsersTbody.innerHTML = users.map(user => {
+        const displayName = user.name || user.email || 'N/A';
+        // Check if user is active (default is true if field doesn't exist)
+        const isActive = user.isActive !== false; 
+        const statusBadge = isActive 
+            ? '<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded border border-green-200">Active</span>'
+            : '<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded border border-red-200">Inactive</span>';
 
-    // --- Event Listeners ---
+        const toggleStatusBtn = isActive
+            ? `<button class="admin-toggle-status-btn text-orange-600 hover:text-orange-800 text-sm font-bold" data-id="${user.id}" data-status="false"><i class="fas fa-ban"></i> Deactivate</button>`
+            : `<button class="admin-toggle-status-btn text-green-600 hover:text-green-800 text-sm font-bold" data-id="${user.id}" data-status="true"><i class="fas fa-check"></i> Activate</button>`;
+
+        return `
+            <tr class="hover:bg-gray-50 ${!isActive ? 'opacity-50 bg-gray-100' : ''}">
+                <td class="px-6 py-4 whitespace-nowrap urdu-font font-medium">${displayName} <br> ${statusBadge}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${user.email}</td> 
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 urdu-font">${user.role || 'N/A'}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex flex-wrap gap-3">
+                        <button class="admin-login-as-btn text-indigo-600 hover:text-indigo-800 text-sm font-bold" data-user-id="${user.id}"><i class="fas fa-sign-in-alt"></i> Dashboard</button>
+                        <button class="admin-edit-user-btn text-blue-600 hover:text-blue-800 text-sm font-bold" data-user-id="${user.id}"><i class="fas fa-edit"></i> Edit</button>
+                        ${toggleStatusBtn}
+                        <button class="admin-reset-pass-btn text-gray-600 hover:text-gray-800 text-sm font-bold" data-email="${user.email}"><i class="fas fa-key"></i> Reset Pass</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // --- Attach Listeners for New Buttons ---
     
-    // 🟢 NAYA LOGIC: Jab View Dashboard par click ho
+    // Toggle Status (Deactivate/Activate)
+    document.querySelectorAll('.admin-toggle-status-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const userId = e.currentTarget.dataset.id;
+            const newStatus = e.currentTarget.dataset.status === 'true';
+            await handleToggleUserStatus(userId, newStatus);
+        });
+    });
+
+    // Reset Password
+    document.querySelectorAll('.admin-reset-pass-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const email = e.currentTarget.dataset.email;
+            await handleResetPassword(email);
+        });
+    });
+       // --- Event Listeners ---
+        // 🟢 NAYA LOGIC: Jab View Dashboard par click ho
     document.querySelectorAll('.admin-login-as-btn').forEach(button => {
         button.addEventListener('click', (e) => {
             const targetUserId = e.currentTarget.dataset.userId;
