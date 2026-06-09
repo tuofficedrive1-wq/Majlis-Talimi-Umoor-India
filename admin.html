@@ -3412,7 +3412,6 @@ const generateMasterSummaryHtml = (users, allReports, title, titleColorClass) =>
 const renderDedicatedKkdSummary = (reports) => {
     if (!kkdSectionDedicated || !kkdSummaryTablesContainer || !kkdSummaryLoadingMsg) return;
 
-    // Agar abhi tak reports load hi nahi hue
     if (!Array.isArray(reports) || reports.length === 0) {
         kkdSummaryTablesContainer.classList.remove('hidden');
         kkdSummaryLoadingMsg.classList.remove('hidden');
@@ -3421,55 +3420,34 @@ const renderDedicatedKkdSummary = (reports) => {
         return;
     }
 
-    // User filter
     const selectedUserId = kkdSummaryUserFilter?.value || 'all';
-    let filteredReports = [...reports];
-
-    if (selectedUserId !== 'all') {
-        filteredReports = filteredReports.filter(r => r.userId === selectedUserId);
-    }
+    let filteredReports = selectedUserId === 'all' ? [...reports] : reports.filter(r => r.userId === selectedUserId);
 
     kkdSummaryTablesContainer.classList.remove('hidden');
     kkdSummaryLoadingMsg.classList.add('hidden');
 
     if (filteredReports.length === 0) {
-        kkdSectionDedicated.innerHTML = `
-            <p class="text-center text-gray-500">
-                Is filter ke liye koi KKd report nahi mili.
-            </p>`;
+        kkdSectionDedicated.innerHTML = `<p class="text-center text-gray-500 py-8 bg-white rounded-lg border border-gray-200">Is filter ke liye koi KKd report nahi mili.</p>`;
         return;
     }
 
-    // Month / Year display (admin ke dropdown se)
     const selectedMonthName = adminMonthSelect?.value || '';
     const selectedYearVal = adminYearSelect?.value || '';
+    const onlyUnfilled = kkdOnlyUnfilledCheckbox?.checked;
 
     let totalUsers = 0;
-    let totalTeachers = 0;
-    let totalTeachersReported = 0;
-
+    let grandTotalTeachers = 0;
+    let grandTotalReported = 0;
+    let tablesHtml = '';
     const usersSeen = new Set();
-    let cardsHtml = '';
 
-    const getUserNameById = (id) => {
-        const u = allUsersData.find(x => x.id === id);
-        return u?.name || u?.email || 'N/A';
-    };
-
-    // Reports ko user ke hisab se group karein
     const reportsByUser = {};
     filteredReports.forEach(report => {
         const uid = report.userId;
         if (!uid) return;
-        
         if (!reportsByUser[uid]) {
-            reportsByUser[uid] = {
-                userId: uid,
-                academicYear: report.academicYear,
-                kkdEntries: []
-            };
+            reportsByUser[uid] = { userId: uid, academicYear: report.academicYear, kkdEntries: [] };
         }
-        
         if (report.karkardagiReport && Array.isArray(report.karkardagiReport.data)) {
             reportsByUser[uid].kkdEntries.push(...report.karkardagiReport.data);
         }
@@ -3477,146 +3455,98 @@ const renderDedicatedKkdSummary = (reports) => {
 
     Object.values(reportsByUser).forEach(userData => {
         const userId = userData.userId;
-        
-        // 🟢 FIX: Find user in the current active users list
         const userDoc = allUsersData.find(u => u.id === userId);
-        
-        // 🟢 NAYA LOGIC: Agar user profile delete ho chuka hai ya inactive hai, to uski purani report yahan skip kar dein
-        if (!userDoc) return; 
+        if (!userDoc) return;
 
         const userName = userDoc.name || userDoc.email || 'N/A';
-
-        // Kis academic year ka structure use karna hai
         const academicYears = userDoc.academicYears || {};
-        // Agar report me year nahi hai to latest uthayen
-        const academicYearKey = userData.academicYear || Object.keys(academicYears).sort().reverse()[0];
+        const academicYearKey = userData.academicYear || Object.keys(academicYears).sort().reverse()[0] || 'N/A';
+        const structure = (academicYears[academicYearKey] || {}).karkardagiStructure || [];
 
-        const yearData = academicYears[academicYearKey] || {};
-        const structure = yearData.karkardagiStructure || [];
+        if (!usersSeen.has(userId)) { usersSeen.add(userId); totalUsers++; }
 
-        if (!usersSeen.has(userId)) {
-            usersSeen.add(userId);
-            totalUsers++;
-        }
-
-        // Agar structure hi nahi mila
         if (!Array.isArray(structure) || structure.length === 0) {
-            cardsHtml += `
-                <div class="summary-card mt-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <h4 class="text-lg font-semibold urdu-font">${userName}</h4>
-                        <span class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
-                            KKd Structure nahi mila
-                        </span>
-                    </div>
-                    <p class="text-sm text-gray-500">
-                        Is user ke academic year <span class="font-semibold">${academicYearKey || '-'}</span> 
-                        ke liye karkardagi structure (Jamia / Teacher list) save nahi hai, 
-                        is liye teachers ki list nahi ban pa rahi.
-                    </p>
-                </div>`;
+            if (selectedUserId === 'all') {
+                tablesHtml += `<div class="mt-6 p-4 bg-red-50 border border-red-100 rounded-lg"><h4 class="font-bold text-red-800 urdu-font">${userName}</h4><p class="text-sm text-red-600">Structure save nahi hai.</p></div>`;
+            }
             return;
         }
 
-        // Saare teachers structure se nikal lo
         const teacherMap = new Map();
-
         structure.forEach(jamia => {
             const jName = jamia.jamiaName || 'Jamia';
             (jamia.teachers || []).forEach(t => {
                 if (!t) return;
-                const key = `${jName}::${t.id}`;
-                if (!teacherMap.has(key)) {
-                    teacherMap.set(key, {
-                        jamiaName: jName,
-                        teacherId: t.id,
-                        teacherName: t.name || 'Teacher',
-                        hasReport: false
-                    });
-                }
+                teacherMap.set(`${jName}::${t.id}`, { jamiaName: jName, teacherId: t.id, teacherName: t.name || 'Teacher', hasReport: false });
             });
         });
 
-        // Ab is month ki merged KKd data se pata karo
         userData.kkdEntries.forEach(entry => {
             if (!entry) return;
-            const jName = entry.jamiaName || entry.jamiaId || '';
-            const key = `${jName}::${entry.teacherId}`;
-            if (teacherMap.has(key)) {
-                const obj = teacherMap.get(key);
-                obj.hasReport = true; 
-                teacherMap.set(key, obj);
-            }
+            const key = `${entry.jamiaName || entry.jamiaId}::${entry.teacherId}`;
+            if (teacherMap.has(key)) { teacherMap.get(key).hasReport = true; }
         });
 
-        // Saare teachers list (original)
-        const allTeacherList = Array.from(teacherMap.values())
-            .sort((a, b) => {
-                if (a.jamiaName === b.jamiaName) {
-                    return (a.teacherName || '').localeCompare(b.teacherName || '');
-                }
-                return (a.jamiaName || '').localeCompare(b.jamiaName || '');
-            });
+        const allTeacherList = Array.from(teacherMap.values()).sort((a, b) => {
+            if (a.jamiaName === b.jamiaName) return (a.teacherName || '').localeCompare(b.teacherName || '');
+            return (a.jamiaName || '').localeCompare(b.jamiaName || '');
+        });
 
-        // Checkbox ki value: sirf unfilled dikhani hai ya nahi
-        const onlyUnfilled = kkdOnlyUnfilledCheckbox?.checked;
-
-        // Table me jo list dikhani hai
-        const teacherList = onlyUnfilled
-            ? allTeacherList.filter(t => !t.hasReport)
-            : allTeacherList;
-
-        // Upar wale overall numbers hamesha full list se hi banenge
+        const teacherList = onlyUnfilled ? allTeacherList.filter(t => !t.hasReport) : allTeacherList;
+        
         const userTeacherTotal = allTeacherList.length;
         const userTeacherReported = allTeacherList.filter(t => t.hasReport).length;
 
-        totalTeachers += userTeacherTotal;
-        totalTeachersReported += userTeacherReported;
+        grandTotalTeachers += userTeacherTotal;
+        grandTotalReported += userTeacherReported;
 
         let rowsHtml = '';
         teacherList.forEach(t => {
             rowsHtml += `
-                <tr>
-                    <td class="px-3 py-1 border urdu-font">${t.jamiaName}</td>
-                    <td class="px-3 py-1 border urdu-font">${t.teacherName}</td>
-                    <td class="px-3 py-1 border text-center">
-                        ${
-                            t.hasReport
-                                ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">Filled</span>'
-                                : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Not Filled</span>'
+                <tr class="hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                    <td class="px-4 py-3 border-r border-gray-100 urdu-font text-gray-700">${t.jamiaName}</td>
+                    <td class="px-4 py-3 border-r border-gray-100 urdu-font text-gray-800 font-medium">${t.teacherName}</td>
+                    <td class="px-4 py-3 text-center">
+                        ${t.hasReport
+                            ? '<span class="px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">Filled</span>'
+                            : '<span class="px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs font-bold">Not Filled</span>'
                         }
                     </td>
                 </tr>`;
         });
 
-        cardsHtml += `
-            <div class="summary-card mt-4">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
+        // 🟢 NAYA LOGIC: Agar "All Users" select hai to har table ke upar naam aayega.
+        // Agar "Single User" select hai, to table ke upar se naam aur extra card hat jayega.
+        let userHeaderHtml = '';
+        if (selectedUserId === 'all') {
+            userHeaderHtml = `
+                <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-3 gap-2 px-2 mt-8">
                     <div>
-                        <h4 class="text-lg font-semibold urdu-font">${userName}</h4>
-                        <p class="text-xs text-gray-500">
-                            Academic Year: <span class="font-semibold">${academicYearKey || '-'}</span>
-                        </p>
-                        <p class="text-xs text-gray-500">
-                            Month: <span class="font-semibold">${selectedMonthName} ${selectedYearVal}</span>
-                        </p>
+                        <h4 class="text-xl font-bold text-teal-800 urdu-font">${userName}</h4>
+                        <p class="text-xs text-gray-500 mt-1">Academic Year: <span class="font-semibold">${academicYearKey}</span></p>
                     </div>
-                    <div class="text-sm text-gray-700">
-                        <p>Total Teachers: <span class="font-semibold">${userTeacherTotal}</span></p>
-                        <p>Report Filled: <span class="font-semibold text-emerald-600">${userTeacherReported}</span></p>
+                    <div class="text-sm font-medium text-gray-700 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+                        Total: <span class="font-bold text-gray-900">${userTeacherTotal}</span> 
+                        <span class="mx-2 text-gray-300">|</span> 
+                        Filled: <span class="font-bold text-emerald-600">${userTeacherReported}</span>
                     </div>
-                </div>
-                <div class="overflow-x-auto mt-2">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-gray-100">
-                                <th class="px-3 py-1 border text-left urdu-font">Jamia</th>
-                                <th class="px-3 py-1 border text-left urdu-font">Teacher</th>
-                                <th class="px-3 py-1 border text-center">Status</th>
+                </div>`;
+        }
+
+        tablesHtml += `
+            <div class="${selectedUserId === 'all' ? '' : 'mt-6'}">
+                ${userHeaderHtml}
+                <div class="overflow-hidden rounded-xl border border-gray-200 shadow-sm">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+                            <tr>
+                                <th class="px-4 py-3 font-bold w-1/3 border-r border-gray-200">Jamia</th>
+                                <th class="px-4 py-3 font-bold w-1/2 border-r border-gray-200">Teacher</th>
+                                <th class="px-4 py-3 font-bold text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${rowsHtml || `<tr><td colspan="3" class="px-3 py-2 text-center text-gray-500">No teachers found in structure.</td></tr>`}
+                            ${rowsHtml || `<tr><td colspan="3" class="px-4 py-8 text-center text-gray-500">Is filter ke mutabiq koi record nahi mila.</td></tr>`}
                         </tbody>
                     </table>
                 </div>
@@ -3624,70 +3554,63 @@ const renderDedicatedKkdSummary = (reports) => {
     });
 
     if (usersSeen.size === 0) {
-        kkdSectionDedicated.innerHTML = `
-            <p class="text-center text-gray-500">
-                Is filter ke liye KKd structure ya reports nahi mil paaye.
-            </p>`;
+        kkdSectionDedicated.innerHTML = `<p class="text-center text-gray-500 py-8 bg-white rounded-lg border border-gray-200">Is filter ke liye KKd structure ya reports nahi mil paaye.</p>`;
         return;
     }
 
-    const percentage = totalTeachers > 0
-        ? Math.round((totalTeachersReported / totalTeachers) * 100)
-        : 0;
-
-    const filterLabel = selectedUserId === 'all'
-        ? 'All Users'
-        : (getUserNameById(selectedUserId));
-        
-    let leftTitle;
-    let leftValue;
-
-    if (selectedUserId === 'all') {
-        leftTitle = 'Total Users';
-        leftValue = totalUsers;
-    } else {
-        const selectedUser = allUsersData.find(u => u.id === selectedUserId);
-        const jamiaCount = selectedUser
-            ? (Array.isArray(selectedUser.jamiaatList)
-                ? selectedUser.jamiaatList.length
-                : (selectedUser.totalJamiaat || 0))
-            : 0;
-
+    const percentage = grandTotalTeachers > 0 ? Math.round((grandTotalReported / grandTotalTeachers) * 100) : 0;
+    
+    // Main Header Variables
+    let headerTitle = 'Talimi & Shashmahi KKd Summary';
+    let leftTitle = 'Total Users';
+    let leftValue = totalUsers;
+    
+    // 🟢 Single user hone par Main Header mein tabdeeli
+    if (selectedUserId !== 'all') {
+        const singleUser = allUsersData.find(u => u.id === selectedUserId);
+        headerTitle = `<span class="urdu-font text-teal-700">${singleUser?.name || 'User'}</span> Ki KKd Report`;
         leftTitle = 'Total Jamiaat';
-        leftValue = jamiaCount;
+        leftValue = singleUser ? (Array.isArray(singleUser.jamiaatList) ? singleUser.jamiaatList.length : (singleUser.totalJamiaat || 0)) : 0;
     }
 
-    const topSummaryHtml = `
-        <div class="summary-card master-summary-card mb-4">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+    // 🟢 YAHAN SIRF EK BADA CARD BANAYA GAYA HAI
+    const unifiedCardHtml = `
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 w-full">
+            
+            <!-- MAIN HEADER & STATS -->
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-slate-100 pb-6">
                 <div>
-                    <h4 class="text-lg font-semibold">Talimi & Shashmahi KKd Overall Summary</h4>
-                    <p class="text-sm text-gray-600">
-                        Month: <span class="font-semibold">${selectedMonthName} ${selectedYearVal}</span>
-                    </p>
-                    <p class="text-xs text-gray-500">
-                        Filter: <span class="font-semibold urdu-font">${filterLabel}</span>
-                    </p>
+                    <h3 class="text-2xl font-bold text-slate-800">${headerTitle}</h3>
+                    <p class="text-sm text-slate-500 mt-2 font-medium"><i class="far fa-calendar-alt mr-1 text-teal-600"></i> Mahina: ${selectedMonthName} ${selectedYearVal}</p>
+                </div>
+                
+                <div class="flex flex-wrap gap-3">
+                    <div class="bg-blue-50/50 px-4 py-3 rounded-xl border border-blue-100/50 text-center min-w-[110px]">
+                        <p class="text-[10px] uppercase tracking-wider text-blue-600 font-bold mb-1">${leftTitle}</p>
+                        <p class="text-2xl font-black text-blue-900">${leftValue}</p>
+                    </div>
+                    <div class="bg-slate-50 px-4 py-3 rounded-xl border border-slate-200/60 text-center min-w-[110px]">
+                        <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Kul Asatiza</p>
+                        <p class="text-2xl font-black text-slate-800">${grandTotalTeachers}</p>
+                    </div>
+                    <div class="bg-emerald-50/50 px-4 py-3 rounded-xl border border-emerald-100/50 text-center min-w-[110px]">
+                        <p class="text-[10px] uppercase tracking-wider text-emerald-600 font-bold mb-1">Report Aayi</p>
+                        <div class="flex items-center justify-center gap-2">
+                            <p class="text-2xl font-black text-emerald-700">${grandTotalReported}</p>
+                            <p class="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">${percentage}%</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="master-summary-stats mt-4">
-                <div>
-                    <p class="text-xs uppercase text-gray-500">${leftTitle}</p>
-                    <p class="text-2xl font-bold">${leftValue}</p>
-                </div>
-                <div>
-                    <p class="text-xs uppercase text-gray-500">Total Teachers</p>
-                    <p class="text-2xl font-bold">${totalTeachers}</p>
-                </div>
-                <div>
-                    <p class="text-xs uppercase text-gray-500">Teachers Report Filled</p>
-                    <p class="text-2xl font-bold">${totalTeachersReported}</p>
-                    <p class="text-xs text-gray-500 mt-1">${percentage}% complete</p>
-                </div>
+
+            <!-- TABLES SECTION (NO EXTRA BOXES) -->
+            <div>
+                ${tablesHtml}
             </div>
+            
         </div>`;
 
-    kkdSectionDedicated.innerHTML = topSummaryHtml + cardsHtml;
+    kkdSectionDedicated.innerHTML = unifiedCardHtml;
 }; 
          // === MAIN EXCEL DOWNLOAD (Reverse Logic for Tadris) ===
          const handleExcelDownload = () => { /* ... (Logic for Excel download) ... */ };
