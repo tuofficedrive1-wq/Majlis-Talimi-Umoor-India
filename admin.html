@@ -2976,22 +2976,72 @@ const generateMasterSummaryHtml = (users, allReports, title, titleColorClass) =>
     let stats = { jamiaat: 0, asatiza: 0, jaiza: 0, tests: 0, kkd: 0, recs: 0, submitted: 0 };
     const userIds = new Set(users.map(u => u.id));
 
-    // Sabse important step: Sirf unhi reports ko filter karein jo in users ki hain
+    // 1. Sirf in users ki reports filter karein
     const filteredReports = allReports.filter(r => userIds.has(r.userId));
-    const reportsByUser = filteredReports.reduce((acc, r) => { acc[r.userId] = r; return acc; }, {});
+    
+    // 🟢 FIX 1: Split reports ko merge karein (taake 226 ki jagah poora 648 data aaye)
+    const reportsByUser = {};
+    filteredReports.forEach(r => {
+        const uid = r.userId;
+        if (!reportsByUser[uid]) {
+            reportsByUser[uid] = {
+                hasReport: true,
+                academicYear: r.academicYear,
+                jaizaData: [],
+                testData: [],
+                recsData: [],
+                kkdData: []
+            };
+        }
+        if (r.jaizaReport?.data) reportsByUser[uid].jaizaData.push(...r.jaizaReport.data);
+        if (r.monthlyTest?.data) reportsByUser[uid].testData.push(...r.monthlyTest.data);
+        if (r.tadrisRecording?.data) reportsByUser[uid].recsData.push(...r.tadrisRecording.data);
+        if (r.karkardagiReport?.data) reportsByUser[uid].kkdData.push(...r.karkardagiReport.data);
+    });
 
     users.forEach(user => {
-        const report = reportsByUser[user.id];
+        const reportData = reportsByUser[user.id];
         stats.jamiaat += user.totalJamiaat || (user.jamiaatList ? user.jamiaatList.length : 0);
-        stats.asatiza += getTeacherCountFromStructure(user);
+        
+        // 🟢 FIX 2: Asatiza ki ginti sirf "Current Academic Year" se lein (KKd Summary jaisi 708)
+        let currentTeachersCount = 0;
+        let validTeacherIds = new Set();
+        
+        const academicYears = user.academicYears || {};
+        const academicYearKey = (reportData && reportData.academicYear) 
+            ? reportData.academicYear 
+            : Object.keys(academicYears).sort().reverse()[0];
+        
+        const structure = (academicYears[academicYearKey] || {}).karkardagiStructure || [];
+        
+        structure.forEach(jamia => {
+            if (jamia.teachers) {
+                currentTeachersCount += jamia.teachers.length;
+                jamia.teachers.forEach(t => {
+                    if (t && t.id) validTeacherIds.add(t.id);
+                });
+            }
+        });
+        
+        stats.asatiza += currentTeachersCount;
 
-        if (report) {
+        if (reportData) {
             stats.submitted++;
-            stats.jaiza += (report.jaizaReport?.data || []).filter(j => (j.percentage > 0 || j.status === 'Done')).length;
-            stats.tests += (report.monthlyTest?.data || []).length;
-            stats.recs += (report.tadrisRecording?.data || []).length;
-            const kkdData = report.karkardagiReport?.data || [];
-            stats.kkd += new Set(kkdData.map(item => item.teacherId)).size;
+            stats.jaiza += reportData.jaizaData.filter(j => (j.percentage > 0 || j.status === 'Done')).length;
+            stats.tests += reportData.testData.length;
+            stats.recs += reportData.recsData.length;
+            
+            // 🟢 FIX 3: KKd Filled ko merge kiye hue data aur valid teachers se match karein
+            let filledCount = 0;
+            const submittedTeacherIds = new Set(reportData.kkdData.map(item => item.teacherId));
+            
+            validTeacherIds.forEach(tId => {
+                if (submittedTeacherIds.has(tId)) {
+                    filledCount++;
+                }
+            });
+            
+            stats.kkd += filledCount;
         }
     });
 
