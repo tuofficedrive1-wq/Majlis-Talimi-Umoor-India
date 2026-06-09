@@ -2979,7 +2979,7 @@ const generateMasterSummaryHtml = (users, allReports, title, titleColorClass) =>
     // 1. Sirf in users ki reports filter karein
     const filteredReports = allReports.filter(r => userIds.has(r.userId));
     
-    // 🟢 FIX 1: Split reports ko merge karein (taake 226 ki jagah poora 648 data aaye)
+    // Split reports ko merge karein
     const reportsByUser = {};
     filteredReports.forEach(r => {
         const uid = r.userId;
@@ -3003,7 +3003,6 @@ const generateMasterSummaryHtml = (users, allReports, title, titleColorClass) =>
         const reportData = reportsByUser[user.id];
         stats.jamiaat += user.totalJamiaat || (user.jamiaatList ? user.jamiaatList.length : 0);
         
-        // 🟢 FIX 2: Asatiza ki ginti sirf "Current Academic Year" se lein (KKd Summary jaisi 708)
         let currentTeachersCount = 0;
         let validTeacherIds = new Set();
         
@@ -3027,11 +3026,26 @@ const generateMasterSummaryHtml = (users, allReports, title, titleColorClass) =>
 
         if (reportData) {
             stats.submitted++;
-            stats.jaiza += reportData.jaizaData.filter(j => (j.percentage > 0 || j.status === 'Done')).length;
-            stats.tests += reportData.testData.length;
-            stats.recs += reportData.recsData.length;
             
-            // 🟢 FIX 3: KKd Filled ko merge kiye hue data aur valid teachers se match karein
+            // 🟢 FIX 1: Jaiza ko Unique Jamia ke hisab se count karein
+            const validJaiza = reportData.jaizaData.filter(j => j.percentage > 0 || j.status === 'Done');
+            const uniqueJaizaJamias = new Set(validJaiza.map(j => (j.name || j.jamiaName || '').trim().toLowerCase()));
+            stats.jaiza += uniqueJaizaJamias.size;
+
+            // 🟢 FIX 2: Tests ko Unique Jamia ke hisab se count karein
+            const validTests = reportData.testData.filter(t => t.name || t.jamiaName);
+            const uniqueTestJamias = new Set(validTests.map(t => (t.name || t.jamiaName || '').trim().toLowerCase()));
+            stats.tests += uniqueTestJamias.size;
+
+            // 🟢 FIX 3: Recordings ko Unique (Jamia + Teacher + Class) ke hisab se count karein
+            const uniqueRecs = new Set(reportData.recsData.map(r => 
+                `${(r.jamiaName || '').trim()}_${(r.teacherName || '').trim()}_${(r.className || '').trim()}`.toLowerCase()
+            ));
+            // Khali entries ko nikal dein
+            const actualRecs = Array.from(uniqueRecs).filter(key => key !== '__');
+            stats.recs += actualRecs.length;
+            
+            // KKd Filled logic (Yeh pehle se theek tha)
             let filledCount = 0;
             const submittedTeacherIds = new Set(reportData.kkdData.map(item => item.teacherId));
             
