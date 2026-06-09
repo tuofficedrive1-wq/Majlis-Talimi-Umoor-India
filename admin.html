@@ -3456,16 +3456,36 @@ const renderDedicatedKkdSummary = (reports) => {
         return u?.name || u?.email || 'N/A';
     };
 
+    // 🟢 NAYA LOGIC: Reports ko user ke hisab se group karein taake 1 user ke 2 card na banein
+    const reportsByUser = {};
     filteredReports.forEach(report => {
-        const userId = report.userId;
-        if (!userId) return;
+        const uid = report.userId;
+        if (!uid) return;
+        
+        if (!reportsByUser[uid]) {
+            reportsByUser[uid] = {
+                userId: uid,
+                academicYear: report.academicYear,
+                kkdEntries: []
+            };
+        }
+        
+        // Agar database me ghalti se 2 report ban gayi hain, to unka data merge kar lein
+        if (report.karkardagiReport && Array.isArray(report.karkardagiReport.data)) {
+            reportsByUser[uid].kkdEntries.push(...report.karkardagiReport.data);
+        }
+    });
 
+    // 🟢 Ab loop grouped data par chalega (filteredReports.forEach ki jagah)
+    Object.values(reportsByUser).forEach(userData => {
+        const userId = userData.userId;
         const userDoc = allUsersData.find(u => u.id === userId) || {};
         const userName = getUserNameById(userId);
 
         // Kis academic year ka structure use karna hai
         const academicYears = userDoc.academicYears || {};
-        const academicYearKey = report.academicYear || Object.keys(academicYears)[0];
+        // Agar report me year nahi hai to latest uthayen
+        const academicYearKey = userData.academicYear || Object.keys(academicYears).sort().reverse()[0];
 
         const yearData = academicYears[academicYearKey] || {};
         const structure = yearData.karkardagiStructure || [];
@@ -3494,8 +3514,8 @@ const renderDedicatedKkdSummary = (reports) => {
             return;
         }
 
-        // Saare teachers structure se nikal lo (chahe report ho ya na ho)
-        const teacherMap = new Map(); // key: jamiaName::teacherId
+        // Saare teachers structure se nikal lo
+        const teacherMap = new Map();
 
         structure.forEach(jamia => {
             const jName = jamia.jamiaName || 'Jamia';
@@ -3513,21 +3533,19 @@ const renderDedicatedKkdSummary = (reports) => {
             });
         });
 
-        // Ab is month ke monthly_reports ke KKd data se pata karo
-        const kkdEntries = (report.karkardagiReport?.data || []);
-
-        kkdEntries.forEach(entry => {
+        // Ab is month ki merged KKd data se pata karo
+        userData.kkdEntries.forEach(entry => {
             if (!entry) return;
             const jName = entry.jamiaName || entry.jamiaId || '';
             const key = `${jName}::${entry.teacherId}`;
             if (teacherMap.has(key)) {
                 const obj = teacherMap.get(key);
-                obj.hasReport = true; // is month me is teacher ki KKd report aayi hai
+                obj.hasReport = true; 
                 teacherMap.set(key, obj);
             }
         });
 
-                // Saare teachers list (original)
+        // Saare teachers list (original)
         const allTeacherList = Array.from(teacherMap.values())
             .sort((a, b) => {
                 if (a.jamiaName === b.jamiaName) {
@@ -3541,8 +3559,8 @@ const renderDedicatedKkdSummary = (reports) => {
 
         // Table me jo list dikhani hai
         const teacherList = onlyUnfilled
-            ? allTeacherList.filter(t => !t.hasReport)   // sirf jin ki report nahi hai
-            : allTeacherList;                            // sab teachers
+            ? allTeacherList.filter(t => !t.hasReport)
+            : allTeacherList;
 
         // Upar wale overall numbers hamesha full list se hi banenge
         const userTeacherTotal = allTeacherList.length;
@@ -3567,7 +3585,7 @@ const renderDedicatedKkdSummary = (reports) => {
                 </tr>`;
         });
 
-                cardsHtml += `
+        cardsHtml += `
             <div class="summary-card mt-4">
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
                     <div>
@@ -3601,7 +3619,7 @@ const renderDedicatedKkdSummary = (reports) => {
             </div>`;
     });
 
-        if (usersSeen.size === 0) {
+    if (usersSeen.size === 0) {
         kkdSectionDedicated.innerHTML = `
             <p class="text-center text-gray-500">
                 Is filter ke liye KKd structure ya reports nahi mil paaye.
@@ -3609,17 +3627,14 @@ const renderDedicatedKkdSummary = (reports) => {
         return;
     }
 
-    const totalTeachersNotReported = Math.max(totalTeachers - totalTeachersReported, 0);
-
-       const percentage =
-        totalTeachers > 0
-            ? Math.round((totalTeachersReported / totalTeachers) * 100)
-            : 0;
+    const percentage = totalTeachers > 0
+        ? Math.round((totalTeachersReported / totalTeachers) * 100)
+        : 0;
 
     const filterLabel = selectedUserId === 'all'
         ? 'All Users'
         : (getUserNameById(selectedUserId));
-        // Left side stat: All Users par "Total Users", single user par "Total Jamiaat"
+        
     let leftTitle;
     let leftValue;
 
@@ -3651,7 +3666,7 @@ const renderDedicatedKkdSummary = (reports) => {
                     </p>
                 </div>
             </div>
-                        <div class="master-summary-stats mt-4">
+            <div class="master-summary-stats mt-4">
                 <div>
                     <p class="text-xs uppercase text-gray-500">${leftTitle}</p>
                     <p class="text-2xl font-bold">${leftValue}</p>
@@ -3667,7 +3682,6 @@ const renderDedicatedKkdSummary = (reports) => {
                 </div>
             </div>
         </div>`;
-
 
     kkdSectionDedicated.innerHTML = topSummaryHtml + cardsHtml;
 };
