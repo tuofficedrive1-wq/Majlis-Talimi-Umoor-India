@@ -212,11 +212,9 @@
 };
 
 // Naya function questions display karne ke liye
-function showQuestionsArea(bookRowId, subjectName) {
-    // Agar aap chahte hain ke har subject ke niche uske sawal khulain:
+function showQuestionsArea(bookRowId, subjectName, savedEvaluations = null) {
     const bookRow = document.getElementById(`book-${bookRowId}`);
     
-    // Pehle se agar koi questions khule hain to unhe hatayein
     const existingQ = document.getElementById(`q-area-${bookRowId}`);
     if(existingQ) existingQ.remove();
 
@@ -225,29 +223,38 @@ function showQuestionsArea(bookRowId, subjectName) {
                     <p class="text-[10px] font-bold text-indigo-500 mb-2 uppercase">Questions for ${subjectName}:</p>
                     <div class="grid grid-cols-1 gap-2">`;
 
-    // English logic
-    if (subjectLower.includes('english')) {
-        ['Reading', 'Writing', 'Translation'].forEach(q => {
-            qHtml += createQuestionInput(q, false);
+    // Agar database se saved questions mil gaye hain
+    if (savedEvaluations && savedEvaluations.length > 0) {
+        savedEvaluations.forEach(ev => {
+            const isPredefined = ['Reading', 'Writing', 'Translation'].includes(ev.text);
+            qHtml += createQuestionInput(ev.text, !isPredefined, ev.score);
         });
-    }
-    
-    // 3 Blank questions
-    for(let i=1; i<=3; i++) {
-        qHtml += createQuestionInput('', true);
+    } else {
+        // Naya subject select karne par (Default blank questions)
+        if (subjectLower.includes('english')) {
+            ['Reading', 'Writing', 'Translation'].forEach(q => {
+                qHtml += createQuestionInput(q, false, '');
+            });
+        }
+        for(let i=1; i<=3; i++) {
+            qHtml += createQuestionInput('', true, '');
+        }
     }
 
     qHtml += `</div></div>`;
     bookRow.insertAdjacentHTML('beforeend', qHtml);
 }
 
-function createQuestionInput(val, isBlank) {
+function createQuestionInput(val = '', isBlank, scoreVal = '') {
+    // Agar question mein double quotes (") hon to usay escape karein
+    const safeVal = val ? val.replace(/"/g, '&quot;') : '';
+    
     return `
         <div class="flex items-center gap-4 bg-white p-2 rounded-lg shadow-sm">
             <div class="flex-1">
-                ${isBlank ? `<input type="text" placeholder="Custom Question..." class="w-full text-xs outline-none border-b italic">` : `<span class="text-xs font-bold text-slate-600">${val}</span>`}
+                ${isBlank ? `<input type="text" placeholder="Custom Question..." class="w-full text-xs outline-none border-b italic" value="${safeVal}">` : `<span class="text-xs font-bold text-slate-600">${val}</span>`}
             </div>
-            <input type="number" class="q-score-input w-20 p-1 bg-indigo-50 rounded text-center text-xs font-bold" placeholder="Score" oninput="updateCalculations()">
+            <input type="number" class="q-score-input w-20 p-1 bg-indigo-50 rounded text-center text-xs font-bold" placeholder="Score" value="${scoreVal}" oninput="updateCalculations()">
         </div>`;
 }
 
@@ -334,21 +341,33 @@ function createQuestionInput(val, isBlank) {
             classScore: card.querySelector('.class-avg').textContent,
             subjects: []
         };
-        card.querySelectorAll('.book-row').forEach(row => {
-    const questions = [];
-    row.querySelectorAll('.q-score-input').forEach(qInput => {
-        // Sirf wahi score save karein jo user ne bhara hai
-        if (qInput.value.trim() !== "") {
-            questions.push({ score: qInput.value });
-        }
-    });
-    classData.subjects.push({
-        teacherId: row.querySelector('.teacher-select').value,
-        subjectName: row.querySelector('.book-select').value,
-        subjectScore: row.querySelector('.book-percent').textContent,
-        evaluations: questions
-    });
-});
+       card.querySelectorAll('.book-row').forEach(row => {
+            const questions = [];
+            
+            // Har question ke wrapper div ko check karein
+            row.querySelectorAll('.q-score-input').forEach(scoreInput => {
+                const parentDiv = scoreInput.closest('.flex');
+                const textInput = parentDiv.querySelector('input[type="text"]');
+                const spanText = parentDiv.querySelector('span');
+                
+                let qText = "";
+                if (textInput) qText = textInput.value;
+                else if (spanText) qText = spanText.textContent;
+
+                // Har question aur uska score dono save karein
+                questions.push({
+                    text: qText,
+                    score: scoreInput.value
+                });
+            });
+
+            classData.subjects.push({
+                teacherId: row.querySelector('.teacher-select').value,
+                subjectName: row.querySelector('.book-select').value,
+                subjectScore: row.querySelector('.book-percent').textContent,
+                evaluations: questions
+            });
+        });
         finalReport.classes.push(classData);
     });
 
@@ -492,9 +511,9 @@ function renderSavedBook(classId, sData, container) {
         </div>`;
     
     container.insertAdjacentHTML('beforeend', bookRow);
-    
     // Questions render karna
-    showQuestionsArea(bookId, sData.subjectName);
+    showQuestionsArea(bookId, sData.subjectName, sData.evaluations);
+    
     const qInputs = document.getElementById(`book-${bookId}`).querySelectorAll('.q-score-input');
     sData.evaluations.forEach((evalData, index) => {
         if(qInputs[index]) qInputs[index].value = evalData.score;
