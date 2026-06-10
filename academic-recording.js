@@ -93,7 +93,7 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
             
             // Link generation
             const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-            const portalLink = `${baseUrl}/tadris-teacher-portal.html?jamiaId=${encodeURIComponent(jamia)}&userId=${currentUser.uid}&activeYear=${encodeURIComponent(academicYear)}`;
+            const portalLink = `${baseUrl}/tadris-teacher-portal.html?jamiaId=${encodeURIComponent(jamia)}&userId=${currentUser.uid}&activeYear=${encodeURIComponent(academicYear)}&lang=en`;
 
             listHTML += `
             <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:border-blue-300 transition-all">
