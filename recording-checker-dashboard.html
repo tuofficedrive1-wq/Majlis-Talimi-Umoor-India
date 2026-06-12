@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checker Dashboard - Tadris</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+
+    <style>
+        @font-face {
+            font-family: 'Jameel Noori Nastaleeq';
+            src: url('https://cdn.jsdelivr.net/gh/sajjadsaeed/UrduFontsWeb@master/fonts/JameelNooriNastaleeq.woff2') format('woff2');
+            font-display: swap;
+        }
+        body { font-family: 'Poppins', sans-serif; }
+        .urdu-font { font-family: 'Jameel Noori Nastaleeq', serif; }
+        
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0d9488;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .activity-scroll::-webkit-scrollbar { height: 6px; }
+        .activity-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <nav class="bg-blue-800 text-white shadow-lg sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-headphones text-2xl text-blue-300"></i>
+                <div>
+                    <h1 class="text-lg font-bold tracking-wide leading-tight">Mufattish Panel</h1>
+                    <p id="checker-name-display" class="text-[10px] text-blue-200 uppercase tracking-wider">Welcome, Loading...</p>
+                </div>
+            </div>
+            <button onclick="logout()" class="bg-blue-900 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-bold transition border border-blue-700">
+                Logout
+            </button>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto p-4 w-full flex-grow">
+        
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-2 text-gray-700">
+                <i class="far fa-calendar-alt text-blue-600 text-xl"></i>
+                <span class="font-semibold text-sm">Assigned Month:</span>
+            </div>
+            
+            <div class="flex gap-2 w-full md:w-auto">
+                <select id="filter-month" class="p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 w-full md:w-40">
+                    <option>January</option> <option>February</option> <option>March</option>
+                    <option>April</option> <option>May</option> <option>June</option>
+                    <option>July</option> <option>August</option> <option>September</option>
+                    <option>October</option> <option>November</option> <option>December</option>
+                </select>
+                
+                <select id="filter-year" class="p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 w-24">
+                    <option>2024</option> <option>2025</option> <option>2026</option>
+                </select>
+                
+                <button onclick="fetchReports()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold shadow transition text-sm">
+                    Load
+                </button>
+            </div>
+        </div>
+
+        <div id="loader-container" class="hidden flex justify-center py-10">
+            <div class="loader border-t-blue-600"></div>
+        </div>
+
+        <div id="dashboard-content" class="hidden space-y-6">
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-gray-500">
+                    <p class="text-xs text-gray-500 font-bold uppercase">My Assignments</p>
+                    <h3 id="stat-total" class="text-2xl font-bold text-gray-800 mt-1">0</h3>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Checked (Mukammal)</p>
+                    <h3 id="stat-checked" class="text-2xl font-bold text-green-600 mt-1">0</h3>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-yellow-500">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Pending (Baqaya)</p>
+                    <h3 id="stat-pending" class="text-2xl font-bold text-yellow-600 mt-1">0</h3>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Checking Rate</p>
+                    <div class="flex items-end gap-2 mt-1">
+                        <h3 id="stat-percent" class="text-2xl font-bold text-blue-600">0%</h3>
+                        <span class="text-xs text-gray-400 mb-1">completed</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-100 p-4 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-3 text-gray-400 text-xs"></i>
+                    <input type="text" id="search-jamia" oninput="applyFilters()" 
+                        placeholder="Search Jamia Name..." 
+                        class="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 urdu-font">
+                </div>
+
+                <div>
+                    <select id="filter-region" onchange="applyFilters()" class="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Regions</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="reports-table-container" class="bg-white rounded-lg shadow-sm overflow-hidden min-h-[300px]">
+            </div>
+
+        </div> 
+    </div>
+
+    <div id="review-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all scale-100">
+            
+            <div class="bg-blue-700 px-6 py-4 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fas fa-pen-nib"></i> Report Checking
+                </h3>
+                <button onclick="closeModal()" class="text-white hover:text-red-200 text-2xl">&times;</button>
+            </div>
+
+            <div class="p-6 max-h-[75vh] overflow-y-auto">
+                <div class="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div>
+                        <p class="text-[10px] uppercase text-gray-500 font-bold">Teacher</p>
+                        <p id="modal-teacher" class="font-bold text-gray-800 urdu-font text-base">-</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] uppercase text-gray-500 font-bold">Jamia</p>
+                        <p id="modal-jamia" class="font-bold text-blue-700 urdu-font text-base">-</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] uppercase text-gray-500 font-bold">Subject / Kitab</p>
+                        <p id="modal-subject" class="font-semibold text-sm">-</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] uppercase text-gray-500 font-bold">Recording Date</p>
+                        <p id="modal-date" class="font-semibold text-sm">-</p>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-bold text-gray-700">Audio Recording:</label>
+                        <span id="speed-indicator" class="text-[10px] bg-gray-200 px-2 py-1 rounded">Speed: 1x</span>
+                    </div>
+                    
+                    <div id="audio-container" class="bg-gray-100 p-2 rounded border border-gray-300 flex items-center gap-2">
+                        <audio id="modal-audio-player" controls class="w-full h-10">
+                            <source src="" type="audio/mpeg">
+                        </audio>
+                        <button id="speed-btn" onclick="toggleSpeed()" type="button" 
+                            class="bg-white border hover:bg-gray-50 text-blue-700 text-xs font-bold px-3 py-2 rounded shadow-sm w-14 transition">
+                            1x
+                        </button>
+                    </div>
+                    <div class="mt-1 text-right">
+                        <a id="modal-link" href="#" target="_blank" class="text-[10px] text-blue-600 hover:underline">
+                            <i class="fas fa-external-link-alt"></i> Download
+                        </a>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Mufattish Tabsara (Final Comment):</label>
+                    <textarea id="modal-comment" rows="4" 
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 urdu-font text-right bg-yellow-50" 
+                        placeholder="Yahan apni rai likhein..."></textarea>
+                    <p class="text-[10px] text-gray-400 mt-1">* Ye tabsara seedha Zimmedar ke panel me show hoga.</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-100 px-6 py-4 flex justify-between items-center border-t">
+                <span id="save-status" class="text-sm text-green-600 font-bold hidden bg-green-100 px-2 py-1 rounded animate-pulse">
+                    <i class="fas fa-check-circle"></i> Saved!
+                </span>
+                <div class="flex gap-2 ml-auto">
+                    <button onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm">Cancel</button>
+                    <button onclick="saveFeedback()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow flex items-center gap-2 text-sm">
+                        <i class="fas fa-save"></i> Save & Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // --- CONFIGURATION ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+        authDomain: "data-f15ab.firebaseapp.com",
+        projectId: "data-f15ab",
+        storageBucket: "data-f15ab.firebasestorage.app",
+        messagingSenderId: "449137002393",
+        appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
+        measurementId: "G-1PHNJQWNPZ",
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // --- STATE ---
+    let allReportsData = []; 
+    let filteredReports = []; 
+    let currentEditingDocId = null;
+    let currentEditingIndex = null;
+    let loggedInCheckerName = ""; // Current checker ka naam save karne ke liye
+
+    // --- AUTH & CHECKER IDENTIFICATION ---
+    auth.onAuthStateChanged(async user => {
+        if (!user) {
+            window.location.href = 'index.html';
+        } else {
+            try {
+                // Firebase users collection se login hue user ka naam nikalna
+                const userQuery = await db.collection('users').where('email', '==', user.email).get();
+                if (!userQuery.empty) {
+                    const userData = userQuery.docs[0].data();
+                    loggedInCheckerName = userData.name || userData.email.split('@')[0];
+                } else {
+                    loggedInCheckerName = user.email.split('@')[0];
+                }
+                
+                document.getElementById('checker-name-display').innerText = `Welcome, ${loggedInCheckerName}`;
+
+                // Mahina set karna aur data fetch karna
+                const d = new Date();
+                const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                document.getElementById('filter-month').value = months[d.getMonth()];
+                document.getElementById('filter-year').value = d.getFullYear();
+                
+                fetchReports();
+            } catch (error) {
+                console.error("User data lane me masla:", error);
+            }
+        }
+    });
+
+    function logout() { auth.signOut().then(() => window.location.href = 'index.html'); }
+
+    // --- DATA FETCHING (FILTERED BY CHECKER) ---
+    async function fetchReports() {
+        if (!loggedInCheckerName) return;
+
+        const monthName = document.getElementById('filter-month').value;
+        const year = document.getElementById('filter-year').value;
+        const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+        const loader = document.getElementById('loader-container');
+        const dashContent = document.getElementById('dashboard-content');
+        
+        loader.classList.remove('hidden');
+        dashContent.classList.add('hidden');
+        allReportsData = [];
+
+        try {
+            const snapshot = await db.collection('monthly_reports')
+                .where('monthKey', '==', monthKey)
+                .get();
+
+            if (!snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    let docZimmedar = data.zimmedarName || data.userName || "";
+                    if (docZimmedar === "Teacher Portal Upload") docZimmedar = ""; 
+                    const region = data.region || "Unknown";
+
+                    if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
+                        data.tadrisRecording.data.forEach((rec, i) => {
+                            let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
+
+                            // MAIN LOGIC: Sirf wahi array me push hogi jo is user ko assign hui ho
+                            if (rec.assignedTo === loggedInCheckerName) {
+                                allReportsData.push({
+                                    parentDocId: doc.id,
+                                    arrayIndex: i, 
+                                    jamiaName: rec.jamiaName || rec.jamia || 'Unknown',
+                                    teacherName: rec.teacherName || rec.teacher || 'Unknown',
+                                    className: rec.className || rec.class || '-',
+                                    kitabName: rec.kitabName || rec.kitab || '-',
+                                    date: rec.date || '-', 
+                                    duration: rec.duration || '--:--', 
+                                    tasurat: rec.tasurat || '', 
+                                    recordingLink: rec.url || rec.link || '#',
+                                    zimmedarName: finalZimmedarName,
+                                    region: region
+                                });
+                            }
+                        });
+                    }
+                });
+
+                allReportsData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            }
+
+            filteredReports = [...allReportsData];
+            populateFilters();
+            updateStats();
+            renderTable();
+            
+            dashContent.classList.remove('hidden');
+
+        } catch (error) {
+            console.error(error);
+            alert("Error loading data: " + error.message);
+        } finally {
+            loader.classList.add('hidden');
+        }
+    }
+
+    // --- FILTERS ---
+    function populateFilters() {
+        const regions = [...new Set(allReportsData.map(r => r.region))].sort();
+        const regSelect = document.getElementById('filter-region');
+        regSelect.innerHTML = '<option value="">All Regions</option>';
+        
+        regions.forEach(reg => {
+            if (reg && reg.trim() !== "") {
+                const opt = document.createElement('option');
+                opt.value = reg;
+                opt.innerText = reg;
+                regSelect.appendChild(opt);
+            }
+        });
+    }
+
+    function applyFilters() {
+        const searchJamia = document.getElementById('search-jamia').value.toLowerCase();
+        const filterReg = document.getElementById('filter-region').value;
+
+        filteredReports = allReportsData.filter(r => {
+            const matchJamia = r.jamiaName.toLowerCase().includes(searchJamia);
+            const matchReg = filterReg === "" || r.region === filterReg;
+            return matchJamia && matchReg;
+        });
+
+        renderTable();
+        updateStats();
+    }
+
+    // --- STATS ---
+    function updateStats() {
+        const total = filteredReports.length;
+        const checked = filteredReports.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
+        const pending = total - checked;
+        const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+        document.getElementById('stat-total').innerText = total;
+        document.getElementById('stat-checked').innerText = checked;
+        document.getElementById('stat-pending').innerText = pending;
+        document.getElementById('stat-percent').innerText = percent + "%";
+    }
+
+    // --- RENDER TABLE (SIMPLE FOR CHECKER) ---
+    function renderTable() {
+        const container = document.getElementById('reports-table-container');
+        
+        if (filteredReports.length === 0) {
+            container.innerHTML = `<div class="p-8 text-center text-gray-500">Apke khate me is mahine koi file pending nahi hai.</div>`;
+            return;
+        }
+
+        const rows = filteredReports.map((r, i) => {
+            const isChecked = r.tasurat && r.tasurat.trim() !== "";
+            const duration = r.duration ? r.duration : '--:--';
+            
+            const badge = isChecked 
+                ? `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>` 
+                : `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+
+            return `
+            <tr class="hover:bg-gray-50 border-b border-gray-100 transition">
+                <td class="p-3 text-center text-gray-400 text-xs">${i + 1}</td>
+                
+                <td class="p-3 text-right">
+                    <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
+                    <div class="flex items-center justify-end gap-1 mt-1">
+                        <i class="fas fa-user text-[10px] text-blue-500"></i>
+                        <p class="text-xs text-gray-500 urdu-font">${r.zimmedarName}</p>
+                    </div>
+                </td>
+
+                <td class="p-3 text-right urdu-font text-blue-700 font-semibold text-sm">${r.teacherName}</td>
+                <td class="p-3 text-center">
+                    <div class="font-medium text-xs text-gray-700">${r.className}</div>
+                    <div class="text-[10px] text-gray-400">${r.kitabName}</div>
+                </td>
+                <td class="p-3 text-center text-xs font-mono text-gray-600">${duration}</td>
+                <td class="p-3 text-center">${badge}</td>
+                <td class="p-3 text-center flex justify-center gap-2">
+                    <button type="button" 
+                        class="check-btn bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                        data-pid="${r.parentDocId}" 
+                        data-idx="${r.arrayIndex}">
+                        <i class="fas fa-headphones"></i> Listen & Check
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-800 text-gray-300 uppercase text-[10px] tracking-wider">
+                        <tr>
+                            <th class="p-3 text-center">#</th>
+                            <th class="p-3 text-right">Jamia / Zimmedar</th>
+                            <th class="p-3 text-right">Teacher</th>
+                            <th class="p-3 text-center">Class / Kitab</th>
+                            <th class="p-3 text-center">Duration</th>
+                            <th class="p-3 text-center">Status</th>
+                            <th class="p-3 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100">
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    // --- MODAL LOGIC ---
+    function openReviewModal(pId, arrIdx) {
+        arrIdx = parseInt(arrIdx);
+        const r = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === arrIdx);
+        
+        if (!r) return;
+
+        currentEditingDocId = pId;
+        currentEditingIndex = arrIdx; 
+
+        document.getElementById('modal-jamia').innerText = r.jamiaName;
+        document.getElementById('modal-teacher').innerText = r.teacherName;
+        document.getElementById('modal-subject').innerText = `${r.className} - ${r.kitabName}`;
+        document.getElementById('modal-date').innerText = r.date;
+        document.getElementById('modal-comment').value = r.tasurat;
+        document.getElementById('save-status').classList.add('hidden');
+
+        const player = document.getElementById('modal-audio-player');
+        const linkBtn = document.getElementById('modal-link');
+        const container = document.getElementById('audio-container');
+        
+        player.playbackRate = 1.0;
+        document.getElementById('speed-btn').innerText = "1x";
+
+        if (r.recordingLink && r.recordingLink !== '#' && r.recordingLink.startsWith('http')) {
+            player.src = r.recordingLink;
+            linkBtn.href = r.recordingLink;
+            container.classList.remove('opacity-50', 'pointer-events-none');
+        } else {
+            player.src = "";
+            linkBtn.href = "#";
+            container.classList.add('opacity-50', 'pointer-events-none');
+        }
+
+        document.getElementById('review-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        const player = document.getElementById('modal-audio-player');
+        player.pause();
+        player.currentTime = 0;
+        document.getElementById('review-modal').classList.add('hidden');
+    }
+
+    function toggleSpeed() {
+        const p = document.getElementById('modal-audio-player');
+        const b = document.getElementById('speed-btn');
+        if(p.playbackRate === 1.0) { p.playbackRate = 1.5; b.innerText = "1.5x"; }
+        else if(p.playbackRate === 1.5) { p.playbackRate = 2.0; b.innerText = "2x"; }
+        else { p.playbackRate = 1.0; b.innerText = "1x"; }
+    }
+
+    async function saveFeedback() {
+        if (!currentEditingDocId || currentEditingIndex === null) return;
+        
+        const comment = document.getElementById('modal-comment').value;
+        const btn = document.querySelector('#review-modal button i.fa-save').parentNode;
+        
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        btn.disabled = true;
+
+        try {
+            const reportRef = db.collection('monthly_reports').doc(currentEditingDocId);
+            const docSnap = await reportRef.get();
+            if(!docSnap.exists) throw new Error("Doc not found");
+
+            const data = docSnap.data();
+            let arr = data.tadrisRecording.data || [];
+            
+            if (!arr[currentEditingIndex]) throw new Error("Recording index not found");
+
+            const now = new Date().toISOString();
+            arr[currentEditingIndex].tasurat = comment;
+            arr[currentEditingIndex].tasuratDate = now; 
+            arr[currentEditingIndex].mufattishComment = comment;
+
+            await reportRef.update({ "tadrisRecording.data": arr });
+
+            document.getElementById('save-status').classList.remove('hidden');
+            
+            const localRec = allReportsData.find(x => x.parentDocId === currentEditingDocId && x.arrayIndex === currentEditingIndex);
+            if(localRec) {
+                localRec.tasurat = comment;
+            }
+            
+            applyFilters(); 
+            setTimeout(() => closeModal(), 1000);
+
+        } catch(e) {
+            alert("Error: " + e.message);
+        } finally {
+            btn.innerHTML = '<i class="fas fa-save"></i> Save & Close';
+            btn.disabled = false;
+        }
+    }
+
+    // --- EVENT DELEGATION FOR BUTTONS ---
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.check-btn');
+        if (btn) {
+            const pid = btn.getAttribute('data-pid');
+            const idx = btn.getAttribute('data-idx');
+            if(pid && idx !== null) openReviewModal(pid, idx);
+        }
+    });
+
+    </script>
+</body>
+</html>
