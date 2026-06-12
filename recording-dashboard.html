@@ -135,10 +135,19 @@
                 <div>
                     <select id="filter-region" onchange="applyFilters()" class="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500">
                         <option value="">All Regions</option>
-                        <option value="North">North India</option>
-                        <option value="South">South India</option>
-                        <option value="Central">Central India</option>
                     </select>
+                </div>
+            </div> <div id="bulk-assign-panel" class="bg-teal-50 p-3 rounded-lg border border-teal-200 hidden flex items-center justify-between transition-all mb-2 mt-2">
+                <div class="flex items-center gap-3">
+                    <span id="selected-count" class="font-bold text-teal-800 text-sm bg-teal-200 px-3 py-1 rounded-full">0 selected</span>
+                </div>
+                <div class="flex gap-2">
+                    <select id="bulk-assign-user" class="p-2 text-sm border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 font-semibold text-teal-800">
+                        <option value="">Checker Select Karein...</option>
+                        </select>
+                    <button onclick="bulkAssign()" class="bg-teal-700 text-white px-4 py-2 rounded-lg hover:bg-teal-800 font-bold shadow text-sm flex items-center gap-2 transition">
+                        <i class="fas fa-user-check"></i> Assign Selected
+                    </button>
                 </div>
             </div>
 
@@ -243,6 +252,7 @@
     let filteredReports = []; 
     let currentEditingDocId = null;
     let currentEditingIndex = null; // Changed from RecordId to Index
+    let subUsersList = [];
 
     // --- AUTH ---
     auth.onAuthStateChanged(user => {
@@ -253,9 +263,40 @@
             const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
             document.getElementById('filter-month').value = months[d.getMonth()];
             document.getElementById('filter-year').value = d.getFullYear();
+            fetchCheckers();
             fetchReports();
         }
     });
+
+             // --- FETCH CHECKERS (DYNAMIC) ---
+    async function fetchCheckers() {
+        try {
+            const snapshot = await db.collection('users') // <-- Yahan apni user collection ka sahi naam dalen
+                                     .where('role', '==', 'recording_checker')
+                                     .get();
+            
+            subUsersList = [];
+            
+            snapshot.forEach(doc => {
+                const userData = doc.data();
+                // Agar name field nahi hai to email ka shuru ka hissa utha lega
+                const checkerName = userData.name || userData.email.split('@')[0]; 
+                subUsersList.push(checkerName);
+            });
+
+            // Dropdown update karna
+            const bulkSelect = document.getElementById('bulk-assign-user');
+            bulkSelect.innerHTML = '<option value="">Checker Select Karein...</option>';
+            subUsersList.forEach(user => {
+                bulkSelect.innerHTML += `<option value="${user}">${user}</option>`;
+            });
+
+            if (filteredReports.length > 0) renderTable();
+
+        } catch (error) {
+            console.error("Checkers fetch karne me masla:", error);
+        }
+    }
 
     function logout() { auth.signOut().then(() => window.location.href = 'index.html'); }
 
@@ -304,13 +345,14 @@
                                 teacherName: rec.teacherName || rec.teacher || 'Unknown',
                                 className: rec.className || rec.class || '-',
                                 kitabName: rec.kitabName || rec.kitab || '-',
-                                date: rec.date || '-', // Format: YYYY-MM-DD
+                                date: rec.date || '-', 
                                 duration: rec.duration || '--:--', 
                                 tasurat: rec.tasurat || '', 
                                 tasuratDate: rec.tasuratDate || null,
                                 recordingLink: rec.url || rec.link || '#',
                                 zimmedarName: finalZimmedarName,
-                                region: region
+                                region: region,
+                                assignedTo: rec.assignedTo || "" // NAYI LINE
                             });
                         });
                     }
@@ -340,6 +382,7 @@
     }
 
     // --- 2. FILTERS ---
+    // --- 2. FILTERS ---
     function populateFilters() {
         const zimmedars = [...new Set(allReportsData.map(r => r.zimmedarName))].sort();
         const zimSelect = document.getElementById('filter-zimmedar');
@@ -349,6 +392,19 @@
             opt.value = z;
             opt.innerText = z;
             zimSelect.appendChild(opt);
+        });
+
+        // NAYA: Dynamic Region Filter
+        const regions = [...new Set(allReportsData.map(r => r.region))].sort();
+        const regSelect = document.getElementById('filter-region');
+        regSelect.innerHTML = '<option value="">All Regions</option>';
+        regions.forEach(reg => {
+            if (reg && reg.trim() !== "") {
+                const opt = document.createElement('option');
+                opt.value = reg;
+                opt.innerText = reg;
+                regSelect.appendChild(opt);
+            }
         });
     }
 
@@ -419,6 +475,7 @@
     }
 
     // --- 4. RENDER TABLE (UPDATED) ---
+    // --- 4. RENDER TABLE (UPDATED) ---
     function renderTable() {
         const container = document.getElementById('reports-table-container');
         
@@ -428,64 +485,75 @@
         }
 
         const rows = filteredReports.map((r, i) => {
-    const isChecked = r.tasurat && r.tasurat.trim() !== "";
-    
-    // Duration ko pehle define karein
-    const duration = r.duration ? r.duration : '--:--';
-    
-    // Ab badge ko define karein
-    const badge = isChecked 
-        ? `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>` 
-        : `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+            const isChecked = r.tasurat && r.tasurat.trim() !== "";
+            const duration = r.duration ? r.duration : '--:--';
+            
+            const badge = isChecked 
+                ? `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>` 
+                : `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
 
-    return `
-    <tr class="hover:bg-gray-50 border-b border-gray-100 transition">
-        <td class="p-3 text-center text-gray-400 text-xs">${i + 1}</td>
-        
-        <td class="p-3 text-right">
-            <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
-            <div class="flex items-center justify-end gap-1 mt-1">
-                <i class="fas fa-user text-[10px] text-teal-500"></i>
-                <p class="text-xs text-gray-500 urdu-font">${r.zimmedarName}</p>
-            </div>
-        </td>
+            // Individual Dropdown
+            const assignDropdown = `
+                <select onchange="assignRecording('${r.parentDocId}', ${r.arrayIndex}, this.value)" 
+                    class="p-1 border border-teal-300 rounded text-[10px] font-semibold focus:ring-1 focus:ring-teal-500 bg-teal-50 text-teal-800 w-24">
+                    <option value="">Unassigned</option>
+                    ${subUsersList.map(user => `<option value="${user}" ${r.assignedTo === user ? 'selected' : ''}>${user}</option>`).join('')}
+                </select>
+            `;
 
-        <td class="p-3 text-right urdu-font text-teal-700 font-semibold text-sm">${r.teacherName}</td>
-        <td class="p-3 text-center">
-            <div class="font-medium text-xs text-gray-700">${r.className}</div>
-            <div class="text-[10px] text-gray-400">${r.kitabName}</div>
-        </td>
-        <td class="p-3 text-center text-xs text-gray-500">${r.date}</td>
-        <td class="p-3 text-center text-xs font-mono text-gray-600">${duration}</td>
-        <td class="p-3 text-center">${badge}</td>
-        <td class="p-3 text-center flex justify-center gap-2">
-            <button type="button" 
-                class="check-btn bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1"
-                data-pid="${r.parentDocId}" 
-                data-idx="${r.arrayIndex}">
-                <i class="fas fa-edit"></i> Check
-            </button>
-            <button type="button" 
-                onclick="deleteRecording('${r.parentDocId}', ${r.arrayIndex})"
-                class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1">
-                <i class="fas fa-trash"></i> Delete
-            </button>
-        </td>
-    </tr>`;
-}).join('');
+            return `
+            <tr class="hover:bg-gray-50 border-b border-gray-100 transition">
+                <td class="p-3 text-center">
+                    <input type="checkbox" class="row-checkbox w-4 h-4 text-teal-600 border-gray-300 rounded cursor-pointer" 
+                        data-pid="${r.parentDocId}" data-idx="${r.arrayIndex}" onchange="updateBulkPanel()">
+                </td>
+                <td class="p-3 text-center text-gray-400 text-xs">${i + 1}</td>
+                
+                <td class="p-3 text-right">
+                    <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
+                    <div class="flex items-center justify-end gap-1 mt-1">
+                        <i class="fas fa-user text-[10px] text-teal-500"></i>
+                        <p class="text-xs text-gray-500 urdu-font">${r.zimmedarName}</p>
+                    </div>
+                </td>
+
+                <td class="p-3 text-right urdu-font text-teal-700 font-semibold text-sm">${r.teacherName}</td>
+                <td class="p-3 text-center">
+                    <div class="font-medium text-xs text-gray-700">${r.className}</div>
+                    <div class="text-[10px] text-gray-400">${r.kitabName}</div>
+                </td>
+                <td class="p-3 text-center text-xs font-mono text-gray-600">${duration}</td>
+                <td class="p-3 text-center">${badge}</td>
+                <td class="p-3 text-center flex flex-col items-center gap-1">
+                    <span class="text-[10px] font-bold ${r.assignedTo ? 'text-blue-600' : 'text-gray-400'}">${r.assignedTo || 'None'}</span>
+                    ${assignDropdown}
+                </td>
+                <td class="p-3 text-center">
+                    <button type="button" 
+                        class="check-btn bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-md text-xs transition flex items-center justify-center gap-1 w-full mb-1"
+                        data-pid="${r.parentDocId}" 
+                        data-idx="${r.arrayIndex}">
+                        <i class="fas fa-edit"></i> Check
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
 
         container.innerHTML = `
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-gray-800 text-gray-300 uppercase text-[10px] tracking-wider">
                         <tr>
+                            <th class="p-3 text-center">
+                                <input type="checkbox" id="select-all" class="w-4 h-4 cursor-pointer" onchange="toggleSelectAll(this)">
+                            </th>
                             <th class="p-3 text-center">#</th>
                             <th class="p-3 text-right">Jamia / Zimmedar</th>
                             <th class="p-3 text-right">Teacher</th>
                             <th class="p-3 text-center">Class / Kitab</th>
-                            <th class="p-3 text-center">Date</th>
-                           <th class="p-3 text-center">Duration</th>
+                            <th class="p-3 text-center">Duration</th>
                             <th class="p-3 text-center">Status</th>
+                            <th class="p-3 text-center text-teal-300">Assignment</th>
                             <th class="p-3 text-center">Action</th>
                         </tr>
                     </thead>
@@ -671,6 +739,106 @@ function getAudioDuration(url) {
     });
 }
 
+             // --- 6. ASSIGNMENT & BULK LOGIC ---
+    
+    // Single Assign
+    async function assignRecording(pId, arrIdx, checkerName) {
+        try {
+            const reportRef = db.collection('monthly_reports').doc(pId);
+            const docSnap = await reportRef.get();
+            if(docSnap.exists) {
+                const data = docSnap.data();
+                let arr = data.tadrisRecording.data || [];
+                if (arr[arrIdx]) {
+                    arr[arrIdx].assignedTo = checkerName;
+                    await reportRef.update({ "tadrisRecording.data": arr });
+                    
+                    const localRec = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === arrIdx);
+                    if(localRec) localRec.assignedTo = checkerName;
+                    applyFilters(); 
+                }
+            }
+        } catch(e) { alert("Assign karne me masla aaya: " + e.message); }
+    }
+
+    // Select All
+    function toggleSelectAll(masterCheckbox) {
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+        updateBulkPanel();
+    }
+
+    // Bulk Panel Update
+    function updateBulkPanel() {
+        const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+        const panel = document.getElementById('bulk-assign-panel');
+        const countSpan = document.getElementById('selected-count');
+        
+        if (checkboxes.length > 0) {
+            panel.classList.remove('hidden');
+            countSpan.innerText = `${checkboxes.length} Selected`;
+        } else {
+            panel.classList.add('hidden');
+            document.getElementById('select-all').checked = false;
+        }
+    }
+
+    // Bulk Assign Firebase Update
+    async function bulkAssign() {
+        const selectedUser = document.getElementById('bulk-assign-user').value;
+        if (!selectedUser) {
+            alert("Bhai, pehle dropdown se kisi Checker ka naam select karein!");
+            return;
+        }
+
+        const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+        if (checkboxes.length === 0) return;
+
+        const btn = document.querySelector('#bulk-assign-panel button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Assigning...';
+        btn.disabled = true;
+
+        try {
+            let updatesByDoc = {};
+            checkboxes.forEach(cb => {
+                const pId = cb.getAttribute('data-pid');
+                const arrIdx = parseInt(cb.getAttribute('data-idx'));
+                if (!updatesByDoc[pId]) updatesByDoc[pId] = [];
+                updatesByDoc[pId].push(arrIdx);
+            });
+
+            for (const pId in updatesByDoc) {
+                const reportRef = db.collection('monthly_reports').doc(pId);
+                const docSnap = await reportRef.get();
+                
+                if (docSnap.exists) {
+                    const data = docSnap.data();
+                    let arr = data.tadrisRecording.data || [];
+                    
+                    updatesByDoc[pId].forEach(idx => {
+                        if(arr[idx]) {
+                            arr[idx].assignedTo = selectedUser; 
+                            const localRec = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === idx);
+                            if(localRec) localRec.assignedTo = selectedUser;
+                        }
+                    });
+                    await reportRef.update({ "tadrisRecording.data": arr });
+                }
+            }
+
+            alert(`${checkboxes.length} files ${selectedUser} ko assign ho gayin!`);
+            document.getElementById('select-all').checked = false;
+            updateBulkPanel();
+            applyFilters(); 
+
+        } catch (error) {
+            alert("Bulk Assign me masla aaya: " + error.message);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
 </script>
 </body>
 </html>
