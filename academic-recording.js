@@ -129,6 +129,7 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
                             <th class="p-4 font-bold">Teacher / Class</th>
                             <th class="p-4 font-bold">Date</th>
                             <th class="p-4 font-bold text-center">Audio</th>
+                            <th class="p-4 font-bold">Mufattish Comment</th>
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-slate-100 text-slate-700">
@@ -139,15 +140,22 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
                     ? `<a href="${rec.url}" target="_blank" class="text-emerald-600 hover:text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 mx-auto w-max"><i class="fas fa-play"></i> Play</a>` 
                     : `<span class="text-slate-400 text-xs italic">No Audio</span>`;
 
+                // Comment fetch karna (Agar aapne field ka naam mufattishComment ya comment rakha hai)
+                const commentText = rec.mufattishComment || rec.comment;
+                const commentUI = commentText 
+                    ? `<div class="text-xs text-slate-700 bg-yellow-50 p-2 rounded-lg border border-yellow-200 urdu-font leading-relaxed">${commentText}</div>`
+                    : `<span class="text-slate-400 text-xs italic">Koi comment nahi</span>`;
+
                 tableHTML += `
                 <tr class="hover:bg-slate-50/50 transition">
-                    <td class="p-4 font-bold text-slate-800 urdu-font">${rec.jamiaName}</td>
-                    <td class="p-4">
+                    <td class="p-4 font-bold text-slate-800 urdu-font w-1/5">${rec.jamiaName}</td>
+                    <td class="p-4 w-1/4">
                         <div class="font-bold urdu-font text-blue-700">${rec.teacherName}</div>
                         <div class="text-xs text-slate-500 urdu-font mt-0.5">${rec.className} - ${rec.kitabName}</div>
                     </td>
-                    <td class="p-4 text-xs font-medium text-slate-500">${rec.date}</td>
+                    <td class="p-4 text-xs font-medium text-slate-500 whitespace-nowrap">${rec.date}</td>
                     <td class="p-4">${audioBtn}</td>
+                    <td class="p-4 w-1/3">${commentUI}</td>
                 </tr>`;
             });
 
