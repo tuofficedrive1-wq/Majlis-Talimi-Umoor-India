@@ -5,29 +5,29 @@ export async function renderRecordingTab(assignedJamiaat, currentUser, db) {
     const monthInput = document.getElementById('report-month').value;
 
     if (!assignedJamiaat || assignedJamiaat.length === 0) {
-        container.innerHTML = `<div class="p-6 text-center text-slate-500 font-bold">Koi Jamia assign nahi kiya gaya hai.</div>`;
+        container.innerHTML = `<div class="p-4 text-center text-slate-500 font-bold text-sm">Koi Jamia assign nahi kiya gaya hai.</div>`;
         return;
     }
 
-    // 1. Sub-tabs aur Layout Setup (Mobile ke liye optimized)
+    // 1. Sub-tabs aur Layout Setup (Flat & Mobile Optimized)
     container.innerHTML = `
-        <div class="flex items-center gap-6 border-b border-slate-200 mb-5 overflow-x-auto no-scrollbar whitespace-nowrap pb-1">
-            <button class="rec-sub-tab-btn active group flex items-center gap-2 pb-2 text-sm font-bold text-blue-600 border-b-2 border-blue-600 transition-all shrink-0" data-sub="jamia-list">
-                <i class="fas fa-mosque text-xs"></i>
-                <span>Jamiaat List & Links</span>
+        <div class="flex items-center gap-3 border-b border-slate-200 mb-4 overflow-x-auto no-scrollbar whitespace-nowrap">
+            <button class="rec-sub-tab-btn active group flex items-center gap-1.5 pb-2 text-xs md:text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all shrink-0" data-sub="jamia-list">
+                <i class="fas fa-mosque"></i>
+                <span>Jamiaat List</span>
             </button>
-            <button class="rec-sub-tab-btn group flex items-center gap-2 pb-2 text-sm font-bold text-slate-400 hover:text-blue-500 border-b-2 border-transparent transition-all shrink-0" data-sub="saved-recordings">
-                <i class="fas fa-microphone-alt text-xs"></i>
-                <span>Saved Recordings</span>
+            <button class="rec-sub-tab-btn group flex items-center gap-1.5 pb-2 text-xs md:text-sm font-bold text-slate-400 hover:text-indigo-500 border-b-2 border-transparent transition-all shrink-0" data-sub="saved-recordings">
+                <i class="fas fa-microphone-alt"></i>
+                <span>Recordings</span>
             </button>
         </div>
 
         <div id="rec-sub-jamia-list" class="rec-sub-tab-content block w-full">
-            <div class="text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i><p class="text-slate-500 mt-2">Data load ho raha hai...</p></div>
+            <div class="text-center py-6"><i class="fas fa-spinner fa-spin text-xl text-indigo-500"></i><p class="text-slate-500 text-xs mt-1">Load ho raha hai...</p></div>
         </div>
 
         <div id="rec-sub-saved-recordings" class="rec-sub-tab-content hidden w-full">
-             <div class="text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i><p class="text-slate-500 mt-2">Data load ho raha hai...</p></div>
+             <div class="text-center py-6"><i class="fas fa-spinner fa-spin text-xl text-indigo-500"></i><p class="text-slate-500 text-xs mt-1">Load ho raha hai...</p></div>
         </div>
     `;
 
@@ -35,10 +35,10 @@ export async function renderRecordingTab(assignedJamiaat, currentUser, db) {
     document.querySelectorAll('.rec-sub-tab-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.rec-sub-tab-btn').forEach(b => {
-                b.classList.remove('text-blue-600', 'border-blue-600', 'active');
+                b.classList.remove('text-indigo-600', 'border-indigo-600', 'active');
                 b.classList.add('text-slate-400', 'border-transparent');
             });
-            btn.classList.add('text-blue-600', 'border-blue-600', 'active');
+            btn.classList.add('text-indigo-600', 'border-indigo-600', 'active');
             btn.classList.remove('text-slate-400', 'border-transparent');
 
             const target = btn.dataset.sub;
@@ -80,9 +80,9 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
         });
 
         // ============================================
-        // RENDER JAMIA LIST & LINKS
+        // RENDER JAMIA LIST & LINKS (Compact Grid)
         // ============================================
-        let listHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">`;
+        let listHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">`;
         
         assignedJamiaat.forEach(jamia => {
             const jamiaRecs = allRecordings.filter(r => r.jamiaName === jamia);
@@ -92,67 +92,67 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
             const portalLink = `${baseUrl}/tadris-teacher-portal.html?jamiaId=${encodeURIComponent(jamia)}&userId=${currentUser.uid}&activeYear=${encodeURIComponent(academicYear)}&lang=en`;
 
             listHTML += `
-            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:bg-white transition-all">
-                <div class="flex justify-between items-start mb-3">
-                    <h4 class="font-bold text-slate-800 text-sm md:text-base urdu-font leading-tight">${jamia}</h4>
-                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[10px] sm:text-xs font-bold whitespace-nowrap">
-                        <i class="fas fa-file-audio mr-1"></i> ${count} Saved
+            <div class="border border-slate-200 rounded-xl p-3 hover:border-indigo-300 bg-white shadow-sm flex flex-col gap-2 transition-all">
+                <div class="flex justify-between items-center">
+                    <h4 class="font-bold text-slate-800 text-xs md:text-sm urdu-font leading-tight truncate pr-2 w-3/4">${jamia}</h4>
+                    <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold shrink-0">
+                        <i class="fas fa-file-audio mr-1"></i> ${count}
                     </span>
                 </div>
-                <div class="mt-3 pt-3 border-t border-slate-200">
-                    <button onclick="navigator.clipboard.writeText('${portalLink}').then(() => alert('Link Copy Ho Gaya!'))" 
-                            class="w-full bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-300 hover:border-blue-300 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-2 shadow-sm">
-                        <i class="fas fa-link"></i> Copy Link
-                    </button>
-                </div>
+                <button onclick="navigator.clipboard.writeText('${portalLink}').then(() => alert('Link Copy Ho Gaya!'))" 
+                        class="w-full bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 py-1.5 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1.5">
+                    <i class="fas fa-link"></i> Copy Link
+                </button>
             </div>`;
         });
         listHTML += `</div>`;
         listContainer.innerHTML = listHTML;
 
         // ============================================
-        // RENDER SAVED RECORDINGS TABLE
+        // RENDER SAVED RECORDINGS TABLE (Mobile Optimized)
         // ============================================
         if (allRecordings.length === 0) {
-            savedContainer.innerHTML = `<div class="p-8 text-center text-slate-500 text-sm font-medium bg-slate-50 rounded-xl border border-dashed border-slate-300">Is mahine ki koi recording maujood nahi hai.</div>`;
+            savedContainer.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">Is mahine ki koi recording maujood nahi hai.</div>`;
         } else {
-            // Yahan se extra card styling (bg-white, shadow, rounded) hata di gayi hai
-            // Table ko min-w-[700px] diya gaya hai taaki wo dabne ki bajaye scroll ho
+            // Horizontal scroll ko roknay ke liye humne columns kam kardiye hain. 
+            // Teacher, Class, Kitab aur Date ek hi column mein hain.
             let tableHTML = `
-            <div class="overflow-x-auto w-full pb-4 no-scrollbar">
-                <table class="w-full text-left border-collapse min-w-[700px]">
+            <div class="overflow-x-auto no-scrollbar rounded-xl border border-slate-200 bg-white shadow-sm w-full">
+                <table class="w-full text-left whitespace-nowrap">
                     <thead>
-                        <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider border-y border-slate-200">
-                            <th class="p-3 font-bold">Jamia</th>
-                            <th class="p-3 font-bold">Teacher / Class</th>
-                            <th class="p-3 font-bold">Date</th>
-                            <th class="p-3 font-bold text-center">Audio</th>
-                            <th class="p-3 font-bold">Mufattish Comment</th>
+                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black border-b border-slate-200">
+                            <th class="p-2 border-r border-slate-100">Jamia</th>
+                            <th class="p-2 border-r border-slate-100">Details (Teacher/Class/Date)</th>
+                            <th class="p-2 border-r border-slate-100 text-center">Audio</th>
+                            <th class="p-2">Comment</th>
                         </tr>
                     </thead>
-                    <tbody class="text-sm divide-y divide-slate-200 text-slate-700">
+                    <tbody class="text-[10px] md:text-[11px] divide-y divide-slate-100 text-slate-700">
             `;
 
             allRecordings.forEach(rec => {
                 const audioBtn = rec.url 
-                    ? `<a href="${rec.url}" target="_blank" class="text-emerald-600 hover:text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition flex items-center justify-center gap-1 mx-auto w-max"><i class="fas fa-play"></i> Play</a>` 
-                    : `<span class="text-slate-400 text-xs italic">No Audio</span>`;
+                    ? `<a href="${rec.url}" target="_blank" class="text-emerald-600 hover:text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 mx-auto w-max"><i class="fas fa-play"></i> Play</a>` 
+                    : `<span class="text-slate-400 text-[9px] italic">N/A</span>`;
 
                 const commentText = rec.mufattishComment || rec.comment;
                 const commentUI = commentText 
-                    ? `<div class="text-xs text-slate-700 bg-amber-50 p-2 rounded-lg border border-amber-200 urdu-font leading-relaxed">${commentText}</div>`
-                    : `<span class="text-slate-400 text-[11px] italic">Koi comment nahi</span>`;
+                    ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 whitespace-normal min-w-[120px] urdu-font leading-relaxed">${commentText}</div>`
+                    : `<span class="text-slate-400 text-[9px] italic">N/A</span>`;
 
                 tableHTML += `
-                <tr class="hover:bg-slate-50 transition">
-                    <td class="p-3 font-bold text-slate-800 urdu-font align-top">${rec.jamiaName}</td>
-                    <td class="p-3 align-top">
-                        <div class="font-bold urdu-font text-blue-700">${rec.teacherName}</div>
-                        <div class="text-xs text-slate-500 urdu-font mt-1">${rec.className} <br/> <span class="text-slate-400">${rec.kitabName}</span></div>
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="p-2 border-r border-slate-100 font-bold text-slate-800 urdu-font whitespace-normal min-w-[80px] align-top">${rec.jamiaName}</td>
+                    
+                    <!-- Merged Column to Save Space -->
+                    <td class="p-2 border-r border-slate-100 align-top whitespace-normal min-w-[120px]">
+                        <div class="font-bold text-indigo-700 urdu-font leading-tight">${rec.teacherName}</div>
+                        <div class="text-[9px] text-slate-500 mt-0.5">${rec.className} • ${rec.kitabName}</div>
+                        <div class="text-[8px] text-slate-400 mt-1 font-medium bg-slate-100 px-1 py-0.5 rounded w-fit"><i class="far fa-calendar-alt"></i> ${rec.date}</div>
                     </td>
-                    <td class="p-3 text-[11px] sm:text-xs font-medium text-slate-500 whitespace-nowrap align-top">${rec.date}</td>
-                    <td class="p-3 align-top">${audioBtn}</td>
-                    <td class="p-3 align-top w-1/3">${commentUI}</td>
+                    
+                    <td class="p-2 border-r border-slate-100 align-top text-center">${audioBtn}</td>
+                    <td class="p-2 align-top whitespace-normal">${commentUI}</td>
                 </tr>`;
             });
 
@@ -162,7 +162,7 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
 
     } catch (error) {
         console.error("Error loading recordings:", error);
-        listContainer.innerHTML = `<div class="text-red-500 text-sm font-bold p-4">Data fetch karne me error aaya: ${error.message}</div>`;
-        savedContainer.innerHTML = `<div class="text-red-500 text-sm font-bold p-4">Data fetch karne me error aaya.</div>`;
+        listContainer.innerHTML = `<div class="text-red-500 text-xs p-3">Data fetch error: ${error.message}</div>`;
+        savedContainer.innerHTML = `<div class="text-red-500 text-xs p-3">Data fetch error.</div>`;
     }
 }
