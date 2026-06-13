@@ -32,52 +32,52 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     gAssignedJamiaat = assignedJamiaat;
 
    const injectEditModal = () => {
-    if (document.getElementById('edit-period-modal')) return; // Dubara render na ho
+    if (document.getElementById('edit-period-modal')) return;
 
     const modalHTML = `
-    <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="font-black text-indigo-950 text-lg">Edit Period Details</h3>
+    <div id="edit-period-modal" class="fixed inset-0 bg-black/60 hidden z-[100] flex items-center justify-center p-3 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-md p-4 shadow-xl border border-slate-100">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-black text-indigo-950 text-base">Edit Period Details</h3>
                 <button onclick="closePeriodModal()" class="h-8 w-8 rounded-full bg-slate-50 text-slate-400 hover:text-red-500 flex items-center justify-center">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="space-y-4">
+            <div class="space-y-3">
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Class</label>
-                    <input type="text" id="edit-p-class" list="edit-class-suggestions" autocomplete="off" placeholder="Type or Select Class" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:border-indigo-500">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1 block">Class</label>
+                    <input type="text" id="edit-p-class" list="edit-class-suggestions" autocomplete="off" placeholder="Type or Select Class" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-indigo-500">
                     <datalist id="edit-class-suggestions"></datalist>
                 </div>
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Subject / Book</label>
-                    <input type="text" id="edit-p-book" list="edit-book-suggestions" autocomplete="off" placeholder="Type or Select Subject" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:border-indigo-500">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1 block">Subject / Book</label>
+                    <input type="text" id="edit-p-book" list="edit-book-suggestions" autocomplete="off" placeholder="Type or Select Subject" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-slate-50 outline-none focus:border-indigo-500">
                     <datalist id="edit-book-suggestions"></datalist>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Semester</label>
-                        <select id="edit-p-sem" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1 block">Semester</label>
+                        <select id="edit-p-sem" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-slate-50 outline-none">
                             <option value="1">Sem 1</option>
                             <option value="2">Sem 2</option>
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Total Pages</label>
-                        <input type="number" id="edit-p-pages" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1 block">Total Pages</label>
+                        <input type="number" id="edit-p-pages" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-slate-50 outline-none">
                     </div>
                 </div>
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Syllabus</label>
-                    <select id="edit-p-syllabus" class="w-full p-3 border rounded-2xl text-sm font-bold bg-slate-50 outline-none">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1 block">Syllabus</label>
+                    <select id="edit-p-syllabus" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-slate-50 outline-none">
                         <option value="Majlis">Majlis</option>
                         <option value="State">State</option>
                         <option value="Approval">Approval</option>
                     </select>
                 </div>
-                <button type="button" id="btn-update-period" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all mt-4">
-    Update Period Data
-</button>
+                <button type="button" id="btn-update-period" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all mt-2">
+                    Update Data
+                </button>
             </div>
         </div>
     </div>`;
@@ -89,15 +89,15 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     
     const container = document.getElementById('performance-jamia-list');
     container.innerHTML = `
-        <div class="mb-6">
-            <div class="flex border-b border-slate-200 gap-4 overflow-x-auto">
-                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-4 py-2 text-sm font-bold text-indigo-600" data-sub="performance">Performance</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="summary">Summary</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="structure">Structure</button>
-                <button class="sub-tab-btn px-4 py-2 text-sm font-bold text-slate-500" data-sub="profiles">Teacher Profile</button>
+        <div class="mb-4">
+            <div class="flex border-b border-slate-200 gap-2 overflow-x-auto no-scrollbar">
+                <button class="sub-tab-btn active border-b-2 border-indigo-600 px-3 py-2 text-xs md:text-sm font-bold text-indigo-600 whitespace-nowrap" data-sub="performance">Performance</button>
+                <button class="sub-tab-btn px-3 py-2 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap" data-sub="summary">Summary</button>
+                <button class="sub-tab-btn px-3 py-2 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap" data-sub="structure">Structure</button>
+                <button class="sub-tab-btn px-3 py-2 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap" data-sub="profiles">Profiles</button>
             </div>
         </div>
-        <div id="sub-tab-content" class="space-y-6"></div>
+        <div id="sub-tab-content" class="space-y-4"></div>
     `;
 
     const subTabBtns = container.querySelectorAll('.sub-tab-btn');
@@ -122,27 +122,22 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
 
-if (tabName === 'performance') {
-        // Agar HTML pehle se nahi bana hai toh hi render karenge (taaki table body destroy na ho)
+    if (tabName === 'performance') {
         if (!document.getElementById('report-jamia')) {
             contentArea.innerHTML = `
-                <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-sm gap-3">
                     <div class="flex flex-col">
-                        <h3 class="font-black text-indigo-950 text-lg">Performance Analytics</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by Jamia (Month controlled by Main Dashboard)</p>
+                        <h3 class="font-black text-indigo-950 text-base md:text-lg">Performance Analytics</h3>
+                        <p class="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest">Select Jamia (Month synced)</p>
                     </div>
-                    
-                    <div class="flex flex-wrap items-center gap-3">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-[9px] font-black text-slate-400 ml-2">SELECT JAMIA</label>
-                            <select id="report-jamia" class="p-2.5 border border-slate-200 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 min-w-[180px]">
-                                <option value="all">All Jamiaat (Show All)</option>
-                                ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
-                            </select>
-                        </div>
+                    <div class="w-full sm:w-auto">
+                        <select id="report-jamia" class="w-full sm:w-auto p-2 border border-slate-200 rounded-lg text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200">
+                            <option value="all">All Jamiaat</option>
+                            ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
+                        </select>
                     </div>
                 </div>
-                <div id="performance-table-body"></div>
+                <div id="performance-table-body" class="space-y-4"></div>
             `;
         }
 
@@ -153,8 +148,8 @@ if (tabName === 'performance') {
             };
         }
         
-        // Pehli baar table load karte waqt main dashboard wala selected month hi use hoga
         loadPerformanceTable(assignedJamiaat, db, currentUser);
+        
     } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -165,16 +160,15 @@ if (tabName === 'performance') {
         if (!allYears.includes(activeYearByAdmin)) allYears.push(activeYearByAdmin);
 
         contentArea.innerHTML = `
-            <div class="bg-white p-4 rounded-2xl border border-slate-200 mb-6 shadow-sm flex justify-between items-center">
+            <div class="bg-white p-3 rounded-xl border border-slate-200 mb-4 shadow-sm flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                 <div>
-                    <h4 class="text-sm font-black text-slate-700 uppercase">Academic Year Selection</h4>
-                    <p class="text-[10px] text-slate-400 font-bold italic">Saal badal kar purana data dekhein</p>
+                    <h4 class="text-xs font-black text-slate-700 uppercase">Academic Year</h4>
                 </div>
-                <select id="structure-year-select" class="p-2 border-2 border-indigo-100 rounded-xl text-sm font-bold text-indigo-700 bg-indigo-50 outline-none">
+                <select id="structure-year-select" class="w-full sm:w-auto p-1.5 border-2 border-indigo-100 rounded-lg text-xs font-bold text-indigo-700 bg-indigo-50 outline-none">
                     ${allYears.map(yr => `<option value="${yr}" ${yr === activeYearByAdmin ? 'selected' : ''}>${yr}${yr === activeYearByAdmin ? ' (Active)' : ''}</option>`).join('')}
                 </select>
             </div>
-            <div id="structure-display-area" class="space-y-4"></div>
+            <div id="structure-display-area" class="space-y-3"></div>
         `;
 
         const updateStructureView = (selectedYear) => {
@@ -182,28 +176,30 @@ if (tabName === 'performance') {
             if (!displayArea) return;
 
             displayArea.innerHTML = assignedJamiaat.map(jamia => `
-                <div class="border border-slate-200 rounded-3xl bg-white overflow-hidden shadow-sm mb-4">
-                    <button class="jamia-toggle w-full flex justify-between items-center p-5 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700">
+                <div class="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm mb-3">
+                    <button class="jamia-toggle w-full flex justify-between items-center p-3 md:p-4 bg-slate-50 hover:bg-slate-100 font-bold text-slate-700 text-sm">
                         <span>${jamia}</span><i class="fas fa-chevron-down transition-transform"></i>
                     </button>
-                    <div class="jamia-content hidden p-6 border-t border-slate-100 space-y-6">
-                        <div class="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100">
-                            <h4 class="text-sm font-bold text-indigo-600 uppercase mb-4 flex items-center gap-2"><i class="fas fa-user-plus"></i> Register New Teacher</h4>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="form-${jamia.replace(/\s+/g, '')}">
-                                <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name Of Teacher" class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code" class="p-2.5 border rounded-xl text-sm font-bold" maxlength="6">
-                                <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact No." class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level Qualified" class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qualification" class="p-2.5 border rounded-xl text-sm">
-                                <input type="email" id="mail-${jamia.replace(/\s+/g, '')}" placeholder="Mail ID" class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="exp-${jamia.replace(/\s+/g, '')}" placeholder="Experience" class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="spec-${jamia.replace(/\s+/g, '')}" placeholder="Specialization" class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="t-period-${jamia.replace(/\s+/g, '')}" placeholder="Total Period" class="p-2.5 border rounded-xl text-sm">
-                                <input type="text" id="ijara-${jamia.replace(/\s+/g, '')}" placeholder="Ijara Status" class="p-2.5 border rounded-xl text-sm">
+                    <div class="jamia-content hidden p-3 md:p-4 border-t border-slate-100 space-y-4">
+                        <!-- Flat design for Teacher Form (Card-in-card removed) -->
+                        <div>
+                            <h4 class="text-xs font-bold text-indigo-600 uppercase mb-3 flex items-center gap-1.5"><i class="fas fa-user-plus"></i> Add New Teacher</h4>
+                            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" id="form-${jamia.replace(/\s+/g, '')}">
+                                <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name" class="p-2 border rounded-lg text-xs font-medium">
+                                <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code" class="p-2 border rounded-lg text-xs font-bold" maxlength="6">
+                                <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact" class="p-2 border rounded-lg text-xs">
+                                <input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level" class="p-2 border rounded-lg text-xs">
+                                <input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qual." class="p-2 border rounded-lg text-xs">
+                                <input type="email" id="mail-${jamia.replace(/\s+/g, '')}" placeholder="Mail ID" class="p-2 border rounded-lg text-xs">
+                                <input type="text" id="exp-${jamia.replace(/\s+/g, '')}" placeholder="Experience" class="p-2 border rounded-lg text-xs">
+                                <input type="text" id="spec-${jamia.replace(/\s+/g, '')}" placeholder="Specialization" class="p-2 border rounded-lg text-xs">
+                                <input type="text" id="t-period-${jamia.replace(/\s+/g, '')}" placeholder="Total Period" class="p-2 border rounded-lg text-xs">
+                                <input type="text" id="ijara-${jamia.replace(/\s+/g, '')}" placeholder="Ijara Status" class="p-2 border rounded-lg text-xs">
                             </div>
-                            <button class="save-teacher-btn w-full mt-4 bg-indigo-600 text-white py-3 rounded-2xl font-bold" data-jamia-name="${jamia}">Save Teacher Profile</button>
+                            <button class="save-teacher-btn w-full mt-3 bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-bold" data-jamia-name="${jamia}">Save Profile</button>
                         </div>
-                        <div class="teacher-list-area space-y-4" id="list-${jamia.replace(/\s+/g, '')}"></div>
+                        <hr class="border-slate-100">
+                        <div class="teacher-list-area space-y-3" id="list-${jamia.replace(/\s+/g, '')}"></div>
                     </div>
                 </div>`).join('');
             
@@ -217,8 +213,8 @@ if (tabName === 'performance') {
 
     } else if (tabName === 'profiles') {
         contentArea.innerHTML = `
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                <h3 class="font-black text-indigo-950 text-lg mb-4">Teacher Profile Directory</h3>
+            <div class="bg-white p-3 md:p-5 rounded-xl border border-slate-200 shadow-sm">
+                <h3 class="font-black text-indigo-950 text-base mb-3">Teacher Directory</h3>
                 <div id="profiles-table-container"></div>
             </div>
         `;
@@ -276,7 +272,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
                         };
                     }
                     delete btn.dataset.editMode;
-                    btn.innerText = "Save Teacher Profile";
+                    btn.innerText = "Save Profile";
                 } else {
                     jamiaData.teachers.push({
                         id: `t-${Date.now()}`, name, loginCode: ajeer, contact, levelQualified: level,
@@ -314,60 +310,67 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
             listDiv.innerHTML = jamiaData.teachers.map(t => {
                 const uniqueId = t.id;
                 return `
-                <div class="border rounded-2xl bg-slate-50 mb-4 overflow-hidden shadow-sm" id="teacher-card-${uniqueId}">
-                    <div class="teacher-toggle flex justify-between items-center p-4 cursor-pointer bg-white" data-tid="${uniqueId}" data-jamia="${jamia}">
-                        <div class="flex flex-col"><span class="font-bold text-slate-800">${t.name}</span><span class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded w-fit mt-1 uppercase">CODE: ${t.loginCode}</span></div>
+                <div class="border border-slate-200 rounded-xl bg-slate-50 mb-3 overflow-hidden shadow-sm" id="teacher-card-${uniqueId}">
+                    <div class="teacher-toggle flex justify-between items-center p-3 cursor-pointer bg-white" data-tid="${uniqueId}" data-jamia="${jamia}">
+                        <div class="flex flex-col"><span class="font-bold text-slate-800 text-sm">${t.name}</span><span class="text-[9px] text-indigo-600 font-bold uppercase tracking-wider mt-0.5">Code: ${t.loginCode}</span></div>
                         <div class="flex items-center gap-3">
-                            <button class="edit-t-btn text-indigo-500" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
-                            <button class="del-t-btn text-red-500" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-trash-alt"></i></button>
-                            <i class="fas fa-chevron-down text-slate-400"></i>
+                            <button class="edit-t-btn text-indigo-500 text-sm" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
+                            <button class="del-t-btn text-red-500 text-sm" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-trash-alt"></i></button>
+                            <i class="fas fa-chevron-down text-slate-400 text-sm"></i>
                         </div>
                     </div>
-                    <div class="period-container hidden p-5 bg-white border-t space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 bg-emerald-50/50 p-4 rounded-xl">
-                            <div>
-                                <input type="text" list="classes-${uniqueId}" class="p-class w-full p-2 border rounded-lg text-sm bg-white" placeholder="Type/Select Class">
+                    <div class="period-container hidden p-3 bg-white border-t border-slate-100 space-y-3">
+                        <!-- Add Period Form: Compact layout -->
+                        <div class="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-50 p-2 border border-slate-200 rounded-lg">
+                            <div class="col-span-2 md:col-span-1">
+                                <input type="text" list="classes-${uniqueId}" class="p-class w-full p-1.5 border rounded-md text-xs bg-white" placeholder="Class">
                                 <datalist id="classes-${uniqueId}">
                                     ${academicConfig.classes.map(c => `<option value="${c.name}"></option>`).join('')}
                                 </datalist>
                             </div>
-                            <div>
-                                <input type="text" list="books-${uniqueId}" class="p-book w-full p-2 border rounded-lg text-sm bg-white" placeholder="Type/Select Subject">
+                            <div class="col-span-2 md:col-span-1">
+                                <input type="text" list="books-${uniqueId}" class="p-book w-full p-1.5 border rounded-md text-xs bg-white" placeholder="Subject">
                                 <datalist id="books-${uniqueId}"></datalist>
                             </div>
-                            <select class="p-sem p-2 border rounded-lg text-sm bg-white"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
-                            <input type="number" placeholder="Pages" class="p-pages p-2 border rounded-lg text-sm bg-white">
-                            <select class="p-syllabus p-2 border rounded-lg text-sm bg-white">
-                                <option value="Majlis">Majlis</option>
-                                <option value="State">State</option>
-                                <option value="Approval">Approval</option>
-                            </select>
-                            <button class="save-period-btn md:col-span-5 bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold" data-tid="${uniqueId}" data-jamia="${jamia}">Add Period</button>
+                            <div>
+                                <select class="p-sem w-full p-1.5 border rounded-md text-xs bg-white"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
+                            </div>
+                            <div>
+                                <input type="number" placeholder="Pages" class="p-pages w-full p-1.5 border rounded-md text-xs bg-white">
+                            </div>
+                            <div>
+                                <select class="p-syllabus w-full p-1.5 border rounded-md text-xs bg-white">
+                                    <option value="Majlis">Majlis</option><option value="State">State</option><option value="Approval">Approval</option>
+                                </select>
+                            </div>
+                            <button class="save-period-btn col-span-2 md:col-span-1 bg-emerald-600 text-white py-1.5 rounded-md text-[10px] uppercase font-bold" data-tid="${uniqueId}" data-jamia="${jamia}">Add</button>
                         </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-[10px] border-collapse">
+                        
+                        <!-- Compact Table -->
+                        <div class="overflow-x-auto no-scrollbar border border-slate-200 rounded-lg">
+                            <table class="w-full text-[10px] text-left whitespace-nowrap">
                                 <thead>
-                                    <tr class="bg-slate-50 text-slate-400 uppercase font-black">
-                                        <th class="p-2 border text-left">Class</th><th class="p-2 border text-left">Book</th>
-                                        <th class="p-2 border text-center">Sem</th><th class="p-2 border text-center">Pages</th>
-                                        <th class="p-2 border text-center">Syllabus</th><th class="p-2 border text-center">Action</th>
+                                    <tr class="bg-slate-50 text-slate-500 uppercase font-black border-b border-slate-200">
+                                        <th class="p-1.5 border-r border-slate-200">Class</th><th class="p-1.5 border-r border-slate-200">Book</th>
+                                        <th class="p-1.5 border-r border-slate-200 text-center">Sem</th><th class="p-1.5 border-r border-slate-200 text-center">Pages</th>
+                                        <th class="p-1.5 border-r border-slate-200 text-center">Syllabus</th><th class="p-1.5 text-center">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${(t.periods || []).map(p => `
-                                        <tr class="border-b">
-                                            <td class="p-2 border">${p.className}</td><td class="p-2 border">${p.bookName}</td>
-                                            <td class="p-2 border text-center">${p.semester}</td><td class="p-2 border text-center font-bold">${p.totalPages}</td>
-                                            <td class="p-2 border text-center text-indigo-600 font-bold">${p.syllabus || 'Majlis'}</td>
-                                            <td class="p-2 border text-center">
+                                        <tr class="border-b border-slate-100 hover:bg-slate-50">
+                                            <td class="p-1.5 border-r border-slate-100">${p.className}</td><td class="p-1.5 border-r border-slate-100">${p.bookName}</td>
+                                            <td class="p-1.5 border-r border-slate-100 text-center">${p.semester}</td><td class="p-1.5 border-r border-slate-100 text-center font-bold">${p.totalPages}</td>
+                                            <td class="p-1.5 border-r border-slate-100 text-center text-indigo-600 font-bold">${p.syllabus || 'Majlis'}</td>
+                                            <td class="p-1.5 text-center">
                                             <div class="flex justify-center gap-2">
-                                                <button class="edit-period-btn text-indigo-500" 
+                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700" 
                                                         data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
-                                                <button class="del-period-btn text-red-500" 
+                                                <button class="del-period-btn text-red-500 hover:text-red-700" 
                                                         data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}">
-                                                    <i class="fas fa-times-circle"></i>
+                                                    <i class="fas fa-times"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -406,7 +409,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         if(!academicYears[activeYear]){
             console.error("Academic Year Missing:", activeYear);
-            container.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">Academic Year Data Missing</div>`;
+            container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold text-sm">Academic Year Data Missing</div>`;
             return;
         }
 
@@ -432,34 +435,34 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             }
 
             html += `
-            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm mb-8 overflow-hidden jamia-card" id="card-${safeId}">
-                <div class="bg-slate-50 p-5 border-b border-slate-200 flex justify-between items-center">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden jamia-card" id="card-${safeId}">
+                <div class="bg-slate-50 p-3 md:p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
-                        <h3 class="font-black text-indigo-950 text-xl">${jamiaName}</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monthly Performance Analytics</p>
+                        <h3 class="font-black text-indigo-950 text-sm md:text-base">${jamiaName}</h3>
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="bg-white border border-slate-200 text-slate-700 text-[11px] px-3 py-2 rounded-xl hover:bg-slate-50 transition font-bold shadow-sm"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} bg-indigo-600 text-white text-[11px] px-4 py-2 rounded-xl hover:bg-indigo-700 shadow-md transition font-bold"><i class="fas fa-edit mr-1"></i> Edit</button>
+                    <div class="flex flex-wrap gap-1.5 w-full sm:w-auto">
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] px-2 py-1.5 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm justify-center flex items-center"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] px-2 py-1.5 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm justify-center flex items-center"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] px-2 py-1.5 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm justify-center flex items-center"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-indigo-600 text-white text-[10px] px-3 py-1.5 rounded-lg hover:bg-indigo-700 shadow-sm transition font-bold justify-center flex items-center"><i class="fas fa-edit mr-1"></i> Edit</button>
                     </div>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead class="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black">
+                <div class="overflow-x-auto no-scrollbar">
+                    <table class="w-full text-left whitespace-nowrap">
+                        <thead class="bg-slate-50 text-slate-500 text-[9px] md:text-[10px] uppercase font-black border-b border-slate-200">
                             <tr>
-                                <th class="p-4 border-b">Teacher</th>
-                                <th class="p-4 border-b">Class</th>
-                                <th class="p-4 border-b">Subject</th>
-                                <th class="p-4 border-b text-center">Total</th>
-                                <th class="p-4 border-b text-center text-indigo-600">Target</th>
-                                <th class="p-4 border-b text-center">Achieved</th>
-                                <th class="p-4 border-b text-center">%</th>
-                                <th class="p-4 border-b text-center">Kaifiyat</th>
-                                <th class="p-4 border-b text-center">Action</th> </tr>
+                                <th class="p-2 border-r border-slate-100">Teacher</th>
+                                <th class="p-2 border-r border-slate-100">Class</th>
+                                <th class="p-2 border-r border-slate-100">Subject</th>
+                                <th class="p-2 border-r border-slate-100 text-center">Total</th>
+                                <th class="p-2 border-r border-slate-100 text-center text-indigo-600">Target</th>
+                                <th class="p-2 border-r border-slate-100 text-center">Achieved</th>
+                                <th class="p-2 border-r border-slate-100 text-center">%</th>
+                                <th class="p-2 border-r border-slate-100 text-center">Kaifiyat</th>
+                                <th class="p-2 text-center">Action</th> 
+                            </tr>
                         </thead>
-                        <tbody>`;
+                        <tbody class="text-xs">`;
 
             jamiaData.teachers.forEach((teacher) => {
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
@@ -473,11 +476,9 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     let target = 0;
                     const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
 
-                    // 1. Pehle Direct Match Check Karein
                     if (monthlyTargets && monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
                         target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
                     } 
-                    // 2. Agar exact match na mile, toh naya aur mazboot Partial Match check karein
                     else if (monthlyTargets) {
                         const userClassNameLower = (p.className || "").trim().toLowerCase();
                         const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
@@ -486,14 +487,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             const adminKeyLower = adminKey.toLowerCase();
                             const suffix = `_${userBookNameFormatted}`;
                             
-                            // A: Agar key ke end me exactly hamari subject aati hai
                             if (adminKeyLower.endsWith(suffix)) {
-                                
-                                // B: Subject hata kar sirf class ka hissa nikal lein safely
                                 const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
                                 const adminClassClean = adminClassKeyPart.replace(/_/g, ' ').trim();
                                 
-                                // C: Check karein ki user ki class exact hai, ya uske aage space/dash laga kar A ya B likha hai
                                 if (userClassNameLower === adminClassClean || 
                                     userClassNameLower.startsWith(adminClassClean + " ") || 
                                     userClassNameLower.startsWith(adminClassClean + "-")) {
@@ -531,30 +528,31 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
                     const teacherRowId = `row-${safeId}-${teacher.id}`;
 
+                    // Changed padding to p-2 for compact table view
                     html += `
-                        <tr class="border-b hover:bg-slate-50/50 ${teacherRowId}">
-                            <td class="p-4 font-bold text-slate-800">${pIdx === 0 ? teacher.name : ''}</td>
-                            <td class="p-4 text-slate-600">${p.className}</td>
-                            <td class="p-4 text-slate-600">${p.bookName}</td>
-                            <td class="p-4 text-center text-slate-600">${p.totalPages}</td>
-                            <td class="p-4 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
-                            <td class="p-4 text-center">
+                        <tr class="border-b border-slate-100 hover:bg-slate-50/50 ${teacherRowId}">
+                            <td class="p-2 border-r border-slate-100 font-bold text-slate-800 text-[11px] whitespace-normal min-w-[100px]">${pIdx === 0 ? teacher.name : ''}</td>
+                            <td class="p-2 border-r border-slate-100 text-slate-600 text-[11px] whitespace-normal min-w-[80px]">${p.className}</td>
+                            <td class="p-2 border-r border-slate-100 text-slate-600 text-[11px] whitespace-normal min-w-[100px]">${p.bookName}</td>
+                            <td class="p-2 border-r border-slate-100 text-center text-slate-600">${p.totalPages}</td>
+                            <td class="p-2 border-r border-slate-100 text-center font-bold text-indigo-600 bg-indigo-50/30">${target}</td>
+                            <td class="p-1 border-r border-slate-100 text-center">
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
-                                       class="achieved-input-${safeId} w-16 p-1.5 border rounded-lg text-center bg-transparent"
+                                       class="achieved-input-${safeId} w-12 p-1 border rounded text-center bg-transparent mx-auto block text-xs"
                                        oninput="updateRowStatusLive(this, ${target}, '${targetMonthKey}', '${p.semester}')">
                             </td>
-                            <td class="p-4 text-center font-black text-slate-700 perc-cell">${percentage}%</td>
-                            <td class="p-4 text-center italic status-cell ${result.colorClass}">${result.kaifiyat}</td>
+                            <td class="p-2 border-r border-slate-100 text-center font-black text-slate-700 perc-cell text-[10px]">${percentage}%</td>
+                            <td class="p-2 border-r border-slate-100 text-center italic status-cell text-[10px] ${result.colorClass}">${result.kaifiyat}</td>
                             
                             ${pIdx === 0 ? `
-                            <td class="p-4 text-center border-l bg-slate-50/30" rowspan="${totalPeriodsCount + 1}">
-                                <div class="flex flex-col gap-2 items-center justify-center">
-                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[10px] px-2.5 py-1.5 rounded-lg hover:bg-rose-50 transition font-bold shadow-sm flex items-center gap-1" title="Teacher Ki Report Image Download Karein">
-                                        <i class="fas fa-image"></i> Image
+                            <td class="p-1.5 text-center bg-slate-50/30" rowspan="${totalPeriodsCount + 1}">
+                                <div class="flex flex-col gap-1 items-center justify-center">
+                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[9px] px-2 py-1 rounded shadow-sm flex items-center gap-1 hover:bg-rose-50" title="Image Download">
+                                        <i class="fas fa-image"></i>
                                     </button>
-                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="bg-white border border-red-200 text-red-500 text-[10px] px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition font-bold shadow-sm flex items-center gap-1" title="Report Reset Aur Form Unlock Karein">
-                                        <i class="fas fa-sync-alt"></i> Reset
+                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="bg-white border border-red-200 text-red-500 text-[9px] px-2 py-1 rounded shadow-sm flex items-center gap-1 hover:bg-red-50" title="Reset">
+                                        <i class="fas fa-sync-alt"></i>
                                     </button>
                                 </div>
                             </td>
@@ -569,19 +567,19 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const teacherRowId = `row-${safeId}-${teacher.id}`; 
 
                     html += `
-                        <tr class="bg-indigo-50/50 border-b-2 border-indigo-200 ${teacherRowId}">
-                            <td colspan="4" class="p-4 text-right font-black text-indigo-900 uppercase text-[10px]">Total Summary (${teacher.name}):</td>
-                            <td class="p-4 text-center font-black text-indigo-700 bg-indigo-100/50">${totalTeacherTarget}</td>
-                            <td class="p-4 text-center font-black text-indigo-700 bg-indigo-100/50">${totalTeacherAchieved}</td>
-                            <td class="p-4 text-center font-black text-slate-800">${overallPercentage}%</td>
-                            <td class="p-4 text-center italic status-cell ${overallResult.colorClass}">${overallResult.kaifiyat}</td>
+                        <tr class="bg-indigo-50 border-b-2 border-indigo-200 ${teacherRowId}">
+                            <td colspan="4" class="p-2 text-right font-black text-indigo-900 uppercase text-[9px]">Summary:</td>
+                            <td class="p-2 border-r border-indigo-100 text-center font-black text-indigo-700 bg-indigo-100/50">${totalTeacherTarget}</td>
+                            <td class="p-2 border-r border-indigo-100 text-center font-black text-indigo-700 bg-indigo-100/50">${totalTeacherAchieved}</td>
+                            <td class="p-2 border-r border-indigo-100 text-center font-black text-slate-800 text-[10px]">${overallPercentage}%</td>
+                            <td class="p-2 border-r border-indigo-100 text-center italic status-cell text-[10px] ${overallResult.colorClass}">${overallResult.kaifiyat}</td>
                         </tr>
                     `;
                 }
             });
             html += `</tbody></table></div></div>`;
         }
-        container.innerHTML = html || '<div class="p-10 text-center text-slate-400">Data nahi mila.</div>';
+        container.innerHTML = html || '<div class="p-8 text-center text-slate-400 text-sm">Data nahi mila.</div>';
     } catch (e) {
         console.error("Load Error:", e);
     }
@@ -686,7 +684,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
 
                 const saveBtn = document.querySelector(`.save-teacher-btn[data-jamia-name="${jamiaName}"]`);
                 if (saveBtn) {
-                    saveBtn.innerText = "Update Teacher Profile";
+                    saveBtn.innerText = "Update Profile";
                     saveBtn.dataset.editMode = tid;
                     saveBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
@@ -730,7 +728,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
             }
 
             btn.disabled = true;
-            btn.innerText = "Adding...";
+            btn.innerText = "...";
 
             try {
                 await updateTeacherData(db, currentUser, jamiaName, selectedYear, (teachers) => {
@@ -746,41 +744,13 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                     return teachers;
                 });
 
-                alert("Period Successfully Added!");
-                const tbody = card.querySelector('tbody');
-
-                    tbody.insertAdjacentHTML('beforeend', `
-                    <tr class="border-b">
-                        <td class="p-2 border">${className}</td>
-                        <td class="p-2 border">${bookName}</td>
-                        <td class="p-2 border text-center">${semester}</td>
-                        <td class="p-2 border text-center font-bold">${totalPages}</td>
-                        <td class="p-2 border text-center text-indigo-600 font-bold">${syllabus}</td>
-                        <td class="p-2 border text-center">
-                            <div class="flex justify-center gap-2">
-                                <button class="text-indigo-500">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button class="text-red-500">
-                                    <i class="fas fa-times-circle"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    `);
-                // sirf fields reset hongi, section close nahi hoga
-               card.querySelector('.p-book').value = ""; // Text input hai, isliye value ko empty karna hai
-                card.querySelector('.p-book').disabled = false; // Disabled nahi karna hai taaki dubara type ho sake
-                
-                card.querySelector('.p-class').value = "";
-                card.querySelector('.p-sem').value = "1";
-                card.querySelector('.p-pages').value = "";
-                card.querySelector('.p-syllabus').value = "Majlis";
+                alert("Period Added!");
+                loadAllTeachers(jamiaat, db, currentUser, selectedYear);
             } catch (e) {
-                alert("Error adding period: " + e.message);
+                alert("Error: " + e.message);
             } finally {
                 btn.disabled = false;
-                btn.innerText = "Add Period";
+                btn.innerText = "Add";
             }
         };
     });
@@ -812,16 +782,13 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         const bookDatalist = document.getElementById('edit-book-suggestions');
         const updateBtn = document.getElementById('btn-update-period');
 
-        // Safety check: Agar DOM abhi ready nahi hai toh validation alert dein aur innerHTML break na ho
         if (!classInput || !bookInput || !classDatalist || !bookDatalist) {
-            return alert("Modal elements DOM mein nahi mile. Please page refresh karein.");
+            return alert("Modal elements nahi mile. Refresh karein.");
         }
 
-        // Class suggestions load karein
         classDatalist.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}"></option>`).join('');
         classInput.value = period.className;
 
-        // Modal ke liye book filtering function
         const loadModalBooks = (className) => {
             bookDatalist.innerHTML = '';
             const cls = currentConfig.classes.find(c => c.name === className);
@@ -832,25 +799,20 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
             }
         };
 
-        // Saved values load karein
         loadModalBooks(period.className);
         bookInput.value = period.bookName;
 
-        // Typing ya select karne par filters update hon
         classInput.oninput = (e) => loadModalBooks(e.target.value);
         classInput.onchange = (e) => loadModalBooks(e.target.value);
 
-        // Baaki fields fill karein
         document.getElementById('edit-p-sem').value = period.semester || "1";
         document.getElementById('edit-p-pages').value = period.totalPages || 0;
         document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
 
-        // --- UPDATE BUTTON ACTION ---
-        // --- UPDATE BUTTON ACTION ---
-updateBtn.onclick = async (e) => {
-    e.preventDefault(); // Yeh line page ko refresh hone se rokegi
-    updateBtn.disabled = true;
-    updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+        updateBtn.onclick = async (e) => {
+            e.preventDefault(); 
+            updateBtn.disabled = true;
+            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
 
             const updatedObj = {
                 id: pid,
@@ -873,12 +835,12 @@ updateBtn.onclick = async (e) => {
 
                 closePeriodModal();
                 loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear); 
-                alert("Data Updated Successfully!");
+                alert("Updated!");
             } catch (err) {
                 alert("Error: " + err.message);
             } finally {
                 updateBtn.disabled = false;
-                updateBtn.innerText = 'Update Period Data';
+                updateBtn.innerText = 'Update Data';
             }
         };
 
@@ -912,7 +874,7 @@ window.updateRowStatusLive = (input, target, monthId, semester) => {
     if (statusCell) {
         const result = calculateKaifiyatAndStyle(percentage, monthId, semester);
         statusCell.textContent = result.kaifiyat;
-        statusCell.className = `p-4 text-center italic status-cell ${result.colorClass}`;
+        statusCell.className = `p-2 border-r border-slate-100 text-center italic status-cell text-[10px] ${result.colorClass}`;
     }
 };
 
@@ -936,7 +898,7 @@ window.toggleEditMode = async (jamiaName) => {
         btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
         btn.style.backgroundColor = "#10b981"; 
     } else {
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving...`;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Saving`;
         btn.disabled = true;
         
         try {
@@ -944,7 +906,7 @@ window.toggleEditMode = async (jamiaName) => {
             const userInstance = gCurrentUser;
 
             if (!databaseInstance || !userInstance) {
-                throw new Error("Database ya User session nahi mila. Please page refresh karein.");
+                throw new Error("Session nahi mila.");
             }
 
             const calSnap = await getDoc(doc(databaseInstance, "settings", "academic_calendar"));
@@ -964,14 +926,12 @@ window.toggleEditMode = async (jamiaName) => {
             let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
             if (jamiaData) {
-                // Jamia ID nikalenge Public Performance document update karne ke liye
                 const match = jamiaName.match(/\d+/);
                 const jamiaDocId = match ? match[0] : "001";
                 const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
                 const perfSnap = await getDoc(perfDocRef);
                 let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
 
-                // Map banayenge Teacher-wise periods detail ko public collection ke liye format karne ke liye
                 let teacherUpdatesMap = {};
 
                 inputs.forEach(inp => {
@@ -989,7 +949,6 @@ window.toggleEditMode = async (jamiaName) => {
                             if (!period.locked) period.locked = {};
                             period.locked[savingMonthId] = true; 
 
-                            // Public collection ke format mein store karne ke liye temp array
                             if (!teacherUpdatesMap[teacher.name]) {
                                 teacherUpdatesMap[teacher.name] = [];
                             }
@@ -1002,10 +961,8 @@ window.toggleEditMode = async (jamiaName) => {
                     }
                 });
 
-                // 1. Inspector Dashboard Structure update kiya (users collection)
                 await updateDoc(userRef, { academicYears: academicYears });
 
-                // 2. Public Form Structure update kiya (academic_performance collection)
                 let monthSection = currentPerfData[savingMonthId] || { teachers: [] };
                 let updatedPublicTeachers = monthSection.teachers || [];
 
@@ -1020,7 +977,6 @@ window.toggleEditMode = async (jamiaName) => {
                         };
                     });
 
-                    // Purane data ko remove karke naya modified entry daalenge
                     updatedPublicTeachers = updatedPublicTeachers.filter(t => t.name.toLowerCase() !== tName.toLowerCase());
                     updatedPublicTeachers.push({
                         name: tName,
@@ -1046,12 +1002,12 @@ window.toggleEditMode = async (jamiaName) => {
                 btn.style.backgroundColor = "#4f46e5"; 
                 btn.disabled = false;
                 
-                alert(`MashaAllah! ${savingMonthId.toUpperCase()} mahine ka data final save aur lock ho gaya hai.`);
+                alert(`Data Saved for ${savingMonthId.toUpperCase()}`);
                 loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
             }
         } catch (err) {
             console.error("Save Error:", err);
-            alert("Error saving data: " + err.message);
+            alert("Error: " + err.message);
             btn.innerHTML = `<i class="fas fa-save mr-1"></i> Save`;
             btn.style.backgroundColor = "#10b981";
             btn.disabled = false;
@@ -1062,62 +1018,28 @@ window.toggleEditMode = async (jamiaName) => {
 const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
 window.copyTeacherFormLink = async (jamiaName) => {
-
     try {
-
-        const monthIdx =
-        document.getElementById('report-month').value;
-
-        const baseUrl =
-        window.location.origin +
-        window.location.pathname.replace(
-            'academic-inspector.html',
-            ''
-        );
-
-        const inspectorId =
-        gCurrentUser ? gCurrentUser.uid : 'anonymous';
-
-        // ADMIN ACTIVE YEAR FETCH
-        const calSnap = await getDoc(
-            doc(gDb, "settings", "academic_calendar")
-        );
-
+        const monthIdx = document.getElementById('report-month').value;
+        const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
+        const inspectorId = gCurrentUser ? gCurrentUser.uid : 'anonymous';
+        const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
         let activeYear = "2026-2027";
+        if(calSnap.exists()){ activeYear = calSnap.data().activeYear || "2026-2027"; }
 
-        if(calSnap.exists()){
-
-            activeYear =
-            calSnap.data().activeYear || "2026-2027";
-
-        }
-
-        const url =
-`${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&userId=${inspectorId}&activeYear=${activeYear}`;
-
+        const url = `${baseUrl}academic-monthly-performance.html?jamiaName=${encodeURIComponent(jamiaName)}&monthIndex=${monthIdx}&userId=${inspectorId}&activeYear=${activeYear}`;
         navigator.clipboard.writeText(url);
-
-        alert(`
-Teacher Form Link Copied
-
-Year:
-${activeYear}
-        `);
-
+        alert(`Link Copied!\nYear: ${activeYear}`);
     } catch(error){
-
         console.error(error);
-        alert("Link generate error");
-
+        alert("Link error");
     }
-
 };
+
 window.downloadJamiaImage = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const card = document.getElementById(`card-${safeId}`);
-
-    if (!card) return alert("Card element nahi mila!");
-    if (typeof html2canvas === 'undefined') return alert("html2canvas library load nahi hui!");
+    if (!card) return alert("Card nahi mila!");
+    if (typeof html2canvas === 'undefined') return alert("Library missing!");
 
     html2canvas(card, { scale: 2 }).then(canvas => {
         const link = document.createElement('a');
@@ -1131,17 +1053,13 @@ window.downloadJamiaExcel = (jamiaName) => {
     const safeId = getSafeId(jamiaName);
     const card = document.getElementById(`card-${safeId}`);
     const table = card ? card.querySelector("table") : null;
-
     if (!table) return alert("Table nahi mili!");
 
     let csv = [];
     const rows = table.querySelectorAll("tr");
-    
     rows.forEach(row => {
         const cols = row.querySelectorAll("td, th");
-        const rowData = Array.from(cols)
-            .map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`)
-            .join(",");
+        const rowData = Array.from(cols).map(col => `"${col.innerText.trim().replace(/"/g, '""')}"`).join(",");
         csv.push(rowData);
     });
     
@@ -1149,7 +1067,7 @@ window.downloadJamiaExcel = (jamiaName) => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${jamiaName}_Monthly_Report.csv`);
+    link.setAttribute("download", `${jamiaName}_Report.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1171,49 +1089,47 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
         if (!jamiaData || jamiaData.teachers.length === 0) return;
 
         html += `
-        <div class="mb-10">
-            <div class="flex items-center gap-3 mb-4 bg-indigo-50 p-3 rounded-2xl w-fit">
-                <i class="fas fa-university text-indigo-600"></i>
-                <h4 class="font-black text-indigo-950 uppercase tracking-wide text-sm">${jamia}</h4>
+        <div class="mb-6">
+            <div class="flex items-center gap-2 mb-2 bg-indigo-50 px-3 py-1.5 rounded-lg w-fit">
+                <i class="fas fa-university text-indigo-600 text-xs"></i>
+                <h4 class="font-black text-indigo-950 uppercase tracking-wide text-xs">${jamia}</h4>
             </div>
-            <div class="overflow-x-auto rounded-3xl border border-slate-200 shadow-sm bg-white">
-                <table class="w-full text-left border-collapse min-w-[1000px]">
+            <div class="overflow-x-auto no-scrollbar rounded-xl border border-slate-200 shadow-sm bg-white">
+                <table class="w-full text-left whitespace-nowrap">
                     <thead>
-                        <tr class="bg-slate-50/80 text-slate-500 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
-                            <th class="p-4">Name & Code</th>
-                            <th class="p-4">Contact & Mail</th>
-                            <th class="p-4">Level & Qualification</th>
-                            <th class="p-4">Exp & Specialization</th>
-                            <th class="p-4 text-center">Periods</th>
-                            <th class="p-4">Ijara Status</th>
+                        <tr class="bg-slate-50 text-slate-500 text-[9px] md:text-[10px] uppercase font-black tracking-wider border-b border-slate-200">
+                            <th class="p-2 border-r border-slate-100">Name & Code</th>
+                            <th class="p-2 border-r border-slate-100">Contact/Mail</th>
+                            <th class="p-2 border-r border-slate-100">Qual.</th>
+                            <th class="p-2 border-r border-slate-100">Exp.</th>
+                            <th class="p-2 border-r border-slate-100 text-center">Periods</th>
+                            <th class="p-2">Ijara</th>
                         </tr>
                     </thead>
-                    <tbody class="text-[11px]">
+                    <tbody class="text-[10px] md:text-[11px]">
                         ${jamiaData.teachers.map(t => `
-                            <tr class="border-b border-slate-50 hover:bg-slate-50/30 transition-colors">
-                                <td class="p-4">
-                                    <div class="font-black text-slate-800 text-sm">${t.name}</div>
-                                    <div class="text-indigo-600 font-bold mt-1 uppercase">ID: ${t.loginCode}</div>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50/50">
+                                <td class="p-2 border-r border-slate-100">
+                                    <div class="font-bold text-slate-800">${t.name}</div>
+                                    <div class="text-indigo-600 text-[9px] uppercase mt-0.5">ID: ${t.loginCode}</div>
                                 </td>
-                                <td class="p-4">
-                                    <div class="text-slate-700 font-bold"><i class="fas fa-phone-alt mr-1 text-[9px] text-slate-400"></i> ${t.contact || '-'}</div>
-                                    <div class="text-slate-400 mt-1 italic">${t.mailId || '-'}</div>
+                                <td class="p-2 border-r border-slate-100">
+                                    <div class="text-slate-700">${t.contact || '-'}</div>
+                                    <div class="text-slate-400 text-[9px] mt-0.5">${t.mailId || '-'}</div>
                                 </td>
-                                <td class="p-4">
-                                    <div class="text-slate-700 font-bold text-xs">${t.levelQualified || '-'}</div>
-                                    <div class="text-slate-500 mt-1">${t.highestQualification || '-'}</div>
+                                <td class="p-2 border-r border-slate-100">
+                                    <div class="text-slate-700">${t.levelQualified || '-'}</div>
+                                    <div class="text-slate-500 text-[9px] mt-0.5">${t.highestQualification || '-'}</div>
                                 </td>
-                                <td class="p-4">
-                                    <div class="text-slate-700 font-bold">${t.experience || '-'} Exp</div>
-                                    <div class="text-indigo-500 mt-1 font-medium">${t.specialization || '-'}</div>
+                                <td class="p-2 border-r border-slate-100">
+                                    <div class="text-slate-700">${t.experience || '-'} Exp</div>
+                                    <div class="text-indigo-500 text-[9px] mt-0.5">${t.specialization || '-'}</div>
                                 </td>
-                                <td class="p-4 text-center">
-                                    <span class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-black text-[10px]">
-                                        ${t.teachingPeriod || '0'}
-                                    </span>
+                                <td class="p-2 border-r border-slate-100 text-center">
+                                    <span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold">${t.teachingPeriod || '0'}</span>
                                 </td>
-                                <td class="p-4">
-                                    <span class="px-2 py-1 rounded-lg font-bold border ${t.ijaraStatus?.toLowerCase().includes('yes') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}">
+                                <td class="p-2">
+                                    <span class="px-2 py-0.5 rounded font-bold border ${t.ijaraStatus?.toLowerCase().includes('yes') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}">
                                         ${t.ijaraStatus || '-'}
                                     </span>
                                 </td>
@@ -1226,56 +1142,39 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
     });
 
     container.innerHTML = html || `
-        <div class="p-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-            <i class="fas fa-user-slash text-4xl text-slate-300 mb-4"></i>
-            <p class="text-slate-500 font-bold">Abhi koi teacher register nahi kiya gaya hai.</p>
+        <div class="p-10 text-center bg-slate-50 rounded-xl border border-slate-200">
+            <i class="fas fa-user-slash text-2xl text-slate-300 mb-2"></i>
+            <p class="text-slate-500 font-bold text-sm">Koi teacher nahi mila.</p>
         </div>
     `;
 };
 
-// Yeh function main dashboard call karega jab bhi wahan month change hoga
-// Dashboard se connected handler function (Updated with Safety Check)
 export const handleDashboardMonthChange = (newMonth, assignedJamiaat, db, currentUser) => {
     currentSelectedMonth = newMonth.toLowerCase().trim();
-    console.log("Performance Tab Synced with Dashboard Month:", currentSelectedMonth);
-    
-    // Global variables ko safe rakhne ke liye backup parameters set kar rahe hain
     if (assignedJamiaat) gAssignedJamiaat = assignedJamiaat;
     if (db) gDb = db;
     if (currentUser) gCurrentUser = currentUser;
 
-    // CRITICAL SAFETY CHECK: Agar user abhi main dashboard par hai aur performance tab khula hi nahi hai,
-    // toh table load nahi chalayenge, varna loader hamesha ghumta rahega.
     const tableBody = document.getElementById('performance-table-body');
-    if (!tableBody) {
-        console.log("Performance table body not found in DOM yet. Skipping table render.");
-        return; // Yahan se safe exit kar jayega, code crash nahi hoga
-    }
+    if (!tableBody) return; 
     
-    // Agar element mil jata hai (yaani user performance tab par hai), tabhi load chalega
     loadPerformanceTable(gAssignedJamiaat, gDb, gCurrentUser);
 };
 
 window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
-    if (!confirm(`Kya aap waqai ${teacherName} ka is mahine ka data RESET karke form UNLOCK karna chahte hain?`)) return;
+    if (!confirm(`Reset data for ${teacherName}?`)) return;
 
     try {
         const databaseInstance = gDb;
         const userInstance = gCurrentUser;
-
-        if (!databaseInstance || !userInstance) {
-            alert("Database session missing. Page refresh karein.");
-            return;
-        }
+        if (!databaseInstance || !userInstance) return alert("Session missing.");
 
         const monthSelect = document.getElementById('report-month');
         const activeMonthKey = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
-
         const calSnap = await getDoc(doc(databaseInstance, "settings", "academic_calendar"));
         const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
         const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(activeMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(activeMonthKey) + 1) : monthNames.indexOf(activeMonthKey) + 1}`;
 
-        // 1. CLEAR FROM INSPECTOR STRUCTURE (users collection)
         const userRef = doc(databaseInstance, "users", userInstance.uid);
         const userSnap = await getDoc(userRef);
         let userData = userSnap.data() || {};
@@ -1287,20 +1186,13 @@ window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
             const teacher = jamiaData.teachers.find(t => t.id === teacherId);
             if (teacher && teacher.periods) {
                 teacher.periods.forEach(p => {
-                    if (p.achieved) {
-                        delete p.achieved[activeMonthKey];
-                        delete p.achieved[currentYearMonthPrefix];
-                    }
-                    if (p.locked) {
-                        delete p.locked[activeMonthKey];
-                        delete p.locked[currentYearMonthPrefix];
-                    }
+                    if (p.achieved) { delete p.achieved[activeMonthKey]; delete p.achieved[currentYearMonthPrefix]; }
+                    if (p.locked) { delete p.locked[activeMonthKey]; delete p.locked[currentYearMonthPrefix]; }
                 });
             }
         }
         await updateDoc(userRef, { academicYears: academicYears });
 
-        // 2. CLEAR FROM PUBLIC COLLECTION (academic_performance)
         const match = jamiaName.match(/\d+/);
         const jamiaDocId = match ? match[0] : "001";
         const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
@@ -1308,77 +1200,68 @@ window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
 
         if (perfSnap.exists()) {
             let currentPerfData = perfSnap.data();
-            
-            // Dono possible keys ke andar se delete chalayenge
             [activeMonthKey, currentYearMonthPrefix].forEach(mKey => {
                 if (currentPerfData[mKey] && currentPerfData[mKey].teachers) {
-                    currentPerfData[mKey].teachers = currentPerfData[mKey].teachers.filter(
-                        t => t.name.toLowerCase() !== teacherName.toLowerCase()
-                    );
+                    currentPerfData[mKey].teachers = currentPerfData[mKey].teachers.filter(t => t.name.toLowerCase() !== teacherName.toLowerCase());
                 }
             });
             await setDoc(perfDocRef, currentPerfData, { merge: true });
         }
 
-        alert(`MashaAllah! ${teacherName} ka report clear ho gaya hai aur form wapas UNLOCK ho gaya hai.`);
+        alert("Reset Done!");
         loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
 
     } catch (err) {
         console.error("Reset Error:", err);
-        alert("Reset karne me error aayi: " + err.message);
+        alert("Error: " + err.message);
     }
 };
 
 window.downloadTeacherReportImage = (rowClass, teacherName) => {
-    // Ek temporary element banayenge taaki pure jamia ki jagah sirf us teacher ka specific part capture ho sake
     const rows = document.querySelectorAll(`.${rowClass}`);
     if (rows.length === 0) return alert("Rows nahi mili!");
+    if (typeof html2canvas === 'undefined') return alert("Library missing!");
 
-    if (typeof html2canvas === 'undefined') return alert("html2canvas library load nahi hui hai!");
-
-    // Ek naya virtual wrapper table banate hain taaki isolated standard table view mile image me
     const tempContainer = document.createElement('div');
-    tempContainer.style.padding = "20px";
+    tempContainer.style.padding = "15px";
     tempContainer.style.background = "#ffffff";
     tempContainer.style.position = "absolute";
     tempContainer.style.left = "-9999px";
     
-    let tableHtml = `<table style="width:100%; border-collapse:collapse; text-align:left; font-family:sans-serif; font-size:12px;">
-        <thead style="background:#f8fafc; color:#64748b;">
+    let tableHtml = `<table style="width:100%; border-collapse:collapse; text-align:left; font-family:sans-serif; font-size:10px;">
+        <thead style="background:#f8fafc; color:#64748b; text-transform:uppercase;">
             <tr>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0;">Teacher</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0;">Class</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0;">Subject</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Total</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Target</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Achieved</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">%</th>
-                <th style="padding:10px; border-bottom:2px solid #e2e8f0; text-align:center;">Kaifiyat</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0;">Teacher</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0;">Class</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0;">Subject</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">Total</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">Target</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">Achieved</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">%</th>
+                <th style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">Kaifiyat</th>
             </tr>
         </thead>
         <tbody>`;
 
     rows.forEach(row => {
-        // Clone the rows and remove the action column for cleaner data presentation inside image
         const clonedRow = row.cloneNode(true);
         const lastCell = clonedRow.querySelector('td[rowspan], td:last-child');
-        if (lastCell && lastCell.getAttribute('rowspan')) lastCell.remove(); // remove action buttons panel
+        if (lastCell && lastCell.getAttribute('rowspan')) lastCell.remove(); 
         
-        // Input numbers ko replace karenge text node se taaki print flawless aaye
         const input = clonedRow.querySelector('input');
         if(input) {
             const parent = input.parentElement;
             parent.innerHTML = `<span style="font-weight:bold;">${input.value || 0}</span>`;
         }
         
-        tableHtml += `<tr style="border-b:1px solid #f1f5f9;">${clonedRow.innerHTML}</tr>`;
+        tableHtml += `<tr style="border-bottom:1px solid #f1f5f9;">${clonedRow.innerHTML}</tr>`;
     });
 
     tableHtml += `</tbody></table>`;
     tempContainer.innerHTML = `
-        <div style="margin-bottom:15px;">
-            <h3 style="margin:0; color:#0f172a; font-size:16px;">${teacherName} - Monthly Report</h3>
-            <p style="margin:2px 0 0 0; color:#94a3b8; font-size:10px;">GENERATED ON: ${new Date().toLocaleDateString()}</p>
+        <div style="margin-bottom:10px;">
+            <h3 style="margin:0; color:#0f172a; font-size:14px;">${teacherName} Report</h3>
+            <p style="margin:2px 0 0 0; color:#94a3b8; font-size:8px;">DATE: ${new Date().toLocaleDateString()}</p>
         </div>
     ` + tableHtml;
 
@@ -1386,7 +1269,7 @@ window.downloadTeacherReportImage = (rowClass, teacherName) => {
 
     html2canvas(tempContainer, { scale: 2 }).then(canvas => {
         const link = document.createElement('a');
-        link.download = `${teacherName}_Monthly_Performance.png`;
+        link.download = `${teacherName}_Report.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
         document.body.removeChild(tempContainer);
