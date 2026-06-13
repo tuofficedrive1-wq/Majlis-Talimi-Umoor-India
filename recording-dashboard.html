@@ -253,17 +253,47 @@
     let currentEditingDocId = null;
     let currentEditingIndex = null; // Changed from RecordId to Index
     let subUsersList = [];
+    let jamiaRegionMap = {};
+
+    // --- FETCH REGIONS FROM USERS COLLECTION ---
+    async function fetchJamiaRegions() {
+        try {
+            const usersSnap = await db.collection('users').get();
+            usersSnap.forEach(doc => {
+                const ud = doc.data();
+                const userRegion = ud.region || "Unknown";
+
+                // Purana Jamiaat List Format
+                if (ud.jamiaatList && Array.isArray(ud.jamiaatList)) {
+                    ud.jamiaatList.forEach(jamia => {
+                        jamiaRegionMap[jamia] = userRegion;
+                    });
+                }
+                // Naya Academic Structure Format
+                if (ud.academicStructure && Array.isArray(ud.academicStructure)) {
+                    ud.academicStructure.forEach(item => {
+                        if (item.jamiaName) {
+                            jamiaRegionMap[item.jamiaName] = userRegion;
+                        }
+                    });
+                }
+            });
+        } catch(e) {
+            console.error("Region fetch karne me masla:", e);
+        }
+    }
 
     // --- AUTH ---
-    auth.onAuthStateChanged(user => {
+    auth.onAuthStateChanged(async user => { // Yahan 'async' add kiya hai
         if (!user) window.location.href = 'index.html';
         else {
-            // Auto Set Month & Fetch
             const d = new Date();
             const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
             document.getElementById('filter-month').value = months[d.getMonth()];
             document.getElementById('filter-year').value = d.getFullYear();
-            fetchCheckers();
+            
+            fetchCheckers(); 
+            await fetchJamiaRegions(); // NAYI LINE: Pehle regions ka map banega
             fetchReports();
         }
     });
@@ -336,12 +366,15 @@
 
                     if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
                         data.tadrisRecording.data.forEach((rec, i) => {
+                            const jamiaNameVal = rec.jamiaName || rec.jamia || 'Unknown';
+                            // MAIN LOGIC: Map se region nikalna
+                            const finalRegion = jamiaRegionMap[jamiaNameVal] || data.region || "Unknown";
                             let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
 
                             allReportsData.push({
                                 parentDocId: doc.id,
                                 arrayIndex: i, 
-                                jamiaName: rec.jamiaName || rec.jamia || 'Unknown',
+                                jamiaName: jamiaNameVal,
                                 teacherName: rec.teacherName || rec.teacher || 'Unknown',
                                 className: rec.className || rec.class || '-',
                                 kitabName: rec.kitabName || rec.kitab || '-',
@@ -351,8 +384,8 @@
                                 tasuratDate: rec.tasuratDate || null,
                                 recordingLink: rec.url || rec.link || '#',
                                 zimmedarName: finalZimmedarName,
-                                region: region,
-                                assignedTo: rec.assignedTo || "" // NAYI LINE
+                                region: finalRegion, // Yahan ab sahi Region aayega
+                                assignedTo: rec.assignedTo || "" 
                             });
                         });
                     }
@@ -534,6 +567,11 @@
                         data-pid="${r.parentDocId}" 
                         data-idx="${r.arrayIndex}">
                         <i class="fas fa-edit"></i> Check
+                    </button>
+                    <button type="button" 
+                        onclick="deleteRecording('${r.parentDocId}', ${r.arrayIndex})"
+                        class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-xs transition flex items-center justify-center gap-1 w-full">
+                        <i class="fas fa-trash"></i> Delete
                     </button>
                 </td>
             </tr>`;
