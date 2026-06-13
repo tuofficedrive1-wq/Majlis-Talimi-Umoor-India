@@ -4,14 +4,24 @@ export async function renderRecordingTab(assignedJamiaat, currentUser, db) {
     const container = document.getElementById('tab-recording');
     const monthInput = document.getElementById('report-month').value;
 
+    // FIX: HTML mein jo purani badi padding (p-10) lagi thi, usey yahan se clear kar rahe hain 
+    // taaki mobile par full width use ho aur space waste na ho.
+    container.className = 'tab-content w-full';
+
     if (!assignedJamiaat || assignedJamiaat.length === 0) {
         container.innerHTML = `<div class="p-4 text-center text-slate-500 font-bold text-sm">Koi Jamia assign nahi kiya gaya hai.</div>`;
         return;
     }
 
-    // 1. Sub-tabs aur Layout Setup (Flat & Mobile Optimized)
+    // 1. Title, Sub-tabs aur Layout Setup (Flat & Mobile Optimized)
     container.innerHTML = `
-        <div class="flex items-center gap-3 border-b border-slate-200 mb-4 overflow-x-auto no-scrollbar whitespace-nowrap">
+        <!-- NAYA TITLE YAHAN ADD KIYA GAYA HAI -->
+        <div class="mb-4">
+            <h3 class="text-base md:text-lg font-black text-slate-800 leading-tight">Tadris Recordings</h3>
+            <p class="text-[10px] md:text-xs text-slate-500 mt-0.5 font-medium">Asatiza ki audio recordings aur mufattish ke tabsire</p>
+        </div>
+
+        <div class="flex items-center gap-3 border-b border-slate-200 mb-4 overflow-x-auto no-scrollbar whitespace-nowrap w-full">
             <button class="rec-sub-tab-btn active group flex items-center gap-1.5 pb-2 text-xs md:text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all shrink-0" data-sub="jamia-list">
                 <i class="fas fa-mosque"></i>
                 <span>Jamiaat List</span>
@@ -114,15 +124,13 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
         if (allRecordings.length === 0) {
             savedContainer.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">Is mahine ki koi recording maujood nahi hai.</div>`;
         } else {
-            // Horizontal scroll ko roknay ke liye humne columns kam kardiye hain. 
-            // Teacher, Class, Kitab aur Date ek hi column mein hain.
             let tableHTML = `
             <div class="overflow-x-auto no-scrollbar rounded-xl border border-slate-200 bg-white shadow-sm w-full">
                 <table class="w-full text-left whitespace-nowrap">
                     <thead>
                         <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black border-b border-slate-200">
                             <th class="p-2 border-r border-slate-100">Jamia</th>
-                            <th class="p-2 border-r border-slate-100">Details (Teacher/Class/Date)</th>
+                            <th class="p-2 border-r border-slate-100">Details (Teacher/Class)</th>
                             <th class="p-2 border-r border-slate-100 text-center">Audio</th>
                             <th class="p-2">Comment</th>
                         </tr>
@@ -144,7 +152,6 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
                 <tr class="hover:bg-slate-50 transition-colors">
                     <td class="p-2 border-r border-slate-100 font-bold text-slate-800 urdu-font whitespace-normal min-w-[80px] align-top">${rec.jamiaName}</td>
                     
-                    <!-- Merged Column to Save Space -->
                     <td class="p-2 border-r border-slate-100 align-top whitespace-normal min-w-[120px]">
                         <div class="font-bold text-indigo-700 urdu-font leading-tight">${rec.teacherName}</div>
                         <div class="text-[9px] text-slate-500 mt-0.5">${rec.className} • ${rec.kitabName}</div>
