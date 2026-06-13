@@ -10,34 +10,34 @@ export async function renderRecordingTab(assignedJamiaat, currentUser, db) {
     container.className = 'tab-content w-full';
 
     if (!assignedJamiaat || assignedJamiaat.length === 0) {
-        container.innerHTML = `<div class="p-4 text-center text-slate-500 font-bold text-sm">Koi Jamia assign nahi kiya gaya hai.</div>`;
+        container.innerHTML = `<div class="p-4 md:p-8 text-center text-slate-500 font-bold text-sm md:text-base">Koi Jamia assign nahi kiya gaya hai.</div>`;
         return;
     }
 
-    // 1. Title aur Sub-tabs Setup
+    // 1. Title aur Sub-tabs Setup (Responsive Fonts & Padding)
     container.innerHTML = `
-        <div class="mb-4">
-            <h3 class="text-base md:text-lg font-black text-slate-800 leading-tight">Tadris Recordings</h3>
-            <p class="text-[10px] md:text-xs text-slate-500 mt-0.5 font-medium">Asatiza ki audio recordings aur mufattish ke tabsire</p>
+        <div class="mb-4 md:mb-6">
+            <h3 class="text-base md:text-xl font-black text-slate-800 leading-tight">Tadris Recordings</h3>
+            <p class="text-[10px] md:text-sm text-slate-500 mt-0.5 font-medium">Asatiza ki audio recordings aur mufattish ke tabsire</p>
         </div>
 
-        <div class="flex items-center gap-3 border-b border-slate-200 mb-4 overflow-x-auto no-scrollbar whitespace-nowrap w-full">
-            <button class="rec-sub-tab-btn active group flex items-center gap-1.5 pb-2 text-xs md:text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all shrink-0" data-sub="jamia-list">
+        <div class="flex items-center gap-3 md:gap-6 border-b border-slate-200 mb-4 md:mb-6 overflow-x-auto no-scrollbar whitespace-nowrap w-full">
+            <button class="rec-sub-tab-btn active group flex items-center gap-1.5 md:gap-2 pb-2 md:pb-3 text-xs md:text-base font-bold text-indigo-600 border-b-2 border-indigo-600 transition-all shrink-0" data-sub="jamia-list">
                 <i class="fas fa-mosque"></i>
                 <span>Jamiaat List</span>
             </button>
-            <button class="rec-sub-tab-btn group flex items-center gap-1.5 pb-2 text-xs md:text-sm font-bold text-slate-400 hover:text-indigo-500 border-b-2 border-transparent transition-all shrink-0" data-sub="saved-recordings">
+            <button class="rec-sub-tab-btn group flex items-center gap-1.5 md:gap-2 pb-2 md:pb-3 text-xs md:text-base font-bold text-slate-400 hover:text-indigo-500 border-b-2 border-transparent transition-all shrink-0" data-sub="saved-recordings">
                 <i class="fas fa-microphone-alt"></i>
                 <span>Saved Recordings</span>
             </button>
         </div>
 
         <div id="rec-sub-jamia-list" class="rec-sub-tab-content block w-full">
-            <div class="text-center py-6"><i class="fas fa-spinner fa-spin text-xl text-indigo-500"></i><p class="text-slate-500 text-xs mt-1">Load ho raha hai...</p></div>
+            <div class="text-center py-6 md:py-12"><i class="fas fa-spinner fa-spin text-2xl md:text-3xl text-indigo-500"></i><p class="text-slate-500 text-xs md:text-sm mt-2">Load ho raha hai...</p></div>
         </div>
 
         <div id="rec-sub-saved-recordings" class="rec-sub-tab-content hidden w-full">
-             <div class="text-center py-6"><i class="fas fa-spinner fa-spin text-xl text-indigo-500"></i><p class="text-slate-500 text-xs mt-1">Load ho raha hai...</p></div>
+             <div class="text-center py-6 md:py-12"><i class="fas fa-spinner fa-spin text-2xl md:text-3xl text-indigo-500"></i><p class="text-slate-500 text-xs md:text-sm mt-2">Load ho raha hai...</p></div>
         </div>
     `;
 
@@ -90,7 +90,7 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
         // ============================================
         // RENDER JAMIA LIST
         // ============================================
-        let listHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">`;
+        let listHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">`;
         assignedJamiaat.forEach(jamia => {
             const jamiaRecs = allFetchedRecordings.filter(r => r.jamiaName === jamia);
             const count = jamiaRecs.length;
@@ -98,15 +98,15 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
             const portalLink = `${baseUrl}/tadris-teacher-portal.html?jamiaId=${encodeURIComponent(jamia)}&userId=${currentUser.uid}&activeYear=${encodeURIComponent(academicYear)}&lang=en`;
 
             listHTML += `
-            <div class="border border-slate-200 rounded-xl p-3 hover:border-indigo-300 bg-white shadow-sm flex flex-col gap-2 transition-all">
-                <div class="flex justify-between items-center">
-                    <h4 class="font-bold text-slate-800 text-xs md:text-sm urdu-font leading-tight truncate pr-2 w-3/4">${jamia}</h4>
-                    <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold shrink-0">
+            <div class="border border-slate-200 rounded-xl p-3 md:p-5 hover:border-indigo-400 bg-white shadow-sm flex flex-col gap-3 transition-all">
+                <div class="flex justify-between items-start">
+                    <h4 class="font-bold text-slate-800 text-sm md:text-base urdu-font leading-tight pr-2">${jamia}</h4>
+                    <span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-[10px] md:text-xs font-bold shrink-0 shadow-sm border border-indigo-100">
                         <i class="fas fa-file-audio mr-1"></i> ${count}
                     </span>
                 </div>
                 <button onclick="navigator.clipboard.writeText('${portalLink}').then(() => alert('Link Copy Ho Gaya!'))" 
-                        class="w-full bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 py-1.5 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1.5">
+                        class="w-full bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-bold transition flex justify-center items-center gap-2">
                     <i class="fas fa-link"></i> Copy Link
                 </button>
             </div>`;
@@ -118,26 +118,26 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
         // RENDER SAVED RECORDINGS + FILTERS
         // ============================================
         let savedHTML = `
-            <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="bg-slate-50 p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-5">
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Select Jamia</label>
-                        <select id="rec-filter-jamia" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:border-indigo-500">
+                        <label class="block text-[10px] md:text-xs font-bold text-slate-500 uppercase mb-1.5 md:mb-2">Select Jamia</label>
+                        <select id="rec-filter-jamia" class="w-full p-2 md:p-2.5 border border-slate-300 rounded-lg text-xs md:text-sm bg-white outline-none focus:border-indigo-500">
                             <option value="">Sab Jamiaat</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Teacher Name</label>
-                        <input type="text" id="rec-filter-teacher" placeholder="Search teacher..." class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:border-indigo-500">
+                        <label class="block text-[10px] md:text-xs font-bold text-slate-500 uppercase mb-1.5 md:mb-2">Teacher Name</label>
+                        <input type="text" id="rec-filter-teacher" placeholder="Search teacher..." class="w-full p-2 md:p-2.5 border border-slate-300 rounded-lg text-xs md:text-sm bg-white outline-none focus:border-indigo-500">
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 md:gap-4">
                         <div class="w-1/2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Date From</label>
-                            <input type="date" id="rec-filter-date-from" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:border-indigo-500">
+                            <label class="block text-[10px] md:text-xs font-bold text-slate-500 uppercase mb-1.5 md:mb-2">Date From</label>
+                            <input type="date" id="rec-filter-date-from" class="w-full p-2 md:p-2.5 border border-slate-300 rounded-lg text-xs md:text-sm bg-white outline-none focus:border-indigo-500">
                         </div>
                         <div class="w-1/2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Date To</label>
-                            <input type="date" id="rec-filter-date-to" class="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:border-indigo-500">
+                            <label class="block text-[10px] md:text-xs font-bold text-slate-500 uppercase mb-1.5 md:mb-2">Date To</label>
+                            <input type="date" id="rec-filter-date-to" class="w-full p-2 md:p-2.5 border border-slate-300 rounded-lg text-xs md:text-sm bg-white outline-none focus:border-indigo-500">
                         </div>
                     </div>
                 </div>
@@ -159,12 +159,12 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
             document.getElementById(id).addEventListener('change', renderSavedTableUI);
         });
 
-        renderSavedTableUI(); // Initial Table Render
+        renderSavedTableUI(); 
 
     } catch (error) {
         console.error("Error loading recordings:", error);
-        listContainer.innerHTML = `<div class="text-red-500 text-xs p-3">Data fetch error: ${error.message}</div>`;
-        savedContainer.innerHTML = `<div class="text-red-500 text-xs p-3">Data fetch error.</div>`;
+        listContainer.innerHTML = `<div class="text-red-500 text-sm md:text-base font-bold p-4">Data fetch error: ${error.message}</div>`;
+        savedContainer.innerHTML = `<div class="text-red-500 text-sm md:text-base font-bold p-4">Data fetch error.</div>`;
     }
 }
 
@@ -186,7 +186,7 @@ function renderSavedTableUI() {
     });
 
     if (filtered.length === 0) {
-        tableContainer.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">Koi recording nahi mili.</div>`;
+        tableContainer.innerHTML = `<div class="p-6 md:p-10 text-center text-slate-400 text-sm md:text-base font-medium bg-slate-50 rounded-xl md:rounded-2xl border border-dashed border-slate-200">Koi recording nahi mili.</div>`;
         return;
     }
 
@@ -194,45 +194,45 @@ function renderSavedTableUI() {
     <div class="overflow-x-auto no-scrollbar rounded-xl border border-slate-200 bg-white shadow-sm w-full">
         <table class="w-full text-left whitespace-nowrap">
             <thead>
-                <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black border-b border-slate-200">
-                    <th class="p-2 border-r border-slate-100">Jamia</th>
-                    <th class="p-2 border-r border-slate-100">Details (Teacher/Class)</th>
-                    <th class="p-2 border-r border-slate-100 text-center">Audio</th>
-                    <th class="p-2 border-r border-slate-100">Comment</th>
-                    <th class="p-2 text-center">Action</th>
+                <tr class="bg-slate-50 text-slate-500 text-[10px] md:text-xs uppercase font-black border-b border-slate-200 tracking-wider">
+                    <th class="p-2 md:p-4 border-r border-slate-100">Jamia</th>
+                    <th class="p-2 md:p-4 border-r border-slate-100">Details (Teacher/Class)</th>
+                    <th class="p-2 md:p-4 border-r border-slate-100 text-center">Audio</th>
+                    <th class="p-2 md:p-4 border-r border-slate-100">Comment</th>
+                    <th class="p-2 md:p-4 text-center">Action</th>
                 </tr>
             </thead>
-            <tbody class="text-[10px] md:text-[11px] divide-y divide-slate-100 text-slate-700">
+            <tbody class="text-[10px] md:text-sm divide-y divide-slate-100 text-slate-700">
     `;
 
     filtered.forEach(rec => {
         const audioBtn = rec.url 
-            ? `<a href="${rec.url}" target="_blank" class="text-emerald-600 hover:text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded text-[10px] font-bold transition flex items-center justify-center gap-1 mx-auto w-max"><i class="fas fa-play"></i> Play</a>` 
-            : `<span class="text-slate-400 text-[9px] italic">N/A</span>`;
+            ? `<a href="${rec.url}" target="_blank" class="text-emerald-600 hover:text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 md:px-4 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition flex items-center justify-center gap-1.5 mx-auto w-max"><i class="fas fa-play"></i> Play</a>` 
+            : `<span class="text-slate-400 text-[9px] md:text-xs italic">N/A</span>`;
 
         const commentText = rec.mufattishComment || rec.comment;
         const commentUI = commentText 
-            ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 whitespace-normal min-w-[120px] urdu-font leading-relaxed">${commentText}</div>`
-            : `<span class="text-slate-400 text-[9px] italic">N/A</span>`;
+            ? `<div class="text-[10px] md:text-sm text-slate-600 bg-slate-50 p-2 md:p-3 rounded-lg border border-slate-100 whitespace-normal min-w-[120px] md:min-w-[200px] urdu-font leading-relaxed">${commentText}</div>`
+            : `<span class="text-slate-400 text-[9px] md:text-xs italic">N/A</span>`;
 
         const zimmedarComment = rec.adminTasurat || "";
 
         tableHTML += `
         <tr class="hover:bg-slate-50 transition-colors">
-            <td class="p-2 border-r border-slate-100 font-bold text-slate-800 urdu-font whitespace-normal min-w-[80px] align-top">${rec.jamiaName}</td>
+            <td class="p-2 md:p-4 border-r border-slate-100 font-bold text-slate-800 urdu-font whitespace-normal min-w-[80px] md:min-w-[120px] align-top text-xs md:text-base">${rec.jamiaName}</td>
             
-            <td class="p-2 border-r border-slate-100 align-top whitespace-normal min-w-[120px]">
-                <div class="font-bold text-indigo-700 urdu-font leading-tight">${rec.teacherName}</div>
-                <div class="text-[9px] text-slate-500 mt-0.5">${rec.className} • ${rec.kitabName}</div>
-                <div class="text-[8px] text-slate-400 mt-1 font-medium bg-slate-100 px-1 py-0.5 rounded w-fit"><i class="far fa-calendar-alt"></i> ${rec.date}</div>
+            <td class="p-2 md:p-4 border-r border-slate-100 align-top whitespace-normal min-w-[120px] md:min-w-[180px]">
+                <div class="font-bold text-indigo-700 urdu-font leading-tight text-xs md:text-base">${rec.teacherName}</div>
+                <div class="text-[9px] md:text-sm text-slate-500 mt-1 md:mt-1.5">${rec.className} • ${rec.kitabName}</div>
+                <div class="text-[8px] md:text-xs text-slate-500 mt-1 md:mt-2 font-medium bg-slate-100 px-1.5 py-0.5 md:px-2 md:py-1 rounded w-fit"><i class="far fa-calendar-alt"></i> ${rec.date}</div>
             </td>
             
-            <td class="p-2 border-r border-slate-100 align-top text-center">${audioBtn}</td>
-            <td class="p-2 border-r border-slate-100 align-top whitespace-normal">${commentUI}</td>
+            <td class="p-2 md:p-4 border-r border-slate-100 align-top text-center">${audioBtn}</td>
+            <td class="p-2 md:p-4 border-r border-slate-100 align-top whitespace-normal">${commentUI}</td>
             
-            <td class="p-2 align-top text-center">
+            <td class="p-2 md:p-4 align-top text-center">
                 <button type="button" 
-                    onclick="downloadTadrisPDF('${encodeURIComponent(rec.jamiaName)}', '${encodeURIComponent(rec.teacherName)}', '${encodeURIComponent(rec.className)}', '${encodeURIComponent(rec.kitabName)}', '${rec.date}', '${encodeURIComponent(commentText || '')}', '${encodeURIComponent(zimmedarComment)}')"\n                    class="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 px-2 py-1 rounded text-[10px] transition font-bold shadow-sm mx-auto flex items-center justify-center gap-1">
+                    onclick="downloadTadrisPDF('${encodeURIComponent(rec.jamiaName)}', '${encodeURIComponent(rec.teacherName)}', '${encodeURIComponent(rec.className)}', '${encodeURIComponent(rec.kitabName)}', '${rec.date}', '${encodeURIComponent(commentText || '')}', '${encodeURIComponent(zimmedarComment)}')"\n                    class="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 px-2 py-1 md:px-4 md:py-1.5 rounded-lg text-[10px] md:text-xs transition font-bold shadow-sm mx-auto flex items-center justify-center gap-1.5">
                     <i class="fas fa-file-pdf"></i> PDF
                 </button>
             </td>
@@ -244,7 +244,7 @@ function renderSavedTableUI() {
 }
 
 // ========================================================
-// ENGLISH PDF GENERATOR (Attached to Window for Global Use)
+// ENGLISH PDF GENERATOR (Global)
 // ========================================================
 window.downloadTadrisPDF = async function(jamiaName, teacherName, className, kitabName, date, tasurat, zimmedarTasurat) {
     if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
@@ -263,7 +263,6 @@ window.downloadTadrisPDF = async function(jamiaName, teacherName, className, kit
         const safeTasurat = decodeURIComponent(tasurat) || "No comments recorded.";
         const safeZimmedar = decodeURIComponent(zimmedarTasurat) || "No comments recorded.";
 
-        // English Formatted PDF Structure
         const pdfContentHTML = `
           <div style="font-family:'Poppins', Arial, sans-serif; background-color:#fff; color:#111; position:relative; direction:ltr;">
             <div id="pdf-container-div" style="padding:40px; width:794px; border:8px double #4f46e5; background-color:#fdfdfd; box-sizing: border-box; margin:0 auto;">
