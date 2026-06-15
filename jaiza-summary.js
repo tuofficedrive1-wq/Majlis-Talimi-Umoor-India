@@ -668,11 +668,27 @@ async function fetchAndRenderReport(db, user) {
                 const item = wazahatData[key];
                 const subList = item.subjects.join('');
                 
-                // YAHAN NAYA LINK FORMAT HAI (URL encode karke data bhej rahe hain)
-                const baseUrl = `https://your-form-link.com/`; // Apna HTML Form ka link yahan lagayein
+                // Form Ka Link (Aapna Link Yahan Lagayein)
+                const baseUrl = `https://your-form-link.com/`; 
                 const rawJson = JSON.stringify(item.rawData);
-                const encodedData = btoa(encodeURIComponent(rawJson)); // Data ko safe banaya
+                const encodedData = btoa(encodeURIComponent(rawJson));
                 const linkToCopy = `${baseUrl}?mode=jaiza&jamia=${encodeURIComponent(item.jamia)}&teacher=${encodeURIComponent(item.teacher)}&month=${startMonth}&data=${encodedData}`;
+
+                // --- WHATSAPP MESSAGE FORMATTING ---
+                let waMessage = `*نوٹس برائے ماہانہ جائزہ (Official Notification)*\n\n`;
+                waMessage += `محترم *${item.teacher}* صاحب،\n`;
+                waMessage += `آپ کی جامعہ *${item.jamia}* میں درج ذیل مضامین کی ماہانہ کارکردگی (*${startMonth}*) کمزور یا مناسب پائی گئی ہے:\n\n`;
+                
+                item.rawData.forEach(sub => {
+                    waMessage += `▪️ درجہ: *${sub.class}* | مضمون: *${sub.book}* | فیصد: *${sub.percent.toFixed(1)}%* (${sub.grade})\n`;
+                });
+                
+                waMessage += `\nبراہِ کرم اس لنک پر کلک کریں، اپنا 'اجیر کوڈ' (Ajeer Code) درج کریں اور وضاحت جمع کرائیں:\n`;
+                waMessage += `${linkToCopy}\n\n`;
+                waMessage += `شکریہ۔`;
+
+                const waUrl = `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
+                // -----------------------------------
 
                 wazahatTbody.innerHTML += `
                     <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50">
@@ -680,7 +696,13 @@ async function fetchAndRenderReport(db, user) {
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800 font-bold">${item.jamia}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-gray-800 font-bold text-base">${item.teacher}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-right leading-relaxed">${subList}</td>
-                        <td class="px-4 py-3 text-center">
+                        <td class="px-4 py-3 text-center space-y-2">
+                            <!-- WhatsApp Button -->
+                            <a href="${waUrl}" target="_blank" class="bg-green-500 hover:bg-green-600 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
+                                <i class="fab fa-whatsapp text-base mr-2"></i> WhatsApp
+                            </a>
+                            
+                            <!-- Copy Link Button -->
                             <button data-link="${linkToCopy}" class="js-copy-link-btn bg-teal-600 hover:bg-teal-700 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
                                 <i class="fas fa-link mr-2"></i> Copy Link
                             </button>
