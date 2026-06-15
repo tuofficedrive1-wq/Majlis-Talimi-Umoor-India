@@ -669,7 +669,7 @@ async function fetchAndRenderReport(db, user) {
                 const subList = item.subjects.join('');
                 
                 // Form Ka Link (Aapna Link Yahan Lagayein)
-                const baseUrl = `https://your-form-link.com/`; 
+                const baseUrl = `https://tuofficedrive1-wq.github.io/Majlis-Talimi-Umoor-India/teacher-wazahat.html`; 
                 const rawJson = JSON.stringify(item.rawData);
                 const encodedData = btoa(encodeURIComponent(rawJson));
                 const linkToCopy = `${baseUrl}?mode=jaiza&jamia=${encodeURIComponent(item.jamia)}&teacher=${encodeURIComponent(item.teacher)}&month=${startMonth}&data=${encodedData}`;
