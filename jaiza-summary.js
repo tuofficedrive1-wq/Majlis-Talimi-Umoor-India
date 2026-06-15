@@ -640,13 +640,14 @@ async function fetchAndRenderReport(db, user) {
         }
 
         // --- WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
+        // --- WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
         const wazahatData = {};
         
         rows.forEach(r => {
             if (r.grade === "مناسب" || r.grade === "کمزور") {
                 const key = `${r.jamia}_${r.teacher}`;
                 if (!wazahatData[key]) {
-                    wazahatData[key] = { jamia: r.jamia, teacher: r.teacher, subjects: [] };
+                    wazahatData[key] = { jamia: r.jamia, teacher: r.teacher, month: r.month, subjects: [], rawData: [] };
                 }
                 const gradeColor = r.grade === 'کمزور' ? 'text-red-600' : 'text-amber-600';
                 wazahatData[key].subjects.push(`
@@ -654,6 +655,8 @@ async function fetchAndRenderReport(db, user) {
                         ${r.className} : ${r.book} (<span class="font-sans font-bold">${r.percent.toFixed(1)}%</span> - <span class="font-bold ${gradeColor}">${r.grade}</span>)
                     </span>
                 `);
+                // Naya code yahan add kiya hai data pass karne ke liye
+                wazahatData[key].rawData.push({ class: r.className, book: r.book, percent: r.percent, grade: r.grade });
             }
         });
 
@@ -665,10 +668,11 @@ async function fetchAndRenderReport(db, user) {
                 const item = wazahatData[key];
                 const subList = item.subjects.join('');
                 
-                // YAHAN APNE WAZAHAT FORM KA ASAL LINK LAGAYEIN
-                // Maslan: https://docs.google.com/forms/d/e/XYZ/viewform?usp=pp_url&entry.12345=
-                const baseUrl = `https://your-form-link.com/`; 
-                const linkToCopy = `${baseUrl}?jamia=${encodeURIComponent(item.jamia)}&teacher=${encodeURIComponent(item.teacher)}`;
+                // YAHAN NAYA LINK FORMAT HAI (URL encode karke data bhej rahe hain)
+                const baseUrl = `https://your-form-link.com/`; // Apna HTML Form ka link yahan lagayein
+                const rawJson = JSON.stringify(item.rawData);
+                const encodedData = btoa(encodeURIComponent(rawJson)); // Data ko safe banaya
+                const linkToCopy = `${baseUrl}?mode=jaiza&jamia=${encodeURIComponent(item.jamia)}&teacher=${encodeURIComponent(item.teacher)}&month=${startMonth}&data=${encodedData}`;
 
                 wazahatTbody.innerHTML += `
                     <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50">
