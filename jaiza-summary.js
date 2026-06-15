@@ -1,8 +1,9 @@
 // Filename: jaiza-summary.js
 
 import {
-    collection, query, where, getDocs
+    collection, query, where, getDocs, addDoc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
 
 // Helper: Grade Logic
 const getGrade = (p) => {
@@ -218,23 +219,63 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     });
 
     // --- COPY LINK DELEGATION LOGIC ---
-    document.getElementById('js-wazahat-area').addEventListener('click', (e) => {
-        const btn = e.target.closest('.js-copy-link-btn');
-        if(btn) {
-            const link = btn.getAttribute('data-link');
-            navigator.clipboard.writeText(link).then(() => {
-                const originalHtml = btn.innerHTML;
-                btn.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
-                btn.classList.replace('bg-teal-600', 'bg-emerald-600');
-                btn.classList.replace('hover:bg-teal-700', 'hover:bg-emerald-700');
-                setTimeout(() => {
+    // --- COPY LINK & WHATSAPP DELEGATION LOGIC (NEW SHORT LINK SYSTEM) ---
+    document.getElementById('js-wazahat-area').addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('.js-copy-link-btn');
+        const waBtn = e.target.closest('.js-wa-btn');
+        const btn = copyBtn || waBtn;
+
+        if (btn) {
+            const tr = btn.closest('tr');
+            let sid = tr.getAttribute('data-sid'); // Agar link pehle ban chuka hai
+            const payloadStr = decodeURIComponent(btn.getAttribute('data-payload'));
+            const payloadData = JSON.parse(payloadStr);
+
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Wait...';
+            btn.disabled = true;
+
+            try {
+                // Agar ID nahi bani to Firebase me data save kar ke nayi ID banayein
+                if (!sid) {
+                    const docRef = await addDoc(collection(db, 'jaiza_short_links'), payloadData);
+                    sid = docRef.id;
+                    tr.setAttribute('data-sid', sid); // Isi row me save kar liya
+                }
+
+                // YAHAN APNA ASLI GITHUB WALA LINK LAGAYEIN
+                const baseUrl = `https://tuofficedrive1-wq.github.io/Majlis-Talimi-Umoor-India/teacher-wazahat.html`;
+                const shortLink = `${baseUrl}?mode=jaiza&sid=${sid}`;
+
+                if (copyBtn) {
+                    await navigator.clipboard.writeText(shortLink);
+                    btn.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
+                    btn.classList.replace('bg-teal-600', 'bg-emerald-600');
+                    setTimeout(() => {
+                        btn.innerHTML = originalHtml;
+                        btn.classList.replace('bg-emerald-600', 'bg-teal-600');
+                        btn.disabled = false;
+                    }, 2000);
+                } else if (waBtn) {
+                    let waMessage = `*نوٹس برائے ماہانہ جائزہ (Official Notification)*\n\n`;
+                    waMessage += `محترم *${payloadData.teacher}* صاحب،\n`;
+                    waMessage += `آپ کی جامعہ *${payloadData.jamia}* میں درج ذیل مضامین کی ماہانہ کارکردگی (*${payloadData.month}*) کمزور یا مناسب پائی گئی ہے:\n\n`;
+                    payloadData.data.forEach(sub => {
+                        waMessage += `▪️ درجہ: *${sub.class}* | مضمون: *${sub.book}* | فیصد: *${sub.percent.toFixed(1)}%* (${sub.grade})\n`;
+                    });
+                    waMessage += `\nبراہِ کرم اس لنک پر کلک کریں، اپنا 'اجیر کوڈ' (Ajeer Code) درج کریں اور وضاحت جمع کرائیں:\n`;
+                    waMessage += `${shortLink}\n\nشکریہ۔`;
+
+                    window.open(`https://wa.me/?text=${encodeURIComponent(waMessage)}`, '_blank');
                     btn.innerHTML = originalHtml;
-                    btn.classList.replace('bg-emerald-600', 'bg-teal-600');
-                    btn.classList.replace('hover:bg-emerald-700', 'hover:bg-teal-700');
-                }, 2000);
-            }).catch(err => {
-                alert('Link copy nahi ho saka: ' + err);
-            });
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Link generate karne mein error aaya.");
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            }
         }
     });
 
@@ -668,42 +709,24 @@ async function fetchAndRenderReport(db, user) {
                 const item = wazahatData[key];
                 const subList = item.subjects.join('');
                 
-                // Form Ka Link (Aapna Link Yahan Lagayein)
-                const baseUrl = `https://tuofficedrive1-wq.github.io/Majlis-Talimi-Umoor-India/teacher-wazahat.html`; 
-                const rawJson = JSON.stringify(item.rawData);
-                const encodedData = btoa(encodeURIComponent(rawJson));
-                const linkToCopy = `${baseUrl}?mode=jaiza&jamia=${encodeURIComponent(item.jamia)}&teacher=${encodeURIComponent(item.teacher)}&month=${startMonth}&data=${encodedData}`;
-
-                // --- WHATSAPP MESSAGE FORMATTING ---
-                let waMessage = `*نوٹس برائے ماہانہ جائزہ (Official Notification)*\n\n`;
-                waMessage += `محترم *${item.teacher}* صاحب،\n`;
-                waMessage += `آپ کی جامعہ *${item.jamia}* میں درج ذیل مضامین کی ماہانہ کارکردگی (*${startMonth}*) کمزور یا مناسب پائی گئی ہے:\n\n`;
-                
-                item.rawData.forEach(sub => {
-                    waMessage += `▪️ درجہ: *${sub.class}* | مضمون: *${sub.book}* | فیصد: *${sub.percent.toFixed(1)}%* (${sub.grade})\n`;
-                });
-                
-                waMessage += `\nبراہِ کرم اس لنک پر کلک کریں، اپنا 'اجیر کوڈ' (Ajeer Code) درج کریں اور وضاحت جمع کرائیں:\n`;
-                waMessage += `${linkToCopy}\n\n`;
-                waMessage += `شکریہ۔`;
-
-                const waUrl = `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
-                // -----------------------------------
+                // Data ko pack kar rahe hain
+                const payload = { jamia: item.jamia, teacher: item.teacher, month: startMonth, data: item.rawData };
+                const encodedPayload = encodeURIComponent(JSON.stringify(payload));
 
                 wazahatTbody.innerHTML += `
-                    <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50">
+                    <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50" data-sid="">
                         <td class="px-4 py-3 border-l border-slate-200 font-sans">${index + 1}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800 font-bold">${item.jamia}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-gray-800 font-bold text-base">${item.teacher}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-right leading-relaxed">${subList}</td>
                         <td class="px-4 py-3 text-center space-y-2">
                             <!-- WhatsApp Button -->
-                            <a href="${waUrl}" target="_blank" class="bg-green-500 hover:bg-green-600 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
+                            <button data-payload="${encodedPayload}" class="js-wa-btn bg-green-500 hover:bg-green-600 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
                                 <i class="fab fa-whatsapp text-base mr-2"></i> WhatsApp
-                            </a>
+                            </button>
                             
                             <!-- Copy Link Button -->
-                            <button data-link="${linkToCopy}" class="js-copy-link-btn bg-teal-600 hover:bg-teal-700 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
+                            <button data-payload="${encodedPayload}" class="js-copy-link-btn bg-teal-600 hover:bg-teal-700 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
                                 <i class="fas fa-link mr-2"></i> Copy Link
                             </button>
                         </td>
