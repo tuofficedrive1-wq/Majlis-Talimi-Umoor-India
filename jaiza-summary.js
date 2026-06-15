@@ -115,8 +115,14 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             <p class="mt-2 text-teal-600 font-semibold">Data load ho raha hai...</p>
         </div>
 
-        <div id="js-report-area" class="hidden mt-6 bg-white rounded-lg">
-            
+        <!-- TABS SECTION (Hidden by default) -->
+        <div id="js-tabs-container" class="hidden flex space-x-2 border-b mt-6" dir="rtl">
+            <button id="tab-report" class="py-2 px-5 border-b-2 border-teal-600 text-teal-600 font-bold urdu-font text-lg focus:outline-none">جائزہ رپورٹ</button>
+            <button id="tab-wazahat" class="py-2 px-5 text-gray-500 font-bold hover:text-teal-600 urdu-font text-lg border-b-2 border-transparent focus:outline-none transition-colors">کمزوری پر وضاحت</button>
+        </div>
+
+        <!-- REPORT AREA (Tab 1) -->
+        <div id="js-report-area" class="hidden mt-4 bg-white rounded-lg">
             <div id="js-report-header-bg" class="bg-teal-700 text-white p-4 text-center rounded-t-lg border-b-4 border-teal-900">
                 <h2 id="js-report-main-title" class="text-2xl font-bold urdu-font">جائزہ رپورٹ</h2>
                 <p id="js-report-sub-title" class="text-sm text-teal-100 mt-1 opacity-90"></p>
@@ -147,6 +153,31 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 </button>
             </div>
         </div>
+
+        <!-- WAZAHAT AREA (Tab 2) -->
+        <div id="js-wazahat-area" class="hidden mt-4 bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="bg-amber-600 text-white p-4 text-center rounded-t-lg border-b-4 border-amber-800">
+                <h2 class="text-2xl font-bold urdu-font">کمزوری پر وضاحت طلب اساتذہ</h2>
+                <p class="text-sm text-amber-100 mt-1">صرف مناسب اور کمزور کیفیت والے ریکارڈز</p>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-center text-sm border-collapse" dir="rtl">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-base">
+                            <th class="px-4 py-3 border-l border-slate-200 w-12">#</th>
+                            <th class="px-4 py-3 border-l border-slate-200">جامعہ</th>
+                            <th class="px-4 py-3 border-l border-slate-200">استاذ کا نام</th>
+                            <th class="px-4 py-3 border-l border-slate-200">کمزور / مناسب مضامین کی تفصیل</th>
+                            <th class="px-4 py-3 w-32">وضاحت فارم لنک</th>
+                        </tr>
+                    </thead>
+                    <tbody id="js-wazahat-tbody" class="text-gray-800 urdu-font divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
       </div>
     `;
 
@@ -159,6 +190,53 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
     const teacherSelect = document.getElementById('js-teacher-filter');
     const startMonthInput = document.getElementById('js-month-start');
 
+    // TABS REFERENCES
+    const tabReport = document.getElementById('tab-report');
+    const tabWazahat = document.getElementById('tab-wazahat');
+    const areaReport = document.getElementById('js-report-area');
+    const areaWazahat = document.getElementById('js-wazahat-area');
+
+    // --- TABS LOGIC ---
+    tabReport.addEventListener('click', () => {
+        tabReport.classList.add('border-teal-600', 'text-teal-600');
+        tabReport.classList.remove('border-transparent', 'text-gray-500');
+        tabWazahat.classList.add('border-transparent', 'text-gray-500');
+        tabWazahat.classList.remove('border-teal-600', 'text-teal-600');
+        
+        areaReport.classList.remove('hidden');
+        areaWazahat.classList.add('hidden');
+    });
+
+    tabWazahat.addEventListener('click', () => {
+        tabWazahat.classList.add('border-teal-600', 'text-teal-600');
+        tabWazahat.classList.remove('border-transparent', 'text-gray-500');
+        tabReport.classList.add('border-transparent', 'text-gray-500');
+        tabReport.classList.remove('border-teal-600', 'text-teal-600');
+        
+        areaWazahat.classList.remove('hidden');
+        areaReport.classList.add('hidden');
+    });
+
+    // --- COPY LINK DELEGATION LOGIC ---
+    document.getElementById('js-wazahat-area').addEventListener('click', (e) => {
+        const btn = e.target.closest('.js-copy-link-btn');
+        if(btn) {
+            const link = btn.getAttribute('data-link');
+            navigator.clipboard.writeText(link).then(() => {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
+                btn.classList.replace('bg-teal-600', 'bg-emerald-600');
+                btn.classList.replace('hover:bg-teal-700', 'hover:bg-emerald-700');
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.classList.replace('bg-emerald-600', 'bg-teal-600');
+                    btn.classList.replace('hover:bg-emerald-700', 'hover:bg-teal-700');
+                }, 2000);
+            }).catch(err => {
+                alert('Link copy nahi ho saka: ' + err);
+            });
+        }
+    });
 
     // --- 1. POPULATE JAMIA DROPDOWN ---
     const jamiaSet = new Set();
@@ -367,7 +445,7 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                 td.style.fontSize = '15px';
                 td.style.textAlign = 'center';
                 
-                // Color Transfer Logic (Updated)
+                // Color Transfer Logic
                 if (td.classList.contains('text-red-600')) td.style.color = '#dc2626'; // Kamzor
                 if (td.classList.contains('text-emerald-700')) td.style.color = '#047857'; // Mumtaz
                 if (td.classList.contains('text-blue-600')) td.style.color = '#2563eb'; // Behtar
@@ -428,17 +506,26 @@ async function fetchAndRenderReport(db, user) {
     const teacherFilter = document.getElementById('js-teacher-filter').value;
     
     const loader = document.getElementById('js-loader');
+    const tabsContainer = document.getElementById('js-tabs-container');
     const reportArea = document.getElementById('js-report-area');
+    const wazahatArea = document.getElementById('js-wazahat-area');
     const tbody = document.getElementById('js-table-body');
+    const wazahatTbody = document.getElementById('js-wazahat-tbody');
     const mainTitle = document.getElementById('js-report-main-title');
     const subTitle = document.getElementById('js-report-sub-title');
+
+    // Reset Tabs visually to defaults
+    document.getElementById('tab-report').click(); 
 
     if (!startMonth || !endMonth) { alert("Start aur End month select karein."); return; }
     if (startMonth > endMonth) { alert("Shuru ka mahina baad ka nahi ho sakta."); return; }
 
     loader.classList.remove('hidden');
+    tabsContainer.classList.add('hidden');
     reportArea.classList.add('hidden');
+    wazahatArea.classList.add('hidden');
     tbody.innerHTML = '';
+    wazahatTbody.innerHTML = '';
 
     // Header Text
     let headerText = "جائزہ رپورٹ";
@@ -513,7 +600,7 @@ async function fetchAndRenderReport(db, user) {
             return a.teacher.localeCompare(b.teacher);
         });
 
-        // Rendering
+        // Rendering Main Report Table
         if (rows.length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-red-500 font-bold bg-red-50">Is filter ke mutabiq koi record nahi mila.</td></tr>`;
         } else {
@@ -552,8 +639,57 @@ async function fetchAndRenderReport(db, user) {
             });
         }
 
+        // --- WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
+        const wazahatData = {};
+        
+        rows.forEach(r => {
+            if (r.grade === "مناسب" || r.grade === "کمزور") {
+                const key = `${r.jamia}_${r.teacher}`;
+                if (!wazahatData[key]) {
+                    wazahatData[key] = { jamia: r.jamia, teacher: r.teacher, subjects: [] };
+                }
+                const gradeColor = r.grade === 'کمزور' ? 'text-red-600' : 'text-amber-600';
+                wazahatData[key].subjects.push(`
+                    <span class="inline-block bg-white text-xs border border-gray-200 px-2 py-1 rounded m-1 shadow-sm">
+                        ${r.className} : ${r.book} (<span class="font-sans font-bold">${r.percent.toFixed(1)}%</span> - <span class="font-bold ${gradeColor}">${r.grade}</span>)
+                    </span>
+                `);
+            }
+        });
+
+        const wazahatKeys = Object.keys(wazahatData);
+        if (wazahatKeys.length === 0) {
+            wazahatTbody.innerHTML = `<tr><td colspan="5" class="py-6 text-emerald-600 font-bold bg-emerald-50">الحمدللہ! کوئی مناسب یا کمزور کارکردگی نہیں ملی۔</td></tr>`;
+        } else {
+            wazahatKeys.forEach((key, index) => {
+                const item = wazahatData[key];
+                const subList = item.subjects.join('');
+                
+                // YAHAN APNE WAZAHAT FORM KA ASAL LINK LAGAYEIN
+                // Maslan: https://docs.google.com/forms/d/e/XYZ/viewform?usp=pp_url&entry.12345=
+                const baseUrl = `https://your-form-link.com/`; 
+                const linkToCopy = `${baseUrl}?jamia=${encodeURIComponent(item.jamia)}&teacher=${encodeURIComponent(item.teacher)}`;
+
+                wazahatTbody.innerHTML += `
+                    <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50">
+                        <td class="px-4 py-3 border-l border-slate-200 font-sans">${index + 1}</td>
+                        <td class="px-4 py-3 border-l border-slate-200 text-teal-800 font-bold">${item.jamia}</td>
+                        <td class="px-4 py-3 border-l border-slate-200 text-gray-800 font-bold text-base">${item.teacher}</td>
+                        <td class="px-4 py-3 border-l border-slate-200 text-right leading-relaxed">${subList}</td>
+                        <td class="px-4 py-3 text-center">
+                            <button data-link="${linkToCopy}" class="js-copy-link-btn bg-teal-600 hover:bg-teal-700 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
+                                <i class="fas fa-link mr-2"></i> Copy Link
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Show UI Elements
         loader.classList.add('hidden');
-        reportArea.classList.remove('hidden');
+        tabsContainer.classList.remove('hidden');
+        reportArea.classList.remove('hidden'); 
 
     } catch (err) {
         console.error(err);
