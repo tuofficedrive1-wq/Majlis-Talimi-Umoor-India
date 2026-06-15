@@ -23,9 +23,7 @@
 
         <div class="p-8">
 
-            <!-- ========================================== -->
-            <!-- SECTION 1: AJEER CODE LOGIN (Sirf Jaiza Link ke liye) -->
-            <!-- ========================================== -->
+            <!-- SECTION 1: AJEER CODE LOGIN -->
             <div id="login-section" class="hidden text-center py-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">لاگ ان کریں</h2>
                 <div class="max-w-xs mx-auto space-y-4">
@@ -39,9 +37,7 @@
                 </div>
             </div>
 
-            <!-- ========================================== -->
             <!-- SECTION 2: OLD SINGLE RESULT DETAILS -->
-            <!-- ========================================== -->
             <div id="old-details-grid" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                 <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
                     <span class="text-gray-500 block text-xs">درجہ:</span>
@@ -65,9 +61,7 @@
                 </div>
             </div>
 
-            <!-- ========================================== -->
-            <!-- SECTION 3: NEW MULTIPLE SUBJECTS (Jaiza Link) -->
-            <!-- ========================================== -->
+            <!-- SECTION 3: NEW MULTIPLE SUBJECTS -->
             <div id="jaiza-details-box" class="hidden mb-8 bg-indigo-50 rounded-lg border border-indigo-100 overflow-hidden">
                 <div class="flex bg-indigo-100 p-3 border-b border-indigo-200">
                     <div class="w-1/2 text-center border-l border-indigo-200">
@@ -82,14 +76,12 @@
                 <div class="p-4">
                     <p class="text-sm text-gray-600 mb-3 font-bold border-b pb-1">مطلوبہ مضامین (کمزور / مناسب):</p>
                     <ul id="j-subjects-list" class="space-y-2">
-                        <!-- Subjects yahan dynamic aayenge -->
+                        <!-- Subjects yahan aayenge -->
                     </ul>
                 </div>
             </div>
 
-            <!-- ========================================== -->
-            <!-- FORM SECTION (Wazahat Box) -->
-            <!-- ========================================== -->
+            <!-- FORM SECTION -->
             <form id="wazahat-form" class="space-y-6">
                 <div>
                     <label class="block text-xl mb-2 font-bold text-gray-700 underline decoration-red-200">آپ کی وضاحت (Explanation):</label>
@@ -104,9 +96,7 @@
                 </button>
             </form>
 
-            <!-- ========================================== -->
             <!-- SUCCESS MESSAGE -->
-            <!-- ========================================== -->
             <div id="success-msg" class="hidden mt-6 p-6 bg-green-100 text-green-800 rounded-lg shadow-inner">
                 <div class="text-center">
                     <h2 class="text-3xl font-bold mb-2">جزاک اللہ خیرا!</h2>
@@ -127,8 +117,9 @@
     </div>
 
     <script type="module">
+    // Add getDoc to the import list
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, doc, updateDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, updateDoc, collection, addDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -154,50 +145,63 @@
     const submitBtn = document.getElementById('submit-btn');
 
     // ==========================================
-    // LOGIC 1: NEW JAIZA MODE (Multiple Subjects)
+    // LOGIC 1: NEW JAIZA MODE (SHORT LINK)
     // ==========================================
     if (mode === 'jaiza') {
-        // Change Title
         document.title = "ماہانہ جائزہ وضاحت";
         document.getElementById('page-title').innerText = "ماہانہ جائزہ وضاحت";
         document.getElementById('page-subtitle').innerText = "ماہانہ کارکردگی کے حوالے سے مشترکہ وضاحت درج کریں";
         
-        // Setup initial UI state (Hide Form & Grid, Show Login)
         oldGrid.classList.add('hidden');
         wForm.classList.add('hidden');
         loginSec.classList.remove('hidden');
 
+        const sid = urlParams.get('sid'); // Get short ID
         let verifiedAjeerCode = "";
 
-        // Login Button Logic
-        document.getElementById('login-btn').addEventListener('click', () => {
+        document.getElementById('login-btn').addEventListener('click', async () => {
             const codeInput = document.getElementById('ajeer-code-input').value.trim();
             if (!codeInput) {
                 alert("براہ کرم اپنا اجیر کوڈ درج کریں۔");
                 return;
             }
-            verifiedAjeerCode = codeInput;
-            
-            // UI Change
-            loginSec.classList.add('hidden');
-            jaizaBox.classList.remove('hidden');
-            wForm.classList.remove('hidden');
+            if (!sid) {
+                alert("لنک نامکمل ہے یا غلط ہے۔");
+                return;
+            }
 
-            // Populate Jaiza Data
-            const jamia = decodeURIComponent(urlParams.get('jamia') || '-');
-            const teacher = decodeURIComponent(urlParams.get('teacher') || '-');
-            const encodedData = urlParams.get('data') || '';
+            const loginBtn = document.getElementById('login-btn');
+            loginBtn.innerText = "Wait...";
+            loginBtn.disabled = true;
 
-            document.getElementById('j-jamia').innerText = jamia;
-            document.getElementById('j-teacher').innerText = teacher;
-
-            const ul = document.getElementById('j-subjects-list');
             try {
-                // Decode from base64 and parse JSON
-                const rawJson = decodeURIComponent(atob(encodedData));
-                const subjects = JSON.parse(rawJson);
+                // Fetch data from Firebase using short ID
+                const docRef = doc(db, "jaiza_short_links", sid);
+                const docSnap = await getDoc(docRef);
+
+                if (!docSnap.exists()) {
+                    alert("یہ لنک ایکسپائر ہو چکا ہے یا غلط ہے۔");
+                    loginBtn.innerText = "آگے بڑھیں";
+                    loginBtn.disabled = false;
+                    return;
+                }
+
+                const payloadData = docSnap.data();
+                verifiedAjeerCode = codeInput;
+                window.wazahatContext = payloadData; // Save globally for final submit
+
+                // UI Update
+                loginSec.classList.add('hidden');
+                jaizaBox.classList.remove('hidden');
+                wForm.classList.remove('hidden');
+
+                document.getElementById('j-jamia').innerText = payloadData.jamia;
+                document.getElementById('j-teacher').innerText = payloadData.teacher;
+
+                const ul = document.getElementById('j-subjects-list');
+                ul.innerHTML = '';
                 
-                subjects.forEach(sub => {
+                payloadData.data.forEach(sub => {
                     const color = sub.grade === 'کمزور' ? 'text-red-600' : 'text-amber-600';
                     const bgColor = sub.grade === 'کمزور' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100';
                     ul.innerHTML += `
@@ -207,37 +211,33 @@
                         </li>
                     `;
                 });
-            } catch(e) {
-                console.error("Data parse error:", e);
-                ul.innerHTML = `<li class="text-red-500">ڈیٹا لوڈ کرنے میں مسئلہ ہوا۔</li>`;
+
+            } catch (error) {
+                console.error(error);
+                alert("ڈیٹا لوڈ کرنے میں مسئلہ ہوا۔");
+                loginBtn.innerText = "آگے بڑھیں";
+                loginBtn.disabled = false;
             }
         });
 
-        // Form Submit Logic for Jaiza Mode
+        // Form Submit
         wForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = document.getElementById('explanation-text').value;
-            const jamia = decodeURIComponent(urlParams.get('jamia') || '');
-            const teacher = decodeURIComponent(urlParams.get('teacher') || '');
-            const month = urlParams.get('month') || '';
-            const encodedData = urlParams.get('data') || '';
+            const payloadData = window.wazahatContext;
 
             submitBtn.disabled = true;
             submitBtn.innerText = "ارسال کیا جا رہا ہے...";
 
             try {
-                // Decode data taake Database me wazeh show ho
-                const rawJson = decodeURIComponent(atob(encodedData));
-                const subjects = JSON.parse(rawJson);
-
-                // Naye collection me data save karna
                 await addDoc(collection(db, "mahana_wazahat_records"), {
-                    jamia: jamia,
-                    teacherName: teacher,
+                    jamia: payloadData.jamia,
+                    teacherName: payloadData.teacher,
                     ajeerCode: verifiedAjeerCode,
-                    month: month,
-                    subjectsDetails: subjects,
+                    month: payloadData.month,
+                    subjectsDetails: payloadData.data,
                     wazahat: text,
+                    linkId: sid,
                     timestamp: new Date().toISOString()
                 });
 
@@ -281,7 +281,6 @@
 
         const checkExistingWazahat = async (docId, subjectKey) => {
             try {
-                const { getDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
                 const docRef = doc(db, "asatiza_wise_results", docId);
                 const docSnap = await getDoc(docRef);
 
@@ -311,7 +310,6 @@
             }
         };
 
-        // Initialize old data
         fillData();
         const docId = urlParams.get('id');
         const subjectKey = decodeURIComponent(urlParams.get('subject') || '-').replace(/\./g, '_');
@@ -320,7 +318,6 @@
             checkExistingWazahat(docId, subjectKey);
         }
 
-        // Form Submit for Old Mode
         wForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = document.getElementById('explanation-text').value;
