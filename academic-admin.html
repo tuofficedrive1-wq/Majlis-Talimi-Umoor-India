@@ -148,22 +148,27 @@
         </div>
     </div>
         <!-- Teacher Detail Tab Content -->
+<!-- Teacher Detail Tab Content -->
 <div id="tab-teacher-details" class="tab-content hidden">
     <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
-            <h2 class="font-bold text-gray-700 text-lg">Teacher Management</h2>
-            <input type="text" id="search-teacher" placeholder="Search Teacher..." class="border rounded-lg px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+            <h2 class="font-bold text-gray-700 text-lg">Teacher Directory</h2>
+            <input type="text" id="search-teacher" placeholder="Search Teacher, Jamia or Inspector..." class="border rounded-lg px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-500 w-64 md:w-80">
+            <button onclick="downloadTeacherExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2 transition active:scale-95">
+                    <i class="fas fa-file-excel"></i> Excel
+                </button>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-left">
+        <div class="overflow-x-auto no-scrollbar">
+            <table class="w-full text-left whitespace-nowrap min-w-max">
                 <thead class="bg-gray-50 text-[11px] font-bold uppercase text-gray-400 border-b">
                     <tr>
-                        <th class="px-6 py-4">No.</th>
-                        <th class="px-6 py-4">Region</th>
-                        <th class="px-6 py-4">Inspector</th>
-                        <th class="px-6 py-4">Jamia</th>
-                        <th class="px-6 py-4">Teacher</th>
-                        <th class="px-6 py-4 text-center">Action</th>
+                        <th class="px-6 py-4 border-r border-gray-100">Inspector & Jamia</th>
+                        <th class="px-6 py-4 border-r border-gray-100">Name & Code</th>
+                        <th class="px-6 py-4 border-r border-gray-100">Contact/Mail</th>
+                        <th class="px-6 py-4 border-r border-gray-100">Qual.</th>
+                        <th class="px-6 py-4 border-r border-gray-100">Exp.</th>
+                        <th class="px-6 py-4 border-r border-gray-100 text-center">Periods</th>
+                        <th class="px-6 py-4 text-center">Ijara</th>
                     </tr>
                 </thead>
                 <tbody id="teacher-list-body" class="divide-y text-sm text-gray-700">
@@ -328,35 +333,123 @@
     const jamiaDirectoryRef = collection(db, "jamiaat_master");
 
     // 3. Teacher Management & Table Rendering Functions
-    const renderTeacherTable = () => {
-        const listBody = document.getElementById('teacher-list-body');
-        if (!listBody) return;
-        let teacherRowHtml = '';
-        let counter = 1;
+   // 3. Teacher Management & Table Rendering Functions
+const renderTeacherTable = async () => {
+    const listBody = document.getElementById('teacher-list-body');
+    const searchInput = document.getElementById('search-teacher');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
-        inspectors.forEach(ins => {
-            if (ins.teacherData && Array.isArray(ins.teacherData)) {
-                ins.teacherData.forEach(t => {
+    if (!listBody) return;
+
+    // Active Year fetch karna (agar DOM me save nahi hai to Firebase se layega)
+    let activeYear = document.getElementById('cal-active-year').value;
+    if (!activeYear) {
+        try {
+            const snap = await getDoc(calendarRef);
+            activeYear = snap.exists() ? snap.data().activeYear : "2026-2027";
+        } catch (e) {
+            activeYear = "2026-2027";
+        }
+    }
+
+    let teacherRowHtml = '';
+
+    inspectors.forEach(ins => {
+        // Inspector app ke data structure ke mutabiq sahi path target karna
+        const academicData = ins.academicYears?.[activeYear]?.karkardagiStructure || [];
+        
+        academicData.forEach(jamiaData => {
+            const jamiaName = jamiaData.jamiaName;
+            
+            if (jamiaData.teachers && jamiaData.teachers.length > 0) {
+                jamiaData.teachers.forEach(t => {
+                    
+                    // Search Bar Filtering Logic
+                    const searchString = `${ins.name} ${jamiaName} ${t.name} ${t.loginCode} ${t.contact} ${t.mailId}`.toLowerCase();
+                    if (searchTerm && !searchString.includes(searchTerm)) return;
+
                     teacherRowHtml += `
                         <tr class="hover:bg-gray-50 transition border-b">
-                            <td class="px-6 py-4 font-medium">${counter++}</td>
-                            <td class="px-6 py-4">${ins.region || '-'}</td>
-                            <td class="px-6 py-4 font-semibold text-indigo-600">${ins.name}</td>
-                            <td class="px-6 py-4">${t.jamiaName || '-'}</td>
-                            <td class="px-6 py-4">${t.teacherName || '-'}</td>
+                            <td class="px-6 py-4 border-r border-gray-100">
+                                <div class="font-bold text-gray-800 text-sm">${ins.name || 'Unknown'}</div>
+                                <div class="text-indigo-600 text-[10px] uppercase mt-1 font-bold tracking-wider"><i class="fas fa-university mr-1"></i> ${jamiaName || '-'}</div>
+                            </td>
+                            <td class="px-6 py-4 border-r border-gray-100">
+                                <div class="font-bold text-gray-800 text-sm">${t.name || '-'}</div>
+                                <div class="text-indigo-600 text-[10px] uppercase mt-1 font-bold tracking-wider">ID: ${t.loginCode || '-'}</div>
+                            </td>
+                            <td class="px-6 py-4 border-r border-gray-100">
+                                <div class="text-gray-700 font-medium text-xs">${t.contact || '-'}</div>
+                                <div class="text-gray-400 text-[10px] mt-1">${t.mailId || '-'}</div>
+                            </td>
+                            <td class="px-6 py-4 border-r border-gray-100">
+                                <div class="text-gray-700 font-medium text-xs">${t.levelQualified || '-'}</div>
+                                <div class="text-gray-500 text-[10px] mt-1">${t.highestQualification || '-'}</div>
+                            </td>
+                            <td class="px-6 py-4 border-r border-gray-100">
+                                <div class="text-gray-700 font-medium text-xs">${t.experience || '-'} Exp</div>
+                                <div class="text-indigo-500 text-[10px] mt-1 font-semibold">${t.specialization || '-'}</div>
+                            </td>
+                            <td class="px-6 py-4 border-r border-gray-100 text-center">
+                                <span class="bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-md font-bold text-xs">${t.teachingPeriod || '0'}</span>
+                            </td>
                             <td class="px-6 py-4 text-center">
-                                <button onclick="viewFullDetail('${t.id}')" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded text-xs font-bold transition">
-                                    <i class="fas fa-eye mr-1"></i> Full Detail
-                                </button>
+                                <span class="px-2 py-1 rounded-md font-bold text-xs border ${t.ijaraStatus?.toLowerCase().includes('yes') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-50 text-gray-500 border-gray-200'}">
+                                    ${t.ijaraStatus || '-'}
+                                </span>
                             </td>
                         </tr>
                     `;
                 });
             }
         });
+    });
 
-        listBody.innerHTML = teacherRowHtml || '<tr><td colspan="6" class="p-10 text-center text-gray-400">No teacher data found.</td></tr>';
-    };
+    listBody.innerHTML = teacherRowHtml || '<tr><td colspan="7" class="p-10 text-center text-gray-400 italic">Koi teacher data nahi mila.</td></tr>';
+};
+        window.downloadTeacherExcel = () => {
+    const tableBody = document.getElementById('teacher-list-body');
+    
+    // Agar table khali hai ya data nahi mila to download rok dein
+    if (!tableBody || tableBody.querySelectorAll('tr').length === 0 || tableBody.innerText.includes('Koi teacher data nahi mila')) {
+        return alert("Download karne ke liye koi data majood nahi hai!");
+    }
+
+    let csv = [];
+    
+    // Excel file ke Column Headings (Headers)
+    csv.push(["Inspector & Jamia", "Name & ID", "Contact & Mail", "Qualification", "Experience & Spec.", "Total Periods", "Ijara Status"].join(","));
+
+    // Table ki rows se data nikalna
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+        const cols = row.querySelectorAll('td');
+        if (cols.length > 1) {
+            const rowData = Array.from(cols).map(col => {
+                // Ek line me multi-text ko " | " se separate kar rahe hain taake Excel cell me clearly dikhe
+                let text = col.innerText.replace(/\n/g, ' | ').trim();
+                // Double quotes escape karne ka logic
+                return `"${text.replace(/"/g, '""')}"`;
+            });
+            csv.push(rowData.join(","));
+        }
+    });
+
+    // CSV File Generate aur Download karwana
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csv.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "Teacher_Directory_Report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+// Search box type karte hi real-time list update hone ke liye event listener (Ise renderTeacherTable ke theek neeche add karein)
+document.getElementById('search-teacher')?.addEventListener('input', () => {
+    renderTeacherTable();
+});
 
     window.viewFullDetail = (teacherId) => {
         alert("Teacher details functional logic yahan aaygi. ID: " + teacherId);
