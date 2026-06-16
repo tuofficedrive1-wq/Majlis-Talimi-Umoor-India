@@ -541,6 +541,9 @@
                         <button type="button" class="admin-tab-btn w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition" data-admin-tab="elanaat">
                             <i class="fas fa-bullhorn w-5 text-center"></i> Elanaat
                         </button>
+                        <button type="button" class="admin-tab-btn w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition" data-admin-tab="daily-log">
+    <i class="fas fa-history w-5 text-center"></i> Aaj ki Karkardagi
+</button>
                     </div>
                 </div>
             </nav>
@@ -851,6 +854,59 @@
         <div class="grid md:grid-cols-2 gap-6">
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><h4 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Pehle Ke Elanaat</h4><div id="elanaat-list" class="space-y-3"></div></div>
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><h4 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Tasks Ka Status</h4><div id="admin-task-list" class="space-y-3"></div></div>
+        </div>
+    </div>
+    <!-- 11. DAILY LOG TAB -->
+    <div id="admin-daily-log-tab" class="admin-tab-content hidden space-y-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+            <h3 class="text-xl font-bold text-slate-800"><i class="fas fa-history text-teal-600 mr-2"></i> Aaj Ki Karkardagi (Activity Log)</h3>
+            <div class="flex items-center gap-3">
+                <input type="date" id="daily-log-date" class="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none font-medium text-slate-700">
+                <button id="fetch-daily-log-btn" class="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg text-sm font-bold shadow transition">Check</button>
+            </div>
+        </div>
+        
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- Logins Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-indigo-50 px-4 py-3 border-b border-indigo-100 font-bold text-indigo-800 flex items-center">
+                    <i class="fas fa-sign-in-alt mr-2"></i> Aaj ke Logins
+                </div>
+                <div class="p-0 max-h-[500px] overflow-y-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50 text-gray-600 text-[11px] uppercase tracking-wider">
+                            <tr>
+                                <th class="p-3 border-b w-24">Time</th>
+                                <th class="p-3 border-b">User Name</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daily-logins-tbody" class="divide-y divide-gray-100">
+                            <tr><td colspan="2" class="p-6 text-center text-gray-500">Date select karke Check dabayein</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Activities Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-emerald-50 px-4 py-3 border-b border-emerald-100 font-bold text-emerald-800 flex items-center">
+                    <i class="fas fa-clipboard-check mr-2"></i> Aaj ke Kaam (Jaiza/Tests/KKd)
+                </div>
+                <div class="p-0 max-h-[500px] overflow-y-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50 text-gray-600 text-[11px] uppercase tracking-wider">
+                            <tr>
+                                <th class="p-3 border-b w-24">Time</th>
+                                <th class="p-3 border-b w-1/3">User Name</th>
+                                <th class="p-3 border-b">Kaam ki Tafseel</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daily-activities-tbody" class="divide-y divide-gray-100">
+                            <tr><td colspan="3" class="p-6 text-center text-gray-500">Date select karke Check dabayein</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -6522,7 +6578,77 @@ if (addUserRoleSelect) {
         }
     });
 }
-     
+  // --- DAILY LOG (ACTIVITY) SYSTEM ---
+const initDailyLogTab = () => {
+    const dailyLogDate = document.getElementById('daily-log-date');
+    const fetchDailyLogBtn = document.getElementById('fetch-daily-log-btn');
+    const loginsTbody = document.getElementById('daily-logins-tbody');
+    const activitiesTbody = document.getElementById('daily-activities-tbody');
+
+    if (!dailyLogDate || !fetchDailyLogBtn) return;
+
+    // Default aaj ki date set karna
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    dailyLogDate.value = `${yyyy}-${mm}-${dd}`;
+
+    fetchDailyLogBtn.addEventListener('click', async () => {
+        const selectedDate = dailyLogDate.value;
+        if (!selectedDate) {
+            alert("Barahe karam date select karein.");
+            return;
+        }
+
+        showLoader(true);
+        loginsTbody.innerHTML = '<tr><td colspan="2" class="p-4 text-center text-gray-500">Data load ho raha hai...</td></tr>';
+        activitiesTbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-500">Data load ho raha hai...</td></tr>';
+
+        try {
+            // Firebase me audit_logs collection check karega
+            const logsRef = collection(db, 'audit_logs');
+            const q = query(logsRef, where("dateString", "==", selectedDate), orderBy("timestamp", "desc"));
+            const snap = await getDocs(q);
+
+            let loginsHtml = '';
+            let actsHtml = '';
+
+            snap.forEach(doc => {
+                const data = doc.data();
+                const timeStr = data.timestamp ? data.timestamp.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '-';
+                const userName = data.userName || 'Unknown User';
+
+                if (data.type === 'login') {
+                    loginsHtml += `
+                        <tr class="hover:bg-indigo-50 transition-colors">
+                            <td class="p-3 text-gray-500 text-xs font-mono">${timeStr}</td>
+                            <td class="p-3 font-bold urdu-font text-indigo-700">${userName}</td>
+                        </tr>`;
+                } else {
+                    actsHtml += `
+                        <tr class="hover:bg-emerald-50 transition-colors">
+                            <td class="p-3 text-gray-500 text-xs font-mono">${timeStr}</td>
+                            <td class="p-3 font-bold urdu-font text-emerald-700">${userName}</td>
+                            <td class="p-3 urdu-font text-gray-700 leading-relaxed">${data.actionDetail || '-'}</td>
+                        </tr>`;
+                }
+            });
+
+            loginsTbody.innerHTML = loginsHtml || '<tr><td colspan="2" class="p-6 text-center text-gray-400">Is din ka koi login record nahi mila.</td></tr>';
+            activitiesTbody.innerHTML = actsHtml || '<tr><td colspan="3" class="p-6 text-center text-gray-400">Is din ka koi activity record nahi mila.</td></tr>';
+
+        } catch (error) {
+            console.error("Daily Log Fetch Error:", error);
+            loginsTbody.innerHTML = '<tr><td colspan="2" class="p-4 text-center text-red-500">Error loading data</td></tr>';
+            activitiesTbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-500">Error loading data</td></tr>';
+        } finally {
+            showLoader(false);
+        }
+    });
+};
+
+ 
        // --- Init ---
         initApp();
     </script>
