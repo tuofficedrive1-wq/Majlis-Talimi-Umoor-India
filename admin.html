@@ -520,6 +520,9 @@
                 <div>
                     <p class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Reports</p>
                     <div class="space-y-1">
+                        <button type="button" class="admin-tab-btn w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition" data-admin-tab="user-report-card">
+    <i class="fas fa-id-card w-5 text-center"></i> User Report Card
+</button>
                         <button type="button" class="admin-tab-btn w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition" data-admin-tab="summary">
                             <i class="fas fa-file-invoice w-5 text-center"></i> Detail Summary
                         </button>
@@ -907,6 +910,41 @@
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+    <div id="admin-user-report-card-tab" class="admin-tab-content hidden space-y-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <i class="fas fa-id-card text-indigo-600"></i> Markazi User Report Card (Multi-Month Analysis)
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Zimmedar / Inspector Select Karein</label>
+                    <select id="rc-user-select" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 urdu-font focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700">
+                        <option value="">-- Select User --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kab Se (From Month)</label>
+                    <input type="month" id="rc-date-from" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none font-medium">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kab Tak (To Month)</label>
+                    <input type="month" id="rc-date-to" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none font-medium">
+                </div>
+                <div>
+                    <button id="btn-generate-report-card" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-2">
+                        <i class="fas fa-sync"></i> Report Card Banayen
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="report-card-output-container" class="w-full space-y-6">
+            <p class="text-center text-slate-400 py-16 bg-white rounded-2xl border border-slate-200">
+                <i class="fas fa-sliders-h text-3xl mb-3 block opacity-50"></i> 
+                Upar se User aur Month Range select karke 'Report Card Banayen' par click karein.
+            </p>
         </div>
     </div>
 
@@ -2895,18 +2933,21 @@ const handleEditUserSubmit = async (e) => {
     if (targetContent) {
         targetContent.classList.remove('hidden');
         
-        // Agar zaroorat ho to functions ko initialize karein
-        if (tabId === 'transfer' && typeof initTransferTab === 'function') initTransferTab();
-        if (tabId === 'academic-setup') initAcademicYearSetup(db, "central-setup-root");
-        if (tabId === 'final-analysis') initAdminResultAnalysis(db, "final-analysis-root-container");
-            if (tabId === 'jamia-link') {
-                if (typeof initJamiaLinkingTab === 'function') initJamiaLinkingTab();
-                if (typeof renderCurrentLinks === 'function') renderCurrentLinks();
+        // 👇 YEH VALI NAYI CODES ADD KAREIN 👇
+        if (tabId === 'user-report-card') {
+            const rcSelect = document.getElementById('rc-user-select');
+            if (rcSelect) {
+                rcSelect.innerHTML = '<option value="">-- Select User --</option>';
+                allUsersData.forEach(u => {
+                    rcSelect.innerHTML += `<option value="${u.id}">${u.name || u.email}</option>`;
+                });
             }
-            
-            // 👇 YEH NAYI LINE ADD KAREIN 👇
-            if (tabId === 'daily-log') initDailyLogTab();
-            }
+            // Default Range setting: Is saal ka April se lekar aaj tak
+            const now = new Date();
+            const currYear = now.getFullYear();
+            document.getElementById('rc-date-from').value = `${currYear}-04`;
+            document.getElementById('rc-date-to').value = `${currYear}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        }
 
     // KKd Summary Reset
     kkdFilterApplied = false;
@@ -6650,7 +6691,291 @@ const initDailyLogTab = () => {
         }
     });
 };
+// =========================================================================
+// 🟢 MUKAMMAL USER REPORT CARD (MULTI-MONTH MATRIX) LOGIC
+// =========================================================================
+const generateMultiMonthReportCard = async () => {
+    const userId = document.getElementById('rc-user-select').value;
+    const fromMonthStr = document.getElementById('rc-date-from').value; // e.g. "2026-04"
+    const toMonthStr = document.getElementById('rc-date-to').value; // e.g. "2026-06"
+    const container = document.getElementById('report-card-output-container');
 
+    if (!userId || !fromMonthStr || !toMonthStr) {
+        alert("Barahe karam User aur From/To dono Months select karein.");
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="text-center py-16 bg-white rounded-2xl border">
+            <div class="loader mx-auto mb-4"></div>
+            <p class="text-gray-500 font-medium">Chuninday mahino ka tafseeli data aur kamzoriyan calculate ho rahi hain, barahe karam intezar karein...</p>
+        </div>`;
+
+    try {
+        const userObj = allUsersData.find(u => u.id === userId);
+        if (!userObj) throw new Error("User record nahi mila.");
+
+        const assignedJamias = userObj.jamiaatList || [];
+        if (assignedJamias.length === 0) {
+            container.innerHTML = `<p class="text-center text-red-500 py-10 bg-white rounded-2xl border font-bold">Is user ke profile mein koi bhi Jamia assigned nahi hai!</p>`;
+            return;
+        }
+
+        // 1. Generate range array of Month Keys (e.g. ["2026-04", "2026-05", "2026-06"])
+        let start = new Date(fromMonthStr + "-01");
+        let end = new Date(toMonthStr + "-01");
+        let monthKeysInRange = [];
+        let monthNamesMap = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+        while (start <= end) {
+            let y = start.getFullYear();
+            let m = String(start.getMonth() + 1).padStart(2, '0');
+            monthKeysInRange.push({
+                key: `${y}-${m}`,
+                monthName: monthNamesMap[start.getMonth()],
+                yearNum: y
+            });
+            start.setMonth(start.getMonth() + 1);
+        }
+
+        // 2. Parallel Fetch All Core Collections for this user
+        const [jaizaSnap, testSnap, reportsSnap] = await Promise.all([
+            getDocs(query(collection(db, "jaiza_forms"), where("createdBy", "==", userId))),
+            getDocs(query(collection(db, "monthly_test_sheets"), where("adminUid", "==", userId))),
+            getDocs(query(collection(db, "monthly_reports"), where("userId", "==", userId)))
+        ]);
+
+        const allJaizaForms = jaizaSnap.docs.map(d => d.data());
+        const allTestSheets = testSnap.docs.map(d => d.data());
+        const allMonthlyReports = reportsSnap.docs.map(d => d.data());
+
+        // 3. Matrix Structure Organise karein Jamia-wise
+        let jamiaMatrix = {};
+        assignedJamias.forEach(jamia => {
+            const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
+            jamiaMatrix[jName] = {
+                visitsCount: 0,
+                jaizaCount: 0,
+                pendingCount: 0,
+                totalJaizaPercSum: 0,
+                weaknesses: [], // Subject-wise specific failures
+                monthsData: {}
+            };
+        });
+
+        // Loop inside range and fill information
+        monthKeysInRange.forEach(mObj => {
+            // Find root monthly report summary for this month
+            const mReport = allMonthlyReports.find(r => r.month === mObj.monthName && r.year === mObj.yearNum);
+            const rJaizaData = mReport?.jaizaReport?.data || [];
+            const rTestData = mReport?.monthlyTest?.data || [];
+
+            Object.keys(jamiaMatrix).forEach(jName => {
+                const cleanJ = jName.toLowerCase();
+
+                // Check Jaiza Entry inside monthly reports summary
+                const jaizaEntry = rJaizaData.find(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
+                // Check Test Entry inside monthly reports summary
+                const testEntry = rTestData.find(t => (t.name || t.jamiaName || '').trim().toLowerCase() === cleanJ);
+
+                // Detailed raw forms for this specific month & Jamia
+                const detailedForms = allJaizaForms.filter(f => f.monthKey === mObj.key && (f.jamiaId || f.jamiaName || '').trim().toLowerCase() === cleanJ);
+                const testSheets = allTestSheets.filter(s => s.month === mObj.key && (s.jamiaName || '').trim().toLowerCase() === cleanJ);
+
+                let statusText = "Nahi Hua";
+                let statusColor = "text-red-500 font-bold";
+                let jPerc = 0;
+
+                if (jaizaEntry) {
+                    jPerc = parseFloat(jaizaEntry.percentage) || 0;
+                    const typeLow = (jaizaEntry.type || '').toLowerCase();
+                    const statLow = (jaizaEntry.status || '').toLowerCase();
+
+                    if (jPerc > 0 || statLow === 'done') {
+                        statusText = `Done (${jPerc}%)`;
+                        statusColor = "text-green-600 font-bold";
+                        jamiaMatrix[jName].jaizaCount++;
+                        jamiaMatrix[jName].totalJaizaPercSum += jPerc;
+                    } else if (typeLow.includes('nahi hua') || statLow.includes('nahi hua')) {
+                        statusText = "Nahi Hua";
+                        statusColor = "text-red-500 font-bold";
+                        jamiaMatrix[jName].pendingCount++;
+                    } else {
+                        statusText = "Visit Only";
+                        statusColor = "text-blue-600 font-bold";
+                        jamiaMatrix[jName].visitsCount++;
+                    }
+                } else {
+                    jamiaMatrix[jName].pendingCount++;
+                }
+
+                // Extracted Test Percentage
+                let tPercText = "-";
+                if (testEntry) {
+                    tPercText = `${parseFloat(testEntry.percentage)}%`;
+                }
+
+                // Extracted Weaknesses directly from detailed books arrays (Score < 60% is weak)
+                detailedForms.forEach(form => {
+                    const cName = form.className || 'Unknown Class';
+                    if (Array.isArray(form.books)) {
+                        form.books.forEach(b => {
+                            const bPerc = parseFloat(b.percentage) || 0;
+                            if (bPerc > 0 && bPerc < 60) {
+                                jamiaMatrix[jName].weaknesses.push({
+                                    month: `${mObj.monthName} ${mObj.yearNum}`,
+                                    class: cName,
+                                    book: b.bookName || 'Unknown Subject',
+                                    teacher: b.teacherName || 'Unknown Teacher',
+                                    score: bPerc
+                                });
+                            }
+                        });
+                    }
+                    // If text comment is written in issues field, wrap it
+                    if (form.issues && form.issues.trim() !== '' && form.issues !== 'N/A') {
+                        jamiaMatrix[jName].weaknesses.push({
+                            month: `${mObj.monthName} ${mObj.yearNum}`,
+                            class: cName,
+                            book: 'General Issues',
+                            teacher: 'N/A',
+                            score: form.issues
+                        });
+                    }
+                });
+
+                // Save month matrix checkpoint
+                jamiaMatrix[jName].monthsData[mObj.key] = {
+                    statusHtml: `<span class="${statusColor}">${statusText}</span>`,
+                    testHtml: `<span class="font-bold text-slate-700">${tPercText}</span>`
+                };
+            });
+        });
+
+        // 4. GENERATE COMPREHENSIVE VIEW HTML
+        let finalHtml = `
+            <div class="bg-slate-900 text-white p-6 rounded-2xl shadow-md flex justify-between items-center flex-wrap gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold urdu-font text-teal-400">${userObj.name || 'N/A'}</h2>
+                    <p class="text-xs text-slate-400 mt-1"><i class="fas fa-layer-group"></i> Role: ${userObj.role || 'Standard'} | Region: ${userObj.region || '-'}</p>
+                    <p class="text-xs font-semibold text-indigo-300 mt-1"><i class="far fa-calendar-alt"></i> Range: ${fromMonthStr} Se ${toMonthStr}</p>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 px-4 py-2 rounded-xl text-center">
+                    <p class="text-[10px] uppercase font-bold text-slate-400">Total Assigned Jamiaat</p>
+                    <p class="text-2xl font-black text-white">${assignedJamias.length}</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                <div class="p-4 bg-slate-50 border-b font-bold text-slate-700 text-sm">
+                    <i class="fas fa-th mr-1"></i> Multi-Month Jamia Progress Grid Matrix
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-center border-collapse min-w-[800px]">
+                        <thead>
+                            <tr class="bg-slate-100 border-b border-gray-200 text-gray-700 font-bold">
+                                <th class="p-3 text-left border-r min-w-[200px]">Jamia Name</th>
+                                ${monthKeysInRange.map(m => `
+                                    <th class="p-2 border-r" colspan="2">${m.monthName.substring(0,3)} ${m.yearNum}</th>
+                                `).join('')}
+                            </tr>
+                            <tr class="bg-slate-50 border-b text-[10px] uppercase font-bold text-gray-500">
+                                <th class="p-1 border-r"></th>
+                                ${monthKeysInRange.map(() => `
+                                    <th class="p-1 border-r bg-blue-50/50">Jaiza</th>
+                                    <th class="p-1 bg-purple-50/50">Test</th>
+                                `).join('')}
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            ${Object.keys(jamiaMatrix).map(jName => {
+                                const jData = jamiaMatrix[jName];
+                                return `
+                                    <tr class="hover:bg-slate-50 transition-colors">
+                                        <td class="p-3 text-left font-bold border-r text-teal-800 text-sm urdu-font">${jName}</td>
+                                        ${monthKeysInRange.map(m => `
+                                            <td class="p-2 border-r bg-blue-50/20 text-[11px]">${jData.monthsData[m.key].statusHtml}</td>
+                                            <td class="p-2 border-r bg-purple-50/20 text-[11px]">${jData.monthsData[m.key].testHtml}</td>
+                                        `).join('')}
+                                    </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="border-t pt-2"><h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-search-plus text-teal-600"></i> Jamia-wise Tafseeli Analysis & Subject Weakness</h3></div>
+            <div class="grid grid-cols-1 gap-6">
+        `;
+
+        // Loop Again for rendering individual Jamia summary sections
+        Object.keys(jamiaMatrix).forEach(jName => {
+            const jData = jamiaMatrix[jName];
+            const avgJaiza = jData.jaizaCount > 0 ? (jData.totalJaizaPercSum / jData.jaizaCount).toFixed(1) + '%' : 'N/A';
+
+            let weaknessRowsHtml = '';
+            if (jData.weaknesses.length > 0) {
+                jData.weaknesses.forEach(w => {
+                    if (typeof w.score === 'number') {
+                        weaknessRowsHtml += `
+                            <div class="flex items-start justify-between p-2.5 bg-red-50/60 rounded-lg border border-red-100 text-xs">
+                                <div>
+                                    <span class="bg-red-600 text-white font-bold px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider mr-1.5">${w.month}</span>
+                                    Darjah: <b class="text-slate-800 font-bold urdu-font">${w.class}</b> | 
+                                    Kitab: <b class="text-purple-800 font-bold urdu-font">${w.book}</b>
+                                    <div class="text-gray-500 mt-0.5"><i class="fas fa-user-tie text-[10px]"></i> Teacher: <span class="font-semibold urdu-font text-slate-700">${w.teacher}</span></div>
+                                </div>
+                                <div class="text-right"><span class="font-black text-red-600 text-sm">${w.score}%</span><br><span class="text-[9px] text-red-400 font-bold uppercase">Kamzoor Result</span></div>
+                            </div>`;
+                    } else {
+                        // General text issues
+                        weaknessRowsHtml += `
+                            <div class="p-2.5 bg-amber-50/60 rounded-lg border border-amber-100 text-xs">
+                                <span class="bg-amber-600 text-white font-bold px-1.5 py-0.5 rounded text-[9px] uppercase mr-1.5">${w.month}</span>
+                                <span class="font-bold text-slate-800 underline urdu-font">Class: ${w.class} Kaifiyat:</span>
+                                <p class="text-amber-900 font-medium urdu-font mt-1 bg-white p-1.5 rounded border border-amber-100">${w.score}</p>
+                            </div>`;
+                    }
+                });
+            } else {
+                weaknessRowsHtml = `<p class="text-center text-xs text-emerald-600 font-bold py-4 bg-emerald-50/30 rounded-lg border border-emerald-100"><i class="fas fa-check-circle"></i> Is range ke dauran is Jamia me kisi bhi subject me koi kamzori nahi mili.</p>`;
+            }
+
+            finalHtml += `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden grid grid-cols-1 lg:grid-cols-3">
+                    <div class="p-5 bg-slate-50 border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col justify-between">
+                        <div>
+                            <h4 class="text-base font-black text-teal-800 urdu-font mb-1">${jName}</h4>
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Multi-Month Summary</p>
+                        </div>
+                        <div class="my-4 space-y-2 text-xs">
+                            <div class="flex justify-between"><span>Jaiza (Complete):</span><span class="font-bold text-green-600">${jData.jaizaCount} Baar</span></div>
+                            <div class="flex justify-between"><span>Visit (Only):</span><span class="font-bold text-blue-600">${jData.visitsCount} Baar</span></div>
+                            <div class="flex justify-between"><span>Pending / Choot Gaya:</span><span class="font-bold text-red-500">${jData.pendingCount} Mahine</span></div>
+                            <div class="flex justify-between pt-2 border-t font-bold text-sm text-slate-700"><span>Average Jaiza %:</span><span class="text-teal-700 font-black">${avgJaiza}</span></div>
+                        </div>
+                    </div>
+                    <div class="p-5 lg:col-span-2 flex flex-col justify-between bg-white">
+                        <h5 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><i class="fas fa-exclamation-circle text-red-500 mr-1"></i> Extracted Subject Weaknesses & Teachers</h5>
+                        <div class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                            ${weaknessRowsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        finalHtml += `</div>`;
+        container.innerHTML = finalHtml;
+
+    } catch (err) {
+        console.error("Report Card Generation Error: ", err);
+        container.innerHTML = `<p class="text-center text-red-500 py-10 bg-white rounded-2xl border font-bold">Error: ${err.message}</p>`;
+    }
+};
+
+// Event listener attach karein click par
+document.getElementById('btn-generate-report-card').addEventListener('click', generateMultiMonthReportCard);
  
        // --- Init ---
         initApp();
