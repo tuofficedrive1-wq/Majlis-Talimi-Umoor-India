@@ -532,7 +532,7 @@ document.getElementById('js-show-btn').addEventListener('click', () => fetchAndR
 }
 
 // --- MAIN FETCH & RENDER LOGIC ---
-async function fetchAndRenderReport(db, user) {
+async function fetchAndRenderReport(db, user, userProfileData) {
     const startMonth = document.getElementById('js-month-start').value;
     const endMonth = document.getElementById('js-month-end').value;
     const jamiaFilter = document.getElementById('js-jamia-filter').value;
@@ -610,12 +610,10 @@ async function fetchAndRenderReport(db, user) {
         filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
                 doc.books.forEach(book => {
-                    
                     if (teacherFilter) {
                         const tName = book.teacherName || "";
                         if (tName !== teacherFilter) return;
                     }
-
                     const currentGrade = getGrade(book.percentage);
                     if (selectedGrades.length > 0) {
                         if (!selectedGrades.includes(currentGrade)) return; 
@@ -642,28 +640,20 @@ async function fetchAndRenderReport(db, user) {
             return a.teacher.localeCompare(b.teacher);
         });
 
-        // Rendering Main Report Table
+        // Rendering Main Report Table (Tab 1)
         if (rows.length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-red-500 font-bold bg-red-50">Is filter ke mutabiq koi record nahi mila.</td></tr>`;
         } else {
             rows.forEach((row, index) => {
                 const pVal = row.percent !== null && row.percent !== undefined ? row.percent.toFixed(1) + "%" : "-";
-                
                 const dateObj = new Date(row.month + "-01");
                 const monthStr = dateObj.toLocaleString('en-US', { month: 'short', year: '2-digit' });
 
-                // --- COLORED LOGIC ---
-                let rowColorClass = "text-gray-700"; // Default
-                
-                if (row.grade === "ممتاز") {
-                    rowColorClass = "text-emerald-700 font-bold"; // Green
-                } else if (row.grade === "بہتر") {
-                    rowColorClass = "text-blue-600 font-bold"; // Blue
-                } else if (row.grade === "مناسب") {
-                    rowColorClass = "text-amber-600 font-bold"; // Orange
-                } else if (row.grade === "کمزور") {
-                    rowColorClass = "text-red-600 font-bold"; // Red
-                }
+                let rowColorClass = "text-gray-700"; 
+                if (row.grade === "ممتاز") rowColorClass = "text-emerald-700 font-bold";
+                else if (row.grade === "بہتر") rowColorClass = "text-blue-600 font-bold";
+                else if (row.grade === "مناسب") rowColorClass = "text-amber-600 font-bold";
+                else if (row.grade === "کمزور") rowColorClass = "text-red-600 font-bold";
 
                 tbody.innerHTML += `
                     <tr class="hover:bg-teal-50 transition-colors odd:bg-white even:bg-slate-50">
@@ -673,7 +663,6 @@ async function fetchAndRenderReport(db, user) {
                         <td class="px-4 py-3 border-l border-slate-200">${row.teacher}</td>
                         <td class="px-4 py-3 border-l border-slate-200">${row.className}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800">${row.book}</td>
-                        
                         <td class="px-4 py-3 border-l border-slate-200 ${rowColorClass}">${row.grade}</td>
                         <td class="px-4 py-3 font-sans ${rowColorClass}">${pVal}</td>
                     </tr>
@@ -681,13 +670,24 @@ async function fetchAndRenderReport(db, user) {
             });
         }
 
-        // --- WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
-        // --- WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
+        // --- 1. PEHLE DATABASE SE SUBMITTED WAZAHAT FETCH KAREIN ---
+        const wazahatRef = collection(db, 'mahana_wazahat_records');
+        const wQ = query(wazahatRef, where("month", ">=", startMonth), where("month", "<=", endMonth));
+        const wSnap = await getDocs(wQ);
+        
+        const submittedWazahats = {};
+        wSnap.forEach(doc => {
+            const data = doc.data();
+            const key = `${data.jamia}_${data.teacherName}_${data.month}`;
+            submittedWazahats[key] = data; 
+        });
+
+        // --- 2. WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
         const wazahatData = {};
         
         rows.forEach(r => {
             if (r.grade === "مناسب" || r.grade === "کمزور") {
-                const key = `${r.jamia}_${r.teacher}`;
+                const key = `${r.jamia}_${r.teacher}_${r.month}`;
                 if (!wazahatData[key]) {
                     wazahatData[key] = { jamia: r.jamia, teacher: r.teacher, month: r.month, subjects: [], rawData: [] };
                 }
@@ -697,18 +697,18 @@ async function fetchAndRenderReport(db, user) {
                         ${r.className} : ${r.book} (<span class="font-sans font-bold">${r.percent.toFixed(1)}%</span> - <span class="font-bold ${gradeColor}">${r.grade}</span>)
                     </span>
                 `);
-                // Naya code yahan add kiya hai data pass karne ke liye
                 wazahatData[key].rawData.push({ class: r.className, book: r.book, percent: r.percent, grade: r.grade });
             }
         });
 
-       const wazahatKeys = Object.keys(wazahatData);
+        const wazahatKeys = Object.keys(wazahatData);
         if (wazahatKeys.length === 0) {
             wazahatTbody.innerHTML = `<tr><td colspan="6" class="py-6 text-emerald-600 font-bold bg-emerald-50">الحمدللہ! کوئی مناسب یا کمزور کارکردگی نہیں ملی۔</td></tr>`;
         } else {
             wazahatKeys.forEach((key, index) => {
                 const item = wazahatData[key];
                 const subList = item.subjects.join('');
+                
                 // --- ASLI AJEER CODE DHOONDHNA ---
                 let expectedCode = "";
                 if (userProfileData && userProfileData.academicYears) {
@@ -722,23 +722,28 @@ async function fetchAndRenderReport(db, user) {
                         }
                     });
                 }
-                // ---------------------------------
 
+                // --- DATE AUR TIME NIKALNE KA NAYA LOGIC ---
                 const wKey = `${item.jamia}_${item.teacher}_${item.month}`;
                 let wazahatColumnHtml = `<span class="text-red-500 bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200">انتظار میں...</span>`; 
                 
                 if (submittedWazahats[wKey]) {
                     const wData = submittedWazahats[wKey];
-                    const dateStr = new Date(wData.timestamp).toLocaleDateString('en-GB'); 
+                    const dateObj = new Date(wData.timestamp);
+                    const formattedDate = dateObj.toLocaleDateString('en-GB'); 
+                    const formattedTime = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }); 
+                    const formattedDateTime = `${formattedDate} | ${formattedTime}`;
+                    
                     wazahatColumnHtml = `
                         <div class="text-right">
-                            <p class="text-sm text-gray-800 leading-snug mb-2 line-clamp-3" title="${wData.wazahat}">${wData.wazahat}</p>
-                            <span class="text-[10px] text-gray-500 font-sans font-bold bg-gray-100 px-1.5 py-0.5 rounded border">${dateStr}</span>
+                            <p class="text-sm text-gray-800 leading-relaxed mb-2 line-clamp-3" title="${wData.wazahat}">${wData.wazahat}</p>
+                            <span class="text-[11px] text-gray-600 font-sans font-bold bg-gray-100 px-2 py-1 rounded border inline-flex items-center gap-1">
+                                <i class="far fa-clock text-gray-400"></i> ${formattedDateTime}
+                            </span>
                         </div>
                     `;
                 }
 
-                // PAYLOAD ME expectedCode ADD KIYA GAYA HAI
                 const payload = { jamia: item.jamia, teacher: item.teacher, month: item.month, data: item.rawData, expectedCode: expectedCode };
                 const encodedPayload = encodeURIComponent(JSON.stringify(payload));
 
@@ -748,13 +753,14 @@ async function fetchAndRenderReport(db, user) {
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800 font-bold">${item.jamia}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-gray-800 font-bold text-base">${item.teacher}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-right leading-relaxed">${subList}</td>
-                        <td class="px-4 py-3 text-center space-y-2">
-                            <!-- WhatsApp Button -->
+                        
+                        <!-- Naya Wazahat Column -->
+                        <td class="px-4 py-3 border-l border-slate-200 align-top">${wazahatColumnHtml}</td>
+                        
+                        <td class="px-4 py-3 text-center space-y-2 align-middle">
                             <button data-payload="${encodedPayload}" class="js-wa-btn bg-green-500 hover:bg-green-600 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
                                 <i class="fab fa-whatsapp text-base mr-2"></i> WhatsApp
                             </button>
-                            
-                            <!-- Copy Link Button -->
                             <button data-payload="${encodedPayload}" class="js-copy-link-btn bg-teal-600 hover:bg-teal-700 text-white font-sans text-xs font-bold py-2 px-3 rounded shadow transition w-full flex items-center justify-center">
                                 <i class="fas fa-link mr-2"></i> Copy Link
                             </button>
