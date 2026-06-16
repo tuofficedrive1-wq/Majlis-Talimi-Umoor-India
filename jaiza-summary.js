@@ -167,10 +167,12 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
                     <thead>
                         <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-base">
                             <th class="px-4 py-3 border-l border-slate-200 w-12">#</th>
-                            <th class="px-4 py-3 border-l border-slate-200">جامعہ</th>
-                            <th class="px-4 py-3 border-l border-slate-200">استاذ کا نام</th>
+                            <th class="px-4 py-3 border-l border-slate-200 w-24">جامعہ</th>
+                            <th class="px-4 py-3 border-l border-slate-200 w-32">استاذ کا نام</th>
                             <th class="px-4 py-3 border-l border-slate-200">کمزور / مناسب مضامین کی تفصیل</th>
-                            <th class="px-4 py-3 w-32">وضاحت فارم لنک</th>
+                            <!-- Wazahat ke column ko bada kiya gaya hai -->
+                            <th class="px-4 py-3 border-l border-slate-200 w-1/3 min-w-[280px]">جمع شدہ وضاحت</th>
+                            <th class="px-4 py-3 w-32">ایکشن / لنک</th>
                         </tr>
                     </thead>
                     <tbody id="js-wazahat-tbody" class="text-gray-800 urdu-font divide-y divide-gray-200">
@@ -724,6 +726,7 @@ async function fetchAndRenderReport(db, user, userProfileData) {
                 }
 
                 // --- DATE AUR TIME NIKALNE KA NAYA LOGIC ---
+                // --- DATE AUR TIME NIKALNE KA NAYA LOGIC ---
                 const wKey = `${item.jamia}_${item.teacher}_${item.month}`;
                 let wazahatColumnHtml = `<span class="text-red-500 bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200">انتظار میں...</span>`; 
                 
@@ -734,9 +737,10 @@ async function fetchAndRenderReport(db, user, userProfileData) {
                     const formattedTime = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }); 
                     const formattedDateTime = `${formattedDate} | ${formattedTime}`;
                     
+                    // Yahan se line-clamp-3 hata kar whitespace-pre-wrap lagaya gaya hai
                     wazahatColumnHtml = `
                         <div class="text-right">
-                            <p class="text-sm text-gray-800 leading-relaxed mb-2 line-clamp-3" title="${wData.wazahat}">${wData.wazahat}</p>
+                            <p class="text-sm text-gray-800 leading-relaxed mb-3 whitespace-pre-wrap break-words">${wData.wazahat}</p>
                             <span class="text-[11px] text-gray-600 font-sans font-bold bg-gray-100 px-2 py-1 rounded border inline-flex items-center gap-1">
                                 <i class="far fa-clock text-gray-400"></i> ${formattedDateTime}
                             </span>
