@@ -135,6 +135,14 @@
                  <input type="file" id="file-upload-input" accept="audio/*" class="w-full text-sm text-gray-500 file:mx-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"/>
             </div>
 
+            <!-- NEW: Image Upload Area (Hidden by Default) -->
+            <div id="image-upload-container" class="hidden bg-purple-50 border border-purple-100 rounded-xl p-4 mt-4 text-start">
+                 <label id="label-image-upload" class="block text-purple-800 font-bold mb-2 text-sm mx-1">
+                    <i class="fas fa-image mx-1"></i> Bord ki Image Upload Karen
+                 </label>
+                 <input type="file" id="image-upload-input" accept="image/*" class="w-full text-sm text-gray-500 file:mx-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700"/>
+            </div>
+
             <button onclick="uploadAndSave()" id="btn-save" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-emerald-700 shadow-xl transition flex items-center justify-center gap-2 mt-4">
                 <span id="btn-save-text">محفوظ کریں (Save)</span>
                 <i class="fas fa-cloud-upload-alt"></i>
@@ -161,6 +169,9 @@
             document.body.style.fontFamily = "'Poppins', sans-serif";
             document.getElementById('dropdown-icon').classList.replace('left-0', 'right-0');
             document.getElementById('header-icon').classList.replace('-left-4', '-right-4');
+
+            // Show Image Upload Option only in English mode
+            document.getElementById('image-upload-container').classList.remove('hidden');
 
             // Translate Static UI Elements
             document.getElementById('page-title').innerText = "Tadris Recording Portal";
@@ -501,6 +512,10 @@
             const dateVal = document.getElementById('rec-date').value;
             const fileInput = document.getElementById('file-upload-input');
             const uploadedFile = fileInput.files[0];
+            
+            // Image input values
+            const imageInput = document.getElementById('image-upload-input');
+            const uploadedImage = imageInput ? imageInput.files[0] : null;
 
             if (!classVal || !dateVal) return alert(T.alertFields);
             if (!recordedBlob && !uploadedFile) return alert(T.alertFiles);
@@ -527,6 +542,18 @@
             const fileName = `Rec_${Date.now()}.${extension}`;
 
             try {
+                let imageUrl = null;
+                
+                // Upload Image First (Agar select ki gayi ho)
+                if (uploadedImage) {
+                    status.innerText = "Bord Image upload ho rahi hai...";
+                    const imageExt = uploadedImage.name.split('.').pop();
+                    const imageName = `Img_${Date.now()}.${imageExt}`;
+                    const imageRef = firebase.storage().ref().child(`recordings/images/${imageName}`);
+                    await imageRef.put(uploadedImage);
+                    imageUrl = await imageRef.getDownloadURL();
+                }
+
                 const storageRef = firebase.storage().ref().child(`recordings/teachers/${fileName}`);
                 const uploadTask = storageRef.put(finalFile);
 
@@ -543,7 +570,7 @@
                         const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
                         const [className, bookName] = classVal.split('|');
                         
-                        await saveToFirestore(downloadURL, fileName, className, bookName, dateVal, btn, status, finalDuration);
+                        await saveToFirestore(downloadURL, fileName, className, bookName, dateVal, btn, status, finalDuration, imageUrl);
                     }
                 );
             } catch (err) {
@@ -552,7 +579,7 @@
             }
         }
 
-        async function saveToFirestore(url, fileName, className, bookName, dateVal, btn, status) {
+        async function saveToFirestore(url, fileName, className, bookName, dateVal, btn, status, finalDuration, imageUrl) {
             const d = new Date(dateVal);
             const mNum = d.getMonth();
             const yNum = d.getFullYear();
@@ -565,9 +592,15 @@
                 teacherName: selectedTeacher.name,
                 className, kitabName: bookName,
                 date: dateVal, url, fileName,
+                duration: finalDuration,
                 uploadedBy: "TeacherPortal",
                 createdAt: new Date().toISOString()
             };
+
+            // Agar image mojood ho to Entry me usay add karein
+            if (imageUrl) {
+                newEntry.imageUrl = imageUrl;
+            }
 
             try {
                 const ref = db.collection('monthly_reports').doc(reportDocId);
