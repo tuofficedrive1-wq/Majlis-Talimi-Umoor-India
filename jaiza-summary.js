@@ -428,7 +428,8 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
 
 
     // --- 4. BUTTON CLICK EVENTS ---
-    document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, user));
+    // Purani line dhoondhein aur is se replace karein:
+document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, user, userProfileData));
     
     // *** DOWNLOAD LOGIC: Fixed Width Container ***
     document.getElementById('js-download-img').addEventListener('click', async () => {
@@ -701,16 +702,44 @@ async function fetchAndRenderReport(db, user) {
             }
         });
 
-        const wazahatKeys = Object.keys(wazahatData);
+       const wazahatKeys = Object.keys(wazahatData);
         if (wazahatKeys.length === 0) {
-            wazahatTbody.innerHTML = `<tr><td colspan="5" class="py-6 text-emerald-600 font-bold bg-emerald-50">الحمدللہ! کوئی مناسب یا کمزور کارکردگی نہیں ملی۔</td></tr>`;
+            wazahatTbody.innerHTML = `<tr><td colspan="6" class="py-6 text-emerald-600 font-bold bg-emerald-50">الحمدللہ! کوئی مناسب یا کمزور کارکردگی نہیں ملی۔</td></tr>`;
         } else {
             wazahatKeys.forEach((key, index) => {
                 const item = wazahatData[key];
                 const subList = item.subjects.join('');
+                // --- ASLI AJEER CODE DHOONDHNA ---
+                let expectedCode = "";
+                if (userProfileData && userProfileData.academicYears) {
+                    Object.values(userProfileData.academicYears).forEach(yearData => {
+                        if (yearData.karkardagiStructure) {
+                            const jData = yearData.karkardagiStructure.find(j => j.jamiaName === item.jamia);
+                            if (jData && jData.teachers) {
+                                const tData = jData.teachers.find(t => t.name === item.teacher);
+                                if (tData && tData.loginCode) expectedCode = String(tData.loginCode);
+                            }
+                        }
+                    });
+                }
+                // ---------------------------------
+
+                const wKey = `${item.jamia}_${item.teacher}_${item.month}`;
+                let wazahatColumnHtml = `<span class="text-red-500 bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200">انتظار میں...</span>`; 
                 
-                // Data ko pack kar rahe hain
-                const payload = { jamia: item.jamia, teacher: item.teacher, month: startMonth, data: item.rawData };
+                if (submittedWazahats[wKey]) {
+                    const wData = submittedWazahats[wKey];
+                    const dateStr = new Date(wData.timestamp).toLocaleDateString('en-GB'); 
+                    wazahatColumnHtml = `
+                        <div class="text-right">
+                            <p class="text-sm text-gray-800 leading-snug mb-2 line-clamp-3" title="${wData.wazahat}">${wData.wazahat}</p>
+                            <span class="text-[10px] text-gray-500 font-sans font-bold bg-gray-100 px-1.5 py-0.5 rounded border">${dateStr}</span>
+                        </div>
+                    `;
+                }
+
+                // PAYLOAD ME expectedCode ADD KIYA GAYA HAI
+                const payload = { jamia: item.jamia, teacher: item.teacher, month: item.month, data: item.rawData, expectedCode: expectedCode };
                 const encodedPayload = encodeURIComponent(JSON.stringify(payload));
 
                 wazahatTbody.innerHTML += `
