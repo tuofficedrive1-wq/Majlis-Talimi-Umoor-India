@@ -105,7 +105,8 @@
                 </div>
             </div>
 
-            <div class="bg-gray-100 p-4 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- FILTERS SECTION UPDATED -->
+            <div class="bg-gray-100 p-4 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="relative">
                     <i class="fas fa-search absolute left-3 top-3 text-gray-400 text-xs"></i>
                     <input type="text" id="search-jamia" oninput="applyFilters()" 
@@ -118,6 +119,17 @@
                         <option value="">All Regions</option>
                     </select>
                 </div>
+
+                <div>
+                    <select id="filter-zimmedar" onchange="applyFilters()" class="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Zimmedaran</option>
+                    </select>
+                </div>
+
+                <div>
+                    <input type="date" id="filter-date" onchange="applyFilters()" 
+                        class="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-700">
+                </div>
             </div>
 
             <div id="reports-table-container" class="bg-white rounded-lg shadow-sm overflow-hidden min-h-[300px]">
@@ -126,6 +138,7 @@
         </div> 
     </div>
 
+    <!-- REVIEW MODAL -->
     <div id="review-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all scale-100">
             
@@ -153,6 +166,14 @@
                     <div>
                         <p class="text-[10px] uppercase text-gray-500 font-bold">Recording Date</p>
                         <p id="modal-date" class="font-semibold text-sm">-</p>
+                    </div>
+                </div>
+
+                <!-- IMAGE CONTAINER ADDED -->
+                <div id="modal-image-container" class="mb-6 hidden">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Attached Image:</label>
+                    <div class="bg-gray-100 p-2 rounded border border-gray-300 flex justify-center">
+                        <img id="modal-image" src="" alt="Report Attachment" class="max-h-64 object-contain rounded cursor-pointer hover:opacity-90 transition" onclick="window.open(this.src, '_blank')" title="Click to view full size">
                     </div>
                 </div>
 
@@ -222,7 +243,7 @@
     let filteredReports = []; 
     let currentEditingDocId = null;
     let currentEditingIndex = null;
-    let loggedInCheckerName = ""; // Current checker ka naam save karne ke liye
+    let loggedInCheckerName = ""; 
 
     // --- AUTH & CHECKER IDENTIFICATION ---
     auth.onAuthStateChanged(async user => {
@@ -230,7 +251,6 @@
             window.location.href = 'index.html';
         } else {
             try {
-                // Firebase users collection se login hue user ka naam nikalna
                 const userQuery = await db.collection('users').where('email', '==', user.email).get();
                 if (!userQuery.empty) {
                     const userData = userQuery.docs[0].data();
@@ -241,7 +261,6 @@
                 
                 document.getElementById('checker-name-display').innerText = `Welcome, ${loggedInCheckerName}`;
 
-                // Mahina set karna aur data fetch karna
                 const d = new Date();
                 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                 document.getElementById('filter-month').value = months[d.getMonth()];
@@ -256,7 +275,7 @@
 
     function logout() { auth.signOut().then(() => window.location.href = 'index.html'); }
 
-    // --- DATA FETCHING (FILTERED BY CHECKER) ---
+    // --- DATA FETCHING ---
     async function fetchReports() {
         if (!loggedInCheckerName) return;
 
@@ -288,7 +307,6 @@
                         data.tadrisRecording.data.forEach((rec, i) => {
                             let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
 
-                            // MAIN LOGIC: Sirf wahi array me push hogi jo is user ko assign hui ho
                             if (rec.assignedTo === loggedInCheckerName) {
                                 allReportsData.push({
                                     parentDocId: doc.id,
@@ -301,6 +319,7 @@
                                     duration: rec.duration || '--:--', 
                                     tasurat: rec.tasurat || '', 
                                     recordingLink: rec.url || rec.link || '#',
+                                    imageUrl: rec.imageUrl || rec.image || rec.photo || null, // Image Capture Update
                                     zimmedarName: finalZimmedarName,
                                     region: region
                                 });
@@ -329,28 +348,44 @@
 
     // --- FILTERS ---
     function populateFilters() {
-        const regions = [...new Set(allReportsData.map(r => r.region))].sort();
+        // Populate Regions
+        const regions = [...new Set(allReportsData.map(r => r.region))].filter(Boolean).sort();
         const regSelect = document.getElementById('filter-region');
         regSelect.innerHTML = '<option value="">All Regions</option>';
         
         regions.forEach(reg => {
-            if (reg && reg.trim() !== "") {
-                const opt = document.createElement('option');
-                opt.value = reg;
-                opt.innerText = reg;
-                regSelect.appendChild(opt);
-            }
+            const opt = document.createElement('option');
+            opt.value = reg;
+            opt.innerText = reg;
+            regSelect.appendChild(opt);
+        });
+
+        // Populate Zimmedaran
+        const zimmedaran = [...new Set(allReportsData.map(r => r.zimmedarName))].filter(Boolean).sort();
+        const zimSelect = document.getElementById('filter-zimmedar');
+        zimSelect.innerHTML = '<option value="">All Zimmedaran</option>';
+        
+        zimmedaran.forEach(zim => {
+            const opt = document.createElement('option');
+            opt.value = zim;
+            opt.innerText = zim;
+            zimSelect.appendChild(opt);
         });
     }
 
     function applyFilters() {
         const searchJamia = document.getElementById('search-jamia').value.toLowerCase();
         const filterReg = document.getElementById('filter-region').value;
+        const filterZim = document.getElementById('filter-zimmedar').value;
+        const filterDate = document.getElementById('filter-date').value; 
 
         filteredReports = allReportsData.filter(r => {
             const matchJamia = r.jamiaName.toLowerCase().includes(searchJamia);
             const matchReg = filterReg === "" || r.region === filterReg;
-            return matchJamia && matchReg;
+            const matchZim = filterZim === "" || r.zimmedarName === filterZim;
+            const matchDate = filterDate === "" || r.date === filterDate; 
+
+            return matchJamia && matchReg && matchZim && matchDate;
         });
 
         renderTable();
@@ -370,7 +405,7 @@
         document.getElementById('stat-percent').innerText = percent + "%";
     }
 
-    // --- RENDER TABLE (SIMPLE FOR CHECKER) ---
+    // --- RENDER TABLE ---
     function renderTable() {
         const container = document.getElementById('reports-table-container');
         
@@ -454,6 +489,17 @@
         document.getElementById('modal-date').innerText = r.date;
         document.getElementById('modal-comment').value = r.tasurat;
         document.getElementById('save-status').classList.add('hidden');
+
+        // Image Handle Update
+        const imgContainer = document.getElementById('modal-image-container');
+        const imgElement = document.getElementById('modal-image');
+        if (r.imageUrl) {
+            imgElement.src = r.imageUrl;
+            imgContainer.classList.remove('hidden');
+        } else {
+            imgElement.src = "";
+            imgContainer.classList.add('hidden');
+        }
 
         const player = document.getElementById('modal-audio-player');
         const linkBtn = document.getElementById('modal-link');
