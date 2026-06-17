@@ -5,6 +5,10 @@
   <title>تعلیمی جائزہ فارم (کلاس وار)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     @font-face {
@@ -18,8 +22,9 @@
       font-size: 14px; /* overall text bigger */
     }
     .urdu {
-      font-family: 'Jameel Noori Nastaleeq', system-ui, sans-serif;
-    }
+  font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', system-ui, sans-serif;
+  line-height: 1.8;
+}
     input, select, textarea, button {
       font-size: 13px !important;  /* form text bigger on mobile + desktop */
     }
@@ -29,6 +34,10 @@
     /* Print to PDF CSS Settings */
     /* Print to PDF CSS Settings - FINAL FIX */
     @media print {
+      .class-body, .class-body.hidden {
+    display: block !important;
+    visibility: visible !important;
+  }
       /* 1. Page Size aur Base Setting */
       @page {
         size: A4;
@@ -1304,25 +1313,102 @@ const updateDashboardReport = async (finalPercent, finalGrade) => {
   }
 };
 
-// --- PDF BANAO LOGIC ---
+// ─── PDF BANAO LOGIC (html2pdf.js — Reliable & Beautiful) ───
 const printPdfBtn = document.getElementById("print-pdf-btn");
 if (printPdfBtn) {
-  printPdfBtn.addEventListener("click", () => {
-    // 1. Agar koi class band (hidden) hai, to pehle sabko khol dein
-    const hiddenBodies = document.querySelectorAll('.class-body.hidden');
-    hiddenBodies.forEach(body => {
+  printPdfBtn.addEventListener("click", async () => {
+ 
+    // html2pdf library check
+    if (typeof html2pdf === 'undefined') {
+      alert('PDF library load nahi hui. Page refresh kar ke dobara koshish karein.');
+      return;
+    }
+ 
+    // Button disable (duplicate click rokne ke liye)
+    printPdfBtn.disabled = true;
+    const origHTML = printPdfBtn.innerHTML;
+    printPdfBtn.innerHTML = '<span class="urdu text-sm">⏳ PDF بن رہی ہے...</span>';
+ 
+    // Step 1: Tamam class bodies force-show karo
+    const allBodies = document.querySelectorAll('.class-body');
+    allBodies.forEach(body => {
       body.classList.remove('hidden');
-      const toggleBtn = body.parentElement.querySelector('.toggle-body-btn');
-      if(toggleBtn) toggleBtn.textContent = "تفصیل چھپائیں";
+      body.style.setProperty('display', 'block', 'important');
+      body.style.setProperty('visibility', 'visible', 'important');
+      body.style.setProperty('opacity', '1', 'important');
     });
-
-    // 2. Thoda wait karke (taake UI set ho jaye) print command chalayen
-    setTimeout(() => {
-      window.print();
-    }, 300);
+ 
+    // Step 2: UI buttons temporarily hide karo
+    const uiElements = [
+      ...['#dashboard-back-btn','#info-box','#error-box','#success-box',
+          '#loader','#enable-edit-btn','#add-class-btn']
+        .map(s => document.querySelector(s)),
+      ...document.querySelectorAll('.add-book-btn,.remove-book-btn,.remove-class-btn,.toggle-body-btn'),
+      printPdfBtn,
+      document.querySelector('button[type="submit"]'),
+    ].filter(Boolean);
+    uiElements.forEach(el => el.style.setProperty('display', 'none', 'important'));
+ 
+    // Step 3: pdf-mode on
+    document.body.classList.add('pdf-mode');
+ 
+    // Step 4: Fonts aur render ka intezaar
+    try { await document.fonts.ready; } catch(e) {}
+    await new Promise(r => setTimeout(r, 900));
+ 
+    // Step 5: Filename
+    let safeJamia = 'jaiza';
+    try { safeJamia = decodeURIComponent(jamiaId || 'jaiza'); } catch(e) {}
+    const filename = `تعلیمی_جائزہ_${safeJamia}_${monthKey || ''}.pdf`;
+ 
+    // Step 6: html2pdf options
+    const opt = {
+      margin: [10, 10, 13, 10],
+      filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        letterRendering: true,
+        scrollY: 0,
+        windowWidth: Math.max(document.documentElement.scrollWidth, 1050),
+        logging: false,
+        backgroundColor: '#ffffff',
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait',
+        compress: true,
+      },
+      pagebreak: {
+        mode: ['css', 'avoid-all'],
+        avoid: ['.book-card', 'table'],
+      },
+    };
+ 
+    // Step 7: PDF generate aur download
+    try {
+      await html2pdf().set(opt).from(document.querySelector('.max-w-6xl')).save();
+    } catch (err) {
+      console.error('PDF error:', err);
+      alert('PDF بنانے میں مسئلہ آیا۔ براہ کرم دوبارہ کوشش کریں۔');
+    } finally {
+      // Step 8: Sab restore karo
+      document.body.classList.remove('pdf-mode');
+      allBodies.forEach(body => {
+        body.style.removeProperty('display');
+        body.style.removeProperty('visibility');
+        body.style.removeProperty('opacity');
+      });
+      uiElements.forEach(el => el.style.removeProperty('display'));
+      printPdfBtn.disabled = false;
+      printPdfBtn.innerHTML = origHTML;
+    }
   });
 }
-// --- PDF BANAO LOGIC END ---
+// ─── PDF BANAO LOGIC END ───
   
 </script>
 
