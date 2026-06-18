@@ -1085,6 +1085,10 @@
                         <option value="admin">Super Admin (Full Access)</option>
                         <option value="custom" class="font-bold text-indigo-600">➕ Naya Role Banayen (Custom)</option>
                     </select>
+                    <div id="edit-custom-role-container" class="hidden mt-3 p-3 bg-teal-50 border border-teal-100 rounded-lg">
+        <label class="block text-xs font-bold text-teal-800 mb-1">Naye Role Ka Naam Likhein:</label>
+        <input type="text" id="edit-user-custom-role" class="w-full p-2 border rounded border-teal-300 focus:ring-2 focus:ring-teal-500" placeholder="e.g. data_entry_operator">
+    </div>
                     
                     <!-- 🟢 HIDDEN CUSTOM ROLE INPUT -->
                     <div id="custom-role-container" class="hidden mt-3 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
@@ -2898,14 +2902,23 @@ const handleEditUserSubmit = async (e) => {
     const userId = document.getElementById('edit-user-uid').value;
     if (!userId) { editUserError.textContent = 'User ID is missing.'; return; } 
     
-    // Ab hum JSON parse nahi karenge, seedha global array use karenge
+    // 🟢 NAYA LOGIC: Custom Role Check
+    let selectedRole = document.getElementById('edit-user-role').value;
+    if (selectedRole === 'custom') {
+        const customVal = document.getElementById('edit-user-custom-role').value.trim().toLowerCase();
+        selectedRole = customVal.replace(/\s+/g, '_'); // Spaces ko underscore banayein
+        if (!selectedRole) {
+            editUserError.textContent = "Ba-maherbani naye role ka naam likhein.";
+            return;
+        }
+    }
     
     const updatedData = {
         name: document.getElementById('edit-user-name').value,
-        // email update nahi karte firebase auth ke liye, sirf display hai
-        role: document.getElementById('edit-user-role').value,
+        role: selectedRole, // 🟢 Yahan updated role aayega
         region: document.getElementById('edit-user-region').value,
         zimmedari: document.getElementById('edit-user-zimmedari').value,
+        // ... baqi aapka data (contact, photoURL waghera)
         contact: document.getElementById('edit-user-contact').value,
         ajeerCode: document.getElementById('edit-user-ajeer-code').value,
         photoURL: document.getElementById('edit-user-photoURL').value,
@@ -3899,19 +3912,58 @@ const fetchAndRenderAdminUsers = (initialLoad = false) => {
     const q = query(usersRef); 
     if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
     
-    unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
-    // 1. Raw list jisme saare users hain (Active + Deactivated)
+   unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
     const rawUsers = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(user => user.id !== ADMIN_UID);
         
-    window.allFetchedUsersData = rawUsers; // Backup list sirf Manage Users tab ke liye
-    
-    // 2. allUsersData mein sirf ACTIVE users rahenge (Poore dashboard ke filters ke liye)
+    window.allFetchedUsersData = rawUsers;
     allUsersData = rawUsers.filter(user => user.isActive !== false); 
     window.allUsersData = allUsersData;
 
+    // 🟢 NAYA LOGIC: Database se bane huye saare custom roles nikal kar list me add karna
+    const standardRoles = ['standard', 'inspector', 'recording_mufattish', 'education_office', 'tadrisi_course_management', 'tadrisi_course_mufattish', 'admin', 'custom'];
+    const allRolesInDb = [...new Set(rawUsers.map(u => u.role).filter(r => r))];
+    const customRoles = allRolesInDb.filter(r => !standardRoles.includes(r));
+
+    const rebuildRoleSelect = (selectId) => {
+        const selectEl = document.getElementById(selectId);
+        if(!selectEl) return;
+        const currentVal = selectEl.value; // Purani value save rakhein
+        
+        let html = `
+            <option value="standard">Standard User (Teacher/Zimmedar)</option>
+            <option value="inspector">Academic Inspector (Mufattish)</option>
+            <option value="recording_mufattish">Recording Mufattish (Sirf Tadris Recording)</option>
+            <option value="education_office">Academic Education Office (Manage Inspectors)</option>
+            <option value="tadrisi_course_management">Tadrisi Course Management (Admin)</option>
+            <option value="tadrisi_course_mufattish">Tadrisi Course Mufattish</option>
+            <option value="admin">Super Admin (Full Access)</option>
+        `;
+
+        if (customRoles.length > 0) {
+            html += `<optgroup label="Database Roles (Pehle Banaye Gaye)">`;
+            customRoles.forEach(cr => {
+                const displayRole = cr.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                html += `<option value="${cr}">${displayRole}</option>`;
+            });
+            html += `</optgroup>`;
+        }
+        
+        html += `<option value="custom" class="font-bold text-indigo-600">➕ Naya Role Banayen (Custom)</option>`;
+        selectEl.innerHTML = html;
+
+        // Agar list banne ke baad purana selected role list mein hai to usay wapas set karein
+        if (currentVal && Array.from(selectEl.options).some(opt => opt.value === currentVal)) {
+            selectEl.value = currentVal;
+        }
+    };
+
+    rebuildRoleSelect('edit-user-role');
+    rebuildRoleSelect('add-user-role');
+
     renderAdminUsersTable(allUsersData);
+    // ... baqi code (regions waghera populate karne ka) waisa hi rahega
        
         const regions = [...new Set(allUsersData.map(u => u.region).filter(r => r && r.trim() !== ''))];
 
@@ -7018,6 +7070,23 @@ const generateMultiMonthReportCard = async () => {
 
 // Event listener attach karein click par
 document.getElementById('btn-generate-report-card').addEventListener('click', generateMultiMonthReportCard);
+                                const editUserRoleSelect = document.getElementById('edit-user-role');
+const editCustomRoleContainer = document.getElementById('edit-custom-role-container');
+const editCustomRoleInput = document.getElementById('edit-user-custom-role');
+
+if (editUserRoleSelect) {
+    editUserRoleSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'custom') {
+            editCustomRoleContainer.classList.remove('hidden');
+            editCustomRoleInput.required = true;
+            editCustomRoleInput.focus();
+        } else {
+            editCustomRoleContainer.classList.add('hidden');
+            editCustomRoleInput.required = false;
+            editCustomRoleInput.value = '';
+        }
+    });
+}
  
        // --- Init ---
         initApp();
