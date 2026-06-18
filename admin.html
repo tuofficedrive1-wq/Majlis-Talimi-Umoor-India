@@ -1784,27 +1784,35 @@ window.initTransferTab = initTransferTab;
 
                 // Search and Filter Logic for Users
              const userSearchInput = document.getElementById('user-search-input');
-             if(userSearchInput) {
-                 userSearchInput.addEventListener('input', (e) => {
-                     const term = e.target.value.toLowerCase();
-                     const filtered = allUsersData.filter(u => 
-                         (u.name || '').toLowerCase().includes(term) || 
-                         (u.email || '').toLowerCase().includes(term)
-                     );
-                     renderAdminUsersTable(filtered);
-                 });
-             }
+if(userSearchInput) {
+    userSearchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        
+        // Check karein inactive tab khula hai ya nahi
+        const activeRoleBtn = document.querySelector('.user-role-filter-btn.active');
+        const isInactiveTab = activeRoleBtn && activeRoleBtn.dataset.role === 'inactive';
+        
+        // Jis tab par hain usi ka data search karein
+        const baseList = isInactiveTab 
+            ? window.allFetchedUsersData.filter(u => u.isActive === false) 
+            : allUsersData;
+
+        const filtered = baseList.filter(u => 
+            (u.name || '').toLowerCase().includes(term) || 
+            (u.email || '').toLowerCase().includes(term)
+        );
+        renderAdminUsersTable(filtered);
+    });
+}
 
             const roleFilterButtons = document.querySelectorAll('.user-role-filter-btn');
 roleFilterButtons.forEach(btn => {
     btn.addEventListener('click', (e) => {
-        // Purane active classes hatana
         roleFilterButtons.forEach(b => {
             b.classList.remove('active', 'bg-white', 'shadow', 'text-teal-700', 'text-red-700');
             b.classList.add('text-gray-600');
         });
         
-        // Naye clicked button ko highlight karna
         btn.classList.add('active', 'bg-white', 'shadow');
         if(btn.dataset.role === 'inactive') {
             btn.classList.add('text-red-700');
@@ -1816,16 +1824,14 @@ roleFilterButtons.forEach(btn => {
         const role = btn.dataset.role;
         let filteredUsers = [];
 
-        // 🟢 NAYI FILTER LOGIC
+        // 🟢 FILTER YAHAN "allFetchedUsersData" SE HOGA
         if (role === 'all') {
-            // All users mein sirf Active dikhayein
-            filteredUsers = allUsersData.filter(u => u.isActive !== false);
+            filteredUsers = window.allFetchedUsersData.filter(u => u.isActive !== false);
         } else if (role === 'inactive') {
-            // Inactive (Deactivated) tab par sirf block kiye gaye users dikhayein
-            filteredUsers = allUsersData.filter(u => u.isActive === false);
+            // Yahan par deactivated dikhenge
+            filteredUsers = window.allFetchedUsersData.filter(u => u.isActive === false);
         } else {
-            // Baqi categories mein bhi sirf active users filter karein
-            filteredUsers = allUsersData.filter(u => u.isActive !== false).filter(u => {
+            filteredUsers = window.allFetchedUsersData.filter(u => u.isActive !== false).filter(u => {
                 if (role === 'admin_group') return ['admin', 'tadrisi_course_management', 'recording_mufattish'].includes(u.role);
                 if (role === 'inspector') return ['inspector', 'education_office'].includes(u.role);
                 if (role === 'standard') return u.role === 'standard' || !u.role;
@@ -1833,7 +1839,6 @@ roleFilterButtons.forEach(btn => {
                 return u.role === role;
             });
         }
-        
         renderAdminUsersTable(filteredUsers);
     });
 });
@@ -3895,14 +3900,19 @@ const fetchAndRenderAdminUsers = (initialLoad = false) => {
     if(unsubscribeAdminUsers) unsubscribeAdminUsers(); 
     
     unsubscribeAdminUsers = onSnapshot(q, (snapshot) => { 
-        // Jab snapshot aata hai:
-allUsersData = snapshot.docs
-    .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(user => user.id !== ADMIN_UID);
-
-        window.allUsersData = allUsersData;
-        renderAdminUsersTable(allUsersData);
+    // 1. Raw list jisme saare users hain (Active + Deactivated)
+    const rawUsers = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(user => user.id !== ADMIN_UID);
         
+    window.allFetchedUsersData = rawUsers; // Backup list sirf Manage Users tab ke liye
+    
+    // 2. allUsersData mein sirf ACTIVE users rahenge (Poore dashboard ke filters ke liye)
+    allUsersData = rawUsers.filter(user => user.isActive !== false); 
+    window.allUsersData = allUsersData;
+
+    renderAdminUsersTable(allUsersData);
+       
         const regions = [...new Set(allUsersData.map(u => u.region).filter(r => r && r.trim() !== ''))];
 
         populateUserFilterDropdown(summaryUserFilter, allUsersData);
