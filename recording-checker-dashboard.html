@@ -189,15 +189,27 @@
     <span id="speed-indicator" class="text-[10px] bg-gray-200 px-2 py-1 rounded">Speed: 1x</span>
 </div>
                     
-                    <div id="audio-container" class="bg-gray-100 p-2 rounded border border-gray-300 flex items-center gap-2">
-                        <audio id="modal-audio-player" controls class="w-full h-10">
-                            <source src="" type="audio/mpeg">
-                        </audio>
-                        <button id="speed-btn" onclick="toggleSpeed()" type="button" 
-                            class="bg-white border hover:bg-gray-50 text-blue-700 text-xs font-bold px-3 py-2 rounded shadow-sm w-14 transition">
-                            1x
-                        </button>
-                    </div>
+                    <div id="audio-container" class="bg-gray-100 p-2 rounded border border-gray-300 flex items-center gap-3">
+    <audio id="modal-audio-player" class="hidden">
+        <source src="" type="audio/mpeg">
+    </audio>
+    
+    <button id="custom-play-btn" type="button" class="text-blue-600 hover:text-blue-800 focus:outline-none w-6 flex justify-center transition">
+        <i class="fas fa-play"></i>
+    </button>
+
+    <span id="current-time" class="text-xs font-mono text-gray-600 w-10 text-right">00:00</span>
+    
+    <input type="range" id="seek-bar" value="0" max="100" step="0.1" 
+        class="flex-grow h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600">
+    
+    <span id="total-time" class="text-xs font-mono text-gray-600 w-10">--:--</span>
+
+    <button id="speed-btn" onclick="toggleSpeed()" type="button" 
+        class="bg-white border border-gray-300 hover:bg-gray-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded shadow-sm transition min-w-[32px]">
+        1x
+    </button>
+</div>
                     <div class="mt-1 text-right">
                         <a id="modal-link" href="#" target="_blank" class="text-[10px] text-blue-600 hover:underline">
                             <i class="fas fa-external-link-alt"></i> Download
@@ -531,6 +543,11 @@
         const container = document.getElementById('audio-container');
         
         player.playbackRate = 1.0;
+        // Nayi line add karein UI reset karne ke liye
+        document.getElementById('custom-play-btn').innerHTML = '<i class="fas fa-play"></i>';
+        document.getElementById('current-time').innerText = "00:00";
+        document.getElementById('total-time').innerText = "--:--";
+        document.getElementById('seek-bar').value = 0;
         document.getElementById('speed-btn').innerText = "1x";
 
         if (r.recordingLink && r.recordingLink !== '#' && r.recordingLink.startsWith('http')) {
@@ -549,10 +566,11 @@
         document.getElementById('review-modal').classList.remove('hidden');
     }
 
-    function closeModal() {
+   function closeModal() {
         const player = document.getElementById('modal-audio-player');
         player.pause();
         player.currentTime = 0;
+        document.getElementById('custom-play-btn').innerHTML = '<i class="fas fa-play"></i>'; // Ye line add karein
         document.getElementById('review-modal').classList.add('hidden');
     }
 
@@ -648,6 +666,70 @@
     audioPlayer.addEventListener('error', () => {
         loadingIndicator.classList.add('hidden');
         // Aap chahein toh yahan error message bhi dikha sakte hain
+    });
+
+        // --- CUSTOM AUDIO PLAYER LOGIC ---
+    const customPlayBtn = document.getElementById('custom-play-btn');
+    const customSeekBar = document.getElementById('seek-bar');
+    const currentTimeEl = document.getElementById('current-time');
+    const totalTimeEl = document.getElementById('total-time');
+
+    // Play/Pause Control
+    customPlayBtn.addEventListener('click', () => {
+        if (!audioPlayer.src || audioPlayer.src.includes('#')) return; // Agar link nahi hai to play na kare
+        
+        if (audioPlayer.paused) {
+            audioPlayer.play();
+            customPlayBtn.innerHTML = '<i class="fas fa-pause"></i>';
+        } else {
+            audioPlayer.pause();
+            customPlayBtn.innerHTML = '<i class="fas fa-play"></i>';
+        }
+    });
+
+    // Time Formatting (Seconds ko MM:SS me badalna)
+    function formatTime(seconds) {
+        if (isNaN(seconds) || !isFinite(seconds)) return "--:--";
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+    }
+
+    // Jab Total Time load ho jaye
+    audioPlayer.addEventListener('loadedmetadata', () => {
+        if (isFinite(audioPlayer.duration)) {
+            totalTimeEl.innerText = formatTime(audioPlayer.duration);
+            customSeekBar.max = audioPlayer.duration;
+        }
+    });
+
+    // Jab audio chal rahi ho to Bar aur Current Time aage badhana
+    audioPlayer.addEventListener('timeupdate', () => {
+        currentTimeEl.innerText = formatTime(audioPlayer.currentTime);
+        
+        // Kabhi kabhi lambi files me duration thoda late load hota hai, isliye isko dynamcially check karte hain
+        if (isFinite(audioPlayer.duration) && audioPlayer.duration > 0) {
+            customSeekBar.max = audioPlayer.duration;
+            customSeekBar.value = audioPlayer.currentTime;
+            totalTimeEl.innerText = formatTime(audioPlayer.duration);
+        } else {
+            // Agar browser ko total time pata nahi hai, to bar ko 0 par rakhein taaki wo full na dikhe
+            customSeekBar.value = 0;
+        }
+    });
+
+    // Jab user loading bar ko mouse se aage-peeche kare
+    customSeekBar.addEventListener('input', () => {
+        if (isFinite(audioPlayer.duration)) {
+            audioPlayer.currentTime = customSeekBar.value;
+        }
+    });
+
+    // Jab recording puri khatam ho jaye
+    audioPlayer.addEventListener('ended', () => {
+        customPlayBtn.innerHTML = '<i class="fas fa-play"></i>';
+        customSeekBar.value = 0;
+        currentTimeEl.innerText = "00:00";
     });
         
     </script>
