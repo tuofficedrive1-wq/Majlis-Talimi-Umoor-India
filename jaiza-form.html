@@ -995,27 +995,48 @@ const addNewClassCard = () => {
 const loadExistingJaizaForms = async (user) => {
   if (!jamiaId || !monthKey) return;
 
-  const qRef = query(
-    collection(db,"jaiza_forms"),
-    where("jamiaId","==",jamiaId),
-    where("monthKey","==",monthKey),
-    where("createdBy","==",user.uid)
-  );
-  const snap = await getDocs(qRef);
+  // --- NAYA LOCALSTORAGE DRAFT CHECK ---
+  const localKey = `jaiza_draft_${jamiaId}_${monthKey}`;
+  const draftStr = localStorage.getItem(localKey);
+  let docs = [];
+  let usingDraft = false;
 
-  // Agar koi data nahi mila to blank form (editable)
-  if (snap.empty) {
-    classesContainer.innerHTML = "";
-    classCount = 0;
-    addNewClassCard(); // Sirf tabhi add karein jab data na ho
-    recalcJamia();
-    if (enableEditBtn) enableEditBtn.disabled = true;
-    return;
-}
+  if (draftStr) {
+    const ask = confirm("آپ کا پچھلا نامکمل (unsaved) ڈیٹا ملا ہے۔ کیا آپ اسے واپس لانا چاہتے ہیں؟");
+    if (ask) {
+      docs = JSON.parse(draftStr);
+      usingDraft = true;
+      // Draft load karne par form ko editable rakhein
+      if (enableEditBtn) enableEditBtn.disabled = true; 
+    } else {
+      localStorage.removeItem(localKey);
+    }
+  }
 
-// Data milne par:
-classesContainer.innerHTML = ""; // Container saaf karein
-classCount = 0;
+  // Agar draft nahi hai, toh Firebase se data layein
+  if (!usingDraft) {
+    const qRef = query(
+      collection(db,"jaiza_forms"),
+      where("jamiaId","==",jamiaId),
+      where("monthKey","==",monthKey),
+      where("createdBy","==",user.uid)
+    );
+    const snap = await getDocs(qRef);
+
+    if (snap.empty) {
+      classesContainer.innerHTML = "";
+      classCount = 0;
+      addNewClassCard(); 
+      recalcJamia();
+      if (enableEditBtn) enableEditBtn.disabled = true;
+      return;
+    }
+
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+  }
+
+  classesContainer.innerHTML = ""; // Container saaf karein
+  classCount = 0;
 
   const docs = [];
   snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
@@ -1340,11 +1361,15 @@ formEl.addEventListener("submit", async (e) => {
     await Promise.all(delPromises);
 
     // phir naya data add
+   // phir naya data add
     const addPromises = payloads.map(p => addDoc(collection(db,"jaiza_forms"), p));
     await Promise.all(addPromises);
 
     showSuccess("تعلیمی جائزہ کامیابی کے ساتھ محفوظ ہو گیا۔");
-    isFormDirty = false; //
+    isFormDirty = false; 
+    
+    // NAYI LINE: Database mein save hone ke baad browser memory saaf kar dein
+    localStorage.removeItem(`jaiza_draft_${jamiaId}_${monthKey}`);
   } catch(err) {
     console.error(err);
     showError("ڈیٹا محفوظ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
@@ -1373,13 +1398,74 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
   // Agar user form mein kuch bhi change kare (likhe ya select kare)
+// --- NAYA: LocalStorage Auto-Save Logic ---
+const saveDraftToLocal = () => {
+  if (!jamiaId || !monthKey) return;
+  const cards = Array.from(classesContainer.querySelectorAll(".class-card"));
+  const payloads = [];
+
+  cards.forEach(card => {
+    const className = card.querySelector(".class-select")?.value.trim() || "";
+    const totalStudents = Number(card.querySelector(".total-students")?.value || 0);
+    const presentStudents = Number(card.querySelector(".present-students")?.value || 0);
+    const classPercentStr = card.querySelector(".class-percent")?.value || "";
+    let classPercentage = null;
+    if (classPercentStr) {
+      const v = Number(classPercentStr.replace("%","").trim());
+      if (!isNaN(v)) classPercentage = v;
+    }
+    const issues = card.querySelector(".issues")?.value.trim() || "";
+    const suggestions = card.querySelector(".suggestions")?.value.trim() || "";
+
+    const books = [];
+    card.querySelectorAll(".book-card").forEach(bCard => {
+      const teacherName = bCard.querySelector(".book-teacher")?.value.trim() || "";
+      const bookName = bCard.querySelector(".book-name")?.value.trim() || "";
+      const weakness = bCard.querySelector(".weakness")?.value.trim() || "";
+      const percStr = bCard.querySelector(".book-percent")?.value || "";
+      let percentage = null;
+      if (percStr) {
+        const v = Number(percStr.replace("%","").trim());
+        if (!isNaN(v)) percentage = v;
+      }
+
+      const questions = [];
+      bCard.querySelectorAll(".question-row").forEach((row, idx) => {
+        const text = row.querySelector(".q-text")?.value.trim() || "";
+        const corr = row.querySelector(".q-correct")?.value || "";
+        if (text || corr) {
+          questions.push({ index: idx + 1, text, correctStudents: corr !== "" ? Number(corr) : "" });
+        }
+      });
+
+      const checks = {
+        sabaqSunana: bCard.querySelector(".chk-sabaq-sunana")?.checked || false,
+        sabaqParhana: bCard.querySelector(".chk-sabaq-parhana")?.checked || false,
+        waqtIstemal: bCard.querySelector(".chk-waqt-istemal")?.checked || false,
+        tiyari: bCard.querySelector(".chk-tiyari")?.checked || false,
+        takrar: bCard.querySelector(".chk-takrar")?.checked || false,
+        nizam: bCard.querySelector(".chk-nizam")?.checked || false,
+      };
+
+      books.push({ teacherName, bookName, weakness, percentage, questions, checks });
+    });
+
+    payloads.push({ className, totalStudents, presentStudents, classPercentage, issues, suggestions, books });
+  });
+
+  // Data ko browser ki memory mein save kar diya
+  localStorage.setItem(`jaiza_draft_${jamiaId}_${monthKey}`, JSON.stringify(payloads));
+};
+
+// Jab bhi form mein kuch likha jaye ya badla jaye, toh background mein save ho jayega
 formEl.addEventListener("input", () => {
   isFormDirty = true;
+  saveDraftToLocal();
 });
 formEl.addEventListener("change", () => {
   isFormDirty = true;
+  saveDraftToLocal();
 });
-
 // Browser close/refresh/back button par rokne ke liye
 window.addEventListener("beforeunload", function (e) {
   if (isFormDirty) {
