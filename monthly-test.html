@@ -375,6 +375,15 @@
             await loadTeachingData();
         };
 
+        window.getPreviousMonth = (monthStr) => {
+    if (!monthStr) return null;
+    let [y, m] = monthStr.split('-');
+    y = parseInt(y); m = parseInt(m);
+    if (m === 1) { m = 12; y = y - 1; } 
+    else { m = m - 1; }
+    return `${y}-${m < 10 ? '0' + m : m}`;
+};
+        
         function getAcademicYear(key) {
             if (!key) return null;
             const [yStr, mStr] = key.split("-");
@@ -531,33 +540,44 @@
             }
         };
 
-        window.generateSheet = () => {
-            const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-            if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length !== 3) {
-                if (!confirm(`Apne sirf ${checkedBoxes.length} kitabein select ki hain. Kya aap aage badhna chahte hain?`)) return;
-            }
-            const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
-            finalSubjectsList = [...selected3];
+       window.generateSheet = () => {
+    const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
+    if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length !== 3) {
+        if (!confirm(`Apne sirf ${checkedBoxes.length} kitabein select ki hain. Kya aap aage badhna chahte hain?`)) return;
+    }
+    const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
+    finalSubjectsList = [...selected3];
 
-            checkedBoxes.forEach(cb => {
-                const sub = cb.value;
-                if (!subjectTranslationMap[sub]) {
-                    subjectTranslationMap[sub] = sub; 
-                }
-            });
-            if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
-            if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
-            if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer');
+    checkedBoxes.forEach(cb => {
+        const sub = cb.value;
+        if (!subjectTranslationMap[sub]) subjectTranslationMap[sub] = sub; 
+    });
+    if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
+    if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
+    if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer');
 
-            totalMax = 0;
-            finalSubjectsList.forEach(sub => {
-                const subLower = sub.toLowerCase();
-                if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25;
-                else totalMax += 100;
-            });
-            renderTableHeaders();
-            document.getElementById('result-area').classList.remove('hidden');
-        };
+    totalMax = 0;
+    finalSubjectsList.forEach(sub => {
+        const subLower = sub.toLowerCase();
+        if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25;
+        else totalMax += 100;
+    });
+    
+    renderTableHeaders();
+    document.getElementById('result-area').classList.remove('hidden');
+
+    // NAYA LOGIC: Agar table khali hai aur pichle mahine ke students available hain, to unhe load karein
+    const tbody = document.getElementById('students-body');
+    if (tbody.innerHTML.trim() === '' && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+        window.previousMonthStudents.forEach(stdName => {
+            // Naye bachay khali marks ke sath add kar diye gaye
+            addStudentRow(stdName, {}); 
+        });
+        
+        // Load karne ke baad list khali kar dein taake dobara dabane par double bachay add na hon
+        window.previousMonthStudents = []; 
+    }
+};
 
         function renderTableHeaders() {
             const head = document.getElementById('table-head');
@@ -851,106 +871,99 @@
         };
 
         window.checkExistingForClass = async (clsName) => {
-            const cleanClass = clsName.split('_')[0]; 
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const resultArea = document.getElementById('result-area');
-            const studentsBody = document.getElementById('students-body');
-            const classSelect = document.getElementById('class-select');
-            const selectionArea = document.getElementById('subject-selection-area'); 
+    const cleanClass = clsName.split('_')[0]; 
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+    const resultArea = document.getElementById('result-area');
+    const studentsBody = document.getElementById('students-body');
+    const classSelect = document.getElementById('class-select');
+    const selectionArea = document.getElementById('subject-selection-area'); 
 
-            finalSubjectsList = [];
-            studentsBody.innerHTML = '';
-            resultArea.classList.add('hidden'); 
-            document.getElementById('table-head').innerHTML = '';
+    finalSubjectsList = [];
+    studentsBody.innerHTML = '';
+    resultArea.classList.add('hidden'); 
+    document.getElementById('table-head').innerHTML = '';
+    
+    const checkboxesList = document.querySelectorAll('.subject-checkbox');
+    checkboxesList.forEach(chk => { chk.checked = false; });
+    classSelect.disabled = false; 
+
+    const params = new URLSearchParams(window.location.search);
+    const isViewMode = params.get('mode') === 'view';
+
+    // NAYA: Pichle mahine ki list reset karein
+    window.previousMonthStudents = []; 
+
+    try {
+        const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
+        if (snap.exists()) {
+            const data = snap.data(); 
+            if (data.subjectMap) subjectTranslationMap = { ...subjectTranslationMap, ...data.subjectMap };
             
-            const checkboxesList = document.querySelectorAll('.subject-checkbox');
-            checkboxesList.forEach(chk => { chk.checked = false; });
-            classSelect.disabled = false; 
+            const savedVariableSubjects = data.subjects ? data.subjects.filter(s => s !== 'English' && s !== 'Maths' && s !== 'Computer') : [];
+            checkboxesList.forEach(chk => { if (savedVariableSubjects.includes(chk.value)) chk.checked = true; });
+            
+            finalSubjectsList = data.subjects || [];
+            totalMax = 0;
+            finalSubjectsList.forEach(sub => {
+                if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths' || sub.toLowerCase() === 'computer') totalMax += 25; else totalMax += 100;
+            });
+            
+            renderTableHeaders(); 
+            resultArea.classList.remove('hidden'); 
+            selectionArea.classList.add('hidden'); 
+            
+            document.getElementById('students-body').innerHTML = ''; 
+            data.students.forEach(s => addStudentRow(s.name, s.marks)); 
+        } 
+        else {
+            // NAYA LOGIC: Agar is mahine ka data nahi hai, to pichle mahine se sirf bachon ke naam uthayein
+            if (!isViewMode) {
+                const prevMonthKey = window.getPreviousMonth(monthKey);
+                const prevDocId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${prevMonthKey}_${cleanClass.replace(/\s/g, '_')}`;
+                const prevSnap = await getDoc(doc(db, "monthly_test_sheets", prevDocId));
 
-            const params = new URLSearchParams(window.location.search);
-            const isViewMode = params.get('mode') === 'view';
-
-            try {
-                const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
-                if (snap.exists()) {
-                    const data = snap.data(); 
-                    
-                    if (data.subjectMap) {
-                        subjectTranslationMap = { ...subjectTranslationMap, ...data.subjectMap };
-                    }
-                    
-                    const savedVariableSubjects = data.subjects ? data.subjects.filter(s => s !== 'English' && s !== 'Maths') : [];
-                    
-                    checkboxesList.forEach(chk => { 
-                        if (savedVariableSubjects.includes(chk.value)) {
-                            chk.checked = true;
-                        }
-                    });
-                    
-                    finalSubjectsList = data.subjects || [];
-                    totalMax = 0;
-                    finalSubjectsList.forEach(sub => {
-                        if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') totalMax += 25; else totalMax += 100;
-                    });
-                    
-                    renderTableHeaders(); 
-                    resultArea.classList.remove('hidden'); 
-                    selectionArea.classList.add('hidden'); 
-                    
-                    document.getElementById('students-body').innerHTML = ''; 
-                    data.students.forEach(s => addStudentRow(s.name, s.marks)); 
-                } 
-                else {
-                    if (isViewMode) {
-                        resultArea.classList.remove('hidden');
-                        document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
+                if (prevSnap.exists()) {
+                    const prevData = prevSnap.data();
+                    if (prevData.students && prevData.students.length > 0) {
+                        // Sirf bachon ke naam nikal kar temporary list me rakh liye
+                        window.previousMonthStudents = prevData.students.map(s => s.name);
                     }
                 }
+            }
+            
+            if (isViewMode) {
+                resultArea.classList.remove('hidden');
+                document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
+            }
+        }
 
-                if (isViewMode) {
-                        const headerTitle = document.querySelector('h1');
-                        if(headerTitle && !document.getElementById('edit-mode-btn')) {
-                            const badge = document.getElementById('view-badge');
-                            // Badge ko show karein
-                            if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
-                            
-                            // Button ko ab hum hamesha show karenge, chahe data ho ya na ho
-                            headerTitle.innerHTML += `
-                                <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
-                                    <i class="fas fa-edit"></i> Enable Editing
-                                </button>`;
-                        }
-                    
-                        // Step-by-step instructions ko hide rehne dein
-                        ['step-heading', 'step-instruction', 'class-select'].forEach(id => { 
-                            const el = document.getElementById(id); if(el) el.classList.add('hidden'); 
-                        });
-                    
-                    const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
-                    const saveBtn = document.querySelector('button[onclick="saveResult()"]');
-                    if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
-                    if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
-
-                    document.querySelectorAll('#students-body input').forEach(inp => {
-                        inp.disabled = true;
-                        inp.classList.add('view-mode-input');
-                        inp.style.backgroundColor = 'transparent';
-                        inp.style.border = 'none';
-                        inp.style.textAlign = 'center';
-                        inp.style.fontWeight = 'bold';
-                        inp.style.color = '#1f2937'; 
-                    });
-
-                    document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
-                    const headerTrash = document.querySelector('#table-head th:last-child');
-                    if(headerTrash) headerTrash.style.display = 'none';
-                }
-                
-                if (typeof isEditingMode !== 'undefined' && isEditingMode) {
-                    enableEditMode(true); 
-                }
-            } catch(e) { console.log("New sheet or error loading:", e); }
-        };
+        if (isViewMode) {
+            const headerTitle = document.querySelector('h1');
+            if(headerTitle && !document.getElementById('edit-mode-btn')) {
+                const badge = document.getElementById('view-badge');
+                if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
+                headerTitle.innerHTML += `
+                    <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
+                        <i class="fas fa-edit"></i> Enable Editing
+                    </button>`;
+            }
+            ['step-heading', 'step-instruction', 'class-select'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+            const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
+            const saveBtn = document.querySelector('button[onclick="saveResult()"]');
+            if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
+            if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
+            document.querySelectorAll('#students-body input').forEach(inp => {
+                inp.disabled = true; inp.classList.add('view-mode-input');
+                inp.style.backgroundColor = 'transparent'; inp.style.border = 'none'; inp.style.textAlign = 'center';
+                inp.style.fontWeight = 'bold'; inp.style.color = '#1f2937'; 
+            });
+            document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
+            const headerTrash = document.querySelector('#table-head th:last-child');
+            if(headerTrash) headerTrash.style.display = 'none';
+        }
+        if (typeof isEditingMode !== 'undefined' && isEditingMode) enableEditMode(true); 
+    } catch(e) { console.log("New sheet or error loading:", e); }
+};
 
         window.toggleSummary = async () => {
             const entryArea = document.getElementById('data-entry-area');
