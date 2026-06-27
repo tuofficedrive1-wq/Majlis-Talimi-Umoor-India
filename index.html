@@ -4295,8 +4295,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     monthInput.value = `${year}-${month}`;
 });      
         // --- USER LOGIC: Task list dikhana ---
+// --- USER LOGIC: Task list dikhana (Advanced Tasks Support) ---
 const listenForUserTasks = (currentUserId) => {
-    // Sirf simple query rakhein taaki Firebase error na de
     const q = query(
         collection(db, "user_tasks"), 
         where("userId", "==", currentUserId), 
@@ -4312,7 +4312,6 @@ const listenForUserTasks = (currentUserId) => {
             return;
         }
 
-        // Sorting JavaScript me karein (Taki gayab hone ka khatra na rahe)
         const sortedTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
             .sort((a, b) => {
                 const tA = a.timestamp ? (a.timestamp.toMillis ? a.timestamp.toMillis() : 0) : 0;
@@ -4325,24 +4324,188 @@ const listenForUserTasks = (currentUserId) => {
                 day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true 
             }) : 'Abhi bheja gaya';
 
+            const taskType = d.type || 'text'; // 'text', 'link', 'poll', 'checklist'
+            let dynamicContent = '';
+
+            // 1. Agar Link Form hai
+            if (taskType === 'link' && d.metaData?.url) {
+                dynamicContent = `
+                    <a href="${d.metaData.url}" target="_blank" class="mt-4 block w-full text-center bg-indigo-50 text-indigo-700 font-bold py-3 rounded-xl border border-indigo-200 hover:bg-indigo-100 transition shadow-sm">
+                        <i class="fas fa-external-link-alt mr-2"></i> Form / Link Kholein
+                    </a>
+                `;
+            } 
+            // 2. Agar Poll/Voting hai
+            else if (taskType === 'poll' && d.metaData?.options) {
+                dynamicContent = `<div class="mt-4 space-y-2">`;
+                d.metaData.options.forEach((opt) => {
+                    dynamicContent += `
+                        <button onclick="submitPoll('${d.id}', '${opt}')" class="w-full text-right p-3 bg-white/20 hover:bg-white/40 border border-white/30 rounded-lg text-white font-bold transition">
+                            ${opt}
+                        </button>
+                    `;
+                });
+                dynamicContent += `</div><p class="text-[10px] text-indigo-200 mt-2 text-center bg-black/10 py-1 rounded">Kisi ek option par click kar ke jawab dein</p>`;
+            } 
+            // 3. Agar Checklist hai
+            else if (taskType === 'checklist' && d.metaData?.options) {
+                dynamicContent = `<div class="mt-4 space-y-2 text-left" dir="ltr">`;
+                d.metaData.options.forEach((opt) => {
+                    dynamicContent += `
+                        <label class="flex items-center gap-3 p-3 bg-white/10 rounded-lg border border-white/20 cursor-pointer hover:bg-white/20 transition">
+                            <input type="checkbox" class="task-checklist-cb w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500" onchange="checkTaskCompletion('${d.id}')">
+                            <span class="text-white font-medium urdu-font text-lg leading-tight flex-1" dir="rtl">${opt}</span>
+                        </label>
+                    `;
+                });
+                dynamicContent += `</div>`;
+            }
+
             return `
-                <div class="relative overflow-hidden bg-gradient-to-r from-indigo-600 to-blue-700 rounded-2xl shadow-xl mb-6">
+                <div class="relative overflow-hidden bg-gradient-to-r from-indigo-600 to-blue-700 rounded-2xl shadow-xl mb-6 border border-indigo-500" id="task-card-${d.id}">
                     <div class="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-                        <div class="flex-1">
+                        <div class="flex-1 w-full">
                             <div class="flex items-center gap-3 mb-2">
-                                <span class="bg-yellow-400 text-yellow-900 text-[11px] font-bold px-3 py-1 rounded-full animate-pulse">ZAROORI KAAM</span>
+                                <span class="bg-yellow-400 text-yellow-900 text-[11px] font-bold px-3 py-1 rounded-full animate-pulse"><i class="fas fa-bell mr-1"></i> ZAROORI KAAM</span>
                                 <span class="text-[11px] text-indigo-100 font-medium opacity-90">${date}</span>
                             </div>
                             <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
                                 <p class="urdu-font text-2xl md:text-3xl text-white leading-loose text-right" dir="rtl">${d.task}</p>
+                                ${dynamicContent}
                             </div>
                         </div>
-                        <button onclick="markTaskAsDone('${d.id}')" class="bg-white text-indigo-700 px-8 py-4 rounded-xl font-bold shadow-xl active:scale-95">MUKAMMAL (DONE)</button>
+                        
+                        ${taskType !== 'poll' ? `
+                            <button id="btn-done-${d.id}" onclick="markTaskAsDone('${d.id}')" class="w-full md:w-auto bg-white text-indigo-700 px-8 py-4 rounded-xl font-bold shadow-xl active:scale-95 transition ${taskType === 'checklist' ? 'opacity-50 cursor-not-allowed' : ''}" ${taskType === 'checklist' ? 'disabled title="Pehle saare check boxes tick karein"' : ''}>
+                                MUKAMMAL (DONE)
+                            </button>
+                        ` : ''}
                     </div>
                     <div class="h-1.5 w-full bg-gradient-to-r from-yellow-300 via-yellow-500 to-yellow-300"></div>
                 </div>`;
         }).join('');
     });
+};
+
+
+// --- USER LOGIC: Elanaat Dikhana & Popup Handle Karna ---
+onSnapshot(collection(db, "announcements"), (snap) => {
+    const userElanaatList = document.getElementById('user-announcements');
+    if (!userElanaatList) return;
+
+    if (snap.empty) {
+        userElanaatList.innerHTML = "";
+        return;
+    }
+
+    const announcements = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+            const tA = a.timestamp ? (a.timestamp.toMillis ? a.timestamp.toMillis() : 0) : 0;
+            const tB = b.timestamp ? (b.timestamp.toMillis ? b.timestamp.toMillis() : 0) : 0;
+            return tB - tA;
+        });
+
+    userElanaatList.innerHTML = announcements.map(elan => {
+        const date = elan.timestamp ? elan.timestamp.toDate().toLocaleString('en-IN', {
+            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
+        }) : '';
+
+        return `
+            <div class="bg-blue-50 border-r-4 border-blue-600 p-4 mb-4 shadow-md rounded-lg relative overflow-hidden">
+                ${elan.showAsPopup ? '<div class="absolute top-2 left-2 bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded shadow-sm border border-red-200">⚠️ IMPORTANT</div>' : ''}
+                <p class="urdu-font text-xl text-blue-900 text-right leading-relaxed mt-4" dir="rtl">${elan.text}</p>
+                <div class="text-[10px] text-blue-400 mt-2 text-left italic border-t border-blue-100 pt-2 font-medium">${date}</div>
+            </div>`;
+    }).join('');
+
+    // --- POPUP ALERT LOGIC ---
+    // Check karein kya koi aesa elaan hai jisko popup me dikhana hai
+    const popupElaan = announcements.find(a => a.showAsPopup === true);
+    
+    if (popupElaan) {
+        // Session storage me check karein ke kya user ne is session me popup dekh liya hai?
+        const seenKey = 'seen_elaan_' + popupElaan.id;
+        if (!sessionStorage.getItem(seenKey)) {
+            showElaanModal(popupElaan);
+            sessionStorage.setItem(seenKey, 'true'); // Save kar dein taaki dobara pareshan na kare
+        }
+    }
+});
+
+// Popup Dikhane Wala Function
+const showElaanModal = (elan) => {
+    const modalDiv = document.createElement('div');
+    modalDiv.className = "fixed inset-0 z-[100] flex items-center justify-center bg-gray-900 bg-opacity-70 p-4 transition-opacity";
+    modalDiv.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden transform scale-100 animate-[bounceIn_0.3s]">
+            <div class="bg-red-600 p-5 text-center relative">
+                <i class="fas fa-bullhorn text-4xl text-white mb-2 animate-pulse"></i>
+                <h2 class="text-xl font-bold text-white tracking-widest uppercase">Zaroori Elaan</h2>
+            </div>
+            <div class="p-8">
+                <p class="urdu-font text-2xl text-gray-800 leading-loose text-center" dir="rtl">${elan.text}</p>
+                <button class="mt-8 w-full bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-lg shadow transition close-elaan-btn text-lg">
+                    <i class="fas fa-check-circle mr-2"></i> Maine Padh Liya Hai
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modalDiv);
+    
+    // Close button ka logic
+    modalDiv.querySelector('.close-elaan-btn').addEventListener('click', () => {
+        modalDiv.classList.add('opacity-0');
+        setTimeout(() => modalDiv.remove(), 300);
+    });
+};
+
+
+// --- HELPER FUNCTIONS FOR ADVANCED TASKS ---
+
+// 1. Task Done Karne Ka Function
+window.markTaskAsDone = async (taskId) => {
+    if(confirm("Kya aapne ye kaam waqai mukammal kar liya hai?")) {
+        try {
+            await updateDoc(doc(db, "user_tasks", taskId), { 
+                status: "done",
+                doneAt: serverTimestamp() 
+            });
+            alert("Shabash! Admin ko report bhej di gayi hai.");
+        } catch (e) { console.error(e); }
+    }
+};
+
+// 2. Poll Submit Karne Ka Function
+window.submitPoll = async (taskId, answer) => {
+    if(confirm(`Kya aap "${answer}" ko final jawab chunna chahte hain?`)) {
+        try {
+            await updateDoc(doc(db, "user_tasks", taskId), {
+                status: "done",
+                pollAnswer: answer,
+                doneAt: serverTimestamp()
+            });
+            alert("Aapka jawab mehfooz ho gaya hai!");
+        } catch(e) { console.error(e); }
+    }
+};
+
+// 3. Checklist Track Karne Ka Function (MUKAMMAL button enable/disable karne ke liye)
+window.checkTaskCompletion = (taskId) => {
+    const taskCard = document.getElementById(`task-card-${taskId}`);
+    if (!taskCard) return;
+
+    const checkboxes = taskCard.querySelectorAll('.task-checklist-cb');
+    // Check karein kya saare check box tick ho gaye hain?
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+
+    const doneBtn = document.getElementById(`btn-done-${taskId}`);
+    if (allChecked) {
+        doneBtn.disabled = false;
+        doneBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    } else {
+        doneBtn.disabled = true;
+        doneBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
 };
 
     // --- USER LOGIC ---
