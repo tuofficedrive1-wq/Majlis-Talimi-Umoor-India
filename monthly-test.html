@@ -2310,7 +2310,7 @@
             document.getElementById('paste-area').focus();
         };
 
-       window.processPaste = () => {
+      window.processPaste = () => {
     const text = document.getElementById('paste-area').value;
     if(!text.trim()) {
         alert("Data khali hai. Pehle kuch paste karein.");
@@ -2323,30 +2323,35 @@
     document.getElementById('students-body').innerHTML = '';
 
     rows.forEach(rowLine => {
-        const cols = rowLine.split('\t');
-        if(cols.length < 2) return; // Khali line skip karein
+        // Tab (\t) se column alag karte hain
+        const cols = rowLine.split('\t').map(c => c.trim());
+        
+        // Agar line bilkul khali hai to chor dein
+        if (cols.length === 0 || cols[0] === "") return; 
         
         let finalStudentName = "";
         let marksData = {};
 
-        // Check karte hain ke data hamari Nayi Excel file se hai ya Madani portal ki purani file se
+        // Check karte hain ke kya data hamari export ki hui nayi Excel file se hai (jisme roll no aur marks hain)
         let isExportedExcel = !isNaN(parseInt(cols[0])) && cols.length > 2;
 
         if (isExportedExcel) {
-            finalStudentName = cols[1]?.trim() || "";
+            finalStudentName = cols[1] || "";
             // Nayi Excel se marks uthakar automatically match karein
-            finalSubjectsList.forEach((sub, idx) => {
-                let mark = cols[2 + idx];
-                if (mark !== undefined) {
-                    marksData[sub] = mark.trim();
-                }
-            });
+            if (typeof finalSubjectsList !== 'undefined') {
+                finalSubjectsList.forEach((sub, idx) => {
+                    let mark = cols[2 + idx];
+                    if (mark !== undefined) {
+                        marksData[sub] = mark;
+                    }
+                });
+            }
         } 
         else {
-            // Purani Madani Portal Logic (Sirf Naam laane ke liye)
+            // Purani Madani Portal Logic (Agar 4 columns hain)
             if (cols.length >= 4) {
-                const nameUr = cols[1]?.trim() || "";
-                const fatherUr = cols[3]?.trim() || "";
+                const nameUr = cols[1] || "";
+                const fatherUr = cols[3] || "";
                 
                 if (nameUr !== "اردو میں نام" && nameUr !== "Name" && nameUr !== "") {
                     if (fatherUr && fatherUr !== "ولدیت" && fatherUr !== "Father") {
@@ -2356,19 +2361,38 @@
                     }
                 }
             } 
-            else if (cols.length > 0) {
-                finalStudentName = cols[0]?.trim();
+            // 🔴 NAYA HAL: Agar sirf 1 line ki copy paste ki gayi hai (Sirf naamon ki list)
+            else {
+                // Agar list me numbering copy ho gayi hai jaise "1  Ali" to sirf naam uthayega
+                if (cols.length >= 2 && !isNaN(parseInt(cols[0]))) {
+                    finalStudentName = cols[1];
+                } else {
+                    // Seedha seedha pehla column hi naam hai
+                    finalStudentName = cols[0];
+                }
             }
         }
 
-        if (finalStudentName && finalStudentName !== "اردو میں نام" && finalStudentName !== "Name" && finalStudentName !== "Student Name") {
-            addStudentRow(finalStudentName, marksData); // Ab Naam aur Marks dono jayenge
+        // Faltu headings aur empty names ko block karna
+        if (finalStudentName && 
+            finalStudentName !== "اردو میں نام" && 
+            finalStudentName !== "Name" && 
+            finalStudentName !== "Student Name" &&
+            finalStudentName.toLowerCase() !== "talib-e-ilm") {
+            
+            addStudentRow(finalStudentName, marksData);
             count++;
         }
     });
     
-    document.getElementById('paste-modal').remove();
-    alert(`Kamiyabi se ${count} students data ke sath import ho gaye hain!`);
+    const modal = document.getElementById('paste-modal');
+    if (modal) modal.remove();
+    
+    if(count > 0) {
+        alert(`Kamiyabi se ${count} students import ho gaye hain!`);
+    } else {
+        alert("Koi valid naam nahi mila. Please dobara check karein.");
+    }
 };
 
         window.updateSheetColumns = async () => {
