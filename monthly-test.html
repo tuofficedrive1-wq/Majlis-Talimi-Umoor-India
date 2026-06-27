@@ -1216,56 +1216,157 @@
         function getGradeColor(grade) { if (grade === "Mumtaz") return "bg-green-700"; if (grade === "Jayyid Jiddan") return "bg-green-600"; if (grade === "Jayyid") return "bg-yellow-500"; if (grade === "Maqbul") return "bg-orange-500"; return "bg-red-600"; }
 
         window.downloadPDF = async () => {
-            if (!window.html2canvas) { alert("Error: html2canvas library missing hai."); return; }
-            const saveBtn = document.querySelector('button[onclick="downloadPDF()"]');
-            if(saveBtn) saveBtn.innerText = "Processing...";
-            const jamiaTitle = document.getElementById('pdf-jamia').innerText;
-            const currentClass = document.getElementById('class-select').value || "";
-            const monthText = monthKey;
-            const tableHeadHTML = document.getElementById('table-head').innerHTML;
-            const originalTableBody = document.getElementById('students-body');
+    if (!window.html2canvas) { alert("Error: html2canvas library missing hai."); return; }
+    const saveBtn = document.querySelector('button[onclick="downloadPDF()"]');
+    const originalText = saveBtn ? saveBtn.innerHTML : "Download PDF";
+    if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
 
-            const tempContainer = document.createElement('div');
-            tempContainer.style.position = 'absolute'; tempContainer.style.left = '-9999px'; tempContainer.style.top = '0px'; tempContainer.style.width = '1100px'; 
-            document.body.appendChild(tempContainer);
-            const PAGE_HEIGHT_LIMIT = 760; 
-            const COLOR_TEAL_DARK = "#0f766e"; const COLOR_TEAL_LIGHT = "#f0fdfa"; const COLOR_BORDER = "#0f766e";
+    try {
+        const currentClass = document.getElementById('class-select').value || "";
+        const jamiaTitle = document.getElementById('display-jamia').innerText;
+        const monthText = monthKey;
 
-            function createNewPage() {
-                const pageDiv = document.createElement('div');
-                pageDiv.style.backgroundColor = "white"; pageDiv.style.padding = "20px"; pageDiv.style.width = "100%"; pageDiv.style.boxSizing = "border-box";
-                pageDiv.innerHTML = `<div style="margin-bottom: 10px; border: 2px solid ${COLOR_BORDER}; border-radius: 8px; overflow: hidden;"><table style="width: 100%; border-collapse: collapse;"><tr style="height: 40px;"><td style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold; font-size: 18px; width: 66%; border-right: 1px solid white; text-transform: uppercase;">Monthly Test Result</td><td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-bottom: 1px solid ${COLOR_BORDER}; border-right: 1px solid ${COLOR_BORDER}; width: 17%;">CLASS</td><td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid ${COLOR_BORDER}; width: 17%;">${currentClass}</td></tr><tr style="height: 50px;"><td style="background-color: white; color: #115e59; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 24px; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">${jamiaTitle}</td><td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">MONTH</td><td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold;">${monthText}</td></tr></table></div><table class="result-table" style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;"><thead style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold;">${tableHeadHTML}</thead><tbody class="divide-y divide-gray-200" style="text-align: center;"></tbody></table>`;
-                const ths = pageDiv.querySelectorAll('.result-table th'); if(ths.length > 0) ths[ths.length - 1].remove(); 
-                pageDiv.querySelectorAll('.result-table th').forEach(th => { th.style.backgroundColor = COLOR_TEAL_DARK; th.style.color = "white"; th.style.padding = "8px 4px"; th.style.border = "1px solid #ccc"; });
-                tempContainer.appendChild(pageDiv); return pageDiv;
+        // PDF ke liye ek temporary invisible box banayenge
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.left = '-9999px';
+        tempContainer.style.top = '0px';
+        tempContainer.style.width = '1100px'; // Sheet jaisa wide layout
+        document.body.appendChild(tempContainer);
+
+        // Header (Top Row) ke subjects generate karna (Sheet wale colors ke sath)
+        let headerCells = "";
+        let totalMax = 0;
+        finalSubjectsList.forEach(sub => {
+            const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths' || sub.toLowerCase() === 'computer';
+            const max = isSmall ? 25 : 100;
+            totalMax += max;
+            headerCells += `<th style="background-color: #f0fdfa; color: #115e59; padding: 12px 4px; border: 1px solid #ccfbf1; font-size: 12px; text-transform: uppercase;">${sub} <br><span style="font-size: 10px; font-weight: normal; color: #0f766e;">/${max}</span></th>`;
+        });
+
+        const PAGE_HEIGHT_LIMIT = 720; // A4 size page limit
+
+        // Naya page banane ka function
+        function createNewPage() {
+            const pageDiv = document.createElement('div');
+            pageDiv.style.backgroundColor = "white";
+            pageDiv.style.padding = "20px";
+            pageDiv.style.width = "100%";
+            pageDiv.style.boxSizing = "border-box";
+
+            pageDiv.innerHTML = `
+                <div style="margin-bottom: 15px; border: 2px solid #0f766e; border-radius: 8px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="height: 40px;">
+                            <td style="background-color: #0f766e; color: white; text-align: center; font-weight: bold; font-size: 18px; width: 66%; border-right: 1px solid white; text-transform: uppercase;">Monthly Test Result</td>
+                            <td style="background-color: #f0fdfa; color: #134e4a; text-align: center; font-weight: bold; border-bottom: 1px solid #0f766e; border-right: 1px solid #0f766e; width: 17%;">CLASS</td>
+                            <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid #0f766e; width: 17%;">${currentClass}</td>
+                        </tr>
+                        <tr style="height: 50px;">
+                            <td style="background-color: white; color: #115e59; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 24px; font-weight: bold; border-right: 1px solid #0f766e;">${jamiaTitle}</td>
+                            <td style="background-color: #f0fdfa; color: #134e4a; text-align: center; font-weight: bold; border-right: 1px solid #0f766e;">MONTH</td>
+                            <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold;">${monthText}</td>
+                        </tr>
+                    </table>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;">
+                    <thead style="background-color: #f0fdfa; color: #115e59; text-align: center; font-weight: bold;">
+                        <tr>
+                            <th style="background-color: #f0fdfa; padding: 12px 4px; border: 1px solid #ccfbf1; width: 40px;">#</th>
+                            <th style="background-color: #f0fdfa; padding: 12px 4px; border: 1px solid #ccfbf1; width: 22%; text-align: left;">TALIB-E-ILM</th>
+                            ${headerCells}
+                            <th style="background-color: #f0fdfa; padding: 12px 4px; border: 1px solid #ccfbf1;">TOTAL (${totalMax})</th>
+                            <th style="background-color: #f0fdfa; padding: 12px 4px; border: 1px solid #ccfbf1;">%</th>
+                            <th style="background-color: #f0fdfa; padding: 12px 4px; border: 1px solid #ccfbf1;">GRADE</th>
+                        </tr>
+                    </thead>
+                    <tbody style="text-align: center;"></tbody>
+                </table>`;
+            tempContainer.appendChild(pageDiv);
+            return pageDiv;
+        }
+
+        let currentPage = createNewPage();
+        let currentTbody = currentPage.querySelector('tbody');
+        const rows = document.querySelectorAll('#students-body tr');
+
+        // Bachon ka data sheet format me set karna
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const name = row.querySelector('.std-name').value || "";
+            const total = row.querySelector('.total-val').innerText;
+            const perc = row.querySelector('.perc-val').innerText;
+            const gradeText = row.querySelector('.grade-val').innerText;
+
+            // Sheet wale same Grade Colors
+            let gradeBg = "#dc2626"; // Nakam (Red)
+            if (gradeText.includes("Mumtaz Ma Sharf")) gradeBg = "#0d9488"; // Teal
+            else if (gradeText.includes("Mumtaz")) gradeBg = "#16a34a"; // Green
+            else if (gradeText.includes("Jayyid Jiddan")) gradeBg = "#2563eb"; // Blue
+            else if (gradeText.includes("Jayyid")) gradeBg = "#6366f1"; // Indigo
+            else if (gradeText.includes("Maqbul")) gradeBg = "#eab308"; // Yellow
+            else if (gradeText.includes("Absent")) gradeBg = "#6b7280"; // Gray
+
+            let tds = "";
+            const inputs = row.querySelectorAll('.mark-input');
+            inputs.forEach(inp => {
+                const val = inp.value;
+                const isFail = inp.classList.contains('bg-fail-input');
+                // Fail hone par laal background (Sheet format)
+                const cellBg = isFail ? "#fee2e2" : "transparent";
+                const cellCol = isFail ? "#991b1b" : "#374151";
+                tds += `<td style="border: 1px solid #e5e7eb; padding: 10px 4px; font-weight: bold; background-color: ${cellBg}; color: ${cellCol};">${val || '-'}</td>`;
+            });
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="border: 1px solid #e5e7eb; padding: 10px 4px; color: #6b7280;">${i + 1}</td>
+                <td style="border: 1px solid #e5e7eb; padding: 10px 10px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 16px; text-align: left;">${name}</td>
+                ${tds}
+                <td style="border: 1px solid #e5e7eb; padding: 10px 4px; font-weight: bold; color: #374151;">${total}</td>
+                <td style="border: 1px solid #e5e7eb; padding: 10px 4px; font-weight: bold; color: #2563eb;">${perc}</td>
+                <td style="border: 1px solid #e5e7eb; padding: 6px; font-weight: bold;">
+                    <div style="background-color: ${gradeBg}; color: white; padding: 6px 0; border-radius: 4px; font-size: 12px; white-space: nowrap;">${gradeText}</div>
+                </td>
+            `;
+
+            currentTbody.appendChild(tr);
+
+            // Agar page bhar gaya to naya page banayen
+            if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
+                currentTbody.removeChild(tr); 
+                currentPage = createNewPage(); 
+                currentTbody = currentPage.querySelector('tbody');
+                currentTbody.appendChild(tr); 
             }
+        }
 
-            try {
-                const rows = Array.from(originalTableBody.querySelectorAll('tr'));
-                let currentPage = createNewPage(); let currentTbody = currentPage.querySelector('.result-table tbody');
-                for (let row of rows) {
-                    const clonedRow = row.cloneNode(true);
-                    const lastTd = clonedRow.querySelector('td:last-child'); if(lastTd) lastTd.remove();
-                    const inputs = clonedRow.querySelectorAll('input');
-                    inputs.forEach(input => {
-                        const div = document.createElement('div'); div.innerText = input.value || '-';
-                        div.style.textAlign = "center"; div.style.fontWeight = "bold"; div.style.width = "100%"; div.style.padding = "5px 0";
-                        if(input.classList.contains('bg-fail-input')) { div.style.backgroundColor = "#fee2e2"; div.style.color = "#991b1b"; }
-                        if(input.parentNode) input.parentNode.replaceChild(div, input);
-                    });
-                    clonedRow.querySelectorAll('td').forEach(td => { td.style.padding = "5px 2px"; td.style.textAlign = "center"; td.style.border = "1px solid #e5e7eb"; td.classList.remove('text-right', 'pr-2'); });
-                    currentTbody.appendChild(clonedRow);
-                    if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) { currentTbody.removeChild(clonedRow); currentPage = createNewPage(); currentTbody = currentPage.querySelector('.result-table tbody'); currentTbody.appendChild(clonedRow); }
-                }
-                const pages = Array.from(tempContainer.children); const { jsPDF } = window.jspdf; const pdfDoc = new jsPDF('l', 'mm', 'a4'); 
-                for (let i = 0; i < pages.length; i++) {
-                    const page = pages[i]; const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-                    const imgData = canvas.toDataURL('image/png'); const imgWidth = 297; const imgHeight = canvas.height * imgWidth / canvas.width;
-                    if (i > 0) pdfDoc.addPage(); pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-                }
-                document.body.removeChild(tempContainer); pdfDoc.save(`Result_${jamiaTitle}_${currentClass}.pdf`);
-            } catch (error) { console.error("PDF Logic Error:", error); alert("PDF Generation Failed: " + error.message); } finally { if(saveBtn) saveBtn.innerText = "Download PDF"; }
-        };
+        // PDF Generate Karna
+        const pages = Array.from(tempContainer.children);
+        const { jsPDF } = window.jspdf;
+        const pdfDoc = new jsPDF('l', 'mm', 'a4'); // 'l' means Landscape sheet view
+
+        for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = 297; 
+            const imgHeight = canvas.height * imgWidth / canvas.width;
+            
+            if (i > 0) pdfDoc.addPage();
+            pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+        }
+
+        document.body.removeChild(tempContainer);
+        pdfDoc.save(`Result_${jamiaTitle}_${currentClass}.pdf`);
+
+    } catch (error) {
+        console.error("PDF Logic Error:", error);
+        alert("PDF Generation Failed: " + error.message);
+    } finally {
+        if (saveBtn) saveBtn.innerHTML = originalText;
+    }
+};
 
         window.downloadAllClassesPDF = async () => {
             if (!window.html2canvas) { alert("html2canvas library missing hai."); return; }
