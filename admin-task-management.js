@@ -35,15 +35,18 @@ export function initElanaatAndTasks(db) {
         const elanaatTextarea = document.getElementById('elanaat-textarea');
         const elanaatListDiv = document.getElementById('elanaat-list');
 
+        // Note: Aap apne HTML me ek checkbox laga sakte hain id="elaan-popup-cb"
+        const popupCheckbox = document.getElementById('elaan-popup-cb'); 
+
         if (!elanaatForm || !elanaatTextarea || !elanaatListDiv) return;
 
-        // Form Submit (Sirf ek dafa event listener attach ho)
         if (!elanaatForm.dataset.initialized) {
             elanaatForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const text = elanaatTextarea.value.trim();
                 if (!text) return;
 
+                const isPopup = popupCheckbox ? popupCheckbox.checked : false;
                 const submitBtn = elanaatForm.querySelector('button[type="submit"]');
                 const originalText = submitBtn.innerText;
                 submitBtn.innerText = "Publishing...";
@@ -52,9 +55,11 @@ export function initElanaatAndTasks(db) {
                 try {
                     await addDoc(collection(db, "announcements"), {
                         text: text,
+                        showAsPopup: isPopup, // Yeh flag user side par modal dikhane me madad karega
                         timestamp: serverTimestamp()
                     });
                     elanaatTextarea.value = "";
+                    if(popupCheckbox) popupCheckbox.checked = false;
                     showLocalNotification("Elaan kamyabi se publish ho gaya!");
                 } catch (err) {
                     console.error("Elaan Error:", err);
@@ -77,6 +82,7 @@ export function initElanaatAndTasks(db) {
                 
                 html += `
                     <div class="p-4 bg-white border border-slate-200 rounded-xl mb-3 shadow-sm relative group transition-all hover:shadow-md">
+                        ${d.showAsPopup ? '<span class="bg-red-100 text-red-600 text-[10px] px-2 py-1 rounded-full font-bold mb-2 inline-block">POPUP ALERT</span>' : ''}
                         <p class="urdu-font text-lg text-slate-800 leading-relaxed pr-8">${d.text}</p>
                         <div class="text-[10px] font-bold text-slate-400 mt-3 flex items-center gap-1 uppercase tracking-wider">
                             <i class="far fa-clock"></i> ${date}
@@ -86,21 +92,13 @@ export function initElanaatAndTasks(db) {
                         </button>
                     </div>`;
             });
-            
             elanaatListDiv.innerHTML = html || '<p class="text-slate-400 text-sm text-center py-6 bg-slate-50 rounded-xl border border-slate-100">Abhi tak koi elaan maujood nahi.</p>';
 
-            // Attach Delete Listeners (Secure Way)
             document.querySelectorAll('.delete-elaan-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const elaanId = e.currentTarget.dataset.id;
-                    if(confirm("Kya aap waqai yeh elaan sabki screen se delete karna chahte hain?")) {
-                        try {
-                            await deleteDoc(doc(db, 'announcements', elaanId));
-                            showLocalNotification("Elaan delete kar diya gaya.");
-                        } catch(err) {
-                            console.error(err);
-                            showLocalNotification("Delete karne mein error aaya.", true);
-                        }
+                    if(confirm("Kya aap waqai yeh elaan delete karna chahte hain?")) {
+                        await deleteDoc(doc(db, 'announcements', elaanId));
                     }
                 });
             });
@@ -108,135 +106,166 @@ export function initElanaatAndTasks(db) {
     };
 
     // ==========================================
-    // 2. TASK MANAGEMENT SYSTEM
+    // 2. ADVANCED TASK MANAGEMENT SYSTEM
     // ==========================================
     const setupTaskSystem = () => {
+        const taskTypeSelect = document.getElementById('task-type');
+        const dynamicFieldsDiv = document.getElementById('dynamic-task-fields');
         const taskInput = document.getElementById('task-input');
         const assignTaskBtn = document.getElementById('assign-task-btn');
         const userCheckboxList = document.getElementById('user-checkbox-list');
         const adminTaskList = document.getElementById('admin-task-list');
 
-        if (!taskInput || !assignTaskBtn || !userCheckboxList || !adminTaskList) return;
+        if (!taskInput || !assignTaskBtn || !userCheckboxList) return;
 
-        // A. Load Users for Checkboxes
+        // --- Dynamic Fields Logic ---
+        if (taskTypeSelect && dynamicFieldsDiv) {
+            taskTypeSelect.addEventListener('change', (e) => {
+                const type = e.target.value;
+                dynamicFieldsDiv.classList.remove('hidden');
+                
+                if (type === 'link') {
+                    dynamicFieldsDiv.innerHTML = `<input type="url" id="task-url" class="w-full p-2 border rounded" placeholder="Google Form ya kisi bhi website ka link paste karein...">`;
+                } else if (type === 'poll') {
+                    dynamicFieldsDiv.innerHTML = `
+                        <p class="text-xs text-gray-500 mb-2">Options comma (,) se alag kar ke likhein (e.g. Haan, Nahi, Shayad)</p>
+                        <input type="text" id="task-poll-options" class="w-full p-2 border rounded" placeholder="Option 1, Option 2, Option 3">
+                    `;
+                } else if (type === 'checklist') {
+                    dynamicFieldsDiv.innerHTML = `
+                        <p class="text-xs text-gray-500 mb-2">Checklist items comma (,) se alag kar ke likhein</p>
+                        <input type="text" id="task-checklist-items" class="w-full p-2 border rounded" placeholder="Item 1, Item 2, Item 3">
+                    `;
+                } else {
+                    dynamicFieldsDiv.classList.add('hidden');
+                    dynamicFieldsDiv.innerHTML = '';
+                }
+            });
+        }
+
+        // --- Load Users ---
         onSnapshot(collection(db, "users"), (snapshot) => {
             let html = `
-                <label class="flex items-center gap-3 p-2 bg-slate-50 hover:bg-slate-100 rounded-md cursor-pointer border-b border-gray-200 mb-1 transition-colors">
+                <label class="flex items-center gap-3 p-2 bg-slate-50 hover:bg-slate-100 rounded-md cursor-pointer border-b border-gray-200 mb-1">
                     <input type="checkbox" id="select-all-users-cb" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
                     <span class="text-sm font-bold text-gray-800">Sab Ko Select Karein</span>
                 </label>
             `;
-            
             snapshot.forEach((doc) => {
                 const u = doc.data();
-                if (u.role === 'admin') return; // Admin ko list me na dikhayen
-
-                const userId = doc.id;
-                const userName = u.name || "Unknown";
-                usersMap[userId] = userName;
-
+                if (u.role === 'admin') return; 
+                usersMap[doc.id] = u.name || "Unknown";
                 html += `
-                    <label class="flex items-center gap-3 p-2 hover:bg-white rounded-md cursor-pointer border-b border-gray-100 last:border-0 transition-colors">
-                        <input type="checkbox" name="selected-users" value="${userId}" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 task-user-cb">
-                        <span class="text-sm font-medium text-gray-700 urdu-font">${userName} ${u.jamia ? '('+u.jamia+')' : ''}</span>
+                    <label class="flex items-center gap-3 p-2 hover:bg-white rounded-md cursor-pointer border-b border-gray-100">
+                        <input type="checkbox" name="selected-users" value="${doc.id}" class="w-4 h-4 task-user-cb rounded text-indigo-600">
+                        <span class="text-sm font-medium text-gray-700">${usersMap[doc.id]}</span>
                     </label>
                 `;
             });
-            userCheckboxList.innerHTML = html || '<p class="text-gray-400 text-xs p-2">Koi user nahi mila.</p>';
+            userCheckboxList.innerHTML = html;
 
-            // Select All Logic
             const selectAllCb = document.getElementById('select-all-users-cb');
             if(selectAllCb) {
                 selectAllCb.addEventListener('change', (e) => {
-                    const isChecked = e.target.checked;
-                    document.querySelectorAll('.task-user-cb').forEach(cb => cb.checked = isChecked);
+                    document.querySelectorAll('.task-user-cb').forEach(cb => cb.checked = e.target.checked);
                 });
             }
         });
 
-        // B. Assign Task Button Logic
+        // --- Assign Task Logic ---
         if (!assignTaskBtn.dataset.initialized) {
             assignTaskBtn.addEventListener('click', async () => {
                 const taskText = taskInput.value.trim();
+                const type = taskTypeSelect ? taskTypeSelect.value : 'text';
                 const checkboxes = document.querySelectorAll('input[name="selected-users"]:checked');
                 const selectedIds = Array.from(checkboxes).map(cb => cb.value);
 
-                if(selectedIds.length === 0) { alert("Barahe karam kam se kam ek user select karein!"); return; }
-                if(!taskText) { alert("Barahe karam task ki tafseel likhein!"); return; }
+                if(selectedIds.length === 0) { alert("Koi user select karein!"); return; }
+                if(!taskText) { alert("Task ki tafseel likhein!"); return; }
+
+                // Dynamic data collect karein
+                let metaData = {};
+                if (type === 'link') {
+                    const urlVal = document.getElementById('task-url')?.value;
+                    if(!urlVal) return alert("Link dena zaroori hai!");
+                    metaData.url = urlVal;
+                } else if (type === 'poll' || type === 'checklist') {
+                    const inputVal = type === 'poll' ? document.getElementById('task-poll-options')?.value : document.getElementById('task-checklist-items')?.value;
+                    if(!inputVal) return alert("Options dena zaroori hai!");
+                    metaData.options = inputVal.split(',').map(item => item.trim());
+                }
 
                 try {
                     assignTaskBtn.disabled = true;
-                    assignTaskBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Bheja ja raha hai...';
-                    assignTaskBtn.classList.add('opacity-70', 'cursor-not-allowed');
+                    assignTaskBtn.innerHTML = 'Bheja ja raha hai...';
 
                     const promises = selectedIds.map(uid => addDoc(collection(db, "user_tasks"), {
                         userId: uid,
                         task: taskText,
+                        type: type, // 'text', 'poll', 'link', 'checklist'
+                        metaData: metaData, // Yahan poll options ya link save hoga
                         status: "pending",
                         timestamp: serverTimestamp()
                     }));
+                    
                     await Promise.all(promises);
-
+                    
+                    // Reset Form
                     taskInput.value = "";
+                    if(dynamicFieldsDiv) { dynamicFieldsDiv.innerHTML = ''; dynamicFieldsDiv.classList.add('hidden'); }
+                    if(taskTypeSelect) taskTypeSelect.value = 'text';
                     checkboxes.forEach(cb => cb.checked = false);
                     document.getElementById('select-all-users-cb').checked = false;
-                    userCheckboxList.classList.add('hidden'); 
                     
-                    showLocalNotification(`${selectedIds.length} logon ko task bhej diya gaya!`);
+                    showLocalNotification("Tasks successfully assign ho gaye!");
                 } catch (e) {
                     console.error(e);
-                    showLocalNotification("Task bhejne mein masla aaya.", true);
+                    showLocalNotification("Error aaya.", true);
                 } finally {
                     assignTaskBtn.disabled = false;
                     assignTaskBtn.innerHTML = 'Send Task';
-                    assignTaskBtn.classList.remove('opacity-70', 'cursor-not-allowed');
                 }
             });
             assignTaskBtn.dataset.initialized = "true";
         }
 
-        // C. Live Render Tasks with Delete Button
+        // --- Live Render Tasks ---
         const q = query(collection(db, "user_tasks"), orderBy("timestamp", "desc"));
         onSnapshot(q, (snap) => {
             const groupedTasks = {};
-            
             snap.forEach(doc => {
                 const d = doc.data();
-                const uid = d.userId;
-                if (!groupedTasks[uid]) groupedTasks[uid] = [];
-                groupedTasks[uid].push({ id: doc.id, ...d });
+                if (!groupedTasks[d.userId]) groupedTasks[d.userId] = [];
+                groupedTasks[d.userId].push({ id: doc.id, ...d });
             });
 
+            if(!adminTaskList) return;
+            
             adminTaskList.innerHTML = Object.keys(groupedTasks).map(uid => {
-                const userName = usersMap[uid] || "Unknown User";
+                const userName = usersMap[uid] || "Unknown";
                 const tasks = groupedTasks[uid];
                 const pendingCount = tasks.filter(t => t.status !== 'done').length;
                 
                 return `
-                    <div class="mb-4 border rounded-xl overflow-hidden shadow-sm bg-white">
+                    <div class="mb-4 border rounded-xl overflow-hidden bg-white">
                         <button onclick="this.nextElementSibling.classList.toggle('hidden')" 
-                                class="w-full flex justify-between items-center p-3 bg-indigo-50 hover:bg-indigo-100 transition font-bold text-indigo-800">
-                            <span><i class="fas fa-user-circle mr-2"></i> ${userName}</span>
-                            <div class="flex items-center gap-2">
-                                ${pendingCount > 0 ? `<span class="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">${pendingCount} Pending</span>` : ''}
-                                <span class="bg-indigo-200 text-indigo-800 text-xs px-2 py-1 rounded-full">${tasks.length} Total</span>
-                            </div>
+                                class="w-full flex justify-between p-3 bg-indigo-50 font-bold text-indigo-800">
+                            <span>${userName}</span>
+                            <span class="bg-indigo-200 px-2 py-1 rounded text-xs">${pendingCount} Pending</span>
                         </button>
                         <div class="hidden p-3 space-y-2">
                             ${tasks.map(t => {
-                                const cDate = t.timestamp ? t.timestamp.toDate().toLocaleString('en-IN', {day:'2-digit', month:'short'}) : '...';
+                                let typeBadge = t.type === 'poll' ? '📊 POLL' : t.type === 'link' ? '🔗 LINK' : t.type === 'checklist' ? '✅ LIST' : '📝 TEXT';
                                 return `
-                                    <div class="p-3 border border-slate-100 rounded-lg bg-slate-50 flex justify-between group hover:border-slate-300 transition-colors">
-                                        <div class="flex-1 pr-4">
-                                            <div class="flex items-center gap-2 mb-1">
-                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${t.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}">
-                                                    ${t.status === 'done' ? '<i class="fas fa-check mr-1"></i> DONE' : '<i class="fas fa-clock mr-1"></i> PENDING'}
-                                                </span>
-                                                <span class="text-[10px] text-gray-400 font-bold"><i class="fas fa-paper-plane mr-1"></i> ${cDate}</span>
+                                    <div class="p-3 border rounded bg-slate-50 flex justify-between group">
+                                        <div>
+                                            <div class="flex gap-2 mb-1">
+                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">${typeBadge}</span>
+                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${t.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}">${t.status.toUpperCase()}</span>
                                             </div>
-                                            <p class="urdu-font font-medium text-gray-800 text-sm leading-relaxed mt-1">${t.task}</p>
+                                            <p class="text-sm font-medium mt-1">${t.task}</p>
                                         </div>
-                                        <button class="delete-task-btn text-red-400 hover:text-red-600 hover:bg-red-50 w-8 h-8 flex items-center justify-center rounded-lg transition-colors opacity-0 group-hover:opacity-100" data-id="${t.id}" title="Task Delete Karein">
+                                        <button class="delete-task-btn text-red-400 hover:text-red-600 w-8 h-8 opacity-0 group-hover:opacity-100" data-id="${t.id}">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
@@ -245,27 +274,17 @@ export function initElanaatAndTasks(db) {
                         </div>
                     </div>
                 `;
-            }).join('') || '<p class="text-center text-gray-500 py-6 bg-slate-50 rounded-xl border border-slate-100">Abhi tak koi task assign nahi kiya gaya.</p>';
+            }).join('') || '<p class="text-center py-4 text-gray-500">Koi task nahi.</p>';
 
-            // Task Delete Listeners
             document.querySelectorAll('.delete-task-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const taskId = e.currentTarget.dataset.id;
-                    if(confirm("Kya aap waqai is task ko delete karna chahte hain?")) {
-                        try {
-                            await deleteDoc(doc(db, "user_tasks", taskId));
-                            showLocalNotification("Task delete kar diya gaya.");
-                        } catch(err) {
-                            console.error(err);
-                            showLocalNotification("Delete karne mein masla aaya.", true);
-                        }
-                    }
+                    if(confirm("Delete task?")) await deleteDoc(doc(db, "user_tasks", taskId));
                 });
             });
         });
     };
 
-    // Dono systems ko chalayen
     setupElanaatSystem();
     setupTaskSystem();
 }
