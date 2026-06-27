@@ -1364,330 +1364,314 @@
 };
 
         window.downloadAllClassesPDF = async () => {
-            if (!window.html2canvas) { alert("html2canvas library missing hai."); return; }
+    if (!window.html2canvas) { alert("html2canvas library missing hai."); return; }
 
-            const btn = document.getElementById('download-all-btn');
-            const originalText = btn.innerText;
-            btn.innerText = "Processing..."; 
-            btn.disabled = true;             
+    const btn = document.getElementById('download-all-btn');
+    const originalText = btn.innerText;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    btn.disabled = true;             
 
-            try {
-                const { jsPDF } = window.jspdf;
-                const pdfDoc = new jsPDF('l', 'mm', 'a4'); 
-                
-                const COLOR_TEAL_DARK = "#0f766e"; 
-                const COLOR_TEAL_LIGHT = "#f0fdfa"; 
-                const COLOR_BORDER = "#0f766e";
+    try {
+        const { jsPDF } = window.jspdf;
+        const pdfDoc = new jsPDF('l', 'mm', 'a4'); 
+        
+        const COLOR_TEAL_DARK = "#0f766e"; 
+        const COLOR_TEAL_LIGHT = "#f0fdfa"; 
+        const COLOR_BORDER = "#0f766e";
 
-                const allClasses = Object.keys(classBooksMap).sort();
-                const classDataList = []; 
+        const allClasses = Object.keys(classBooksMap).sort();
+        const classDataList = []; 
 
-                let mainRowsHTML = "";
-                let asriRowsHTML = "";
-                let gMain = { total: 0, present: 0, pass: 0, fail: 0 };
-                let gAsri = { total: 0, present: 0, pass: 0, fail: 0 };
-                let sn = 1;
+        let mainRowsHTML = "";
+        let asriRowsHTML = "";
+        let gMain = { total: 0, present: 0, pass: 0, fail: 0 };
+        let gAsri = { total: 0, present: 0, pass: 0, fail: 0 };
+        let sn = 1;
 
-                for (const clsName of allClasses) {
-                    btn.innerText = `Reading: ${clsName}...`;
-                    const cleanClass = clsName.split('_')[0]; 
-                    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-                    const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+        // 1. Summary Data Jama Karna
+        for (const clsName of allClasses) {
+            btn.innerText = `Reading: ${clsName}...`;
+            const cleanClass = clsName.split('_')[0]; 
+            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+            const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
 
-                    if (!docSnap.exists()) continue;
+            if (!docSnap.exists()) continue;
 
-                    const data = docSnap.data();
-                    const students = data.students || [];
-                    const subjects = data.subjects || [];
-                    if (students.length === 0) continue;
+            const data = docSnap.data();
+            const students = data.students || [];
+            const subjects = data.subjects || [];
+            if (students.length === 0) continue;
 
-                    classDataList.push({ clsName, data, students, subjects });
+            classDataList.push({ clsName, data, students, subjects });
 
-                    let mTotal = students.length; let mPresent = 0; let mPass = 0; let mFail = 0;
-                    let aTotal = students.length; let aPresent = 0; let aPass = 0; let aFail = 0;
-                    let hasAsriSubjects = false;
+            let mTotal = students.length; let mPresent = 0; let mPass = 0; let mFail = 0;
+            let aTotal = students.length; let aPresent = 0; let aPass = 0; let aFail = 0;
+            let hasAsriSubjects = false;
 
-                    students.forEach(std => {
-                        mPresent++;
-                        let isFailMain = false;
-                        if (parseFloat(std.percentage) < 40) isFailMain = true;
-                        const subKeys = Object.keys(std.marks);
-                        subKeys.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
-                        if (isFailMain) mFail++; else mPass++;
+            students.forEach(std => {
+                mPresent++;
+                let isFailMain = false;
+                if (parseFloat(std.percentage) < 40) isFailMain = true;
+                const subKeys = Object.keys(std.marks);
+                subKeys.forEach(sub => { if(std.marks[sub] === 'A') isFailMain = true; });
+                if (isFailMain) mFail++; else mPass++;
 
-                        let engMark = std.marks['English'];
-                        let mathMark = std.marks['Maths'];
-                        if (engMark !== undefined || mathMark !== undefined) {
-                            hasAsriSubjects = true;
-                            aPresent++;
-                            let isFailAsri = false;
-                            if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
-                            if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
-                            if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
-                            if (isFailAsri) aFail++; else aPass++;
-                        }
-                    });
-
-                    let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(1) : "0.0";
-                    let mGrade = getSummaryGrade(mPerc);
-                    gMain.total += mTotal; gMain.present += mPresent; gMain.pass += mPass; gMain.fail += mFail;
-
-                    mainRowsHTML += `
-                        <tr style="background-color: ${sn % 2 === 0 ? '#f9fafb' : 'white'};">
-                            <td style="border:1px solid #ccc; padding:6px;">${sn}</td>
-                            <td style="border:1px solid #ccc; padding:6px; text-align:left;">${clsName}</td>
-                            <td style="border:1px solid #ccc; padding:6px;">${mTotal}</td>
-                            <td style="border:1px solid #ccc; padding:6px;">${mPresent}</td>
-                            <td style="border:1px solid #ccc; padding:6px; color:#15803d; font-weight:bold;">${mPass}</td>
-                            <td style="border:1px solid #ccc; padding:6px; color:#dc2626; font-weight:bold;">${mFail}</td>
-                            <td style="border:1px solid #ccc; padding:6px; font-weight:bold;">${mPerc}%</td>
-                            <td style="border:1px solid #ccc; padding:6px;">${mGrade}</td>
-                        </tr>`;
-
-                    if (hasAsriSubjects) {
-                        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
-                        let aGrade = getSummaryGrade(aPerc);
-                        gAsri.total += aTotal; gAsri.present += aPresent; gAsri.pass += aPass; gAsri.fail += aFail;
-
-                        asriRowsHTML += `
-                            <tr style="background-color: ${sn % 2 === 0 ? '#f9fafb' : 'white'};">
-                                <td style="border:1px solid #ccc; padding:6px;">${sn}</td>
-                                <td style="border:1px solid #ccc; padding:6px; text-align:left;">${clsName}</td>
-                                <td style="border:1px solid #ccc; padding:6px;">${aTotal}</td>
-                                <td style="border:1px solid #ccc; padding:6px;">${aPresent}</td>
-                                <td style="border:1px solid #ccc; padding:6px; color:#15803d; font-weight:bold;">${aPass}</td>
-                                <td style="border:1px solid #ccc; padding:6px; color:#dc2626; font-weight:bold;">${aFail}</td>
-                                <td style="border:1px solid #ccc; padding:6px; font-weight:bold;">${aPerc}%</td>
-                                <td style="border:1px solid #ccc; padding:6px;">${aGrade}</td>
-                            </tr>`;
-                    }
-                    sn++;
+                let engMark = std.marks['English'];
+                let mathMark = std.marks['Maths'];
+                if (engMark !== undefined || mathMark !== undefined) {
+                    hasAsriSubjects = true;
+                    aPresent++;
+                    let isFailAsri = false;
+                    if (engMark === 'A' || mathMark === 'A') isFailAsri = true;
+                    if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                    if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                    if (isFailAsri) aFail++; else aPass++;
                 }
+            });
 
-                if (classDataList.length === 0) {
-                    alert("Koi bhi saved data nahi mila.");
-                    btn.innerText = originalText; btn.disabled = false;
-                    return;
-                }
+            let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(1) : "0.0";
+            let mGrade = getSummaryGrade(mPerc);
+            gMain.total += mTotal; gMain.present += mPresent; gMain.pass += mPass; gMain.fail += mFail;
 
-                const tempContainer = document.createElement('div');
-                tempContainer.style.position = 'absolute';
-                tempContainer.style.left = '-9999px';
-                tempContainer.style.top = '0px';
-                tempContainer.style.width = '1100px'; 
-                document.body.appendChild(tempContainer);
+            mainRowsHTML += `
+                <tr style="background-color: ${sn % 2 === 0 ? '#f9fafb' : 'white'};">
+                    <td style="border:1px solid #ccc; padding:6px;">${sn}</td>
+                    <td style="border:1px solid #ccc; padding:6px; text-align:left;">${clsName}</td>
+                    <td style="border:1px solid #ccc; padding:6px;">${mTotal}</td>
+                    <td style="border:1px solid #ccc; padding:6px;">${mPresent}</td>
+                    <td style="border:1px solid #ccc; padding:6px; color:#15803d; font-weight:bold;">${mPass}</td>
+                    <td style="border:1px solid #ccc; padding:6px; color:#dc2626; font-weight:bold;">${mFail}</td>
+                    <td style="border:1px solid #ccc; padding:6px; font-weight:bold;">${mPerc}%</td>
+                    <td style="border:1px solid #ccc; padding:6px;">${mGrade}</td>
+                </tr>`;
 
-                btn.innerText = "Generating Summary...";
-                
-                let gMainPerc = gMain.present > 0 ? ((gMain.pass / gMain.present) * 100).toFixed(1) : "0.0";
-                let gAsriPerc = gAsri.present > 0 ? ((gAsri.pass / gAsri.present) * 100).toFixed(1) : "0.0";
+            if (hasAsriSubjects) {
+                let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
+                let aGrade = getSummaryGrade(aPerc);
+                gAsri.total += aTotal; gAsri.present += aPresent; gAsri.pass += aPass; gAsri.fail += aFail;
 
-                const summaryDiv = document.createElement('div');
-                summaryDiv.style.backgroundColor = "white"; summaryDiv.style.padding = "20px"; summaryDiv.style.width = "100%"; summaryDiv.style.boxSizing = "border-box";
-                
-                summaryDiv.innerHTML = `
-                    <div style="text-align:center; margin-bottom:20px;">
-                        <h1 style="font-family: 'Jameel Noori Nastaleeq', serif; font-size:30px; margin:0;">${jamiaName}</h1>
-                        <h2 style="font-size:18px; color:#0f766e; margin:5px 0;">Monthly Test Summary Report - ${monthKey}</h2>
-                    </div>
-
-                    <div style="margin-bottom:20px;">
-                        <div style="background-color:${COLOR_TEAL_DARK}; color:white; padding:5px; font-weight:bold; text-align:center;">Result Summary (All Subjects)</div>
-                        <table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">
-                            <thead style="background-color:${COLOR_TEAL_LIGHT}; color:#0f766e; font-weight:bold;">
-                                <tr>
-                                    <th style="border:1px solid #ccc; padding:8px;">#</th>
-                                    <th style="border:1px solid #ccc; padding:8px; text-align:left;">Class</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Total</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Present</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Pass</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Fail</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">%</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Grade</th>
-                                </tr>
-                            </thead>
-                            <tbody>${mainRowsHTML}</tbody>
-                            <tfoot style="background-color:#0f766e; color:white; font-weight:bold;">
-                                <tr>
-                                    <td colspan="2" style="border:1px solid #ccc; padding:8px; text-align:right;">Grand Total</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.total}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.present}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.pass}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gMain.fail}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gMainPerc}%</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${getSummaryGrade(gMainPerc)}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-
-                    <div>
-                        <div style="background-color:${COLOR_TEAL_DARK}; color:white; padding:5px; font-weight:bold; text-align:center;">Asri Subjects Summary (English & Maths)</div>
-                        <table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">
-                            <thead style="background-color:${COLOR_TEAL_LIGHT}; color:#0f766e; font-weight:bold;">
-                                <tr>
-                                    <th style="border:1px solid #ccc; padding:8px;">#</th>
-                                    <th style="border:1px solid #ccc; padding:8px; text-align:left;">Class</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Total</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Present</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Pass</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Fail</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">%</th>
-                                    <th style="border:1px solid #ccc; padding:8px;">Grade</th>
-                                </tr>
-                            </thead>
-                            <tbody>${asriRowsHTML}</tbody>
-                            <tfoot style="background-color:#0f766e; color:white; font-weight:bold;">
-                                <tr>
-                                    <td colspan="2" style="border:1px solid #ccc; padding:8px; text-align:right;">Grand Total</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.total}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.present}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.pass}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gAsri.fail}</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${gAsriPerc}%</td>
-                                    <td style="border:1px solid #ccc; padding:8px;">${getSummaryGrade(gAsriPerc)}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                `;
-
-                tempContainer.appendChild(summaryDiv);
-
-                const sumCanvas = await html2canvas(summaryDiv, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-                const sumImg = sumCanvas.toDataURL('image/png');
-                const imgWidth = 297; 
-                const imgHeight = sumCanvas.height * imgWidth / sumCanvas.width;
-                pdfDoc.addImage(sumImg, 'PNG', 0, 0, imgWidth, imgHeight);
-
-                tempContainer.removeChild(summaryDiv);
-
-                for (const item of classDataList) {
-                    btn.innerText = `Generating: ${item.clsName}...`;
-                    
-                    const pageDiv = document.createElement('div');
-                    pageDiv.style.backgroundColor = "white"; pageDiv.style.padding = "20px"; pageDiv.style.width = "100%"; pageDiv.style.boxSizing = "border-box";
-                    
-                    let headerCells = "";
-                    let totalMax = 0;
-                    item.subjects.forEach(sub => {
-                        const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths'; 
-                        const max = isSmall ? 25 : 100; totalMax += max;
-                        headerCells += `<th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc;">${sub} <br><span style="font-size: 10px; font-weight: normal; color: #ccfbf1;">/${max}</span></th>`;
-                    });
-
-                    pageDiv.innerHTML = `
-                        <div style="margin-bottom: 10px; border: 2px solid ${COLOR_BORDER}; border-radius: 8px; overflow: hidden;">
-                            <table style="width: 100%; border-collapse: collapse;">
-                                <tr style="height: 40px;">
-                                    <td style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold; font-size: 18px; width: 66%; border-right: 1px solid white; text-transform: uppercase;">Monthly Test Result</td>
-                                    <td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-bottom: 1px solid ${COLOR_BORDER}; border-right: 1px solid ${COLOR_BORDER}; width: 17%;">CLASS</td>
-                                    <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid ${COLOR_BORDER}; width: 17%;">${item.clsName}</td>
-                                </tr>
-                                <tr style="height: 50px;">
-                                    <td style="background-color: white; color: #115e59; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 24px; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">${jamiaName}</td>
-                                    <td style="background-color: ${COLOR_TEAL_LIGHT}; color: #134e4a; text-align: center; font-weight: bold; border-right: 1px solid ${COLOR_BORDER};">MONTH</td>
-                                    <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold;">${monthKey}</td>
-                                </tr>
-                            </table>
-                        </div>
-                        <table class="result-table" style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;">
-                            <thead style="background-color: ${COLOR_TEAL_DARK}; color: white; text-align: center; font-weight: bold;">
-                                <tr>
-                                    <th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc; width: 40px;">#</th>
-                                    <th style="background-color: ${COLOR_TEAL_DARK}; color: white; padding: 8px 4px; border: 1px solid #ccc; width: 25%; text-align: center;">Talib-e-Ilm</th>
-                                    ${headerCells}
-                                    <th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">Total (${totalMax})</th>
-                                    <th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">%</th>
-                                    <th style="background-color: #115e59; color: white; padding: 8px 4px; border: 1px solid #ccc;">Grade</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200" style="text-align: center;"></tbody>
-                        </table>`;
-                    
-                    tempContainer.appendChild(pageDiv);
-
-                    const PAGE_HEIGHT_LIMIT = 760; 
-                    let currentTbody = pageDiv.querySelector('.result-table tbody');
-                    let tempPage = pageDiv; 
-
-                    for (let i = 0; i < item.students.length; i++) {
-                        const std = item.students[i];
-                        const tr = document.createElement('tr');
-                        let tds = ""; let hasAbsent = false;
-
-                        item.subjects.forEach(sub => {
-                            let val = std.marks[sub]; if (val === undefined) val = "-"; 
-                            let cellStyle = "background: transparent;"; let displayVal = val;
-                            
-                            if (val === 'A') { hasAbsent = true; cellStyle = "background-color: #fee2e2; color: #991b1b;"; } 
-                            else if (val !== '-' && typeof val === 'number') { 
-                                const max = (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths') ? 25 : 100; 
-                                const pass = max === 25 ? 10 : 40; 
-                                if (val < pass) cellStyle = "background-color: #fee2e2; color: #991b1b;"; 
-                            }
-                            tds += `<td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; ${cellStyle}">${displayVal}</td>`;
-                        });
-
-                        let grade = "Nakam"; let cls = "background-color: #ef4444; color: white;"; 
-                        const p = parseFloat(std.percentage);
-                        if (p >= 80) { grade = "Mumtaz Ma Sharf"; cls = "background-color: #15803d; color: white;"; }
-                        else if (p >= 70) { grade = "Mumtaz"; cls = "background-color: #22c55e; color: white;"; }
-                        else if (p >= 50) { grade = "Jayyid"; cls = "background-color: #eab308; color: white;"; }
-                        else if (p >= 40) { grade = "Maqbul"; cls = "background-color: #f97316; color: white;"; }
-                        
-                        if (hasAbsent || p < 40) { grade = "Nakam"; cls = "background-color: #ef4444; color: white;"; }
-
-                        tr.innerHTML = `
-                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; color: #6b7280;">${i + 1}</td>
-                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: 600; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 14px; text-align: center;">${std.name}</td>
-                            ${tds}
-                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold;">${std.total}</td>
-                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; color: #2563eb;">${std.percentage}%</td>
-                            <td style="border: 1px solid #e5e7eb; padding: 5px 2px; font-weight: bold; font-size: 12px; border-radius: 4px; ${cls}">${grade}</td>
-                        `;
-                        currentTbody.appendChild(tr);
-
-                        if (tempPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
-                            currentTbody.removeChild(tr);
-                            
-                            const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-                            const imgData = canvas.toDataURL('image/png');
-                            const imgWidth = 297; const imgHeight = canvas.height * imgWidth / canvas.width;
-                            pdfDoc.addPage();
-                            pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-
-                            tempContainer.removeChild(tempPage); 
-                            
-                            const newPageDiv = pageDiv.cloneNode(true); 
-                            newPageDiv.querySelector('tbody').innerHTML = ''; 
-                            tempPage = newPageDiv;
-                            tempContainer.appendChild(tempPage);
-                            currentTbody = tempPage.querySelector('tbody');
-                            currentTbody.appendChild(tr);
-                        }
-                    }
-
-                    const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-                    const imgData = canvas.toDataURL('image/png');
-                    const imgWidth = 297; const imgHeight = canvas.height * imgWidth / canvas.width;
-                    pdfDoc.addPage();
-                    pdfDoc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-
-                    tempContainer.removeChild(tempPage);
-                }
-
-                document.body.removeChild(tempContainer);
-                pdfDoc.save(`All_Classes_Result_${jamiaName}_${monthKey}.pdf`);
-
-            } catch (error) {
-                console.error("PDF Error:", error);
-                alert("Error: " + error.message);
-            } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
+                asriRowsHTML += `
+                    <tr style="background-color: ${sn % 2 === 0 ? '#f9fafb' : 'white'};">
+                        <td style="border:1px solid #ccc; padding:6px;">${sn}</td>
+                        <td style="border:1px solid #ccc; padding:6px; text-align:left;">${clsName}</td>
+                        <td style="border:1px solid #ccc; padding:6px;">${aTotal}</td>
+                        <td style="border:1px solid #ccc; padding:6px;">${aPresent}</td>
+                        <td style="border:1px solid #ccc; padding:6px; color:#15803d; font-weight:bold;">${aPass}</td>
+                        <td style="border:1px solid #ccc; padding:6px; color:#dc2626; font-weight:bold;">${aFail}</td>
+                        <td style="border:1px solid #ccc; padding:6px; font-weight:bold;">${aPerc}%</td>
+                        <td style="border:1px solid #ccc; padding:6px;">${aGrade}</td>
+                    </tr>`;
             }
-        };
+            sn++;
+        }
+
+        if (classDataList.length === 0) {
+            alert("Koi bhi saved data nahi mila.");
+            btn.innerText = originalText; btn.disabled = false;
+            return;
+        }
+
+        const tempContainer = document.createElement('div');
+        tempContainer.style.position = 'absolute';
+        tempContainer.style.left = '-9999px';
+        tempContainer.style.top = '0px';
+        tempContainer.style.width = '1100px'; 
+        document.body.appendChild(tempContainer);
+
+        // 2. Summary Page Generate Karna
+        btn.innerText = "Generating Summary...";
+        let gMainPerc = gMain.present > 0 ? ((gMain.pass / gMain.present) * 100).toFixed(1) : "0.0";
+        let gAsriPerc = gAsri.present > 0 ? ((gAsri.pass / gAsri.present) * 100).toFixed(1) : "0.0";
+
+        const summaryDiv = document.createElement('div');
+        summaryDiv.style.backgroundColor = "white"; summaryDiv.style.padding = "20px"; summaryDiv.style.width = "100%"; summaryDiv.style.boxSizing = "border-box";
+        
+        summaryDiv.innerHTML = `
+            <div style="text-align:center; margin-bottom:20px;">
+                <h1 style="font-family: 'Jameel Noori Nastaleeq', serif; font-size:30px; margin:0;">${jamiaName}</h1>
+                <h2 style="font-size:18px; color:#0f766e; margin:5px 0;">Monthly Test Summary Report - ${monthKey}</h2>
+            </div>
+            <div style="margin-bottom:20px;">
+                <div style="background-color:${COLOR_TEAL_DARK}; color:white; padding:5px; font-weight:bold; text-align:center;">Result Summary (All Subjects)</div>
+                <table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">
+                    <thead style="background-color:${COLOR_TEAL_LIGHT}; color:#0f766e; font-weight:bold;">
+                        <tr><th style="border:1px solid #ccc; padding:8px;">#</th><th style="border:1px solid #ccc; padding:8px; text-align:left;">Class</th><th style="border:1px solid #ccc; padding:8px;">Total</th><th style="border:1px solid #ccc; padding:8px;">Present</th><th style="border:1px solid #ccc; padding:8px;">Pass</th><th style="border:1px solid #ccc; padding:8px;">Fail</th><th style="border:1px solid #ccc; padding:8px;">%</th><th style="border:1px solid #ccc; padding:8px;">Grade</th></tr>
+                    </thead>
+                    <tbody>${mainRowsHTML}</tbody>
+                    <tfoot style="background-color:#0f766e; color:white; font-weight:bold;">
+                        <tr><td colspan="2" style="border:1px solid #ccc; padding:8px; text-align:right;">Grand Total</td><td style="border:1px solid #ccc; padding:8px;">${gMain.total}</td><td style="border:1px solid #ccc; padding:8px;">${gMain.present}</td><td style="border:1px solid #ccc; padding:8px;">${gMain.pass}</td><td style="border:1px solid #ccc; padding:8px;">${gMain.fail}</td><td style="border:1px solid #ccc; padding:8px;">${gMainPerc}%</td><td style="border:1px solid #ccc; padding:8px;">${getSummaryGrade(gMainPerc)}</td></tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div>
+                <div style="background-color:${COLOR_TEAL_DARK}; color:white; padding:5px; font-weight:bold; text-align:center;">Asri Subjects Summary (English & Maths)</div>
+                <table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">
+                    <thead style="background-color:${COLOR_TEAL_LIGHT}; color:#0f766e; font-weight:bold;">
+                        <tr><th style="border:1px solid #ccc; padding:8px;">#</th><th style="border:1px solid #ccc; padding:8px; text-align:left;">Class</th><th style="border:1px solid #ccc; padding:8px;">Total</th><th style="border:1px solid #ccc; padding:8px;">Present</th><th style="border:1px solid #ccc; padding:8px;">Pass</th><th style="border:1px solid #ccc; padding:8px;">Fail</th><th style="border:1px solid #ccc; padding:8px;">%</th><th style="border:1px solid #ccc; padding:8px;">Grade</th></tr>
+                    </thead>
+                    <tbody>${asriRowsHTML}</tbody>
+                    <tfoot style="background-color:#0f766e; color:white; font-weight:bold;">
+                        <tr><td colspan="2" style="border:1px solid #ccc; padding:8px; text-align:right;">Grand Total</td><td style="border:1px solid #ccc; padding:8px;">${gAsri.total}</td><td style="border:1px solid #ccc; padding:8px;">${gAsri.present}</td><td style="border:1px solid #ccc; padding:8px;">${gAsri.pass}</td><td style="border:1px solid #ccc; padding:8px;">${gAsri.fail}</td><td style="border:1px solid #ccc; padding:8px;">${gAsriPerc}%</td><td style="border:1px solid #ccc; padding:8px;">${getSummaryGrade(gAsriPerc)}</td></tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+
+        tempContainer.appendChild(summaryDiv);
+        const sumCanvas = await html2canvas(summaryDiv, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+        pdfDoc.addImage(sumCanvas.toDataURL('image/png'), 'PNG', 0, 0, 297, (sumCanvas.height * 297) / sumCanvas.width);
+        tempContainer.removeChild(summaryDiv);
+
+        // 3. Classes Ka Data Naye Design ke Sath Generate Karna
+        for (const item of classDataList) {
+            btn.innerText = `Generating: ${item.clsName}...`;
+            
+            let headerCells = "";
+            let totalMax = 0;
+            item.subjects.forEach(sub => {
+                const isSmall = sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths' || sub.toLowerCase() === 'computer'; 
+                const max = isSmall ? 25 : 100; totalMax += max;
+                headerCells += `<td style="background-color: #e6fffa; color: #0f766e; padding: 12px 4px; border: 1px solid #115e59; font-size: 12px; text-transform: uppercase; font-weight: bold; text-align: center;">${sub} <br><span style="font-size: 10px; font-weight: normal; color: #115e59;">/${max}</span></td>`;
+            });
+
+            const PAGE_HEIGHT_LIMIT = 720;
+
+            // Page Template banany ka function (Taa ke har naye page par Title aye)
+            function createClassPage() {
+                const pageDiv = document.createElement('div');
+                pageDiv.style.backgroundColor = "white"; 
+                pageDiv.style.padding = "20px"; 
+                pageDiv.style.width = "100%"; 
+                pageDiv.style.boxSizing = "border-box";
+                
+                pageDiv.innerHTML = `
+                    <div style="border: 2px solid #0f766e; border-bottom: none; overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr style="height: 40px;">
+                                <td style="background-color: #0f766e; color: white; text-align: center; font-weight: bold; font-size: 18px; width: 66%; border-right: 1px solid white; text-transform: uppercase;">Monthly Test Result</td>
+                                <td style="background-color: #f0fdfa; color: #134e4a; text-align: center; font-weight: bold; border-bottom: 1px solid #0f766e; border-right: 1px solid #0f766e; width: 17%;">CLASS</td>
+                                <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold; font-size: 16px; border-bottom: 1px solid #0f766e; width: 17%; font-family: 'Jameel Noori Nastaleeq', serif;">${item.clsName}</td>
+                            </tr>
+                            <tr style="height: 50px;">
+                                <td style="background-color: white; color: #115e59; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 24px; font-weight: bold; border-right: 1px solid #0f766e;">${jamiaName}</td>
+                                <td style="background-color: #f0fdfa; color: #134e4a; text-align: center; font-weight: bold; border-right: 1px solid #0f766e;">MONTH</td>
+                                <td style="background-color: white; color: #1f2937; text-align: center; font-weight: bold;">${monthKey}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; border: 2px solid #0f766e;">
+                        <tbody class="data-tbody" style="text-align: center;">
+                            <tr style="background-color: #e6fffa; color: #0f766e; font-weight: bold;">
+                                <td style="background-color: #e6fffa; padding: 12px 4px; border: 1px solid #115e59; width: 40px;">#</td>
+                                <td style="background-color: #e6fffa; padding: 12px 4px; border: 1px solid #115e59; width: 22%; text-align: left;">TALIB-E-ILM</td>
+                                ${headerCells}
+                                <td style="background-color: #e6fffa; padding: 12px 4px; border: 1px solid #115e59;">TOTAL (${totalMax})</td>
+                                <td style="background-color: #e6fffa; padding: 12px 4px; border: 1px solid #115e59;">%</td>
+                                <td style="background-color: #e6fffa; padding: 12px 4px; border: 1px solid #115e59;">GRADE</td>
+                            </tr>
+                        </tbody>
+                    </table>`;
+                return pageDiv;
+            }
+
+            let tempPage = createClassPage();
+            tempContainer.appendChild(tempPage);
+            let currentTbody = tempPage.querySelector('.data-tbody');
+
+            for (let i = 0; i < item.students.length; i++) {
+                const std = item.students[i];
+                const tr = document.createElement('tr');
+                
+                let tds = ""; 
+                let failCount = 0;
+                let absentCount = 0;
+
+                item.subjects.forEach(sub => {
+                    let val = std.marks[sub]; 
+                    if (val === undefined) val = "-"; 
+                    let cellBg = "transparent"; 
+                    let cellCol = "#374151";
+                    
+                    if (val === 'A') { 
+                        cellBg = "#fee2e2"; cellCol = "#991b1b"; 
+                        absentCount++; failCount++;
+                    } else if (val !== '-' && typeof val === 'number') { 
+                        const max = (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths' || sub.toLowerCase() === 'computer') ? 25 : 100; 
+                        const pass = max * 0.40; 
+                        if (val < pass) {
+                            cellBg = "#fee2e2"; cellCol = "#991b1b"; 
+                            failCount++;
+                        }
+                    }
+                    tds += `<td style="border: 1px solid #9ca3af; padding: 10px 4px; font-weight: bold; background-color: ${cellBg}; color: ${cellCol};">${val}</td>`;
+                });
+
+                let gradeText = "Nakam"; 
+                let gradeBg = "#dc2626"; 
+                const p = parseFloat(std.percentage);
+                
+                if (item.subjects.length > 0 && absentCount === item.subjects.length) {
+                    gradeText = "Absent"; gradeBg = "#6b7280";
+                } else if (failCount >= 3 || p < 40) {
+                    gradeText = "Nakam"; gradeBg = "#dc2626";
+                } else {
+                    if (p >= 80) { gradeText = "Mumtaz Ma Sharf"; gradeBg = "#0d9488"; }
+                    else if (p >= 70) { gradeText = "Mumtaz"; gradeBg = "#16a34a"; }
+                    else if (p >= 60) { gradeText = "Jayyid Jiddan"; gradeBg = "#2563eb"; }
+                    else if (p >= 50) { gradeText = "Jayyid"; gradeBg = "#6366f1"; }
+                    else if (p >= 40) { gradeText = "Maqbul"; gradeBg = "#eab308"; }
+                }
+
+                tr.innerHTML = `
+                    <td style="border: 1px solid #9ca3af; padding: 10px 4px; color: #6b7280;">${i + 1}</td>
+                    <td style="border: 1px solid #9ca3af; padding: 10px 10px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', serif; font-size: 16px; text-align: left;">${std.name}</td>
+                    ${tds}
+                    <td style="border: 1px solid #9ca3af; padding: 10px 4px; font-weight: bold; color: #374151;">${std.total}</td>
+                    <td style="border: 1px solid #9ca3af; padding: 10px 4px; font-weight: bold; color: #2563eb;">${std.percentage}%</td>
+                    <td style="border: 1px solid #9ca3af; padding: 6px; font-weight: bold;">
+                        <div style="background-color: ${gradeBg}; color: white; padding: 6px 0; border-radius: 4px; font-size: 12px; white-space: nowrap;">${gradeText}</div>
+                    </td>
+                `;
+                
+                currentTbody.appendChild(tr);
+
+                // --- PAGE BREAK LOGIC --- (Yahan Naya Page Banta Hai)
+                if (tempPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
+                    currentTbody.removeChild(tr); 
+                    
+                    const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+                    pdfDoc.addPage();
+                    pdfDoc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 297, (canvas.height * 297) / canvas.width);
+
+                    tempContainer.removeChild(tempPage); 
+                    
+                    // Naya page fresh title aur header table ke sath banega
+                    tempPage = createClassPage();
+                    tempContainer.appendChild(tempPage);
+                    currentTbody = tempPage.querySelector('.data-tbody');
+                    
+                    currentTbody.appendChild(tr); // Cut kiya hua row wapas daal diya
+                }
+            }
+
+            // Class khatam hone par bacha hua aakhiri page add karein
+            const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+            pdfDoc.addPage();
+            pdfDoc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 297, (canvas.height * 297) / canvas.width);
+            tempContainer.removeChild(tempPage);
+        }
+
+        document.body.removeChild(tempContainer);
+        pdfDoc.save(`All_Classes_Result_${jamiaName}_${monthKey}.pdf`);
+
+    } catch (error) {
+        console.error("PDF Error:", error);
+        alert("Error: " + error.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+};
 
        window.downloadReportCards = async () => {
     if (!window.html2canvas) { alert("Library missing."); return; }
