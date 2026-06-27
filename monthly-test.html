@@ -10,6 +10,7 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
        /* 1. Font Face (Custom Name Ke Sath) */
         @font-face { 
@@ -231,6 +232,9 @@
     <button onclick="downloadReportCards()" class="bg-blue-800 hover:bg-blue-900 text-white w-full md:w-auto px-4 py-3 sm:px-6 sm:py-4 rounded-xl font-bold text-sm sm:text-lg shadow-lg flex justify-center items-center gap-2">
         <i class="fas fa-id-card"></i> Report Cards
     </button>
+    <button id="btn-export-excel" onclick="downloadExcel()" class="bg-green-600 hover:bg-green-700 text-white w-full md:w-auto px-4 py-3 sm:px-6 sm:py-4 rounded-xl font-bold text-sm sm:text-lg shadow-lg flex justify-center items-center gap-2">
+    <i class="fas fa-file-excel"></i> Export Excel
+</button>
 </div>
                 </div>
             </div> 
@@ -2226,47 +2230,66 @@
             document.getElementById('paste-area').focus();
         };
 
-        window.processPaste = () => {
-            const text = document.getElementById('paste-area').value;
-            if(!text.trim()) {
-                alert("Data khali hai. Pehle kuch paste karein.");
-                return;
-            }
-            
-            const rows = text.trim().split('\n');
-            let count = 0;
+       window.processPaste = () => {
+    const text = document.getElementById('paste-area').value;
+    if(!text.trim()) {
+        alert("Data khali hai. Pehle kuch paste karein.");
+        return;
+    }
+    
+    const rows = text.trim().split('\n');
+    let count = 0;
 
-            document.getElementById('students-body').innerHTML = '';
+    document.getElementById('students-body').innerHTML = '';
 
-            rows.forEach(rowLine => {
-                const cols = rowLine.split('\t');
-                let finalStudentName = "";
+    rows.forEach(rowLine => {
+        const cols = rowLine.split('\t');
+        if(cols.length < 2) return; // Khali line skip karein
+        
+        let finalStudentName = "";
+        let marksData = {};
 
-                if (cols.length >= 4) {
-                    const nameUr = cols[1]?.trim() || "";
-                    const fatherUr = cols[3]?.trim() || "";
-                    
-                    if (nameUr !== "اردو میں نام" && nameUr !== "Name" && nameUr !== "") {
-                        if (fatherUr && fatherUr !== "ولدیت" && fatherUr !== "Father") {
-                            finalStudentName = `${nameUr} بن ${fatherUr}`; 
-                        } else {
-                            finalStudentName = nameUr;
-                        }
-                    }
-                } 
-                else if (cols.length > 0) {
-                    finalStudentName = cols[0]?.trim();
-                }
+        // Check karte hain ke data hamari Nayi Excel file se hai ya Madani portal ki purani file se
+        let isExportedExcel = !isNaN(parseInt(cols[0])) && cols.length > 2;
 
-                if (finalStudentName && finalStudentName !== "اردو میں نام" && finalStudentName !== "Name") {
-                    addStudentRow(finalStudentName, {});
-                    count++;
+        if (isExportedExcel) {
+            finalStudentName = cols[1]?.trim() || "";
+            // Nayi Excel se marks uthakar automatically match karein
+            finalSubjectsList.forEach((sub, idx) => {
+                let mark = cols[2 + idx];
+                if (mark !== undefined) {
+                    marksData[sub] = mark.trim();
                 }
             });
-            
-            document.getElementById('paste-modal').remove();
-            alert(`Kamiyabi se ${count} students import ho gaye hain!`);
-        };
+        } 
+        else {
+            // Purani Madani Portal Logic (Sirf Naam laane ke liye)
+            if (cols.length >= 4) {
+                const nameUr = cols[1]?.trim() || "";
+                const fatherUr = cols[3]?.trim() || "";
+                
+                if (nameUr !== "اردو میں نام" && nameUr !== "Name" && nameUr !== "") {
+                    if (fatherUr && fatherUr !== "ولدیت" && fatherUr !== "Father") {
+                        finalStudentName = `${nameUr} بن ${fatherUr}`; 
+                    } else {
+                        finalStudentName = nameUr;
+                    }
+                }
+            } 
+            else if (cols.length > 0) {
+                finalStudentName = cols[0]?.trim();
+            }
+        }
+
+        if (finalStudentName && finalStudentName !== "اردو میں نام" && finalStudentName !== "Name" && finalStudentName !== "Student Name") {
+            addStudentRow(finalStudentName, marksData); // Ab Naam aur Marks dono jayenge
+            count++;
+        }
+    });
+    
+    document.getElementById('paste-modal').remove();
+    alert(`Kamiyabi se ${count} students data ke sath import ho gaye hain!`);
+};
 
         window.updateSheetColumns = async () => {
             const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
@@ -2322,6 +2345,65 @@
             await saveResult(true); 
             alert("Subjects Updated! Columns me Computer aur dynamic values sync ho gayi hain.");
         };
+
+        window.downloadExcel = async () => {
+    const btn = document.getElementById('btn-export-excel');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+    btn.disabled = true;
+
+    try {
+        const wb = XLSX.utils.book_new();
+        const allClasses = Object.keys(classBooksMap).sort();
+
+        for (const clsName of allClasses) {
+            const cleanClass = clsName.split('_')[0];
+            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+            const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                const students = data.students || [];
+                const subjects = data.subjects || [];
+
+                if (students.length > 0) {
+                    const sheetData = [];
+                    // Headers Add Karna
+                    const header = ["Roll No", "Student Name", ...subjects, "Total", "Percentage", "Grade"];
+                    sheetData.push(header);
+
+                    // Students ka data add karna
+                    students.forEach((std, i) => {
+                        const row = [i + 1, std.name];
+                        subjects.forEach(sub => {
+                            row.push(std.marks[sub] !== undefined ? std.marks[sub] : "");
+                        });
+                        row.push(std.total || 0);
+                        row.push(std.percentage ? std.percentage + "%" : "0%");
+                        row.push(std.grade || "");
+                        sheetData.push(row);
+                    });
+
+                    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+                    let safeSheetName = clsName.replace(/[\[\]\*\\\?\:\/]/g, '').substring(0, 31);
+                    XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
+                }
+            }
+        }
+
+        if (wb.SheetNames.length === 0) {
+            alert("Koi data nahi mila export karne ke liye.");
+        } else {
+            XLSX.writeFile(wb, `Result_${jamiaName}_${monthKey}.xlsx`);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+};
         
     </script>
 </body>
