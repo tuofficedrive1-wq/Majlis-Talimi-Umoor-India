@@ -1242,6 +1242,7 @@
         import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, updateDoc, getDocs, deleteField, Timestamp, addDoc, orderBy, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";   
         import { initAdminResultAnalysis } from "./admin-final-result-analysis.js";
         import { initAcademicYearSetup } from "./admin-academic-setup.js";
+        import { initElanaatAndTasks } from "./admin-task-management.js";
         import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // --- GLOBAL VARIABLES & CONFIG ---
@@ -1300,18 +1301,6 @@
         const kkdSummaryTablesContainer = document.getElementById('kkd-summary-tables-container');
         const kkdSectionDedicated = document.getElementById('summary-kkd-section-dedicated');
         const kkdOnlyUnfilledCheckbox = document.getElementById('kkd-only-unfilled');
-
-        // Elanaat Tab Elements
-        // Variables jo aapne bataye
-const elanaatForm = document.getElementById('elanaat-form'); 
-const elanaatTextarea = document.getElementById('elanaat-textarea'); 
-const elanaatListDiv = document.getElementById('elanaat-list'); 
-
-// Task System ke naye variables
-const taskUserSelect = document.getElementById('task-user-select');
-const taskInput = document.getElementById('task-input');
-const assignTaskBtn = document.getElementById('assign-task-btn');
- 
         
         // Edit User Modal Elements
         const editUserModal = document.getElementById('edit-user-modal');
@@ -2993,6 +2982,7 @@ const handleEditUserSubmit = async (e) => {
         if (tabId === 'transfer' && typeof initTransferTab === 'function') initTransferTab();
         if (tabId === 'academic-setup') initAcademicYearSetup(db, "central-setup-root");
         if (tabId === 'final-analysis') initAdminResultAnalysis(db, "final-analysis-root-container");
+        if (tabId === 'elanaat') initElanaatAndTasks(db);
         if (tabId === 'jamia-link') {
             if (typeof initJamiaLinkingTab === 'function') initJamiaLinkingTab();
             if (typeof renderCurrentLinks === 'function') renderCurrentLinks();
@@ -4736,12 +4726,6 @@ const handleTaskSubmit = async () => {
     }
 };
 
-// Task delete ya status dekhne ke liye global function
-window.deleteElaan = async (id) => {
-    if(confirm("Delete karein?")) await deleteDoc(doc(db, "announcements", id));
-};
-// --- Naya Function: User ki poori bariki (Analysis) dikhane ke liye ---
-// --- Naya Function: Monthly Report Card (Professional Layout) ---
 // --- Naya Function: Monthly Report Card (Detailed & Fixed Layout) ---
 const renderFullUserAnalysis = (user, userReports) => {
     const container = document.getElementById('admin-reports-summary-container');
@@ -6426,167 +6410,6 @@ window.runAdminFinalAnalysis = function () {
     };
 };
         
-// --- 1. ADMIN LOGIC: Users List load karna Dropdown mein ---
-// 1. usersMap ko bahar rakhein taaki ye poore admin panel me kaam kare
-let usersMap = {}; 
-
-// 1. Checkbox List bharna
-// Checkbox list me users load karna
-const setupUserCheckboxes = () => {
-    onSnapshot(collection(db, "users"), (snapshot) => {
-        const listDiv = document.getElementById('user-checkbox-list');
-        if(!listDiv) return;
-
-        let html = "";
-        snapshot.forEach((doc) => {
-            const u = doc.data();
-            const userId = doc.id;
-            const userName = u.name || "Unknown";
-            
-            // Global map update (Taki admin list me naam dikhe)
-            usersMap[userId] = userName;
-
-            html += `
-                <label class="flex items-center gap-3 p-2 hover:bg-white rounded-md cursor-pointer border-b border-gray-100 last:border-0 transition-colors">
-                    <input type="checkbox" name="selected-users" value="${userId}" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
-                    <span class="text-sm font-medium text-gray-700 urdu-font">${userName} ${u.jamia ? '('+u.jamia+')' : ''}</span>
-                </label>
-            `;
-        });
-        listDiv.innerHTML = html || '<p class="text-gray-400 text-xs p-2">Koi user nahi mila.</p>';
-    });
-};
-
-// 2. Multiple Users ko Task bhejne ka Logic
-if (assignTaskBtn) {
-    assignTaskBtn.addEventListener('click', async () => {
-        const taskText = taskInput.value.trim();
-        
-        // Checkboxes se selected IDs nikalna
-        const checkboxes = document.querySelectorAll('input[name="selected-users"]:checked');
-        const selectedIds = Array.from(checkboxes).map(cb => cb.value);
-
-        if(selectedIds.length === 0 || !taskText) { 
-            alert("Kam se kam ek user chunein aur kaam likhein!"); 
-            return; 
-        }
-
-        try {
-            assignTaskBtn.disabled = true;
-            assignTaskBtn.innerText = "Bheja ja raha hai...";
-
-            // Loop chala kar sabhi selected logon ko task dena
-            const promises = selectedIds.map(uid => {
-                return addDoc(collection(db, "user_tasks"), {
-                    userId: uid,
-                    task: taskText,
-                    status: "pending",
-                    timestamp: serverTimestamp()
-                });
-            });
-
-            await Promise.all(promises);
-
-            // Form reset karna
-            taskInput.value = "";
-            checkboxes.forEach(cb => cb.checked = false); // Uncheck all
-            document.getElementById('user-checkbox-list').classList.add('hidden'); // List band karein
-            
-            alert(`${selectedIds.length} logon ko task bhej diya gaya!`);
-        } catch (e) {
-            console.error(e);
-            alert("Kuch masla hua!");
-        } finally {
-            assignTaskBtn.disabled = false;
-            assignTaskBtn.innerText = "Send Task";
-        }
-    });
-}
-
-// Initial Load
-setupUserCheckboxes();
-
-// --- ADMIN LOGIC ---
-// 1. Elaan Publish Karne Ka Function
-if (elanaatForm) {
-    elanaatForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        try {
-            await addDoc(collection(db, "announcements"), {
-                text: elanaatTextarea.value,
-                timestamp: serverTimestamp() // Date/Time ke liye
-            });
-            elanaatForm.reset();
-            alert("Elaan publish ho gaya!");
-        } catch (err) { console.error(err); }
-    });
-}
-
-// 2. Admin Panel par Elanaat ki Live List (Date/Time ke saath)
-onSnapshot(query(collection(db, "announcements"), orderBy("timestamp", "desc")), (snap) => {
-    elanaatListDiv.innerHTML = snap.docs.map(doc => {
-        const d = doc.data();
-        const date = d.timestamp ? d.timestamp.toDate().toLocaleString('en-IN') : 'Just now';
-        return `
-            <div class="p-3 bg-white border rounded mb-2 shadow-sm relative group">
-                <p class="urdu-font text-lg">${d.text}</p>
-                <div class="text-[10px] text-gray-400 mt-1"><i class="far fa-clock"></i> ${date}</div>
-                <button onclick="deleteDoc(doc(db, 'announcements', '${doc.id}'))" class="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition">Delete</button>
-            </div>`;
-    }).join('') || '<p class="text-gray-400">Koi elaan nahi mila.</p>';
-});
-
-// 3. Admin Panel par Tasks ka Live Status (Done Time ke saath)
-const adminTaskList = document.getElementById('admin-task-list'); // Ensure this ID exists in HTML
-onSnapshot(query(collection(db, "user_tasks"), orderBy("timestamp", "desc")), (snap) => {
-    const adminTaskList = document.getElementById('admin-task-list');
-    if (!adminTaskList) return;
-
-    // Tasks ko user-wise group karna
-    const groupedTasks = {};
-    snap.forEach(doc => {
-        const d = doc.data();
-        const uid = d.userId;
-        if (!groupedTasks[uid]) groupedTasks[uid] = [];
-        groupedTasks[uid].push({ id: doc.id, ...d });
-    });
-
-    // HTML taiyar karna (Accordion style)
-    adminTaskList.innerHTML = Object.keys(groupedTasks).map(uid => {
-        const userName = usersMap[uid] || uid; // Agar naam mil gaya to naam, warna ID
-        const tasks = groupedTasks[uid];
-        
-        return `
-            <div class="mb-4 border rounded-lg overflow-hidden shadow-sm">
-                <button onclick="this.nextElementSibling.classList.toggle('hidden')" 
-                        class="w-full flex justify-between items-center p-3 bg-indigo-50 hover:bg-indigo-100 transition font-bold text-indigo-800">
-                    <span><i class="fas fa-user-circle mr-2"></i> ${userName}</span>
-                    <span class="bg-indigo-200 text-indigo-800 text-xs px-2 py-1 rounded-full">${tasks.length} Tasks</span>
-                </button>
-                <div class="hidden p-2 space-y-2 bg-white">
-                    ${tasks.map(t => {
-                        const cDate = t.timestamp ? t.timestamp.toDate().toLocaleString('en-IN') : '...';
-                        const dDate = t.doneAt ? t.doneAt.toDate().toLocaleString('en-IN') : '';
-                        return `
-                            <div class="p-2 border-b last:border-0 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="urdu-font font-semibold">${t.task}</span>
-                                    <span class="text-[10px] font-bold ${t.status === 'done' ? 'text-green-600' : 'text-orange-500'}">
-                                        ${t.status === 'done' ? '✓ DONE' : '⌛ PENDING'}
-                                    </span>
-                                </div>
-                                <div class="text-[9px] text-gray-400 mt-1">
-                                    Assign: ${cDate} ${t.status === 'done' ? ` | Done: ${dDate}` : ''}
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    }).join('');
-});
-
         // --- JAMIA LINKING SYSTEM FOR INSPECTORS ---
 
 const initJamiaLinkingTab = () => {
