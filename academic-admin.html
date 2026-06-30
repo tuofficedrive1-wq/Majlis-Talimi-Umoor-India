@@ -1272,13 +1272,40 @@ window.generateAnalysisReport = () => {
 
 // 3. Edit & Delete Functions
 window.deleteReport = async (reportId) => {
-    if (confirm("Kya aap waqai is report ko delete karna chahte hain? Data wapas nahi aayega.")) {
+    if (confirm("Kya aap waqai is report ko delete karna chahte hain? Is se yeh report Inspector ke paas wapas PENDING aur EDITABLE ho jayegi.")) {
         try {
-            await deleteDoc(doc(db, "inspection_reports", reportId));
-            alert("Report successfully delete ho gayi!");
-            // No need to call generateAnalysisReport manually, onSnapshot will trigger it automatically
+            // 1. Pehle 'inspection_reports' se main document ka data nikalein taake inspectorId aur month pata chal sake
+            const mainReportRef = doc(db, "inspection_reports", reportId);
+            const mainReportSnap = await getDoc(mainReportRef);
+            
+            if (mainReportSnap.exists()) {
+                const reportData = mainReportSnap.data();
+                const insId = reportData.inspectorId;
+                const rMonth = reportData.month;
+                const jName = reportData.jamiaName;
+
+                // 2. Inspector ki personal 'inspector_reports' collection ka document ref nikalein
+                const inspectorReportDocId = `${insId}_${rMonth}`;
+                const inspectorReportRef = doc(db, "inspector_reports", inspectorReportDocId);
+                const inspectorSnap = await getDoc(inspectorReportRef);
+
+                if (inspectorSnap.exists()) {
+                    const inspectorData = inspectorSnap.data();
+                    // Uske jaiza array mein se is specific jamia ki entry ko remove kar dein
+                    const updatedJaiza = (inspectorData.jaiza || []).filter(item => item.name !== jName);
+                    
+                    // Inspector ka array update karein
+                    await setDoc(inspectorReportRef, { jaiza: updatedJaiza }, { merge: true });
+                }
+            }
+
+            // 3. Ab main admin collection se delete kar dein
+            await deleteDoc(mainReportRef);
+            
+            alert("Report successfully delete ho gayi aur User ke paas wapas pending ho gayi!");
         } catch (error) {
             alert("Delete Error: " + error.message);
+            console.error(error);
         }
     }
 };
