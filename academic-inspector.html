@@ -348,10 +348,24 @@
         let reportsData = null;
         // --- NAYA FUNCTION: Admin Dashboard Sync Listener ---
 window.allReports = [];
+let adminReportUnsubscribe = null; // Mahina badalne par purana listener rokne ke liye
+
 window.listenToAdminReports = (selectedMonth) => {
-    const q = query(collection(db, "inspection_reports"), where("month", "==", selectedMonth));
-    onSnapshot(q, (snapshot) => {
+    // Agar pehle se koi listener chal raha hai to use band karein
+    if (adminReportUnsubscribe) {
+        adminReportUnsubscribe(); 
+    }
+    
+    // Sirf is inspector ki aur is mahine ki reports fetch karein
+    const q = query(
+        collection(db, "inspection_reports"), 
+        where("month", "==", selectedMonth),
+        where("inspectorId", "==", currentUser.uid)
+    );
+    
+    adminReportUnsubscribe = onSnapshot(q, (snapshot) => {
         window.allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Data aate hi list ko refresh kar dein
         if (typeof window.renderInspectionList === 'function' && assignedJamiaat && assignedJamiaat.length > 0) {
             window.renderInspectionList();
         }
@@ -398,7 +412,8 @@ window.listenToAdminReports = (selectedMonth) => {
                 const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
                 const currentShortMonth = shortMonths[parseInt(month) - 1];
                 handleDashboardMonthChange(currentShortMonth, assignedJamiaat, db, currentUser);
-
+// 👇🔴 YEH NAYI LINE ADD KAREIN 👇🔴
+                window.listenToAdminReports(monthInput.value);
                 await loadStats(); 
             } catch (err) {
                 console.error("Dashboard Initialization Error:", err);
@@ -407,6 +422,7 @@ window.listenToAdminReports = (selectedMonth) => {
             }
         }
 
+        // MONTH CHANGE LISTENER
         // MONTH CHANGE LISTENER
         document.getElementById('report-month').addEventListener('change', (e) => {
             if (!e.target.value) return;
@@ -419,6 +435,9 @@ window.listenToAdminReports = (selectedMonth) => {
             if (headerText) headerText.textContent = `${monthNames[parseInt(month)-1]} ${year}`;
 
             handleDashboardMonthChange(selectedShortMonth, assignedJamiaat, db, currentUser);
+            
+            // 👇🔴 YEH NAYI LINE YAHAN BHI ADD KAREIN 👇🔴
+            window.listenToAdminReports(e.target.value);
             
             if (typeof loadStats === "function") loadStats();
             
