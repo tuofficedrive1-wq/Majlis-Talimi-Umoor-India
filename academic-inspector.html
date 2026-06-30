@@ -346,6 +346,17 @@
         let assignedJamiaat = [];
         let allReports = [];
         let reportsData = null;
+        // --- NAYA FUNCTION: Admin Dashboard Sync Listener ---
+window.allReports = [];
+window.listenToAdminReports = (selectedMonth) => {
+    const q = query(collection(db, "inspection_reports"), where("month", "==", selectedMonth));
+    onSnapshot(q, (snapshot) => {
+        window.allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (typeof window.renderInspectionList === 'function' && assignedJamiaat && assignedJamiaat.length > 0) {
+            window.renderInspectionList();
+        }
+    });
+};
 
         // AUTH CHECK
         onAuthStateChanged(auth, async user => {
@@ -630,68 +641,74 @@ const listenToAdminReports = (userId, selectedMonth) => {
         }
 
         // RENDER INSPECTION LIST (With Edit Restrictions & Pending vs Submitted Sync)
-        window.renderInspectionList = () => {
-            const monthInput = document.getElementById('report-month').value;
-            const badge = document.getElementById('inspection-month-badge');
-            if(badge) badge.textContent = monthInput;
+       // --- UPDATED: RENDER INSPECTION LIST ---
+window.renderInspectionList = () => {
+    const monthInput = document.getElementById('report-month').value;
+    const badge = document.getElementById('inspection-month-badge');
+    if(badge) badge.textContent = monthInput;
+    
+    // Yahan hum Inspector ka local/form data aur Admin ka data dono le rahe hain
+    const saved = reportsData.jaiza || [];
+    let pendingHTML = '';
+    let submittedHTML = '';
+    
+    assignedJamiaat.forEach((jamia, index) => {
+        // 1. Check karein ke Admin ke paas submitted hai ya nahi
+        const adminReport = (window.allReports || []).find(r => r.jamiaName === jamia && r.inspectorId === currentUser.uid && r.month === monthInput);
+        const isSubmitted = !!adminReport;
+
+        // 2. Inspector ka Draft Data (Jo external form se aata hai)
+        const draftEntry = saved.find(s => s.name === jamia) || {};
+
+        // 3. Agar submit ho gaya to Admin data show karo, warna Draft data (taake form delete hone par blank na ho)
+        let entry = isSubmitted ? adminReport : draftEntry;
+        
+        let inputPlaceholder = entry.type === 'Visit' ? "Visit details..." : (entry.type === 'N/A' ? "Reason..." : "Score%");
+        let inputType = (entry.type === 'Visit' || entry.type === 'N/A') ? "text" : "number";
+        
+        // Locked state agar submitted hai
+        const isDisabled = isSubmitted ? 'disabled bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white focus:ring-1 focus:ring-indigo-500';
+
+        const rowHTML = `
+        <div class="inspection-row flex flex-col md:flex-row items-stretch md:items-center gap-2.5 p-3 border ${isSubmitted ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'} rounded-xl transition-colors">
+            <div class="md:w-1/4 font-bold text-slate-700 text-sm pl-1 flex items-center gap-2">
+                ${isSubmitted ? '<i class="fas fa-check text-emerald-500"></i>' : '<i class="fas fa-circle-notch text-red-400 text-[10px]"></i>'}
+                ${jamia}
+            </div>
             
-            // Note: Hum direct master billing ya global records se synced rakh rahe hain
-            // Agar admin ne delete kar diya, to 'allReports' (jo hum step 1.2 me pull karenge) se wo gayab ho jayega
-            let pendingHTML = '';
-            let submittedHTML = '';
-            
-            assignedJamiaat.forEach((jamia, index) => {
-                // Admin database (inspection_reports) mein check karein ke is mahine is jamia ki report hai ya nahi
-                const adminReport = allReports.find(r => r.jamiaName === jamia && r.inspectorId === currentUser.uid && r.month === monthInput);
-                const isSubmitted = !!adminReport;
+            <div class="flex gap-2 w-full md:w-auto flex-1">
+                <input type="date" ${isDisabled} class="insp-date w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm" value="${entry.date || ''}">
+                <select ${isDisabled} class="insp-type w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-semibold" onchange="handleTypeChange(this, ${index})">
+                    <option value="Inspection" ${entry.type === 'Inspection' ? 'selected' : ''}>Inspection</option>
+                    <option value="Visit" ${entry.type === 'Visit' ? 'selected' : ''}>Visit</option>
+                    <option value="N/A" ${entry.type === 'N/A' ? 'selected' : ''}>N/A</option>
+                </select>
+            </div>
 
-                let entry = adminReport || {};
-                let inputPlaceholder = entry.type === 'Visit' ? "Visit details..." : (entry.type === 'N/A' ? "Reason..." : "Score%");
-                let inputType = (entry.type === 'Visit' || entry.type === 'N/A') ? "text" : "number";
+            <div class="flex gap-2 w-full md:w-1/3">
+                <input type="${inputType}" ${isDisabled} id="score-input-${index}" placeholder="${inputPlaceholder}" 
+                       class="insp-score flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-bold ${isSubmitted ? 'text-emerald-600' : 'text-indigo-600'}" 
+                       value="${entry.score || ''}">
+                
+                <a href="${isSubmitted ? '#' : `academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}`}" 
+                   ${isSubmitted ? 'onclick="alert(\'Yeh report submit ho chuki hai, ab aap ise edit nahi kar sakte.\'); return false;"' : 'target="_blank"'} 
+                   class="flex items-center justify-center px-3 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition-all text-xs font-bold border border-indigo-100">
+                    <i class="${isSubmitted ? 'fas fa-eye text-emerald-600' : 'fas fa-external-link-alt'}"></i>
+                </a>
+            </div>
+            <input type="hidden" class="insp-jamia-name" value="${jamia}">
+        </div>`;
 
-                // Agar submit ho chuki hai to inputs ko disabled (ReadOnly) kar dein
-                const isDisabled = isSubmitted ? 'disabled bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white focus:ring-1 focus:ring-indigo-500';
+        if (isSubmitted) {
+            submittedHTML += rowHTML;
+        } else {
+            pendingHTML += rowHTML;
+        }
+    });
 
-                const rowHTML = `
-                <div class="inspection-row flex flex-col md:flex-row items-stretch md:items-center gap-2.5 p-3 border ${isSubmitted ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'} rounded-xl transition-colors">
-                    <div class="md:w-1/4 font-bold text-slate-700 text-sm pl-1 flex items-center gap-2">
-                        ${isSubmitted ? '<i class="fas fa-check text-emerald-500"></i>' : '<i class="fas fa-circle-notch text-red-400 text-[10px]"></i>'}
-                        ${jamia}
-                    </div>
-                    
-                    <div class="flex gap-2 w-full md:w-auto flex-1">
-                        <input type="date" ${isDisabled} class="insp-date w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm" value="${entry.date || ''}">
-                        <select ${isDisabled} class="insp-type w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-semibold" onchange="handleTypeChange(this, ${index})">
-                            <option value="Inspection" ${entry.type === 'Inspection' ? 'selected' : ''}>Inspection</option>
-                            <option value="Visit" ${entry.type === 'Visit' ? 'selected' : ''}>Visit</option>
-                            <option value="N/A" ${entry.type === 'N/A' ? 'selected' : ''}>N/A</option>
-                        </select>
-                    </div>
-
-                    <div class="flex gap-2 w-full md:w-1/3">
-                        <input type="${inputType}" ${isDisabled} id="score-input-${index}" placeholder="${inputPlaceholder}" 
-                               class="insp-score flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-bold ${isSubmitted ? 'text-emerald-600' : 'text-indigo-600'}" 
-                               value="${entry.score || ''}">
-                        
-                        <a href="${isSubmitted ? '#' : `academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}`}" 
-                           ${isSubmitted ? 'onclick="alert(\'Yeh report submit ho chuki hai, ab aap form edit nahi kar sakte.\'); return false;"' : 'target="_blank"'} 
-                           class="flex items-center justify-center px-3 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition-all text-xs font-bold border border-indigo-100">
-                            <i class="${isSubmitted ? 'fas fa-eye text-emerald-600' : 'fas fa-external-link-alt'}"></i>
-                        </a>
-                    </div>
-                    <input type="hidden" class="insp-jamia-name" value="${jamia}">
-                </div>`;
-
-                if (isSubmitted) {
-                    submittedHTML += rowHTML;
-                } else {
-                    pendingHTML += rowHTML;
-                }
-            });
-
-            document.getElementById('pending-list').innerHTML = pendingHTML || '<p class="text-xs text-slate-400 italic p-2">MashaAllah, koi report pending nahi hai.</p>';
-            document.getElementById('submitted-list').innerHTML = submittedHTML || '<p class="text-xs text-slate-400 italic p-2">Abhi tak koi report submit nahi hui hai.</p>';
-        };
+    document.getElementById('pending-list').innerHTML = pendingHTML || '<p class="text-xs text-slate-400 italic p-2">MashaAllah, koi report pending nahi hai.</p>';
+    document.getElementById('submitted-list').innerHTML = submittedHTML || '<p class="text-xs text-slate-400 italic p-2">Abhi tak koi report submit nahi hui hai.</p>';
+};
 
         window.handleTypeChange = (selectElem, index) => {
             const inputField = document.getElementById(`score-input-${index}`);
@@ -703,58 +720,57 @@ const listenToAdminReports = (userId, selectedMonth) => {
         };
 
         // SAVE JAIZA
-       // SAVE JAIZA (Synced with Admin Dashboard)
-        document.getElementById('save-jaiza-btn').onclick = async () => {
-            showLoader(true);
-            const selectedMonth = document.getElementById('report-month').value; 
-            const rows = document.querySelectorAll('.inspection-row');
-            const data = [];
-            
-            try {
-                // Loop through all rows
-                for (let row of rows) {
-                    const date = row.querySelector('.insp-date').value;
-                    const jamiaName = row.querySelector('.insp-jamia-name').value;
-                    const type = row.querySelector('.insp-type').value;
-                    const score = row.querySelector('.insp-score').value;
+       // --- UPDATED: SAVE JAIZA BUTTON ---
+document.getElementById('save-jaiza-btn').onclick = async () => {
+    showLoader(true);
+    const selectedMonth = document.getElementById('report-month').value; 
+    const rows = document.querySelectorAll('.inspection-row');
+    const data = [];
+    
+    try {
+        for (let row of rows) {
+            const date = row.querySelector('.insp-date').value;
+            const jamiaName = row.querySelector('.insp-jamia-name').value;
+            const type = row.querySelector('.insp-type').value;
+            const score = row.querySelector('.insp-score').value;
 
-                    if(date && score) {
-                        data.push({ name: jamiaName, date: date, type: type, score: score });
+            // Agar user ne form fill kiya hai
+            if(date && score) {
+                data.push({ name: jamiaName, date: date, type: type, score: score });
 
-                        // 🔴 NAYA CODE: Admin Dashboard ke liye data bhejna
-                        const adminReportId = `${currentUser.uid}_${jamiaName.replace(/\s+/g, '_')}`; 
-                        const inspectorName = document.getElementById('inspector-name').textContent;
-                        
-                        await setDoc(doc(db, "inspection_reports", adminReportId), {
-                            jamiaName: jamiaName,
-                            inspectorId: currentUser.uid,
-                            inspectorName: inspectorName,
-                            date: date,
-                            score: score,
-                            type: type,
-                            submittedAt: serverTimestamp(),
-                            month: selectedMonth
-                        });
-                    }
-                }
-
-                // Inspector ka apna personal array save karna
-                const reportId = `${currentUser.uid}_${selectedMonth}`;
-                await setDoc(doc(db, "inspector_reports", reportId), { 
-                    jaiza: data, updatedAt: serverTimestamp(), month: selectedMonth 
-                }, { merge: true });
+                // FIX: ID mein mahina add kiya gaya taake overwriting na ho
+                const adminReportId = `${currentUser.uid}_${jamiaName.replace(/\s+/g, '_')}_${selectedMonth}`; 
+                const inspectorName = document.getElementById('inspector-name').textContent;
                 
-                alert("Reports successfully submit ho gayi hain!");
-                window.backToSummary();
-                await loadStats(); // UI ko refresh karega
-                
-            } catch (error) {
-                console.error("Save Error: ", error);
-                alert("Report save karne mein masla aaya: " + error.message);
-            } finally {
-                showLoader(false);
+                await setDoc(doc(db, "inspection_reports", adminReportId), {
+                    jamiaName: jamiaName,
+                    inspectorId: currentUser.uid,
+                    inspectorName: inspectorName,
+                    date: date,
+                    score: score,
+                    type: type,
+                    submittedAt: serverTimestamp(),
+                    month: selectedMonth
+                });
             }
-        };
+        }
+
+        // Inspector ka local draft array bhi update ho jayega
+        const reportId = `${currentUser.uid}_${selectedMonth}`;
+        await setDoc(doc(db, "inspector_reports", reportId), { 
+            jaiza: data, updatedAt: serverTimestamp(), month: selectedMonth 
+        }, { merge: true });
+        
+        alert("Reports successfully submit ho gayi hain!");
+        window.backToSummary();
+        await loadStats(); 
+    } catch (error) {
+        console.error("Save Error: ", error);
+        alert("Report save karne mein masla aaya: " + error.message);
+    } finally {
+        showLoader(false);
+    }
+};
 
         // NAYA SIDEBAR LOGIC YAHAN HAI
         const sidebar = document.getElementById('sidebar');
