@@ -11,6 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
         @font-face {
@@ -79,8 +80,13 @@
                 
                 <!-- Mufattish Report Button -->
                 <button onclick="openMufattishReport()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold shadow transition text-sm flex items-center gap-2 ml-auto">
-                    <i class="fas fa-chart-pie"></i> Mufattish Report
-                </button>
+    <i class="fas fa-chart-pie"></i> Mufattish Report
+</button>
+
+<button onclick="downloadExcelReport()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-bold shadow transition text-sm flex items-center gap-2 ml-2">
+    <i class="fas fa-file-excel"></i> Export Excel
+</button>
+                
             </div>
         </div>
 
@@ -406,6 +412,7 @@
                                 zimmedarName: finalZimmedarName,
                                 region: finalRegion, 
                                 assignedTo: rec.assignedTo || "" 
+                                assignedDate: rec.assignedDate || null
                             });
                         });
                     }
@@ -771,22 +778,29 @@
     }
 
     async function assignRecording(pId, arrIdx, checkerName) {
-        try {
-            const reportRef = db.collection('monthly_reports').doc(pId);
-            const docSnap = await reportRef.get();
-            if(docSnap.exists) {
-                const data = docSnap.data();
-                let arr = data.tadrisRecording.data || [];
-                if (arr[arrIdx]) {
-                    arr[arrIdx].assignedTo = checkerName;
-                    await reportRef.update({ "tadrisRecording.data": arr });
-                    const localRec = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === arrIdx);
-                    if(localRec) localRec.assignedTo = checkerName;
-                    applyFilters(); 
+    try {
+        const reportRef = db.collection('monthly_reports').doc(pId);
+        const docSnap = await reportRef.get();
+        if(docSnap.exists) {
+            const data = docSnap.data();
+            let arr = data.tadrisRecording.data || [];
+            if (arr[arrIdx]) {
+                const now = new Date().toISOString(); // Assignment Date
+                arr[arrIdx].assignedTo = checkerName;
+                arr[arrIdx].assignedDate = now; 
+                
+                await reportRef.update({ "tadrisRecording.data": arr });
+                
+                const localRec = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === arrIdx);
+                if(localRec) {
+                    localRec.assignedTo = checkerName;
+                    localRec.assignedDate = now;
                 }
+                applyFilters(); 
             }
-        } catch(e) { alert("Assign karne me masla aaya: " + e.message); }
-    }
+        }
+    } catch(e) { alert("Assign karne me masla aaya: " + e.message); }
+}
 
     function toggleSelectAll(masterCheckbox) {
         const checkboxes = document.querySelectorAll('.row-checkbox');
@@ -837,13 +851,20 @@
                 if (docSnap.exists) {
                     const data = docSnap.data();
                     let arr = data.tadrisRecording.data || [];
-                    updatesByDoc[pId].forEach(idx => {
-                        if(arr[idx]) {
-                            arr[idx].assignedTo = selectedUser; 
-                            const localRec = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === idx);
-                            if(localRec) localRec.assignedTo = selectedUser;
-                        }
-                    });
+                    // bulkAssign() ke andar ye hissa dhoond kar update karein:
+updatesByDoc[pId].forEach(idx => {
+    if(arr[idx]) {
+        const now = new Date().toISOString(); // Assignment Date
+        arr[idx].assignedTo = selectedUser; 
+        arr[idx].assignedDate = now;
+        
+        const localRec = allReportsData.find(x => x.parentDocId === pId && x.arrayIndex === idx);
+        if(localRec) {
+            localRec.assignedTo = selectedUser;
+            localRec.assignedDate = now;
+        }
+    }
+});
                     await reportRef.update({ "tadrisRecording.data": arr });
                 }
             }
@@ -855,6 +876,69 @@
             alert("Bulk Assign me masla aaya: " + error.message);
         } finally { btn.innerHTML = originalText; btn.disabled = false; }
     }
+        function downloadExcelReport() {
+    if (filteredReports.length === 0) {
+        alert("Download karne ke liye koi data mojood nahi hai.");
+        return;
+    }
+
+    // Data ko Excel format ke liye tayyar karna
+    const exportData = filteredReports.map((r, i) => {
+        const assignedDateFormatted = r.assignedDate ? new Date(r.assignedDate).toLocaleDateString('en-GB') : "Not Recorded";
+        const checkedDateFormatted = r.tasuratDate ? new Date(r.tasuratDate).toLocaleDateString('en-GB') : "Pending";
+        const status = (r.tasurat && r.tasurat.trim() !== "") ? "Mukammal (Checked)" : "Baqaya (Pending)";
+
+        return {
+            "S.No": i + 1,
+            "Jamia Name": r.jamiaName,
+            "Zimmedar": r.zimmedarName,
+            "Teacher": r.teacherName,
+            "Class": r.className,
+            "Kitab": r.kitabName,
+            "Recording Date": r.date,
+            "Recording Duration": r.duration,
+            "Current Status": status,
+            "Mufattish (Assigned To)": r.assignedTo || "Unassigned",
+            "Assigned Date": assignedDateFormatted,
+            "Checked Date": checkedDateFormatted,
+            "Tasurat (Mufattish Comment)": r.tasurat || "-"
+        };
+    });
+
+    // SheetJS (XLSX) ke zariye workbook banana
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Mufattish Analytics Report");
+
+    // Column ki chaurai (width) thik karna taake padhne me asani ho
+    worksheet['!cols'] = [
+        { wch: 5 },  // S.No
+        { wch: 25 }, // Jamia
+        { wch: 15 }, // Zimmedar
+        { wch: 20 }, // Teacher
+        { wch: 15 }, // Class
+        { wch: 15 }, // Kitab
+        { wch: 15 }, // Rec Date
+        { wch: 15 }, // Duration
+        { wch: 20 }, // Status
+        { wch: 20 }, // Mufattish
+        { wch: 15 }, // Assigned Date
+        { wch: 15 }, // Checked Date
+        { wch: 40 }  // Tasurat
+    ];
+
+    // File ka naam dynamic rakhna (Agar kisi specific mufattish ko filter kiya hai)
+    const mufattishFilter = document.getElementById('filter-mufattish').value;
+    const monthFilter = document.getElementById('filter-month').value;
+    const yearFilter = document.getElementById('filter-year').value;
+    
+    let fileName = `Report_${monthFilter}_${yearFilter}.xlsx`;
+    if (mufattishFilter) {
+        fileName = `Mufattish_${mufattishFilter}_${monthFilter}_${yearFilter}.xlsx`;
+    }
+
+    XLSX.writeFile(workbook, fileName);
+}
     </script>
 </body>
 </html>
