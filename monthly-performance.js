@@ -497,6 +497,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     } 
                     else if (monthlyTargets) {
                         const userClassNameLower = (p.className || "").trim().toLowerCase();
+                        // User ki class me se saare spaces, hyphens aur underscores hata diye
+                        const userClassNoSpace = userClassNameLower.replace(/[\s\-_]/g, ''); 
                         const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
 
                         for (const adminKey in monthlyTargets) {
@@ -505,11 +507,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             
                             if (adminKeyLower.endsWith(suffix)) {
                                 const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
-                                const adminClassClean = adminClassKeyPart.replace(/_/g, ' ').trim();
+                                // Admin ki class se bhi saare spaces aur extra characters hata diye
+                                const adminClassNoSpace = adminClassKeyPart.replace(/[\s\-_]/g, '');
                                 
-                                if (userClassNameLower === adminClassClean || 
-                                    userClassNameLower.startsWith(adminClassClean + " ") || 
-                                    userClassNameLower.startsWith(adminClassClean + "-")) {
+                                // Ab directly spaceless text ka shuruati hissa check karega
+                                if (userClassNoSpace.startsWith(adminClassNoSpace)) {
                                     
                                     if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
                                         target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
