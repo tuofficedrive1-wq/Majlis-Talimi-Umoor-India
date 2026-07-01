@@ -2656,7 +2656,7 @@ const newPeriod = {
             
     editPeriodModal.classList.remove('hidden');
 };
-        // 1. Transfer Modal Kholne ka Logic
+// 1. Transfer Modal Kholne aur Auto-Fill ka Logic
 const handleTransferPeriodClick = (e) => {
     const row = e.target.closest('tr[data-period-id]');
     const periodId = row.dataset.periodId;
@@ -2688,7 +2688,7 @@ const handleTransferPeriodClick = (e) => {
     let teacherOptions = '<option value="">Teacher Select Karein</option>';
     
     jamiaData.teachers.forEach(t => {
-        if (t.id !== oldTeacherId) { // Purane teacher ko list se nikal diya
+        if (t.id !== oldTeacherId) { 
             teacherOptions += `<option value="${t.id}">${t.name}</option>`;
         }
     });
@@ -2697,12 +2697,29 @@ const handleTransferPeriodClick = (e) => {
     // Populate Months Dropdown (Sirf is semester ke mahine)
     const monthSelect = document.getElementById('transfer-month-select');
     let monthOptions = '<option value="">Mahina Select Karein</option>';
-    const semMonths = semester === "1" ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0]; // Apr-Aug or Sep-Jan
+    const semMonths = semester === "1" ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0]; 
     
     semMonths.forEach(m => {
         monthOptions += `<option value="${m}">${getMonthName(m)}</option>`;
     });
     monthSelect.innerHTML = monthOptions;
+
+    // --- NAYA LOGIC: Baqiya Pages ko Auto Calculate Karna ---
+    const oldTeacher = jamiaData.teachers.find(t => t.id === oldTeacherId);
+    const oldPeriod = oldTeacher.periods.find(p => p.id === periodId);
+    const totalPagesSem = oldPeriod.totalPages || 0;
+    
+    // Ab tak kitne pages padhaye gaye hain? (Cumulative nikalna)
+    const { monthNum: currentMonthNum, yearNum: currentYearNum } = currentReportPeriod;
+    const cumulativeTaught = calculateCumulativeTaught(periodId, semester, currentMonthNum, currentYearNum, allYearReportsData);
+
+    // Baqiya Pages = Total Pages - Ab tak padhaye gaye pages
+    let remainingPages = totalPagesSem - cumulativeTaught;
+    if (remainingPages < 0) remainingPages = 0; // Negative se bachne ke liye
+
+    // Input me value automatically set kar dein
+    document.getElementById('transfer-remaining-pages').value = remainingPages;
+    // ---------------------------------------------------------
 
     // Show Modal
     captureAccordionState();
@@ -3698,11 +3715,18 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
 
         academicMonthsList.forEach(m => {
             const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
-            const daysThisMonth = yearData.academicMonths[m.monthNum] || 0;
+            
+            // NAYA LOGIC: Admin config se mahine ke din nikalein
+            const monthDetails = window.adminAcademicConfig?.monthDetails || {};
+            const monthConfig = monthDetails[m.monthNum];
+            const daysThisMonth = currentSemester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
+
+            // Admin config se semester ke total din nikalein
+            const semTotalDays = currentSemester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
 
             let monthlyTarget = 0;
-            if (semesterTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
-                const perDayTarget = totalPages / semesterTotalDays;
+            if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
+                const perDayTarget = totalPages / semTotalDays;
                 monthlyTarget = Math.round(perDayTarget * daysThisMonth);
             }
 
