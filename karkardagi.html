@@ -322,6 +322,47 @@
             </form>
         </div>
     </div>
+    <div id="transfer-period-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-[80] hidden flex justify-center items-center p-4">
+    <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg">
+        <h3 class="text-xl font-bold mb-4 text-purple-700"><i class="fas fa-exchange-alt mr-2"></i> Kitab Transfer Karein</h3>
+        
+        <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p class="text-sm text-yellow-800 font-semibold" id="transfer-book-info">Kitab: </p>
+        </div>
+
+        <form id="transfer-period-form" class="space-y-4">
+            <input type="hidden" id="transfer-jamia-name">
+            <input type="hidden" id="transfer-old-teacher-id">
+            <input type="hidden" id="transfer-period-id">
+            <input type="hidden" id="transfer-class-name">
+            <input type="hidden" id="transfer-book-name">
+            <input type="hidden" id="transfer-semester">
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Naya Teacher (Jisko kitab deni hai)</label>
+                <select id="transfer-new-teacher-select" class="w-full p-2 border rounded-lg bg-white urdu-font" required>
+                    </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Kis Mahine se Transfer hui?</label>
+                    <select id="transfer-month-select" class="w-full p-2 border rounded-lg bg-white" required>
+                        </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Baqiya Pages (Naye Teacher ka Target)</label>
+                    <input type="number" id="transfer-remaining-pages" class="w-full p-2 border rounded-lg" required min="1" placeholder="Pages">
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t mt-4">
+                <button type="button" id="cancel-transfer-btn" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Confirm Transfer</button>
+            </div>
+        </form>
+    </div>
+</div>
 
     <!-- Edit Teacher Modal -->
 <div id="edit-teacher-modal"
@@ -2004,6 +2045,9 @@ if (saveAcademicMonthsBtn) {
             
             // NEW: Edit Teacher Name Button
             if (e.target.closest('.edit-teacher-name-btn')) { handleEditTeacherName(e); return; }
+
+            // Transfer Period Button
+        if (e.target.closest('.transfer-period-btn')) { handleTransferPeriodClick(e); return; }
             
             // Teacher Accordion Toggle 
             if (e.target.closest('.teacher-accordion-button')) {
@@ -2143,7 +2187,8 @@ if (saveAcademicMonthsBtn) {
                     <td>${period.totalPages}</td>
                     <td class="flex gap-2">
                         <button type="button" class="edit-period-btn text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-edit"></i> Edit</button>
-                        <button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1"><i class="fas fa-times-circle"></i></button>
+                        <button type="button" class="transfer-period-btn text-purple-600 hover:text-purple-800 p-1 ml-2" title="Transfer Book"><i class="fas fa-exchange-alt"></i></button>
+                        <button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1 ml-2"><i class="fas fa-times-circle"></i></button>
                     </td>
                 </tr>
                 `;
@@ -2611,6 +2656,131 @@ const newPeriod = {
             
     editPeriodModal.classList.remove('hidden');
 };
+        // 1. Transfer Modal Kholne ka Logic
+const handleTransferPeriodClick = (e) => {
+    const row = e.target.closest('tr[data-period-id]');
+    const periodId = row.dataset.periodId;
+    const teacherDiv = e.target.closest('.border.rounded-lg[data-teacher-id]');
+    const jamiaDiv = e.target.closest('.border.rounded-lg[data-jamia-name]');
+    
+    if (!periodId || !teacherDiv || !jamiaDiv) return;
+
+    const jamiaName = jamiaDiv.dataset.jamiaName;
+    const oldTeacherId = teacherDiv.dataset.teacherId;
+    const className = row.dataset.class;
+    const bookName = row.dataset.book;
+    const semester = row.dataset.sem;
+
+    // Set Hidden Inputs
+    document.getElementById('transfer-jamia-name').value = jamiaName;
+    document.getElementById('transfer-old-teacher-id').value = oldTeacherId;
+    document.getElementById('transfer-period-id').value = periodId;
+    document.getElementById('transfer-class-name').value = className;
+    document.getElementById('transfer-book-name').value = bookName;
+    document.getElementById('transfer-semester').value = semester;
+
+    // Set Info Text
+    document.getElementById('transfer-book-info').innerHTML = `Kitab: <b>${bookName}</b> (${className}) - Sem ${semester}`;
+
+    // Populate Teachers Dropdown (Usi Jamia ke baqi teachers)
+    const jamiaData = allAcademicYearsData[activeYear].karkardagiStructure.find(j => j.jamiaName === jamiaName);
+    const newTeacherSelect = document.getElementById('transfer-new-teacher-select');
+    let teacherOptions = '<option value="">Teacher Select Karein</option>';
+    
+    jamiaData.teachers.forEach(t => {
+        if (t.id !== oldTeacherId) { // Purane teacher ko list se nikal diya
+            teacherOptions += `<option value="${t.id}">${t.name}</option>`;
+        }
+    });
+    newTeacherSelect.innerHTML = teacherOptions;
+
+    // Populate Months Dropdown (Sirf is semester ke mahine)
+    const monthSelect = document.getElementById('transfer-month-select');
+    let monthOptions = '<option value="">Mahina Select Karein</option>';
+    const semMonths = semester === "1" ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0]; // Apr-Aug or Sep-Jan
+    
+    semMonths.forEach(m => {
+        monthOptions += `<option value="${m}">${getMonthName(m)}</option>`;
+    });
+    monthSelect.innerHTML = monthOptions;
+
+    // Show Modal
+    captureAccordionState();
+    document.getElementById('transfer-period-modal').classList.remove('hidden');
+};
+
+// 2. Database me Save aur Transfer Karne ka Logic
+document.getElementById('transfer-period-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!activeYear || !currentUser) return;
+
+    const jamiaName = document.getElementById('transfer-jamia-name').value;
+    const oldTeacherId = document.getElementById('transfer-old-teacher-id').value;
+    const periodId = document.getElementById('transfer-period-id').value;
+    
+    const newTeacherSelect = document.getElementById('transfer-new-teacher-select');
+    const newTeacherId = newTeacherSelect.value;
+    const newTeacherName = newTeacherSelect.options[newTeacherSelect.selectedIndex].text;
+    
+    const monthSelect = document.getElementById('transfer-month-select');
+    const transferMonthNum = parseInt(monthSelect.value, 10);
+    const transferMonthName = monthSelect.options[monthSelect.selectedIndex].text;
+    
+    const remainingPages = parseInt(document.getElementById('transfer-remaining-pages').value, 10) || 0;
+
+    showLoader(true);
+    try {
+        let structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+        let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+        
+        let oldTeacher = jamiaData.teachers.find(t => t.id === oldTeacherId);
+        let newTeacher = jamiaData.teachers.find(t => t.id === newTeacherId);
+        let oldPeriod = oldTeacher.periods.find(p => p.id === periodId);
+
+        // A. Purane Period ko Lock (Transfer) mark karein
+        oldPeriod.status = 'transferred';
+        oldPeriod.transferredToName = newTeacherName;
+        oldPeriod.transferMonthNum = transferMonthNum;
+        oldPeriod.transferMonthName = transferMonthName;
+
+        // B. Naye Teacher ke liye naya Period banayein
+        const newPeriodId = `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        newTeacher.periods.push({
+            id: newPeriodId,
+            className: document.getElementById('transfer-class-name').value,
+            bookName: document.getElementById('transfer-book-name').value,
+            semester: document.getElementById('transfer-semester').value,
+            totalPages: remainingPages,
+            status: 'active',
+            transferredFromName: oldTeacher.name
+        });
+
+        // Firebase Update
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+            [`academicYears.${activeYear}.karkardagiStructure`]: structure,
+            lastUpdated: serverTimestamp()
+        });
+
+        document.getElementById('transfer-period-modal').classList.add('hidden');
+        showNotification("Kitab successfully transfer ho gayi!");
+        
+        // Refresh UI
+        await loadMonthlyReportData(true);
+        renderSetupTab();
+        renderReportingTab();
+
+    } catch (err) {
+        showNotification("Transfer me error aayi: " + err.message, true);
+    } finally {
+        showLoader(false);
+    }
+});
+
+// Modal Cancel Button Logic
+document.getElementById('cancel-transfer-btn').addEventListener('click', () => {
+    document.getElementById('transfer-period-modal').classList.add('hidden');
+});
 
         // Modal ke andar class change hone par books filter karne ka logic
 // Modal ke Class input par listener
@@ -3034,6 +3204,26 @@ const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(
     period.semester
 );
 
+                        // --- TRANSFER LOCKDOWN LOGIC ---
+let isLockedByTransfer = false;
+let transferBadge = '';
+
+if (period.status === 'transferred' && period.transferMonthNum !== undefined) {
+    // Current mahine ka order nikalte hain (Semester ke hisaab se)
+    const currentOrder = getSemesterMonthNumber(monthNum, period.semester);
+    const transferOrder = getSemesterMonthNumber(period.transferMonthNum, period.semester);
+    
+    // Agar current mahina transfer wale mahine ke barabar ya us se aage hai, to form lock kar do
+    if (currentOrder !== null && transferOrder !== null && currentOrder >= transferOrder) {
+        isLockedByTransfer = true;
+        transferBadge = `
+            <div class="mt-2 text-[10px] md:text-xs font-bold text-red-700 bg-red-100 p-1.5 rounded text-center border border-red-200">
+                🔄 Transferred to ${period.transferredToName}<br>From ${period.transferMonthName}
+            </div>
+        `;
+    }
+}
+                        
 // Row structure 
 let rowHtml = `
 <tr class="reporting-row"
@@ -3069,11 +3259,11 @@ let rowHtml = `
     <td class="font-medium">${monthlyTarget}</td>
     <td>
         <input type="number"
-               class="pages-taught-input w-24 p-2 border rounded-lg bg-gray-100"
+               class="pages-taught-input w-24 p-2 border rounded-lg ${isLockedByTransfer ? 'bg-gray-200 cursor-not-allowed opacity-70' : 'bg-gray-100'}"
                value="${pagesTaughtDisplay}"
                min="0"
-               disabled>
-    </td>
+               ${isLockedByTransfer ? 'disabled title="Ye kitab is mahine se transfer ho chuki hai"' : 'disabled'}>
+        ${transferBadge} </td>
     <td class="achievement-cell font-medium ${colorClass}">${achievement}%</td>
     <td class="kaifiyat-cell font-bold ${colorClass}">${kaifiyat}</td>
     
