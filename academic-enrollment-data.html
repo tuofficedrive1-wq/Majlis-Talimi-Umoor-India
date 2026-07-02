@@ -820,28 +820,26 @@
 
   /* ── Render entries table ── */
   function renderEntries(){
-    entriesCountEl.textContent=String(entries.length);
+    entriesCountEl.textContent = String(entries.length);
+    
     if(!entries.length){
-      registerBody.innerHTML='<tr class="empty-row"><td colspan="6">Koi entry nahi — upar form save karen.</td></tr>';
+      registerBody.innerHTML = '<tr class="empty-row"><td colspan="6">Koi entry nahi — upar form save karen.</td></tr>';
       return;
     }
-    registerBody.innerHTML=entries.map(function(e,idx){
+
+    registerBody.innerHTML = entries.map(function(e, idx){
       return '<tr>'+
         '<td class="col-sr">'+(idx+1)+'</td>'+
         '<td class="cell-name">'+escapeHtml(e.studentName)+'</td>'+
         '<td>'+escapeHtml(e.fatherName)+'</td>'+
         '<td><span class="tag">'+escapeHtml(e.admissionType)+'</span></td>'+
         '<td>'+escapeHtml(e.classLevel||'—')+'<div class="cell-meta">'+escapeHtml(detailsText(e))+'</div></td>'+
-        '<td class="col-action"><button type="button" class="row-del" data-id="'+e.id+'" aria-label="Delete">✕</button></td>'+
+        // Delete button mein ab hum apni banayi hui 'deleteEntry' function call karenge
+        '<td class="col-action"><button type="button" class="row-del" onclick="deleteEntry(\''+e.id+'\')" aria-label="Delete">✕</button></td>'+
         '</tr>';
     }).join('');
-    registerBody.querySelectorAll('.row-del').forEach(function(btn){
-      btn.addEventListener('click',function(){
-        var id=this.getAttribute('data-id');
-        entries=entries.filter(function(e){ return e.id!==id; });
-        renderEntries(); persistEntries(); showToast('Entry hata di gayi.');
-      });
-    });
+    
+    // Purana addEventListener hat gaya kyunki humne 'onclick' use kar liya hai
   }
 
   /* ── Toast ── */
@@ -855,17 +853,23 @@
   /* ── Submit ── */
   form.addEventListener('submit', async function(ev){
     ev.preventDefault();
-    var errs=validate();
+    var errs = validate();
     if(errs.length){ showFormErrors(errs); return; }
-    hideFormErrors();
-    var data=collectFormData();
-    entries.unshift(data);
-    renderEntries();
-    await persistEntries();
-    form.reset();
-    conditionalSections.forEach(function(s){ s.hidden=true; resetWithin(s); });
-    showToast('✓ '+data.studentName+' ki entry save ho gayi!');
-  });
+    
+    var data = collectFormData();
+    // Firebase mein save karein
+    try {
+        await addDoc(collection(db, "enrollment_records"), {
+            ...data,
+            jamiaName: currentJamia, // Jamia ka naam sath save hoga
+            inspectorId: userId      // Inspector ki ID sath save hogi
+        });
+        showToast('✓ ' + data.studentName + ' ki entry Cloud par save ho gayi!');
+        form.reset();
+    } catch (e) {
+        showToast('Error: Save nahi hua', true);
+    }
+});
 
   /* ── Reset ── */
   resetBtn.addEventListener('click',function(){
@@ -900,7 +904,7 @@
 </script>
   <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, query, where, onSnapshot, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
   const firebaseConfig = {
       apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -1015,6 +1019,18 @@ window.renderEnrollmentTab = () => {
     
     tbody.innerHTML = rowsHTML;
 };
+    async function deleteEntry(id) {
+    if(confirm("Kya aap waqai is entry ko delete karna chahte hain?")) {
+        try {
+            await deleteDoc(doc(db, "enrollment_records", id));
+            showToast('Entry delete ho gayi.');
+            // Note: onSnapshot ki wajah se table automatically update ho jayegi
+        } catch (error) {
+            showToast('Delete karne mein error aaya!', true);
+            console.error("Delete Error:", error);
+        }
+    }
+}
 </script>
 </body>
 </html>
