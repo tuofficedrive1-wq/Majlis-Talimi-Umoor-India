@@ -586,24 +586,47 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script>
-(function(){
-  'use strict';
-  
-  var form           = document.getElementById('enrollmentForm');
-  var admissionType  = document.getElementById('admissionType');
-  var niosSection    = document.getElementById('niosSection');
-  var schoolSection  = document.getElementById('schoolSection');
-  var madrasaSection = document.getElementById('madrasaSection');
-  var collegeSection = document.getElementById('collegeSection');
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+  /* ══════════════════════════════════════════════════
+     1. FIREBASE INIT
+     ══════════════════════════════════════════════════ */
+  var firebaseConfig = {
+      apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+      authDomain: "data-f15ab.firebaseapp.com",
+      projectId: "data-f15ab",
+      storageBucket: "data-f15ab.firebasestorage.app"
+  };
+  var app = initializeApp(firebaseConfig);
+  var db  = getFirestore(app);
+
+  /* ══════════════════════════════════════════════════
+     2. URL PARAMS (link se Jamia aur Inspector pehchane jaate hain)
+     ══════════════════════════════════════════════════ */
+  var urlParams    = new URLSearchParams(window.location.search);
+  var currentJamia = urlParams.get('jamia');
+  var userId       = urlParams.get('userId');
+
+  /* ══════════════════════════════════════════════════
+     3. DOM REFERENCES
+     ══════════════════════════════════════════════════ */
+  var form            = document.getElementById('enrollmentForm');
+  var admissionType   = document.getElementById('admissionType');
+  var niosSection      = document.getElementById('niosSection');
+  var schoolSection    = document.getElementById('schoolSection');
+  var madrasaSection   = document.getElementById('madrasaSection');
+  var collegeSection   = document.getElementById('collegeSection');
   var conditionalSections = [niosSection, schoolSection, madrasaSection, collegeSection];
 
-  var niosLangCount  = document.getElementById('niosLangCount');
-  var niosSubCount   = document.getElementById('niosSubCount');
-  var schoolClass    = document.getElementById('schoolClass');
-  var madrasaClass   = document.getElementById('madrasaClass');
-  var collegeDegree  = document.getElementById('collegeDegree');
-  var collegeDuration= document.getElementById('collegeDuration');
+  var niosLangCount   = document.getElementById('niosLangCount');
+  var niosSubCount    = document.getElementById('niosSubCount');
+  var schoolClass     = document.getElementById('schoolClass');
+  var madrasaClass    = document.getElementById('madrasaClass');
+  var collegeDegree   = document.getElementById('collegeDegree');
+  var collegeDuration = document.getElementById('collegeDuration');
+  var jmClassSelect   = document.getElementById('jmClass');
 
   var allSchoolWrapIds = ['schoolClass8Wrap','schoolClass10Wrap','schoolClass11Wrap','schoolClass12BoardWrap','schoolClass12StreamWrap'];
   var schoolWrapsByClass = {
@@ -613,14 +636,14 @@
     '12th': ['schoolClass12BoardWrap','schoolClass12StreamWrap']
   };
 
-  var formErrors     = document.getElementById('formErrors');
-  var formErrorsList = document.getElementById('formErrorsList');
-  var toast          = document.getElementById('toast');
-  var entriesCountEl = document.getElementById('entriesCount');
-  var registerBody   = document.getElementById('registerBody');
-  var storageNote    = document.getElementById('storageNote');
-  var exportCsvBtn   = document.getElementById('exportCsvBtn');
-  var resetBtn       = document.getElementById('resetBtn');
+  var formErrors      = document.getElementById('formErrors');
+  var formErrorsList  = document.getElementById('formErrorsList');
+  var toast           = document.getElementById('toast');
+  var entriesCountEl  = document.getElementById('entriesCount');
+  var registerBody    = document.getElementById('registerBody');
+  var storageNote     = document.getElementById('storageNote');
+  var exportCsvBtn    = document.getElementById('exportCsvBtn');
+  var resetBtn        = document.getElementById('resetBtn');
 
   var STORAGE_KEY = 'enrollment_entries';
   var hasStorage  = !!(window.storage && typeof window.storage.get === 'function');
@@ -630,7 +653,9 @@
     ? 'Saved entries account se linked hain — agli baar bhi dikhenge.'
     : 'Persistent storage is session mein nahi hai — close karne se pehle CSV export kar len.';
 
-  /* ── helpers ── */
+  /* ══════════════════════════════════════════════════
+     4. HELPERS
+     ══════════════════════════════════════════════════ */
   function fieldValue(id){ var el=document.getElementById(id); return el?el.value.trim():''; }
   function formatDate(iso){ if(!iso)return''; var p=iso.split('-'); return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:iso; }
   function escapeHtml(s){
@@ -639,7 +664,10 @@
     });
   }
 
-  /* ── storage ── */
+  /* ══════════════════════════════════════════════════
+     5. LOCAL REGISTER (yeh device par "Saved Entries" table
+        aur CSV export ke liye personal cache hai)
+     ══════════════════════════════════════════════════ */
   async function loadEntries(){
     if(!hasStorage){ renderEntries(); return; }
     try{ var r=await window.storage.get(STORAGE_KEY,false); entries=r&&r.value?JSON.parse(r.value):[]; }
@@ -652,7 +680,81 @@
     catch(e){ showToast('Session mein save hua, persistent storage mein nahi.',true); }
   }
 
-  /* ── reset section internals ── */
+  /* ══════════════════════════════════════════════════
+     6. CLASS DROPDOWN — Firestore structure se load karna
+     ══════════════════════════════════════════════════ */
+  async function loadClassesFromStructure(){
+      try {
+          jmClassSelect.innerHTML = '<option value="" disabled selected>— Classes load ho rahi hain... —</option>';
+          let classSet = new Set();
+
+          if (!userId) {
+              jmClassSelect.innerHTML = '<option value="" disabled selected>Error: Inspector ID missing in URL</option>';
+              return;
+          }
+
+          // 1. Calendar settings se current Active Year pata karna
+          const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+          const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
+
+          // 2. Inspector ka data document read karna
+          const userSnap = await getDoc(doc(db, "users", userId));
+
+          if (userSnap.exists()) {
+              const userData = userSnap.data();
+              const karkardagi = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
+
+              // 3. Poore structure me se is specific Jamia ka object nikalna
+              const jamiaData = karkardagi.find(j => j.jamiaName === currentJamia);
+
+              if (jamiaData && jamiaData.teachers) {
+                  // 4. Har teacher ke andar save kiye gaye periods ki classes nikalna
+                  jamiaData.teachers.forEach(teacher => {
+                      if (teacher.periods && Array.isArray(teacher.periods)) {
+                          teacher.periods.forEach(period => {
+                              if (period.className) {
+                                  classSet.add(period.className.trim());
+                              }
+                          });
+                      }
+                  });
+              }
+          }
+
+          // 5. Dropdown ko strictly built karna
+          jmClassSelect.innerHTML = '<option value="" disabled selected>— Select Class —</option>';
+          if(classSet.size > 0) {
+              classSet.forEach(className => {
+                  let opt = document.createElement('option');
+                  opt.value = className;
+                  opt.textContent = className;
+                  jmClassSelect.appendChild(opt);
+              });
+          } else {
+              jmClassSelect.innerHTML = '<option value="" disabled selected>Is Jamia ke structure me koi class saved nahi hai</option>';
+          }
+      } catch(error) {
+          console.error("Structure fetch error:", error);
+          jmClassSelect.innerHTML = '<option value="" disabled selected>Classes load nahi ho sakin</option>';
+      }
+  }
+
+  /* ══════════════════════════════════════════════════
+     7. PAGE INIT — banner me Jamia ka naam + class list load
+     ══════════════════════════════════════════════════ */
+  if (currentJamia) {
+      const bannerTitle = document.querySelector('.banner-title');
+      if (bannerTitle) {
+          bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>';
+      }
+      loadClassesFromStructure();
+  } else {
+      jmClassSelect.innerHTML = '<option value="" disabled selected>— Jamia URL me majood nahi —</option>';
+  }
+
+  /* ══════════════════════════════════════════════════
+     8. FORM SECTION TOGGLES (admission type, NIOS/School/Madrasa/College)
+     ══════════════════════════════════════════════════ */
   function resetWithin(section){
     section.querySelectorAll('select').forEach(function(s){ s.selectedIndex=0; });
     section.querySelectorAll('input[type="text"]').forEach(function(i){ i.value=''; });
@@ -662,7 +764,6 @@
     if(sw){ sw.hidden=true; document.getElementById('collegeSession').innerHTML='<option value="" disabled selected>— Select —</option>'; }
   }
 
-  /* ── admission type switch ── */
   admissionType.addEventListener('change', function(){
     conditionalSections.forEach(function(s){ s.hidden=true; resetWithin(s); });
     if(this.value==='NIOS')         niosSection.hidden=false;
@@ -671,7 +772,6 @@
     else if(this.value==='College') collegeSection.hidden=false;
   });
 
-  /* ── NIOS dynamic boxes ── */
   function buildBoxes(containerId, count, labelPrefix, namePrefix){
     var c=document.getElementById(containerId); c.innerHTML='';
     for(var i=1;i<=count;i++){
@@ -685,7 +785,6 @@
   niosLangCount.addEventListener('change',function(){ buildBoxes('niosLangBoxes',parseInt(this.value)||0,'Language','niosLang'); });
   niosSubCount.addEventListener('change', function(){ buildBoxes('niosSubBoxes', parseInt(this.value)||0,'Subject','niosSub'); });
 
-  /* ── School class switch ── */
   schoolClass.addEventListener('change', function(){
     allSchoolWrapIds.forEach(function(id){
       var el=document.getElementById(id); el.hidden=true;
@@ -695,14 +794,12 @@
     if(show) show.forEach(function(id){ document.getElementById(id).hidden=false; });
   });
 
-  /* ── Madrasa stream ── */
   madrasaClass.addEventListener('change', function(){
     var w=document.getElementById('madrasaStreamWrap');
     if(this.value==='11th'||this.value==='12th'){ w.hidden=false; }
     else{ w.hidden=true; document.getElementById('madrasaStream').selectedIndex=0; }
   });
 
-  /* ── College session ── */
   var ugDegrees=['B.A.','B.Com','B.Sc.'];
   var sessionOptions={
     UG_Semester:['1st Semester','2nd Semester','3rd Semester','4th Semester','5th Semester','6th Semester'],
@@ -724,7 +821,9 @@
   collegeDegree.addEventListener('change',refreshCollegeSession);
   collegeDuration.addEventListener('change',refreshCollegeSession);
 
-  /* ── Validation ── */
+  /* ══════════════════════════════════════════════════
+     9. VALIDATION
+     ══════════════════════════════════════════════════ */
   function validate(){
     var errors=[];
     if(!fieldValue('studentName')) errors.push("Student ka naam likhein.");
@@ -771,7 +870,9 @@
   }
   function hideFormErrors(){ formErrors.hidden=true; formErrorsList.innerHTML=''; }
 
-  /* ── Collect data ── */
+  /* ══════════════════════════════════════════════════
+     10. COLLECT FORM DATA
+     ══════════════════════════════════════════════════ */
   function collectFormData(){
     var d={
       id:'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),
@@ -801,7 +902,6 @@
     return d;
   }
 
-  /* ── Details text for table ── */
   function detailsText(e){
     if(e.admissionType==='NIOS'){
       var lang=(e.languages||[]).filter(Boolean), sub=(e.subjects||[]).filter(Boolean);
@@ -818,10 +918,12 @@
     return '—';
   }
 
-  /* ── Render entries table ── */
+  /* ══════════════════════════════════════════════════
+     11. RENDER REGISTER TABLE
+     ══════════════════════════════════════════════════ */
   function renderEntries(){
     entriesCountEl.textContent = String(entries.length);
-    
+
     if(!entries.length){
       registerBody.innerHTML = '<tr class="empty-row"><td colspan="6">Koi entry nahi — upar form save karen.</td></tr>';
       return;
@@ -834,15 +936,14 @@
         '<td>'+escapeHtml(e.fatherName)+'</td>'+
         '<td><span class="tag">'+escapeHtml(e.admissionType)+'</span></td>'+
         '<td>'+escapeHtml(e.classLevel||'—')+'<div class="cell-meta">'+escapeHtml(detailsText(e))+'</div></td>'+
-        // Delete button mein ab hum apni banayi hui 'deleteEntry' function call karenge
         '<td class="col-action"><button type="button" class="row-del" onclick="deleteEntry(\''+e.id+'\')" aria-label="Delete">✕</button></td>'+
         '</tr>';
     }).join('');
-    
-    // Purana addEventListener hat gaya kyunki humne 'onclick' use kar liya hai
   }
 
-  /* ── Toast ── */
+  /* ══════════════════════════════════════════════════
+     12. TOAST
+     ══════════════════════════════════════════════════ */
   var toastTimer;
   function showToast(msg,isError){
     toast.textContent=msg; toast.className='toast'+(isError?' error':'');
@@ -850,34 +951,69 @@
     toastTimer=setTimeout(function(){ toast.hidden=true; },3200);
   }
 
-  /* ── Submit ── */
+  /* ══════════════════════════════════════════════════
+     13. SUBMIT — Firestore par save + local register update
+     ══════════════════════════════════════════════════ */
   form.addEventListener('submit', async function(ev){
     ev.preventDefault();
     var errs = validate();
     if(errs.length){ showFormErrors(errs); return; }
-    
+
     var data = collectFormData();
-    // Firebase mein save karein
     try {
-        await addDoc(collection(db, "enrollment_records"), {
+        var docRef = await addDoc(collection(db, "enrollment_records"), {
             ...data,
             jamiaName: currentJamia, // Jamia ka naam sath save hoga
             inspectorId: userId      // Inspector ki ID sath save hogi
         });
+
+        data.cloudId = docRef.id; // Firestore ki asli ID local record ke sath rakh len (delete ke kaam aayegi)
+        entries.unshift(data);
+        await persistEntries();
+        renderEntries();
+        hideFormErrors();
+
         showToast('✓ ' + data.studentName + ' ki entry Cloud par save ho gayi!');
         form.reset();
     } catch (e) {
+        console.error("Save error:", e);
         showToast('Error: Save nahi hua', true);
     }
-});
+  });
 
-  /* ── Reset ── */
+  /* ══════════════════════════════════════════════════
+     14. RESET
+     ══════════════════════════════════════════════════ */
   resetBtn.addEventListener('click',function(){
     hideFormErrors();
     setTimeout(function(){ conditionalSections.forEach(function(s){ s.hidden=true; resetWithin(s); }); },0);
   });
 
-  /* ── CSV Export ── */
+  /* ══════════════════════════════════════════════════
+     15. DELETE — register row par ✕ dabane se chalta hai
+     (inline onclick se call hota hai isliye window par expose kiya hai)
+     ══════════════════════════════════════════════════ */
+  window.deleteEntry = async function(id){
+    if(!confirm("Kya aap waqai is entry ko delete karna chahte hain?")) return;
+
+    var entry = entries.find(function(e){ return e.id === id; });
+
+    // Agar is entry ki Firestore ID maujood hai to Cloud se bhi delete karne ki koshish karen
+    if(entry && entry.cloudId){
+        try{ await deleteDoc(doc(db, "enrollment_records", entry.cloudId)); }
+        catch(error){ console.error("Cloud delete error:", error); }
+    }
+
+    // Local register se hamesha hata den, taake list turant update ho jaye
+    entries = entries.filter(function(e){ return e.id !== id; });
+    await persistEntries();
+    renderEntries();
+    showToast('Entry delete ho gayi.');
+  };
+
+  /* ══════════════════════════════════════════════════
+     16. CSV EXPORT
+     ══════════════════════════════════════════════════ */
   function csvEscape(v){
     v=(v===undefined||v===null)?'':String(v);
     if(/[",\n]/.test(v)) v='"'+v.replace(/"/g,'""')+'"';
@@ -899,138 +1035,10 @@
     setTimeout(function(){ URL.revokeObjectURL(url); },1000);
   });
 
+  /* ══════════════════════════════════════════════════
+     17. START
+     ══════════════════════════════════════════════════ */
   loadEntries();
-})();
-</script>
-  <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-  import { getFirestore, collection, addDoc, query, where, onSnapshot, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-
-  const firebaseConfig = {
-      apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
-      authDomain: "data-f15ab.firebaseapp.com",
-      projectId: "data-f15ab",
-      storageBucket: "data-f15ab.firebasestorage.app"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-
-  const urlParams = new URLSearchParams(window.location.search);
-  const currentJamia = urlParams.get('jamia');
-  const userId = urlParams.get('userId'); // Link se Inspector ki ID mili
-
-  if (currentJamia) {
-      // Banner me Jamia ka naam set karna
-      const bannerTitle = document.querySelector('.banner-title');
-      if (bannerTitle) {
-          bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>';
-      }
-
-      const jmClassSelect = document.getElementById('jmClass');
-      
-      async function loadClassesFromStructure() {
-          try {
-              jmClassSelect.innerHTML = '<option value="" disabled selected>— Classes load ho rahi hain... —</option>';
-              let classSet = new Set();
-
-              if (!userId) {
-                  jmClassSelect.innerHTML = '<option value="" disabled selected>Error: Inspector ID missing in URL</option>';
-                  return;
-              }
-
-              // 1. Calendar settings se current Active Year pata karna
-              const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
-              const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
-
-              // 2. Inspector ka data document read karna
-              const userSnap = await getDoc(doc(db, "users", userId));
-              
-              if (userSnap.exists()) {
-                  const userData = userSnap.data();
-                  const karkardagi = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
-                  
-                  // 3. Poore structure me se is specific Jamia ka object nikalna
-                  const jamiaData = karkardagi.find(j => j.jamiaName === currentJamia);
-                  
-                  if (jamiaData && jamiaData.teachers) {
-                      // 4. Har teacher ke andar save kiye gaye periods ki classes nikalna
-                      jamiaData.teachers.forEach(teacher => {
-                          if (teacher.periods && Array.isArray(teacher.periods)) {
-                              teacher.periods.forEach(period => {
-                                  if (period.className) {
-                                      classSet.add(period.className.trim());
-                                  }
-                              });
-                          }
-                      });
-                  }
-              }
-
-              // 5. Dropdown ko strictly built karna
-              jmClassSelect.innerHTML = '<option value="" disabled selected>— Select Class —</option>';
-              if(classSet.size > 0) {
-                  classSet.forEach(className => {
-                      let opt = document.createElement('option');
-                      opt.value = className;
-                      opt.textContent = className;
-                      jmClassSelect.appendChild(opt);
-                  });
-              } else {
-                  jmClassSelect.innerHTML = '<option value="" disabled selected>Is Jamia ke structure me koi class saved nahi hai</option>';
-              }
-          } catch(error) {
-              console.error("Structure fetch error:", error);
-              jmClassSelect.innerHTML = '<option value="" disabled selected>Classes load nahi ho sakin</option>';
-          }
-      }
-      
-      loadClassesFromStructure();
-  } else {
-      document.getElementById('jmClass').innerHTML = '<option value="" disabled selected>— Jamia URL me majood nahi —</option>';
-  }
-    // ENROLLMENT TAB LOGIC (DASHBOARD)
-window.renderEnrollmentTab = () => {
-    const tbody = document.getElementById('enrollment-jamia-list');
-    
-    if (!assignedJamiaat || assignedJamiaat.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="2" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
-        return;
-    }
-
-    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-    const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`;
-
-    let rowsHTML = '';
-    assignedJamiaat.forEach(jamia => {
-        // YAHAN userId KO BHI LINK ME ADD KAR DIYA HAI
-        const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
-        
-        rowsHTML += `
-        <tr class="hover:bg-slate-50 transition-colors">
-            <td class="p-3 md:p-4 font-bold text-slate-700">${jamia}</td>
-            <td class="p-3 md:p-4 text-right">
-                <button onclick="window.copyEnrollmentLink('${formUrl}', this)" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto border border-indigo-100">
-                    <i class="fas fa-link"></i> <span class="btn-text">Copy Link</span>
-                </button>
-            </td>
-        </tr>`;
-    });
-    
-    tbody.innerHTML = rowsHTML;
-};
-    async function deleteEntry(id) {
-    if(confirm("Kya aap waqai is entry ko delete karna chahte hain?")) {
-        try {
-            await deleteDoc(doc(db, "enrollment_records", id));
-            showToast('Entry delete ho gayi.');
-            // Note: onSnapshot ki wajah se table automatically update ho jayegi
-        } catch (error) {
-            showToast('Delete karne mein error aaya!', true);
-            console.error("Delete Error:", error);
-        }
-    }
-}
 </script>
 </body>
 </html>
