@@ -902,7 +902,6 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
   import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-  // Aapka Firebase Config
   const firebaseConfig = {
       apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
       authDomain: "data-f15ab.firebaseapp.com",
@@ -913,12 +912,12 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // 1. URL se Jamia ka naam nikalna
   const urlParams = new URLSearchParams(window.location.search);
   const currentJamia = urlParams.get('jamia');
+  const userId = urlParams.get('userId'); // Link se Inspector ki ID mili
 
   if (currentJamia) {
-      // 2. Banner mein Jamia ka naam show karna
+      // Banner me Jamia ka naam set karna
       const bannerTitle = document.querySelector('.banner-title');
       if (bannerTitle) {
           bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>';
@@ -926,30 +925,37 @@
 
       const jmClassSelect = document.getElementById('jmClass');
       
-      async function loadClasses() {
+      async function loadClassesFromStructure() {
           try {
               jmClassSelect.innerHTML = '<option value="" disabled selected>— Classes load ho rahi hain... —</option>';
-              let classSet = new Set(); // Duplicates remove karne ke liye
-              
-              // 3. Jamia ke naam se us ka Number (ID) nikalna (e.g., KALYAN:991 se 991)
-              const match = currentJamia.match(/\d+/);
-              const jamiaDocId = match ? match[0] : null;
+              let classSet = new Set();
 
-              // 4. academic_performance se is Jamia ki specific classes fetch karna
-              if (jamiaDocId) {
-                  const perfDocRef = doc(db, "academic_performance", jamiaDocId);
-                  const perfSnap = await getDoc(perfDocRef);
+              if (!userId) {
+                  jmClassSelect.innerHTML = '<option value="" disabled selected>Error: Inspector ID missing in URL</option>';
+                  return;
+              }
+
+              // 1. Calendar settings se current Active Year pata karna
+              const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+              const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
+
+              // 2. Inspector ka data document read karna
+              const userSnap = await getDoc(doc(db, "users", userId));
+              
+              if (userSnap.exists()) {
+                  const userData = userSnap.data();
+                  const karkardagi = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
                   
-                  if (perfSnap.exists()) {
-                      const data = perfSnap.data();
-                      // Har mahine ke data (jaise 'apr', 'may') me check karna
-                      Object.keys(data).forEach(monthKey => {
-                          if (data[monthKey].teachers) {
-                              data[monthKey].teachers.forEach(t => {
-                                  if (t.periods_detail) {
-                                      Object.values(t.periods_detail).forEach(p => {
-                                          if (p.class) classSet.add(p.class);
-                                      });
+                  // 3. Poore structure me se is specific Jamia ka object nikalna
+                  const jamiaData = karkardagi.find(j => j.jamiaName === currentJamia);
+                  
+                  if (jamiaData && jamiaData.teachers) {
+                      // 4. Har teacher ke andar save kiye gaye periods ki classes nikalna
+                      jamiaData.teachers.forEach(teacher => {
+                          if (teacher.periods && Array.isArray(teacher.periods)) {
+                              teacher.periods.forEach(period => {
+                                  if (period.className) {
+                                      classSet.add(period.className.trim());
                                   }
                               });
                           }
@@ -957,17 +963,7 @@
                   }
               }
 
-              // 5. Agar Jamia ki koi class na mile, toh Admin Config se default classes mangwana
-              if (classSet.size === 0) {
-                  const configSnap = await getDoc(doc(db, "settings", "academic_admin_config"));
-                  if (configSnap.exists() && configSnap.data().classes) {
-                      configSnap.data().classes.forEach(c => {
-                          if (c.name) classSet.add(c.name);
-                      });
-                  }
-              }
-
-              // 6. Dropdown me Classes dikhana
+              // 5. Dropdown ko strictly built karna
               jmClassSelect.innerHTML = '<option value="" disabled selected>— Select Class —</option>';
               if(classSet.size > 0) {
                   classSet.forEach(className => {
@@ -977,18 +973,48 @@
                       jmClassSelect.appendChild(opt);
                   });
               } else {
-                  jmClassSelect.innerHTML = '<option value="" disabled selected>Koi class nahi mili</option>';
+                  jmClassSelect.innerHTML = '<option value="" disabled selected>Is Jamia ke structure me koi class saved nahi hai</option>';
               }
           } catch(error) {
-              console.error("Classes fetch error:", error);
+              console.error("Structure fetch error:", error);
               jmClassSelect.innerHTML = '<option value="" disabled selected>Classes load nahi ho sakin</option>';
           }
       }
       
-      loadClasses();
+      loadClassesFromStructure();
   } else {
       document.getElementById('jmClass').innerHTML = '<option value="" disabled selected>— Jamia URL me majood nahi —</option>';
   }
+    // ENROLLMENT TAB LOGIC (DASHBOARD)
+window.renderEnrollmentTab = () => {
+    const tbody = document.getElementById('enrollment-jamia-list');
+    
+    if (!assignedJamiaat || assignedJamiaat.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
+        return;
+    }
+
+    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`;
+
+    let rowsHTML = '';
+    assignedJamiaat.forEach(jamia => {
+        // YAHAN userId KO BHI LINK ME ADD KAR DIYA HAI
+        const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
+        
+        rowsHTML += `
+        <tr class="hover:bg-slate-50 transition-colors">
+            <td class="p-3 md:p-4 font-bold text-slate-700">${jamia}</td>
+            <td class="p-3 md:p-4 text-right">
+                <button onclick="window.copyEnrollmentLink('${formUrl}', this)" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto border border-indigo-100">
+                    <i class="fas fa-link"></i> <span class="btn-text">Copy Link</span>
+                </button>
+            </td>
+        </tr>`;
+    });
+    
+    tbody.innerHTML = rowsHTML;
+};
 </script>
 </body>
 </html>
