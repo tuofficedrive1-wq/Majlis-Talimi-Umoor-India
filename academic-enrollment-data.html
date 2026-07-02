@@ -900,7 +900,7 @@
 </script>
   <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-  import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
   // Aapka Firebase Config
   const firebaseConfig = {
@@ -918,40 +918,57 @@
   const currentJamia = urlParams.get('jamia');
 
   if (currentJamia) {
-      // 2. Banner mein Jamia ka naam update karna
+      // 2. Banner mein Jamia ka naam show karna
       const bannerTitle = document.querySelector('.banner-title');
       if (bannerTitle) {
           bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>';
       }
 
-      // 3. Firebase se is Jamia ki Classes Fetch karna
       const jmClassSelect = document.getElementById('jmClass');
       
       async function loadClasses() {
           try {
-              // ⚠️ DHYAN DEIN: "jamia_classes" ko hata kar apne ASAL collection ka naam likhein
-              // Aur check karein ke kya jamia ka naam "jamiaName" ki field me hi save hai?
-              const q = query(collection(db, "jamia_classes"), where("jamiaName", "==", currentJamia));
-              const snapshot = await getDocs(q);
+              jmClassSelect.innerHTML = '<option value="" disabled selected>— Classes load ho rahi hain... —</option>';
+              let classSet = new Set(); // Duplicates remove karne ke liye
               
-              jmClassSelect.innerHTML = '<option value="" disabled selected>— Select Class —</option>';
-              
-              let classSet = new Set(); // Duplicates se bachne ke liye Set use kar rahe hain
+              // 3. Jamia ke naam se us ka Number (ID) nikalna (e.g., KALYAN:991 se 991)
+              const match = currentJamia.match(/\d+/);
+              const jamiaDocId = match ? match[0] : null;
 
-              snapshot.forEach(doc => {
-                  const data = doc.data();
+              // 4. academic_performance se is Jamia ki specific classes fetch karna
+              if (jamiaDocId) {
+                  const perfDocRef = doc(db, "academic_performance", jamiaDocId);
+                  const perfSnap = await getDoc(perfDocRef);
                   
-                  // Agar classes ek array (list) me save hain
-                  if (data.classList && Array.isArray(data.classList)) {
-                      data.classList.forEach(c => classSet.add(c));
+                  if (perfSnap.exists()) {
+                      const data = perfSnap.data();
+                      // Har mahine ke data (jaise 'apr', 'may') me check karna
+                      Object.keys(data).forEach(monthKey => {
+                          if (data[monthKey].teachers) {
+                              data[monthKey].teachers.forEach(t => {
+                                  if (t.periods_detail) {
+                                      Object.values(t.periods_detail).forEach(p => {
+                                          if (p.class) classSet.add(p.class);
+                                      });
+                                  }
+                              });
+                          }
+                      });
                   }
-                  
-                  // Agar classes alag alag field me save hain (jaise screenshot me lag raha hai)
-                  if (data.class) classSet.add(data.class);
-                  if (data.className) classSet.add(data.className);
-                  if (data.CLASS) classSet.add(data.CLASS); // Agar capital me hai
-              });
+              }
 
+              // 5. Agar Jamia ki koi class na mile, toh Admin Config se default classes mangwana
+              if (classSet.size === 0) {
+                  const configSnap = await getDoc(doc(db, "settings", "academic_admin_config"));
+                  if (configSnap.exists() && configSnap.data().classes) {
+                      configSnap.data().classes.forEach(c => {
+                          if (c.name) classSet.add(c.name);
+                      });
+                  }
+              }
+
+              // 6. Dropdown me Classes dikhana
+              jmClassSelect.innerHTML = '<option value="" disabled selected>— Select Class —</option>';
               if(classSet.size > 0) {
                   classSet.forEach(className => {
                       let opt = document.createElement('option');
@@ -960,7 +977,7 @@
                       jmClassSelect.appendChild(opt);
                   });
               } else {
-                  jmClassSelect.innerHTML = '<option value="" disabled selected>Koi class nahi mili (Collection ka naam check karein)</option>';
+                  jmClassSelect.innerHTML = '<option value="" disabled selected>Koi class nahi mili</option>';
               }
           } catch(error) {
               console.error("Classes fetch error:", error);
