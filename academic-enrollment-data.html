@@ -589,41 +589,7 @@
 <script>
 (function(){
   'use strict';
-  // 1. URL se Jamia ka naam nikalna
-  var urlParams = new URLSearchParams(window.location.search);
-  var currentJamia = urlParams.get('jamia');
-
-  // 2. Banner mein Jamia ka naam show karna
-  if (currentJamia) {
-      var bannerTitle = document.querySelector('.banner-title');
-      if (bannerTitle) {
-          bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>';
-      }
-  }
-
-  // 3. Har Jamia ki classes ka data (Yahan apne hisab se Jamia ke naam aur classes set karein)
-  var jamiaClassesData = {
-      "Jamia A": ["Hifz", "Nazira"],
-      "Jamia B": ["Alim 1st Year", "Alim 2nd Year"],
-      "Jamia C": ["Hifz", "Alim 1st Year", "Alim 3rd Year"],
-      // Agar kisi aisi jamia ka link khule jo list me nahi, toh ye default classes aayengi
-      "default": ["Hifz", "Nazira", "Alim 1st Year", "Alim 2nd Year", "Alim 3rd Year"] 
-  };
-
-  // 4. Dropdown me Classes populate karna
-  var jmClassSelect = document.getElementById('jmClass');
-  if (jmClassSelect) {
-      // Agar link me jamia ka naam hai aur wo hamari list me maujood hai, toh uski classes lo warna default classes lo
-      var classesToShow = (currentJamia && jamiaClassesData[currentJamia]) ? jamiaClassesData[currentJamia] : jamiaClassesData["default"];
-      
-      classesToShow.forEach(function(className) {
-          var option = document.createElement('option');
-          option.value = className;
-          option.textContent = className;
-          jmClassSelect.appendChild(option);
-      });
-  }
-
+  
   var form           = document.getElementById('enrollmentForm');
   var admissionType  = document.getElementById('admissionType');
   var niosSection    = document.getElementById('niosSection');
@@ -963,29 +929,38 @@
       
       async function loadClasses() {
           try {
-              // ⚠️ DHYAN DEIN: "jamia_classes" ki jagah apne us collection ka naam likhein jahan classes save hoti hain.
+              // ⚠️ DHYAN DEIN: "jamia_classes" ko hata kar apne ASAL collection ka naam likhein
+              // Aur check karein ke kya jamia ka naam "jamiaName" ki field me hi save hai?
               const q = query(collection(db, "jamia_classes"), where("jamiaName", "==", currentJamia));
               const snapshot = await getDocs(q);
               
               jmClassSelect.innerHTML = '<option value="" disabled selected>— Select Class —</option>';
-              let hasClasses = false;
+              
+              let classSet = new Set(); // Duplicates se bachne ke liye Set use kar rahe hain
 
               snapshot.forEach(doc => {
                   const data = doc.data();
-                  // Farz karein database me classes "classList" ke naam ke array me save hain
-                  const classesArray = data.classList || []; 
                   
-                  classesArray.forEach(className => {
-                      hasClasses = true;
+                  // Agar classes ek array (list) me save hain
+                  if (data.classList && Array.isArray(data.classList)) {
+                      data.classList.forEach(c => classSet.add(c));
+                  }
+                  
+                  // Agar classes alag alag field me save hain (jaise screenshot me lag raha hai)
+                  if (data.class) classSet.add(data.class);
+                  if (data.className) classSet.add(data.className);
+                  if (data.CLASS) classSet.add(data.CLASS); // Agar capital me hai
+              });
+
+              if(classSet.size > 0) {
+                  classSet.forEach(className => {
                       let opt = document.createElement('option');
                       opt.value = className;
                       opt.textContent = className;
                       jmClassSelect.appendChild(opt);
                   });
-              });
-
-              if(!hasClasses) {
-                  jmClassSelect.innerHTML = '<option value="" disabled selected>Koi class nahi mili</option>';
+              } else {
+                  jmClassSelect.innerHTML = '<option value="" disabled selected>Koi class nahi mili (Collection ka naam check karein)</option>';
               }
           } catch(error) {
               console.error("Classes fetch error:", error);
