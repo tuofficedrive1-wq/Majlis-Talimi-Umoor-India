@@ -817,167 +817,154 @@
             gradeCell.className = `grade-val px-2 py-1 text-center font-bold text-xs border rounded shadow-sm ${badgeClass}`;
         };
 
-        window.saveResult = async (isAutoSave = false) => {
-            const rows = document.querySelectorAll('#students-body tr');
-            const btn = document.querySelector('button[onclick="saveResult()"]');
-            let originalText = "Save Result Sheet";
+       window.saveResult = async (isAutoSave = false) => {
+    const rows = document.querySelectorAll('#students-body tr');
+    const btn = document.querySelector('button[onclick="saveResult()"]');
+    let originalText = "Save Result Sheet";
+    
+    if(btn && !isAutoSave) { 
+        originalText = btn.innerText;
+        btn.innerText = "Saving..."; 
+        btn.disabled = true; 
+    }
+
+    const rawClass = document.getElementById('class-select').value;
+    if(!rawClass && !isAutoSave) { 
+        alert("Class select nahi hai."); 
+        if(btn) btn.disabled=false; 
+        return; 
+    }
+    
+    const cleanClass = rawClass.split('_')[0]; 
+    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
+    const selectedClass = rawClass; 
+    const students = [];
+
+    if (rows.length > 0) {
+        rows.forEach(row => {
+            const name = row.querySelector('.std-name').value.trim();
+            if(!name) return;
+            const marks = {};
+            row.querySelectorAll('.mark-input').forEach(inp => {
+                const val = inp.value.trim().toUpperCase();
+                marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
+            });
+            const total = parseFloat(row.querySelector('.total-val').textContent);
+            const perc = parseFloat(row.querySelector('.perc-val').textContent);
+            students.push({ name, marks, total, percentage: perc });
+        });
+    }
+
+    try {
+        await setDoc(doc(db, "monthly_test_sheets", docId), {
+            adminUid, jamiaName, month: monthKey, class: selectedClass,
+            subjects: finalSubjectsList, 
+            subjectMap: subjectTranslationMap, 
+            students, 
+            updatedAt: serverTimestamp()
+        });
+        
+        let grandTotalStudents = 0; 
+        let grandPassedStudents = 0;
+        const allClasses = Object.keys(classBooksMap);
+        
+        for (const cls of allClasses) {
+            const clsClean = cls.split('_')[0];
+            const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
             
-            if(btn && !isAutoSave) { 
-                originalText = btn.innerText;
-                btn.innerText = "Saving..."; 
-                btn.disabled = true; 
-            }
+            let sStudents = [];
+            let sSubjects = [];
 
-            const rawClass = document.getElementById('class-select').value;
-            if(!rawClass && !isAutoSave) { 
-                alert("Class select nahi hai."); 
-                if(btn) btn.disabled=false; 
-                return; 
+            if (cls === rawClass) {
+                sStudents = students;
+                sSubjects = finalSubjectsList;
+            } else {
+                const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
+                if (sheetSnap.exists()) {
+                    const sData = sheetSnap.data();
+                    sStudents = sData.students || [];
+                    sSubjects = sData.subjects || [];
+                }
             }
             
-            const cleanClass = rawClass.split('_')[0]; 
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
-            const selectedClass = rawClass; 
-            const students = [];
+            sStudents.forEach(std => {
+                const subKeys = Object.keys(std.marks);
+                const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
 
-            if (rows.length > 0) {
-                rows.forEach(row => {
-                    const name = row.querySelector('.std-name').value.trim();
-                    if(!name) return;
-                    const marks = {};
-                    row.querySelectorAll('.mark-input').forEach(inp => {
-                        const val = inp.value.trim().toUpperCase();
-                        marks[inp.dataset.sub] = (val === 'A') ? 'A' : (val === '' ? 0 : parseFloat(val));
-                    });
-                    const total = parseFloat(row.querySelector('.total-val').textContent);
-                    const perc = parseFloat(row.querySelector('.perc-val').textContent);
-                    students.push({ name, marks, total, percentage: perc });
-                });
-            }
-
-            try {
-                await setDoc(doc(db, "monthly_test_sheets", docId), {
-                    adminUid, jamiaName, month: monthKey, class: selectedClass,
-                    subjects: finalSubjectsList, 
-                    subjectMap: subjectTranslationMap, 
-                    students, 
-                    updatedAt: serverTimestamp()
-                });
-                
-                let grandTotalStudents = 0; 
-                let grandPassedStudents = 0;
-                const allClasses = Object.keys(classBooksMap);
-                
-                for (const cls of allClasses) {
-                    const clsClean = cls.split('_')[0];
-                    const sheetId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${clsClean.replace(/\s/g, '_')}`;
+                if (!isFullAbsent) {
+                    grandTotalStudents++; 
                     
-                    let sStudents = [];
-                    let sSubjects = [];
-
-                    if (cls === rawClass) {
-                        sStudents = students;
-                        sSubjects = finalSubjectsList;
+                    let isFail = false;
+                    if (parseFloat(std.percentage) < 40) {
+                        isFail = true;
                     } else {
-                        const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
-                        if (sheetSnap.exists()) {
-                            const sData = sheetSnap.data();
-                            sStudents = sData.students || [];
-                            sSubjects = sData.subjects || [];
-                        }
-                    }
-                    
-                    sStudents.forEach(std => {
-                        const subKeys = Object.keys(std.marks);
-                        const isFullAbsent = subKeys.length > 0 && subKeys.every(k => std.marks[k] === 'A');
-
-                        if (!isFullAbsent) {
-                            grandTotalStudents++; 
-                            let isFail = false;
-                                if (parseFloat(std.percentage) < 40) {
-                                    isFail = true;
-                                } else {
-                                    let failCount = 0;
-                                    sSubjects.forEach(sub => {
-                                        const subLower = sub.toLowerCase();
-                                        let max = (subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab')) ? 25 : 100;
-                                        let passMarks = max * 0.40;
-                                        let m = std.marks[sub];
-                                        
-                                        if (m === 'A') {
-                                            failCount++;
-                                        } else if (typeof m === 'number' && m < passMarks) {
-                                            failCount++;
-                                        }
-                                    });
-                                    if(failCount >= 3) isFail = true;
-                                }
+                        let failCount = 0;
+                        sSubjects.forEach(sub => {
+                            const subLower = sub.toLowerCase();
+                            let max = (subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab')) ? 25 : 100;
+                            let passMarks = max * 0.40;
+                            let m = std.marks[sub];
                             
-                            if (!isFail) {
-                                let failCount = 0;
-                                sSubjects.forEach(sub => {
-                                    const subLower = sub.toLowerCase();
-                                    let max = (subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab')) ? 25 : 100;
-                                    let passMarks = max * 0.40;
-                                    let m = std.marks[sub];
-                                    if (typeof m === 'number' && m < passMarks) {
-                                        failCount++;
-                                    }
-                                });
-                                if(failCount >= 3) isFail = true;
+                            if (m === 'A') {
+                                failCount++;
+                            } else if (typeof m === 'number' && m < passMarks) {
+                                failCount++;
                             }
-
-                            if (!isFail) grandPassedStudents++;
-                        }
-                    });
-                }
-
-                let jamiaPassPerc = "0%";
-                if (grandTotalStudents > 0) {
-                    jamiaPassPerc = ((grandPassedStudents / grandTotalStudents) * 100).toFixed(1) + '%';
-                }
-
-                const [yStr, mStr] = monthKey.split('-');
-                const y = parseInt(yStr);
-                const m = parseInt(mStr) - 1;
-                const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-                const reportId = `${adminUid}_${acYear}_${y}_${m}`;
-                const reportRef = doc(db, 'monthly_reports', reportId);
-                
-                try {
-                    const reportSnap = await getDoc(reportRef);
-                    let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
-                    
-                    testData = testData.filter(t => t.name !== jamiaName);
-                    testData.push({ 
-                        name: jamiaName, 
-                        status: 'Test Hua', 
-                        month: monthKey, 
-                        percentage: jamiaPassPerc, 
-                        wajah: '' 
-                    });
-                    
-                    await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
-                } catch (repErr) {
-                    console.warn("Report update failed (Minor error):", repErr);
-                }
-
-                if (!isAutoSave) {
-                    if (students.length === 0) {
-                        alert("Subjects/Columns update ho gaye hain!");
-                    } else {
-                        alert(`Result Save ho gaya!\n\nJamia Total Pass: ${grandPassedStudents} / ${grandTotalStudents} (${jamiaPassPerc})`);
+                        });
+                        if(failCount >= 3) isFail = true;
                     }
-                }
 
-            } catch (error) { 
-                console.error("Save Error:", error); 
-                if(!isAutoSave) alert("Error: " + error.message); 
-            } 
-            finally { 
-                if(btn && !isAutoSave) { btn.innerText = originalText; btn.disabled = false; }
+                    if (!isFail) grandPassedStudents++;
+                }
+            });
+        }
+
+        let jamiaPassPerc = "0%";
+        if (grandTotalStudents > 0) {
+            jamiaPassPerc = ((grandPassedStudents / grandTotalStudents) * 100).toFixed(1) + '%';
+        }
+
+        const [yStr, mStr] = monthKey.split('-');
+        const y = parseInt(yStr);
+        const m = parseInt(mStr) - 1;
+        const acYear = m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+        const reportId = `${adminUid}_${acYear}_${y}_${m}`;
+        const reportRef = doc(db, 'monthly_reports', reportId);
+        
+        try {
+            const reportSnap = await getDoc(reportRef);
+            let testData = reportSnap.exists() ? (reportSnap.data().monthlyTest?.data || []) : [];
+            
+            testData = testData.filter(t => t.name !== jamiaName);
+            testData.push({ 
+                name: jamiaName, 
+                status: 'Test Hua', 
+                month: monthKey, 
+                percentage: jamiaPassPerc, 
+                wajah: '' 
+            });
+            
+            await setDoc(reportRef, { monthlyTest: { status: 'Done', data: testData } }, { merge: true });
+        } catch (repErr) {
+            console.warn("Report update failed (Minor error):", repErr);
+        }
+
+        if (!isAutoSave) {
+            if (students.length === 0) {
+                alert("Subjects/Columns update ho gaye hain!");
+            } else {
+                alert(`Result Save ho gaya!\n\nJamia Total Pass: ${grandPassedStudents} / ${grandTotalStudents} (${jamiaPassPerc})`);
             }
-        };
+        }
+
+    } catch (error) { 
+        console.error("Save Error:", error); 
+        if(!isAutoSave) alert("Error: " + error.message); 
+    } 
+    finally { 
+        if(btn && !isAutoSave) { btn.innerText = originalText; btn.disabled = false; }
+    }
+};
 
         window.checkExistingForClass = async (clsName) => {
             const cleanClass = clsName.split('_')[0]; 
@@ -1108,133 +1095,119 @@
         };
 
         async function loadSummaryData() {
-            const mainBody = document.getElementById('summary-body-main');
-            const asriBody = document.getElementById('summary-body-asri');
-            const mainFoot = document.getElementById('summary-foot-main');
-            const asriFoot = document.getElementById('summary-foot-asri');
+    const mainBody = document.getElementById('summary-body-main');
+    const asriBody = document.getElementById('summary-body-asri');
+    const mainFoot = document.getElementById('summary-foot-main');
+    const asriFoot = document.getElementById('summary-foot-asri');
 
-            mainBody.innerHTML = '<tr><td colspan="8" class="p-4 text-gray-500">Loading data...</td></tr>';
-            asriBody.innerHTML = '<tr><td colspan="8" class="p-4 text-gray-500">Loading data...</td></tr>';
+    mainBody.innerHTML = '<tr><td colspan="8" class="p-4 text-gray-500">Loading data...</td></tr>';
+    asriBody.innerHTML = '<tr><td colspan="8" class="p-4 text-gray-500">Loading data...</td></tr>';
 
-            try {
-                const allClasses = Object.keys(classBooksMap).sort();
-                let mainRowsHTML = "";
-                let asriRowsHTML = "";
-                let gMain = { total: 0, present: 0, pass: 0, fail: 0 };
-                let gAsri = { total: 0, present: 0, pass: 0, fail: 0 };
-                let sn = 1;
+    try {
+        const allClasses = Object.keys(classBooksMap).sort();
+        let mainRowsHTML = "";
+        let asriRowsHTML = "";
+        let gMain = { total: 0, present: 0, pass: 0, fail: 0 };
+        let gAsri = { total: 0, present: 0, pass: 0, fail: 0 };
+        let sn = 1;
 
-                for (const clsName of allClasses) {
-                    const cleanClass = clsName.split('_')[0];
-                    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-                    const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
-                    if (!snap.exists()) continue;
+        for (const clsName of allClasses) {
+            const cleanClass = clsName.split('_')[0];
+            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
+            const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
+            if (!snap.exists()) continue;
+            
+            const data = snap.data();
+            const students = data.students || [];
+            const sheetSubjects = data.subjects || []; 
+            
+            if (students.length === 0) continue;
+
+            let mTotal = students.length; let mPresent = 0; let mPass = 0; let mFail = 0;
+            let aTotal = students.length; let aPresent = 0; let aPass = 0; let aFail = 0;
+            let hasAsriSubjects = false;
+
+            students.forEach(std => {
+                const marksKeys = Object.keys(std.marks);
+                const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
+
+                if (!isFullAbsent) {
+                    mPresent++;
                     
-                    const data = snap.data();
-                    const students = data.students || [];
-                    const sheetSubjects = data.subjects || []; 
-                    
-                    if (students.length === 0) continue;
-
-                    let mTotal = students.length; let mPresent = 0; let mPass = 0; let mFail = 0;
-                    let aTotal = students.length; let aPresent = 0; let aPass = 0; let aFail = 0;
-                    let hasAsriSubjects = false;
-
-                    students.forEach(std => {
-                        const marksKeys = Object.keys(std.marks);
-                        const isFullAbsent = marksKeys.length > 0 && marksKeys.every(sub => std.marks[sub] === 'A');
-
-                        let isFailMain = false;
-
-                                    if (parseFloat(std.percentage) < 40) {
-                                        isFailMain = true;
-                                    } else {
-                                        let subjectFailCount = 0;
-                                        sheetSubjects.forEach(sub => {
-                                            const subLow = sub.toLowerCase();
-                                            const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
-                                            const passMarks = max * 0.40;
-                                            const m = std.marks[sub];
-                                            
-                                            // Absent ko fail count mein shamil karein
-                                            if (m === 'A') {
-                                                subjectFailCount++;
-                                            } else if (typeof m === 'number' && m < passMarks) {
-                                                subjectFailCount++;
-                                            }
-                                        });
-                                        // Agar 3 ya us se zyada mein fail/absent hai tabhi fail hoga
-                                        if (subjectFailCount >= 3) isFailMain = true;
-                                    }
-                                sheetSubjects.forEach(sub => {
-                                    const subLow = sub.toLowerCase();
-                                    const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
-                                    const passMarks = max * 0.40;
-                                    const m = std.marks[sub];
-                                    
-                                    if (typeof m === 'number' && m < passMarks) {
-                                        subjectFailCount++;
-                                    }
-                                });
-                                if (subjectFailCount >= 3) isFailMain = true;
-                            }
-                            
-                            if (isFailMain) mFail++; else mPass++;
-                        }
-
-                        let engMark = std.marks['English'];
-                        let mathMark = std.marks['Maths'];
-                        if (engMark !== undefined || mathMark !== undefined) {
-                            hasAsriSubjects = true;
-                            
-                            let asriFullAbsent = false;
-                            if (engMark !== undefined && mathMark !== undefined) {
-                                if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
-                            } else if (engMark !== undefined && engMark === 'A') {
-                                asriFullAbsent = true;
-                            } else if (mathMark !== undefined && mathMark === 'A') {
-                                asriFullAbsent = true;
-                            }
-
-                            if (!asriFullAbsent) {
-                                aPresent++;
-                                let isFailAsri = false;
-                                // 🟢 NAYA LOGIC: Absent ('A') wali condition hata di gayi hai
-                                // Ab bacha sirf tabhi Fail hoga jab kisi subject mein uske marks 10 se kam honge
-                                if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
-                                if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
-                                if (isFailAsri) aFail++; else aPass++;
-                            }
-                        }
-                    });
-
-                    let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(1) : "0.0";
-                    let mGrade = getSummaryGrade(mPerc);
-                    gMain.total += mTotal; gMain.present += mPresent; gMain.pass += mPass; gMain.fail += mFail;
-
-                    mainRowsHTML += `<tr class="odd:bg-white even:bg-gray-50 hover:bg-purple-50"><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td class="p-2 border">${mTotal}</td><td class="p-2 border">${mPresent}</td><td class="p-2 border text-green-700 font-bold">${mPass}</td><td class="p-2 border text-red-600 font-bold">${mFail}</td><td class="p-2 border font-bold">${mPerc}%</td><td class="p-2 border"><span class="${getGradeColor(mGrade)} px-2 py-1 rounded text-xs text-white">${mGrade}</span></td></tr>`;
-
-                    if (hasAsriSubjects) {
-                        let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
-                        let aGrade = getSummaryGrade(aPerc);
-                        gAsri.total += aTotal; gAsri.present += aPresent; gAsri.pass += aPass; gAsri.fail += aFail;
-                        asriRowsHTML += `<tr class="odd:bg-white even:bg-gray-50 hover:bg-purple-50"><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td class="p-2 border">${aTotal}</td><td class="p-2 border">${aPresent}</td><td class="p-2 border text-green-700 font-bold">${aPass}</td><td class="p-2 border text-red-600 font-bold">${aFail}</td><td class="p-2 border font-bold">${aPerc}%</td><td class="p-2 border"><span class="${getGradeColor(aGrade)} px-2 py-1 rounded text-xs text-white">${aGrade}</span></td></tr>`;
+                    let isFailMain = false;
+                    if (parseFloat(std.percentage) < 40) {
+                        isFailMain = true;
                     } else {
-                        asriRowsHTML += `<tr><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td colspan="6" class="p-2 border text-gray-400">Asri subjects nahi hain</td></tr>`;
+                        let subjectFailCount = 0;
+                        sheetSubjects.forEach(sub => {
+                            const subLow = sub.toLowerCase();
+                            const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
+                            const passMarks = max * 0.40;
+                            const m = std.marks[sub];
+                            
+                            if (m === 'A') {
+                                subjectFailCount++;
+                            } else if (typeof m === 'number' && m < passMarks) {
+                                subjectFailCount++;
+                            }
+                        });
+                        if (subjectFailCount >= 3) isFailMain = true;
                     }
-                    sn++;
+                    
+                    if (isFailMain) mFail++; else mPass++;
                 }
 
-                mainBody.innerHTML = mainRowsHTML || '<tr><td colspan="8" class="p-4">No data found</td></tr>';
-                asriBody.innerHTML = asriRowsHTML || '<tr><td colspan="8" class="p-4">No data found</td></tr>';
+                let engMark = std.marks['English'];
+                let mathMark = std.marks['Maths'];
+                if (engMark !== undefined || mathMark !== undefined) {
+                    hasAsriSubjects = true;
+                    
+                    let asriFullAbsent = false;
+                    if (engMark !== undefined && mathMark !== undefined) {
+                        if (engMark === 'A' && mathMark === 'A') asriFullAbsent = true;
+                    } else if (engMark !== undefined && engMark === 'A') {
+                        asriFullAbsent = true;
+                    } else if (mathMark !== undefined && mathMark === 'A') {
+                        asriFullAbsent = true;
+                    }
 
-                let gMainPerc = gMain.present > 0 ? ((gMain.pass / gMain.present) * 100).toFixed(2) : "0.00";
-                mainFoot.innerHTML = `<tr class="bg-green-600"><td colspan="2" class="p-2 border text-right text-lg">Total</td><td class="p-2 border bg-purple-300 text-black">${gMain.total}</td><td class="p-2 border bg-purple-300 text-black">${gMain.present}</td><td class="p-2 border bg-purple-300 text-black">${gMain.pass}</td><td class="p-2 border bg-purple-300 text-black">${gMain.fail}</td><td class="p-2 border bg-purple-300 text-black">${gMainPerc}%</td><td class="p-2 border bg-red-600">${getSummaryGrade(gMainPerc)}</td></tr>`;
+                    if (!asriFullAbsent) {
+                        aPresent++;
+                        let isFailAsri = false;
+                        if (engMark !== undefined && typeof engMark === 'number' && engMark < 10) isFailAsri = true;
+                        if (mathMark !== undefined && typeof mathMark === 'number' && mathMark < 10) isFailAsri = true;
+                        if (isFailAsri) aFail++; else aPass++;
+                    }
+                }
+            });
 
-                let gAsriPerc = gAsri.present > 0 ? ((gAsri.pass / gAsri.present) * 100).toFixed(2) : "0.00";
-                asriFoot.innerHTML = `<tr class="bg-green-600"><td colspan="2" class="p-2 border text-right text-lg">Total</td><td class="p-2 border bg-purple-300 text-black">${gAsri.total}</td><td class="p-2 border bg-purple-300 text-black">${gAsri.present}</td><td class="p-2 border bg-purple-300 text-black">${gAsri.pass}</td><td class="p-2 border bg-purple-300 text-black">${gAsri.fail}</td><td class="p-2 border bg-purple-300 text-black">${gAsriPerc}%</td><td class="p-2 border bg-red-600">${getSummaryGrade(gAsriPerc)}</td></tr>`;
-            } catch (e) { console.error("Summary Error:", e); mainBody.innerHTML = '<tr><td colspan="8" class="text-red-500 p-4">Error loading summary.</td></tr>'; }
+            let mPerc = mPresent > 0 ? ((mPass / mPresent) * 100).toFixed(1) : "0.0";
+            let mGrade = getSummaryGrade(mPerc);
+            gMain.total += mTotal; gMain.present += mPresent; gMain.pass += mPass; gMain.fail += mFail;
+
+            mainRowsHTML += `<tr class="odd:bg-white even:bg-gray-50 hover:bg-purple-50"><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td class="p-2 border">${mTotal}</td><td class="p-2 border">${mPresent}</td><td class="p-2 border text-green-700 font-bold">${mPass}</td><td class="p-2 border text-red-600 font-bold">${mFail}</td><td class="p-2 border font-bold">${mPerc}%</td><td class="p-2 border"><span class="${getGradeColor(mGrade)} px-2 py-1 rounded text-xs text-white">${mGrade}</span></td></tr>`;
+
+            if (hasAsriSubjects) {
+                let aPerc = aPresent > 0 ? ((aPass / aPresent) * 100).toFixed(1) : "0.0";
+                let aGrade = getSummaryGrade(aPerc);
+                gAsri.total += aTotal; gAsri.present += aPresent; gAsri.pass += aPass; gAsri.fail += aFail;
+                asriRowsHTML += `<tr class="odd:bg-white even:bg-gray-50 hover:bg-purple-50"><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td class="p-2 border">${aTotal}</td><td class="p-2 border">${aPresent}</td><td class="p-2 border text-green-700 font-bold">${aPass}</td><td class="p-2 border text-red-600 font-bold">${aFail}</td><td class="p-2 border font-bold">${aPerc}%</td><td class="p-2 border"><span class="${getGradeColor(aGrade)} px-2 py-1 rounded text-xs text-white">${aGrade}</span></td></tr>`;
+            } else {
+                asriRowsHTML += `<tr><td class="p-2 border">${sn}</td><td class="p-2 border text-left font-semibold">${clsName}</td><td colspan="6" class="p-2 border text-gray-400">Asri subjects nahi hain</td></tr>`;
+            }
+            sn++;
         }
+
+        mainBody.innerHTML = mainRowsHTML || '<tr><td colspan="8" class="p-4">No data found</td></tr>';
+        asriBody.innerHTML = asriRowsHTML || '<tr><td colspan="8" class="p-4">No data found</td></tr>';
+
+        let gMainPerc = gMain.present > 0 ? ((gMain.pass / gMain.present) * 100).toFixed(2) : "0.00";
+        mainFoot.innerHTML = `<tr class="bg-green-600"><td colspan="2" class="p-2 border text-right text-lg">Total</td><td class="p-2 border bg-purple-300 text-black">${gMain.total}</td><td class="p-2 border bg-purple-300 text-black">${gMain.present}</td><td class="p-2 border bg-purple-300 text-black">${gMain.pass}</td><td class="p-2 border bg-purple-300 text-black">${gMain.fail}</td><td class="p-2 border bg-purple-300 text-black">${gMainPerc}%</td><td class="p-2 border bg-red-600">${getSummaryGrade(gMainPerc)}</td></tr>`;
+
+        let gAsriPerc = gAsri.present > 0 ? ((gAsri.pass / gAsri.present) * 100).toFixed(2) : "0.00";
+        asriFoot.innerHTML = `<tr class="bg-green-600"><td colspan="2" class="p-2 border text-right text-lg">Total</td><td class="p-2 border bg-purple-300 text-black">${gAsri.total}</td><td class="p-2 border bg-purple-300 text-black">${gAsri.present}</td><td class="p-2 border bg-purple-300 text-black">${gAsri.pass}</td><td class="p-2 border bg-purple-300 text-black">${gAsri.fail}</td><td class="p-2 border bg-purple-300 text-black">${gAsriPerc}%</td><td class="p-2 border bg-red-600">${getSummaryGrade(gAsriPerc)}</td></tr>`;
+    } catch (e) { console.error("Summary Error:", e); mainBody.innerHTML = '<tr><td colspan="8" class="text-red-500 p-4">Error loading summary.</td></tr>'; }
+}
 
         function getSummaryGrade(perc) { const p = parseFloat(perc); if (p >= 80) return "Mumtaz"; if (p >= 70) return "Jayyid Jiddan"; if (p >= 60) return "Jayyid"; if (p >= 50) return "Maqbul"; if (p >= 40) return "Pass"; return "Kamzoor"; }
         function getGradeColor(grade) { if (grade === "Mumtaz") return "bg-green-700"; if (grade === "Jayyid Jiddan") return "bg-green-600"; if (grade === "Jayyid") return "bg-yellow-500"; if (grade === "Maqbul") return "bg-orange-500"; return "bg-red-600"; }
@@ -1434,27 +1407,30 @@
 
             students.forEach(std => {
                 mPresent++;
+                
                 let isFailMain = false;
-if (parseFloat(std.percentage) < 40) {
-    isFailMain = true;
-} else {
-    let subjectFailCount = 0;
-    const subKeys = Object.keys(std.marks);
-    subKeys.forEach(sub => {
-        const subLow = sub.toLowerCase();
-        const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
-        const passMarks = max * 0.40;
-        const m = std.marks[sub];
+                if (parseFloat(std.percentage) < 40) {
+                    isFailMain = true;
+                } else {
+                    let subjectFailCount = 0;
+                    const subKeys = Object.keys(std.marks);
+                    subKeys.forEach(sub => {
+                        const subLow = sub.toLowerCase();
+                        const max = (subLow.includes('english') || subLow.includes('math') || subLow.includes('hisab')) ? 25 : 100;
+                        const passMarks = max * 0.40;
+                        const m = std.marks[sub];
 
-        if (m === 'A') {
-            subjectFailCount++;
-        } else if (typeof m === 'number' && m < passMarks) {
-            subjectFailCount++;
-        }
-    });
-    if (subjectFailCount >= 3) isFailMain = true;
-}
-if (isFailMain) mFail++; else mPass++;
+                        if (m === 'A') {
+                            subjectFailCount++;
+                        } else if (typeof m === 'number' && m < passMarks) {
+                            subjectFailCount++;
+                        }
+                    });
+                    if (subjectFailCount >= 3) isFailMain = true;
+                }
+                
+                if (isFailMain) mFail++; else mPass++;
+
                 let engMark = std.marks['English'];
                 let mathMark = std.marks['Maths'];
                 if (engMark !== undefined || mathMark !== undefined) {
@@ -1575,7 +1551,6 @@ if (isFailMain) mFail++; else mPass++;
 
             const PAGE_HEIGHT_LIMIT = 720;
 
-            // Page Template banany ka function (Taa ke har naye page par Title aye)
             function createClassPage() {
                 const pageDiv = document.createElement('div');
                 pageDiv.style.backgroundColor = "white"; 
@@ -1674,7 +1649,6 @@ if (isFailMain) mFail++; else mPass++;
                 
                 currentTbody.appendChild(tr);
 
-                // --- PAGE BREAK LOGIC --- (Yahan Naya Page Banta Hai)
                 if (tempPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
                     currentTbody.removeChild(tr); 
                     
@@ -1684,16 +1658,14 @@ if (isFailMain) mFail++; else mPass++;
 
                     tempContainer.removeChild(tempPage); 
                     
-                    // Naya page fresh title aur header table ke sath banega
                     tempPage = createClassPage();
                     tempContainer.appendChild(tempPage);
                     currentTbody = tempPage.querySelector('.data-tbody');
                     
-                    currentTbody.appendChild(tr); // Cut kiya hua row wapas daal diya
+                    currentTbody.appendChild(tr); 
                 }
             }
 
-            // Class khatam hone par bacha hua aakhiri page add karein
             const canvas = await html2canvas(tempPage, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
             pdfDoc.addPage();
             pdfDoc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 297, (canvas.height * 297) / canvas.width);
