@@ -3583,7 +3583,7 @@ let rowHtml = `
         };
         
         
-        // NEW FUNCTION: Render Teacher Profile Report (Urdu Version)
+ // NEW FUNCTION: Render Teacher Profile Report (Urdu Version - Updated with % and All Download)
 const renderTeacherProfileReport = async (e, isInitial = false) => {
     if (e) e.preventDefault();
 
@@ -3655,16 +3655,21 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
     const semesterTotalDays = currentSemester === '1' ? (yearData.sem1TotalDays || 0) : (yearData.sem2TotalDays || 0);
 
     // --- Generate Table HTML (URDU HEADERS) ---
-    // Note: direction: rtl added via styling class or inline style
+    // NAYA LOGIC: Yahan humne naya "Download All" button add kiya hai
     let html = `
         <h5 class="text-lg font-bold urdu-font text-center mb-4">
             استاد: ${teacherName} &nbsp;|&nbsp; جامعہ: ${selectedJamia} &nbsp;|&nbsp; سمسٹر: ${currentSemester}
         </h5>
-        <div class="flex justify-end mb-3">
+        <div class="flex flex-wrap justify-end gap-3 mb-3">
+            <button type="button" id="download-all-jamia-profiles-btn" 
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
+                data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
+                <i class="fas fa-images fa-sm"></i> Download All Jamia Profiles
+            </button>
             <button type="button" id="download-teacher-profile-image-btn" 
                 class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
                 data-teacher-id="${selectedTeacherId}" data-teacher-name="${teacherName}" data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
-                <i class="fas fa-image fa-sm"></i> Download Image (Urdu)
+                <i class="fas fa-image fa-sm"></i> Download Single Profile
             </button>
         </div>
         <div class="overflow-x-auto border rounded-lg shadow-md teacher-profile-table-container">
@@ -3675,21 +3680,21 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
                         <th class="urdu-font" style="min-width: 100px;">کل صفحات (سمسٹر)</th>
                         <th class="urdu-font" style="min-width: 100px;">کل پڑھائے گئے (مجموعی)</th>
                         <th class="sticky-col-right urdu-font" style="min-width: 100px; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
+                        <th class="sticky-col-right urdu-font" style="min-width: 100px; background-color: #d1fae5; color: #059669;">فیصد (%)</th>
     `;
 
     // Add monthly columns (Urdu Names)
     academicMonthsList.forEach(m => {
         const engMonthName = getMonthName(m.monthNum);
         const urduMonthName = urduMonths[engMonthName] || engMonthName;
-        // Short year for display (e.g. 26 for 2026)
         const shortYear = m.year % 100;
-        
         html += `<th colspan="2" class="urdu-font" style="min-width: 150px; border-bottom: none;">${urduMonthName} ${shortYear}</th>`;
     });
 
+    // Header ke neeche wale empty cells mein percent ka bhi add kiya
     html += `</tr><tr>
              <th class="sticky-col"></th>
-             <th></th><th></th><th style="background-color: #fef3c7;"></th>`;
+             <th></th><th></th><th style="background-color: #fef3c7;"></th><th style="background-color: #d1fae5;"></th>`;
 
     // Sub-headers (Target/Taught -> Hadaf/Padhaya)
     academicMonthsList.forEach(() => {
@@ -3703,7 +3708,10 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
     periodsInSemester.forEach(period => {
         const totalPages = period.totalPages;
         const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
+        
+        // NAYA LOGIC: Baqiya pages aur Percentage ka hisaab
         const remainingPages = totalPages - cumulativeTaught;
+        const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
 
         html += `
             <tr>
@@ -3711,17 +3719,14 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
                 <td class="font-bold text-center">${totalPages}</td>
                 <td class="font-bold text-center text-blue-700">${cumulativeTaught}</td>
                 <td class="font-bold text-center bg-yellow-100 text-red-700">${remainingPages}</td>
+                <td class="font-bold text-center bg-green-100 text-green-800">${percent}%</td>
         `;
 
         academicMonthsList.forEach(m => {
             const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
-            
-            // NAYA LOGIC: Admin config se mahine ke din nikalein
             const monthDetails = window.adminAcademicConfig?.monthDetails || {};
             const monthConfig = monthDetails[m.monthNum];
             const daysThisMonth = currentSemester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
-
-            // Admin config se semester ke total din nikalein
             const semTotalDays = currentSemester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
 
             let monthlyTarget = 0;
@@ -3748,7 +3753,10 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
     html += `</tbody></table></div>`;
     teacherProfileContainer.innerHTML = html;
 
+    // Attach Listeners
     document.getElementById('download-teacher-profile-image-btn').addEventListener('click', downloadTeacherProfileImage);
+    document.getElementById('download-all-jamia-profiles-btn').addEventListener('click', downloadAllJamiaProfilesImage); // Naya listener
+
     showLoader(false);
 };
 
@@ -4412,7 +4420,189 @@ const downloadTeacherProfileImage = async (e) => {
     }
 };
 
+// NAYA FUNCTION: Poore Jamia ki tamam asatiza ki profile 1 image me download karne ke liye
+const downloadAllJamiaProfilesImage = async (e) => {
+    showLoader(true);
+    
+    const button = e.target.closest('#download-all-jamia-profiles-btn');
+    const jamiaName = button.dataset.jamiaName;
+    const semester = button.dataset.semester;
 
+    const selectedValue = teacherProfileMonthSelect.value;
+    const [year, monthNumStr] = selectedValue.split('-').map(String);
+    const currentMonthNum = parseInt(monthNumStr, 10);
+    const currentYearNum = parseInt(year, 10);
+
+    const engMonthName = getMonthName(currentMonthNum);
+    const urduMonthName = urduMonths[engMonthName] || engMonthName;
+    const userName = userProfileData.displayName || currentUser.email;
+
+    // Get Jamia Data from active year structure
+    const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    const jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
+
+    if (!jamiaData || !jamiaData.teachers || jamiaData.teachers.length === 0) {
+        showNotification("Is Jamia mein asatiza majood nahi hain.", true);
+        showLoader(false);
+        return;
+    }
+
+    // Prepare Hidden Div for Image Capture
+    const tempDiv = document.createElement('div');
+    tempDiv.style.width = '1200px'; 
+    tempDiv.style.backgroundColor = '#ffffff';
+    tempDiv.style.padding = '25px';
+    tempDiv.style.border = '1px solid #ccc';
+    tempDiv.style.fontFamily = "'Jameel Noori Nastaleeq', serif"; 
+    tempDiv.style.direction = 'rtl';
+
+    let fullHtml = `
+        <h1 style="text-align: center; font-size: 32px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
+            جامعہ: ${jamiaName} - تمام اساتذہ کی کارکردگی (سمسٹر ${semester})
+        </h1>
+        <p style="text-align: center; font-weight: 500; margin-bottom: 20px; font-size: 20px;">
+            رپورٹ برائے: ${urduMonthName} ${currentYearNum}
+        </p>
+    `;
+
+    // Filter months exactly like single profile
+    const academicMonthsList = ACADEMIC_MONTHS.filter(m => {
+        return semester === '1' ? (m >= 3 && m <= 7) : (m >= 8 || m === 0);
+    }).map(monthNum => {
+        let reportYear = currentYearNum;
+        const academicYearParts = activeYear.split('-');
+        const academicYearStart = parseInt(academicYearParts[0], 10);
+        const academicYearEnd = parseInt(academicYearParts[1], 10);
+        if (semester === '1') {
+            reportYear = academicYearStart;
+        } else {
+            reportYear = monthNum >= 8 ? academicYearStart : academicYearEnd;
+        }
+        return { monthNum, year: reportYear };
+    }).filter(m => {
+        if (m.year < currentYearNum) return true;
+        if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
+        return false;
+    }).sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
+
+    // Loop through each teacher
+    jamiaData.teachers.forEach(teacher => {
+        const periodsInSemester = (teacher.periods || []).filter(p => p.semester === semester);
+        
+        // Skip agar is semester me periods na hon
+        if (periodsInSemester.length === 0) return; 
+
+        fullHtml += `
+            <div style="margin-bottom: 40px; page-break-inside: avoid;">
+                <h2 style="font-size: 26px; color: #3b82f6; margin-bottom: 10px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px; font-weight: bold;">
+                    استاد: ${teacher.name}
+                </h2>
+                <table style="width: 100%; border-collapse: collapse; font-size: 16px; text-align: center; font-family: 'Jameel Noori Nastaleeq', serif;">
+                    <thead style="background-color: #f3f4f6;">
+                        <tr>
+                            <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: right; min-width: 150px;">کتاب / درجہ</th>
+                            <th style="border: 1px solid #e5e7eb; padding: 8px;">کل صفحات</th>
+                            <th style="border: 1px solid #e5e7eb; padding: 8px;">کل پڑھائے گئے</th>
+                            <th style="border: 1px solid #e5e7eb; padding: 8px; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
+                            <th style="border: 1px solid #e5e7eb; padding: 8px; background-color: #d1fae5; color: #059669;">فیصد (%)</th>
+        `;
+
+        academicMonthsList.forEach(m => {
+            const urduMonthNameObj = urduMonths[getMonthName(m.monthNum)] || getMonthName(m.monthNum);
+            const shortYear = m.year % 100;
+            fullHtml += `<th colspan="2" style="border: 1px solid #e5e7eb; padding: 8px;">${urduMonthNameObj} ${shortYear}</th>`;
+        });
+
+        fullHtml += `</tr><tr>
+                     <th style="border: 1px solid #e5e7eb;"></th>
+                     <th style="border: 1px solid #e5e7eb;"></th>
+                     <th style="border: 1px solid #e5e7eb;"></th>
+                     <th style="border: 1px solid #e5e7eb; background-color: #fef3c7;"></th>
+                     <th style="border: 1px solid #e5e7eb; background-color: #d1fae5;"></th>`;
+
+        academicMonthsList.forEach(() => {
+            fullHtml += `<th style="border: 1px solid #e5e7eb; padding: 8px; color: #3b82f6;">ہدف</th>
+                         <th style="border: 1px solid #e5e7eb; padding: 8px; color: #059669;">پڑھایا</th>`;
+        });
+
+        fullHtml += `</tr></thead><tbody>`;
+
+        periodsInSemester.forEach(period => {
+            const totalPages = period.totalPages;
+            const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
+            
+            const remainingPages = totalPages - cumulativeTaught;
+            const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
+
+            fullHtml += `
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right;">${period.bookName} <span style="font-size: 13px; color: #6b7280; font-family: 'Poppins', sans-serif;">(${period.className})</span></td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; font-family: 'Poppins', sans-serif;">${totalPages}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; color: #1d4ed8; font-family: 'Poppins', sans-serif;">${cumulativeTaught}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; background-color: #fef9c3; color: #b91c1c; font-family: 'Poppins', sans-serif;">${remainingPages}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; background-color: #dcfce7; color: #15803d; font-family: 'Poppins', sans-serif;">${percent}%</td>
+            `;
+
+            academicMonthsList.forEach(m => {
+                const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
+                const monthDetails = window.adminAcademicConfig?.monthDetails || {};
+                const monthConfig = monthDetails[m.monthNum];
+                const daysThisMonth = semester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
+                const semTotalDays = semester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
+
+                let monthlyTarget = 0;
+                if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
+                    const perDayTarget = totalPages / semTotalDays;
+                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                }
+
+                let pagesTaught = '0';
+                if (monthReport) {
+                    const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
+                    pagesTaught = (periodEntry?.pagesTaught || 0).toString();
+                }
+
+                fullHtml += `
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-family: 'Poppins', sans-serif;">${monthlyTarget}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-family: 'Poppins', sans-serif;">${pagesTaught}</td>
+                `;
+            });
+            fullHtml += `</tr>`;
+        });
+        fullHtml += `</tbody></table></div>`;
+    });
+
+    const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr; font-family: sans-serif;">Report Generated by User: ${userName}</p>`;
+
+    tempDiv.innerHTML = fullHtml + footerHtml;
+    document.body.appendChild(tempDiv);
+
+    try {
+        const canvas = await html2canvas(tempDiv, { 
+            scale: 2, 
+            allowTaint: true,
+            useCORS: true,
+            width: 1200 
+        });
+
+        const image = canvas.toDataURL("image/png");
+        const link = document.createElement('a');
+        link.href = image;
+        const fileName = `All_Teachers_Profile_Jamia_${jamiaName.replace(/ /g, '_')}_Sem${semester}_${currentYearNum}.png`;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showNotification(`${fileName} Downloaded Successfully!`);
+    } catch (error) {
+        console.error("All Jamia Profiles Image generation failed:", error);
+        showNotification("Image download karne me error.", true, error.message);
+    } finally {
+        document.body.removeChild(tempDiv);
+        showLoader(false);
+    }
+};
         // --- Tab Switching (Updated for Sub-Tabs) ---
         tabButtons.forEach(button => {
             button.addEventListener('click', (e) => {
