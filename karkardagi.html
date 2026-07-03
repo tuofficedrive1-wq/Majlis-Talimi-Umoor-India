@@ -3547,43 +3547,49 @@ let rowHtml = `
              teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia and teacher.</p>`;
         };
         
-        // NEW FUNCTION: Populate Teacher Filter based on selected Jamia (FIXED LOGIC)
-        const populateTeacherProfileTeacherFilter = () => {
-             const selectedJamia = teacherProfileJamiaSelect.value;
-             const selectedMonthValue = teacherProfileMonthSelect.value; // Get month context from hidden input
-             let teacherOptions = `<option value="">Select Teacher</option>`;
-             
-             if (!selectedJamia || !activeYear || !selectedMonthValue) {
-                 teacherProfileTeacherSelect.innerHTML = teacherOptions;
-                 teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia.</p>`;
-                 return;
-             }
-             
-             // Extract month/semester details from the selected month (context)
-             const [year, monthNum] = selectedMonthValue.split('-').map(Number);
-             // Determine semester based on the selected month context from the reporting tab
-             const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2"; 
-             
-             const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
-             const jamiaData = karkardagiStructure.find(j => j.jamiaName === selectedJamia);
-             
-             if (jamiaData && jamiaData.teachers) {
-                  jamiaData.teachers.forEach(teacher => {
-                       // Only show teachers who have periods set for the determined semester
-                       const hasPeriodsInSemester = (teacher.periods || []).some(p => p.semester === semester);
-                       if (hasPeriodsInSemester) {
-                            // FIX APPLIED: Use teacher.name for display and teacher.id for value
-                            teacherOptions += `<option value="${teacher.id}">${teacher.name}</option>`;
-                       }
-                  });
-             }
-             
-             teacherProfileTeacherSelect.innerHTML = teacherOptions;
-             teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a teacher and click 'Show Profile'.</p>`;
-        };
+       // NEW FUNCTION: Populate Teacher Filter based on selected Jamia (All Teachers Option Added)
+const populateTeacherProfileTeacherFilter = () => {
+    const selectedJamia = teacherProfileJamiaSelect.value;
+    const selectedMonthValue = teacherProfileMonthSelect.value;
+    let teacherOptions = `<option value="">Select Teacher</option>`;
+    
+    if (!selectedJamia || !activeYear || !selectedMonthValue) {
+        teacherProfileTeacherSelect.innerHTML = teacherOptions;
+        teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a jamia.</p>`;
+        return;
+    }
+    
+    const [year, monthNum] = selectedMonthValue.split('-').map(Number);
+    const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2"; 
+    
+    const karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    const jamiaData = karkardagiStructure.find(j => j.jamiaName === selectedJamia);
+    
+    if (jamiaData && jamiaData.teachers) {
+        let hasAnyTeacherInSem = false;
+        let teacherListHtml = '';
+        
+        jamiaData.teachers.forEach(teacher => {
+            const hasPeriodsInSemester = (teacher.periods || []).some(p => p.semester === semester);
+            if (hasPeriodsInSemester) {
+                hasAnyTeacherInSem = true;
+                teacherListHtml += `<option value="${teacher.id}">${teacher.name}</option>`;
+            }
+        });
+        
+        // Agar Jamia me teachers hain to sabse upar "All Teachers" ka option dalo
+        if (hasAnyTeacherInSem) {
+            teacherOptions += `<option value="all" class="font-bold text-blue-700 bg-blue-50">تمام اساتذہ (All Teachers)</option>`;
+            teacherOptions += teacherListHtml;
+        }
+    }
+    
+    teacherProfileTeacherSelect.innerHTML = teacherOptions;
+    teacherProfileContainer.innerHTML = `<p class="text-gray-500">Please select a teacher (or All Teachers) and click 'Show Profile'.</p>`;
+};
         
         
- // NEW FUNCTION: Render Teacher Profile Report (Urdu Version - Updated with % and All Download)
+// NEW FUNCTION: Render Teacher Profile Report (Handles both Single and All Teachers view dynamically)
 const renderTeacherProfileReport = async (e, isInitial = false) => {
     if (e) e.preventDefault();
 
@@ -3609,153 +3615,179 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
     const yearData = allAcademicYearsData[activeYear];
     const karkardagiStructure = yearData.karkardagiStructure || [];
     const jamiaData = karkardagiStructure.find(j => j.jamiaName === selectedJamia);
-    const teacherData = jamiaData?.teachers.find(t => t.id === selectedTeacherId);
-    const teacherName = teacherData?.name || 'N/A';
 
-    if (!teacherData) {
-        teacherProfileContainer.innerHTML = `<p class="text-red-500">Teacher data not found in structure.</p>`;
+    if (!jamiaData || !jamiaData.teachers) {
+        teacherProfileContainer.innerHTML = `<p class="text-red-500">Jamia data not found in structure.</p>`;
         showLoader(false);
         return;
     }
 
-    const periodsInSemester = (teacherData.periods || []).filter(p => p.semester === currentSemester);
+    // Faisla karein ke kis kis ko show karna hai (All ya Single)
+    let teachersToRender = [];
+    if (selectedTeacherId === 'all') {
+        teachersToRender = jamiaData.teachers.filter(t => (t.periods || []).some(p => p.semester === currentSemester));
+    } else {
+        const t = jamiaData.teachers.find(t => t.id === selectedTeacherId);
+        if (t) teachersToRender.push(t);
+    }
 
-    if (periodsInSemester.length === 0) {
-        teacherProfileContainer.innerHTML = `<p class="text-yellow-700">Is Teacher ke liye Semester ${currentSemester} ke koi periods set nahi hain.</p>`;
+    if (teachersToRender.length === 0) {
+        teacherProfileContainer.innerHTML = `<p class="text-yellow-700">Is Jamia me Semester ${currentSemester} ke koi periods set nahi hain.</p>`;
         showLoader(false);
         return;
     }
 
-    // Get relevant months
-    const academicMonthsList = ACADEMIC_MONTHS
-        .filter(m => {
-            const isMonthInCurrentSemester = currentSemester === '1' ? (m >= 3 && m <= 7) : (m >= 8 || m === 0);
-            return isMonthInCurrentSemester;
-        })
-        .map(monthNum => {
-            let reportYear = currentYearNum;
-            const academicYearParts = activeYear.split('-');
-            const academicYearStart = parseInt(academicYearParts[0], 10);
-            const academicYearEnd = parseInt(academicYearParts[1], 10);
+    // Get relevant months list
+    const academicMonthsList = ACADEMIC_MONTHS.filter(m => {
+        return currentSemester === '1' ? (m >= 3 && m <= 7) : (m >= 8 || m === 0);
+    }).map(monthNum => {
+        let reportYear = currentYearNum;
+        const academicYearParts = activeYear.split('-');
+        if (currentSemester === '1') {
+            reportYear = parseInt(academicYearParts[0], 10);
+        } else {
+            reportYear = monthNum >= 8 ? parseInt(academicYearParts[0], 10) : parseInt(academicYearParts[1], 10);
+        }
+        return { monthNum, year: reportYear };
+    }).filter(m => {
+        if (m.year < currentYearNum) return true;
+        if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
+        return false;
+    }).sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
 
-            if (currentSemester === '1') {
-                reportYear = academicYearStart;
-            } else if (currentSemester === '2') {
-                reportYear = monthNum >= 8 ? academicYearStart : academicYearEnd;
-            }
-            return { monthNum, year: reportYear };
-        })
-        .filter(m => {
-            if (m.year < currentYearNum) return true;
-            if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
-            return false;
-        })
-        .sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
+    let html = ``;
 
-    const semesterTotalDays = currentSemester === '1' ? (yearData.sem1TotalDays || 0) : (yearData.sem2TotalDays || 0);
+    // 1. Header aur Download Button Dikhane ka Logic
+    if (selectedTeacherId === 'all') {
+        html += `
+            <h5 class="text-xl font-bold urdu-font text-center mb-4 text-teal-600">
+                جامعہ: ${selectedJamia} &nbsp;|&nbsp; تمام اساتذہ کی کارکردگی (سمسٹر ${currentSemester})
+            </h5>
+            <div class="flex justify-end mb-4">
+                <button type="button" id="download-all-jamia-profiles-btn" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 shadow" 
+                    data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
+                    <i class="fas fa-images fa-sm"></i> Download All Profiles (Image)
+                </button>
+            </div>
+        `;
+    } else {
+        html += `
+            <h5 class="text-lg font-bold urdu-font text-center mb-4">
+                استاد: ${teachersToRender[0].name} &nbsp;|&nbsp; جامعہ: ${selectedJamia} &nbsp;|&nbsp; سمسٹر: ${currentSemester}
+            </h5>
+            <div class="flex justify-end mb-4">
+                <button type="button" id="download-teacher-profile-image-btn" 
+                    class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
+                    data-teacher-id="${teachersToRender[0].id}" data-teacher-name="${teachersToRender[0].name}" data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
+                    <i class="fas fa-image fa-sm"></i> Download Single Profile
+                </button>
+            </div>
+        `;
+    }
 
-    // --- Generate Table HTML (URDU HEADERS) ---
-    // NAYA LOGIC: Yahan humne naya "Download All" button add kiya hai
-    let html = `
-        <h5 class="text-lg font-bold urdu-font text-center mb-4">
-            استاد: ${teacherName} &nbsp;|&nbsp; جامعہ: ${selectedJamia} &nbsp;|&nbsp; سمسٹر: ${currentSemester}
-        </h5>
-        <div class="flex flex-wrap justify-end gap-3 mb-3">
-            <button type="button" id="download-all-jamia-profiles-btn" 
-                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
-                data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
-                <i class="fas fa-images fa-sm"></i> Download All Jamia Profiles
-            </button>
-            <button type="button" id="download-teacher-profile-image-btn" 
-                class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" 
-                data-teacher-id="${selectedTeacherId}" data-teacher-name="${teacherName}" data-jamia-name="${selectedJamia}" data-semester="${currentSemester}">
-                <i class="fas fa-image fa-sm"></i> Download Single Profile
-            </button>
-        </div>
-        <div class="overflow-x-auto border rounded-lg shadow-md teacher-profile-table-container">
-            <table class="min-w-full text-sm bg-white teacher-profile-table" style="direction: rtl;">
-                <thead class="bg-gray-100">
-                    <tr>
-                        <th class="sticky-col urdu-font text-right" style="min-width: 150px; text-align: right;">کتاب / درجہ</th>
-                        <th class="urdu-font" style="min-width: 100px;">کل صفحات (سمسٹر)</th>
-                        <th class="urdu-font" style="min-width: 100px;">کل پڑھائے گئے (مجموعی)</th>
-                        <th class="sticky-col-right urdu-font" style="min-width: 100px; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
-                        <th class="sticky-col-right urdu-font" style="min-width: 100px; background-color: #d1fae5; color: #059669;">فیصد (%)</th>
-    `;
-
-    // Add monthly columns (Urdu Names)
-    academicMonthsList.forEach(m => {
-        const engMonthName = getMonthName(m.monthNum);
-        const urduMonthName = urduMonths[engMonthName] || engMonthName;
-        const shortYear = m.year % 100;
-        html += `<th colspan="2" class="urdu-font" style="min-width: 150px; border-bottom: none;">${urduMonthName} ${shortYear}</th>`;
-    });
-
-    // Header ke neeche wale empty cells mein percent ka bhi add kiya
-    html += `</tr><tr>
-             <th class="sticky-col"></th>
-             <th></th><th></th><th style="background-color: #fef3c7;"></th><th style="background-color: #d1fae5;"></th>`;
-
-    // Sub-headers (Target/Taught -> Hadaf/Padhaya)
-    academicMonthsList.forEach(() => {
-        html += `<th class="urdu-font" style="min-width: 75px; color: #3b82f6; border-top: none;">ہدف</th>
-                 <th class="urdu-font" style="min-width: 75px; color: #059669; border-top: none;">پڑھایا</th>`;
-    });
-
-    html += `</tr></thead><tbody>`;
-
-    // Populate Rows
-    periodsInSemester.forEach(period => {
-        const totalPages = period.totalPages;
-        const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
+    // 2. Teachers ko loop karke unki tables UI pe banayein
+    teachersToRender.forEach(teacher => {
+        const periodsInSemester = (teacher.periods || []).filter(p => p.semester === currentSemester);
         
-        // NAYA LOGIC: Baqiya pages aur Percentage ka hisaab
-        const remainingPages = totalPages - cumulativeTaught;
-        const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
+        // Agar "All" mode hai to har teacher ke table par border/shadow dein
+        const containerClass = selectedTeacherId === 'all' 
+            ? "mb-8 bg-gray-50 border border-gray-200 p-4 rounded-xl shadow-sm" 
+            : "";
+        
+        const teacherNameHeader = selectedTeacherId === 'all' 
+            ? `<h6 class="text-lg font-bold urdu-font text-blue-700 mb-3 border-b-2 border-blue-200 pb-2 text-right">استاد: ${teacher.name}</h6>` 
+            : ``;
 
         html += `
-            <tr>
-                <td class="urdu-font sticky-col text-right" style="text-align: right;">${period.bookName} <span class="text-xs text-gray-500">(${period.className})</span></td>
-                <td class="font-bold text-center">${totalPages}</td>
-                <td class="font-bold text-center text-blue-700">${cumulativeTaught}</td>
-                <td class="font-bold text-center bg-yellow-100 text-red-700">${remainingPages}</td>
-                <td class="font-bold text-center bg-green-100 text-green-800">${percent}%</td>
+            <div class="${containerClass}">
+                ${teacherNameHeader}
+                <div class="overflow-x-auto border rounded-lg shadow-sm teacher-profile-table-container">
+                    <table class="min-w-full text-sm bg-white teacher-profile-table" style="direction: rtl;">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="sticky-col urdu-font text-right" style="min-width: 150px; text-align: right;">کتاب / درجہ</th>
+                                <th class="urdu-font" style="min-width: 90px;">کل صفحات</th>
+                                <th class="urdu-font" style="min-width: 90px;">کل پڑھائے گئے</th>
+                                <th class="sticky-col-right urdu-font" style="min-width: 90px; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
+                                <th class="sticky-col-right urdu-font" style="min-width: 90px; background-color: #d1fae5; color: #059669;">فیصد (%)</th>
         `;
 
+        // Add monthly headers
         academicMonthsList.forEach(m => {
-            const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
-            const monthDetails = window.adminAcademicConfig?.monthDetails || {};
-            const monthConfig = monthDetails[m.monthNum];
-            const daysThisMonth = currentSemester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
-            const semTotalDays = currentSemester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
-
-            let monthlyTarget = 0;
-            if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
-                const perDayTarget = totalPages / semTotalDays;
-                monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-            }
-
-            let pagesTaught = '0';
-            if (monthReport) {
-                const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
-                pagesTaught = (periodEntry?.pagesTaught || 0).toString();
-            }
-
-            html += `
-                <td class="text-center">${monthlyTarget}</td>
-                <td class="text-center">${pagesTaught}</td>
-            `;
+            const engMonthName = getMonthName(m.monthNum);
+            const urduMonthName = urduMonths[engMonthName] || engMonthName;
+            const shortYear = m.year % 100;
+            html += `<th colspan="2" class="urdu-font" style="min-width: 140px; border-bottom: none;">${urduMonthName} ${shortYear}</th>`;
         });
 
-        html += `</tr>`;
+        html += `</tr><tr>
+                 <th class="sticky-col"></th>
+                 <th></th><th></th><th style="background-color: #fef3c7;"></th><th style="background-color: #d1fae5;"></th>`;
+
+        academicMonthsList.forEach(() => {
+            html += `<th class="urdu-font" style="min-width: 70px; color: #3b82f6; border-top: none;">ہدف</th>
+                     <th class="urdu-font" style="min-width: 70px; color: #059669; border-top: none;">پڑھایا</th>`;
+        });
+
+        html += `</tr></thead><tbody>`;
+
+        // Rows for each period
+        periodsInSemester.forEach(period => {
+            const totalPages = period.totalPages;
+            const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
+            const remainingPages = totalPages - cumulativeTaught;
+            const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
+
+            html += `
+                <tr class="border-b border-gray-100">
+                    <td class="urdu-font sticky-col text-right" style="text-align: right;">${period.bookName} <span class="text-xs text-gray-500">(${period.className})</span></td>
+                    <td class="font-bold text-center">${totalPages}</td>
+                    <td class="font-bold text-center text-blue-700">${cumulativeTaught}</td>
+                    <td class="font-bold text-center bg-yellow-100 text-red-700">${remainingPages}</td>
+                    <td class="font-bold text-center bg-green-100 text-green-800">${percent}%</td>
+            `;
+
+            academicMonthsList.forEach(m => {
+                const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
+                const monthDetails = window.adminAcademicConfig?.monthDetails || {};
+                const monthConfig = monthDetails[m.monthNum];
+                const daysThisMonth = currentSemester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
+                const semTotalDays = currentSemester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
+
+                let monthlyTarget = 0;
+                if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
+                    const perDayTarget = totalPages / semTotalDays;
+                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                }
+
+                let pagesTaught = '0';
+                if (monthReport) {
+                    const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
+                    pagesTaught = (periodEntry?.pagesTaught || 0).toString();
+                }
+
+                html += `
+                    <td class="text-center">${monthlyTarget}</td>
+                    <td class="text-center font-medium">${pagesTaught}</td>
+                `;
+            });
+
+            html += `</tr>`;
+        });
+
+        html += `</tbody></table></div></div>`;
     });
 
-    html += `</tbody></table></div>`;
     teacherProfileContainer.innerHTML = html;
 
-    // Attach Listeners
-    document.getElementById('download-teacher-profile-image-btn').addEventListener('click', downloadTeacherProfileImage);
-    document.getElementById('download-all-jamia-profiles-btn').addEventListener('click', downloadAllJamiaProfilesImage); // Naya listener
+    // Attach Listeners depending on what button is on screen
+    const downloadAllBtn = document.getElementById('download-all-jamia-profiles-btn');
+    const downloadSingleBtn = document.getElementById('download-teacher-profile-image-btn');
+
+    // NOTE: Yeh downloadAllJamiaProfilesImage function wahi hai jo meine pichle answer me diya tha, woh zaroor mojud hona chahiye file me.
+    if (downloadAllBtn) downloadAllBtn.addEventListener('click', downloadAllJamiaProfilesImage);
+    if (downloadSingleBtn) downloadSingleBtn.addEventListener('click', downloadTeacherProfileImage);
 
     showLoader(false);
 };
