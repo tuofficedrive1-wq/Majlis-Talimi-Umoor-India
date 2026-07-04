@@ -2067,7 +2067,7 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
         // jaiza_forms collection se data uthayenge
         const qRef = query(
             collection(db, "jaiza_forms"),
-            where("jamiaId", "==", jamiaName),   // yahan same value use ho jo jaiza-form.html me save ho rahi hai
+            where("jamiaId", "==", jamiaName),
             where("monthKey", "==", monthKey),
             where("createdBy", "==", user.uid)
         );
@@ -2078,33 +2078,7 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
         const docs = [];
         snap.forEach(d => docs.push(d.data()));
 
-        // 🔹 Overall % nikalna (classPercentage ka average)
-        const percList = docs
-            .map(d => Number(String(d.classPercentage ?? "").replace("%", "").trim()))
-            .filter(v => !isNaN(v));
-
-        if (!percList.length) return;
-
-        const sum = percList.reduce((a, b) => a + b, 0);
-        
-        // Dono jagah exact match ke liye 2 decimal places tak round kar rahe hain
-        const avg = Math.round((sum / percList.length) * 100) / 100; 
-
-        // 1️⃣ Dropdown (Type) ko automatically 'Jaiza' select karna
-        const typeSelect = rowEl.querySelector(".jaiza-type");
-        if (typeSelect && typeSelect.value === "") {
-            typeSelect.value = "Jaiza";
-            // Event trigger kar rahe hain taake percentage input visible ho jaye aur wazahat hide ho jaye
-            typeSelect.dispatchEvent(new Event('change'));
-        }
-
-        // 2️⃣ Percentage input me exact value dalna
-        const percentageInput = rowEl.querySelector(".jaiza-percentage");
-        if (percentageInput && !percentageInput.value) {
-            percentageInput.value = `${avg.toFixed(2)}`; // Same format jo summary me show hota hai
-        }
-
-        // 🔹 Date nikalna (sabse latest createdAt ya aaj ki date)
+        // 1️⃣ Sabse pehle Date nikalna aur set karna (taake ye kabhi fail na ho)
         let latestDate = null;
         docs.forEach(d => {
             if (d.createdAt && d.createdAt.seconds) {
@@ -2117,6 +2091,29 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
         if (dateInput && !dateInput.value) {
             const d = latestDate || new Date();
             dateInput.value = d.toISOString().slice(0, 10); // YYYY-MM-DD
+        }
+
+        // 2️⃣ Dropdown me 'Jaiza' auto-select karna
+        const typeSelect = rowEl.querySelector(".jaiza-type");
+        if (typeSelect && typeSelect.value !== "Jaiza") {
+            typeSelect.value = "Jaiza";
+            typeSelect.dispatchEvent(new Event('change')); // UI ko update karne ke liye
+        }
+
+        // 3️⃣ Percentage nikalna aur set karna
+        const percList = docs
+            .map(d => Number(String(d.classPercentage ?? "").replace("%", "").trim()))
+            .filter(v => !isNaN(v));
+
+        if (percList.length > 0) {
+            const sum = percList.reduce((a, b) => a + b, 0);
+            const avg = sum / percList.length;
+            
+            const percentageInput = rowEl.querySelector(".jaiza-percentage");
+            if (percentageInput) {
+                // Exact summary jaisa format (2 decimal places)
+                percentageInput.value = avg.toFixed(2);
+            }
         }
 
     } catch (err) {
