@@ -60,9 +60,38 @@
         .accordion-button svg, .teacher-accordion-button svg, .reporting-accordion-button svg { transition: transform 0.3s ease-out; }
         .accordion-button.open svg, .teacher-accordion-button.open svg, .reporting-accordion-button.open svg { transform: rotate(180deg); }
         th, td { padding: 0.5rem 0.75rem; border: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
-        /* Style for Jamia header row */
-        .jamia-header { background-color: #e0f2fe; /* light blue */ font-weight: 600; }
-        .jamia-header td { border-top-width: 2px; border-color: #9ca3af; /* gray-400 */ }
+        /* Style for Jamia header row (sticky banner naming the current Jamia).
+           Height is fixed to 56px on purpose: the column-heading row right below
+           it (see .jamia-columns-header) needs to know this exact number so it
+           can sit flush underneath instead of overlapping/gapping. If you ever
+           change the padding/font here, update BOTH the 56px height below AND
+           the "top: 56px" value in .jamia-columns-header td to match. */
+        .jamia-header { font-weight: 600; }
+        .jamia-header td {
+            background-color: #e0f2fe; /* light blue */
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            height: 56px;
+            box-sizing: border-box;
+            padding: 6px 12px;
+            border-top: 3px solid #0284c7; /* blue accent -> makes a new Jamia obvious */
+        }
+
+        /* Column-heading row repeated under every Jamia name.
+           Sticks right below the Jamia banner (56px = banner height, see above)
+           and stays visible until the next Jamia's banner+heading pair pushes
+           it away while scrolling. */
+        .jamia-columns-header td {
+            background-color: #f3f4f6; /* gray-100, same tone as the old single thead */
+            font-weight: 600;
+            font-size: 0.78rem;
+            color: #374151;
+            position: sticky;
+            top: 56px;
+            z-index: 25;
+            border-bottom: 2px solid #d1d5db;
+        }
 
         /* Monthly Reporting – Teacher Card Design */
 .teacher-report-card {
@@ -3052,7 +3081,7 @@ if (daysThisMonth === 0) {
             finalHTML += `
                 <div class="overflow-x-auto border rounded-lg shadow-md reporting-table-container">
                     <table class="min-w-full text-sm bg-white">
-                        <thead class="bg-gray-100">
+                        <thead class="bg-gray-100 hidden" id="reporting-main-thead">
                             <tr>
                                 <th>Teacher</th>
                                 <th>Class</th>
@@ -3117,19 +3146,30 @@ if (daysThisMonth === 0) {
                     '    </div>' +
                     '  </td>' +
                     '</tr>';
+
+                // Column-heading row: repeats right under THIS Jamia's name so the
+                // headings are always visible for the data below them.
+                finalHTML +=
+                    '<tr class="jamia-columns-header">' +
+                    '  <td>Teacher</td>' +
+                    '  <td>Class</td>' +
+                    '  <td>Book</td>' +
+                    '  <td class="urdu-font">سبق کی آخری عبارت</td>' +
+                    '  <td>Page No.</td>' +
+                    '  <td>Total Pages (Sem)</td>' +
+                    '  <td>Total Taught</td>' +
+                    '  <td>Monthly Target</td>' +
+                    '  <td>Pages Taught</td>' +
+                    '  <td>Achievement %</td>' +
+                    '  <td>Kaifiyat (Status)</td>' +
+                    '  <td>Action</td>' +
+                    '</tr>';
                 
                 // Iterate through teachers in this jamia
                 Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
                     const teacherPeriods = itemsByTeacher[teacherIdKey];
                     const teacherName = teacherPeriods[0].teacher.name;
 
-                    // Bold separator line after each teacher
-finalHTML += `
-    <tr>
-      <td colspan="12" style="border-bottom: 4px solid #111827;"></td>
-    </tr>
-`;
-                    
                     teacherPeriods.forEach((item, index) => {
                         const { teacher, period } = item;
                         
@@ -3938,6 +3978,12 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
              tableClone.style.borderCollapse = 'collapse';
              tableClone.style.tableLayout = 'fixed';
              tableClone.style.fontSize = '14px';
+
+             // The live thead is hidden (class="hidden") because headings now repeat
+             // per-Jamia on screen. For the exported image we still need a header row,
+             // so unhide it on this clone only.
+             const clonedThead = tableClone.querySelector('#reporting-main-thead');
+             if (clonedThead) clonedThead.classList.remove('hidden');
              
              // Remove the Action column header
              const actionHeader = tableClone.querySelector('thead tr th:last-child');
@@ -3991,12 +4037,23 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
              let currentJamiaFound = false;
 
              Array.from(tbody.rows).forEach(row => {
+                 // Skip the on-screen "repeated column heading" rows – the (now
+                 // unhidden) thead above already supplies the header for the image.
+                 if (row.classList.contains('jamia-columns-header')) {
+                     return;
+                 }
                  if (row.classList.contains('jamia-header')) {
                      currentJamiaFound = row.dataset.jamiaRow === jamiaName;
                      if (currentJamiaFound) {
                           const newRow = row.cloneNode(true);
                           newRow.querySelector('.flex')?.remove(); // Remove CSV/Image buttons
-                          Array.from(newRow.cells).forEach(cell => applyImageStyles(cell));
+                          Array.from(newRow.cells).forEach(cell => {
+                              applyImageStyles(cell);
+                              // Sticky positioning is only useful while scrolling the live
+                              // page; neutralize it here so html2canvas renders a plain row.
+                              cell.style.position = 'static';
+                              cell.style.top = 'auto';
+                          });
                           filteredTbody.appendChild(newRow);
                      }
                      return;
@@ -4839,68 +4896,3 @@ const downloadAllJamiaProfilesImage = async (e) => {
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
