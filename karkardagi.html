@@ -60,15 +60,22 @@
         .accordion-button svg, .teacher-accordion-button svg, .reporting-accordion-button svg { transition: transform 0.3s ease-out; }
         .accordion-button.open svg, .teacher-accordion-button.open svg, .reporting-accordion-button.open svg { transform: rotate(180deg); }
         th, td { padding: 0.5rem 0.75rem; border: 1px solid #e5e7eb; text-align: left; vertical-align: middle; }
-        /* Style for Jamia header row (sticky banner naming the current Jamia).
-           Height is fixed to 56px on purpose: the column-heading row right below
-           it (see .jamia-columns-header) needs to know this exact number so it
-           can sit flush underneath instead of overlapping/gapping. If you ever
-           change the padding/font here, update BOTH the 56px height below AND
-           the "top: 56px" value in .jamia-columns-header td to match. */
+        /* Style for Jamia header row banner. NOTE: this base rule is shared by
+           BOTH the Monthly Reporting table and the Munasib Summary table, so it
+           only sets the plain look (color/weight) here. */
         .jamia-header { font-weight: 600; }
-        .jamia-header td {
-            background-color: #e0f2fe; /* light blue */
+        .jamia-header td { background-color: #e0f2fe; /* light blue */ }
+
+        /* Monthly Reporting tab ONLY (scoped to #reporting-container): make the
+           Jamia banner sticky. Height is fixed to 56px on purpose: the
+           column-heading row right below it (see .jamia-columns-header) needs to
+           know this exact number so it can sit flush underneath instead of
+           overlapping/gapping. If you change the padding/font here, update BOTH
+           the 56px height below AND the "top: 56px" value in
+           .jamia-columns-header td to match. Scoping this to #reporting-container
+           keeps the separate Munasib Summary table (which keeps its own regular
+           sticky thead) unaffected. */
+        #reporting-container .jamia-header td {
             position: sticky;
             top: 0;
             z-index: 30;
@@ -78,11 +85,11 @@
             border-top: 3px solid #0284c7; /* blue accent -> makes a new Jamia obvious */
         }
 
-        /* Column-heading row repeated under every Jamia name.
-           Sticks right below the Jamia banner (56px = banner height, see above)
-           and stays visible until the next Jamia's banner+heading pair pushes
-           it away while scrolling. */
-        .jamia-columns-header td {
+        /* Column-heading row repeated under every Jamia name (Monthly Reporting
+           tab only). Sticks right below the Jamia banner (56px = banner height,
+           see above) and stays visible until the next Jamia's banner+heading
+           pair pushes it away while scrolling. */
+        #reporting-container .jamia-columns-header td {
             background-color: #f3f4f6; /* gray-100, same tone as the old single thead */
             font-weight: 600;
             font-size: 0.78rem;
@@ -92,6 +99,15 @@
             z-index: 25;
             border-bottom: 2px solid #d1d5db;
         }
+
+        /* Groups every row belonging to ONE teacher into a visible "block":
+           alternating background so consecutive teachers are never the same
+           color, plus a clear top line where a new teacher's block begins. */
+        .teacher-shade-a td { background-color: #ffffff; }
+        .teacher-shade-b td { background-color: #f8fafc; /* slate-50 */ }
+        .teacher-group-start td { border-top: 2px solid #94a3b8; /* slate-400 */ }
+        /* "Modified / unsaved" highlight must win over the alternating shade above */
+        .reporting-row.bg-yellow-50 td { background-color: #fefce8 !important; }
 
         /* Monthly Reporting – Teacher Card Design */
 .teacher-report-card {
@@ -3081,22 +3097,6 @@ if (daysThisMonth === 0) {
             finalHTML += `
                 <div class="overflow-x-auto border rounded-lg shadow-md reporting-table-container">
                     <table class="min-w-full text-sm bg-white">
-                        <thead class="bg-gray-100 hidden" id="reporting-main-thead">
-                            <tr>
-                                <th>Teacher</th>
-                                <th>Class</th>
-                                <th>Book</th>
-                                <th class="urdu-font">سبق کی آخری عبارت</th>
-                                <th>Page No.</th>
-                                <th>Total Pages (Sem)</th> 
-                                <th>Total Taught</th>
-                                <th>Monthly Target</th>
-                                <th>Pages Taught</th>
-                                <th>Achievement %</th>
-                                <th>Kaifiyat (Status)</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
                         <tbody>
             `;
 
@@ -3166,9 +3166,13 @@ if (daysThisMonth === 0) {
                     '</tr>';
                 
                 // Iterate through teachers in this jamia
-                Object.keys(itemsByTeacher).sort().forEach(teacherIdKey => {
+                Object.keys(itemsByTeacher).sort().forEach((teacherIdKey, teacherIdx) => {
                     const teacherPeriods = itemsByTeacher[teacherIdKey];
                     const teacherName = teacherPeriods[0].teacher.name;
+                    // Alternate shade per teacher (not per row) so every teacher's
+                    // whole block of rows is visually grouped and easy to tell apart
+                    // from the next teacher's block.
+                    const teacherShadeClass = teacherIdx % 2 === 0 ? 'teacher-shade-a' : 'teacher-shade-b';
 
                     teacherPeriods.forEach((item, index) => {
                         const { teacher, period } = item;
@@ -3283,7 +3287,7 @@ if (period.status === 'transferred' && period.transferMonthNum !== undefined) {
                         
 // Row structure 
 let rowHtml = `
-<tr class="reporting-row"
+<tr class="reporting-row ${teacherShadeClass} ${index === 0 ? 'teacher-group-start' : ''}"
     data-period-id="${period.id}" 
     data-jamia-name="${jamiaName}" 
     data-teacher-id="${teacher.id}"
@@ -3302,7 +3306,7 @@ let rowHtml = `
     data-kaifiyat="${kaifiyat}">
     
     ${index === 0 ? 
-        `<td rowspan="${teacherPeriods.length}" class="urdu-font text-right text-gray-800 font-semibold bg-blue-100/50">${teacher.name}</td>` : ''
+        `<td rowspan="${teacherPeriods.length}" class="urdu-font text-right text-gray-800 font-semibold">${teacher.name}</td>` : ''
     }
     
     <td class="urdu-font">${period.className}</td>
@@ -3939,189 +3943,168 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
         // NEW FUNCTION: Download Jamia Report (IMAGE - FIX APPLIED)
         const downloadJamiaReportImage = async (jamiaName) => {
              showLoader(true);
-             const monthName = currentReportPeriod.month;
+
+             // --- Safe Month Name Logic (same pattern as the teacher image) ---
+             let monthName = currentReportPeriod.month;
+             if (!monthName || monthName === 'undefined') {
+                 monthName = getMonthName(currentReportPeriod.monthNum);
+             }
              const year = currentReportPeriod.yearNum;
              const userName = userProfileData.displayName || currentUser.email;
-             
-             const table = reportingContainer.querySelector('table');
-             if (!table) {
-                 showNotification("Report table ka data nahi mila.", true);
+
+             // 1. Get every row for this Jamia straight from the live data
+             //    (data attributes only – no dependency on table/DOM structure).
+             const jamiaRows = Array.from(
+                 reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`)
+             );
+
+             if (jamiaRows.length === 0) {
+                 showNotification("Is Jamia ke liye koi data nahi mila.", true);
                  showLoader(false);
                  return;
              }
-             
-             // 1. Create a container for rendering
+
+             // 2. Group rows by teacher, keeping the order they already appear in
+             const teacherOrder = [];
+             const rowsByTeacher = {};
+             jamiaRows.forEach(row => {
+                 const tId = row.dataset.teacherId;
+                 if (!rowsByTeacher[tId]) {
+                     rowsByTeacher[tId] = [];
+                     teacherOrder.push(tId);
+                 }
+                 rowsByTeacher[tId].push(row);
+             });
+
+             // 3. Build ONE clean Urdu-formatted table: a teacher-name bar, then
+             //    that teacher's rows (same enhanced columns as the single-teacher
+             //    image), repeated for every teacher in this Jamia.
+             let tableContent = `
+                 <table style="width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 15px; direction: rtl; font-family: 'Jameel Noori Nastaleeq', serif;">
+                    <thead style="background-color: #f0f0f0;">
+                        <tr>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: right;">درجہ (Class)</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: right;">کتاب (Book)</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کل صفحات (سمسٹر)</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کل پڑھائے گئے (مجموعی)</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center; background-color: #d1fae5; color: #059669;">کل فیصد (%)</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ ہدف</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">پڑھائے گئے (ماہانہ)</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ کارکردگی %</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کیفیت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+             `;
+
+             teacherOrder.forEach(tId => {
+                 const rows = rowsByTeacher[tId];
+                 const teacherName = rows[0].dataset.teacherName;
+
+                 // Teacher-name bar: clearly separates this teacher's rows from
+                 // the next teacher's rows in the downloaded image too.
+                 tableContent += `
+                     <tr>
+                         <td colspan="10" style="padding: 8px 12px; background-color: #dbeafe; border: 1px solid #93c5fd; border-top: 3px solid #2563eb; font-weight: bold; font-size: 17px; text-align: right; color: #1e3a8a;">
+                             ${teacherName}
+                         </td>
+                     </tr>
+                 `;
+
+                 rows.forEach(row => {
+                     const className = row.dataset.className;
+                     const bookName = row.dataset.bookName;
+                     const totalPagesSem = parseInt(row.dataset.totalPagesSem, 10) || 0;
+                     const monthlyTarget = row.dataset.monthlyTarget;
+                     const pagesTaught = row.dataset.pagesTaught || '0';
+                     const cumulativeTaught = parseInt(row.dataset.cumulativeTaught, 10) || 0;
+                     const achievement = row.querySelector('.achievement-cell').textContent;
+                     const kaifiyat = row.dataset.kaifiyat;
+
+                     const remainingPages = totalPagesSem - cumulativeTaught;
+                     const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
+
+                     let kaifiyatUrdu = kaifiyat;
+                     let kaifiyatColor = '#ef4444';
+                     if (kaifiyat === 'Mumtaz') {
+                         kaifiyatUrdu = 'ممتاز';
+                         kaifiyatColor = '#059669';
+                     } else if (kaifiyat === 'Behtar') {
+                         kaifiyatUrdu = 'بہتر';
+                         kaifiyatColor = '#3b82f6';
+                     } else if (kaifiyat === 'Munasib') {
+                         kaifiyatUrdu = 'مناسب';
+                         kaifiyatColor = '#ef4444';
+                     }
+
+                     tableContent += `
+                         <tr>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${className}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${bookName}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${totalPagesSem}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #1d4ed8; font-family: 'Poppins', sans-serif;">${cumulativeTaught}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; background-color: #fef9c3; color: #b91c1c; font-family: 'Poppins', sans-serif;">${remainingPages}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; background-color: #dcfce7; color: #15803d; font-family: 'Poppins', sans-serif;">${overallPercent}%</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${monthlyTarget}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${pagesTaught}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${achievement}</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${kaifiyatColor};">${kaifiyatUrdu}</td>
+                         </tr>
+                     `;
+                 });
+             });
+
+             tableContent += '</tbody></table>';
+
+             // 4. Container + header (same clean look/scale as the teacher image)
              const tempDiv = document.createElement('div');
-             // Set a suitable width for the image
-             tempDiv.style.width = '1000px'; 
+             tempDiv.style.width = '1200px';
              tempDiv.style.backgroundColor = '#ffffff';
              tempDiv.style.padding = '25px';
              tempDiv.style.border = '1px solid #ccc';
-             tempDiv.style.fontFamily = "Poppins, sans-serif"; 
-             tempDiv.style.direction = 'rtl'; 
-             
+             tempDiv.style.fontFamily = "'Jameel Noori Nastaleeq', serif";
+             tempDiv.style.direction = 'rtl';
+
              const headerHtml = `
-                 <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #14b8a6; font-weight: bold;">
-                     Monthly Karkardagi Report
+                 <h1 style="text-align: center; font-size: 28px; margin-bottom: 5px; color: #14b8a6; font-weight: bold; font-family: 'Poppins', sans-serif;">
+                     ${monthName} ${year}
                  </h1>
-                 <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 30px; line-height: 1.2; font-family: 'Jameel Noori Nastaleeq', serif; direction: rtl;">
-                     Jamia: ${jamiaName}
+                 <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 36px; line-height: 1.4; font-family: 'Jameel Noori Nastaleeq', serif;">
+                     ${jamiaName}
                  </h2>
-                 <h3 style="text-align: center; font-weight: 600; margin-bottom: 10px; font-size: 18px; color: #333;">
-                     Month: ${monthName} ${year}
+                 <h3 style="text-align: center; font-weight: 600; margin-bottom: 15px; font-size: 22px; color: #333;">
+                     تعلیمی کارکردگی رپورٹ
                  </h3>
              `;
 
-             // 2. Clone and filter the table data for the specific Jamia
-             const tableClone = table.cloneNode(true);
-             tableClone.style.width = '100%';
-             tableClone.style.borderCollapse = 'collapse';
-             tableClone.style.tableLayout = 'fixed';
-             tableClone.style.fontSize = '14px';
+             const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr; font-family: 'Poppins', sans-serif;">Report Generated by User: ${userName}</p>`;
 
-             // The live thead is hidden (class="hidden") because headings now repeat
-             // per-Jamia on screen. For the exported image we still need a header row,
-             // so unhide it on this clone only.
-             const clonedThead = tableClone.querySelector('#reporting-main-thead');
-             if (clonedThead) clonedThead.classList.remove('hidden');
-             
-             // Remove the Action column header
-             const actionHeader = tableClone.querySelector('thead tr th:last-child');
-             if (actionHeader) actionHeader.remove();
-             
-             const pagesTaughtHeader = tableClone.querySelector('thead tr th:nth-last-child(4)'); 
-             if (pagesTaughtHeader) pagesTaughtHeader.textContent = 'Pages Taught (Monthly)'; 
-             
-             const tbody = tableClone.querySelector('tbody');
-             const filteredTbody = document.createElement('tbody');
-             
-             // Helper function to apply necessary styles for rendering
-             const applyImageStyles = (cell, isHeader = false) => {
-                 cell.style.padding = '8px';
-                 cell.style.border = '1px solid #ddd';
-                 cell.style.verticalAlign = 'middle';
-                 cell.style.boxSizing = 'border-box'; 
-                 
-                 // Apply Urdu font and RTL direction to relevant columns
-                 if(cell.classList.contains('urdu-font') || isHeader && (cell.textContent.includes('Class') || cell.textContent.includes('Book') || cell.textContent.includes('Teacher'))) {
-                      cell.style.fontFamily = "'Jameel Noori Nastaleeq', serif";
-                      cell.style.textAlign = 'right';
-                      cell.style.direction = 'rtl';
-                 } else {
-                      cell.style.textAlign = 'center';
-                      cell.style.direction = 'ltr';
-                 }
-                 
-                 if(isHeader) {
-                      cell.style.backgroundColor = '#f3f4f6';
-                      cell.style.fontWeight = 'bold';
-                 } else if(cell.classList.contains('jamia-header')) {
-                      cell.style.backgroundColor = '#e0f2fe';
-                      cell.style.fontWeight = '600';
-                 } else if(cell.classList.contains('bg-blue-100/50')) {
-                      cell.style.backgroundColor = '#eff6ff'; // light blue background for teacher
-                      cell.style.fontWeight = 'bold';
-                 }
-                 
-                 // Apply color for status/achievement
-                 if(cell.classList.contains('color-mumtaz')) cell.style.color = '#059669';
-                 else if(cell.classList.contains('color-behtar')) cell.style.color = '#3b82f6';
-                 else if(cell.classList.contains('color-munasib')) cell.style.color = '#ef4444';
-                 else if(cell.classList.contains('cumulative-taught-cell')) cell.style.color = '#1d4ed8'; // blue for cumulative
-             };
-             
-             // Apply styles to header row once
-             Array.from(tableClone.querySelector('thead tr').cells).forEach(cell => applyImageStyles(cell, true));
-
-             // Filter rows and apply styles/remove inputs
-             let currentJamiaFound = false;
-
-             Array.from(tbody.rows).forEach(row => {
-                 // Skip the on-screen "repeated column heading" rows – the (now
-                 // unhidden) thead above already supplies the header for the image.
-                 if (row.classList.contains('jamia-columns-header')) {
-                     return;
-                 }
-                 if (row.classList.contains('jamia-header')) {
-                     currentJamiaFound = row.dataset.jamiaRow === jamiaName;
-                     if (currentJamiaFound) {
-                          const newRow = row.cloneNode(true);
-                          newRow.querySelector('.flex')?.remove(); // Remove CSV/Image buttons
-                          Array.from(newRow.cells).forEach(cell => {
-                              applyImageStyles(cell);
-                              // Sticky positioning is only useful while scrolling the live
-                              // page; neutralize it here so html2canvas renders a plain row.
-                              cell.style.position = 'static';
-                              cell.style.top = 'auto';
-                          });
-                          filteredTbody.appendChild(newRow);
-                     }
-                     return;
-                 }
-                 
-                 if (currentJamiaFound) {
-                     const newRow = document.createElement('tr');
-                     
-                     Array.from(row.cells).forEach((cell, index) => {
-                         let newCell;
-                         
-                         if (index === 8) { // Pages Taught (Input Cell)
-                             const input = cell.querySelector('.pages-taught-input');
-                             newCell = document.createElement('td');
-                             newCell.textContent = input ? input.value : (row.dataset.pagesTaught || '0');
-                             applyImageStyles(newCell);
-                             newRow.appendChild(newCell);
-                         } else if (index === 11) { // Action Cell (Remove)
-                             return;
-                         } else { // All other cells (including teacher name rowspan)
-                             newCell = cell.cloneNode(true); // Clone contents
-                             applyImageStyles(newCell);
-                             
-                             // Handle Teacher Name cell cloning
-                             if(index === 0 && cell.rowSpan > 1) {
-                                  newCell.rowSpan = cell.rowSpan;
-                             }
-                             
-                             newRow.appendChild(newCell);
-                         }
-                     });
-                     filteredTbody.appendChild(newRow);
-                 }
-             });
-             
-             tableClone.removeChild(tbody);
-             tableClone.appendChild(filteredTbody);
-             
-             const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
-
-             tempDiv.innerHTML = headerHtml + tableClone.outerHTML + footerHtml;
+             tempDiv.innerHTML = headerHtml + tableContent + footerHtml;
              document.body.appendChild(tempDiv);
-             
+
              try {
-                 // Generate Image
-                 const canvas = await html2canvas(tempDiv, { 
-                     scale: 2, 
+                 const canvas = await html2canvas(tempDiv, {
+                     scale: 2,
                      allowTaint: true,
                      useCORS: true,
-                     windowWidth: 1000 
+                     windowWidth: 1200
                  });
-                 
-                 // Download
+
                  const image = canvas.toDataURL("image/png");
                  const link = document.createElement('a');
                  link.href = image;
-                 const fileName = `Monthly_Report_Jamia_${jamiaName.replace(/ /g, '_')}_${currentReportPeriod.month}_${currentReportPeriod.yearNum}.png`;
+                 const fileName = `Karkardagi_Jamia_${jamiaName.replace(/ /g, '_')}_${monthName}_${year}.png`;
                  link.download = fileName;
                  document.body.appendChild(link);
                  link.click();
                  document.body.removeChild(link);
-                 
+
                  showNotification(`${fileName} Downloaded Successfully!`);
              } catch (error) {
                  console.error("Jamia Report Image generation failed:", error);
                  showNotification("Jamia Report Image download karne me error.", true, error.message);
              } finally {
-                 // Cleanup
                  document.body.removeChild(tempDiv);
                  showLoader(false);
              }
