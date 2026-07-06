@@ -297,11 +297,14 @@
             <p class="text-[10px] md:text-xs text-slate-500 mt-0.5">Yahan se form ka link copy karein aur data collect karein</p>
         </div>
     </div>
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm overflow-x-auto">
         <table class="w-full text-left border-collapse">
             <thead>
                 <tr class="bg-slate-50 text-slate-600 text-xs md:text-sm font-semibold border-b border-slate-200">
                     <th class="p-3 md:p-4">Jamia Name</th>
+                    <th class="p-3 md:p-4">Code</th>
+                    <th class="p-3 md:p-4 text-center">Classes Filled</th>
+                    <th class="p-3 md:p-4 text-center">Total Students</th>
                     <th class="p-3 md:p-4 text-right">Action</th>
                 </tr>
             </thead>
@@ -341,7 +344,7 @@
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
         import { 
            initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-           doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, serverTimestamp, onSnapshot
+           doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, serverTimestamp, onSnapshot, documentId
         } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
         
@@ -1271,37 +1274,123 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         window.closeAsriModal = () => document.getElementById('asri-modal').classList.add('hidden');
 
   // ENROLLMENT TAB LOGIC
-window.renderEnrollmentTab = () => {
+window.renderEnrollmentTab = async () => {
     const tbody = document.getElementById('enrollment-jamia-list');
     
     // Agar koi jamia assign nahi hai
     if (!assignedJamiaat || assignedJamiaat.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="2" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
         return;
     }
+
+    tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium"><i class="fas fa-spinner fa-spin mr-2"></i>Load ho raha hai...</td></tr>';
 
     // Aapke Enrollment Form ka naya URL file name ke mutabik
     const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`; // Yahan file name update kar diya hai
 
-    let rowsHTML = '';
-    assignedJamiaat.forEach(jamia => {
-        // Link me jamia ka naam parameter bankar jayega
-       const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
+    try {
+        // Codes aur stats dono ek saath (parallel) fetch hote hain
+        const [codesByJamia, statsByJamia] = await Promise.all([
+            getOrCreateJamiaCodes(assignedJamiaat),
+            getEnrollmentStats(assignedJamiaat)
+        ]);
+
+        let rowsHTML = '';
+        assignedJamiaat.forEach(jamia => {
+            // Link me jamia ka naam parameter bankar jayega
+            const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
+            const code = codesByJamia[jamia] || '—';
+            const stats = statsByJamia[jamia] || { classes: 0, students: 0 };
+
+            rowsHTML += `
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-3 md:p-4 font-bold text-slate-700">${jamia}</td>
+                <td class="p-3 md:p-4">
+                    <span class="bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider">${code}</span>
+                </td>
+                <td class="p-3 md:p-4 text-center font-semibold">${stats.classes}</td>
+                <td class="p-3 md:p-4 text-center font-semibold">${stats.students}</td>
+                <td class="p-3 md:p-4 text-right">
+                    <button onclick="window.copyEnrollmentLink('${formUrl}', this)" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto border border-indigo-100">
+                        <i class="fas fa-link"></i> <span class="btn-text">Copy Link</span>
+                    </button>
+                </td>
+            </tr>`;
+        });
         
-        rowsHTML += `
-        <tr class="hover:bg-slate-50 transition-colors">
-            <td class="p-3 md:p-4 font-bold text-slate-700">${jamia}</td>
-            <td class="p-3 md:p-4 text-right">
-                <button onclick="window.copyEnrollmentLink('${formUrl}', this)" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto border border-indigo-100">
-                    <i class="fas fa-link"></i> <span class="btn-text">Copy Link</span>
-                </button>
-            </td>
-        </tr>`;
-    });
-    
-    tbody.innerHTML = rowsHTML;
+        tbody.innerHTML = rowsHTML;
+    } catch (err) {
+        console.error('Enrollment tab load error:', err);
+        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-red-500 font-medium">Data load nahi ho saka. Console check karen.</td></tr>';
+    }
 };
+
+// Har jamia ka 5-digit access code — "jamia_codes" collection mein ek baar generate hoke store hota hai,
+// uske baad hamesha wahi se reuse hota hai (academic-enrollment-data.html isi collection se code verify karta hai)
+async function getOrCreateJamiaCodes(jamiaatList) {
+    const idToJamia = {};
+    jamiaatList.forEach(j => { idToJamia[j.replace(/\s+/g, '_')] = j; });
+    const allIds = Object.keys(idToJamia);
+
+    const result = {};
+    const missingIds = [];
+
+    // Firestore 'in' query zyada se zyada 30 values leti hai - isliye 30-30 ke chunks mein todte hain
+    for (let i = 0; i < allIds.length; i += 30) {
+        const chunk = allIds.slice(i, i + 30);
+        const snap = await getDocs(query(collection(db, "jamia_codes"), where(documentId(), "in", chunk)));
+        const foundIds = new Set();
+        snap.forEach(d => {
+            foundIds.add(d.id);
+            result[idToJamia[d.id]] = d.data().code;
+        });
+        chunk.forEach(id => { if (!foundIds.has(id)) missingIds.push(id); });
+    }
+
+    // Jin jamiaat ka code pehli baar chahiye, unke liye naya generate karke save karte hain (life mein ek hi baar hoga)
+    if (missingIds.length > 0) {
+        await Promise.all(missingIds.map(async (id) => {
+            const jamia = idToJamia[id];
+            const newCode = String(Math.floor(10000 + Math.random() * 90000));
+            await setDoc(doc(db, "jamia_codes", id), { jamiaName: jamia, code: newCode, createdAt: serverTimestamp() });
+            result[jamia] = newCode;
+        }));
+    }
+
+    return result;
+}
+
+// "enrollment_records" se har jamia ke liye: kitni alag classes ka data hai + kul kitne students hain.
+// Ek hi query se sab assigned jamiaat ka data aata hai (N alag queries nahi chalani padti)
+async function getEnrollmentStats(jamiaatList) {
+    const stats = {};
+    jamiaatList.forEach(j => { stats[j] = { classes: 0, students: 0 }; });
+
+    const classesByJamia = {};
+    for (let i = 0; i < jamiaatList.length; i += 30) {
+        const chunk = jamiaatList.slice(i, i + 30);
+        const snap = await getDocs(query(
+            collection(db, "enrollment_records"),
+            where("inspectorId", "==", currentUser.uid),
+            where("jamiaName", "in", chunk)
+        ));
+        snap.forEach(d => {
+            const rec = d.data();
+            const jamia = rec.jamiaName;
+            if (!stats[jamia]) stats[jamia] = { classes: 0, students: 0 };
+            stats[jamia].students++;
+            if (!classesByJamia[jamia]) classesByJamia[jamia] = new Set();
+            if (rec.jmClass) classesByJamia[jamia].add(rec.jmClass);
+        });
+    }
+
+    Object.keys(classesByJamia).forEach(jamia => {
+        stats[jamia].classes = classesByJamia[jamia].size;
+    });
+
+    return stats;
+}
 
 // LINK COPY FUNCTION
 window.copyEnrollmentLink = (url, btnElement) => {
