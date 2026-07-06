@@ -266,6 +266,7 @@
                          <div class="border-b border-gray-200">
                              <nav class="-mb-px flex space-x-4 md:space-x-8 overflow-x-auto" aria-label="Summary Tabs">
                                  <button type="button" class="sub-tab-btn active whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm" data-sub-tab="munasib">Monthly Munasib</button>
+                                 <button type="button" class="sub-tab-btn whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-sub-tab="munasib-history">Semester Munasib History</button>
                                  <button type="button" class="sub-tab-btn whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-sub-tab="teacher-profile">Teacher Profile</button>
                              </nav>
                          </div>
@@ -306,6 +307,14 @@
                                   <p class="text-gray-500">Please select a jamia and teacher.</p>
                              </div>
                          </div>
+                        <div id="munasib-history-tab-content" class="sub-tab-content hidden space-y-4 pt-4">
+    <div class="flex items-center justify-between mb-4 border-b pb-2">
+        <h4 class="text-xl font-semibold">Semester 'Munasib' History</h4>
+    </div>
+    <div id="munasib-history-container" class="space-y-4">
+        <p class="text-gray-500">Data load ho raha hai...</p>
+    </div>
+</div>
                     </div>
 
                     <div id="setup-tab-content" class="tab-content hidden space-y-4">
@@ -3592,6 +3601,8 @@ let rowHtml = `
                 // Update filters based on current reporting month (context)
                 populateTeacherProfileFilters(); 
                 renderTeacherProfileReport(null, true);
+            } else if (tabId === 'munasib-history') {
+                renderMunasibHistoryReport(); // Naya function yahan call hoga
             }
         };
 
@@ -4054,6 +4065,175 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
     showLoader(false);
 };
 
+        // NEW FUNCTION: Render Semester Munasib History (Clean Table)
+const renderMunasibHistoryReport = () => {
+    const container = document.getElementById('munasib-history-container');
+    if (!activeYear || allYearReportsData.length === 0) {
+        container.innerHTML = `<p class="text-gray-500">Data load ho raha hai ya phir naya saal hai.</p>`;
+        return;
+    }
+
+    showLoader(true);
+
+    const semester = currentReportPeriod.semester;
+    const currentYearNum = currentReportPeriod.yearNum;
+    
+    // Semester ke mutabiq mahine tay karna
+    const semMonths = semester === '1' ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0];
+    const academicMonthsList = semMonths.map(m => {
+        let y = currentYearNum;
+        const parts = activeYear.split('-');
+        if (semester === '1') {
+            y = parseInt(parts[0], 10);
+        } else {
+            y = m >= 8 ? parseInt(parts[0], 10) : parseInt(parts[1], 10);
+        }
+        return { monthNum: m, year: y };
+    });
+
+    // Database se data nikalkar group karna
+    let historyData = {};
+
+    academicMonthsList.forEach(mObj => {
+        const report = allYearReportsData.find(r => r.monthNum === mObj.monthNum && r.year === mObj.year);
+        if (report && report.karkardagiReport && report.karkardagiReport.data) {
+            report.karkardagiReport.data.forEach(entry => {
+                if (!historyData[entry.jamiaName]) historyData[entry.jamiaName] = {};
+                if (!historyData[entry.jamiaName][entry.teacherId]) {
+                    historyData[entry.jamiaName][entry.teacherId] = {
+                        name: entry.teacherName,
+                        periods: {}
+                    };
+                }
+                if (!historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId]) {
+                    historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId] = {
+                        className: entry.className,
+                        bookName: entry.bookName,
+                        monthlyStatus: {},
+                        munasibCount: 0
+                    };
+                }
+
+                const periodData = historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId];
+                const status = entry.kaifiyat;
+                periodData.monthlyStatus[`${mObj.monthNum}_${mObj.year}`] = status;
+
+                // Sirf munasib gino
+                if (status === 'Munasib') {
+                    periodData.munasibCount++;
+                }
+            });
+        }
+    });
+
+    // HTML Table Design Banana
+    let html = `
+        <div class="overflow-x-auto border rounded-xl shadow-sm bg-white">
+            <table class="min-w-full text-sm text-center" dir="rtl">
+                <thead class="bg-gray-100 border-b">
+                    <tr>
+                        <th class="p-3 text-right border-l border-gray-200">استاد کا نام</th>
+                        <th class="p-3 text-right border-l border-gray-200">کتاب / درجہ</th>
+    `;
+
+    // Headers me Mahinon ke naam
+    academicMonthsList.forEach(mObj => {
+        const mName = getMonthName(mObj.monthNum);
+        const urduMName = urduMonths[mName] || mName;
+        html += `<th class="p-3 border-l border-gray-200 urdu-font text-blue-700">${urduMName}</th>`;
+    });
+
+    html += `
+                        <th class="p-3 font-bold text-red-700">کل مناسب (Total)</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    let hasAnyData = false;
+
+    // Jamia ke hisab se rows banana
+    Object.keys(historyData).sort().forEach(jamiaName => {
+        const teachersInJamia = historyData[jamiaName];
+        
+        // Check karna ke is Jamia me kisi ki kitab Munasib aayi hai ya nahi
+        let jamiaHasMunasib = false;
+        Object.values(teachersInJamia).forEach(t => {
+            Object.values(t.periods).forEach(p => { if (p.munasibCount > 0) jamiaHasMunasib = true; });
+        });
+
+        if (jamiaHasMunasib) {
+            hasAnyData = true;
+            
+            // Jamia ka Header Row
+            html += `
+                <tr class="bg-blue-50 border-b border-blue-100">
+                    <td colspan="${3 + academicMonthsList.length}" class="p-3 text-right urdu-font text-lg font-bold text-blue-900">
+                        جامعہ: ${jamiaName}
+                    </td>
+                </tr>
+            `;
+
+            Object.keys(teachersInJamia).sort().forEach(teacherId => {
+                const teacher = teachersInJamia[teacherId];
+                // Sirf wo kitabein nikalna jin me 1 bhi Munasib ho
+                const periods = Object.values(teacher.periods).filter(p => p.munasibCount > 0);
+
+                if (periods.length > 0) {
+                    periods.forEach((period, pIndex) => {
+                        html += `<tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">`;
+                        
+                        // Teacher ka naam (Rowspan ke sath taake saaf lage)
+                        if (pIndex === 0) {
+                            html += `<td rowspan="${periods.length}" class="p-3 text-right align-middle urdu-font font-semibold text-gray-800 border-l border-gray-200 bg-gray-50/50">${teacher.name}</td>`;
+                        }
+
+                        // Kitab aur Darja
+                        html += `
+                            <td class="p-3 text-right urdu-font border-l border-gray-200">
+                                <strong>${period.bookName}</strong> <br>
+                                <span class="text-xs text-gray-500">${period.className}</span>
+                            </td>
+                        `;
+
+                        // Har mahine ka status (Munasib hai to Laal rang, theek hai to Green tick)
+                        academicMonthsList.forEach(mObj => {
+                            const status = period.monthlyStatus[`${mObj.monthNum}_${mObj.year}`];
+                            let statusHtml = `<span class="text-gray-300">-</span>`; // Report nahi aayi
+                            
+                            if (status === 'Munasib') {
+                                statusHtml = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded urdu-font text-xs">مناسب</span>`;
+                            } else if (status === 'Mumtaz' || status === 'Behtar') {
+                                statusHtml = `<span class="text-green-500"><i class="fas fa-check"></i></span>`; // Saaf suthra Check mark
+                            }
+
+                            html += `<td class="p-3 border-l border-gray-100">${statusHtml}</td>`;
+                        });
+
+                        // Total Munasib ka number
+                        html += `<td class="p-3 font-bold text-red-700 bg-red-50/40 text-lg">${period.munasibCount}</td>`;
+                        html += `</tr>`;
+                    });
+                }
+            });
+        }
+    });
+
+    html += `</tbody></table></div>`;
+
+    if (!hasAnyData) {
+        container.innerHTML = `<div class="p-6 bg-green-50 rounded-xl border border-green-200 text-center">
+            <i class="fas fa-trophy text-green-500 text-3xl mb-2"></i>
+            <h5 class="text-xl font-bold text-green-800 urdu-font">الحمدللہ!</h5>
+            <p class="text-green-700 mt-2">سمسٹر ${semester} میں ابھی تک کسی بھی استاد کی کوئی کتاب "مناسب" کیٹیگری میں نہیں آئی۔</p>
+        </div>`;
+    } else {
+        container.innerHTML = html;
+    }
+
+    showLoader(false);
+};
+
         // Master Render function for Summary Tab
         const renderSummaryTab = () => {
              // 1. Update Current Period based on summary month select value
@@ -4087,6 +4267,8 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
              } else if (activeSubTab === 'teacher-profile') {
                  populateTeacherProfileFilters(); // Ensure filters are populated with latest context
                  renderTeacherProfileReport(null, true);
+             } else if (activeSubTab === 'munasib-history') {
+                 renderMunasibHistoryReport(); // Naya function yahan call hoga
              }
         }
 
