@@ -12,7 +12,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         container.innerHTML = '<div class="p-8 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</div>';
         return;
     }
-
+  
     container.innerHTML = '<div class="p-8 text-center text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i> Data load ho raha hai...</div>';
 
     try {
