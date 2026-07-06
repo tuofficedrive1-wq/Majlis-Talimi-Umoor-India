@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Academic Inspector Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <!-- html2canvas + jspdf removed: not referenced anywhere in this file. downloadChart() uses native Canvas toDataURL() instead. -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -341,7 +340,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
         import { 
-           getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, serverTimestamp, onSnapshot
+           initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+           doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, serverTimestamp, onSnapshot
         } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
         
@@ -359,13 +359,24 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        const db = getFirestore(app);
+        // getFirestore(app) ki jagah initializeFirestore + persistentLocalCache -
+        // isse baar baar aane wale visitors ke liye Firestore IndexedDB cache use karta hai,
+        // jo network wait ko kam karta hai jab wahi data phir se maanga jaye.
+        const db = initializeFirestore(app, {
+            localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        });
         const storage = getStorage(app);
 
         let currentUser = null;
         let assignedJamiaat = [];
         let allReports = [];
         let reportsData = null;
+        // Cache: "users/{uid}" ek hi baar fetch hota hai, phir yahan se reuse hota hai
+        // (pehle ye document initDashboard, loadStats, aur loadInspectorTestSummary teeno mein alag alag fetch ho raha tha)
+        window.currentUserData = null;
+        // Cache: monthly_test_sheets ka result month ke hisab se store hota hai
+        // taake loadStats() aur loadInspectorTestSummary() same mahine ka data dobara na maangein
+        window.testSheetsCache = {};
         // --- NAYA FUNCTION: Admin Dashboard Sync Listener ---
 window.allReports = [];
 let adminReportUnsubscribe = null; // Mahina badalne par purana listener rokne ke liye
@@ -421,6 +432,7 @@ window.listenToAdminReports = (selectedMonth) => {
                 const userDoc = await getDoc(doc(db, "users", currentUser.uid));
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
+                    window.currentUserData = userData; // cache kar liya - dobara fetch nahi karna kahin bhi is session mein
                     const nameElement = document.getElementById('inspector-name');
                     if (nameElement) nameElement.textContent = userData.name || "Inspector";
 
@@ -481,6 +493,21 @@ const listenToAdminReports = (userId, selectedMonth) => {
     });
 };
         
+        // Helper: monthly_test_sheets sirf 1 baar fetch hota hai per month, phir cache se milta hai.
+        // Pehle loadStats() aur loadInspectorTestSummary() dono alag alag isi exact query ko chala rahe the -
+        // matlab Test tab kholte hi same mahine ka data dobara Firestore se download hota tha.
+        async function getMonthlyTestSheets(month) {
+            if (window.testSheetsCache[month]) {
+                return window.testSheetsCache[month];
+            }
+            const qTest = query(collection(db, "monthly_test_sheets"), where("month", "==", month));
+            const testSnap = await getDocs(qTest);
+            const allSheets = [];
+            testSnap.forEach(doc => allSheets.push(doc.data()));
+            window.testSheetsCache[month] = allSheets;
+            return allSheets;
+        }
+
         // LOAD STATS
         async function loadStats() {
             try {
@@ -493,19 +520,28 @@ const listenToAdminReports = (userId, selectedMonth) => {
                 const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
                 reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
 
-                for (let jamia of assignedJamiaat) {
-                    const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`; 
-                    const detailSnap = await getDoc(doc(db, "academic_inspections", inspectionId));
+                // Pehle: assignedJamiaat par sequential for-loop, har jamia ke liye ek awaited read -
+                // ek ke baad ek (15 jamiaat = 15 round-trips, network latency N baar lagti thi).
+                // Ab: sab reads Promise.all se ek saath fire hote hain. Read COUNT same hai
+                // (utne hi documents padhe ja rahe hain), lekin WAIT TIME ~N guna kam ho jata hai.
+                const detailResults = await Promise.all(
+                    assignedJamiaat.map(jamia => {
+                        const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`;
+                        return getDoc(doc(db, "academic_inspections", inspectionId))
+                            .then(detailSnap => ({ jamia, detailSnap }));
+                    })
+                );
 
+                detailResults.forEach(({ jamia, detailSnap }) => {
                     if (detailSnap.exists()) {
                         const detailData = detailSnap.data();
                         if (!reportsData.jaiza) reportsData.jaiza = [];
-                        
+
                         let existingJaiza = reportsData.jaiza.find(j => j.name === jamia);
-                        
+
                         if (existingJaiza) {
                             existingJaiza.score = detailData.overallPercentage ? detailData.overallPercentage.replace('%', '') : '0';
-                            if(detailData.inspectionDate) {
+                            if (detailData.inspectionDate) {
                                 const d = detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate() : new Date(detailData.inspectionDate);
                                 existingJaiza.date = d.toISOString().split('T')[0];
                             }
@@ -518,16 +554,14 @@ const listenToAdminReports = (userId, selectedMonth) => {
                             });
                         }
                     }
-                }
+                });
 
-                // Monthly Test Processing
-                const qTest = query(collection(db, "monthly_test_sheets"), where("month", "==", month));
-                const testSnap = await getDocs(qTest);
-                const allSheets = [];
-                testSnap.forEach(doc => allSheets.push(doc.data()));
+                // Monthly Test Processing — cache se milta hai, isliye Test tab par jaane par dobara read nahi hota
+                const allSheets = await getMonthlyTestSheets(month);
 
-                const inspDocSnap = await getDoc(doc(db, "users", currentUser.uid));
-                const jamiaatMapping = inspDocSnap.exists() ? (inspDocSnap.data().jamiaatMapping || {}) : {};
+                // Pehle: "users/{uid}" yahan PHIR SE fetch ho raha tha (initDashboard mein ek baar ho chuka tha).
+                // Ab: initDashboard wali cached copy (window.currentUserData) reuse ho rahi hai - ek extra read bachi.
+                const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
                 const normalizeName = (name) => (name || "").trim().toLowerCase();
 
                 reportsData.tests = []; 
@@ -580,7 +614,7 @@ const listenToAdminReports = (userId, selectedMonth) => {
                 updateUI('jaiza', (reportsData.jaiza || []).length);
                 updateUI('test', completedTestCount); 
                 
-                setTimeout(() => { renderMainCharts(); }, 100);
+                requestAnimationFrame(() => { renderMainCharts(); });
                 
                 const reportSec = document.getElementById('reports-section');
                 if (reportSec && !reportSec.classList.contains('hidden')) {
@@ -967,17 +1001,11 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-indigo-500 font-bold text-center"><i class="fas fa-spinner fa-spin mr-2"></i> Linked Jamiaat ka data calculate ho raha hai...</td></tr>';
 
             try {
-                const inspectorUid = auth.currentUser ? auth.currentUser.uid : null;
-                let jamiaatMapping = {};
-                if (inspectorUid) {
-                    const inspDocSnap = await getDoc(doc(db, "users", inspectorUid));
-                    if (inspDocSnap.exists()) jamiaatMapping = inspDocSnap.data().jamiaatMapping || {};
-                }
-
-                const q = query(collection(db, "monthly_test_sheets"), where("month", "==", monthInput));
-                const querySnapshot = await getDocs(q);
-                const allSheets = [];
-                querySnapshot.forEach(doc => allSheets.push(doc.data()));
+                // Pehle: "users/{uid}" aur "monthly_test_sheets" yahan PHIR SE fetch ho rahe the -
+                // dono already initDashboard/loadStats mein fetch ho chuke hote hain isi session mein.
+                // Ab: dono cache se reuse ho rahe hain - Test tab kholte hi 2 extra reads nahi lagti.
+                const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
+                const allSheets = await getMonthlyTestSheets(monthInput);
 
                 const normalizeName = (name) => (name || "").trim().toLowerCase();
                 window.currentInspectorTestData = {};
