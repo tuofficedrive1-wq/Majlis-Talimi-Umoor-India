@@ -1,8 +1,8 @@
 import { collection, query, where, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-// Global variables taake filtering aur editing asaan ho
 let _db, _assignedJamiaat, _currentUser;
 let _allRecords = []; 
+let _currentEditRecord = null; // Edit hone wale record ka data store karne k liye
 
 export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) {
     _db = db; _assignedJamiaat = assignedJamiaat; _currentUser = currentUser;
@@ -29,7 +29,6 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             return;
         }
 
-        // Filter options ke liye unique values nikalna
         const uniqueJamias = [...new Set(_allRecords.map(r => r.jamiaName).filter(Boolean))].sort();
         const uniqueClasses = [...new Set(_allRecords.map(r => r.jmClass).filter(Boolean))].sort();
         const uniqueAdmissions = [...new Set(_allRecords.map(r => r.admissionType).filter(Boolean))].sort();
@@ -88,18 +87,18 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                         </tr>
                     </thead>
                     <tbody id="enrollment-tbody" class="text-xs md:text-sm text-slate-600 divide-y divide-slate-100">
-                        </tbody>
+                    </tbody>
                 </table>
             </div>
         </div>
 
         <div id="edit-enrollment-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex justify-center items-center p-4">
-            <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up">
                 <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <h3 class="font-bold text-slate-800 text-lg"><i class="fas fa-user-edit text-indigo-600 mr-2"></i> Edit Student Record</h3>
                     <button onclick="window.closeEditModal()" class="text-slate-400 hover:text-red-500 transition"><i class="fas fa-times text-lg"></i></button>
                 </div>
-                <div class="p-4 overflow-y-auto" id="edit-modal-body">
+                <div class="p-4 overflow-y-auto space-y-4" id="edit-modal-body">
                     </div>
                 <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
                     <button onclick="window.closeEditModal()" class="px-4 py-2 rounded-lg text-slate-500 font-bold hover:bg-slate-200 transition text-sm">Cancel</button>
@@ -136,8 +135,8 @@ window.renderEnrollmentTableRows = (records) => {
     records.forEach(r => {
         let details = r.admissionType === 'NIOS' ? `Langs: ${(r.languages||[]).length} | Subs: ${(r.subjects||[]).length}` 
                     : r.admissionType === 'School' ? `${r.classLevel||''} | ${r.board||r.stream||''}`
-                    : r.admissionType === 'College' ? `${r.degree||''} | ${r.duration||''}`
-                    : r.admissionType === 'Madrasa Board' ? `Class: ${r.classLevel||''}`
+                    : r.admissionType === 'College' ? `${r.degree||''} | ${r.duration||''} | ${r.session||''}`
+                    : r.admissionType === 'Madrasa Board' ? `Class: ${r.classLevel||''} ${r.stream ? ' | '+r.stream : ''}`
                     : (r.reason || '—');
 
         let statusBadge = '<span class="text-slate-400">—</span>';
@@ -151,7 +150,7 @@ window.renderEnrollmentTableRows = (records) => {
                 <td class="p-3">${r.fatherName || '—'}</td>
                 <td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-semibold">${r.jmClass || '—'}</span></td>
                 <td class="p-3"><span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">${r.admissionType || '—'}</span></td>
-                <td class="p-3 text-slate-500 text-xs truncate max-w-[150px]" title="${details}">${details}</td>
+                <td class="p-3 text-slate-500 text-xs truncate max-w-[200px]" title="${details}">${details}</td>
                 <td class="p-3 text-center">${statusBadge}</td>
                 <td class="p-3 text-center">
                     <button onclick="window.openEditModal('${r.id}')" class="text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 p-1.5 rounded mr-1 transition" title="Edit"><i class="fas fa-edit"></i></button>
@@ -180,15 +179,12 @@ window.applyEnrollmentFilters = () => {
     window.renderEnrollmentTableRows(filtered);
 };
 
-// ══════════════════════════════════════════════════
-// DELETE LOGIC
-// ══════════════════════════════════════════════════
 window.deleteEnrollmentRecord = async (docId, name) => {
     if(!confirm(`Kya aap waqai "${name}" ki entry delete karna chahte hain?`)) return;
     try {
         await deleteDoc(doc(_db, "enrollment_records", docId));
-        _allRecords = _allRecords.filter(r => r.id !== docId); // Local list se hatayein
-        window.applyEnrollmentFilters(); // Table refresh
+        _allRecords = _allRecords.filter(r => r.id !== docId);
+        window.applyEnrollmentFilters();
         alert("Entry successfully delete ho gayi.");
     } catch (error) {
         alert("Delete error: " + error.message);
@@ -196,103 +192,180 @@ window.deleteEnrollmentRecord = async (docId, name) => {
 };
 
 // ══════════════════════════════════════════════════
-// EDIT MODAL LOGIC (Pura Form)
+// EDIT MODAL LOGIC (Dynamic Full Form)
 // ══════════════════════════════════════════════════
 let _currentEditId = null;
 
 window.openEditModal = (docId) => {
-    const record = _allRecords.find(r => r.id === docId);
-    if(!record) return;
+    _currentEditRecord = _allRecords.find(r => r.id === docId);
+    if(!_currentEditRecord) return;
     _currentEditId = docId;
 
     const modalBody = document.getElementById('edit-modal-body');
+    const r = _currentEditRecord;
     
     modalBody.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Student's Name</label>
-                <input type="text" id="edit-name" value="${record.studentName || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="text" id="edit-name" value="${r.studentName || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Father's Name</label>
-                <input type="text" id="edit-father" value="${record.fatherName || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="text" id="edit-father" value="${r.fatherName || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Date of Birth</label>
-                <input type="date" id="edit-dob" value="${record.dob || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="date" id="edit-dob" value="${r.dob || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Jamiatul Madina Class</label>
-                <input type="text" id="edit-jmclass" value="${record.jmClass || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="text" id="edit-jmclass" value="${r.jmClass || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
             </div>
         </div>
 
-        <hr class="border-slate-200 my-4">
+        <hr class="border-slate-100">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Admission Type</label>
-                <select id="edit-admtype" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <option value="NIOS" ${record.admissionType === 'NIOS' ? 'selected' : ''}>NIOS</option>
-                    <option value="School" ${record.admissionType === 'School' ? 'selected' : ''}>School</option>
-                    <option value="Madrasa Board" ${record.admissionType === 'Madrasa Board' ? 'selected' : ''}>Madrasa Board</option>
-                    <option value="College" ${record.admissionType === 'College' ? 'selected' : ''}>College</option>
-                    <option value="No Admission" ${record.admissionType === 'No Admission' ? 'selected' : ''}>No Admission</option>
+                <select id="edit-admtype" onchange="window.updateDynamicFields()" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="NIOS" ${r.admissionType === 'NIOS' ? 'selected' : ''}>NIOS</option>
+                    <option value="School" ${r.admissionType === 'School' ? 'selected' : ''}>School</option>
+                    <option value="Madrasa Board" ${r.admissionType === 'Madrasa Board' ? 'selected' : ''}>Madrasa Board</option>
+                    <option value="College" ${r.admissionType === 'College' ? 'selected' : ''}>College</option>
+                    <option value="No Admission" ${r.admissionType === 'No Admission' ? 'selected' : ''}>No Admission</option>
                 </select>
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Current Qualification</label>
-                <input type="text" id="edit-qual" value="${record.currentQualification || ''}" placeholder="e.g. 8th, 10th" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="text" id="edit-qual" value="${r.currentQualification || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
             </div>
         </div>
 
-        <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100 mb-4">
-            <p class="text-xs text-indigo-700 font-semibold mb-2"><i class="fas fa-info-circle mr-1"></i> Status & Result</p>
+        <div id="dynamic-fields-container" class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <p class="text-xs text-slate-700 font-bold mb-2"><i class="fas fa-clipboard-check mr-1"></i> Result Update</p>
             <div class="flex gap-4">
                 <div class="flex-1">
                     <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
                     <select id="edit-status" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
                         <option value="">Pending</option>
-                        <option value="Pass" ${record.status === 'Pass' ? 'selected' : ''}>Pass</option>
-                        <option value="Fail" ${record.status === 'Fail' ? 'selected' : ''}>Fail</option>
+                        <option value="Pass" ${r.status === 'Pass' ? 'selected' : ''}>Pass</option>
+                        <option value="Fail" ${r.status === 'Fail' ? 'selected' : ''}>Fail</option>
                     </select>
                 </div>
                 <div class="flex-1">
                     <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Result (Marks/%)</label>
-                    <input type="text" id="edit-result" value="${record.result || ''}" placeholder="e.g. 78%" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                    <input type="text" id="edit-result" value="${r.result || ''}" placeholder="e.g. 78%" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
                 </div>
             </div>
         </div>
     `;
 
     document.getElementById('edit-enrollment-modal').classList.remove('hidden');
-    
-    // Save button click event override taake purana event na chale
+    window.updateDynamicFields(); // Pehli dafa khulne par required fields load karna
     document.getElementById('save-edit-btn').onclick = () => window.saveEditRecord();
 };
 
 window.closeEditModal = () => {
     document.getElementById('edit-enrollment-modal').classList.add('hidden');
     _currentEditId = null;
+    _currentEditRecord = null;
 };
 
+// ══════════════════════════════════════════════════
+// DYNAMIC FIELDS RENDERER (Admission Type ke mutabiq)
+// ══════════════════════════════════════════════════
+window.updateDynamicFields = () => {
+    const type = document.getElementById('edit-admtype').value;
+    const container = document.getElementById('dynamic-fields-container');
+    const r = _currentEditRecord || {};
+
+    // Helper taake purani values usi type mein hi show hon jisme form submit hua tha
+    const isSameType = r.admissionType === type;
+
+    let html = '';
+    if (type === 'NIOS') {
+        html = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Class</label><input type="text" id="dyn-classLevel" value="${isSameType ? (r.classLevel||'') : ''}" placeholder="8th, 10th..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Languages (Comma , se alag karein)</label><input type="text" id="dyn-langs" value="${isSameType ? (r.languages||[]).join(', ') : ''}" placeholder="Urdu, English..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Subjects (Comma , se alag karein)</label><input type="text" id="dyn-subs" value="${isSameType ? (r.subjects||[]).join(', ') : ''}" placeholder="Maths, Science..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+            </div>`;
+    } else if (type === 'School') {
+        html = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Class</label><input type="text" id="dyn-classLevel" value="${isSameType ? (r.classLevel||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Board</label><input type="text" id="dyn-board" value="${isSameType ? (r.board||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Stream</label><input type="text" id="dyn-stream" value="${isSameType ? (r.stream||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+            </div>`;
+    } else if (type === 'Madrasa Board') {
+        html = `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Class</label><input type="text" id="dyn-classLevel" value="${isSameType ? (r.classLevel||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Stream</label><input type="text" id="dyn-stream" value="${isSameType ? (r.stream||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+            </div>`;
+    } else if (type === 'College') {
+        html = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Degree</label><input type="text" id="dyn-degree" value="${isSameType ? (r.degree||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Duration System</label><input type="text" id="dyn-duration" value="${isSameType ? (r.duration||'') : ''}" placeholder="Semester / Year" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div><label class="text-xs font-bold text-slate-500 mb-1">Session</label><input type="text" id="dyn-session" value="${isSameType ? (r.session||'') : ''}" placeholder="1st Sem..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+            </div>`;
+    } else if (type === 'No Admission') {
+        html = `
+            <div><label class="text-xs font-bold text-slate-500 mb-1">Wazahat / Reason</label><textarea id="dyn-reason" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">${isSameType ? (r.reason||'') : ''}</textarea></div>`;
+    }
+    
+    container.innerHTML = html;
+};
+
+// ══════════════════════════════════════════════════
+// SAVE EDIT LOGIC (Extracting all dynamic fields)
+// ══════════════════════════════════════════════════
 window.saveEditRecord = async () => {
     if(!_currentEditId) return;
     
+    const getVal = (id) => document.getElementById(id) ? document.getElementById(id).value.trim() : null;
+    const admType = document.getElementById('edit-admtype').value;
+
     const updatedData = {
-        studentName: document.getElementById('edit-name').value.trim(),
-        fatherName: document.getElementById('edit-father').value.trim(),
-        dob: document.getElementById('edit-dob').value,
-        jmClass: document.getElementById('edit-jmclass').value.trim(),
-        admissionType: document.getElementById('edit-admtype').value,
-        currentQualification: document.getElementById('edit-qual').value.trim(),
-        status: document.getElementById('edit-status').value,
-        result: document.getElementById('edit-result').value.trim()
+        studentName: getVal('edit-name'),
+        fatherName: getVal('edit-father'),
+        dob: getVal('edit-dob'),
+        jmClass: getVal('edit-jmclass'),
+        currentQualification: getVal('edit-qual'),
+        admissionType: admType,
+        status: getVal('edit-status'),
+        result: getVal('edit-result')
     };
 
     if(!updatedData.studentName || !updatedData.fatherName) {
-        alert("Student aur Father ka naam zaruri hai.");
-        return;
+        alert("Student aur Father ka naam zaruri hai."); return;
+    }
+
+    // Naye type ke mutabiq dynamic fields nikalna
+    if (admType === 'NIOS') {
+        updatedData.classLevel = getVal('dyn-classLevel') || '';
+        updatedData.languages = (getVal('dyn-langs') || '').split(',').map(s=>s.trim()).filter(Boolean);
+        updatedData.subjects = (getVal('dyn-subs') || '').split(',').map(s=>s.trim()).filter(Boolean);
+    } else if (admType === 'School') {
+        updatedData.classLevel = getVal('dyn-classLevel') || '';
+        updatedData.board = getVal('dyn-board') || '';
+        updatedData.stream = getVal('dyn-stream') || '';
+    } else if (admType === 'Madrasa Board') {
+        updatedData.classLevel = getVal('dyn-classLevel') || '';
+        updatedData.stream = getVal('dyn-stream') || '';
+    } else if (admType === 'College') {
+        updatedData.degree = getVal('dyn-degree') || '';
+        updatedData.classLevel = updatedData.degree; 
+        updatedData.duration = getVal('dyn-duration') || '';
+        updatedData.session = getVal('dyn-session') || '';
+    } else if (admType === 'No Admission') {
+        updatedData.reason = getVal('dyn-reason') || '';
     }
 
     const saveBtn = document.getElementById('save-edit-btn');
@@ -303,14 +376,13 @@ window.saveEditRecord = async () => {
     try {
         await updateDoc(doc(_db, "enrollment_records", _currentEditId), updatedData);
         
-        // Local array ko update karna bina refresh kiye
         const index = _allRecords.findIndex(r => r.id === _currentEditId);
         if(index !== -1) {
             _allRecords[index] = { ..._allRecords[index], ...updatedData };
         }
         
         window.closeEditModal();
-        window.applyEnrollmentFilters(); // List automatically nayi values k sath show hogi
+        window.applyEnrollmentFilters(); 
         alert("Record successfully update ho gaya!");
 
     } catch (error) {
