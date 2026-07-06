@@ -359,6 +359,25 @@
     </div>
   </header>
 
+  <!-- Access Gate: form yahan tak hidden rehta hai jab tak sahi 5-digit code na daala jaye -->
+  <div class="card" id="gateCard">
+    <div class="card-head">
+      <div class="card-num" aria-hidden="true">🔒</div>
+      <h2 class="card-title">Access Code Darj Karein</h2>
+    </div>
+    <div class="card-body">
+      <div class="field field-wide">
+        <label for="gateCodeInput">Is Jamia ka 5-digit code <span class="req">*</span></label>
+        <input type="text" id="gateCodeInput" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="e.g. 48213">
+        <p class="field-hint" id="gateError" style="color:var(--red);min-height:16px;"></p>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="gateSubmitBtn">Form Unlock Karen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="appContent" hidden>
   <form id="enrollmentForm" novalidate>
 
     <!-- Card I -->
@@ -688,6 +707,7 @@
       </table>
     </div>
   </section>
+  </div><!-- /#appContent -->
 
 </div><!-- /.page-wrap -->
 
@@ -720,6 +740,11 @@
      3. DOM REFERENCES
      ══════════════════════════════════════════════════ */
   var form            = document.getElementById('enrollmentForm');
+  var gateCard        = document.getElementById('gateCard');
+  var appContent      = document.getElementById('appContent');
+  var gateCodeInputEl = document.getElementById('gateCodeInput');
+  var gateErrorEl     = document.getElementById('gateError');
+  var gateSubmitBtn   = document.getElementById('gateSubmitBtn');
   var admissionType   = document.getElementById('admissionType');
   var niosSection      = document.getElementById('niosSection');
   var schoolSection    = document.getElementById('schoolSection');
@@ -848,16 +873,63 @@
   }
 
   /* ══════════════════════════════════════════════════
-     7. PAGE INIT — banner me Jamia ka naam + class list load
+     7. ACCESS GATE — link se sirf jamia naam pata chalta hai,
+        form tab tak nahi khulta jab tak 5-digit code match na ho.
+        Code Firestore ke "jamia_codes/{jamia}" document mein save hai
+        (wahi collection jo academic-inspector.html ke Enrollment tab mein
+        generate/show hoti hai — dono files isi ek jagah se code padhte hain).
      ══════════════════════════════════════════════════ */
-  if (currentJamia) {
+  function unlockForm(){
       const bannerTitle = document.querySelector('.banner-title');
       if (bannerTitle) {
           bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>';
       }
-      loadClassesFromStructure();
+      gateCard.hidden = true;
+      appContent.hidden = false;
+      loadClassesFromStructure(); // sirf ab (unlock ke baad) classes fetch hoti hain, pehle nahi
+  }
+
+  async function verifyGateCode(){
+      var entered = fieldValue('gateCodeInput');
+      gateErrorEl.textContent = '';
+
+      if(!/^\d{5}$/.test(entered)){
+          gateErrorEl.textContent = 'Poora 5-digit code darj karen.';
+          return;
+      }
+
+      gateSubmitBtn.disabled = true;
+      var originalBtnText = gateSubmitBtn.textContent;
+      gateSubmitBtn.textContent = 'Check ho raha hai…';
+
+      try {
+          var codeDocId = currentJamia.replace(/\s+/g, '_');
+          var codeSnap = await getDoc(doc(db, "jamia_codes", codeDocId));
+
+          if (codeSnap.exists() && String(codeSnap.data().code) === entered) {
+              unlockForm();
+          } else {
+              gateErrorEl.textContent = 'Code sahi nahi hai — dobara check karke daalen.';
+              gateCodeInputEl.select();
+          }
+      } catch(err) {
+          console.error('Gate verify error:', err);
+          gateErrorEl.textContent = 'Verify nahi ho saka. Internet check karke dobara try karen.';
+      } finally {
+          gateSubmitBtn.disabled = false;
+          gateSubmitBtn.textContent = originalBtnText;
+      }
+  }
+
+  if (!currentJamia) {
+      gateCard.querySelector('.card-body').innerHTML =
+          '<p style="color:var(--red);font-weight:600;margin:0;">Error: Jamia is link ke URL mein maujood nahi hai. Sahi link (jisme ?jamia=... ho) dobara istemal karen.</p>';
   } else {
-      jmClassSelect.innerHTML = '<option value="" disabled selected>— Jamia URL me majood nahi —</option>';
+      gateSubmitBtn.addEventListener('click', verifyGateCode);
+      gateCodeInputEl.addEventListener('keydown', function(e){
+          if (e.key === 'Enter') { e.preventDefault(); verifyGateCode(); }
+      });
+      gateCodeInputEl.focus();
   }
 
   /* ══════════════════════════════════════════════════
