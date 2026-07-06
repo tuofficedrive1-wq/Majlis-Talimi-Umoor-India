@@ -3596,7 +3596,7 @@ let rowHtml = `
         };
 
 
-  // NEW FUNCTION: Render Monthly Munasib Report (Async Fetch + Repeating Headers + Wazahat UI)
+  // NEW FUNCTION: Render Monthly Munasib Report (Separated Wazahat and Action Columns)
 const renderMonthlyMunasibReport = async () => {
     const selectedValue = summaryMonthSelect.value || reportMonthSelect.value;
     if (!selectedValue) {
@@ -3628,20 +3628,40 @@ const renderMonthlyMunasibReport = async () => {
         return;
     }
 
-    // Is mahine ki submit ki gayi Wazahatein database se mangwana
-    let wazahatMap = {};
+    // --- Link Generate aur Submit hone ka Time nikalna ---
+    let wazahatDataMap = {};
+    let linkSentMap = {};
+
     try {
-        const q = query(collection(db, "mahana_wazahat_records"), where("month", "==", month + " " + yearNum));
-        const wSnap = await getDocs(q);
+        const currentMonthText = month + " " + yearNum;
+
+        // 1. Link Generate hone ka time
+        const qLinks = query(collection(db, "jaiza_short_links"), where("month", "==", currentMonthText));
+        const lSnap = await getDocs(qLinks);
+        lSnap.forEach(doc => {
+            const d = doc.data();
+            if (d.createdAt) {
+                const dateVal = d.createdAt.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+                if (!linkSentMap[`${d.jamia}_${d.teacher}`] || dateVal > linkSentMap[`${d.jamia}_${d.teacher}`]) {
+                    linkSentMap[`${d.jamia}_${d.teacher}`] = dateVal;
+                }
+            }
+        });
+
+        // 2. Form Submit hone ka time aur Wazahat
+        const qWazahat = query(collection(db, "mahana_wazahat_records"), where("month", "==", currentMonthText));
+        const wSnap = await getDocs(qWazahat);
         wSnap.forEach(doc => {
             const d = doc.data();
-            wazahatMap[`${d.jamia}_${d.teacherName}`] = d.wazahat; 
+            wazahatDataMap[`${d.jamia}_${d.teacherName}`] = {
+                text: d.wazahat,
+                submitTime: d.timestamp ? new Date(d.timestamp) : null
+            };
         });
     } catch (e) {
         console.error("Wazahat load error:", e);
     }
 
-    // Munasib periods ko Jamia aur Teacher ke hisaab se group karna
     const periodsByJamia = munasibPeriods.reduce((acc, period) => {
         if (!acc[period.jamiaName]) acc[period.jamiaName] = {};
         if (!acc[period.jamiaName][period.teacherId]) acc[period.jamiaName][period.teacherId] = { name: period.teacherName, periods: [] };
@@ -3657,13 +3677,18 @@ const renderMonthlyMunasibReport = async () => {
 
     const sortedJamiaNames = Object.keys(periodsByJamia).sort();
 
+    const formatDateTime = (dateObj) => {
+        if (!dateObj) return '';
+        return dateObj.toLocaleDateString('ur-PK') + " &bull; " + dateObj.toLocaleTimeString('ur-PK', {hour: '2-digit', minute:'2-digit'});
+    };
+
     sortedJamiaNames.forEach(jamiaName => {
         const teachersInJamia = periodsByJamia[jamiaName];
         const sortedTeacherIds = Object.keys(teachersInJamia).sort();
         
-        // 1. Jamia Row
+        // 1. Jamia Row (Colspan 11 kar diya gaya hai)
         html += `<tr class="jamia-header munasib-jamia-header bg-blue-50" data-jamia-name-for-image="${jamiaName}">
-                    <td colspan="10" class="p-3 border-b-2 border-blue-200">
+                    <td colspan="11" class="p-3 border-b-2 border-blue-200">
                         <div class="flex justify-between items-center w-full">
                              <span class="urdu-font text-lg font-bold text-blue-900">${jamiaName}</span>
                              <button type="button" class="download-munasib-image-btn bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-1 px-3 rounded flex items-center gap-1 shadow-sm" data-jamia-name="${jamiaName}">
@@ -3673,7 +3698,7 @@ const renderMonthlyMunasibReport = async () => {
                     </td>
                 </tr>`;
         
-        // 2. Headings Row (Yahan Wazahat ka Column Add hai)
+        // 2. Headings Row (Yahan Action ka column alag add kiya gaya hai)
         html += `<tr class="bg-red-50 text-red-800 border-b border-red-200 font-semibold text-xs md:text-sm">
                     <td class="p-2 text-center border-l border-r border-red-200">Teacher</td>
                     <td class="p-2 text-center border-r border-red-200">Class</td>
@@ -3684,7 +3709,8 @@ const renderMonthlyMunasibReport = async () => {
                     <td class="p-2 text-center border-r border-red-200">Pages Taught</td>
                     <td class="p-2 text-center border-r border-red-200">Achievement %</td>
                     <td class="p-2 text-center border-r border-red-200">Kaifiyat (Status)</td>
-                    <td class="p-2 text-center border-r border-red-200">Wazahat (وضاحت)</td>
+                    <td class="p-2 text-center border-r border-red-200" style="min-width: 180px;">Wazahat (وضاحت)</td>
+                    <td class="p-2 text-center border-r border-red-200 exclude-from-image" style="min-width: 100px;">Action</td>
                 </tr>`;
 
         // 3. Teachers Loop
@@ -3692,7 +3718,13 @@ const renderMonthlyMunasibReport = async () => {
             const teacherData = teachersInJamia[teacherId];
             const periods = teacherData.periods;
             
-            const wazahatText = wazahatMap[`${jamiaName}_${teacherData.name}`] || '';
+            const wData = wazahatDataMap[`${jamiaName}_${teacherData.name}`];
+            const wazahatText = wData ? wData.text : '';
+            const submitDateObj = wData ? wData.submitTime : null;
+            const sentDateObj = linkSentMap[`${jamiaName}_${teacherData.name}`];
+
+            const sentTimeHtml = sentDateObj ? `<div class="text-[10px] text-gray-500 mb-1 font-sans text-left border-b border-gray-100 pb-1" dir="ltr"><span class="font-bold text-gray-700">Link Sent:</span><br>${formatDateTime(sentDateObj)}</div>` : '';
+            const submitTimeHtml = submitDateObj ? `<div class="text-[10px] text-emerald-600 mb-1 font-sans text-left border-b border-gray-100 pb-1" dir="ltr"><span class="font-bold text-emerald-700">Submitted:</span><br>${formatDateTime(submitDateObj)}</div>` : '';
             
             periods.forEach((period, index) => {
                 const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
@@ -3718,11 +3750,24 @@ const renderMonthlyMunasibReport = async () => {
                         <td class="font-medium color-munasib text-center p-2 border-r border-gray-200">${period.achievement}%</td>
                         <td class="font-bold color-munasib text-center p-2 border-r border-gray-200">${period.kaifiyat}</td>
                         
+                        <!-- WAZAHAT COLUMN -->
                         ${index === 0 ? 
-                             `<td rowspan="${periods.length}" class="text-center align-middle p-2 bg-gray-50 border-r border-gray-200" style="min-width: 180px;">
-                                  ${wazahatText ? `<div class="text-xs text-gray-800 urdu-font mb-2 leading-relaxed text-right p-2 bg-white border border-gray-300 rounded shadow-sm whitespace-pre-wrap">${wazahatText}</div>` : ''}
-                                  <button type="button" class="copy-wazahat-link-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold py-1.5 px-3 rounded flex items-center justify-center gap-1 w-max mx-auto shadow-sm" data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-teacher-name="${period.teacherName}">
-                                      <i class="fas fa-link fa-sm pointer-events-none"></i> Copy Form Link
+                             `<td rowspan="${periods.length}" class="align-top p-2 bg-gray-50 border-r border-gray-200">
+                                  <div class="flex flex-col h-full">
+                                      ${sentTimeHtml}
+                                      ${submitTimeHtml}
+                                      ${wazahatText ? 
+                                          `<div class="text-xs text-gray-800 urdu-font mt-1 leading-relaxed text-right p-2 bg-white border border-gray-300 rounded shadow-sm whitespace-pre-wrap">${wazahatText}</div>` 
+                                          : 
+                                          `<div class="text-xs text-gray-400 urdu-font mt-2 italic text-center">وضاحت کا انتظار ہے...</div>`
+                                      }
+                                  </div>
+                              </td>
+                              
+                              <!-- ACTION / BUTTON COLUMN -->
+                              <td rowspan="${periods.length}" class="align-middle p-2 bg-white border-r border-gray-200 exclude-from-image">
+                                  <button type="button" class="copy-wazahat-link-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold py-2 px-3 rounded-lg flex flex-col items-center justify-center gap-1 w-full shadow-sm" data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-teacher-name="${period.teacherName}">
+                                      <i class="fas fa-link fa-sm pointer-events-none"></i> Copy Link
                                   </button>
                               </td>` : ''
                         }
@@ -4496,27 +4541,31 @@ const downloadMonthlyMunasibImage = async (jamiaName) => {
          </h3>
      `;
      
-     // Ab headings Tbody ke andar hi aayengi, isliye thead ki zaroorat nahi.
      let tableHTML = `<table style="width: 100%; border-collapse: collapse; font-size: 14px; text-align: center;">`;
      let tbodyHTML = '<tbody>';
      const tbodyRows = Array.from(table.querySelectorAll('tbody tr'));
      let includeRow = false;
      
      for (const row of tbodyRows) {
-         // Check karna ke kon si Jamia ki row chal rahi hai
          if (row.classList.contains('munasib-jamia-header')) {
              includeRow = (row.dataset.jamiaNameForImage === jamiaName);
          }
          
-         // Agar current Jamia match ho jaye to uski rows ko image me add karo
          if (includeRow) {
              const clone = row.cloneNode(true);
              const btn1 = clone.querySelector('.download-munasib-image-btn');
-             const btn2 = clone.querySelector('.copy-wazahat-link-btn'); // Link button ko picture se gayab karna
              if(btn1) btn1.remove();
-             if(btn2) btn2.remove(); 
+
+             // Action column ko Image se mukammal delete karna
+             const excludeCols = clone.querySelectorAll('.exclude-from-image');
+             excludeCols.forEach(col => col.remove());
+
+             // Agar Jamia row hai to Colspan 11 se wapas 10 kar dein
+             if (clone.classList.contains('munasib-jamia-header')) {
+                 const td = clone.querySelector('td');
+                 if (td) td.setAttribute('colspan', '10');
+             }
              
-             // Screenshot me table ke borders ko fix karna
              clone.querySelectorAll('td').forEach(td => td.style.border = '1px solid #e5e7eb');
              tbodyHTML += clone.outerHTML;
          }
