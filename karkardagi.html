@@ -492,7 +492,7 @@ import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, s
 import { 
     getFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc, 
     writeBatch, serverTimestamp, Timestamp, collection, query, 
-    where, getDocs 
+    where, getDocs, addDoc 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
@@ -1504,22 +1504,20 @@ btn.addEventListener('click', async (e) => {
             
             // Delegation for Monthly Munasib Image Download - NEW
             // Delegation for Monthly Munasib Image Download & Wazahat Link
-            monthlyMunasibContainer.addEventListener('click', (e) => {
-                 if (e.target.closest('.download-munasib-image-btn')) {
-                     const jamiaName = e.target.closest('.download-munasib-image-btn').dataset.jamiaName;
-                     if (jamiaName) {
-                         downloadMonthlyMunasibImage(jamiaName);
-                     }
-                 }
-                 // NAYA ADD KIYA GAYA: Wazahat link copy karne ke liye
-                 if (e.target.closest('.copy-wazahat-link-btn')) {
-                     const btn = e.target.closest('.copy-wazahat-link-btn');
-                     const jamiaName = btn.dataset.jamiaName;
-                     const teacherId = btn.dataset.teacherId;
-                     const teacherName = btn.dataset.teacherName;
-                     handleCopyWazahatLink(jamiaName, teacherId, teacherName);
-                 }
-            });
+           // Delegation for Monthly Munasib Image Download & Wazahat Link
+monthlyMunasibContainer.addEventListener('click', (e) => {
+     if (e.target.closest('.download-munasib-image-btn')) {
+         const jamiaName = e.target.closest('.download-munasib-image-btn').dataset.jamiaName;
+         if (jamiaName) downloadMonthlyMunasibImage(jamiaName);
+     }
+     if (e.target.closest('.copy-wazahat-link-btn')) {
+         const btn = e.target.closest('.copy-wazahat-link-btn');
+         const jamiaName = btn.dataset.jamiaName;
+         const teacherId = btn.dataset.teacherId;
+         const teacherName = btn.dataset.teacherName;
+         handleCopyWazahatLink(jamiaName, teacherId, teacherName, btn);
+     }
+});
             
             // Modal Handlers
 if (cancelEditBtn) {
@@ -1858,6 +1856,71 @@ if (editTeacherForm) {
                  month: getMonthName(monthNum) // update the month name
              });
         };
+
+        // NEW FUNCTION: Generate Jaiza-style short link for Wazahat Form
+const handleCopyWazahatLink = async (jamiaName, teacherId, teacherName, btnElement) => {
+    if (!currentUser || !activeYear || !currentReportPeriod) return;
+
+    const originalText = btnElement.innerHTML;
+    btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    btnElement.disabled = true;
+
+    try {
+        // 1. Find Teacher Login Code
+        const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+        const jamiaData = structure.find(j => j.jamiaName === jamiaName);
+        const teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+        const teacherCode = teacherData?.loginCode || "";
+
+        if (!teacherCode) {
+            showNotification(`ٹیچر (${teacherName}) کا کوڈ سیٹ نہیں ہے۔ پہلے Setup میں جا کر کوڈ لکھیں۔`, true);
+            btnElement.innerHTML = originalText;
+            btnElement.disabled = false;
+            return;
+        }
+
+        // 2. Gather Munasib Periods for this Teacher
+        const { monthNum, yearNum, month } = currentReportPeriod;
+        const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
+        const munasibPeriods = selectedMonthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib' && p.teacherId === teacherId && p.jamiaName === jamiaName);
+
+        const payloadData = munasibPeriods.map(p => ({
+            class: p.className,
+            book: p.bookName,
+            percent: p.achievement,
+            grade: p.kaifiyat
+        }));
+
+        // 3. Create Short Link Document in Firestore
+        const newDoc = await addDoc(collection(db, "jaiza_short_links"), {
+            jamia: jamiaName,
+            teacher: teacherName,
+            expectedCode: String(teacherCode),
+            month: month + " " + yearNum,
+            data: payloadData,
+            createdAt: serverTimestamp()
+        });
+
+        // 4. Generate URL & Copy (Note: Aapke form ka naam teacher-wazahat.html hona chahiye)
+        const baseUrl = window.location.href.replace(/[^\/?#]+(\?.*)?$/, "");
+        const link = `${baseUrl}teacher-wazahat.html?mode=jaiza&sid=${newDoc.id}`;
+
+        await navigator.clipboard.writeText(link);
+        showNotification(`${teacherName} کے لیے لنک کاپی ہوگیا!`);
+        
+        btnElement.innerHTML = '<i class="fas fa-check"></i> Copied';
+        setTimeout(() => {
+            btnElement.innerHTML = originalText;
+            btnElement.disabled = false;
+        }, 3000);
+
+    } catch (error) {
+        console.error(error);
+        showNotification("Link generate karne mein error.", true);
+        btnElement.innerHTML = originalText;
+        btnElement.disabled = false;
+    }
+};
         
         // NEW: Handle change in Reporting Jamia Filter
         const handleJamiaFilterChange = () => {
@@ -3485,137 +3548,147 @@ let rowHtml = `
         };
 
 
-       // NEW FUNCTION: Render Monthly Munasib Report (Updated with Wazahat Column)
-        const renderMonthlyMunasibReport = () => {
-             const selectedValue = summaryMonthSelect.value || reportMonthSelect.value;
-             if (!selectedValue) {
-                 monthlyMunasibContainer.innerHTML = `<p class="text-gray-500">Please select a month and ensure a structure is set.</p>`;
-                 return;
-             }
-             
-             const [year, monthNumStr] = selectedValue.split('-').map(String);
-             const monthNum = parseInt(monthNumStr, 10);
-             const yearNum = parseInt(year, 10);
-             const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
+      // NEW FUNCTION: Render Monthly Munasib Report (Async Fetch + Repeating Headers + Wazahat UI)
+const renderMonthlyMunasibReport = async () => {
+    const selectedValue = summaryMonthSelect.value || reportMonthSelect.value;
+    if (!selectedValue) {
+        monthlyMunasibContainer.innerHTML = `<p class="text-gray-500">Please select a month and ensure a structure is set.</p>`;
+        return;
+    }
+    
+    showLoader(true);
 
-             const selectedMonthReport = allYearReportsData.find(report => 
-                 report.year === yearNum && 
-                 report.monthNum === monthNum
-             );
+    const [year, monthNumStr] = selectedValue.split('-').map(String);
+    const monthNum = parseInt(monthNumStr, 10);
+    const yearNum = parseInt(year, 10);
+    const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
+    const { month } = currentReportPeriod; 
 
-             if (!selectedMonthReport || !selectedMonthReport.karkardagiReport?.data || selectedMonthReport.karkardagiReport.data.length === 0) {
-                 monthlyMunasibContainer.innerHTML = `<p class="text-yellow-700">No report data found or saved for ${getMonthName(monthNum)} ${year}.</p>`;
-                 return;
-             }
+    const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
 
-             const munasibPeriods = selectedMonthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib');
+    if (!selectedMonthReport || !selectedMonthReport.karkardagiReport?.data || selectedMonthReport.karkardagiReport.data.length === 0) {
+        monthlyMunasibContainer.innerHTML = `<p class="text-yellow-700">No report data found or saved for ${getMonthName(monthNum)} ${year}.</p>`;
+        showLoader(false);
+        return;
+    }
 
-             if (munasibPeriods.length === 0) {
-                 monthlyMunasibContainer.innerHTML = `<p class="text-green-600 font-semibold">Alhamdulillah! No 'Munasib' periods found for ${getMonthName(monthNum)} ${year}.</p>`;
-                 return;
-             }
+    const munasibPeriods = selectedMonthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib');
 
-             // Group Munasib periods by Jamia and then Teacher
-             const periodsByJamia = munasibPeriods.reduce((acc, period) => {
-                 if (!acc[period.jamiaName]) acc[period.jamiaName] = {};
-                 if (!acc[period.jamiaName][period.teacherId]) {
-                      acc[period.jamiaName][period.teacherId] = {
-                           name: period.teacherName,
-                           periods: []
-                      };
-                 }
-                 acc[period.jamiaName][period.teacherId].periods.push(period);
-                 return acc;
-             }, {});
+    if (munasibPeriods.length === 0) {
+        monthlyMunasibContainer.innerHTML = `<p class="text-green-600 font-semibold">Alhamdulillah! No 'Munasib' periods found for ${getMonthName(monthNum)} ${year}.</p>`;
+        showLoader(false);
+        return;
+    }
 
-             let html = `
-                 <div class="overflow-x-auto border rounded-lg shadow-md reporting-table-container">
-                     <table class="min-w-full text-sm bg-white" id="munasib-report-table">
-                         <thead class="bg-red-100 text-red-800">
-                             <tr>
-                                 <th>Teacher</th>
-                                 <th>Class</th>
-                                 <th>Book</th>
-                                 <th>Total Pages (Sem)</th> 
-                                 <th>Total Taught (Cum.)</th>
-                                 <th>Monthly Target</th>
-                                 <th>Pages Taught</th>
-                                 <th>Achievement %</th>
-                                 <th>Kaifiyat (Status)</th>
-                                 <th>Wazahat (وضاحت)</th> <!-- NAYA COLUMN -->
-                             </tr>
-                         </thead>
-                         <tbody>
-             `;
+    // Fetch Saved Wazahat Records for this month directly from DB
+    let wazahatMap = {};
+    try {
+        const q = query(collection(db, "mahana_wazahat_records"), where("month", "==", month + " " + yearNum));
+        const wSnap = await getDocs(q);
+        wSnap.forEach(doc => {
+            const d = doc.data();
+            wazahatMap[`${d.jamia}_${d.teacherName}`] = d.wazahat; // Map by Jamia+Teacher
+        });
+    } catch (e) {
+        console.error("Wazahat load error:", e);
+    }
 
-             const sortedJamiaNames = Object.keys(periodsByJamia).sort();
+    // Group Munasib periods by Jamia and then Teacher
+    const periodsByJamia = munasibPeriods.reduce((acc, period) => {
+        if (!acc[period.jamiaName]) acc[period.jamiaName] = {};
+        if (!acc[period.jamiaName][period.teacherId]) acc[period.jamiaName][period.teacherId] = { name: period.teacherName, periods: [] };
+        acc[period.jamiaName][period.teacherId].periods.push(period);
+        return acc;
+    }, {});
 
-             sortedJamiaNames.forEach(jamiaName => {
-                 const teachersInJamia = periodsByJamia[jamiaName];
-                 const sortedTeacherIds = Object.keys(teachersInJamia).sort();
-                 
-                 // Add Jamia Header Row (Colspan 9 se 10 kar diya gaya hai)
-                 html += `<tr class="jamia-header munasib-jamia-header" data-jamia-name-for-image="${jamiaName}">
-                             <td colspan="10"> 
-                                 <div class="flex justify-between items-center w-full">
-                                      <span class="urdu-font text-lg">${jamiaName}</span>
-                                      <button type="button" class="download-munasib-image-btn bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1" data-jamia-name="${jamiaName}">
-                                            <i class="fas fa-image fa-sm pointer-events-none"></i> Download Image
-                                      </button>
-                                 </div>
-                             </td>
-                         </tr>`;
-                 
-                 sortedTeacherIds.forEach(teacherId => {
-                     const teacherData = teachersInJamia[teacherId];
-                     const periods = teacherData.periods;
-                     
-                     // Agar backend se wazahat save hogi, to wo yaha read kar lenge.
-                     // Filhal agar periods[0].wazahatText ho to wo uthega warna khali rahega.
-                     const wazahatText = periods[0].wazahatText || '';
-                     
-                     periods.forEach((period, index) => {
-                          const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
-                          const structureJamia = structure.find(j => j.jamiaName === jamiaName);
-                          const structureTeacher = structureJamia?.teachers.find(t => t.id === teacherId);
-                          const structurePeriod = structureTeacher?.periods.find(p => p.id === period.periodId);
-                          const totalPagesSem = structurePeriod?.totalPages || 'N/A';
-                          const className = structurePeriod?.className || 'N/A';
-                          
-                          const cumulativeTaught = calculateCumulativeTaught(period.periodId, semester, monthNum, yearNum, allYearReportsData); 
-                          
-                          html += `
-                              <tr>
-                                  ${index === 0 ? 
-                                       `<td rowspan="${periods.length}" class="urdu-font text-red-800 font-semibold bg-red-100/50">${period.teacherName}</td>` : ''
-                                  }
-                                  <td class="urdu-font">${className}</td>
-                                  <td class="urdu-font">${period.bookName}</td>
-                                  <td class="font-medium">${totalPagesSem}</td>
-                                  <td class="font-bold text-center text-blue-700">${cumulativeTaught}</td>
-                                  <td class="font-medium">${period.monthlyTarget}</td>
-                                  <td>${period.pagesTaught}</td>
-                                  <td class="font-medium color-munasib">${period.achievement}%</td>
-                                  <td class="font-bold color-munasib">${period.kaifiyat}</td>
-                                  
-                                  <!-- WAZAHAT COLUMN LOGIC -->
-                                  ${index === 0 ? 
-                                       `<td rowspan="${periods.length}" class="text-center align-middle p-2 bg-gray-50" style="min-width: 170px;">
-                                            <div class="text-sm text-gray-700 urdu-font mb-2 leading-relaxed whitespace-pre-wrap">${wazahatText}</div>
-                                            <button type="button" class="copy-wazahat-link-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg flex items-center justify-center gap-1 w-full mx-auto shadow-sm" data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-teacher-name="${period.teacherName}">
-                                                <i class="fas fa-link fa-sm pointer-events-none"></i> Copy Form Link
-                                            </button>
-                                        </td>` : ''
-                                  }
-                              </tr>
-                          `;
-                     });
-                 });
-             });
+    let html = `
+        <div class="overflow-x-auto border rounded-lg shadow-md reporting-table-container">
+            <table class="min-w-full text-sm bg-white" id="munasib-report-table">
+                <tbody>
+    `;
 
-             html += `</tbody></table></div>`;
-             monthlyMunasibContainer.innerHTML = html;
-        };
+    const sortedJamiaNames = Object.keys(periodsByJamia).sort();
+
+    sortedJamiaNames.forEach(jamiaName => {
+        const teachersInJamia = periodsByJamia[jamiaName];
+        const sortedTeacherIds = Object.keys(teachersInJamia).sort();
+        
+        // 1. Jamia Row
+        html += `<tr class="jamia-header munasib-jamia-header bg-blue-50" data-jamia-name-for-image="${jamiaName}">
+                    <td colspan="10" class="p-3 border-b-2 border-blue-200">
+                        <div class="flex justify-between items-center w-full">
+                             <span class="urdu-font text-lg font-bold text-blue-900">${jamiaName}</span>
+                             <button type="button" class="download-munasib-image-btn bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-1 px-3 rounded flex items-center gap-1 shadow-sm" data-jamia-name="${jamiaName}">
+                                   <i class="fas fa-image fa-sm pointer-events-none"></i> Download Image
+                             </button>
+                        </div>
+                    </td>
+                </tr>`;
+        
+        // 2. Headers Row (Har Jamia ke theek neeche)
+        html += `<tr class="bg-red-50 text-red-800 border-b border-red-200 font-semibold text-xs md:text-sm">
+                    <td class="p-2 text-center border-l border-r border-red-200">Teacher</td>
+                    <td class="p-2 text-center border-r border-red-200">Class</td>
+                    <td class="p-2 text-center border-r border-red-200">Book</td>
+                    <td class="p-2 text-center border-r border-red-200">Total Pages (Sem)</td> 
+                    <td class="p-2 text-center border-r border-red-200">Total Taught (Cum.)</td>
+                    <td class="p-2 text-center border-r border-red-200">Monthly Target</td>
+                    <td class="p-2 text-center border-r border-red-200">Pages Taught</td>
+                    <td class="p-2 text-center border-r border-red-200">Achievement %</td>
+                    <td class="p-2 text-center border-r border-red-200">Kaifiyat (Status)</td>
+                    <td class="p-2 text-center border-r border-red-200">Wazahat (وضاحت)</td>
+                </tr>`;
+
+        // 3. Teachers & Periods Loop
+        sortedTeacherIds.forEach(teacherId => {
+            const teacherData = teachersInJamia[teacherId];
+            const periods = teacherData.periods;
+            
+            // Database se aai hui wazahat
+            const wazahatText = wazahatMap[`${jamiaName}_${teacherData.name}`] || '';
+            
+            periods.forEach((period, index) => {
+                const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+                const structureJamia = structure.find(j => j.jamiaName === jamiaName);
+                const structureTeacher = structureJamia?.teachers.find(t => t.id === teacherId);
+                const structurePeriod = structureTeacher?.periods.find(p => p.id === period.periodId);
+                const totalPagesSem = structurePeriod?.totalPages || 'N/A';
+                const className = structurePeriod?.className || 'N/A';
+                
+                const cumulativeTaught = calculateCumulativeTaught(period.periodId, semester, monthNum, yearNum, allYearReportsData); 
+                
+                html += `
+                    <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-150">
+                        ${index === 0 ? 
+                             `<td rowspan="${periods.length}" class="urdu-font text-red-800 font-semibold bg-red-100/30 text-center align-middle p-2 border-l border-r border-gray-200">${period.teacherName}</td>` : ''
+                        }
+                        <td class="urdu-font text-center p-2 border-r border-gray-200">${className}</td>
+                        <td class="urdu-font text-center p-2 border-r border-gray-200">${period.bookName}</td>
+                        <td class="font-medium text-center p-2 border-r border-gray-200">${totalPagesSem}</td>
+                        <td class="font-bold text-center text-blue-700 p-2 border-r border-gray-200">${cumulativeTaught}</td>
+                        <td class="font-medium text-center p-2 border-r border-gray-200">${period.monthlyTarget}</td>
+                        <td class="text-center p-2 border-r border-gray-200">${period.pagesTaught}</td>
+                        <td class="font-medium color-munasib text-center p-2 border-r border-gray-200">${period.achievement}%</td>
+                        <td class="font-bold color-munasib text-center p-2 border-r border-gray-200">${period.kaifiyat}</td>
+                        
+                        ${index === 0 ? 
+                             `<td rowspan="${periods.length}" class="text-center align-middle p-2 bg-gray-50 border-r border-gray-200" style="min-width: 200px;">
+                                  ${wazahatText ? `<div class="text-xs text-gray-800 urdu-font mb-2 leading-relaxed text-right p-2 bg-white border border-gray-300 rounded shadow-sm whitespace-pre-wrap">${wazahatText}</div>` : ''}
+                                  <button type="button" class="copy-wazahat-link-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold py-1.5 px-3 rounded flex items-center justify-center gap-1 w-max mx-auto shadow-sm" data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-teacher-name="${period.teacherName}">
+                                      <i class="fas fa-link fa-sm pointer-events-none"></i> Copy Form Link
+                                  </button>
+                              </td>` : ''
+                        }
+                    </tr>
+                `;
+            });
+        });
+    });
+
+    html += `</tbody></table></div>`;
+    monthlyMunasibContainer.innerHTML = html;
+    showLoader(false);
+};
 
         
         // NEW FUNCTION: Populate Teacher Profile Filters (FIXED LOGIC)
@@ -4343,104 +4416,88 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
 };
 
         // NEW FUNCTION: Download Monthly Munasib Image (Summary Tab)
-        const downloadMonthlyMunasibImage = async (jamiaName) => {
-            showLoader(true);
-            
-            const monthName = getMonthName(currentReportPeriod.monthNum);
-            const year = currentReportPeriod.yearNum; 
-            const userName = userProfileData.displayName || currentUser.email; 
-            
-            // Find the specific jamia's content in the Munasib table
-            const table = monthlyMunasibContainer.querySelector('#munasib-report-table');
-            if (!table) {
-                showNotification("Munasib Report table ka data nahi mila.", true);
-                showLoader(false);
-                return;
-            }
-            
-             // Create a lightweight copy of the relevant part of the DOM
-             const tempDiv = document.createElement('div');
-             tempDiv.style.width = '850px'; 
-             tempDiv.style.backgroundColor = '#ffffff';
-             tempDiv.style.padding = '25px';
-             tempDiv.style.border = '1px solid #ccc';
-             tempDiv.style.fontFamily = "Poppins, sans-serif"; 
-             tempDiv.style.direction = 'rtl'; 
+const downloadMonthlyMunasibImage = async (jamiaName) => {
+    showLoader(true);
+    
+    const monthName = getMonthName(currentReportPeriod.monthNum);
+    const year = currentReportPeriod.yearNum; 
+    const userName = userProfileData.displayName || currentUser.email; 
+    
+    const table = monthlyMunasibContainer.querySelector('#munasib-report-table');
+    if (!table) {
+        showNotification("Munasib Report table ka data nahi mila.", true);
+        showLoader(false); return;
+    }
+    
+     const tempDiv = document.createElement('div');
+     tempDiv.style.width = '1000px'; 
+     tempDiv.style.backgroundColor = '#ffffff';
+     tempDiv.style.padding = '25px';
+     tempDiv.style.border = '1px solid #ccc';
+     tempDiv.style.fontFamily = "Poppins, sans-serif"; 
+     tempDiv.style.direction = 'rtl'; 
 
-             // **HEADER HTML**
-             const headerHtml = `
-                 <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #ef4444; font-weight: bold;">
-                     Monthly 'Munasib' Report
-                 </h1>
-                 <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 30px; line-height: 1.2; font-family: 'Jameel Noori Nastaleeq', serif; direction: rtl;">
-                     Jamia: ${jamiaName}
-                 </h2>
-                 <h3 style="text-align: center; font-weight: 600; margin-bottom: 10px; font-size: 18px; color: #333;">
-                     Month: ${monthName} ${year}
-                 </h3>
-             `;
+     const headerHtml = `
+         <h1 style="text-align: center; font-size: 24px; margin-bottom: 5px; color: #ef4444; font-weight: bold;">
+             Monthly 'Munasib' Report
+         </h1>
+         <h2 style="text-align: center; font-weight: bold; margin-bottom: 5px; color: #3b82f6; font-size: 30px; line-height: 1.2; font-family: 'Jameel Noori Nastaleeq', serif; direction: rtl;">
+             Jamia: ${jamiaName}
+         </h2>
+         <h3 style="text-align: center; font-weight: 600; margin-bottom: 10px; font-size: 18px; color: #333;">
+             Month: ${monthName} ${year}
+         </h3>
+     `;
+     
+     // Yahan Thead ki jarurat nahi kyunke ab headings Tbody mein hi hain.
+     let tableHTML = `<table style="width: 100%; border-collapse: collapse; font-size: 14px; text-align: center;">`;
+     let tbodyHTML = '<tbody>';
+     const tbodyRows = Array.from(table.querySelectorAll('tbody tr'));
+     let includeRow = false;
+     
+     for (const row of tbodyRows) {
+         if (row.classList.contains('munasib-jamia-header')) {
+             includeRow = (row.dataset.jamiaNameForImage === jamiaName);
+         }
+         if (includeRow) {
+             const clone = row.cloneNode(true);
+             const btn1 = clone.querySelector('.download-munasib-image-btn');
+             const btn2 = clone.querySelector('.copy-wazahat-link-btn'); // Wazahat button ko picture se gayab karna
+             if(btn1) btn1.remove();
+             if(btn2) btn2.remove(); 
              
-             // Extract relevant rows from the table, including the header
-             let tableHTML = `<table style="width: 100%; border-collapse: collapse; font-size: 14px;">`;
-             tableHTML += table.querySelector('thead').outerHTML; // Include the main red header
+             // Picture me table border fixing
+             clone.querySelectorAll('td').forEach(td => td.style.border = '1px solid #e5e7eb');
+             tbodyHTML += clone.outerHTML;
+         }
+     }
+     tbodyHTML += '</tbody>';
+     tableHTML += tbodyHTML + '</table>';
 
-             // Filter tbody to include only the Jamia's data
-             let tbodyHTML = '<tbody>';
-             const tbodyRows = Array.from(table.querySelectorAll('tbody tr'));
-             let includeRow = false;
-             
-             for (const row of tbodyRows) {
-                 if (row.classList.contains('munasib-jamia-header')) {
-                     if (row.dataset.jamiaNameForImage === jamiaName) {
-                         includeRow = true;
-                     } else {
-                         includeRow = false;
-                     }
-                 }
-                 if (includeRow) {
-                     // Clone the row, remove the image button before adding to the screenshot div
-                     const clone = row.cloneNode(true);
-                     const btn = clone.querySelector('.download-munasib-image-btn');
-                     if(btn) btn.remove();
-                     tbodyHTML += clone.outerHTML;
-                 }
-             }
-             tbodyHTML += '</tbody>';
-             tableHTML += tbodyHTML + '</table>';
+     const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
+     
+     tempDiv.innerHTML = headerHtml + tableHTML + footerHtml;
+     document.body.appendChild(tempDiv);
 
-             const footerHtml = `<p style="text-align: center; font-size: 14px; margin-top: 20px; color: #777; direction: ltr;">Report Generated by User: ${userName}</p>`;
-             
-             tempDiv.innerHTML = headerHtml + tableHTML + footerHtml;
-             document.body.appendChild(tempDiv);
-
-             try {
-                 // 4. Generate Image
-                 const canvas = await html2canvas(tempDiv, { 
-                     scale: 2, 
-                     allowTaint: true,
-                     useCORS: true
-                 });
-                 
-                 // 5. Download
-                 const image = canvas.toDataURL("image/png");
-                 const link = document.createElement('a');
-                 link.href = image;
-                 const fileName = `Munasib_Report_Jamia_${jamiaName.replace(/ /g, '_')}_${monthName}_${year}.png`;
-                 link.download = fileName;
-                 document.body.appendChild(link);
-                 link.click();
-                 document.body.removeChild(link);
-                 
-                 showNotification(`${fileName} Downloaded Successfully!`);
-             } catch (error) {
-                 console.error("Munasib Report Image generation failed:", error);
-                 showNotification("Munasib Report Image download karne me error.", true, error.message);
-             } finally {
-                 // 6. Cleanup
-                 document.body.removeChild(tempDiv);
-                 showLoader(false);
-             }
-        };
+     try {
+         const canvas = await html2canvas(tempDiv, { scale: 2, allowTaint: true, useCORS: true });
+         const image = canvas.toDataURL("image/png");
+         const link = document.createElement('a');
+         link.href = image;
+         const fileName = `Munasib_Report_Jamia_${jamiaName.replace(/ /g, '_')}_${monthName}_${year}.png`;
+         link.download = fileName;
+         document.body.appendChild(link);
+         link.click();
+         document.body.removeChild(link);
+         showNotification(`${fileName} Downloaded Successfully!`);
+     } catch (error) {
+         console.error("Munasib Report Image generation failed:", error);
+         showNotification("Munasib Report Image download karne me error.", true, error.message);
+     } finally {
+         document.body.removeChild(tempDiv);
+         showLoader(false);
+     }
+};
 
 
         // NEW FUNCTION: Download Teacher Profile Image (Complete Urdu)
