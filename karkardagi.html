@@ -230,6 +230,10 @@
                     <div class="border-b border-gray-200">
     <nav class="-mb-px flex items-center space-x-4 md:space-x-8 overflow-x-auto" aria-label="Tabs">
         <button type="button" class="tab-btn active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="reporting">Monthly Reporting</button>
+        <button data-tab="submit-status" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all duration-200 text-gray-600 hover:bg-gray-50">
+    <i class="fas fa-clipboard-list text-lg"></i>
+    <span>Submit Status</span>
+</button>
         
         <button type="button" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="summary">Summary</button> 
         
@@ -260,6 +264,27 @@
                             </div>
                         <button id="save-monthly-report-btn" class="mt-4 w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-lg">Save Monthly Report</button>
                     </div>
+
+                    <div id="submit-status-tab-content" class="tab-content hidden space-y-6">
+    <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+            <h3 class="text-2xl font-bold text-slate-800">Teacher Submission Status</h3>
+            <p class="text-sm text-gray-500 mt-1">Kis jamia ke kis ustad ne link fill ki hai aur kiski pending hai</p>
+        </div>
+        
+        <div class="flex items-center gap-3 bg-red-50 text-red-700 border border-red-100 rounded-xl px-4 py-2.5 cursor-pointer hover:bg-red-100/70 transition-colors">
+            <input type="checkbox" id="status-only-pending" class="h-4 w-4 text-red-600 rounded cursor-pointer focus:ring-red-400">
+            <label for="status-only-pending" class="text-sm font-semibold cursor-pointer select-none">Sirf Pending Dekhein</label>
+        </div>
+    </div>
+
+    <div id="submit-status-container" class="space-y-6">
+        <div class="p-8 bg-white rounded-2xl border text-center text-gray-500 font-medium">
+            <i class="fas fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
+            <p>Data load ho raha hai...</p>
+        </div>
+    </div>
+</div>
                     
                     <div id="summary-tab-content" class="tab-content hidden space-y-6">
                         
@@ -1657,164 +1682,184 @@ if (editTeacherForm) {
 };
         
                 const loadMonthlyReportData = async (forceReload = false) => {
-            if (!currentUser || !currentUser.uid) return;
-            if (!activeYear || !allAcademicYearsData[activeYear]) return;
+    if (!currentUser || !currentUser.uid) return;
+    if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
-            const { yearNum, monthNum } = currentReportPeriod;
+    const { yearNum, monthNum } = currentReportPeriod;
 
-            // 🔹 Ab cache key banayenge: ek academic year + ek month/year ka combination
-            const cacheKey = `${activeYear}|${yearNum}|${monthNum}`;
+    // 🔹 Ab cache key banayenge: ek academic year + ek month/year ka combination
+    const cacheKey = `${activeYear}|${yearNum}|${monthNum}`;
 
-            // 🔹 Agar pehle se yahi month/year load ho chuka hai
-            //    aur forceReload false hai, to Firestore dubara hit nahi karenge
-            if (!forceReload && cacheKey === lastLoadedReportKey && allYearReportsData.length > 0) {
-                console.log('[Karkardagi] Using cached monthly report data for', cacheKey);
-                return;
-            }
+    // 🔹 Agar pehle se yahi month/year load ho chuka hai
+    //    aur forceReload false hai, to Firestore dubara hit nahi karenge
+    if (!forceReload && cacheKey === lastLoadedReportKey && allYearReportsData.length > 0) {
+        console.log('[Karkardagi] Using cached monthly report data for', cacheKey);
+        return;
+    }
 
-            // Ab naya data load karna hai to pehle purani arrays clear karo
-            monthlyReportData = [];
-            currentMonthReport = {};
-            allYearReportsData = [];
-            teacherSubmissionsMap = new Map();
+    // Ab naya data load karna hai to pehle purani arrays clear karo
+    monthlyReportData = [];
+    currentMonthReport = {};
+    allYearReportsData = [];
+    teacherSubmissionsMap = new Map();
 
-            // Structure for name fallback
-            const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    // Structure for name fallback
+    const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
-            try {
-                // 1) Load Saved Admin Reports
-                const reportsCollectionRef = collection(db, 'monthly_reports');
-                const q = query(
-                    reportsCollectionRef,
-                    where('userId', '==', currentUser.uid),
-                    where('academicYear', '==', activeYear)
-                );
+    try {
+        // 1) Load Saved Admin Reports
+        const reportsCollectionRef = collection(db, 'monthly_reports');
+        const q = query(
+            reportsCollectionRef,
+            where('userId', '==', currentUser.uid),
+            where('academicYear', '==', activeYear)
+        );
 
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach(docSnap => {
-                    allYearReportsData.push(docSnap.data());
-                });
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach(docSnap => {
+            allYearReportsData.push(docSnap.data());
+        });
 
-                const currentReport = allYearReportsData.find(
-                    report => report.year === yearNum && report.monthNum === monthNum
-                );
+        const currentReport = allYearReportsData.find(
+            report => report.year === yearNum && report.monthNum === monthNum
+        );
 
-                if (currentReport) {
-                    currentMonthReport = currentReport;
-                    monthlyReportData = currentReport.karkardagiReport?.data || [];
-                }
+        if (currentReport) {
+            currentMonthReport = currentReport;
+            monthlyReportData = currentReport.karkardagiReport?.data || [];
+        }
 
-                // 2) Load Teacher Submissions
-                const submissionsRef = collection(db, 'teacher_submissions');
-                const submissionsQuery = query(
-                    submissionsRef,
-                    where('submissionYear', '==', yearNum),
-                    where('submissionMonth', '==', monthNum)
-                );
+        // 2) Load Teacher Submissions
+        const submissionsRef = collection(db, 'teacher_submissions');
+        const submissionsQuery = query(
+            submissionsRef,
+            where('submissionYear', '==', yearNum),
+            where('submissionMonth', '==', monthNum)
+        );
 
-                const submissionsSnap = await getDocs(submissionsQuery);
+        const submissionsSnap = await getDocs(submissionsQuery);
 
-                // --- POWERFUL LOGIC: Track Updated IDs ---
-                const updatedPeriodIds = new Set(); // Jin periods ko admin ne cheda hai
+        // --- POWERFUL LOGIC: Track Updated IDs ---
+        const updatedPeriodIds = new Set(); // Jin periods ko admin ne cheda hai
 
-                // STEP A: Pehle Admin Updates Process Karein (VIP)
-                submissionsSnap.forEach(docSnap => {
-                    const data = docSnap.data() || {};
-                    if (data.role !== 'user_update' || data.source !== 'admin') return; // 🛑 Yahan source ka check add kar diya hai
+        // STEP A: Pehle Admin Updates Process Karein (VIP)
+        submissionsSnap.forEach(docSnap => {
+            const data = docSnap.data() || {};
+            if (data.role !== 'user_update' || data.source !== 'admin') return; 
 
-                    const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
-                    const teacherId = (data.teacherId || '').toString().trim();
+            // 🟢 TIMESTAMP LOGIC ADDED HERE 🟢
+            let timestamp = data.createdAt || data.updatedAt || data.timestamp || null;
+
+            const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
+            const teacherId = (data.teacherId || '').toString().trim();
+            
+            // Smart Name Match
+            let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
+            if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
+            const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
+
+            if (Array.isArray(data.changedValues)) {
+                data.changedValues.forEach(cv => {
+                    const pTaught = parseInt(cv.pagesTaught || 0, 10);
+                    if (pTaught === 0 && (!cv.lastIbarat || cv.lastIbarat.trim() === '')) return;
+
+                    const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
                     
-                    // Smart Name Match
-                    let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
-                    if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
-                    const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
-
-                    if (Array.isArray(data.changedValues)) {
-                        data.changedValues.forEach(cv => {
-                            // Ghost Filter (Optional: Agar 0 hai aur text nahi hai to skip)
-                            const pTaught = parseInt(cv.pagesTaught || 0, 10);
-                            if (pTaught === 0 && (!cv.lastIbarat || cv.lastIbarat.trim() === '')) return;
-
-                            const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
-                            
-                            // Save to Map
-                            teacherSubmissionsMap.set(pKey, {
-                                pagesTaught: pTaught,
-                                lastIbarat: cv.lastIbarat,
-                                lastPageNo: cv.lastPageNo,
-                                isUserUpdate: true
-                            });
-
-                            // IS PERIOD ID KO BLOCK LIST MEIN DAAL DO
-                            updatedPeriodIds.add(cv.periodId);
-                        });
-                    }
-                });
-
-                // STEP B: Ab Teacher Data Process Karein (Lekin Blocked walo ko chhod dein)
-                submissionsSnap.forEach(docSnap => {
-                    const data = docSnap.data() || {};
-                    if (data.role === 'user_update') return; // Updates done
-
-                    // Agar ye Period ID pehle hi Update ho chuki hai, to Teacher ka data phenk do
-                    if (data.periodId && updatedPeriodIds.has(data.periodId)) {
-                        return; // 🛑 BLOCKED: Admin ka data pehle se majood hai
-                    }
-
-                    const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
-                    const teacherId = (data.teacherId || '').toString().trim();
-                    let periodId = (data.periodId || '').toString().trim();
-                    
-                    if (!teacherId) return;
-
-                    // ID Repair Logic (Agar Period ID change ho gayi ho)
-                    let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
-                    if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
-
-                    if (jamiaData) {
-                        const teacherData = jamiaData.teachers?.find(t => t.id === teacherId);
-                        if (teacherData && teacherData.periods) {
-                            const periodExists = teacherData.periods.some(p => p.id === periodId);
-                            if (!periodExists) {
-                                const matchingPeriod = teacherData.periods.find(p => 
-                                    p.bookName.trim() === (data.bookName || '').trim() && 
-                                    p.className.trim() === (data.className || '').trim()
-                                );
-                                if (matchingPeriod) periodId = matchingPeriod.id;
-                            }
-                        }
-                    }
-                    
-                    const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
-                    const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
-
-                    // Aggregate Logic
-                    let existingData = teacherSubmissionsMap.get(mapKey);
+                    // Save to Map (With Timestamp)
+                    let existingData = teacherSubmissionsMap.get(pKey);
                     if (!existingData) {
-                        existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false };
+                        teacherSubmissionsMap.set(pKey, {
+                            pagesTaught: pTaught,
+                            lastIbarat: cv.lastIbarat,
+                            lastPageNo: cv.lastPageNo,
+                            isUserUpdate: true,
+                            timestamp: timestamp // <-- Added
+                        });
+                    } else {
+                        existingData.pagesTaught = pTaught;
+                        existingData.lastIbarat = cv.lastIbarat;
+                        existingData.lastPageNo = cv.lastPageNo;
+                        if (timestamp && (!existingData.timestamp || timestamp > existingData.timestamp)) {
+                            existingData.timestamp = timestamp; // <-- Update to latest time
+                        }
+                        teacherSubmissionsMap.set(pKey, existingData);
                     }
-                    
-                    existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
-                    if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
-                    if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
-                    
-                    teacherSubmissionsMap.set(mapKey, existingData);
+
+                    // IS PERIOD ID KO BLOCK LIST MEIN DAAL DO
+                    updatedPeriodIds.add(cv.periodId);
                 });
-
-                console.log('Loaded Data Map (Priority Fixed with Blocking):', teacherSubmissionsMap);
-
-                // ✅ Last successfully loaded key yaad rakh lete hain
-                lastLoadedReportKey = cacheKey;
-
-            } catch (error) {
-                console.error(`Error loading report data:`, error);
-                showNotification("Report data load error.", true, error.message);
             }
-        };
+        });
 
+        // STEP B: Ab Teacher Data Process Karein (Lekin Blocked walo ko chhod dein)
+        submissionsSnap.forEach(docSnap => {
+            const data = docSnap.data() || {};
+            if (data.role === 'user_update') return; // Updates done
 
-        
+            // Agar ye Period ID pehle hi Update ho chuki hai, to Teacher ka data phenk do
+            if (data.periodId && updatedPeriodIds.has(data.periodId)) {
+                return; // 🛑 BLOCKED: Admin ka data pehle se majood hai
+            }
+
+            // 🟢 TIMESTAMP LOGIC ADDED HERE 🟢
+            let timestamp = data.createdAt || data.updatedAt || data.timestamp || null;
+
+            const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
+            const teacherId = (data.teacherId || '').toString().trim();
+            let periodId = (data.periodId || '').toString().trim();
+            
+            if (!teacherId) return;
+
+            // ID Repair Logic
+            let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
+            if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
+
+            if (jamiaData) {
+                const teacherData = jamiaData.teachers?.find(t => t.id === teacherId);
+                if (teacherData && teacherData.periods) {
+                    const periodExists = teacherData.periods.some(p => p.id === periodId);
+                    if (!periodExists) {
+                        const matchingPeriod = teacherData.periods.find(p => 
+                            p.bookName.trim() === (data.bookName || '').trim() && 
+                            p.className.trim() === (data.className || '').trim()
+                        );
+                        if (matchingPeriod) periodId = matchingPeriod.id;
+                    }
+                }
+            }
+            
+            const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
+            const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
+
+            // Aggregate Logic (With Time Tracking)
+            let existingData = teacherSubmissionsMap.get(mapKey);
+            if (!existingData) {
+                existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false, timestamp: timestamp }; // <-- Added
+            } else {
+                // 🟢 Update to Latest Timestamp
+                if (timestamp && (!existingData.timestamp || timestamp > existingData.timestamp)) {
+                    existingData.timestamp = timestamp;
+                }
+            }
+            
+            existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
+            if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
+            if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
+            
+            teacherSubmissionsMap.set(mapKey, existingData);
+        });
+
+        console.log('Loaded Data Map (Priority Fixed with Blocking & Timestamp):', teacherSubmissionsMap);
+
+        // ✅ Last successfully loaded key yaad rakh lete hain
+        lastLoadedReportKey = cacheKey;
+
+    } catch (error) {
+        console.error(`Error loading report data:`, error);
+        showNotification("Report data load error.", true, error.message);
+    }
+};
+  
         // --- MONTH & JAMIA FILTER LOGIC (Updated for No Deadline) ---
         
         // 🎯 FIX 4: MAX MONTH FILTER LOGIC HATA DIYA GAYA
@@ -3567,8 +3612,7 @@ let rowHtml = `
             restoreAccordionState(); 
         };
         
-        // --- SUMMARY TAB LOGIC ---
-        
+          
         // Handle Sub-Tab Switch (Monthly Munasib / Teacher Profile)
         const handleSubTabSwitch = (e) => {
             const tabId = e.target.dataset.subTab;
@@ -5104,57 +5148,78 @@ const downloadAllJamiaProfilesImage = async (e) => {
         showLoader(false);
     }
 };
-        // --- Tab Switching (Updated for Sub-Tabs) ---
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const tabId = e.target.dataset.tab;
-                // Button Element Select karein
+        // --- Tab Switching (Updated for Sub-Tabs & Main Tabs) ---
+tabButtons.forEach(button => {
+    button.addEventListener('click', (e) => {
+        // e.currentTarget use karna behtar hai taake agar button ke andar icon par click ho tab bhi sahi id mile
+        const targetBtn = e.currentTarget;
+        const tabId = targetBtn.dataset.tab;
+        
+        // Button Element Select karein
         const sigBtn = document.getElementById('manage-sigs-btn');
 
         // --- NEW LOGIC: Sirf 'setup' tab par button dikhana ---
         if (tabId === 'setup') {
-            sigBtn.classList.remove('hidden'); // Show button
-            sigBtn.classList.add('flex');      // Use flex for alignment
+            if (sigBtn) {
+                sigBtn.classList.remove('hidden'); // Show button
+                sigBtn.classList.add('flex');      // Use flex for alignment
+            }
         } else {
-            sigBtn.classList.add('hidden');    // Hide button
-            sigBtn.classList.remove('flex');
+            if (sigBtn) {
+                sigBtn.classList.add('hidden');    // Hide button
+                sigBtn.classList.remove('flex');
+            }
         }
-                
-                tabButtons.forEach(btn => {
-                    btn.classList.remove('active', 'bg-emerald-600', 'text-white');
-                    btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-                });
-                
-                e.target.classList.add('active', 'bg-emerald-600', 'text-white');
-                e.target.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
-
-                tabContents.forEach(content => content.classList.add('hidden'));
-                document.getElementById(`${tabId}-tab-content`).classList.remove('hidden');
-                
-                // If switching to summary tab, ensure all summary views are updated
-                                if (tabId === 'summary') {
-                    const currentReportMonthValue = reportMonthSelect.value;
-                    if (currentReportMonthValue) {
-                         summaryMonthSelect.value = currentReportMonthValue;
-                         teacherProfileMonthSelect.value = currentReportMonthValue;
-                    }
-
-                    // 🔹 Sirf tabhi Firestore se read karo jab data hi loaded na ho
-                    if (!lastLoadedReportKey || allYearReportsData.length === 0) {
-                        loadMonthlyReportData(true).then(renderSummaryTab);
-                    } else {
-                        renderSummaryTab();
-                    }
-                }
-                
-                // If switching to reporting tab, ensure it's rendered with current default period
-                if (tabId === 'reporting') {
-                    populateMonthSelector();
-                    populateReportingJamiaFilter(); // Repopulate Jamia filter
-                    renderReportingTab();
-                }
-            });
+        
+        tabButtons.forEach(btn => {
+            btn.classList.remove('active', 'bg-emerald-600', 'text-white');
+            btn.classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
         });
+        
+        targetBtn.classList.add('active', 'bg-emerald-600', 'text-white');
+        targetBtn.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+
+        tabContents.forEach(content => content.classList.add('hidden'));
+        
+        const activeTabContent = document.getElementById(`${tabId}-tab-content`);
+        if (activeTabContent) {
+            activeTabContent.classList.remove('hidden');
+        }
+        
+        // If switching to summary tab, ensure all summary views are updated
+        if (tabId === 'summary') {
+            const currentReportMonthValue = reportMonthSelect.value;
+            if (currentReportMonthValue) {
+                summaryMonthSelect.value = currentReportMonthValue;
+                teacherProfileMonthSelect.value = currentReportMonthValue;
+            }
+
+            // 🔹 Sirf tabhi Firestore se read karo jab data hi loaded na ho
+            if (!lastLoadedReportKey || allYearReportsData.length === 0) {
+                loadMonthlyReportData(true).then(renderSummaryTab);
+            } else {
+                renderSummaryTab();
+            }
+        }
+        
+        // If switching to reporting tab, ensure it's rendered with current default period
+        if (tabId === 'reporting') {
+            populateMonthSelector();
+            populateReportingJamiaFilter(); // Repopulate Jamia filter
+            renderReportingTab();
+        }
+
+        // 🟢 STEP 3: Naye "Submit Status" tab ka logic 🟢
+        if (tabId === 'submit-status') {
+            // 🔹 Summary tab ki tarah yahan bhi caching check lagaya hai
+            if (!lastLoadedReportKey || allYearReportsData.length === 0) {
+                loadMonthlyReportData(true).then(renderSubmitStatusReport);
+            } else {
+                renderSubmitStatusReport();
+            }
+        }
+    });
+});
         
         // Ensure initial active tab is styled correctly
         document.addEventListener('DOMContentLoaded', () => {
@@ -5299,6 +5364,139 @@ const downloadAllJamiaProfilesImage = async (e) => {
         }
     }
 });
+
+        const renderSubmitStatusReport = () => {
+    const container = document.getElementById('submit-status-container');
+    const onlyPendingCheckbox = document.getElementById('status-only-pending');
+    const onlyPending = onlyPendingCheckbox ? onlyPendingCheckbox.checked : false;
+
+    if (!activeYear || !allAcademicYearsData[activeYear]) {
+        container.innerHTML = `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500">Pehle academic year select karein.</div>`;
+        return;
+    }
+
+    const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    if (structure.length === 0) {
+        container.innerHTML = `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500">Koi structure data nahi mila.</div>`;
+        return;
+    }
+
+    let html = '';
+    let hasAnyData = false;
+
+    // Jamias ko alphabetically sort karein
+    const sortedJamias = [...structure].sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
+
+    sortedJamias.forEach(jamia => {
+        const jamiaName = jamia.jamiaName;
+        const teachers = jamia.teachers || [];
+        if (teachers.length === 0) return;
+
+        let jamiaRows = '';
+        let srNo = 1;
+        let submittedCount = 0;
+
+        // Teachers ko naam ke hisab se sort karein
+        const sortedTeachers = [...teachers].sort((a, b) => a.name.localeCompare(b.name));
+
+        sortedTeachers.forEach(teacher => {
+            const teacherId = teacher.id;
+            let isSubmitted = false;
+            let submitDateStr = '-';
+            let latestTimestampObj = null;
+
+            // Check if form is filled via submissions map
+            for (let [key, val] of teacherSubmissionsMap.entries()) {
+                if (key.startsWith(`${jamiaName}::${teacherId}::`)) {
+                    isSubmitted = true;
+                    if (val.timestamp) {
+                        if (!latestTimestampObj || val.timestamp > latestTimestampObj) {
+                            latestTimestampObj = val.timestamp;
+                        }
+                    }
+                }
+            }
+
+            // Fallback checking from monthlyReportData array
+            if (!isSubmitted) {
+                const savedEntry = monthlyReportData.find(e => e.jamiaName === jamiaName && e.teacherId === teacherId);
+                if (savedEntry && (savedEntry.pagesTaught > 0 || savedEntry.lastIbarat)) {
+                    isSubmitted = true;
+                }
+            }
+
+            // Filter: Agar sirf pending dekhna ho to submitted wale skip karein
+            if (onlyPending && isSubmitted) return;
+
+            if (isSubmitted) submittedCount++;
+
+            // Format date and time
+            if (latestTimestampObj) {
+                const dateObj = latestTimestampObj.toDate ? latestTimestampObj.toDate() : new Date(latestTimestampObj);
+                submitDateStr = dateObj.toLocaleDateString('ur-PK') + " &bull; " + dateObj.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
+            } else if (isSubmitted) {
+                submitDateStr = '<span class="text-xs text-slate-400">Saved</span>';
+            }
+
+            const statusBadge = isSubmitted 
+                ? `<span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center gap-1"><i class="fas fa-check-circle text-[10px]"></i> Submitted</span>` 
+                : `<span class="bg-rose-50 text-rose-700 text-xs font-semibold px-2.5 py-1 rounded-lg border border-rose-200 inline-flex items-center gap-1"><i class="fas fa-clock text-[10px]"></i> Pending</span>`;
+
+            jamiaRows += `
+                <tr class="hover:bg-slate-50/80 transition-colors border-b border-gray-100">
+                    <td class="p-3 text-center text-gray-400 font-bold">${srNo++}</td>
+                    <td class="p-3 text-right urdu-font font-medium text-slate-800">${teacher.name}</td>
+                    <td class="p-3 text-center">${statusBadge}</td>
+                    <td class="p-3 text-center text-xs font-mono text-slate-600" dir="ltr">${submitDateStr}</td>
+                </tr>
+            `;
+        });
+
+        if (jamiaRows !== '') {
+            hasAnyData = true;
+            html += `
+                <div class="border border-gray-100 rounded-2xl shadow-sm bg-white overflow-hidden">
+                    <div class="bg-slate-50/60 border-b border-gray-100 px-5 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <h4 class="text-lg font-bold text-slate-800 urdu-font">${jamiaName}</h4>
+                        <div class="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border shadow-sm whitespace-nowrap">
+                            Total: ${teachers.length} | Submitted: <span class="text-emerald-600">${submittedCount}</span> | Pending: <span class="text-rose-600">${teachers.length - submittedCount}</span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm operations-table">
+                            <thead class="bg-slate-50/30 text-slate-500 border-b">
+                                <tr>
+                                    <th class="p-3 w-16 text-center font-bold">SR.</th>
+                                    <th class="p-3 text-right font-bold urdu-font">استاد کا نام</th>
+                                    <th class="p-3 text-center font-bold">Status</th>
+                                    <th class="p-3 text-center font-bold">Submission Time & Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${jamiaRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    if (!hasAnyData) {
+        if (onlyPending) {
+            container.innerHTML = `
+                <div class="p-8 bg-emerald-50 rounded-2xl border border-emerald-100 text-center max-w-xl mx-auto mt-4">
+                    <i class="fas fa-check-circle text-emerald-500 text-4xl mb-3"></i>
+                    <h5 class="text-xl font-bold text-emerald-900 urdu-font">الحمدللہ!</h5>
+                    <p class="text-emerald-700 mt-1 font-medium text-sm">Sabhi asatiza ne apni report jama kar di hai. Koi bhi pending nahi hai.</p>
+                </div>`;
+        } else {
+            container.innerHTML = `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500">Koi data available nahi hai.</div>`;
+        }
+    } else {
+        container.innerHTML = html;
+    }
+};
 
         // --- Init ---
         initApp();
