@@ -2,7 +2,7 @@ import { collection, query, where, getDocs, doc, deleteDoc, updateDoc } from "ht
 
 let _db, _assignedJamiaat, _currentUser;
 let _allRecords = []; 
-let _currentEditRecord = null; // Edit hone wale record ka data store karne k liye
+let _currentEditRecord = null; 
 
 export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) {
     _db = db; _assignedJamiaat = assignedJamiaat; _currentUser = currentUser;
@@ -12,7 +12,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         container.innerHTML = '<div class="p-8 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</div>';
         return;
     }
-  
+
     container.innerHTML = '<div class="p-8 text-center text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i> Data load ho raha hai...</div>';
 
     try {
@@ -29,6 +29,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             return;
         }
 
+        // Dropdowns ke liye unique values nikalna
         const uniqueJamias = [...new Set(_allRecords.map(r => r.jamiaName).filter(Boolean))].sort();
         const uniqueClasses = [...new Set(_allRecords.map(r => r.jmClass).filter(Boolean))].sort();
         const uniqueAdmissions = [...new Set(_allRecords.map(r => r.admissionType).filter(Boolean))].sort();
@@ -154,7 +155,7 @@ window.renderEnrollmentTableRows = (records) => {
                 <td class="p-3 text-center">${statusBadge}</td>
                 <td class="p-3 text-center">
                     <button onclick="window.openEditModal('${r.id}')" class="text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 p-1.5 rounded mr-1 transition" title="Edit"><i class="fas fa-edit"></i></button>
-                    <button onclick="window.deleteEnrollmentRecord('${r.id}', '${r.studentName}')" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded transition" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                    <button onclick="window.deleteEnrollmentRecord('${r.id}', '${r.studentName.replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded transition" title="Delete"><i class="fas fa-trash-alt"></i></button>
                 </td>
             </tr>
         `;
@@ -179,8 +180,11 @@ window.applyEnrollmentFilters = () => {
     window.renderEnrollmentTableRows(filtered);
 };
 
+// ══════════════════════════════════════════════════
+// 🛑 DELETE LOGIC (Dono Jagah Se Live Hata Dega)
+// ══════════════════════════════════════════════════
 window.deleteEnrollmentRecord = async (docId, name) => {
-    if(!confirm(`Kya aap waqai "${name}" ki entry delete karna chahte hain?`)) return;
+    if(!confirm(`Kya aap waqai "${name}" ki entry delete karna chahte hain? Yeh Cloud database se mukammal khatam ho jayegi.`)) return;
     try {
         await deleteDoc(doc(_db, "enrollment_records", docId));
         _allRecords = _allRecords.filter(r => r.id !== docId);
@@ -192,9 +196,10 @@ window.deleteEnrollmentRecord = async (docId, name) => {
 };
 
 // ══════════════════════════════════════════════════
-// EDIT MODAL LOGIC (Dynamic Full Form)
+// EDIT MODAL LOGIC (Form Wale Dropdowns)
 // ══════════════════════════════════════════════════
 let _currentEditId = null;
+const QUAL_OPTIONS = ["0 Class","1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th","Graduation","Post Graduation"];
 
 window.openEditModal = (docId) => {
     _currentEditRecord = _allRecords.find(r => r.id === docId);
@@ -203,6 +208,7 @@ window.openEditModal = (docId) => {
 
     const modalBody = document.getElementById('edit-modal-body');
     const r = _currentEditRecord;
+    const uniqueClasses = [...new Set(_allRecords.map(x => x.jmClass).filter(Boolean))].sort();
     
     modalBody.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -220,7 +226,10 @@ window.openEditModal = (docId) => {
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Jamiatul Madina Class</label>
-                <input type="text" id="edit-jmclass" value="${r.jmClass || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <select id="edit-jmclass" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                    <option value="${r.jmClass || ''}">${r.jmClass || '— Select —'}</option>
+                    ${uniqueClasses.filter(c => c !== r.jmClass).map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
             </div>
         </div>
 
@@ -239,7 +248,10 @@ window.openEditModal = (docId) => {
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 mb-1">Current Qualification</label>
-                <input type="text" id="edit-qual" value="${r.currentQualification || ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                <select id="edit-qual" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                    <option value="">— Select —</option>
+                    ${QUAL_OPTIONS.map(q => `<option value="${q}" ${r.currentQualification === q ? 'selected' : ''}>${q}</option>`).join('')}
+                </select>
             </div>
         </div>
 
@@ -266,7 +278,7 @@ window.openEditModal = (docId) => {
     `;
 
     document.getElementById('edit-enrollment-modal').classList.remove('hidden');
-    window.updateDynamicFields(); // Pehli dafa khulne par required fields load karna
+    window.updateDynamicFields(); 
     document.getElementById('save-edit-btn').onclick = () => window.saveEditRecord();
 };
 
@@ -277,54 +289,143 @@ window.closeEditModal = () => {
 };
 
 // ══════════════════════════════════════════════════
-// DYNAMIC FIELDS RENDERER (Admission Type ke mutabiq)
+// DYNAMIC FIELDS RENDERER (Original Dropdowns k sath)
 // ══════════════════════════════════════════════════
 window.updateDynamicFields = () => {
     const type = document.getElementById('edit-admtype').value;
     const container = document.getElementById('dynamic-fields-container');
     const r = _currentEditRecord || {};
-
-    // Helper taake purani values usi type mein hi show hon jisme form submit hua tha
     const isSameType = r.admissionType === type;
 
     let html = '';
+    const makeOpts = (opts, sel) => opts.map(o => `<option value="${o}" ${sel===o?'selected':''}>${o}</option>`).join('');
+
     if (type === 'NIOS') {
         html = `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Class</label><input type="text" id="dyn-classLevel" value="${isSameType ? (r.classLevel||'') : ''}" placeholder="8th, 10th..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 mb-1">Class</label>
+                    <select id="dyn-classLevel" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                        <option value="">— Select —</option>
+                        ${makeOpts(['8th','10th','12th'], isSameType ? r.classLevel : '')}
+                    </select>
+                </div>
                 <div><label class="text-xs font-bold text-slate-500 mb-1">Languages (Comma , se alag karein)</label><input type="text" id="dyn-langs" value="${isSameType ? (r.languages||[]).join(', ') : ''}" placeholder="Urdu, English..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
                 <div><label class="text-xs font-bold text-slate-500 mb-1">Subjects (Comma , se alag karein)</label><input type="text" id="dyn-subs" value="${isSameType ? (r.subjects||[]).join(', ') : ''}" placeholder="Maths, Science..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
             </div>`;
+        container.innerHTML = html;
     } else if (type === 'School') {
         html = `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Class</label><input type="text" id="dyn-classLevel" value="${isSameType ? (r.classLevel||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Board</label><input type="text" id="dyn-board" value="${isSameType ? (r.board||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Stream</label><input type="text" id="dyn-stream" value="${isSameType ? (r.stream||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 mb-1">Class</label>
+                    <select id="dyn-classLevel" onchange="window.refreshEditModalSubFields()" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                        <option value="">— Select —</option>
+                        ${makeOpts(['5th','6th','7th','8th','9th','10th','11th','12th'], isSameType ? r.classLevel : '')}
+                    </select>
+                </div>
+                <div id="dyn-board-container"></div>
+                <div id="dyn-stream-container"></div>
             </div>`;
+        container.innerHTML = html;
+        window.refreshEditModalSubFields();
     } else if (type === 'Madrasa Board') {
         html = `
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Class</label><input type="text" id="dyn-classLevel" value="${isSameType ? (r.classLevel||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Stream</label><input type="text" id="dyn-stream" value="${isSameType ? (r.stream||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 mb-1">Class</label>
+                    <select id="dyn-classLevel" onchange="window.refreshEditModalSubFields()" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                        <option value="">— Select —</option>
+                        ${makeOpts(['5th','6th','7th','8th','9th','10th','11th','12th'], isSameType ? r.classLevel : '')}
+                    </select>
+                </div>
+                <div id="dyn-stream-container"></div>
             </div>`;
+        container.innerHTML = html;
+        window.refreshEditModalSubFields();
     } else if (type === 'College') {
         html = `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Degree</label><input type="text" id="dyn-degree" value="${isSameType ? (r.degree||'') : ''}" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Duration System</label><input type="text" id="dyn-duration" value="${isSameType ? (r.duration||'') : ''}" placeholder="Semester / Year" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
-                <div><label class="text-xs font-bold text-slate-500 mb-1">Session</label><input type="text" id="dyn-session" value="${isSameType ? (r.session||'') : ''}" placeholder="1st Sem..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 mb-1">Degree</label>
+                    <select id="dyn-degree" onchange="window.refreshEditModalSubFields()" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                        <option value="">— Select —</option>
+                        <optgroup label="Under-Graduate">
+                            ${makeOpts(['B.A.','B.Com','B.Sc.'], isSameType ? r.degree : '')}
+                        </optgroup>
+                        <optgroup label="Post-Graduate">
+                            ${makeOpts(['M.A.','M.Com','M.Sc.'], isSameType ? r.degree : '')}
+                        </optgroup>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 mb-1">Duration System</label>
+                    <select id="dyn-duration" onchange="window.refreshEditModalSubFields()" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                        <option value="">— Select —</option>
+                        ${makeOpts(['Semester','Year'], isSameType ? r.duration : '')}
+                    </select>
+                </div>
+                <div id="dyn-session-container"></div>
             </div>`;
+        container.innerHTML = html;
+        window.refreshEditModalSubFields();
     } else if (type === 'No Admission') {
-        html = `
-            <div><label class="text-xs font-bold text-slate-500 mb-1">Wazahat / Reason</label><textarea id="dyn-reason" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">${isSameType ? (r.reason||'') : ''}</textarea></div>`;
+        html = `<div><label class="text-xs font-bold text-slate-500 mb-1">Wazahat / Reason</label><textarea id="dyn-reason" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">${isSameType ? (r.reason||'') : ''}</textarea></div>`;
+        container.innerHTML = html;
     }
-    
-    container.innerHTML = html;
+};
+
+window.refreshEditModalSubFields = () => {
+    const type = document.getElementById('edit-admtype').value;
+    const r = _currentEditRecord || {};
+    const isSameType = r.admissionType === type;
+    const makeOpts = (opts, sel) => opts.map(o => `<option value="${o}" ${sel===o?'selected':''}>${o}</option>`).join('');
+
+    if (type === 'School') {
+        const cls = document.getElementById('dyn-classLevel').value;
+        const bCont = document.getElementById('dyn-board-container');
+        const sCont = document.getElementById('dyn-stream-container');
+        let bHtml = '', sHtml = '';
+
+        if (cls === '8th') bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Non Board'], isSameType?r.board:'')}</select>`;
+        else if (cls === '10th') bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board','CBSE'], isSameType?r.board:'')}</select>`;
+        else if (cls === '11th') sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
+        else if (cls === '12th') {
+            bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board'], isSameType?r.board:'')}</select>`;
+            sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
+        }
+        bCont.innerHTML = bHtml; sCont.innerHTML = sHtml;
+    }
+    else if (type === 'Madrasa Board') {
+        const cls = document.getElementById('dyn-classLevel').value;
+        const sCont = document.getElementById('dyn-stream-container');
+        if (cls === '11th' || cls === '12th') {
+            sCont.innerHTML = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
+        } else {
+            sCont.innerHTML = '';
+        }
+    }
+    else if (type === 'College') {
+        const deg = document.getElementById('dyn-degree').value;
+        const dur = document.getElementById('dyn-duration').value;
+        const sCont = document.getElementById('dyn-session-container');
+        const opts = {
+            'UG_Semester': ['1st Semester','2nd Semester','3rd Semester','4th Semester','5th Semester','6th Semester'],
+            'UG_Year': ['1st Year','2nd Year','3rd Year'],
+            'PG_Semester': ['1st Semester','2nd Semester','3rd Semester','4th Semester'],
+            'PG_Year': ['1st Year','2nd Year']
+        };
+        if(deg && dur) {
+            const key = (['B.A.','B.Com','B.Sc.'].includes(deg) ? 'UG' : 'PG') + '_' + dur;
+            sCont.innerHTML = `<label class="text-xs font-bold text-slate-500 mb-1">Session</label><select id="dyn-session" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(opts[key]||[], isSameType?r.session:'')}</select>`;
+        } else {
+            sCont.innerHTML = '';
+        }
+    }
 };
 
 // ══════════════════════════════════════════════════
-// SAVE EDIT LOGIC (Extracting all dynamic fields)
+// SAVE EDIT LOGIC 
 // ══════════════════════════════════════════════════
 window.saveEditRecord = async () => {
     if(!_currentEditId) return;
@@ -347,7 +448,6 @@ window.saveEditRecord = async () => {
         alert("Student aur Father ka naam zaruri hai."); return;
     }
 
-    // Naye type ke mutabiq dynamic fields nikalna
     if (admType === 'NIOS') {
         updatedData.classLevel = getVal('dyn-classLevel') || '';
         updatedData.languages = (getVal('dyn-langs') || '').split(',').map(s=>s.trim()).filter(Boolean);
