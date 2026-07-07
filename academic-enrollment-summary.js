@@ -21,7 +21,11 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             const chunk = assignedJamiaat.slice(i, i + 30);
             const q = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid), where("jamiaName", "in", chunk));
             const snap = await getDocs(q);
-            snap.forEach(doc => { _allRecords.push({ id: doc.id, ...doc.data() }); });
+            snap.forEach(doc => { 
+                // YAHAN FIX KIYA GAYA HAI: ...doc.data() pehle aur id: doc.id baad mein
+                // Taake form ki fake ID asli Firebase ID ko overwrite na kare
+                _allRecords.push({ ...doc.data(), id: doc.id }); 
+            });
         }
 
         if (_allRecords.length === 0) {
@@ -35,6 +39,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         const uniqueAdmissions = [...new Set(_allRecords.map(r => r.admissionType).filter(Boolean))].sort();
 
         let html = `
+        <!-- Filters & Search Section -->
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
@@ -69,6 +74,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             </div>
         </div>
 
+        <!-- Table Container -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                 <h4 class="font-bold text-slate-700 text-sm">Showing: <span id="record-count" class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">${_allRecords.length}</span> Students</h4>
@@ -93,6 +99,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             </div>
         </div>
 
+        <!-- Edit Modal -->
         <div id="edit-enrollment-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex justify-center items-center p-4">
             <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up">
                 <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -100,7 +107,8 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                     <button onclick="window.closeEditModal()" class="text-slate-400 hover:text-red-500 transition"><i class="fas fa-times text-lg"></i></button>
                 </div>
                 <div class="p-4 overflow-y-auto space-y-4" id="edit-modal-body">
-                    </div>
+                    <!-- Javascript se content aayega -->
+                </div>
                 <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
                     <button onclick="window.closeEditModal()" class="px-4 py-2 rounded-lg text-slate-500 font-bold hover:bg-slate-200 transition text-sm">Cancel</button>
                     <button id="save-edit-btn" class="px-5 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-sm transition text-sm flex items-center gap-2">
@@ -181,7 +189,7 @@ window.applyEnrollmentFilters = () => {
 };
 
 // ══════════════════════════════════════════════════
-// 🛑 DELETE LOGIC (Dono Jagah Se Live Hata Dega)
+// 🛑 DELETE LOGIC
 // ══════════════════════════════════════════════════
 window.deleteEnrollmentRecord = async (docId, name) => {
     if(!confirm(`Kya aap waqai "${name}" ki entry delete karna chahte hain? Yeh Cloud database se mukammal khatam ho jayegi.`)) return;
@@ -255,6 +263,7 @@ window.openEditModal = (docId) => {
             </div>
         </div>
 
+        <!-- Dynamic Fields Container -->
         <div id="dynamic-fields-container" class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
         </div>
 
