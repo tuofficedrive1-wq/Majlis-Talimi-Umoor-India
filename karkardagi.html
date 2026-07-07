@@ -5364,8 +5364,8 @@ tabButtons.forEach(button => {
         }
     }
 });
-
-        const renderSubmitStatusReport = () => {
+// Function ko window ke sath attach kiya gaya hai taake 'onchange' error na aaye
+window.renderSubmitStatusReport = () => {
     const container = document.getElementById('submit-status-container');
     const onlyPendingCheckbox = document.getElementById('status-only-pending');
     const onlyPending = onlyPendingCheckbox ? onlyPendingCheckbox.checked : false;
@@ -5381,12 +5381,84 @@ tabButtons.forEach(button => {
         return;
     }
 
-    let html = '';
-    let hasAnyData = false;
+    // --- 1. GLOBAL TOTALS CALCULATION (Top Banner ke liye) ---
+    let grandTotalJamiaat = 0;
+    let grandTotalTeachers = 0;
+    let grandTotalSubmitted = 0;
 
-    // Jamias ko alphabetically sort karein
     const sortedJamias = [...structure].sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
 
+    sortedJamias.forEach(jamia => {
+        const teachers = jamia.teachers || [];
+        if (teachers.length === 0) return;
+        
+        grandTotalJamiaat++;
+        grandTotalTeachers += teachers.length;
+
+        teachers.forEach(teacher => {
+            let isSubmitted = false;
+            for (let [key, val] of teacherSubmissionsMap.entries()) {
+                if (key.startsWith(`${jamia.jamiaName}::${teacher.id}::`)) {
+                    isSubmitted = true;
+                }
+            }
+            if (!isSubmitted) {
+                const savedEntry = monthlyReportData.find(e => e.jamiaName === jamia.jamiaName && e.teacherId === teacher.id);
+                if (savedEntry && (savedEntry.pagesTaught > 0 || savedEntry.lastIbarat)) {
+                    isSubmitted = true;
+                }
+            }
+            if (isSubmitted) grandTotalSubmitted++;
+        });
+    });
+
+    let grandTotalPending = grandTotalTeachers - grandTotalSubmitted;
+    let submitPercentage = grandTotalTeachers > 0 ? Math.round((grandTotalSubmitted / grandTotalTeachers) * 100) : 0;
+    
+    // Mahina aur Saal nikalna (e.g. June 2026)
+    const displayMonth = currentReportPeriod?.month || '';
+    const displayYear = currentReportPeriod?.yearNum || '';
+
+    // --- 2. TOP SUMMARY BANNER HTML ---
+    let html = `
+        <div class="flex flex-col lg:flex-row justify-between items-center bg-slate-900 text-white p-5 rounded-2xl shadow-md mb-6 gap-5">
+            <div class="flex items-center gap-4 w-full lg:w-auto border-b lg:border-b-0 border-slate-700 pb-4 lg:pb-0">
+                <div class="bg-teal-500/20 p-3 rounded-xl border border-teal-500/30">
+                    <i class="far fa-calendar-alt text-teal-400 text-2xl"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Report Period</p>
+                    <p class="text-xl font-bold">${displayMonth} ${displayYear}</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center justify-center gap-6 lg:gap-10 w-full lg:w-auto">
+                <div class="text-center">
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total Jamiaat</p>
+                    <p class="text-3xl font-black text-blue-400">${grandTotalJamiaat}</p>
+                </div>
+                <div class="text-center border-l border-slate-700 pl-6 lg:pl-10">
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Kul Asatiza</p>
+                    <p class="text-3xl font-black text-white">${grandTotalTeachers}</p>
+                </div>
+                <div class="text-center border-l border-slate-700 pl-6 lg:pl-10">
+                    <p class="text-[10px] text-emerald-400 uppercase tracking-widest font-bold mb-1">Report Aayi</p>
+                    <div class="flex items-center justify-center gap-2">
+                        <p class="text-3xl font-black text-emerald-400">${grandTotalSubmitted}</p>
+                        <p class="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">${submitPercentage}%</p>
+                    </div>
+                </div>
+                <div class="text-center border-l border-slate-700 pl-6 lg:pl-10">
+                    <p class="text-[10px] text-rose-400 uppercase tracking-widest font-bold mb-1">Baqi (Pending)</p>
+                    <p class="text-3xl font-black text-rose-400">${grandTotalPending}</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    let hasAnyData = false;
+
+    // --- 3. JAMIA-WISE DETAILS GENERATION ---
     sortedJamias.forEach(jamia => {
         const jamiaName = jamia.jamiaName;
         const teachers = jamia.teachers || [];
@@ -5396,7 +5468,6 @@ tabButtons.forEach(button => {
         let srNo = 1;
         let submittedCount = 0;
 
-        // Teachers ko naam ke hisab se sort karein
         const sortedTeachers = [...teachers].sort((a, b) => a.name.localeCompare(b.name));
 
         sortedTeachers.forEach(teacher => {
@@ -5405,7 +5476,6 @@ tabButtons.forEach(button => {
             let submitDateStr = '-';
             let latestTimestampObj = null;
 
-            // Check if form is filled via submissions map
             for (let [key, val] of teacherSubmissionsMap.entries()) {
                 if (key.startsWith(`${jamiaName}::${teacherId}::`)) {
                     isSubmitted = true;
@@ -5417,7 +5487,6 @@ tabButtons.forEach(button => {
                 }
             }
 
-            // Fallback checking from monthlyReportData array
             if (!isSubmitted) {
                 const savedEntry = monthlyReportData.find(e => e.jamiaName === jamiaName && e.teacherId === teacherId);
                 if (savedEntry && (savedEntry.pagesTaught > 0 || savedEntry.lastIbarat)) {
@@ -5425,12 +5494,9 @@ tabButtons.forEach(button => {
                 }
             }
 
-            // Filter: Agar sirf pending dekhna ho to submitted wale skip karein
             if (onlyPending && isSubmitted) return;
-
             if (isSubmitted) submittedCount++;
 
-            // Format date and time
             if (latestTimestampObj) {
                 const dateObj = latestTimestampObj.toDate ? latestTimestampObj.toDate() : new Date(latestTimestampObj);
                 submitDateStr = dateObj.toLocaleDateString('ur-PK') + " &bull; " + dateObj.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
@@ -5455,7 +5521,7 @@ tabButtons.forEach(button => {
         if (jamiaRows !== '') {
             hasAnyData = true;
             html += `
-                <div class="border border-gray-100 rounded-2xl shadow-sm bg-white overflow-hidden">
+                <div class="border border-gray-100 rounded-2xl shadow-sm bg-white overflow-hidden mb-6">
                     <div class="bg-slate-50/60 border-b border-gray-100 px-5 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                         <h4 class="text-lg font-bold text-slate-800 urdu-font">${jamiaName}</h4>
                         <div class="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border shadow-sm whitespace-nowrap">
@@ -5482,16 +5548,17 @@ tabButtons.forEach(button => {
         }
     });
 
+    // --- 4. RENDER ON SCREEN ---
     if (!hasAnyData) {
         if (onlyPending) {
-            container.innerHTML = `
+            container.innerHTML = html + `
                 <div class="p-8 bg-emerald-50 rounded-2xl border border-emerald-100 text-center max-w-xl mx-auto mt-4">
                     <i class="fas fa-check-circle text-emerald-500 text-4xl mb-3"></i>
-                    <h5 class="text-xl font-bold text-emerald-900 urdu-font">الحمدللہ!</h5>
+                    <h5 class="text-xl font-bold text-emerald-900 urdu-font mt-3">الحمدللہ!</h5>
                     <p class="text-emerald-700 mt-1 font-medium text-sm">Sabhi asatiza ne apni report jama kar di hai. Koi bhi pending nahi hai.</p>
                 </div>`;
         } else {
-            container.innerHTML = `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500">Koi data available nahi hai.</div>`;
+            container.innerHTML = html + `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500 mt-4">Koi data available nahi hai.</div>`;
         }
     } else {
         container.innerHTML = html;
