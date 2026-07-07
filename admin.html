@@ -5444,10 +5444,9 @@ const initDailyLogTab = () => {
 };
 
 // =========================================================================
-// 🟢 MUKAMMAL USER REPORT CARD (MULTI-MONTH MATRIX) LOGIC (With Edit Button)
+// 🟢 MUKAMMAL USER REPORT CARD (MULTI-MONTH MATRIX & NICHOD) LOGIC 
 // =========================================================================
 const generateMultiMonthReportCard = async () => {
-    // 1. Global User Filter aur Global Date Range select karein (Step 2 ka hissa)
     const userId = document.getElementById('admin-user-filter-select').value;
     const fromMonthStr = document.getElementById('rc-date-from').value; 
     const toMonthStr = document.getElementById('rc-date-to').value; 
@@ -5461,7 +5460,7 @@ const generateMultiMonthReportCard = async () => {
     container.innerHTML = `
         <div class="text-center py-16 bg-white rounded-2xl border">
             <div class="loader mx-auto mb-4"></div>
-            <p class="text-gray-500 font-medium">Chuninday mahino ka tafseeli data aur kamzoriyan calculate ho rahi hain, barahe karam intezar karein...</p>
+            <p class="text-gray-500 font-medium">Jaiza, Tests, KKd, aur Recordings ka mukammal nichod calculate ho raha hai, barahe karam intezar karein...</p>
         </div>`;
 
     try {
@@ -5474,6 +5473,10 @@ const generateMultiMonthReportCard = async () => {
             return;
         }
 
+        // Active Academic Structure for Teacher Lookup
+        const activeYearKey = userObj.academicYears ? Object.keys(userObj.academicYears).sort().reverse()[0] : null;
+        const structure = (userObj.academicYears && activeYearKey) ? userObj.academicYears[activeYearKey].karkardagiStructure : [];
+
         let start = new Date(fromMonthStr + "-01");
         let end = new Date(toMonthStr + "-01");
         let monthKeysInRange = [];
@@ -5482,11 +5485,7 @@ const generateMultiMonthReportCard = async () => {
         while (start <= end) {
             let y = start.getFullYear();
             let m = String(start.getMonth() + 1).padStart(2, '0');
-            monthKeysInRange.push({
-                key: `${y}-${m}`,
-                monthName: monthNamesMap[start.getMonth()],
-                yearNum: y
-            });
+            monthKeysInRange.push({ key: `${y}-${m}`, monthName: monthNamesMap[start.getMonth()], yearNum: y });
             start.setMonth(start.getMonth() + 1);
         }
 
@@ -5498,100 +5497,117 @@ const generateMultiMonthReportCard = async () => {
 
         const allJaizaForms = jaizaSnap.docs.map(d => d.data());
         const allTestSheets = testSnap.docs.map(d => d.data());
-        // ✨ NAYA: Report ID nikal kar array mein store kar rahe hain taake baad me Edit modal khul sake
         const allMonthlyReports = reportsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         let jamiaMatrix = {};
         assignedJamias.forEach(jamia => {
             const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
             jamiaMatrix[jName] = {
-                visitsCount: 0,
-                jaizaCount: 0,
-                pendingCount: 0,
-                totalJaizaPercSum: 0,
-                weaknesses: [], 
-                monthsData: {}
+                visitsCount: 0, jaizaCount: 0, pendingCount: 0, totalJaizaPercSum: 0,
+                monthsData: {},
+                teacherNichod: {} // ✨ NAYA: Teacher aur Book wise complete aggregate
             };
         });
 
+        // Helper function to track weakness
+        const addWeakness = (jName, teacher, className, book, source, details) => {
+            const cleanJName = jName.trim();
+            if (!jamiaMatrix[cleanJName]) return;
+            
+            let tKey = teacher || "Na-Maloom (Structure Missing)";
+            let bKey = `${className} - ${book}`;
+
+            if (!jamiaMatrix[cleanJName].teacherNichod[tKey]) {
+                jamiaMatrix[cleanJName].teacherNichod[tKey] = {};
+            }
+            if (!jamiaMatrix[cleanJName].teacherNichod[tKey][bKey]) {
+                jamiaMatrix[cleanJName].teacherNichod[tKey][bKey] = {
+                    jaiza: [], test: [], kkd: [], recording: [], kamzoriCount: 0
+                };
+            }
+            
+            jamiaMatrix[cleanJName].teacherNichod[tKey][bKey][source].push(details);
+            jamiaMatrix[cleanJName].teacherNichod[tKey][bKey].kamzoriCount++;
+        };
+
+        // HELPER: Find Teacher from Structure (For Test Sheets)
+        const findTeacherForClassAndSubject = (jamiaName, className, subject) => {
+            if (!structure) return "Na-Maloom";
+            const jStruct = structure.find(j => (j.jamiaName || '').trim().toLowerCase() === jamiaName.toLowerCase());
+            if (!jStruct || !jStruct.teachers) return "Na-Maloom";
+            
+            for (let t of jStruct.teachers) {
+                if (t.periods) {
+                    for (let p of t.periods) {
+                        if (p.className === className && p.bookName === subject) {
+                            return t.name;
+                        }
+                    }
+                }
+            }
+            return "Na-Maloom";
+        };
+
+        // 1. Process Monthly Reports (Matrix, KKd, Recording)
         monthKeysInRange.forEach(mObj => {
             const mReport = allMonthlyReports.find(r => r.month === mObj.monthName && r.year === mObj.yearNum);
             const rJaizaData = mReport?.jaizaReport?.data || [];
             const rTestData = mReport?.monthlyTest?.data || [];
-            const reportId = mReport ? mReport.id : null; // ✨ Report ki Firestore ID
+            const rKkdData = mReport?.karkardagiReport?.data || [];
+            const rTadrisData = mReport?.tadrisRecording?.data || [];
+            const reportId = mReport ? mReport.id : null;
 
+            // KKd Weaknesses (Achievement < 75%)
+            rKkdData.forEach(k => {
+                if (parseFloat(k.achievement) < 75) {
+                    addWeakness(k.jamiaName || k.jamiaId, k.teacherName, k.className || k.class || 'Unknown', k.bookName, 'kkd', `${mObj.monthName}: ${k.achievement}% Achieve hua`);
+                }
+            });
+
+            // Tadris Tasurat (Admin Comments)
+            rTadrisData.forEach(t => {
+                if (t.adminTasurat && t.adminTasurat.trim() !== "") {
+                    addWeakness(t.jamiaName, t.teacherName, t.className || 'Unknown', t.kitabName || t.bookName, 'recording', `${mObj.monthName}: ${t.adminTasurat}`);
+                }
+            });
+
+            // Grid Matrix Status Setup
             Object.keys(jamiaMatrix).forEach(jName => {
                 const cleanJ = jName.toLowerCase();
-
                 const jaizaEntry = rJaizaData.find(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
                 const testEntry = rTestData.find(t => (t.name || t.jamiaName || '').trim().toLowerCase() === cleanJ);
-
                 const detailedForms = allJaizaForms.filter(f => f.monthKey === mObj.key && (f.jamiaId || f.jamiaName || '').trim().toLowerCase() === cleanJ);
 
-                let statusText = "Nahi Hua";
-                let statusColor = "text-red-500 font-bold";
-                let jPerc = 0;
+                let statusText = "Nahi Hua"; let statusColor = "text-red-500 font-bold"; let jPerc = 0;
 
                 if (jaizaEntry) {
                     jPerc = parseFloat(jaizaEntry.percentage) || 0;
-                    const typeLow = (jaizaEntry.type || '').toLowerCase();
-                    const statLow = (jaizaEntry.status || '').toLowerCase();
-
-                    if (jPerc > 0 || statLow === 'done') {
-                        statusText = `Done (${jPerc}%)`;
-                        statusColor = "text-green-600 font-bold";
-                        jamiaMatrix[jName].jaizaCount++;
-                        jamiaMatrix[jName].totalJaizaPercSum += jPerc;
-                    } else if (typeLow.includes('nahi hua') || statLow.includes('nahi hua')) {
-                        statusText = "Nahi Hua";
-                        statusColor = "text-red-500 font-bold";
+                    if (jPerc > 0 || (jaizaEntry.status || '').toLowerCase() === 'done') {
+                        statusText = `Done (${jPerc}%)`; statusColor = "text-green-600 font-bold";
+                        jamiaMatrix[jName].jaizaCount++; jamiaMatrix[jName].totalJaizaPercSum += jPerc;
+                    } else if ((jaizaEntry.type || '').toLowerCase().includes('nahi hua')) {
                         jamiaMatrix[jName].pendingCount++;
                     } else {
-                        statusText = "Visit Only";
-                        statusColor = "text-blue-600 font-bold";
+                        statusText = "Visit Only"; statusColor = "text-blue-600 font-bold";
                         jamiaMatrix[jName].visitsCount++;
                     }
-                } else {
-                    jamiaMatrix[jName].pendingCount++;
-                }
+                } else { jamiaMatrix[jName].pendingCount++; }
 
-                let tPercText = "-";
-                if (testEntry) {
-                    tPercText = `${parseFloat(testEntry.percentage)}%`;
-                }
+                let tPercText = testEntry ? `${parseFloat(testEntry.percentage)}%` : "-";
 
+                // Jaiza Weaknesses (Score < 60%)
                 detailedForms.forEach(form => {
-                    const cName = form.className || 'Unknown Class';
                     if (Array.isArray(form.books)) {
                         form.books.forEach(b => {
                             const bPerc = parseFloat(b.percentage) || 0;
                             if (bPerc > 0 && bPerc < 60) {
-                                jamiaMatrix[jName].weaknesses.push({
-                                    month: `${mObj.monthName} ${mObj.yearNum}`,
-                                    class: cName,
-                                    book: b.bookName || 'Unknown Subject',
-                                    teacher: b.teacherName || 'Unknown Teacher',
-                                    score: bPerc
-                                });
+                                addWeakness(jName, b.teacherName, form.className, b.bookName, 'jaiza', `${mObj.monthName}: ${bPerc}% score`);
                             }
-                        });
-                    }
-                    if (form.issues && form.issues.trim() !== '' && form.issues !== 'N/A') {
-                        jamiaMatrix[jName].weaknesses.push({
-                            month: `${mObj.monthName} ${mObj.yearNum}`,
-                            class: cName,
-                            book: 'General Issues',
-                            teacher: 'N/A',
-                            score: form.issues
                         });
                     }
                 });
 
-                // ✨ NAYA: INLINE EDIT BUTTON HTML (Step 4 implemented)
-                let editBtnHtml = reportId 
-                    ? `<button onclick="window.openReportFromCard('${reportId}')" title="Edit Report" class="ml-2 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-500 hover:bg-indigo-600 hover:text-white transition shadow-sm text-[10px]"><i class="fas fa-edit"></i> Edit</button>` 
-                    : '';
-
+                let editBtnHtml = reportId ? `<button onclick="window.openReportFromCard('${reportId}')" title="Edit Report" class="ml-2 px-1.5 py-0.5 rounded border border-indigo-200 text-indigo-500 hover:bg-indigo-600 hover:text-white transition shadow-sm text-[10px]"><i class="fas fa-edit"></i></button>` : '';
                 jamiaMatrix[jName].monthsData[mObj.key] = {
                     statusHtml: `<span class="${statusColor}">${statusText}</span>`,
                     testHtml: `<div class="flex items-center justify-center gap-1"><span class="font-bold text-slate-700">${tPercText}</span> ${editBtnHtml}</div>`
@@ -5599,6 +5615,44 @@ const generateMultiMonthReportCard = async () => {
             });
         });
 
+        // 2. Process Tests (Subject-wise pass percentage < 50%)
+        allTestSheets.forEach(sheet => {
+            const jName = (sheet.jamiaName || 'Unknown').trim();
+            if (!jamiaMatrix[jName]) return;
+            
+            const monthKey = sheet.month; // e.g. "2024-08"
+            const className = sheet.class || sheet.className || 'Unknown';
+            const students = sheet.students || [];
+            
+            if (students.length === 0 || !sheet.subjects) return;
+
+            sheet.subjects.forEach(subject => {
+                let presentCount = 0;
+                let passCount = 0;
+
+                students.forEach(std => {
+                    const mark = std.marks[subject];
+                    if (mark !== undefined && mark !== 'A') {
+                        presentCount++;
+                        const isEngMath = (subject.toLowerCase().includes('english') || subject.toLowerCase().includes('math'));
+                        const passMarks = isEngMath ? 10 : 40; 
+                        if (typeof mark === 'number' && mark >= passMarks) passCount++;
+                    }
+                });
+
+                if (presentCount > 0) {
+                    const passPerc = (passCount / presentCount) * 100;
+                    if (passPerc < 50) { // Test Weakness condition
+                        const teacherName = findTeacherForClassAndSubject(jName, className, subject);
+                        addWeakness(jName, teacherName, className, subject, 'test', `${monthKey}: Sirf ${passPerc.toFixed(0)}% bachay pass hue`);
+                    }
+                }
+            });
+        });
+
+        // =======================================
+        // HTML Generation
+        // =======================================
         let finalHtml = `
             <div class="bg-slate-900 text-white p-6 rounded-2xl shadow-md flex justify-between items-center flex-wrap gap-4">
                 <div>
@@ -5612,98 +5666,103 @@ const generateMultiMonthReportCard = async () => {
                 </div>
             </div>
 
+            <!-- Matrix Table (Purana structure) -->
             <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mt-6">
-                <div class="p-4 bg-slate-50 border-b font-bold text-slate-700 text-sm">
-                    <i class="fas fa-th mr-1"></i> Multi-Month Jamia Progress Grid Matrix
-                </div>
+                <div class="p-4 bg-slate-50 border-b font-bold text-slate-700 text-sm"><i class="fas fa-th mr-1"></i> Multi-Month Jamia Progress Grid Matrix</div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs text-center border-collapse min-w-[800px]">
                         <thead>
                             <tr class="bg-slate-100 border-b border-gray-200 text-gray-700 font-bold">
                                 <th class="p-3 text-left border-r min-w-[200px]">Jamia Name</th>
-                                ${monthKeysInRange.map(m => `
-                                    <th class="p-2 border-r" colspan="2">${m.monthName.substring(0,3)} ${m.yearNum}</th>
-                                `).join('')}
+                                ${monthKeysInRange.map(m => `<th class="p-2 border-r" colspan="2">${m.monthName.substring(0,3)} ${m.yearNum}</th>`).join('')}
                             </tr>
                             <tr class="bg-slate-50 border-b text-[10px] uppercase font-bold text-gray-500">
                                 <th class="p-1 border-r"></th>
-                                ${monthKeysInRange.map(() => `
-                                    <th class="p-1 border-r bg-blue-50/50">Jaiza</th>
-                                    <th class="p-1 bg-purple-50/50">Test</th>
-                                `).join('')}
+                                ${monthKeysInRange.map(() => `<th class="p-1 border-r bg-blue-50/50">Jaiza</th><th class="p-1 bg-purple-50/50">Test</th>`).join('')}
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
                             ${Object.keys(jamiaMatrix).map(jName => {
-                                const jData = jamiaMatrix[jName];
-                                return `
-                                    <tr class="hover:bg-slate-50 transition-colors">
-                                        <td class="p-3 text-left font-bold border-r text-teal-800 text-sm urdu-font">${jName}</td>
-                                        ${monthKeysInRange.map(m => `
-                                            <td class="p-2 border-r bg-blue-50/20 text-[11px]">${jData.monthsData[m.key].statusHtml}</td>
-                                            <td class="p-2 border-r bg-purple-50/20 text-[11px]">${jData.monthsData[m.key].testHtml}</td>
-                                        `).join('')}
-                                    </tr>`;
+                                return `<tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="p-3 text-left font-bold border-r text-teal-800 text-sm urdu-font">${jName}</td>
+                                    ${monthKeysInRange.map(m => `
+                                        <td class="p-2 border-r bg-blue-50/20 text-[11px]">${jamiaMatrix[jName].monthsData[m.key].statusHtml}</td>
+                                        <td class="p-2 border-r bg-purple-50/20 text-[11px]">${jamiaMatrix[jName].monthsData[m.key].testHtml}</td>
+                                    `).join('')}
+                                </tr>`;
                             }).join('')}
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            <div class="border-t pt-2 mt-6"><h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-search-plus text-teal-600"></i> Jamia-wise Tafseeli Analysis & Subject Weakness</h3></div>
-            <div class="grid grid-cols-1 gap-6">
+            <div class="border-t pt-2 mt-8"><h3 class="text-xl font-black text-slate-800 mb-6 text-center bg-slate-100 py-3 rounded-lg"><i class="fas fa-search-plus text-teal-600 mr-2"></i> Mukammal Nichod (Teacher & Subject Wise Kamzoriyan)</h3></div>
+            <div class="grid grid-cols-1 gap-8">
         `;
 
         Object.keys(jamiaMatrix).forEach(jName => {
             const jData = jamiaMatrix[jName];
-            const avgJaiza = jData.jaizaCount > 0 ? (jData.totalJaizaPercSum / jData.jaizaCount).toFixed(1) + '%' : 'N/A';
+            
+            let nichodTableHtml = '';
+            
+            // Generate rows for each teacher and book
+            Object.keys(jData.teacherNichod).forEach(teacherName => {
+                Object.keys(jData.teacherNichod[teacherName]).forEach(bookKey => {
+                    const data = jData.teacherNichod[teacherName][bookKey];
+                    
+                    const formatList = (arr, title, colorClass) => {
+                        if (arr.length === 0) return '';
+                        return `<div class="mb-1"><span class="font-bold text-[10px] uppercase tracking-wider ${colorClass}">${title} (${arr.length} Baar):</span><ul class="list-disc pl-4 mt-0.5 space-y-0.5 text-gray-600">${arr.map(x => `<li>${x}</li>`).join('')}</ul></div>`;
+                    };
 
-            let weaknessRowsHtml = '';
-            if (jData.weaknesses.length > 0) {
-                jData.weaknesses.forEach(w => {
-                    if (typeof w.score === 'number') {
-                        weaknessRowsHtml += `
-                            <div class="flex items-start justify-between p-2.5 bg-red-50/60 rounded-lg border border-red-100 text-xs">
-                                <div>
-                                    <span class="bg-red-600 text-white font-bold px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider mr-1.5">${w.month}</span>
-                                    Darjah: <b class="text-slate-800 font-bold urdu-font">${w.class}</b> | 
-                                    Kitab: <b class="text-purple-800 font-bold urdu-font">${w.book}</b>
-                                    <div class="text-gray-500 mt-0.5"><i class="fas fa-user-tie text-[10px]"></i> Teacher: <span class="font-semibold urdu-font text-slate-700">${w.teacher}</span></div>
-                                </div>
-                                <div class="text-right"><span class="font-black text-red-600 text-sm">${w.score}%</span><br><span class="text-[9px] text-red-400 font-bold uppercase">Kamzoor Result</span></div>
-                            </div>`;
-                    } else {
-                        weaknessRowsHtml += `
-                            <div class="p-2.5 bg-amber-50/60 rounded-lg border border-amber-100 text-xs">
-                                <span class="bg-amber-600 text-white font-bold px-1.5 py-0.5 rounded text-[9px] uppercase mr-1.5">${w.month}</span>
-                                <span class="font-bold text-slate-800 underline urdu-font">Class: ${w.class} Kaifiyat:</span>
-                                <p class="text-amber-900 font-medium urdu-font mt-1 bg-white p-1.5 rounded border border-amber-100">${w.score}</p>
-                            </div>`;
-                    }
+                    const jaizaHtml = formatList(data.jaiza, 'Jaiza', 'text-blue-600');
+                    const testHtml = formatList(data.test, 'Test', 'text-purple-600');
+                    const kkdHtml = formatList(data.kkd, 'KKd (Report)', 'text-orange-600');
+                    const recHtml = formatList(data.recording, 'Recording Tasurat', 'text-teal-600');
+
+                    nichodTableHtml += `
+                        <tr class="border-b hover:bg-red-50/30 transition-colors">
+                            <td class="p-3 border-r font-bold text-slate-800 urdu-font text-sm">${teacherName}</td>
+                            <td class="p-3 border-r font-semibold text-indigo-700 urdu-font text-sm">${bookKey.split(' - ')[0]}</td>
+                            <td class="p-3 border-r font-bold text-teal-700 urdu-font text-sm">${bookKey.split(' - ')[1]}</td>
+                            <td class="p-3 border-r text-center">
+                                <div class="w-8 h-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-black mx-auto border border-red-200 shadow-sm">${data.kamzoriCount}</div>
+                            </td>
+                            <td class="p-3 text-xs leading-relaxed">
+                                ${jaizaHtml}
+                                ${testHtml}
+                                ${kkdHtml}
+                                ${recHtml}
+                            </td>
+                        </tr>
+                    `;
                 });
-            } else {
-                weaknessRowsHtml = `<p class="text-center text-xs text-emerald-600 font-bold py-4 bg-emerald-50/30 rounded-lg border border-emerald-100"><i class="fas fa-check-circle"></i> Is range ke dauran is Jamia me kisi bhi subject me koi kamzori nahi mili.</p>`;
+            });
+
+            if (nichodTableHtml === '') {
+                nichodTableHtml = `<tr><td colspan="5" class="p-6 text-center text-emerald-600 font-bold bg-emerald-50"><i class="fas fa-check-circle text-2xl mb-2 block"></i> Is Jamia mein in mahino ke dauran kisi teacher/subject mein koi bar-bar aane wali kamzori record nahi hui.</td></tr>`;
             }
 
             finalHtml += `
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden grid grid-cols-1 lg:grid-cols-3">
-                    <div class="p-5 bg-slate-50 border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col justify-between">
-                        <div>
-                            <h4 class="text-base font-black text-teal-800 urdu-font mb-1">${jName}</h4>
-                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Multi-Month Summary</p>
-                        </div>
-                        <div class="my-4 space-y-2 text-xs">
-                            <div class="flex justify-between"><span>Jaiza (Complete):</span><span class="font-bold text-green-600">${jData.jaizaCount} Baar</span></div>
-                            <div class="flex justify-between"><span>Visit (Only):</span><span class="font-bold text-blue-600">${jData.visitsCount} Baar</span></div>
-                            <div class="flex justify-between"><span>Pending / Choot Gaya:</span><span class="font-bold text-red-500">${jData.pendingCount} Mahine</span></div>
-                            <div class="flex justify-between pt-2 border-t font-bold text-sm text-slate-700"><span>Average Jaiza %:</span><span class="text-teal-700 font-black">${avgJaiza}</span></div>
-                        </div>
+                <div class="bg-white rounded-xl shadow-md border border-gray-300 overflow-hidden">
+                    <div class="p-4 bg-slate-800 border-b border-gray-200">
+                        <h4 class="text-lg font-black text-white urdu-font">${jName} <span class="text-xs font-normal text-slate-300 ml-2 tracking-wider">Tafseeli Report</span></h4>
                     </div>
-                    <div class="p-5 lg:col-span-2 flex flex-col justify-between bg-white">
-                        <h5 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><i class="fas fa-exclamation-circle text-red-500 mr-1"></i> Extracted Subject Weaknesses & Teachers</h5>
-                        <div class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                            ${weaknessRowsHtml}
-                        </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 border-b-2 border-slate-200 text-[11px] uppercase tracking-wider text-slate-600 font-bold">
+                                    <th class="p-3 border-r w-1/6">Teacher Name</th>
+                                    <th class="p-3 border-r w-1/12">Class</th>
+                                    <th class="p-3 border-r w-1/6">Kitab / Subject</th>
+                                    <th class="p-3 border-r w-1/12 text-center">Total Kamzoriyan</th>
+                                    <th class="p-3 w-1/2">Tafseel (Kab aur Kya Hua)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${nichodTableHtml}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             `;
@@ -5717,6 +5776,9 @@ const generateMultiMonthReportCard = async () => {
         container.innerHTML = `<p class="text-center text-red-500 py-10 bg-white rounded-2xl border font-bold">Error: ${err.message}</p>`;
     }
 };
+
+// Global scope me declare kar dein taake fetch data button call kar sake
+window.generateMultiMonthReportCard = generateMultiMonthReportCard;
 
 // Global scope me declare kar dein taake fetch data button call kar sake
 window.generateMultiMonthReportCard = generateMultiMonthReportCard;
