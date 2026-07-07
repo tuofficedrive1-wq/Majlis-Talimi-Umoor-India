@@ -5364,7 +5364,6 @@ tabButtons.forEach(button => {
         }
     }
 });
-// Function ko window ke sath attach kiya gaya hai taake 'onchange' error na aaye
 window.renderSubmitStatusReport = () => {
     const container = document.getElementById('submit-status-container');
     const onlyPendingCheckbox = document.getElementById('status-only-pending');
@@ -5381,7 +5380,7 @@ window.renderSubmitStatusReport = () => {
         return;
     }
 
-    // --- 1. GLOBAL TOTALS CALCULATION (Top Banner ke liye) ---
+    // --- 1. GLOBAL TOTALS CALCULATION ---
     let grandTotalJamiaat = 0;
     let grandTotalTeachers = 0;
     let grandTotalSubmitted = 0;
@@ -5415,11 +5414,10 @@ window.renderSubmitStatusReport = () => {
     let grandTotalPending = grandTotalTeachers - grandTotalSubmitted;
     let submitPercentage = grandTotalTeachers > 0 ? Math.round((grandTotalSubmitted / grandTotalTeachers) * 100) : 0;
     
-    // Mahina aur Saal nikalna (e.g. June 2026)
     const displayMonth = currentReportPeriod?.month || '';
     const displayYear = currentReportPeriod?.yearNum || '';
 
-    // --- 2. TOP SUMMARY BANNER HTML ---
+    // --- 2. TOP SUMMARY BANNER ---
     let html = `
         <div class="flex flex-col lg:flex-row justify-between items-center bg-slate-900 text-white p-5 rounded-2xl shadow-md mb-6 gap-5">
             <div class="flex items-center gap-4 w-full lg:w-auto border-b lg:border-b-0 border-slate-700 pb-4 lg:pb-0">
@@ -5458,7 +5456,7 @@ window.renderSubmitStatusReport = () => {
 
     let hasAnyData = false;
 
-    // --- 3. JAMIA-WISE DETAILS GENERATION ---
+    // --- 3. JAMIA-WISE DETAILS GENERATION (WITH BULLETPROOF TIMESTAMPS) ---
     sortedJamias.forEach(jamia => {
         const jamiaName = jamia.jamiaName;
         const teachers = jamia.teachers || [];
@@ -5474,32 +5472,55 @@ window.renderSubmitStatusReport = () => {
             const teacherId = teacher.id;
             let isSubmitted = false;
             let submitDateStr = '-';
-            let latestTimestampObj = null;
+            let latestMs = 0;
+            let latestObj = null;
 
+            // Check if form is filled via submissions map (Teacher's direct submit)
             for (let [key, val] of teacherSubmissionsMap.entries()) {
                 if (key.startsWith(`${jamiaName}::${teacherId}::`)) {
                     isSubmitted = true;
                     if (val.timestamp) {
-                        if (!latestTimestampObj || val.timestamp > latestTimestampObj) {
-                            latestTimestampObj = val.timestamp;
+                        let ms = 0;
+                        if (typeof val.timestamp.toMillis === 'function') ms = val.timestamp.toMillis();
+                        else if (val.timestamp.seconds) ms = val.timestamp.seconds * 1000;
+                        else ms = new Date(val.timestamp).getTime();
+
+                        if (ms > latestMs) {
+                            latestMs = ms;
+                            latestObj = val.timestamp;
                         }
                     }
                 }
             }
 
+            // Fallback checking from monthlyReportData array (Admin's saved data)
             if (!isSubmitted) {
                 const savedEntry = monthlyReportData.find(e => e.jamiaName === jamiaName && e.teacherId === teacherId);
                 if (savedEntry && (savedEntry.pagesTaught > 0 || savedEntry.lastIbarat)) {
                     isSubmitted = true;
+                    // Agar admin data se hai, to file save hone ka time uthayen
+                    let adminTime = currentMonthReport?.updatedAt || currentMonthReport?.createdAt || null;
+                    if (adminTime) latestObj = adminTime;
                 }
             }
 
             if (onlyPending && isSubmitted) return;
             if (isSubmitted) submittedCount++;
 
-            if (latestTimestampObj) {
-                const dateObj = latestTimestampObj.toDate ? latestTimestampObj.toDate() : new Date(latestTimestampObj);
-                submitDateStr = dateObj.toLocaleDateString('ur-PK') + " &bull; " + dateObj.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
+            // 🕒 FORMAT DATE AND TIME PROPERLY
+            if (latestObj) {
+                try {
+                    const dateObj = (typeof latestObj.toDate === 'function') 
+                        ? latestObj.toDate() 
+                        : new Date(latestObj.seconds ? latestObj.seconds * 1000 : latestObj);
+                    
+                    const formattedDate = dateObj.toLocaleDateString('ur-PK');
+                    const formattedTime = dateObj.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true});
+                    
+                    submitDateStr = `<div class="flex flex-col"><span class="text-xs font-bold text-slate-700">${formattedDate}</span><span class="text-[10px] text-slate-500">${formattedTime}</span></div>`;
+                } catch(e) {
+                    submitDateStr = '<span class="text-xs text-slate-400">Time Format Error</span>';
+                }
             } else if (isSubmitted) {
                 submitDateStr = '<span class="text-xs text-slate-400">Saved</span>';
             }
@@ -5513,7 +5534,7 @@ window.renderSubmitStatusReport = () => {
                     <td class="p-3 text-center text-gray-400 font-bold">${srNo++}</td>
                     <td class="p-3 text-right urdu-font font-medium text-slate-800">${teacher.name}</td>
                     <td class="p-3 text-center">${statusBadge}</td>
-                    <td class="p-3 text-center text-xs font-mono text-slate-600" dir="ltr">${submitDateStr}</td>
+                    <td class="p-3 text-center" dir="ltr">${submitDateStr}</td>
                 </tr>
             `;
         });
@@ -5535,7 +5556,7 @@ window.renderSubmitStatusReport = () => {
                                     <th class="p-3 w-16 text-center font-bold">SR.</th>
                                     <th class="p-3 text-right font-bold urdu-font">استاد کا نام</th>
                                     <th class="p-3 text-center font-bold">Status</th>
-                                    <th class="p-3 text-center font-bold">Submission Time & Date</th>
+                                    <th class="p-3 text-center font-bold">Submission Time</th>
                                 </tr>
                             </thead>
                             <tbody>
