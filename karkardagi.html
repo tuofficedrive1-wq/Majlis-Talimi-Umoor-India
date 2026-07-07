@@ -1680,30 +1680,22 @@ if (editTeacherForm) {
         showLoader(false);
     }
 };
-        
-                const loadMonthlyReportData = async (forceReload = false) => {
+        const loadMonthlyReportData = async (forceReload = false) => {
     if (!currentUser || !currentUser.uid) return;
     if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
     const { yearNum, monthNum } = currentReportPeriod;
-
-    // 🔹 Ab cache key banayenge: ek academic year + ek month/year ka combination
     const cacheKey = `${activeYear}|${yearNum}|${monthNum}`;
 
-    // 🔹 Agar pehle se yahi month/year load ho chuka hai
-    //    aur forceReload false hai, to Firestore dubara hit nahi karenge
     if (!forceReload && cacheKey === lastLoadedReportKey && allYearReportsData.length > 0) {
-        console.log('[Karkardagi] Using cached monthly report data for', cacheKey);
         return;
     }
 
-    // Ab naya data load karna hai to pehle purani arrays clear karo
     monthlyReportData = [];
     currentMonthReport = {};
     allYearReportsData = [];
     teacherSubmissionsMap = new Map();
 
-    // Structure for name fallback
     const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
     try {
@@ -1738,22 +1730,19 @@ if (editTeacherForm) {
         );
 
         const submissionsSnap = await getDocs(submissionsQuery);
-
-        // --- POWERFUL LOGIC: Track Updated IDs ---
-        const updatedPeriodIds = new Set(); // Jin periods ko admin ne cheda hai
+        const updatedPeriodIds = new Set(); 
 
         // STEP A: Pehle Admin Updates Process Karein (VIP)
         submissionsSnap.forEach(docSnap => {
             const data = docSnap.data() || {};
             if (data.role !== 'user_update' || data.source !== 'admin') return; 
 
-            // 🟢 TIMESTAMP LOGIC ADDED HERE 🟢
+            // 🔴 TIME NIKALNE KA PAKKA LOGIC 🔴
             let timestamp = data.submittedAt || data.updatedAt || data.createdAt || data.timestamp || null;
 
             const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
             const teacherId = (data.teacherId || '').toString().trim();
             
-            // Smart Name Match
             let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
             if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
             const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
@@ -1765,7 +1754,6 @@ if (editTeacherForm) {
 
                     const pKey = `${finalJamiaName}::${teacherId}::${cv.periodId}`;
                     
-                    // Save to Map (With Timestamp)
                     let existingData = teacherSubmissionsMap.get(pKey);
                     if (!existingData) {
                         teacherSubmissionsMap.set(pKey, {
@@ -1773,36 +1761,30 @@ if (editTeacherForm) {
                             lastIbarat: cv.lastIbarat,
                             lastPageNo: cv.lastPageNo,
                             isUserUpdate: true,
-                            timestamp: timestamp // <-- Added
+                            timestamp: timestamp // <-- Time yahan save ho raha hai
                         });
                     } else {
                         existingData.pagesTaught = pTaught;
                         existingData.lastIbarat = cv.lastIbarat;
                         existingData.lastPageNo = cv.lastPageNo;
                         if (timestamp && (!existingData.timestamp || timestamp > existingData.timestamp)) {
-                            existingData.timestamp = timestamp; // <-- Update to latest time
+                            existingData.timestamp = timestamp; 
                         }
                         teacherSubmissionsMap.set(pKey, existingData);
                     }
-
-                    // IS PERIOD ID KO BLOCK LIST MEIN DAAL DO
                     updatedPeriodIds.add(cv.periodId);
                 });
             }
         });
 
-        // STEP B: Ab Teacher Data Process Karein (Lekin Blocked walo ko chhod dein)
+        // STEP B: Ab Teacher Data Process Karein
         submissionsSnap.forEach(docSnap => {
             const data = docSnap.data() || {};
-            if (data.role === 'user_update') return; // Updates done
+            if (data.role === 'user_update') return; 
+            if (data.periodId && updatedPeriodIds.has(data.periodId)) return; 
 
-            // Agar ye Period ID pehle hi Update ho chuki hai, to Teacher ka data phenk do
-            if (data.periodId && updatedPeriodIds.has(data.periodId)) {
-                return; // 🛑 BLOCKED: Admin ka data pehle se majood hai
-            }
-
-            // 🟢 TIMESTAMP LOGIC ADDED HERE 🟢
-            let timestamp = data.createdAt || data.updatedAt || data.timestamp || null;
+            // 🔴 TIME NIKALNE KA PAKKA LOGIC 🔴
+            let timestamp = data.submittedAt || data.updatedAt || data.createdAt || data.timestamp || null;
 
             const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
             const teacherId = (data.teacherId || '').toString().trim();
@@ -1810,7 +1792,6 @@ if (editTeacherForm) {
             
             if (!teacherId) return;
 
-            // ID Repair Logic
             let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
             if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
 
@@ -1831,12 +1812,10 @@ if (editTeacherForm) {
             const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
             const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
 
-            // Aggregate Logic (With Time Tracking)
             let existingData = teacherSubmissionsMap.get(mapKey);
             if (!existingData) {
-                existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false, timestamp: timestamp }; // <-- Added
+                existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false, timestamp: timestamp }; // <-- Time yahan save ho raha hai
             } else {
-                // 🟢 Update to Latest Timestamp
                 if (timestamp && (!existingData.timestamp || timestamp > existingData.timestamp)) {
                     existingData.timestamp = timestamp;
                 }
@@ -1849,10 +1828,11 @@ if (editTeacherForm) {
             teacherSubmissionsMap.set(mapKey, existingData);
         });
 
-        console.log('Loaded Data Map (Priority Fixed with Blocking & Timestamp):', teacherSubmissionsMap);
-
-        // ✅ Last successfully loaded key yaad rakh lete hain
         lastLoadedReportKey = cacheKey;
+        // Data load hone ke baad agar Submit tab khula hai to usay update karen
+        if (typeof window.renderSubmitStatusReport === 'function') {
+            window.renderSubmitStatusReport();
+        }
 
     } catch (error) {
         console.error(`Error loading report data:`, error);
