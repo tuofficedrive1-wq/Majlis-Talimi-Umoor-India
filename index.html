@@ -3801,7 +3801,7 @@ window.switchDashTab = (tabName) => {
     activeBtn.classList.remove('text-gray-500', 'border-transparent');
     activeBtn.classList.add('text-teal-600', 'border-teal-600');
 };
-        // 🔹 Function to fetch detailed stats for Monthly Test
+// 🔹 Function to fetch detailed stats for Monthly Test and Auto-Fill Status/Percentage
 async function fetchTestStats(jamiaName, monthKey, elementId) {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -3822,23 +3822,27 @@ async function fetchTestStats(jamiaName, monthKey, elementId) {
             return;
         }
 
-        let totalClasses = snapshot.size; // Kitne documents hain (har class ka ek doc hota hai)
+        let totalClasses = snapshot.size; 
         let totalStudents = 0;
         let pdfDownloads = 0;
         let reportCardDownloads = 0;
+        
+        // NAYA: Data ko save karne ke liye array
+        const docsData = []; 
 
         snapshot.forEach(doc => {
             const data = doc.data();
+            docsData.push(data); // Percentage calculation ke liye save kiya
+
             // Students count
             if (data.students && Array.isArray(data.students)) {
                 totalStudents += data.students.length;
             }
-            // Download Counts (Agar aapne Step 2 kiya hai to ye kaam karega)
             pdfDownloads += (data.downloadCount || 0);
             reportCardDownloads += (data.reportCardCount || 0);
         });
 
-        // HTML Update karein
+        // HTML Update karein (Classes & Students Count)
         el.innerHTML = `
             <div class="flex items-center gap-3 mt-1">
                 <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
@@ -3853,6 +3857,58 @@ async function fetchTestStats(jamiaName, monthKey, elementId) {
                 <i class="fas fa-download"></i> PDF: ${pdfDownloads} | Cards: ${reportCardDownloads}
             </div>` : '' }
         `;
+
+        // ==========================================
+        // 🟢 NAYA LOGIC: Auto-fill Status and Percentage
+        // ==========================================
+        const rowEl = el.closest('.test-row'); 
+        if (rowEl) {
+            // 1. Status ko auto-select karein "Test Hua"
+            const statusSelect = rowEl.querySelector('.test-status');
+            if (statusSelect && statusSelect.value !== 'Test Hua') {
+                statusSelect.value = 'Test Hua';
+                statusSelect.dispatchEvent(new Event('change')); // Taake percentage input enable ho jaye
+            }
+
+            // 2. Percentage calculate karein
+            // Pehle direct percentage field check karega
+            const percList = docsData.map(d => {
+                let p = d.percentage || d.classPercentage || d.resultPercentage || d.totalPercentage || d.majmuiPercentage;
+                return Number(String(p || "").replace("%", "").trim());
+            }).filter(v => !isNaN(v) && v > 0);
+
+            let finalAvg = 0;
+
+            if (percList.length > 0) {
+                // Agar direct percentage mil gayi
+                const sum = percList.reduce((a, b) => a + b, 0);
+                finalAvg = sum / percList.length;
+            } else {
+                // Agar direct nahi mili toh Total Marks aur Obtained marks se nikalega
+                let totalObtained = 0;
+                let totalMax = 0;
+                docsData.forEach(d => {
+                    if (d.students && Array.isArray(d.students)) {
+                        d.students.forEach(st => {
+                            if (st.obtainedMarks !== undefined && st.totalMarks !== undefined) {
+                                totalObtained += Number(st.obtainedMarks) || 0;
+                                totalMax += Number(st.totalMarks) || 0;
+                            }
+                        });
+                    }
+                });
+                
+                if (totalMax > 0) {
+                    finalAvg = (totalObtained / totalMax) * 100;
+                }
+            }
+
+            // 3. Input field mein Percentage set karein
+            const percInput = rowEl.querySelector('.test-percentage');
+            if (percInput && !percInput.value && finalAvg > 0) {
+                percInput.value = finalAvg.toFixed(2);
+            }
+        }
 
     } catch (error) {
         console.error("Stats fetch error:", error);
