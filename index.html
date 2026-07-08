@@ -2851,11 +2851,6 @@ const renderTestTab = (currentReport) => {
                         ${actionButtons}
                         <span class="text-gray-300">|</span>
                         <input type="hidden" class="test-signature-input" value="">
-                        
-                        <button type="button" onclick="openJamiaSigModal(this.previousElementSibling, this.nextElementSibling, this)" class="add-jamia-sig-btn text-xs font-medium px-2 py-1.5 rounded border hover:bg-opacity-80 transition flex items-center whitespace-nowrap ${btnColor}">
-                            <i class="fas fa-signature mr-1"></i> ${btnText}
-                        </button>
-                        
                         <div class="sig-preview-container flex items-center">${sigDisplay}</div>
                     </div>
 
@@ -3827,13 +3822,9 @@ async function fetchTestStats(jamiaName, monthKey, elementId) {
         let pdfDownloads = 0;
         let reportCardDownloads = 0;
         
-        // NAYA: Data ko save karne ke liye array
-        const docsData = []; 
-
         snapshot.forEach(doc => {
             const data = doc.data();
-            docsData.push(data); // Percentage calculation ke liye save kiya
-
+            
             // Students count
             if (data.students && Array.isArray(data.students)) {
                 totalStudents += data.students.length;
@@ -3859,54 +3850,43 @@ async function fetchTestStats(jamiaName, monthKey, elementId) {
         `;
 
         // ==========================================
-        // 🟢 NAYA LOGIC: Auto-fill Status and Percentage
+        // 🟢 NAYA LOGIC: Summary Data se Percentage lana
         // ==========================================
         const rowEl = el.closest('.test-row'); 
         if (rowEl) {
-            // 1. Status ko auto-select karein "Test Hua"
+            let finalPercentageStr = "";
+
+            // 1. Report Document se percentage mangwayein
+            try {
+                const targetInfo = getReportingMonthYearFromInput(monthKey);
+                const { monthNum, yearNum } = targetInfo;
+                const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+                const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
+                
+                const reportSnap = await getDoc(doc(db, "monthly_reports", reportId));
+                if (reportSnap.exists()) {
+                    const testDataArray = reportSnap.data().monthlyTest?.data || [];
+                    const jamiaEntry = testDataArray.find(j => j.name === jamiaName);
+                    
+                    if (jamiaEntry && jamiaEntry.percentage) {
+                        finalPercentageStr = String(jamiaEntry.percentage).replace('%', '').trim();
+                    }
+                }
+            } catch(e) {
+                console.log("Error reading report percentage:", e);
+            }
+
+            // 2. Status aur Percentage update karein
             const statusSelect = rowEl.querySelector('.test-status');
+            const percInput = rowEl.querySelector('.test-percentage');
+            
             if (statusSelect && statusSelect.value !== 'Test Hua') {
                 statusSelect.value = 'Test Hua';
-                statusSelect.dispatchEvent(new Event('change')); // Taake percentage input enable ho jaye
+                statusSelect.dispatchEvent(new Event('change')); 
             }
-
-            // 2. Percentage calculate karein
-            // Pehle direct percentage field check karega
-            const percList = docsData.map(d => {
-                let p = d.percentage || d.classPercentage || d.resultPercentage || d.totalPercentage || d.majmuiPercentage;
-                return Number(String(p || "").replace("%", "").trim());
-            }).filter(v => !isNaN(v) && v > 0);
-
-            let finalAvg = 0;
-
-            if (percList.length > 0) {
-                // Agar direct percentage mil gayi
-                const sum = percList.reduce((a, b) => a + b, 0);
-                finalAvg = sum / percList.length;
-            } else {
-                // Agar direct nahi mili toh Total Marks aur Obtained marks se nikalega
-                let totalObtained = 0;
-                let totalMax = 0;
-                docsData.forEach(d => {
-                    if (d.students && Array.isArray(d.students)) {
-                        d.students.forEach(st => {
-                            if (st.obtainedMarks !== undefined && st.totalMarks !== undefined) {
-                                totalObtained += Number(st.obtainedMarks) || 0;
-                                totalMax += Number(st.totalMarks) || 0;
-                            }
-                        });
-                    }
-                });
-                
-                if (totalMax > 0) {
-                    finalAvg = (totalObtained / totalMax) * 100;
-                }
-            }
-
-            // 3. Input field mein Percentage set karein
-            const percInput = rowEl.querySelector('.test-percentage');
-            if (percInput && !percInput.value && finalAvg > 0) {
-                percInput.value = finalAvg.toFixed(2);
+            
+            if (percInput && !percInput.value && finalPercentageStr) {
+                percInput.value = finalPercentageStr;
             }
         }
 
