@@ -2792,14 +2792,12 @@ const renderTestTab = (currentReport) => {
     const allJamiaat = userProfileData.jamiaatList || [];
     const submittedTestData = currentReport.monthlyTest?.data || [];
     
-    // Naam ko normalize karke match karein taake case ya space ka farq na pade
     const normalizeName = (s) => (s || '').trim().toLowerCase();
     const submittedNamesSet = new Set(submittedTestData.map(t => normalizeName(t.name)));
 
-    // Jo Jamiaat submitted list mein nahi hain, wo pending mein jayengi
+    // Pending Jamiaat filter
     const pendingTests = allJamiaat.filter(name => !submittedNamesSet.has(normalizeName(name)));
 
-    // Date/Month Setup
     const entrySelector = document.getElementById("entry-month-selector");
     const monthInputFormat = (entrySelector && entrySelector.value) 
                              ? entrySelector.value 
@@ -2818,12 +2816,50 @@ const renderTestTab = (currentReport) => {
         }
 
         testListContainer.innerHTML = pendingTests.map((jamiaName, index) => {
+            // ---> PURANE BUTTONS AUR LINKS WAPAS ADD KIYE GAYE HAIN <---
+            const formUrl = `monthly-test.html?uid=${currentUser.uid}&jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthInputFormat)}`;
+            const viewUrl = `${formUrl}&mode=view`;
+
+            let actionButtons = `
+                <button type="button" onclick="navigator.clipboard.writeText('${baseUrl}${formUrl}').then(() => alert('Link Copied!'))" 
+                        class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-xs border flex items-center transition whitespace-nowrap" title="Form fill karne ke liye link copy karein">
+                    <i class="fas fa-link mr-1"></i> Copy Link
+                </button>
+                
+                <a href="${viewUrl}" target="_blank" 
+                   class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded text-xs border border-teal-700 flex items-center shadow-sm font-semibold transition whitespace-nowrap" title="Admin Edit mode me open karein">
+                    <i class="fas fa-user-edit mr-1"></i> Admin Edit
+                </a>
+            `;
+
+            const statsId = `stats-${index}`;
+            const statsHTML = `<div id="${statsId}" class="mt-2 text-xs text-gray-500 flex flex-col gap-1">
+                <span class="flex items-center"><i class="fas fa-spinner fa-spin mr-1"></i> Checking data...</span>
+            </div>`;
+
+            const sigDisplay = '';
+            const btnText = 'Add Sign';
+            const btnColor = 'text-gray-500 bg-gray-50 border-gray-300';
+
             return `
             <div class="test-row p-4 border rounded-lg bg-white shadow-sm grid grid-cols-1 md:grid-cols-12 gap-4 items-start mb-4 transition hover:shadow-md" id="test-row-${index}">
                 
                 <div class="md:col-span-4">
                     <h4 class="font-bold text-gray-800 urdu-font text-lg leading-tight mb-2">${jamiaName}</h4>
-                    <input type="hidden" class="test-signature-input" value="">
+                    
+                    <div class="flex flex-wrap items-center gap-2 mt-1">
+                        ${actionButtons}
+                        <span class="text-gray-300">|</span>
+                        <input type="hidden" class="test-signature-input" value="">
+                        
+                        <button type="button" onclick="openJamiaSigModal(this.previousElementSibling, this.nextElementSibling, this)" class="add-jamia-sig-btn text-xs font-medium px-2 py-1.5 rounded border hover:bg-opacity-80 transition flex items-center whitespace-nowrap ${btnColor}">
+                            <i class="fas fa-signature mr-1"></i> ${btnText}
+                        </button>
+                        
+                        <div class="sig-preview-container flex items-center">${sigDisplay}</div>
+                    </div>
+
+                    ${statsHTML}
                 </div>
 
                 <div class="md:col-span-2">
@@ -2852,8 +2888,14 @@ const renderTestTab = (currentReport) => {
             </div>`;
         }).join('');
 
-        // Dropdown aur inputs ke event listeners attach karein
         attachTestRowListeners();
+
+        // NAYA: Pending list ke liye purana data fetch karega taake stats show hon
+        pendingTests.forEach((jamiaName, index) => {
+            if (typeof fetchTestStats === 'function') {
+                fetchTestStats(jamiaName, monthInputFormat, `stats-${index}`);
+            }
+        });
 
     } else {
         if (testPendingTitle) testPendingTitle.classList.add('hidden');
