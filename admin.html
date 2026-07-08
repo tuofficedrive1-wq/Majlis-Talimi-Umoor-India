@@ -2786,51 +2786,34 @@ const attachSortingListeners = () => {
 };
 
 // =========================================================================
-// 🟢 ADVANCED DETAILED SUMMARY REPORT
+// 🟢 ADVANCED DETAILED SUMMARY REPORT (UPDATED WITH PENDING VS NAHI HUA)
 // =========================================================================
 const renderReportSummary = (reports) => {
     const selectedUserId = document.getElementById('admin-user-filter-select').value;
     const selectedRegion = document.getElementById('admin-region-filter-select').value;
     const selectedSection = document.getElementById('summary-section-filter').value;
     
-    // UI mein Pending Checkbox dynamically add karna
+    // UI mein Pending Checkbox dynamically add ya update karna
     let filterControlsContainer = document.getElementById('detailed-summary-extra-filters');
     if (!filterControlsContainer) {
         const parent = document.getElementById('summary-section-filter').closest('.flex-col.md\\:flex-row');
         const wrapper = document.createElement('div');
         wrapper.id = 'detailed-summary-extra-filters';
-        wrapper.className = 'flex items-center gap-2 h-[46px] px-4 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg mt-4 md:mt-0';
+        wrapper.className = 'flex items-center gap-2 h-[46px] px-4 bg-red-50 text-red-700 border border-red-200 rounded-lg mt-4 md:mt-0';
         wrapper.innerHTML = `
-            <input type="checkbox" id="detailed-only-pending" class="h-4 w-4 text-orange-600 rounded cursor-pointer">
-            <label for="detailed-only-pending" class="text-sm font-medium cursor-pointer">Sirf Pending/Nahi Hua</label>
+            <input type="checkbox" id="detailed-only-pending" class="h-4 w-4 text-red-600 rounded cursor-pointer">
+            <label for="detailed-only-pending" class="text-sm font-medium cursor-pointer">Sirf Pending (Report Submit Nahi Hui)</label>
         `;
         parent.insertBefore(wrapper, parent.lastElementChild);
         
-        // Checkbox par click karte hi list update ho
         document.getElementById('detailed-only-pending').addEventListener('change', () => {
             renderReportSummary(fetchedAdminReports);
         });
     }
     const onlyPending = document.getElementById('detailed-only-pending')?.checked || false;
 
-    if (reports.length === 0) {
-        summaryLoadingMsg.textContent = "No report data to filter. Please fetch reports first.";
-        summaryLoadingMsg.classList.remove('hidden');
-        summaryTablesContainer.classList.add('hidden');
-        return;
-    }
-
-    // 🎯 Apply Region & User Filters globally on Detailed Summary
-    const filteredReports = reports.filter(r => {
-        const u = allUsersData.find(user => user.id === r.userId);
-        if (!u) return false;
-        const matchUser = (selectedUserId === 'all') || (r.userId === selectedUserId);
-        const matchRegion = (selectedRegion === 'all') || (u.region === selectedRegion);
-        return matchUser && matchRegion;
-    });
-
-    if (filteredReports.length === 0) {
-        summaryLoadingMsg.textContent = "Is filter (User/Region) ke mutabiq koi report nahi mili.";
+    if (reports.length === 0 && allUsersData.length === 0) {
+        summaryLoadingMsg.textContent = "No data found. Please fetch reports first.";
         summaryLoadingMsg.classList.remove('hidden');
         summaryTablesContainer.classList.add('hidden');
         return;
@@ -2841,6 +2824,14 @@ const renderReportSummary = (reports) => {
 
     const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
 
+    // Filtered Users List according to top controls
+    const filteredUsers = allUsersData.filter(u => {
+        if (u.id === ADMIN_UID) return false;
+        const matchUser = (selectedUserId === 'all') || (u.id === selectedUserId);
+        const matchRegion = (selectedRegion === 'all') || (u.region === selectedRegion);
+        return matchUser && matchRegion;
+    });
+
     const jaizaSection = document.getElementById('summary-jaiza-section');
     const tadrisSection = document.getElementById('summary-tadris-section');
     const testSection = document.getElementById('summary-test-section');
@@ -2848,65 +2839,110 @@ const renderReportSummary = (reports) => {
     let dataFound = false;
 
     // ----------------------------------------------------
-    // 📊 JAIZA SECTION (With Cards & Action)
+    // 📊 JAIZA SECTION
     // ----------------------------------------------------
     if (selectedSection === 'all' || selectedSection === 'jaiza') {
         let jaizaEntries = [];
-        filteredReports.forEach(r => {
-            (r.jaizaReport?.data || []).forEach((entry, idx) => {
-                jaizaEntries.push({ ...entry, userName: getUserName(r.userId), reportId: r.id, index: idx });
+        let totalJamiaatScope = 0;
+        let totalDone = 0, totalVisit = 0, totalNahiHua = 0, totalPending = 0;
+
+        filteredUsers.forEach(user => {
+            const userJamias = user.jamiaatList || [];
+            const userReport = reports.find(r => r.userId === user.id);
+            const rJaizaData = userReport?.jaizaReport?.data || [];
+
+            userJamias.forEach((jamia, jIdx) => {
+                totalJamiaatScope++;
+                const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
+                const cleanJ = jName.toLowerCase();
+
+                // Check if report has this entry
+                const entryIndex = rJaizaData.findIndex(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
+                
+                if (userReport && entryIndex !== -1) {
+                    const item = rJaizaData[entryIndex];
+                    const perc = parseFloat(item.percentage) || 0;
+                    const typeLow = (item.type || '').toLowerCase();
+                    const statLow = (item.status || '').toLowerCase();
+
+                    let calculatedStatus = "Visit Only";
+                    if (perc > 0 || statLow === 'done') {
+                        calculatedStatus = "Done";
+                        totalDone++;
+                    } else if (typeLow.includes('nahi hua') || statLow.includes('nahi hua')) {
+                        calculatedStatus = "Nahi Hua";
+                        totalNahiHua++;
+                    } else {
+                        totalVisit++;
+                    }
+
+                    jaizaEntries.push({
+                        ...item,
+                        userName: user.name || user.email,
+                        jamiaNameFormatted: jName,
+                        calculatedStatus: calculatedStatus,
+                        reportId: userReport.id,
+                        index: entryIndex
+                    });
+                } else {
+                    // If no report or no entry found for this assigned jamia -> PENDING
+                    totalPending++;
+                    jaizaEntries.push({
+                        name: jName,
+                        jamiaNameFormatted: jName,
+                        userName: user.name || user.email,
+                        date: '-',
+                        type: 'Report Missing',
+                        percentage: 0,
+                        calculatedStatus: "Pending",
+                        reportId: null,
+                        index: -1
+                    });
+                }
             });
         });
 
-        // Calculate Totals Before "Only Pending" Filter
-        let totalDone = 0, totalVisit = 0, totalNahiHua = 0;
-        jaizaEntries.forEach(j => {
-            const type = (j.type || '').toLowerCase();
-            const status = (j.status || '').toLowerCase();
-            const perc = parseFloat(j.percentage) || 0;
-            if (perc > 0 || status === 'done') totalDone++;
-            else if (type.includes('nahi hua') || status.includes('nahi hua') || status === 'pending') totalNahiHua++;
-            else totalVisit++;
-        });
-
-        // Apply Pending Filter on Table
+        // Apply "Sirf Pending" filter
         if (onlyPending) {
-            jaizaEntries = jaizaEntries.filter(j => {
-                const type = (j.type || '').toLowerCase();
-                const status = (j.status || '').toLowerCase();
-                return type.includes('nahi hua') || status.includes('nahi hua') || status === 'pending';
-            });
+            jaizaEntries = jaizaEntries.filter(j => j.calculatedStatus === "Pending");
         }
 
         if (jaizaEntries.length > 0 || !onlyPending) {
             let jaizaHtml = `
-                <div class="mb-8">
-                    <h4 class="text-xl font-bold text-teal-800 mb-4 border-b pb-2"><i class="fas fa-clipboard-check mr-2"></i> Jaiza Report Overview</h4>
+                <div class="mb-10">
+                    <h4 class="text-xl font-bold text-teal-800 mb-4 border-b pb-2"><i class="fas fa-clipboard-check mr-2"></i> Jaiza Report Detailed Summary</h4>
                     
-                    <!-- Top Summary Cards -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
+                            <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Jamiaat</p><p class="text-2xl font-black">${totalJamiaatScope}</p></div>
+                            <i class="fas fa-university text-3xl text-slate-500"></i>
+                        </div>
                         <div class="bg-green-50 border border-green-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                            <div><p class="text-xs text-green-600 font-bold uppercase tracking-wider">Total Jaiza Done</p><p class="text-3xl font-black text-green-800">${totalDone}</p></div>
-                            <i class="fas fa-check-circle text-4xl text-green-300"></i>
+                            <div><p class="text-[10px] text-green-600 font-bold uppercase tracking-wider">Jaiza Done</p><p class="text-2xl font-black text-green-800">${totalDone}</p></div>
+                            <i class="fas fa-check-circle text-3xl text-green-300"></i>
                         </div>
                         <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                            <div><p class="text-xs text-blue-600 font-bold uppercase tracking-wider">Sirf Visit (No Marks)</p><p class="text-3xl font-black text-blue-800">${totalVisit}</p></div>
-                            <i class="fas fa-walking text-4xl text-blue-300"></i>
+                            <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Sirf Visit</p><p class="text-2xl font-black text-blue-800">${totalVisit}</p></div>
+                            <i class="fas fa-walking text-3xl text-blue-300"></i>
                         </div>
-                        <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                            <div><p class="text-xs text-red-600 font-bold uppercase tracking-wider">Pending / Nahi Hua</p><p class="text-3xl font-black text-red-800">${totalNahiHua}</p></div>
-                            <i class="fas fa-times-circle text-4xl text-red-300"></i>
+                        <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                            <div><p class="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Nahi Hua</p><p class="text-2xl font-black text-orange-800">${totalNahiHua}</p></div>
+                            <i class="fas fa-times-circle text-3xl text-orange-300"></i>
+                        </div>
+                        <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm animate-pulse">
+                            <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending (No Report)</p><p class="text-2xl font-black text-red-800">${totalPending}</p></div>
+                            <i class="fas fa-exclamation-triangle text-3xl text-red-300"></i>
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                    <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm bg-white">
                         <table class="w-full text-sm text-left sortable-table">
                             <thead class="bg-slate-100 text-slate-700 uppercase text-xs">
                                 <tr>
                                     <th class="p-3 border-r w-12 text-center">Sr</th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">User Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
-                                    <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">Jamia <i class="fas fa-sort ml-1 text-gray-400"></i></th>
-                                    <th class="p-3 border-r">Date / Type</th>
+                                    <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">Jamia Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
+                                    <th class="p-3 border-r">Date / Info</th>
                                     <th class="p-3 border-r">Status</th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none text-center" data-sort="number">Percentage <i class="fas fa-sort ml-1 text-gray-400"></i></th>
                                     <th class="p-3 text-center">Action</th>
@@ -2920,25 +2956,24 @@ const renderReportSummary = (reports) => {
                 let percDisplay = perc > 0 ? `<span class="font-bold text-teal-700 text-base">${perc}%</span>` : `<span class="text-gray-400">-</span>`;
                 
                 let statusBadge = "";
-                const typeStr = (item.type || '').toLowerCase();
-                const statusStr = (item.status || '').toLowerCase();
-                if (perc > 0 || statusStr === 'done') statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Done</span>`;
-                else if (typeStr.includes('nahi hua') || statusStr.includes('nahi hua') || statusStr === 'pending') statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold border border-red-200">Nahi Hua</span>`;
-                else statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold border border-blue-200">Visit Only</span>`;
+                if (item.calculatedStatus === "Done") statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold border border-green-200">Done</span>`;
+                else if (item.calculatedStatus === "Nahi Hua") statusBadge = `<span class="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-xs font-bold border border-orange-200">Nahi Hua</span>`;
+                else if (item.calculatedStatus === "Visit Only") statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold border border-blue-200">Visit Only</span>`;
+                else statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-black border border-red-200">Pending</span>`;
+
+                let actionBtn = item.reportId 
+                    ? `<button title="Delete Entry" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="jaizaReport" data-index="${item.index}"><i class="fas fa-trash-alt"></i></button>`
+                    : `<span class="text-gray-400 italic text-xs">No Report</span>`;
 
                 jaizaHtml += `
-                    <tr class="hover:bg-slate-50 transition-colors">
+                    <tr class="hover:bg-slate-50 transition-colors ${item.calculatedStatus === 'Pending' ? 'bg-red-50/40' : ''}">
                         <td class="p-3 border-r text-gray-500 text-center">${index + 1}</td>
                         <td class="p-3 border-r urdu-font font-semibold text-gray-700">${item.userName}</td>
-                        <td class="p-3 border-r urdu-font font-bold text-teal-800">${item.name || item.jamiaName}</td>
-                        <td class="p-3 border-r text-gray-600 text-xs"><b>${item.date || '-'}</b><br><span class="text-gray-400">${item.type}</span></td>
+                        <td class="p-3 border-r urdu-font font-bold text-teal-800">${item.jamiaNameFormatted}</td>
+                        <td class="p-3 border-r text-gray-600 text-xs"><b>${item.date || '-'}</b><br><span class="text-gray-400">${item.type || ''}</span></td>
                         <td class="p-3 border-r">${statusBadge}</td>
                         <td class="p-3 border-r text-center" data-val="${perc}">${percDisplay}</td>
-                        <td class="p-3 text-center">
-                            <button title="Delete this Jaiza" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="jaizaReport" data-index="${item.index}">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </td>
+                        <td class="p-3 text-center">${actionBtn}</td>
                     </tr>
                 `;
             });
@@ -2946,62 +2981,106 @@ const renderReportSummary = (reports) => {
             dataFound = true;
             jaizaSection.innerHTML = jaizaHtml;
         } else { 
-            jaizaSection.innerHTML = '<p class="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center border">Is filter ke liye koi Jaiza data nahi mila.</p>'; 
+            jaizaSection.innerHTML = '<p class="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center border">Koi Pending Jaiza nahi mila.</p>'; 
         }
         jaizaSection.style.display = 'block';
     } else { jaizaSection.style.display = 'none'; }
 
     // ----------------------------------------------------
-    // 📊 TEST SECTION (With Cards & Action)
+    // 📊 TEST SECTION
     // ----------------------------------------------------
     if (selectedSection === 'all' || selectedSection === 'test') {
         let testEntries = [];
-        filteredReports.forEach(r => {
-            (r.monthlyTest?.data || []).forEach((entry, idx) => {
-                testEntries.push({ ...entry, userName: getUserName(r.userId), reportId: r.id, index: idx });
-            });
-        });
+        let totalTestJamiaat = 0;
+        let totalTestDone = 0, totalTestNahiHua = 0, totalTestPending = 0;
 
-        let totalTestDone = 0, totalTestPending = 0;
-        testEntries.forEach(t => {
-            const status = (t.status || '').toLowerCase();
-            if (status.includes('done') || parseFloat(t.percentage) > 0) totalTestDone++;
-            else totalTestPending++;
+        filteredUsers.forEach(user => {
+            const userJamias = user.jamiaatList || [];
+            const userReport = reports.find(r => r.userId === user.id);
+            const rTestData = userReport?.monthlyTest?.data || [];
+
+            userJamias.forEach((jamia) => {
+                totalTestJamiaat++;
+                const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
+                const cleanJ = jName.toLowerCase();
+
+                const entryIndex = rTestData.findIndex(t => (t.name || t.jamiaName || '').trim().toLowerCase() === cleanJ);
+
+                if (userReport && entryIndex !== -1) {
+                    const item = rTestData[entryIndex];
+                    const statLow = (item.status || '').toLowerCase();
+                    let calculatedStatus = "Done";
+
+                    if (statLow.includes('pending') || statLow.includes('nahi hua') || statLow.includes('nahi ban')) {
+                        calculatedStatus = "Nahi Hua";
+                        totalTestNahiHua++;
+                    } else {
+                        totalTestDone++;
+                    }
+
+                    testEntries.push({
+                        ...item,
+                        userName: user.name || user.email,
+                        jamiaNameFormatted: jName,
+                        calculatedStatus: calculatedStatus,
+                        reportId: userReport.id,
+                        index: entryIndex
+                    });
+                } else {
+                    totalTestPending++;
+                    testEntries.push({
+                        name: jName,
+                        jamiaNameFormatted: jName,
+                        userName: user.name || user.email,
+                        status: 'Report Missing',
+                        percentage: 0,
+                        wajah: 'Zimmedar ne report submit nahi ki',
+                        calculatedStatus: "Pending",
+                        reportId: null,
+                        index: -1
+                    });
+                }
+            });
         });
 
         if (onlyPending) {
-            testEntries = testEntries.filter(t => {
-                const status = (t.status || '').toLowerCase();
-                return status.includes('pending') || status.includes('nahi');
-            });
+            testEntries = testEntries.filter(t => t.calculatedStatus === "Pending");
         }
 
         if (testEntries.length > 0 || !onlyPending) {
             let testHtml = `
-                <div class="mb-8">
-                    <h4 class="text-xl font-bold text-purple-800 mt-6 mb-4 border-b pb-2"><i class="fas fa-file-alt mr-2"></i> Monthly Test Overview</h4>
+                <div class="mb-10">
+                    <h4 class="text-xl font-bold text-purple-800 mt-6 mb-4 border-b pb-2"><i class="fas fa-file-alt mr-2"></i> Monthly Test Detailed Summary</h4>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
+                            <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Jamiaat</p><p class="text-2xl font-black">${totalTestJamiaat}</p></div>
+                            <i class="fas fa-university text-3xl text-slate-500"></i>
+                        </div>
                         <div class="bg-purple-50 border border-purple-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                            <div><p class="text-xs text-purple-600 font-bold uppercase tracking-wider">Tests Completed</p><p class="text-3xl font-black text-purple-800">${totalTestDone}</p></div>
-                            <i class="fas fa-check-double text-4xl text-purple-300"></i>
+                            <div><p class="text-[10px] text-purple-600 font-bold uppercase tracking-wider">Tests Completed</p><p class="text-2xl font-black text-purple-800">${totalTestDone}</p></div>
+                            <i class="fas fa-check-double text-3xl text-purple-300"></i>
                         </div>
                         <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                            <div><p class="text-xs text-orange-600 font-bold uppercase tracking-wider">Tests Pending</p><p class="text-3xl font-black text-orange-800">${totalTestPending}</p></div>
-                            <i class="fas fa-exclamation-triangle text-4xl text-orange-300"></i>
+                            <div><p class="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Nahi Bane (In Report)</p><p class="text-2xl font-black text-orange-800">${totalTestNahiHua}</p></div>
+                            <i class="fas fa-minus-circle text-3xl text-orange-300"></i>
+                        </div>
+                        <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm animate-pulse">
+                            <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending (No Report)</p><p class="text-2xl font-black text-red-800">${totalTestPending}</p></div>
+                            <i class="fas fa-exclamation-circle text-3xl text-red-300"></i>
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                    <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm bg-white">
                         <table class="w-full text-sm text-left sortable-table">
                             <thead class="bg-slate-100 text-slate-700 uppercase text-xs">
                                 <tr>
                                     <th class="p-3 border-r w-12 text-center">Sr</th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">User Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
-                                    <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">Jamia <i class="fas fa-sort ml-1 text-gray-400"></i></th>
+                                    <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">Jamia Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
                                     <th class="p-3 border-r">Status</th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none text-center" data-sort="number">Percentage <i class="fas fa-sort ml-1 text-gray-400"></i></th>
-                                    <th class="p-3 border-r">Wajah (If Pending)</th>
+                                    <th class="p-3 border-r">Wajah / Reason</th>
                                     <th class="p-3 text-center">Action</th>
                                 </tr>
                             </thead>
@@ -3011,21 +3090,25 @@ const renderReportSummary = (reports) => {
             testEntries.forEach((item, index) => {
                 let perc = parseFloat(item.percentage) || 0;
                 let percDisplay = perc > 0 ? `<span class="font-bold text-purple-700 text-base">${perc}%</span>` : `<span class="text-gray-400">-</span>`;
-                let statusBadge = item.status.toLowerCase().includes('done') ? `<span class="text-green-600 font-bold"><i class="fas fa-check"></i> ${item.status}</span>` : `<span class="text-orange-600 font-bold"><i class="fas fa-clock"></i> ${item.status}</span>`;
+                
+                let statusBadge = "";
+                if (item.calculatedStatus === "Done") statusBadge = `<span class="text-green-600 font-bold"><i class="fas fa-check-circle"></i> Complete</span>`;
+                else if (item.calculatedStatus === "Nahi Hua") statusBadge = `<span class="text-orange-600 font-bold"><i class="fas fa-minus-circle"></i> ${item.status}</span>`;
+                else statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-black border border-red-200">Pending</span>`;
+
+                let actionBtn = item.reportId 
+                    ? `<button title="Delete Test Entry" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="monthlyTest" data-index="${item.index}"><i class="fas fa-trash-alt"></i></button>`
+                    : `<span class="text-gray-400 italic text-xs">No Report</span>`;
 
                 testHtml += `
-                    <tr class="hover:bg-slate-50 transition-colors">
+                    <tr class="hover:bg-slate-50 transition-colors ${item.calculatedStatus === 'Pending' ? 'bg-red-50/40' : ''}">
                         <td class="p-3 border-r text-gray-500 text-center">${index + 1}</td>
                         <td class="p-3 border-r urdu-font font-semibold text-gray-700">${item.userName}</td>
-                        <td class="p-3 border-r urdu-font font-bold text-purple-800">${item.name || item.jamiaName}</td>
+                        <td class="p-3 border-r urdu-font font-bold text-purple-800">${item.jamiaNameFormatted}</td>
                         <td class="p-3 border-r">${statusBadge}</td>
                         <td class="p-3 border-r text-center" data-val="${perc}">${percDisplay}</td>
-                        <td class="p-3 border-r urdu-font text-gray-600 max-w-[200px] truncate" title="${item.wajah || ''}">${item.wajah || '-'}</td>
-                        <td class="p-3 text-center">
-                            <button title="Delete Test Entry" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="monthlyTest" data-index="${item.index}">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </td>
+                        <td class="p-3 border-r urdu-font text-gray-600 text-xs max-w-[220px] truncate" title="${item.wajah || ''}">${item.wajah || '-'}</td>
+                        <td class="p-3 text-center">${actionBtn}</td>
                     </tr>
                 `;
             });
@@ -3033,7 +3116,7 @@ const renderReportSummary = (reports) => {
             dataFound = true;
             testSection.innerHTML = testHtml;
         } else { 
-            testSection.innerHTML = '<p class="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center border mt-6">Is filter ke liye koi Test data nahi mila.</p>'; 
+            testSection.innerHTML = '<p class="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center border mt-6">Koi Pending Test nahi mila.</p>'; 
         }
         testSection.style.display = 'block';
     } else { testSection.style.display = 'none'; }
@@ -3049,6 +3132,7 @@ const renderReportSummary = (reports) => {
             });
         });
 
+        // Pending recording tracking (where feedback is empty)
         if (onlyPending) {
             tadrisEntries = tadrisEntries.filter(t => !t.tasurat || t.tasurat.trim() === '');
         }
@@ -3057,7 +3141,7 @@ const renderReportSummary = (reports) => {
             let tadrisHtml = `
                 <div class="mb-6">
                     <h4 class="text-xl font-bold text-blue-800 mt-6 mb-4 border-b pb-2"><i class="fas fa-microphone mr-2"></i> Tadris Recording Summary</h4>
-                    <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                    <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm bg-white">
                         <table class="w-full text-sm text-left sortable-table">
                             <thead class="bg-slate-100 text-slate-700 uppercase text-xs">
                                 <tr>
@@ -3083,9 +3167,7 @@ const renderReportSummary = (reports) => {
                         <td class="p-3 border-r urdu-font text-gray-700">${item.teacherName}</td>
                         <td class="p-3 border-r urdu-font">${tasuratDisplay}</td>
                         <td class="p-3 text-center">
-                            <button title="Delete Recording Entry" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="tadrisRecording" data-index="${item.index}">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
+                            <button title="Delete Recording Entry" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="tadrisRecording" data-index="${item.index}"><i class="fas fa-trash-alt"></i></button>
                         </td>
                     </tr>
                 `;
@@ -3094,26 +3176,25 @@ const renderReportSummary = (reports) => {
             dataFound = true;
             tadrisSection.innerHTML = tadrisHtml;
         } else { 
-            tadrisSection.innerHTML = '<p class="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center border mt-6">Is filter ke liye koi Recording data nahi mila.</p>'; 
+            tadrisSection.innerHTML = '<p class="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center border mt-6">Koi Recording data nahi mila.</p>'; 
         }
         tadrisSection.style.display = 'block';
     } else { tadrisSection.style.display = 'none'; }
     
     if (!dataFound) {
-        summaryLoadingMsg.textContent = "Koi data maujood nahi hai.";
+        summaryLoadingMsg.textContent = "Filters ke mutabiq koi record nahi mila.";
         summaryLoadingMsg.classList.remove('hidden');
         summaryTablesContainer.classList.add('hidden');
     }
 
-    // --- 🛠 Attach Event Listeners ---
+    // --- Attach Delete Event Listeners ---
     document.querySelectorAll('#summary-tables-container .delete-sub-entry-btn').forEach(btn => {
-        // Purana delete function directly call hoga jo data update aur list refresh kar dega
         btn.addEventListener('click', handleDeleteSubEntry);
     });
 
-    // Sorting functionality attach karna
+    // Attach Sorting Engine
     attachSortingListeners();
-};;
+};
 
         const renderDedicatedKkdSummary = (reports) => {
             if (!kkdSectionDedicated || !kkdSummaryTablesContainer || !kkdSummaryLoadingMsg) return;
