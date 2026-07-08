@@ -2943,8 +2943,8 @@ const renderReportSummary = (reports) => {
     } else { tadrisSection.style.display = 'none'; }
 
 
-    // ----------------------------------------------------
-    // 📊 KKD SECTION (INTEGRATED) ✨ NEW
+// ----------------------------------------------------
+    // 📊 KKD SECTION (INTEGRATED) ✨ UPDATED WITH MULTI-PERIOD LOGIC
     // ----------------------------------------------------
     if (selectedSection === 'all' || selectedSection === 'kkd') {
         let totalUsers = 0;
@@ -2981,7 +2981,14 @@ const renderReportSummary = (reports) => {
                 const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
                 (jamia.teachers || []).forEach(t => {
                     if (!t) return;
-                    teacherMap.set(`${jName}::${t.id}`, { jamiaName: jName, teacherId: t.id, teacherName: t.name || 'Teacher', hasReport: false, details: null });
+                    // ✨ NAYA: periodsData ki array banayi taake har subject ka data save ho sake
+                    teacherMap.set(`${jName}::${t.id}`, { 
+                        jamiaName: jName, 
+                        teacherId: t.id, 
+                        teacherName: t.name || 'Teacher', 
+                        hasReport: false, 
+                        periodsData: [] 
+                    });
                 });
             });
 
@@ -2992,7 +2999,7 @@ const renderReportSummary = (reports) => {
                 if (teacherMap.has(key)) { 
                     const t = teacherMap.get(key);
                     t.hasReport = true; 
-                    t.details = entry;
+                    t.periodsData.push(entry); // ✨ NAYA: Har period ko array mein daal diya
                 }
             });
 
@@ -3029,62 +3036,87 @@ const renderReportSummary = (reports) => {
                 `;
 
                 teacherList.forEach(t => {
-                    let ach = t.hasReport ? `<span class="font-bold text-teal-700">${t.details.achievement || 0}%</span>` : '-';
+                    let overallAch = 0;
+                    let achHtml = '-';
+                    
+                    if (t.hasReport && t.periodsData.length > 0) {
+                        let totalTarget = 0;
+                        let totalTaught = 0;
+                        let tooltipLines = [];
+
+                        // ✨ NAYA LOGIC: Tamam periods ka hisab aur Average Calculation
+                        t.periodsData.forEach(p => {
+                            let target = parseFloat(p.monthlyTarget) || 0;
+                            let taught = parseFloat(p.pagesTaught) || 0;
+                            totalTarget += target;
+                            totalTaught += taught;
+                            tooltipLines.push(`${p.bookName || 'Book'}: ${taught}/${target}`); // Tooltip data
+                        });
+
+                        if (totalTarget > 0) {
+                            overallAch = Math.round((totalTaught / totalTarget) * 100);
+                        } else {
+                            // Agar kisi wajah se target 0 ho to purani percentages ka simple average le lo
+                            let sum = 0;
+                            t.periodsData.forEach(p => sum += parseFloat(p.achievement) || 0);
+                            overallAch = Math.round(sum / t.periodsData.length);
+                        }
+                        
+                        let detailTooltip = tooltipLines.join(' | ');
+                        achHtml = `<span class="font-bold text-teal-700 cursor-help" title="${detailTooltip}">${overallAch}%</span>`;
+                    }
+
                     unifiedTableRows += `
                         <tr class="hover:bg-slate-50 group transition-colors">
                             <td class="px-4 py-2.5 pl-8 border-r border-slate-100 urdu-font text-slate-600 group-hover:text-teal-700 relative w-1/3">
                                 <div class="absolute left-4 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-teal-400"></div>
                                 ${t.jamiaName}
                             </td>
-                            <td class="px-4 py-2.5 border-r border-slate-100 urdu-font text-slate-800 font-medium w-1/3">${t.teacherName}</td>
+                            <td class="px-4 py-2.5 border-r border-slate-100 urdu-font text-slate-800 font-medium w-1/3">
+                                ${t.teacherName} 
+                                ${t.periodsData.length > 1 ? `<span class="text-[9px] text-gray-400 ml-1">(${t.periodsData.length} Kitabein)</span>` : ''}
+                            </td>
                             <td class="px-4 py-2.5 text-center border-r border-slate-100 w-1/6">
                                 ${t.hasReport
                                     ? '<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">Filled</span>'
                                     : '<span class="px-2 py-0.5 rounded bg-red-50 text-red-500 text-[10px] font-bold uppercase tracking-wider border border-red-100">Not Filled</span>'
                                 }
                             </td>
-                            <td class="px-4 py-2.5 text-center w-1/6">${ach}</td>
+                            <td class="px-4 py-2.5 text-center w-1/6">${achHtml}</td>
                         </tr>`;
                 });
             }
         });
 
-       if (usersSeen.size > 0 && (grandTotalTeachers > 0 || unifiedTableRows !== '')) {
+        if (usersSeen.size > 0 && (grandTotalTeachers > 0 || unifiedTableRows !== '')) {
             const percentage = grandTotalTeachers > 0 ? Math.round((grandTotalReported / grandTotalTeachers) * 100) : 0;
-            const grandTotalPending = grandTotalTeachers - grandTotalReported; // ✨ NAYA VARIABLE (Baqi kitne reh gaye)
+            const grandTotalPending = grandTotalTeachers - grandTotalReported;
 
             let kkdHtml = `
                 <div class="mb-10 mt-6">
                     <h4 class="text-xl font-bold text-orange-800 mb-4 border-b pb-2"><i class="fas fa-tasks mr-2"></i> KKd Report Detailed Summary</h4>
                     
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6"> <!-- ✨ md:grid-cols-5 kar diya -->
-                        
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                         <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
                             <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Users</p><p class="text-2xl font-black">${totalUsers}</p></div>
                             <i class="fas fa-users text-3xl text-slate-500"></i>
                         </div>
-                        
                         <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
                             <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Kul Asatiza</p><p class="text-2xl font-black text-blue-800">${grandTotalTeachers}</p></div>
                             <i class="fas fa-chalkboard-teacher text-3xl text-blue-300"></i>
                         </div>
-                        
                         <div class="bg-green-50 border border-green-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
                             <div><p class="text-[10px] text-green-600 font-bold uppercase tracking-wider">Report Aayi</p><p class="text-2xl font-black text-green-800">${grandTotalReported}</p></div>
                             <i class="fas fa-check-circle text-3xl text-green-300"></i>
                         </div>
-
-                        <!-- ✨ NAYA PENDING CARD ADD KIYA GAYA HAI -->
                         <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
                             <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Fill Hona Baqi</p><p class="text-2xl font-black text-red-800">${grandTotalPending}</p></div>
                             <i class="fas fa-exclamation-circle text-3xl text-red-300"></i>
                         </div>
-                        
                         <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
                             <div><p class="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Overall Performance</p><p class="text-2xl font-black text-orange-800">${percentage}%</p></div>
                             <i class="fas fa-chart-line text-3xl text-orange-300"></i>
                         </div>
-
                     </div>
 
                     <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
