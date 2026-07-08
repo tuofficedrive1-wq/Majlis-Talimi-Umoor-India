@@ -2786,11 +2786,12 @@ const attachSortingListeners = () => {
 };
 
 // =========================================================================
-// 🟢 ADVANCED DETAILED SUMMARY REPORT (UPDATED WITH PENDING VS NAHI HUA)
+// 🟢 ADVANCED DETAILED SUMMARY REPORT (UPDATED: ROLE FILTER & WAZAHAT)
 // =========================================================================
 const renderReportSummary = (reports) => {
     const selectedUserId = document.getElementById('admin-user-filter-select').value;
     const selectedRegion = document.getElementById('admin-region-filter-select').value;
+    const selectedRole = document.getElementById('admin-role-filter-select')?.value || 'all'; // ✨ NEW: Role filter added
     const selectedSection = document.getElementById('summary-section-filter').value;
     
     // UI mein Pending Checkbox dynamically add ya update karna
@@ -2824,12 +2825,20 @@ const renderReportSummary = (reports) => {
 
     const getUserName = (userId) => allUsersData.find(u => u.id === userId)?.name || 'Unknown User';
 
-    // Filtered Users List according to top controls
+    // ✨ NEW: Filtered Users List according to top controls (Including ROLE)
     const filteredUsers = allUsersData.filter(u => {
         if (u.id === ADMIN_UID) return false;
+        
         const matchUser = (selectedUserId === 'all') || (u.id === selectedUserId);
         const matchRegion = (selectedRegion === 'all') || (u.region === selectedRegion);
-        return matchUser && matchRegion;
+        
+        // Role match logic
+        let matchRole = (selectedRole === 'all') || 
+            (selectedRole === 'admin_group' ? ['admin', 'tadrisi_course_management', 'recording_mufattish'].includes(u.role) :
+             selectedRole === 'inspector' ? ['inspector', 'education_office'].includes(u.role) :
+             selectedRole === 'standard' ? (u.role === 'standard' || !u.role) : u.role === selectedRole);
+
+        return matchUser && matchRegion && matchRole;
     });
 
     const jaizaSection = document.getElementById('summary-jaiza-section');
@@ -2851,12 +2860,11 @@ const renderReportSummary = (reports) => {
             const userReport = reports.find(r => r.userId === user.id);
             const rJaizaData = userReport?.jaizaReport?.data || [];
 
-            userJamias.forEach((jamia, jIdx) => {
+            userJamias.forEach((jamia) => {
                 totalJamiaatScope++;
                 const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
                 const cleanJ = jName.toLowerCase();
 
-                // Check if report has this entry
                 const entryIndex = rJaizaData.findIndex(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
                 
                 if (userReport && entryIndex !== -1) {
@@ -2885,7 +2893,6 @@ const renderReportSummary = (reports) => {
                         index: entryIndex
                     });
                 } else {
-                    // If no report or no entry found for this assigned jamia -> PENDING
                     totalPending++;
                     jaizaEntries.push({
                         name: jName,
@@ -2893,6 +2900,7 @@ const renderReportSummary = (reports) => {
                         userName: user.name || user.email,
                         date: '-',
                         type: 'Report Missing',
+                        wajah: 'Zimmedar ne report submit nahi ki',
                         percentage: 0,
                         calculatedStatus: "Pending",
                         reportId: null,
@@ -2902,7 +2910,6 @@ const renderReportSummary = (reports) => {
             });
         });
 
-        // Apply "Sirf Pending" filter
         if (onlyPending) {
             jaizaEntries = jaizaEntries.filter(j => j.calculatedStatus === "Pending");
         }
@@ -2943,6 +2950,7 @@ const renderReportSummary = (reports) => {
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">User Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">Jamia Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
                                     <th class="p-3 border-r">Date / Info</th>
+                                    <th class="p-3 border-r w-48">Wazahat</th> <!-- ✨ NEW COLUMN -->
                                     <th class="p-3 border-r">Status</th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none text-center" data-sort="number">Percentage <i class="fas fa-sort ml-1 text-gray-400"></i></th>
                                     <th class="p-3 text-center">Action</th>
@@ -2961,6 +2969,8 @@ const renderReportSummary = (reports) => {
                 else if (item.calculatedStatus === "Visit Only") statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold border border-blue-200">Visit Only</span>`;
                 else statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-black border border-red-200">Pending</span>`;
 
+                let wazahatText = item.wajah || item.remarks || item.kaifiyat || '-';
+
                 let actionBtn = item.reportId 
                     ? `<button title="Delete Entry" class="delete-sub-entry-btn bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-1.5 rounded transition shadow-sm" data-report-id="${item.reportId}" data-section="jaizaReport" data-index="${item.index}"><i class="fas fa-trash-alt"></i></button>`
                     : `<span class="text-gray-400 italic text-xs">No Report</span>`;
@@ -2971,6 +2981,7 @@ const renderReportSummary = (reports) => {
                         <td class="p-3 border-r urdu-font font-semibold text-gray-700">${item.userName}</td>
                         <td class="p-3 border-r urdu-font font-bold text-teal-800">${item.jamiaNameFormatted}</td>
                         <td class="p-3 border-r text-gray-600 text-xs"><b>${item.date || '-'}</b><br><span class="text-gray-400">${item.type || ''}</span></td>
+                        <td class="p-3 border-r urdu-font text-gray-600 text-xs max-w-[200px] truncate" title="${wazahatText}">${wazahatText}</td> <!-- ✨ WAZAHAT DISPLAY -->
                         <td class="p-3 border-r">${statusBadge}</td>
                         <td class="p-3 border-r text-center" data-val="${perc}">${percDisplay}</td>
                         <td class="p-3 text-center">${actionBtn}</td>
@@ -3080,7 +3091,7 @@ const renderReportSummary = (reports) => {
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none" data-sort="string">Jamia Name <i class="fas fa-sort ml-1 text-gray-400"></i></th>
                                     <th class="p-3 border-r">Status</th>
                                     <th class="p-3 border-r cursor-pointer hover:bg-slate-200 select-none text-center" data-sort="number">Percentage <i class="fas fa-sort ml-1 text-gray-400"></i></th>
-                                    <th class="p-3 border-r">Wajah / Reason</th>
+                                    <th class="p-3 border-r w-48">Wajah / Reason</th>
                                     <th class="p-3 text-center">Action</th>
                                 </tr>
                             </thead>
@@ -3126,13 +3137,16 @@ const renderReportSummary = (reports) => {
     // ----------------------------------------------------
     if (selectedSection === 'all' || selectedSection === 'tadris') {
         let tadrisEntries = [];
-        filteredReports.forEach(r => {
-            (r.tadrisRecording?.data || []).forEach((entry, idx) => {
-                tadrisEntries.push({ ...entry, userName: getUserName(r.userId), reportId: r.id, index: idx });
-            });
+        
+        filteredUsers.forEach(user => {
+            const userReport = reports.find(r => r.userId === user.id);
+            if (userReport && userReport.tadrisRecording && userReport.tadrisRecording.data) {
+                userReport.tadrisRecording.data.forEach((entry, idx) => {
+                    tadrisEntries.push({ ...entry, userName: user.name || user.email, reportId: userReport.id, index: idx });
+                });
+            }
         });
 
-        // Pending recording tracking (where feedback is empty)
         if (onlyPending) {
             tadrisEntries = tadrisEntries.filter(t => !t.tasurat || t.tasurat.trim() === '');
         }
@@ -3193,7 +3207,7 @@ const renderReportSummary = (reports) => {
     });
 
     // Attach Sorting Engine
-    attachSortingListeners();
+    if(typeof attachSortingListeners === 'function') attachSortingListeners();
 };
 
         const renderDedicatedKkdSummary = (reports) => {
