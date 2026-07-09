@@ -201,7 +201,6 @@
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="academic-system">Academic System</button>
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="jamia-directory">Jamia Directory</button>
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="teacher-details">Teacher Detail</button>
-        <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500" data-tab="reports">Inspection Reports</button>
         <button class="tab-btn px-6 py-4 text-sm font-semibold text-gray-500 flex items-center gap-2" data-tab="report-hub"><i class="fas fa-folder-open"></i> Report Hub</button>
     </div>
 </nav>
@@ -1479,92 +1478,143 @@ const loadInspectionReports = () => {
     });
 };
 
-// 2. Generating Submitted vs Pending Logic
+// --- JAIZA / INSPECTION REPORT DETAILED SUMMARY LOGIC ---
 window.generateAnalysisReport = () => {
-    const tableBody = document.getElementById('reports-list-body');
-    const searchVal = document.getElementById('search-report')?.value.toLowerCase() || '';
-    const statusFilter = document.getElementById('filter-status')?.value || 'ALL';
-    
-    if (!tableBody) return;
+    const jaizaSection = document.getElementById('summary-jaiza-section');
+    if (!jaizaSection) return;
 
-    let analysisData = [];
-    let totalAssigned = 0;
-    let totalSubmitted = 0;
+    let rowsHtml = '';
+    let count = 1;
+    
+    // Top Summary Counters
+    let totalJamiaat = 0;
+    let totalInspected = 0;
+    let totalVisited = 0;
+    let totalNahiHua = 0;
     let totalPending = 0;
 
-    // Har inspector aur uski jamiaat ko check karein
+    // Har inspector aur uski assigned jamiaat ka loop
     inspectors.forEach(ins => {
         if (ins.jamiaatList && ins.jamiaatList.length > 0) {
             ins.jamiaatList.forEach(jamia => {
-                totalAssigned++;
+                totalJamiaat++;
                 
-                // Check karein ke is Jamia ki report is Inspector ne submit ki hai ya nahi
-                // Note: Aap isme current month/year ka filter bhi laga sakte hain 'date' ke zariye
-                const submittedReport = allReports.find(r => r.jamiaName === jamia && r.inspectorId === ins.id);
-                
-                if (submittedReport) {
-                    totalSubmitted++;
-                    analysisData.push({
-                        id: submittedReport.id,
-                        jamiaName: jamia,
-                        inspectorName: ins.name,
-                        status: 'SUBMITTED',
-                        date: submittedReport.submittedAt ? new Date(submittedReport.submittedAt.toDate()).toLocaleDateString() : 'N/A',
-                        data: submittedReport
-                    });
+                // Admin report jo Inspector ne submit ki hai
+                const report = allReports.find(r => r.jamiaName === jamia && r.inspectorId === ins.id);
+
+                let statusBadge = "";
+                let wazahat = "-";
+                let percentage = "-";
+                let dateDisplay = "-";
+                let rowClass = "bg-red-50/30"; // Default pending color
+
+                if (report) {
+                    // Date Format
+                    dateDisplay = report.date || (report.submittedAt ? new Date(report.submittedAt.toDate()).toLocaleDateString() : '-');
+                    
+                    // Status Logic (Inspector App ki basis par)
+                    if (report.type === "Inspection") {
+                        statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[11px] font-bold border border-emerald-200"><i class="fas fa-check-circle"></i> Inspected</span>`;
+                        percentage = `<span class="font-bold text-teal-700 text-sm">${report.score || 0}%</span>`;
+                        totalInspected++;
+                        rowClass = "bg-white hover:bg-slate-50";
+                    } else if (report.type === "Visit") {
+                        statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[11px] font-bold border border-blue-200"><i class="fas fa-walking"></i> Visit Only</span>`;
+                        wazahat = report.score || "-"; // Visit details
+                        totalVisited++;
+                        rowClass = "bg-blue-50/50 hover:bg-blue-50";
+                    } else if (report.type === "N/A" || report.type === "Nahi Hua") {
+                        statusBadge = `<span class="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[11px] font-bold border border-orange-200"><i class="fas fa-times-circle"></i> Nahi Hua</span>`;
+                        wazahat = report.score || "-"; // Reason
+                        totalNahiHua++;
+                        rowClass = "bg-orange-50/50 hover:bg-orange-50";
+                    } else {
+                        statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[11px] font-bold border border-emerald-200">Done</span>`;
+                        rowClass = "bg-white hover:bg-slate-50";
+                    }
                 } else {
+                    statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-[11px] font-bold border border-red-200"><i class="fas fa-clock"></i> Pending</span>`;
                     totalPending++;
-                    analysisData.push({
-                        id: null,
-                        jamiaName: jamia,
-                        inspectorName: ins.name,
-                        status: 'PENDING',
-                        date: '-',
-                        data: null
-                    });
+                    rowClass = "bg-red-50/40 hover:bg-red-50";
                 }
+
+                // Action Buttons (Edit / Delete)
+                let actionBtn = report ? `
+                    <button onclick="editReport('${report.id}')" class="text-blue-500 hover:bg-blue-100 px-2 py-1.5 rounded transition mr-1" title="Edit Report"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteReport('${report.id}')" class="text-red-500 hover:bg-red-100 px-2 py-1.5 rounded transition" title="Delete Report"><i class="fas fa-trash"></i></button>
+                ` : `<span class="text-gray-400 text-xs italic">No Action</span>`;
+
+                rowsHtml += `
+                    <tr class="border-b ${rowClass} transition text-sm">
+                        <td class="p-3 text-center border-r border-indigo-50 text-gray-500">${count++}</td>
+                        <td class="p-3 font-semibold text-gray-700 border-r border-indigo-50">${ins.name}</td>
+                        <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jamia}</td>
+                        <td class="p-3 text-center border-r border-indigo-50">${statusBadge}</td>
+                        <td class="p-3 text-center border-r border-indigo-50">${percentage}</td>
+                        <td class="p-3 border-r border-indigo-50 text-gray-600 text-[11px] max-w-[180px] leading-tight truncate" title="${wazahat}">${wazahat}</td>
+                        <td class="p-3 text-center border-r border-indigo-50 text-gray-600 text-xs">${dateDisplay}</td>
+                        <td class="p-3 text-center border-r border-indigo-50 font-bold ${report ? 'text-emerald-600' : 'text-red-500'}">${report ? 'Submitted' : 'Pending'}</td>
+                        <td class="p-3 text-center">${actionBtn}</td>
+                    </tr>
+                `;
             });
         }
     });
 
-    // Update Analytics Dashboard Cards
-    document.getElementById('stat-total-jamia').innerText = totalAssigned;
-    document.getElementById('stat-submitted').innerText = totalSubmitted;
-    document.getElementById('stat-pending').innerText = totalPending;
+    // Final HTML Injection in "Detailed Summary"
+    jaizaSection.innerHTML = `
+        <div class="mb-6 animate-hubFadeUp">
+            <h4 class="text-lg font-bold text-indigo-800 mb-4 border-b border-indigo-100 pb-2 flex items-center">
+                <i class="fas fa-clipboard-check mr-2 text-indigo-500"></i> Inspection (Jaiza) Detailed Summary
+            </h4>
+            
+            <!-- Top Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
+                    <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
+                    <i class="fas fa-university text-3xl text-slate-500"></i>
+                </div>
+                <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Inspected</p><p class="text-2xl font-black text-emerald-800">${totalInspected}</p></div>
+                    <i class="fas fa-check-circle text-3xl text-emerald-300"></i>
+                </div>
+                <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Visit Only</p><p class="text-2xl font-black text-blue-800">${totalVisited}</p></div>
+                    <i class="fas fa-walking text-3xl text-blue-300"></i>
+                </div>
+                <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Nahi Hua</p><p class="text-2xl font-black text-orange-800">${totalNahiHua}</p></div>
+                    <i class="fas fa-times-circle text-3xl text-orange-300"></i>
+                </div>
+                <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending</p><p class="text-2xl font-black text-red-800">${totalPending}</p></div>
+                    <i class="fas fa-exclamation-triangle text-3xl text-red-300"></i>
+                </div>
+            </div>
 
-    // Apply Search & Dropdown Filters
-    const filteredData = analysisData.filter(item => {
-        const matchesSearch = item.jamiaName.toLowerCase().includes(searchVal) || item.inspectorName.toLowerCase().includes(searchVal);
-        const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
-
-    // Render Table
-    if (filteredData.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-gray-400 italic">Koi data nahi mila...</td></tr>';
-        return;
-    }
-
-    tableBody.innerHTML = filteredData.map(item => `
-        <tr class="hover:bg-gray-50 transition border-b">
-            <td class="px-6 py-4 font-bold text-gray-800">${item.jamiaName}</td>
-            <td class="px-6 py-4 text-indigo-600 font-medium">${item.inspectorName}</td>
-            <td class="px-6 py-4">
-                <span class="px-2 py-1 rounded-md text-xs font-bold border ${item.status === 'SUBMITTED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-500 border-red-100'}">
-                    ${item.status}
-                </span>
-            </td>
-            <td class="px-6 py-4 text-gray-500 text-sm">${item.date}</td>
-            <td class="px-6 py-4 text-center">
-                ${item.status === 'SUBMITTED' ? `
-                    <button onclick="editReport('${item.id}')" class="text-blue-500 hover:bg-blue-50 px-2 py-1 rounded transition mr-1" title="Edit Report"><i class="fas fa-edit"></i></button>
-                    <button onclick="deleteReport('${item.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition" title="Delete Report"><i class="fas fa-trash"></i></button>
-                ` : `
-                    <button onclick="alert('Is Jamia ki report abhi tak submit nahi hui hai.')" class="text-gray-300 cursor-not-allowed px-2 py-1"><i class="fas fa-ban"></i></button>
-                `}
-            </td>
-        </tr>
-    `).join('');
+            <!-- Detailed Table -->
+            <div class="overflow-x-auto bg-white rounded-xl shadow-sm border border-indigo-100">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-indigo-50 text-indigo-800 uppercase text-[10px] font-bold tracking-wider">
+                        <tr>
+                            <th class="p-3 border-r border-indigo-100 w-10 text-center">Sr</th>
+                            <th class="p-3 border-r border-indigo-100">Inspector Name</th>
+                            <th class="p-3 border-r border-indigo-100">Jamia Name</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Insp. Status</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Total %</th>
+                            <th class="p-3 border-r border-indigo-100 w-48">Wazahat</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Date</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Report Status</th>
+                            <th class="p-3 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-indigo-50">
+                        ${rowsHtml || '<tr><td colspan="9" class="p-8 text-center text-gray-400 italic">No data available yet.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
 };
 
 // ===================== REPORT HUB (UI demo — Firestore wiring next step) =====================
