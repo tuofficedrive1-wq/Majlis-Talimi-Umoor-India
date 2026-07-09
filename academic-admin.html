@@ -987,7 +987,9 @@ document.getElementById('search-teacher')?.addEventListener('input', () => {
         onSnapshot(q, (snap) => {
             inspectors = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             renderInspectors();      
-            renderTeacherTable();    
+            renderTeacherTable(); 
+            // Inspectors ka loop khatam hone ke baad yahan add karein:
+            if (window.populateMasterFilters) window.populateMasterFilters();
             if (typeof renderPendingJamiaat === 'function') renderPendingJamiaat();
         });
     };
@@ -1502,7 +1504,7 @@ document.getElementById('search-teacher')?.addEventListener('input', () => {
             masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderMasterJamiaat();
             renderPendingJamiaat();
-            
+            if (window.populateMasterFilters) window.populateMasterFilters();
             // Safe execution taake classes load hone se pehle targets container blast na ho
             const container = document.getElementById('monthly-targets-container');
             if (container && container.innerHTML.trim() !== "") {
@@ -1754,47 +1756,71 @@ window.switchReportHubView = (viewId) => {
     };
 
     if(applyFilterBtn) {
-        applyFilterBtn.addEventListener('click', () => {
-            const selectedVal = sectionFilter.value;
-            
-            // UI Button feedback
-            const originalHtml = applyFilterBtn.innerHTML;
-            applyFilterBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Loading...`;
-            applyFilterBtn.disabled = true;
+        // --- UNIFIED FILTER AND VIEW TOGGLE LOGIC ---
+document.addEventListener('DOMContentLoaded', () => {
+    const masterApplyBtn = document.getElementById('btn-apply-master-filter');
+    const sectionApplyBtn = document.getElementById('summary-apply-filter-btn');
+    const sectionFilter = document.getElementById('summary-section-filter');
+    const loadingMsg = document.getElementById('summary-loading-msg');
 
-            setTimeout(() => {
-                // Hide Placeholder
-                if(loadingMsg) loadingMsg.classList.add('hidden');
-                
-                // Hide all sections first
-                Object.values(sections).forEach(sec => {
-                    if(sec) sec.classList.add('hidden');
-                });
+    const sections = {
+        jaiza: document.getElementById('summary-jaiza-section'),
+        test: document.getElementById('summary-test-section'),
+        kkd: document.getElementById('summary-kkd-section'),
+        tadris: document.getElementById('summary-tadris-section')
+    };
 
-                // Show selected sections
-                if(selectedVal === 'all') {
-                    Object.values(sections).forEach(sec => {
-                        if(sec) sec.classList.remove('hidden');
-                        // Placeholder text jab tak Firebase se real data render na ho
-                        if(sec.innerHTML.trim() === '') {
-                            sec.innerHTML = `<div class="p-4 bg-gray-50 border rounded-lg text-center text-sm text-gray-500 font-bold border-dashed border-gray-300">Data for this section will be rendered here.</div>`;
-                        }
-                    });
-                } else if (sections[selectedVal]) {
-                    sections[selectedVal].classList.remove('hidden');
-                    if(sections[selectedVal].innerHTML.trim() === '') {
-                        sections[selectedVal].innerHTML = `<div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-center text-sm text-indigo-500 font-bold border-dashed border-indigo-200">Firebase Data for ${selectedVal.toUpperCase()} will render here.</div>`;
+    function executeFiltering() {
+        const selectedVal = sectionFilter ? sectionFilter.value : 'all';
+
+        // 1. Loading State Show karna
+        if (loadingMsg) loadingMsg.classList.add('hidden');
+        
+        // 2. Pehle saare sections ko chhupana (Hide)
+        Object.values(sections).forEach(sec => { if (sec) sec.classList.add('hidden'); });
+
+        // 3. Jis section ko dekhna hai usay filter data ke sath render karna
+        if (selectedVal === 'all') {
+            Object.keys(sections).forEach(key => {
+                if (sections[key]) {
+                    sections[key].classList.remove('hidden');
+                    if (key === 'jaiza' && typeof window.generateAnalysisReport === 'function') {
+                        window.generateAnalysisReport(); // Master filter lagakar jaiza render karega
                     }
                 }
+            });
+        } else {
+            if (sections[selectedVal]) {
+                sections[selectedVal].classList.remove('hidden');
+                if (selectedVal === 'jaiza' && typeof window.generateAnalysisReport === 'function') {
+                    window.generateAnalysisReport(); // Specific filter apply karega
+                }
+            }
+        }
+    }
 
-                // Reset Button
-                applyFilterBtn.innerHTML = originalHtml;
-                applyFilterBtn.disabled = false;
-
-                // Yahan aap apna data render karne ka asool logic (jesay Admin panel ki renderReportSummary thi) call kar sakte hain.
-                // Example: window.renderDetailedReportTable
-            }, 600); // Halki si loading animation ke liye delay
+    // Master Filter Button click event
+    if (masterApplyBtn) {
+        masterApplyBtn.addEventListener('click', () => {
+            masterApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Applying...`;
+            setTimeout(() => {
+                executeFiltering();
+                masterApplyBtn.innerHTML = `<i class="fas fa-search mr-1"></i> Apply Filter`;
+            }, 400);
         });
+    }
+
+    // Detailed Section Filter Button click event
+    if (sectionApplyBtn) {
+        sectionApplyBtn.addEventListener('click', () => {
+            sectionApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Loading...`;
+            setTimeout(() => {
+                executeFiltering();
+                sectionApplyBtn.innerHTML = `<i class="fas fa-filter mr-1"></i> Apply Filter`;
+            }, 400);
+        });
+    }
+});
     }
 
 // 3. Edit & Delete Functions
@@ -1851,7 +1877,7 @@ document.getElementById('filter-status')?.addEventListener('change', generateAna
     // START EVERYTHING SECURELY
     initMasterSystem();
 
-        // --- POPULATE MASTER FILTERS DYNAMICALLY ---
+// --- MASTER FILTERS KO DYNAMICALLY POPULATE KARNE KA SAFE TARIKA ---
 window.populateMasterFilters = () => {
     const stateSelect = document.getElementById('master-filter-state');
     const regionSelect = document.getElementById('master-filter-region');
@@ -1859,23 +1885,32 @@ window.populateMasterFilters = () => {
 
     if (!stateSelect || !regionSelect || !userSelect) return;
 
-    // Purani selected value ko mehfooz rakhne ke liye
-    const currState = stateSelect.value;
-    const currRegion = regionSelect.value;
-    const currUser = userSelect.value;
+    // Purani selected values ko yaad rakhne ke liye
+    const savedState = stateSelect.value;
+    const savedRegion = regionSelect.value;
+    const savedUser = userSelect.value;
 
-    // Master Jamiaat se unique States aur Regions nikalna
-    const states = [...new Set(masterJamiaat.map(j => j.state).filter(Boolean))].sort();
-    const regions = [...new Set(masterJamiaat.map(j => j.region).filter(Boolean))].sort();
+    // Safe checks: Agar file me array ka naam alag bhi ho toh yeh crash nahi karega
+    const jamiaList = (typeof masterJamiaat !== 'undefined' ? masterJamiaat : []) || 
+                      (typeof jamiaDirectory !== 'undefined' ? jamiaDirectory : []) || 
+                      (typeof allJamiaat !== 'undefined' ? allJamiaat : []);
 
+    const inspectorList = (typeof inspectors !== 'undefined' ? inspectors : []) || 
+                          (typeof allInspectors !== 'undefined' ? allInspectors : []);
+
+    // Unique States aur Regions nikalna
+    const states = [...new Set(jamiaList.map(j => j.state || j.riyasat).filter(Boolean))].sort();
+    const regions = [...new Set(jamiaList.map(j => j.region || j.ilaqa).filter(Boolean))].sort();
+
+    // HTML Dropdowns fill karna
     stateSelect.innerHTML = '<option value="all">All States</option>' + states.map(s => `<option value="${s}">${s}</option>`).join('');
     regionSelect.innerHTML = '<option value="all">All Regions</option>' + regions.map(r => `<option value="${r}">${r}</option>`).join('');
-    userSelect.innerHTML = '<option value="all">All Inspectors</option>' + inspectors.map(ins => `<option value="${ins.id}">${ins.name || ins.email}</option>`).join('');
+    userSelect.innerHTML = '<option value="all">All Inspectors</option>' + inspectorList.map(ins => `<option value="${ins.id}">${ins.name || ins.email || 'Unknown'}</option>`).join('');
 
-    // Agar pehle se kuch select tha toh usay wapas set karein
-    if(states.includes(currState)) stateSelect.value = currState;
-    if(regions.includes(currRegion)) regionSelect.value = currRegion;
-    if(inspectors.find(i => i.id === currUser)) userSelect.value = currUser;
+    // Wapas purani selection set karna agar available ho
+    if (stateSelect.querySelector(`option[value="${savedState}"]`)) stateSelect.value = savedState;
+    if (regionSelect.querySelector(`option[value="${savedRegion}"]`)) regionSelect.value = savedRegion;
+    if (userSelect.querySelector(`option[value="${savedUser}"]`)) userSelect.value = savedUser;
 };
 
 // Filter Apply Button ka Event Listener
