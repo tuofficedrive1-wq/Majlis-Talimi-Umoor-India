@@ -2221,44 +2221,68 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
              }
         };
 
-        const fetchAndRenderAdminReports = async () => {
-            const selectedMonthName = adminMonthSelect.value; 
-            const selectedYear = adminYearSelect.value;       
-            const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(selectedMonthName);
-            const monthKey = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
+// =========================================================
+// 🟢 SMART FETCH REPORTS FUNCTION (Fix for Missing Reports)
+// =========================================================
+const fetchAndRenderAdminReports = async () => {
+    const selectedMonthName = adminMonthSelect.value; 
+    const selectedYear = adminYearSelect.value;       
+    const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(selectedMonthName);
+    const monthKey = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
 
-            showLoader(true);
-            adminReportsSummaryContainer.innerHTML = '';
-            reportsLoadingMsg.textContent = 'Loading reports... Please wait.';
-            reportsLoadingMsg.classList.remove('hidden');
+    showLoader(true);
+    adminReportsSummaryContainer.innerHTML = '';
+    reportsLoadingMsg.textContent = 'Loading reports... Please wait.';
+    reportsLoadingMsg.classList.remove('hidden');
 
-            try {
-                const reportsRef = collection(db, 'monthly_reports');
-                const qReports = query(reportsRef, where("month", "==", selectedMonthName), where("year", "==", parseInt(selectedYear)));
-                const jaizaRef = collection(db, 'jaiza_forms');
-                const qJaiza = query(jaizaRef, where("monthKey", "==", monthKey));
+    try {
+        const reportsRef = collection(db, 'monthly_reports');
+        const jaizaRef = collection(db, 'jaiza_forms');
+        const qJaiza = query(jaizaRef, where("monthKey", "==", monthKey));
 
-                const [reportsSnap, jaizaSnap] = await Promise.all([ getDocs(qReports), getDocs(qJaiza) ]);
+        // NAYA LOGIC: Hum Firebase ka strict filter hata kar saari reports la rahe hain 
+        // aur unko JavaScript se smartly filter karenge taake koi report miss na ho.
+        const [reportsSnap, jaizaSnap] = await Promise.all([ getDocs(reportsRef), getDocs(qJaiza) ]);
 
-                fetchedAdminReports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                fetchedJaizaForms = jaizaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+        fetchedAdminReports = [];
 
-                renderAdminSummaryCards(fetchedAdminReports);
-                
-                const analysisTab = document.getElementById('admin-analysis-tab');
-                if (!analysisTab.classList.contains('hidden')) {
-                    const reportType = document.getElementById('analysis-report-type-select').value;
-                    if(reportType === 'jaiza') renderAllUsersJaizaTable();
-                }
+        reportsSnap.forEach(doc => {
+            const data = doc.data();
+            
+            // Data ko saaf kar rahe hain (Spaces hatana aur lower case karna)
+            const rMonth = (data.month || '').trim().toLowerCase();
+            const rYear = String(data.year || '').trim();
+            const rMonthKey = (data.monthKey || '').trim();
+            
+            // Smart Matching
+            const isMonthMatch = rMonth === selectedMonthName.toLowerCase();
+            const isYearMatch = rYear === String(selectedYear);
+            const isMonthKeyMatch = rMonthKey === monthKey;
 
-                if(summaryLoadingMsg) summaryLoadingMsg.textContent = "Reports loaded. Apply filters.";
-                showLoader(false);
-            } catch (error) {
-                console.error("Error fetching reports:", error);
-                showLoader(false);
-                showNotification("Error loading data.", true);
+            // Agar Month aur Year match kar jaye, YA naya monthKey match kar jaye toh report utha lo
+            if ((isMonthMatch && isYearMatch) || isMonthKeyMatch) {
+                fetchedAdminReports.push({ id: doc.id, ...data });
             }
-        };
+        });
+
+        fetchedJaizaForms = jaizaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+
+        renderAdminSummaryCards(fetchedAdminReports);
+        
+        const analysisTab = document.getElementById('admin-analysis-tab');
+        if (!analysisTab.classList.contains('hidden')) {
+            const reportType = document.getElementById('analysis-report-type-select').value;
+            if(reportType === 'jaiza') renderAllUsersJaizaTable();
+        }
+
+        if(summaryLoadingMsg) summaryLoadingMsg.textContent = "Reports loaded. Apply filters.";
+        showLoader(false);
+    } catch (error) {
+        console.error("Error fetching reports:", error);
+        showLoader(false);
+        showNotification("Error loading data.", true);
+    }
+};
 
         const calculateOverallStatus = (report, userJamiaatCount = 0) => {
               const jaizaDone = report.jaizaReport?.status === 'Done';
