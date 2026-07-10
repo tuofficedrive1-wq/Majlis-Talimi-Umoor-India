@@ -1970,51 +1970,59 @@ document.getElementById('filter-pending-only')?.addEventListener('change', () =>
     if (typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
 });
 
-        // --- MONTHLY TEST REPORT DETAILED SUMMARY ---
+// --- MONTHLY TEST REPORT DETAILED SUMMARY ---
 window.generateTestReport = () => {
     const testSection = document.getElementById('summary-test-section');
     if (!testSection) return;
 
-    // Filters Read
+    // 1. Sabhi Filters Read Karein
     const selYear = document.getElementById('master-filter-year')?.value || 'all';
     const selMonth = document.getElementById('master-filter-month')?.value || 'all';
     const selRegion = document.getElementById('master-filter-region')?.value || 'all';
     const selState = document.getElementById('master-filter-state')?.value || 'all';
     const selUser = document.getElementById('master-filter-user')?.value || 'all';
-
-    let targetMonthKey = 'all';
-    if(selYear !== 'all' && selMonth !== 'all') {
-        targetMonthKey = `${selYear}-${selMonth}`; // e.g. "2026-04"
-    }
+    const isPendingOnly = document.getElementById('filter-pending-only')?.checked || false;
 
     let rowsHtml = '';
     let count = 1;
 
     inspectors.forEach(ins => {
+        // User (Inspector) Filter Check
         if (selUser !== 'all' && ins.id !== selUser) return;
 
         if (ins.jamiaatList && ins.jamiaatList.length > 0) {
             ins.jamiaatList.forEach(jamia => {
+                
+                // Region & State Filter Check
                 const mJamia = masterJamiaat.find(m => m.jamiaName === jamia);
                 if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                 if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
                 const normalizeName = (name) => (name || "").trim().toLowerCase();
                 
-                // Is jamia ki test sheets dhoondna
-                let jamiaSheets = allTestSheets.filter(sheet => normalizeName(sheet.jamiaName) === normalizeName(jamia));
-                
-                // Date Filter apply karna
-                if(targetMonthKey !== 'all') {
-                    jamiaSheets = jamiaSheets.filter(sheet => sheet.month === targetMonthKey);
-                } else if (selYear !== 'all') {
-                    jamiaSheets = jamiaSheets.filter(sheet => sheet.month && sheet.month.startsWith(selYear));
-                }
+                // 2. Exact Month & Year Filter Logic (Double Counting Khatam)
+                let jamiaSheets = allTestSheets.filter(sheet => {
+                    if (normalizeName(sheet.jamiaName) !== normalizeName(jamia)) return false;
+                    
+                    let sYear = "", sMonth = "";
+                    if (sheet.month && sheet.month.includes('-')) {
+                        [sYear, sMonth] = sheet.month.split('-');
+                    }
+                    
+                    if (selYear !== 'all' && sYear !== selYear) return false;
+                    if (selMonth !== 'all' && sMonth !== selMonth) return false;
+                    
+                    return true; // Agar saal aur mahina dono match ho gaye
+                });
+
+                // 3. Agar 'Sirf Pending' par tick hai, aur Test submit ho chuka hai, to yeh row skip karein
+                if (isPendingOnly && jamiaSheets.length > 0) return;
 
                 if (jamiaSheets.length > 0) {
                     let grandPresent = 0, grandPass = 0, grandFail = 0;
                     let totalStudentsCount = 0;
 
+                    // Data Calculation
                     jamiaSheets.forEach(sheet => {
                         const students = sheet.students || [];
                         totalStudentsCount += students.length;
@@ -2071,6 +2079,7 @@ window.generateTestReport = () => {
         }
     });
 
+    // Final HTML Render
     testSection.innerHTML = `
         <div class="mb-4 flex items-center justify-between animate-hubFadeUp block">
             <h4 class="text-lg font-bold text-indigo-800"><i class="fas fa-file-signature mr-2"></i> Monthly Test Performance</h4>
