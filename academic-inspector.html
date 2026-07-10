@@ -809,14 +809,25 @@ window.renderInspectionList = () => {
 };
 
 window.handleTypeChange = (selectElem, index) => {
+    const row = selectElem.closest('.inspection-row');
+    const dateInput = row.querySelector('.insp-date');
     const inputField = document.getElementById(`score-input-${index}`);
     const formLink = document.getElementById(`form-link-${index}`);
     const val = selectElem.value;
-    
+
     inputField.type = val === "Inspection" ? "number" : "text";
     inputField.placeholder = val === "Inspection" ? "Score%" : (val === "Visit" ? "Visit details..." : "Reason...");
-    
-    // Agar Inspection hai to icon show karein, warna hide kar dein
+
+    // Date input ko disable/enable karne ka logic
+    if (val === "Not Conduct") {
+        dateInput.disabled = true;
+        dateInput.value = ''; // Date clear kar dein
+        dateInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
+    } else {
+        dateInput.disabled = false;
+        dateInput.classList.remove('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
+    }
+
     if(val === "Inspection") {
         inputField.classList.add('text-indigo-600'); 
         if (formLink) formLink.style.display = 'flex';
@@ -826,52 +837,75 @@ window.handleTypeChange = (selectElem, index) => {
     }
 };
 
-        window.handleTypeChange = (selectElem, index) => {
-            const inputField = document.getElementById(`score-input-${index}`);
-            const val = selectElem.value;
-            inputField.type = val === "Inspection" ? "number" : "text";
-            inputField.placeholder = val === "Inspection" ? "Score%" : (val === "Visit" ? "Visit details..." : "Reason...");
-            if(val === "Inspection") inputField.classList.add('text-indigo-600'); 
-            else inputField.classList.remove('text-indigo-600');
-        };
-
-        // SAVE JAIZA
-       // --- UPDATED: SAVE JAIZA BUTTON ---
 document.getElementById('save-jaiza-btn').onclick = async () => {
-    showLoader(true);
     const selectedMonth = document.getElementById('report-month').value; 
     const rows = document.querySelectorAll('.inspection-row');
     const data = [];
+    let hasError = false;
     
-    try {
-        for (let row of rows) {
-            const date = row.querySelector('.insp-date').value;
-            const jamiaName = row.querySelector('.insp-jamia-name').value;
-            const type = row.querySelector('.insp-type').value;
-            const score = row.querySelector('.insp-score').value;
+    for (let row of rows) {
+        const dateInput = row.querySelector('.insp-date');
+        const date = dateInput.value;
+        const jamiaName = row.querySelector('.insp-jamia-name').value;
+        const type = row.querySelector('.insp-type').value;
+        const scoreInput = row.querySelector('.insp-score');
+        const score = scoreInput.value.trim();
 
-            // Agar user ne form fill kiya hai
-            if(date && score) {
-                data.push({ name: jamiaName, date: date, type: type, score: score });
-
-                // FIX: ID mein mahina add kiya gaya taake overwriting na ho
-                const adminReportId = `${currentUser.uid}_${jamiaName.replace(/\s+/g, '_')}_${selectedMonth}`; 
-                const inspectorName = document.getElementById('inspector-name').textContent;
-                
-                await setDoc(doc(db, "inspection_reports", adminReportId), {
-                    jamiaName: jamiaName,
-                    inspectorId: currentUser.uid,
-                    inspectorName: inspectorName,
-                    date: date,
-                    score: score,
-                    type: type,
-                    submittedAt: serverTimestamp(),
-                    month: selectedMonth
-                });
+        // Check karte hain ki kya user ne row fill karne ki koshish ki hai
+        if (score !== "" || (date !== "" && type !== "Not Conduct")) {
+            
+            // Agar 'Not Conduct' hai, toh date ki zarurat nahi, sirf reason chahiye
+            if (type === "Not Conduct") {
+                if (score === "") {
+                    alert(`${jamiaName} ke liye 'Not Conduct' ka reason likhna zaroori hai.`);
+                    hasError = true;
+                    break;
+                }
+            } else { 
+                // Agar 'Visit' ya 'Inspection' hai, toh date aur details dono zaroori hain
+                if (date === "") {
+                    alert(`${jamiaName} me ${type} ki date add karna zaroori hai.`);
+                    hasError = true;
+                    break;
+                }
+                if (score === "") {
+                    alert(`${jamiaName} me ${type} ki details/score dalna zaroori hai.`);
+                    hasError = true;
+                    break;
+                }
             }
+
+            data.push({ name: jamiaName, date: type === "Not Conduct" ? "" : date, type: type, score: score });
+        }
+    }
+
+    // Agar koi error hai (jaise date missing ho), toh code yahan rok dein aur save na karein
+    if (hasError) return;
+
+    // Agar saari rows empty hain
+    if (data.length === 0) {
+        alert("Aapne submit karne ke liye koi detail nahi daali hai.");
+        return;
+    }
+
+    showLoader(true);
+    try {
+        for (let item of data) {
+            const adminReportId = `${currentUser.uid}_${item.name.replace(/\s+/g, '_')}_${selectedMonth}`; 
+            const inspectorName = document.getElementById('inspector-name').textContent;
+            
+            await setDoc(doc(db, "inspection_reports", adminReportId), {
+                jamiaName: item.name,
+                inspectorId: currentUser.uid,
+                inspectorName: inspectorName,
+                date: item.date,
+                score: item.score,
+                type: item.type,
+                submittedAt: serverTimestamp(),
+                month: selectedMonth
+            });
         }
 
-        // Inspector ka local draft array bhi update ho jayega
         const reportId = `${currentUser.uid}_${selectedMonth}`;
         await setDoc(doc(db, "inspector_reports", reportId), { 
             jaiza: data, updatedAt: serverTimestamp(), month: selectedMonth 
