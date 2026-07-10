@@ -759,8 +759,17 @@ window.renderInspectionList = () => {
         const draftEntry = saved.find(s => s.name === jamia) || {};
         let entry = isSubmitted ? adminReport : draftEntry;
         
-        let inputPlaceholder = entry.type === 'Visit' ? "Visit details..." : (entry.type === 'Not Conduct' ? "Reason..." : "Score%");
-        let inputType = (entry.type === 'Visit' || entry.type === 'Not Conduct') ? "text" : "number";
+        let inputPlaceholder = "Select type first...";
+        let inputType = "text";
+        
+        if (entry.type === 'Visit') {
+            inputPlaceholder = "Visit details...";
+        } else if (entry.type === 'Not Conduct') {
+            inputPlaceholder = "Reason...";
+        } else if (entry.type === 'Inspection') {
+            inputPlaceholder = "Score%";
+            inputType = "number";
+        }
         
         const isDisabled = isSubmitted ? 'disabled bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white focus:ring-1 focus:ring-indigo-500';
 
@@ -772,8 +781,9 @@ window.renderInspectionList = () => {
             </div>
             
             <div class="flex gap-2 w-full md:w-auto flex-1">
-                <input type="date" ${isDisabled} class="insp-date w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm" value="${entry.date || ''}">
+                <input type="date" ${isDisabled} ${entry.type === 'Not Conduct' ? 'disabled' : ''} class="insp-date w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm ${entry.type === 'Not Conduct' ? 'bg-slate-100 cursor-not-allowed opacity-50' : ''}" value="${entry.date || ''}">
                 <select ${isDisabled} class="insp-type w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-semibold" onchange="handleTypeChange(this, ${index})">
+                    <option value="" ${!entry.type ? 'selected' : ''} disabled>Select Option</option>
                     <option value="Inspection" ${entry.type === 'Inspection' ? 'selected' : ''}>Inspection</option>
                     <option value="Visit" ${entry.type === 'Visit' ? 'selected' : ''}>Visit</option>
                     <option value="Not Conduct" ${entry.type === 'Not Conduct' ? 'selected' : ''}>Not Conduct</option>
@@ -782,11 +792,10 @@ window.renderInspectionList = () => {
 
             <div class="flex gap-2 w-full md:w-1/3">
                 <input type="${inputType}" ${isDisabled} id="score-input-${index}" placeholder="${inputPlaceholder}" 
-                       class="insp-score flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-bold ${isSubmitted ? 'text-emerald-600' : 'text-indigo-600'}" 
+                       class="insp-score flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-bold ${isSubmitted ? 'text-emerald-600' : (entry.type === 'Inspection' ? 'text-indigo-600' : '')}" 
                        value="${entry.score || ''}">
                 
-                <!-- Yahan alert hatakar proper button banaya gaya hai taake submitted list se bhi form open ho sake -->
-                <a id="form-link-${index}" style="display: ${(entry.type === 'Visit' || entry.type === 'Not Conduct') ? 'none' : 'flex'}" 
+                <a id="form-link-${index}" style="display: ${(entry.type === 'Inspection' || isSubmitted) ? 'flex' : 'none'}" 
                    href="academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}" 
                    target="_blank" 
                    class="items-center justify-center px-3 py-1.5 ${isSubmitted ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 border-indigo-100'} hover:text-white rounded-lg transition-all text-xs font-bold border gap-1.5 shrink-0">
@@ -847,44 +856,45 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         const dateInput = row.querySelector('.insp-date');
         const date = dateInput.value;
         const jamiaName = row.querySelector('.insp-jamia-name').value;
-        const type = row.querySelector('.insp-type').value;
+        const type = row.querySelector('.insp-type').value; 
         const scoreInput = row.querySelector('.insp-score');
         const score = scoreInput.value.trim();
 
-        // Check karte hain ki kya user ne row fill karne ki koshish ki hai
-        if (score !== "" || (date !== "" && type !== "Not Conduct")) {
-            
-            // Agar 'Not Conduct' hai, toh date ki zarurat nahi, sirf reason chahiye
-            if (type === "Not Conduct") {
-                if (score === "") {
-                    alert(`${jamiaName} ke liye 'Not Conduct' ka reason likhna zaroori hai.`);
-                    hasError = true;
-                    break;
-                }
-            } else { 
-                // Agar 'Visit' ya 'Inspection' hai, toh date aur details dono zaroori hain
-                if (date === "") {
-                    alert(`${jamiaName} me ${type} ki date add karna zaroori hai.`);
-                    hasError = true;
-                    break;
-                }
-                if (score === "") {
-                    alert(`${jamiaName} me ${type} ki details/score dalna zaroori hai.`);
-                    hasError = true;
-                    break;
-                }
-            }
-
-            data.push({ name: jamiaName, date: type === "Not Conduct" ? "" : date, type: type, score: score });
+        // Agar option select nahi hua hai (""), toh is jamia ko chhor dein aur aage badhein
+        if (!type || type === "") {
+            continue;
         }
+
+        // Agar 'Not Conduct' hai, toh sirf reason chahiye (date ki zarurat nahi)
+        if (type === "Not Conduct") {
+            if (score === "") {
+                alert(`${jamiaName} ke liye 'Not Conduct' ka reason likhna zaroori hai.`);
+                hasError = true;
+                break;
+            }
+        } else { 
+            // Agar 'Visit' ya 'Inspection' hai, toh date aur details/score dono zaroori hain
+            if (date === "") {
+                alert(`${jamiaName} me ${type} ki date add karna zaroori hai.`);
+                hasError = true;
+                break;
+            }
+            if (score === "") {
+                alert(`${jamiaName} me ${type} ki details/score dalna zaroori hai.`);
+                hasError = true;
+                break;
+            }
+        }
+
+        data.push({ name: jamiaName, date: type === "Not Conduct" ? "" : date, type: type, score: score });
     }
 
-    // Agar koi error hai (jaise date missing ho), toh code yahan rok dein aur save na karein
+    // Agar kisi row me detail ki kami hui, toh yahan save process ruk jayega
     if (hasError) return;
 
-    // Agar saari rows empty hain
+    // Agar saari rows me "Select Option" hi chora gaya hai
     if (data.length === 0) {
-        alert("Aapne submit karne ke liye koi detail nahi daali hai.");
+        alert("Aapne koi naya data select nahi kiya hai.");
         return;
     }
 
