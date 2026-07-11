@@ -1481,7 +1481,11 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         
         // DYNAMIC SEMESTER & MONTHS LINKED TO YOUR DB
         const semester = gActiveSem1Months.includes(targetMonthKey) ? "1" : "2";
-        const semMonths = semester === "1" ? gActiveSem1Months : gActiveSem2Months;
+        const allSemMonths = semester === "1" ? gActiveSem1Months : gActiveSem2Months;
+        
+        // 🎯 NAYA LOGIC: Selected mahine tak hi columns ko limit karna
+        const targetIdxInSem = allSemMonths.indexOf(targetMonthKey);
+        const semMonths = targetIdxInSem !== -1 ? allSemMonths.slice(0, targetIdxInSem + 1) : allSemMonths;
 
         const publicDataMap = {};
         const publicDataPromises = assignedJamiaat.map(async (jamiaName) => {
@@ -1672,7 +1676,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                                         <th class="border border-slate-200 p-2 min-w-[70px] bg-green-100 text-green-700 font-bold uppercase text-center">Percent</th>
                 `;
 
-                // Header ke columns (Sirf wahi mahine jinme working days > 0 hain)
+                // Ab sirf wahi mahine print honge jo select kiye gaye hain
                 semMonths.forEach(m => {
                     html += `<th colspan="2" class="border border-slate-200 p-2 font-bold text-indigo-900 uppercase text-center">${m}</th>`;
                 });
@@ -1746,6 +1750,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                         let munasibCount = 0;
                         let monthlyStatuses = {};
 
+                        // Ab yahan bhi sirf selected month tak hi check hoga
                         semMonths.forEach(m => {
                             const target = getTargetValue(period, m);
                             const achievedValue = getAchievedValue(period, m, jamia.jamiaName, teacher.name);
@@ -1779,7 +1784,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 container.innerHTML = `<div class="p-10 text-center bg-emerald-50 rounded-xl border border-emerald-200">
                     <i class="fas fa-check-circle text-emerald-500 text-4xl mb-3"></i>
                     <h4 class="font-bold text-emerald-800 text-lg">Excellent!</h4>
-                    <p class="text-emerald-600 mt-1">Is semester me kisi bhi subject me 'Munasib' (kam) performance nahi aayi.</p>
+                    <p class="text-emerald-600 mt-1">Is semester ke is mahine tak kisi bhi subject me 'Munasib' (kam) performance nahi aayi.</p>
                 </div>`;
                 return;
             }
