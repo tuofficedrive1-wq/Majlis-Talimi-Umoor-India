@@ -1396,7 +1396,7 @@ window.downloadTeacherReportImage = (rowClass, teacherName) => {
     });
 };
 // ==========================================
-// SUMMARY TAB HELPER FUNCTIONS
+// SUMMARY TAB HELPER FUNCTIONS (ENGLISH VERSION)
 // ==========================================
 
 const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentYearNum, allReports) => {
@@ -1446,17 +1446,17 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             const monthReport = gAllYearReportsData.find(r => r.monthNum === monthIdx && r.year === currentYearNum);
             
             if (!monthReport || !monthReport.karkardagiReport?.data) {
-                container.innerHTML = `<p class="text-yellow-600 font-bold p-4 bg-yellow-50 rounded-lg text-center">Is mahine ka data available nahi hai.</p>`;
+                container.innerHTML = `<p class="text-yellow-600 font-bold p-4 bg-yellow-50 rounded-lg text-center">No data available for this month.</p>`;
                 return;
             }
 
             const munasibPeriods = monthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib' && assignedJamiaat.includes(p.jamiaName));
             if (munasibPeriods.length === 0) {
-                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center">الحمدللہ! Is mahine koi 'Munasib' karkardagi nahi.</p>`;
+                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center">Excellent! No 'Munasib' performance this month.</p>`;
                 return;
             }
 
-            let html = `<div class="overflow-x-auto border rounded-lg shadow-sm bg-white"><table class="w-full text-sm"><tbody>`;
+            let html = `<div class="overflow-x-auto border rounded-lg shadow-sm bg-white"><table class="w-full text-sm text-left"><tbody>`;
             const jamiaGroups = {};
             munasibPeriods.forEach(p => {
                 if(!jamiaGroups[p.jamiaName]) jamiaGroups[p.jamiaName] = {};
@@ -1467,17 +1467,17 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             Object.keys(jamiaGroups).sort().forEach(jamia => {
                 html += `
                 <tr class="bg-indigo-50 border-b-2 border-indigo-200">
-                    <td colspan="10" class="p-3 font-bold text-indigo-900 text-lg urdu-font text-right">${jamia}</td>
+                    <td colspan="10" class="p-3 font-bold text-indigo-900 text-lg">${jamia}</td>
                 </tr>
-                <tr class="bg-red-50 text-red-800 text-xs font-bold border-b border-red-200 text-center">
+                <tr class="bg-red-50 text-red-800 text-xs font-bold border-b border-red-200 uppercase">
                     <td class="p-2 border-r border-red-200">Teacher</td>
                     <td class="p-2 border-r border-red-200">Class</td>
                     <td class="p-2 border-r border-red-200">Book</td>
-                    <td class="p-2 border-r border-red-200">Total</td>
-                    <td class="p-2 border-r border-red-200">Target</td>
-                    <td class="p-2 border-r border-red-200">Achieved</td>
-                    <td class="p-2 border-r border-red-200">%</td>
-                    <td class="p-2">Status</td>
+                    <td class="p-2 border-r border-red-200 text-center">Total</td>
+                    <td class="p-2 border-r border-red-200 text-center">Target</td>
+                    <td class="p-2 border-r border-red-200 text-center">Achieved</td>
+                    <td class="p-2 border-r border-red-200 text-center">%</td>
+                    <td class="p-2 text-center">Status</td>
                 </tr>`;
 
                 Object.keys(jamiaGroups[jamia]).forEach((tid, idx) => {
@@ -1485,14 +1485,14 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                     const bgClass = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
                     teacher.periods.forEach((p, pIdx) => {
                         html += `
-                        <tr class="${bgClass} border-b border-gray-100 hover:bg-gray-100 text-center">
-                            ${pIdx === 0 ? `<td rowspan="${teacher.periods.length}" class="p-2 border-r border-gray-200 urdu-font font-bold text-red-800">${teacher.name}</td>` : ''}
-                            <td class="p-2 border-r border-gray-200 urdu-font">${p.className}</td>
-                            <td class="p-2 border-r border-gray-200 urdu-font">${p.bookName}</td>
-                            <td class="p-2 border-r border-gray-200 font-bold">${p.monthlyTarget || 0}</td>
-                            <td class="p-2 border-r border-gray-200">${p.pagesTaught || 0}</td>
-                            <td class="p-2 border-r border-gray-200 font-bold text-blue-700">${p.achievement}%</td>
-                            <td class="p-2 border-r border-gray-200 font-bold text-red-600">${p.kaifiyat}</td>
+                        <tr class="${bgClass} border-b border-gray-100 hover:bg-gray-100">
+                            ${pIdx === 0 ? `<td rowspan="${teacher.periods.length}" class="p-2 border-r border-gray-200 font-bold text-red-800">${teacher.name}</td>` : ''}
+                            <td class="p-2 border-r border-gray-200">${p.className}</td>
+                            <td class="p-2 border-r border-gray-200">${p.bookName}</td>
+                            <td class="p-2 border-r border-gray-200 font-bold text-center">${p.monthlyTarget || 0}</td>
+                            <td class="p-2 border-r border-gray-200 text-center">${p.pagesTaught || 0}</td>
+                            <td class="p-2 border-r border-gray-200 font-bold text-blue-700 text-center">${p.achievement}%</td>
+                            <td class="p-2 border-r border-gray-200 font-bold text-red-600 text-center">${p.kaifiyat}</td>
                         </tr>`;
                     });
                 });
@@ -1529,11 +1529,11 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 }
             });
 
-            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white"><table class="w-full text-sm text-center" dir="rtl"><thead class="bg-slate-100 border-b"><tr>
-                <th class="p-3 text-right">استاد کا نام</th>
-                <th class="p-3 text-right">کتاب / درجہ</th>`;
-            semMonths.forEach(m => { html += `<th class="p-3 urdu-font text-indigo-700">${urduMonths[monthNames[m]] || monthNames[m]}</th>`; });
-            html += `<th class="p-2 text-center text-red-700 font-bold text-xs">کل مناسب</th></tr></thead><tbody>`;
+            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white"><table class="w-full text-sm text-left"><thead class="bg-slate-100 border-b"><tr>
+                <th class="p-3">Teacher Name</th>
+                <th class="p-3">Book / Class</th>`;
+            semMonths.forEach(m => { html += `<th class="p-3 text-indigo-700 text-center">${monthNames[m].toUpperCase()}</th>`; });
+            html += `<th class="p-2 text-center text-red-700 font-bold text-xs uppercase">Total Munasib</th></tr></thead><tbody>`;
 
             let hasData = false;
             Object.keys(historyData).forEach(jamia => {
@@ -1542,29 +1542,29 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 
                 if(jamiaHasMunasib) {
                     hasData = true;
-                    html += `<tr class="bg-indigo-50 border-b border-indigo-200"><td colspan="${semMonths.length + 3}" class="p-3 text-right urdu-font text-lg font-bold text-indigo-900">${jamia}</td></tr>`;
+                    html += `<tr class="bg-indigo-50 border-b border-indigo-200"><td colspan="${semMonths.length + 3}" class="p-3 text-lg font-bold text-indigo-900">${jamia}</td></tr>`;
                     Object.values(historyData[jamia]).forEach(t => {
                         const periods = Object.values(t.periods).filter(p => p.mCount > 0);
                         periods.forEach((p, pIdx) => {
                             html += `<tr class="border-b border-gray-100 hover:bg-slate-50">
-                                ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-3 text-right font-bold urdu-font border-l border-gray-200">${t.name}</td>` : ''}
-                                <td class="p-3 text-right urdu-font border-l border-gray-200">${p.book}<br><span class="text-xs text-gray-500">${p.class}</span></td>`;
+                                ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-3 font-bold border-r border-gray-200">${t.name}</td>` : ''}
+                                <td class="p-3 border-r border-gray-200 font-medium">${p.book}<br><span class="text-xs text-gray-500">${p.class}</span></td>`;
                             
                             semMonths.forEach(m => {
                                 const st = p.status[m];
                                 let badge = `<span class="text-gray-300">-</span>`;
-                                if(st === 'Munasib') badge = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-xs">مناسب</span>`;
+                                if(st === 'Munasib') badge = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-xs">Munasib</span>`;
                                 else if(st === 'Mumtaz' || st === 'Behtar') badge = `<span class="text-emerald-500"><i class="fas fa-check-circle"></i></span>`;
-                                html += `<td class="p-3 border-l border-gray-100">${badge}</td>`;
+                                html += `<td class="p-3 border-r border-gray-100 text-center">${badge}</td>`;
                             });
-                            html += `<td class="p-3 font-bold bg-red-50 text-red-700 border-l border-gray-100 text-lg">${p.mCount}</td></tr>`;
+                            html += `<td class="p-3 font-bold bg-red-50 text-red-700 text-center text-lg">${p.mCount}</td></tr>`;
                         });
                     });
                 }
             });
 
             html += `</tbody></table></div>`;
-            container.innerHTML = hasData ? html : `<div class="p-6 bg-emerald-50 rounded-xl border border-emerald-200 text-center"><i class="fas fa-trophy text-emerald-500 text-3xl mb-2"></i><h5 class="text-xl font-bold text-emerald-800 urdu-font">الحمدللہ!</h5><p class="text-emerald-700 mt-2">Is semester koi Munasib history nahi.</p></div>`;
+            container.innerHTML = hasData ? html : `<div class="p-6 bg-emerald-50 rounded-xl border border-emerald-200 text-center"><i class="fas fa-check-circle text-emerald-500 text-3xl mb-2"></i><h5 class="text-xl font-bold text-emerald-800">Excellent!</h5><p class="text-emerald-700 mt-2">No 'Munasib' history for this semester.</p></div>`;
         }
 
         // 3. TEACHER PROFILE
@@ -1593,20 +1593,20 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
 
                 html += `
                 <div class="mb-8 border rounded-xl shadow-sm bg-white overflow-hidden p-4">
-                    <h6 class="text-lg font-bold urdu-font text-indigo-700 mb-3 border-b-2 border-indigo-100 pb-2 text-right">استاد: ${t.name}</h6>
-                    <div class="overflow-x-auto no-scrollbar"><table class="w-full text-sm text-center" dir="rtl">
+                    <h6 class="text-lg font-bold text-indigo-700 mb-3 border-b-2 border-indigo-100 pb-2">Teacher: ${t.name}</h6>
+                    <div class="overflow-x-auto no-scrollbar"><table class="w-full text-sm text-left">
                         <thead class="bg-gray-100">
                             <tr>
-                                <th class="p-2 urdu-font text-right border-l border-gray-200">کتاب / درجہ</th>
-                                <th class="p-2 border-l border-gray-200">کل صفحات</th>
-                                <th class="p-2 border-l border-gray-200">کل پڑھائے گئے</th>
-                                <th class="p-2 bg-yellow-100 text-red-700 border-l border-gray-200">بقیہ</th>
-                                <th class="p-2 bg-emerald-100 text-emerald-800 border-l border-gray-200">%</th>`;
+                                <th class="p-2 border-r border-gray-200">Book / Class</th>
+                                <th class="p-2 border-r border-gray-200 text-center">Total Pages</th>
+                                <th class="p-2 border-r border-gray-200 text-center">Total Taught</th>
+                                <th class="p-2 bg-yellow-100 text-red-700 border-r border-gray-200 text-center">Remaining</th>
+                                <th class="p-2 bg-emerald-100 text-emerald-800 border-r border-gray-200 text-center">%</th>`;
                                 
-                validMonths.forEach(m => { html += `<th colspan="2" class="p-2 border-l border-gray-200 text-indigo-700 urdu-font">${urduMonths[monthNames[m]] || monthNames[m]}</th>`; });
+                validMonths.forEach(m => { html += `<th colspan="2" class="p-2 border-r border-gray-200 text-indigo-700 text-center uppercase">${monthNames[m]}</th>`; });
                 html += `</tr><tr><th colspan="5" class="border-b border-gray-200"></th>`;
                 
-                validMonths.forEach(() => { html += `<th class="p-2 bg-slate-50 text-blue-600 border-l border-gray-200">ہدف</th><th class="p-2 bg-slate-50 text-emerald-600 border-l border-gray-200">پڑھایا</th>`; });
+                validMonths.forEach(() => { html += `<th class="p-2 bg-slate-50 text-blue-600 border-r border-gray-200 text-center">Target</th><th class="p-2 bg-slate-50 text-emerald-600 border-r border-gray-200 text-center">Taught</th>`; });
                 html += `</tr></thead><tbody>`;
 
                 periods.forEach(p => {
@@ -1615,17 +1615,17 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                     const pct = p.totalPages > 0 ? Math.round((cumTaught/p.totalPages)*100) : 0;
 
                     html += `<tr class="border-b border-gray-100 hover:bg-slate-50">
-                        <td class="p-2 text-right urdu-font border-l border-gray-200">${p.bookName} <span class="text-xs text-gray-500">(${p.className})</span></td>
-                        <td class="p-2 font-bold border-l border-gray-200">${p.totalPages}</td>
-                        <td class="p-2 font-bold text-indigo-700 border-l border-gray-200">${cumTaught}</td>
-                        <td class="p-2 font-bold bg-yellow-50 text-red-700 border-l border-gray-200">${rem}</td>
-                        <td class="p-2 font-bold bg-emerald-50 text-emerald-700 border-l border-gray-200">${pct}%</td>`;
+                        <td class="p-2 border-r border-gray-200 font-medium">${p.bookName} <span class="text-xs text-gray-500">(${p.className})</span></td>
+                        <td class="p-2 font-bold border-r border-gray-200 text-center">${p.totalPages}</td>
+                        <td class="p-2 font-bold text-indigo-700 border-r border-gray-200 text-center">${cumTaught}</td>
+                        <td class="p-2 font-bold bg-yellow-50 text-red-700 border-r border-gray-200 text-center">${rem}</td>
+                        <td class="p-2 font-bold bg-emerald-50 text-emerald-700 border-r border-gray-200 text-center">${pct}%</td>`;
 
                     validMonths.forEach(m => {
                         let y = semester === '1' ? parseInt(gSummaryActiveYear.split('-')[0]) : (m >= 8 ? parseInt(gSummaryActiveYear.split('-')[0]) : parseInt(gSummaryActiveYear.split('-')[1]));
                         const mReport = gAllYearReportsData.find(r => r.monthNum === m && r.year === y);
                         const entry = mReport?.karkardagiReport?.data?.find(e => e.periodId === p.id);
-                        html += `<td class="p-2 border-l border-gray-200">${entry?.monthlyTarget || 0}</td><td class="p-2 border-l border-gray-200 font-bold">${entry?.pagesTaught || 0}</td>`;
+                        html += `<td class="p-2 border-r border-gray-200 text-center">${entry?.monthlyTarget || 0}</td><td class="p-2 border-r border-gray-200 font-bold text-center">${entry?.pagesTaught || 0}</td>`;
                     });
                     html += `</tr>`;
                 });
