@@ -609,38 +609,37 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 publicMonthData = publicPerfSnap.data()[targetMonthKey] || publicPerfSnap.data()[currentYearMonthPrefix] || null;
             }
 
-            // FLAT DESIGN CARD START
+            // DUSRI IMAGE WALA CARD DESIGN (Border top ke sath aur Colorful Buttons)
             html += `
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden jamia-card mb-6" id="card-${safeId}">
-                <div class="p-3 md:p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div><h3 class="font-extrabold text-slate-800 text-base md:text-lg tracking-tight">${jamiaName}</h3></div>
+            <div class="bg-white rounded-lg shadow-md overflow-hidden jamia-card mb-6 border-t-4 border-t-blue-500 border-x border-b border-slate-200" id="card-${safeId}">
+                <div class="bg-slate-50/50 p-3 md:p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div><h3 class="font-black text-slate-800 text-base md:text-lg tracking-tight uppercase">${jamiaName}</h3></div>
                     
-                    <!-- Soft Action Buttons -->
-                    <div class="flex flex-wrap gap-1.5 md:gap-2 w-full sm:w-auto">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-slate-50 border border-slate-200 text-slate-600 text-[10px] md:text-xs px-2.5 py-1.5 rounded-md hover:bg-slate-100 transition font-medium flex items-center justify-center"><i class="fas fa-link mr-1.5 text-indigo-400"></i> Link</button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-slate-50 border border-slate-200 text-slate-600 text-[10px] md:text-xs px-2.5 py-1.5 rounded-md hover:bg-slate-100 transition font-medium flex items-center justify-center"><i class="fas fa-image mr-1.5 text-rose-400"></i> Image</button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-slate-50 border border-slate-200 text-slate-600 text-[10px] md:text-xs px-2.5 py-1.5 rounded-md hover:bg-slate-100 transition font-medium flex items-center justify-center"><i class="fas fa-file-excel mr-1.5 text-emerald-400"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px] md:text-xs px-3 py-1.5 rounded-md hover:bg-indigo-100 transition font-bold flex items-center justify-center"><i class="fas fa-edit mr-1.5"></i> Edit</button>
+                    <!-- VIBRANT ACTION BUTTONS (Image 2 ki tarah) -->
+                    <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-emerald-500 text-white text-[10px] md:text-xs px-3 py-1.5 rounded hover:bg-emerald-600 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-link mr-1.5"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-red-500 text-white text-[10px] md:text-xs px-3 py-1.5 rounded hover:bg-red-600 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-image mr-1.5"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-blue-600 text-white text-[10px] md:text-xs px-3 py-1.5 rounded hover:bg-blue-700 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-file-csv mr-1.5"></i> CSV</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-purple-600 text-white text-[10px] md:text-xs px-3 py-1.5 rounded hover:bg-purple-700 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-edit mr-1.5"></i> Edit Pages</button>
                     </div>
                 </div>
                 
-                <!-- Clean Table Structure -->
-                <div class="overflow-x-auto no-scrollbar">
+                <div class="overflow-x-auto no-scrollbar bg-white p-2">
                     <table class="w-full text-left whitespace-nowrap min-w-max">
-                        <thead class="bg-slate-50/50 text-slate-500 text-[10px] md:text-[11px] uppercase font-semibold border-b border-slate-100 tracking-wide">
+                        <thead class="bg-slate-100/50 text-slate-600 text-[10px] md:text-xs uppercase font-bold border-y border-slate-200">
                             <tr>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3">Teacher</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3">Class</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3">Subject</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Total</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center text-indigo-500">Target</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Achieved</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">%</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Kaifiyat</th>
-                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Action</th> 
+                                <th class="px-3 py-3 md:px-4">Teacher</th>
+                                <th class="px-3 py-3 md:px-4">Class</th>
+                                <th class="px-3 py-3 md:px-4">Book</th>
+                                <th class="px-3 py-3 md:px-4 text-center">Total</th>
+                                <th class="px-3 py-3 md:px-4 text-center">Target</th>
+                                <th class="px-3 py-3 md:px-4 text-center">Achieved</th>
+                                <th class="px-3 py-3 md:px-4 text-center">%</th>
+                                <th class="px-3 py-3 md:px-4 text-center">Kaifiyat</th>
+                                <th class="px-3 py-3 md:px-4 text-center">Action</th> 
                             </tr>
                         </thead>
-                        <tbody class="text-xs md:text-sm text-slate-600">`;
+                        <tbody class="text-xs md:text-sm text-slate-700 divide-y divide-slate-100">`;
 
             jamiaData.teachers.forEach((teacher) => {
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
@@ -1749,46 +1748,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         // ----------------------------------------------------
         else if (targetTabId === 'history-tab') {
             const container = document.getElementById('munasib-history-container');
-            let historyData = {};
-
-            gSummaryKarkardagiStructure.forEach(jamia => {
-                if (!assignedJamiaat.includes(jamia.jamiaName)) return;
-
-                jamia.teachers.forEach(teacher => {
-                    (teacher.periods || []).filter(p => p.semester == semester).forEach(period => {
-                        
-                        let munasibCount = 0;
-                        let monthlyStatuses = {};
-
-                        // Ab yahan bhi sirf selected month tak hi check hoga
-                        semMonths.forEach(m => {
-                            const target = getTargetValue(period, m);
-                            const achievedValue = getAchievedValue(period, m, jamia.jamiaName, teacher.name);
-                            const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
-                            
-                            if(target > 0 || achievedValue > 0) {
-                                const result = calculateKaifiyatAndStyle(percentage, m, period.semester);
-                                monthlyStatuses[m] = result.kaifiyat;
-                                if (result.kaifiyat === 'Munasib') munasibCount++;
-                            } else {
-                                monthlyStatuses[m] = '-';
-                            }
-                        });
-
-                        if (munasibCount > 0) {
-                            if (!historyData[jamia.jamiaName]) historyData[jamia.jamiaName] = {};
-                            if (!historyData[jamia.jamiaName][teacher.name]) historyData[jamia.jamiaName][teacher.name] = [];
-                            
-                            historyData[jamia.jamiaName][teacher.name].push({
-                                className: period.className,
-                                bookName: period.bookName,
-                                monthlyStatuses: monthlyStatuses,
-                                munasibCount: munasibCount
-                            });
-                        }
-                    });
-                });
-            });
+            // ... historyData object banne tak ka code (jamia.teachers.forEach) waisa hi rahega ...
 
             if (Object.keys(historyData).length === 0) {
                 container.innerHTML = `<div class="p-10 text-center bg-emerald-50 rounded-xl border border-emerald-200">
@@ -1799,56 +1759,41 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 return;
             }
 
-            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white">
+           let html = `<div class="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white p-2"><table class="w-full text-sm text-left whitespace-nowrap"><tbody>`;
                             <table class="min-w-full text-sm text-left whitespace-nowrap">
-                                <thead class="bg-slate-100 border-b border-slate-200">
+                                <thead class="bg-slate-100/50 border-y border-slate-200">
                                     <tr>
-                                        <th class="p-3 border-r border-slate-200 font-bold uppercase tracking-wider text-slate-600">Teacher</th>
-                                        <th class="p-3 border-r border-slate-200 font-bold uppercase tracking-wider text-slate-600">Book / Class</th>`;
+                                        <th class="px-4 py-3 font-bold uppercase tracking-wider text-slate-600 text-xs">Teacher</th>
+                                        <th class="px-4 py-3 font-bold uppercase tracking-wider text-slate-600 text-xs">Book / Class</th>`;
             semMonths.forEach(m => {
-                html += `<th class="p-3 border-r border-slate-200 font-bold uppercase text-center text-indigo-700">${m}</th>`;
+                html += `<th class="px-4 py-3 font-bold uppercase text-center text-indigo-700 text-xs">${m}</th>`;
             });
-            html += `                   <th class="p-3 font-bold uppercase text-center text-red-700 bg-red-50">Total Munasib</th>
+            html += `                   <th class="px-4 py-3 font-bold uppercase text-center text-red-600 bg-red-50/50 text-xs">Total Munasib</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-100">`;
+                                <tbody class="divide-y divide-slate-100 text-slate-700">`;
 
-            Object.keys(historyData).sort().forEach(jamiaName => {
-                html += `<tr class="bg-indigo-50 border-b-2 border-indigo-200"><td colspan="${2 + semMonths.length + 1}" class="p-3 font-black text-indigo-900 text-base tracking-wide uppercase">${jamiaName}</td></tr>`;
-                
-                Object.keys(historyData[jamiaName]).sort().forEach((teacherName, tIdx) => {
-                    const periods = historyData[jamiaName][teacherName];
-                    const bgClass = tIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+           Object.keys(jamiaGroups).sort().forEach(jamia => {
+                html += `<tr class="bg-slate-50/80 border-t-2 border-indigo-100"><td colspan="7" class="px-4 py-3 font-black text-slate-800 text-sm tracking-wide uppercase">${jamia}</td></tr>
+                         <tr class="bg-slate-100/50 text-slate-600 text-[10px] md:text-xs font-bold border-y border-slate-200 uppercase tracking-wider">
+                             <th class="px-4 py-2">Teacher</th><th class="px-4 py-2">Class</th><th class="px-4 py-2">Book</th><th class="px-4 py-2 text-center">Target</th><th class="px-4 py-2 text-center">Achieved</th><th class="px-4 py-2 text-center">%</th><th class="px-4 py-2 text-center">Status</th>
+                         </tr>`;
 
+                Object.keys(jamiaGroups[jamia]).forEach((teacherName, idx) => {
+                    const periods = jamiaGroups[jamia][teacherName];
                     periods.forEach((p, pIdx) => {
-                        html += `<tr class="${bgClass} hover:bg-indigo-50/50 transition-colors">`;
-                        if (pIdx === 0) {
-                            html += `<td rowspan="${periods.length}" class="p-3 border-r border-slate-200 font-bold text-slate-800 align-middle">${teacherName}</td>`;
-                        }
-                        html += `<td class="p-3 border-r border-slate-200">
-                                    <div class="font-bold text-slate-700">${p.bookName}</div>
-                                    <div class="text-[10px] text-slate-500 uppercase mt-0.5">${p.className}</div>
-                                 </td>`;
-
-                        semMonths.forEach(m => {
-                            const status = p.monthlyStatuses[m];
-                            let badgeHtml = `<span class="text-slate-300">-</span>`;
-                            if (status === 'Munasib') {
-                                badgeHtml = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-[10px] uppercase shadow-sm">Munasib</span>`;
-                            } else if (status === 'Mumtaz' || status === 'Behtar') {
-                                badgeHtml = `<i class="fas fa-check-circle text-emerald-500"></i>`;
-                            }
-                            html += `<td class="p-3 border-r border-slate-200 text-center">${badgeHtml}</td>`;
-                        });
-
-                        let countClass = p.munasibCount >= 3 ? 'bg-red-600 text-white' : (p.munasibCount === 2 ? 'bg-orange-500 text-white' : 'bg-yellow-100 text-yellow-800');
-
-                        html += `<td class="p-3 text-center font-black text-lg ${countClass}">${p.munasibCount}</td>
-                            </tr>`;
+                        html += `<tr class="bg-white border-b border-slate-100 hover:bg-slate-50/50 transition">
+                            ${pIdx === 0 ? `<td rowspan="${periods.length}" class="px-4 py-3 border-r border-slate-50 font-bold text-slate-800 whitespace-normal min-w-[120px]">${teacherName}</td>` : ''}
+                            <td class="px-4 py-3 text-slate-600 text-xs whitespace-normal min-w-[120px]">${p.className}</td>
+                            <td class="px-4 py-3 text-slate-700 font-semibold text-xs whitespace-normal min-w-[120px]">${p.bookName}</td>
+                            <td class="px-4 py-3 font-bold text-center text-indigo-500 bg-indigo-50/30 rounded">${p.monthlyTarget}</td>
+                            <td class="px-4 py-3 text-center font-bold text-slate-700">${p.pagesTaught}</td>
+                            <td class="px-4 py-3 font-black text-red-500 text-center">${p.achievement}%</td>
+                            <td class="px-4 py-3 text-center"><span class="bg-red-50 text-red-600 font-bold px-2 py-1 rounded-md text-[10px] uppercase border border-red-100 shadow-sm">Munasib</span></td>
+                        </tr>`;
                     });
                 });
             });
-
             html += `</tbody></table></div>`;
             document.getElementById('munasib-history-container').innerHTML = html;
         }
