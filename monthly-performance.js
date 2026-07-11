@@ -285,7 +285,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             
             const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamia);
             if(jamiaData && jamiaData.teachers) {
-                teacherSelect.innerHTML = '<option value="all" class="font-bold text-indigo-700">تمام اساتذہ (All Teachers)</option>' + 
+                teacherSelect.innerHTML = '<option value="all" class="font-bold text-indigo-700">(All Teachers)</option>' + 
                     jamiaData.teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
             }
         };
