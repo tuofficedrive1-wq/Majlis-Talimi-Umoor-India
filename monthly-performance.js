@@ -1444,6 +1444,7 @@ const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentY
 
 const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJamiaat) => {
     try {
+        // 1. Initial Setup and Basic Config
         if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
             const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
             gSummaryActiveYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
@@ -1459,10 +1460,83 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
 
         const monthSelectElem = document.getElementById('summary-month-select');
-        const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(getActiveShortMonth()));
+        const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(currentSelectedMonth));
         const targetMonthKey = monthNames[monthIdx];
         const currentYearMonthPrefix = `${gSummaryActiveYear.split('-')[0]}-${monthIdx + 1 < 10 ? '0' + (monthIdx + 1) : monthIdx + 1}`;
+        
+        const semester = (monthIdx >= 3 && monthIdx <= 7) ? "1" : "2";
+        const semMonths = semester === "1" ? ["apr", "may", "jun", "jul", "aug"] : ["sep", "oct", "nov", "dec", "jan", "feb", "mar"];
 
+        // 2. PUBLIC DATA FETCH (Performance tab wala logic taake 0 na aaye)
+        const publicDataMap = {};
+        const publicDataPromises = assignedJamiaat.map(async (jamiaName) => {
+            const match = jamiaName.match(/\d+/);
+            const jamiaDocId = match ? match[0] : "001";
+            const snap = await getDoc(doc(db, "academic_performance", jamiaDocId));
+            if (snap.exists()) {
+                publicDataMap[jamiaName] = snap.data();
+            } else {
+                publicDataMap[jamiaName] = {};
+            }
+        });
+        await Promise.all(publicDataPromises);
+
+        // HELPER 1: Get Target Value
+        const getTargetValue = (period, monthKey) => {
+            let target = 0;
+            const exactSubId = `${(period.className || "").trim()}_${(period.bookName || "").trim()}`.replace(/\s+/g, '_');
+            if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][monthKey] !== undefined) {
+                target = parseInt(monthlyTargets[exactSubId][monthKey]) || 0;
+            } else if (monthlyTargets) {
+                const userClassNoSpace = (period.className || "").trim().toLowerCase().replace(/[\s\-_]/g, ''); 
+                const userBookNameFormatted = (period.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
+                for (const adminKey in monthlyTargets) {
+                    const adminKeyLower = adminKey.toLowerCase();
+                    const suffix = `_${userBookNameFormatted}`;
+                    if (adminKeyLower.endsWith(suffix)) {
+                        const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
+                        const adminClassNoSpace = adminClassKeyPart.replace(/[\s\-_]/g, '');
+                        if (userClassNoSpace.startsWith(adminClassNoSpace)) {
+                            if (monthlyTargets[adminKey][monthKey] !== undefined) {
+                                target = parseInt(monthlyTargets[adminKey][monthKey]) || 0;
+                                break; 
+                            }
+                        }
+                    }
+                }
+            }
+            return target;
+        };
+
+        // HELPER 2: Get Achieved Value
+        const getAchievedValue = (period, monthKey, jamiaName, teacherName) => {
+            const prefix = `${gSummaryActiveYear.split('-')[0]}-${monthNames.indexOf(monthKey) + 1 < 10 ? '0' + (monthNames.indexOf(monthKey) + 1) : monthNames.indexOf(monthKey) + 1}`;
+            let val = 0;
+            
+            if (period.achieved && period.achieved[prefix] !== undefined) {
+                val = period.achieved[prefix];
+            } else if (period.achieved && period.achieved[monthKey] !== undefined) {
+                val = period.achieved[monthKey];
+            } else {
+                const publicJamia = publicDataMap[jamiaName] || {};
+                const publicMonth = publicJamia[monthKey] || publicJamia[prefix];
+                if (publicMonth && publicMonth.teachers) {
+                    const pTeacher = publicMonth.teachers.find(t => t.name.toLowerCase() === teacherName.toLowerCase());
+                    if (pTeacher && pTeacher.periods_detail) {
+                        const matched = Object.keys(pTeacher.periods_detail).find(k => {
+                            const d = pTeacher.periods_detail[k];
+                            return d.class === period.className && d.subject === period.bookName;
+                        });
+                        if (matched) val = pTeacher.periods_detail[matched].page_to || 0;
+                    }
+                }
+            }
+            return val;
+        };
+
+        // ----------------------------------------------------
+        // TAB 1: MONTHLY MUNASIB REPORT
+        // ----------------------------------------------------
         if (targetTabId === 'munasib-tab') {
             const container = document.getElementById('monthly-munasib-container');
             let munasibPeriods = [];
@@ -1471,40 +1545,9 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 if (!assignedJamiaat.includes(jamia.jamiaName)) return;
 
                 jamia.teachers.forEach(teacher => {
-                    (teacher.periods || []).forEach(p => {
-                        // NAYA LOGIC: Sahi se Target fetch karne ke liye (Performance Tab wala same logic)
-                        let target = 0;
-                        const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
-                        
-                        if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
-                            target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
-                        } else if (monthlyTargets) {
-                            const userClassNoSpace = (p.className || "").trim().toLowerCase().replace(/[\s\-_]/g, ''); 
-                            const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
-
-                            for (const adminKey in monthlyTargets) {
-                                const adminKeyLower = adminKey.toLowerCase();
-                                const suffix = `_${userBookNameFormatted}`;
-                                if (adminKeyLower.endsWith(suffix)) {
-                                    const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
-                                    const adminClassNoSpace = adminClassKeyPart.replace(/[\s\-_]/g, '');
-                                    if (userClassNoSpace.startsWith(adminClassNoSpace)) {
-                                        if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
-                                            target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
-                                            break; 
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Sahi Achieved Value fetch karna (Performance Tab wala same logic)
-                        let achievedValue = 0;
-                        if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
-                            achievedValue = p.achieved[currentYearMonthPrefix];
-                        } else if (p.achieved && p.achieved[targetMonthKey] !== undefined) {
-                            achievedValue = p.achieved[targetMonthKey];
-                        }
+                    (teacher.periods || []).filter(p => p.semester == semester).forEach(p => {
+                        const target = getTargetValue(p, targetMonthKey);
+                        const achievedValue = getAchievedValue(p, targetMonthKey, jamia.jamiaName, teacher.name);
                         
                         const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                         const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
@@ -1558,8 +1601,10 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             html += `</tbody></table></div>`;
             container.innerHTML = html;
         } 
+        // ----------------------------------------------------
+        // TAB 2: ENGLISH TEACHER PROFILE TAB
+        // ----------------------------------------------------
         else if (targetTabId === 'profile-tab') {
-            // NAYA LOGIC: Teacher Profile Renderer
             const jamiaName = document.getElementById('teacher-profile-jamia').value;
             const teacherId = document.getElementById('teacher-profile-teacher').value;
             const container = document.getElementById('teacher-profile-container');
@@ -1570,58 +1615,220 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             }
 
             const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamiaName);
-            let teachersToShow = teacherId === 'all' ? jamiaData.teachers : [jamiaData.teachers.find(t => t.id === teacherId)];
+            if (!jamiaData || !jamiaData.teachers) {
+                container.innerHTML = `<p class="text-red-500">Jamia data not found in structure.</p>`;
+                return;
+            }
 
-            let html = "";
-            teachersToShow.forEach(teacher => {
-                if(!teacher) return;
+            let teachersToRender = teacherId === 'all' ? jamiaData.teachers : jamiaData.teachers.filter(t => t.id === teacherId);
+
+            if (teachersToRender.length === 0) {
+                container.innerHTML = `<p class="text-yellow-700 p-4">Is semester me koi data set nahi hai.</p>`;
+                return;
+            }
+
+            let html = ``;
+
+            if (teacherId === 'all') {
                 html += `
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 md:p-6 mb-4">
-                    <div class="flex flex-col md:flex-row justify-between md:items-center border-b border-slate-100 pb-4 mb-4 gap-4">
-                        <div>
-                            <h3 class="text-lg md:text-xl font-black text-indigo-950">${teacher.name}</h3>
-                            <p class="text-xs font-bold tracking-widest text-indigo-500 uppercase mt-1">Ajeer Code: ${teacher.loginCode || 'N/A'}</p>
-                        </div>
-                        <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-slate-600">
-                            <div><span class="font-bold text-slate-800">Phone:</span> ${teacher.contact || '-'}</div>
-                            <div><span class="font-bold text-slate-800">Exp:</span> ${teacher.experience || '-'}</div>
-                            <div><span class="font-bold text-slate-800">Qual:</span> ${teacher.highestQualification || '-'}</div>
-                            <div><span class="font-bold text-slate-800">Ijara:</span> <span class="text-emerald-600 font-bold">${teacher.ijaraStatus || '-'}</span></div>
-                        </div>
+                    <div class="flex flex-col mb-4 bg-teal-50 p-4 rounded-xl border border-teal-100 shadow-sm text-center">
+                        <h5 class="text-lg md:text-xl font-black text-teal-900">Jamia: ${jamiaName} &nbsp;|&nbsp; All Teachers Profile (Sem ${semester})</h5>
                     </div>
-                    <h4 class="font-bold text-slate-700 text-sm mb-3">Assigned Classes</h4>
-                    <div class="overflow-x-auto no-scrollbar border rounded-lg">
-                        <table class="w-full text-left text-xs whitespace-nowrap">
-                            <thead class="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
-                                <tr>
-                                    <th class="p-2 md:p-3 border-r border-slate-100">Class</th>
-                                    <th class="p-2 md:p-3 border-r border-slate-100">Subject</th>
-                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Semester</th>
-                                    <th class="p-2 md:p-3 text-center">Total Pages</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 text-slate-700">
-                                ${teacher.periods?.length ? teacher.periods.map(p => `
-                                    <tr class="hover:bg-slate-50">
-                                        <td class="p-2 md:p-3 border-r border-slate-100">${p.className}</td>
-                                        <td class="p-2 md:p-3 border-r border-slate-100 font-semibold">${p.bookName}</td>
-                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center">${p.semester}</td>
-                                        <td class="p-2 md:p-3 text-center font-bold text-indigo-600">${p.totalPages}</td>
-                                    </tr>
-                                `).join('') : '<tr><td colspan="4" class="p-4 text-center text-slate-400">No periods assigned</td></tr>'}
-                            </tbody>
-                        </table>
+                `;
+            } else {
+                html += `
+                    <div class="flex flex-col mb-4 bg-teal-50 p-4 rounded-xl border border-teal-100 shadow-sm text-center">
+                        <h5 class="text-lg md:text-xl font-black text-teal-900">Teacher: ${teachersToRender[0].name} &nbsp;|&nbsp; Jamia: ${jamiaName} &nbsp;|&nbsp; Sem: ${semester}</h5>
                     </div>
-                </div>`;
+                `;
+            }
+
+            teachersToRender.forEach(teacher => {
+                const periodsInSemester = (teacher.periods || []).filter(p => p.semester == semester);
+                if (periodsInSemester.length === 0) return;
+
+                const containerClass = teacherId === 'all' ? "mb-8 bg-white border border-slate-200 p-4 md:p-5 rounded-xl shadow-sm" : "bg-white border border-slate-200 p-4 md:p-5 rounded-xl shadow-sm";
+                const teacherNameHeader = teacherId === 'all' ? `<h6 class="text-base md:text-lg font-bold text-blue-700 mb-3 border-b-2 border-blue-100 pb-2 text-left">Teacher: ${teacher.name}</h6>` : ``;
+
+                html += `
+                    <div class="${containerClass}">
+                        ${teacherNameHeader}
+                        <div class="overflow-x-auto rounded-lg shadow-sm border border-slate-200">
+                            <table class="min-w-full text-[10px] md:text-xs bg-white border-collapse text-left">
+                                <thead class="bg-slate-100">
+                                    <tr>
+                                        <th class="border border-slate-200 p-2 md:p-3 min-w-[140px] md:min-w-[180px] text-slate-700 font-bold uppercase tracking-wider">Book / Class</th>
+                                        <th class="border border-slate-200 p-2 min-w-[70px] text-slate-700 font-bold uppercase text-center">Total Pages</th>
+                                        <th class="border border-slate-200 p-2 min-w-[70px] text-slate-700 font-bold uppercase text-center">Total Taught</th>
+                                        <th class="border border-slate-200 p-2 min-w-[70px] bg-yellow-100 text-red-600 font-bold uppercase text-center">Remaining</th>
+                                        <th class="border border-slate-200 p-2 min-w-[70px] bg-green-100 text-green-700 font-bold uppercase text-center">Percent</th>
+                `;
+
+                semMonths.forEach(m => {
+                    html += `<th colspan="2" class="border border-slate-200 p-2 font-bold text-indigo-900 uppercase text-center">${m}</th>`;
+                });
+
+                html += `</tr><tr class="bg-slate-50">
+                         <th class="border border-slate-200"></th>
+                         <th class="border border-slate-200"></th>
+                         <th class="border border-slate-200"></th>
+                         <th class="border border-slate-200 bg-yellow-50"></th>
+                         <th class="border border-slate-200 bg-green-50"></th>`;
+
+                semMonths.forEach(() => {
+                    html += `<th class="border border-slate-200 p-1.5 md:p-2 text-indigo-600 text-[9px] md:text-xs font-semibold text-center">Target</th>
+                             <th class="border border-slate-200 p-1.5 md:p-2 text-emerald-600 text-[9px] md:text-xs font-semibold text-center">Taught</th>`;
+                });
+
+                html += `</tr></thead><tbody>`;
+
+                periodsInSemester.forEach(period => {
+                    const totalPages = period.totalPages || 0;
+                    let cumulativeTaught = 0;
+                    let monthDataHtml = ``;
+
+                    semMonths.forEach(m => {
+                        const target = getTargetValue(period, m);
+                        const achievedValue = getAchievedValue(period, m, jamiaName, teacher.name);
+
+                        cumulativeTaught += achievedValue;
+                        monthDataHtml += `
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center text-slate-500 font-medium">${target}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-bold text-slate-800">${achievedValue}</td>
+                        `;
+                    });
+
+                    const remainingPages = Math.max(0, totalPages - cumulativeTaught);
+                    const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
+
+                    html += `
+                        <tr class="hover:bg-slate-50 transition-colors">
+                            <td class="border border-slate-200 p-1.5 md:p-2 font-bold text-slate-800">
+                                ${period.bookName} <br><span class="text-[9px] md:text-[10px] text-slate-500 font-normal block mt-1">${period.className}</span>
+                            </td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-bold text-slate-700">${totalPages}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-black text-blue-700">${cumulativeTaught}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-black text-red-600 bg-yellow-50">${remainingPages}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-black text-emerald-600 bg-green-50">${percent}%</td>
+                            ${monthDataHtml}
+                        </tr>
+                    `;
+                });
+
+                html += `</tbody></table></div></div>`;
             });
+
+            if (html === ``) html = `<p class="text-slate-500 text-center p-5">No data found.</p>`;
             container.innerHTML = html;
         }
+        // ----------------------------------------------------
+        // TAB 3: MUNASIB HISTORY TAB (All Semester Munasib Status)
+        // ----------------------------------------------------
         else if (targetTabId === 'history-tab') {
-            document.getElementById('munasib-history-container').innerHTML = `
-                <div class="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300">
-                    <i class="fas fa-tools text-3xl text-slate-400 mb-3"></i>
-                    <p class="font-bold text-slate-500 text-sm">Semester History Report is abhi active structure data ke format mein mojud nahi hai.</p>
+            const container = document.getElementById('munasib-history-container');
+            let historyData = {};
+
+            gSummaryKarkardagiStructure.forEach(jamia => {
+                if (!assignedJamiaat.includes(jamia.jamiaName)) return;
+
+                jamia.teachers.forEach(teacher => {
+                    (teacher.periods || []).filter(p => p.semester == semester).forEach(period => {
+                        
+                        let munasibCount = 0;
+                        let monthlyStatuses = {};
+
+                        semMonths.forEach(m => {
+                            const target = getTargetValue(period, m);
+                            const achievedValue = getAchievedValue(period, m, jamia.jamiaName, teacher.name);
+                            const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                            
+                            if(target > 0 || achievedValue > 0) {
+                                const result = calculateKaifiyatAndStyle(percentage, m, period.semester);
+                                monthlyStatuses[m] = result.kaifiyat;
+                                if (result.kaifiyat === 'Munasib') munasibCount++;
+                            } else {
+                                monthlyStatuses[m] = '-';
+                            }
+                        });
+
+                        // Agar is subject me ek baar bhi Munasib (kam performance) aayi ho
+                        if (munasibCount > 0) {
+                            if (!historyData[jamia.jamiaName]) historyData[jamia.jamiaName] = {};
+                            if (!historyData[jamia.jamiaName][teacher.name]) historyData[jamia.jamiaName][teacher.name] = [];
+                            
+                            historyData[jamia.jamiaName][teacher.name].push({
+                                className: period.className,
+                                bookName: period.bookName,
+                                monthlyStatuses: monthlyStatuses,
+                                munasibCount: munasibCount
+                            });
+                        }
+                    });
+                });
+            });
+
+            if (Object.keys(historyData).length === 0) {
+                container.innerHTML = `<div class="p-10 text-center bg-emerald-50 rounded-xl border border-emerald-200">
+                    <i class="fas fa-check-circle text-emerald-500 text-4xl mb-3"></i>
+                    <h4 class="font-bold text-emerald-800 text-lg">Excellent!</h4>
+                    <p class="text-emerald-600 mt-1">Is semester me kisi bhi subject me 'Munasib' (kam) performance nahi aayi.</p>
                 </div>`;
+                return;
+            }
+
+            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white">
+                            <table class="min-w-full text-sm text-left whitespace-nowrap">
+                                <thead class="bg-slate-100 border-b border-slate-200">
+                                    <tr>
+                                        <th class="p-3 border-r border-slate-200 font-bold uppercase tracking-wider text-slate-600">Teacher</th>
+                                        <th class="p-3 border-r border-slate-200 font-bold uppercase tracking-wider text-slate-600">Book / Class</th>`;
+            semMonths.forEach(m => {
+                html += `<th class="p-3 border-r border-slate-200 font-bold uppercase text-center text-indigo-700">${m}</th>`;
+            });
+            html += `                   <th class="p-3 font-bold uppercase text-center text-red-700 bg-red-50">Total Munasib</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">`;
+
+            Object.keys(historyData).sort().forEach(jamiaName => {
+                html += `<tr class="bg-indigo-50 border-b-2 border-indigo-200"><td colspan="${2 + semMonths.length + 1}" class="p-3 font-black text-indigo-900 text-base tracking-wide uppercase">${jamiaName}</td></tr>`;
+                
+                Object.keys(historyData[jamiaName]).sort().forEach((teacherName, tIdx) => {
+                    const periods = historyData[jamiaName][teacherName];
+                    const bgClass = tIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+
+                    periods.forEach((p, pIdx) => {
+                        html += `<tr class="${bgClass} hover:bg-indigo-50/50 transition-colors">`;
+                        if (pIdx === 0) {
+                            html += `<td rowspan="${periods.length}" class="p-3 border-r border-slate-200 font-bold text-slate-800 align-middle">${teacherName}</td>`;
+                        }
+                        html += `<td class="p-3 border-r border-slate-200">
+                                    <div class="font-bold text-slate-700">${p.bookName}</div>
+                                    <div class="text-[10px] text-slate-500 uppercase mt-0.5">${p.className}</div>
+                                 </td>`;
+
+                        semMonths.forEach(m => {
+                            const status = p.monthlyStatuses[m];
+                            let badgeHtml = `<span class="text-slate-300">-</span>`;
+                            if (status === 'Munasib') {
+                                badgeHtml = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-[10px] uppercase shadow-sm">Munasib</span>`;
+                            } else if (status === 'Mumtaz' || status === 'Behtar') {
+                                badgeHtml = `<i class="fas fa-check-circle text-emerald-500"></i>`;
+                            }
+                            html += `<td class="p-3 border-r border-slate-200 text-center">${badgeHtml}</td>`;
+                        });
+
+                        // Dynamic colors for total munasib count
+                        let countClass = p.munasibCount >= 3 ? 'bg-red-600 text-white' : (p.munasibCount === 2 ? 'bg-orange-500 text-white' : 'bg-yellow-100 text-yellow-800');
+
+                        html += `<td class="p-3 text-center font-black text-lg ${countClass}">${p.munasibCount}</td>
+                            </tr>`;
+                    });
+                });
+            });
+
+            html += `</tbody></table></div>`;
+            document.getElementById('munasib-history-container').innerHTML = html;
         }
 
     } catch (err) {
