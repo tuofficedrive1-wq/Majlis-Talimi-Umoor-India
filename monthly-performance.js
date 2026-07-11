@@ -168,19 +168,20 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     const activeMonths = [...new Set([...gActiveSem1Months, ...gActiveSem2Months])];
     const orderedActiveMonths = monthNames.filter(m => activeMonths.includes(m));
 
+   // renderSubTabContent function me jahan 'performance' tab ka if condition hai:
     if (tabName === 'performance') {
         if (!document.getElementById('report-jamia')) {
             contentArea.innerHTML = `
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm gap-3">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 bg-slate-50/50 p-3 md:p-4 rounded-xl border border-slate-100 gap-3">
                     <div class="flex flex-col">
-                        <h3 class="font-black text-indigo-950 text-base md:text-lg">Performance Analytics</h3>
-                        <p class="text-[9px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
+                        <h3 class="font-bold text-slate-800 text-sm md:text-base">Performance Analytics</h3>
+                        <p class="text-[10px] md:text-xs text-slate-500 font-medium">Filter by Month & Jamia</p>
                     </div>
-                    <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-3">
-                        <select id="performance-month-select" class="w-full sm:w-auto p-2 md:p-2.5 border border-slate-200 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 transition">
+                    <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-2 md:gap-3">
+                        <select id="performance-month-select" class="w-full sm:w-auto p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-medium bg-white outline-none focus:border-indigo-400 transition cursor-pointer">
                             ${orderedActiveMonths.map(m => `<option value="${m}" ${m === currentSelectedMonth ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}
                         </select>
-                        <select id="report-jamia" class="w-full sm:w-auto p-2 md:p-2.5 border border-slate-200 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 transition">
+                        <select id="report-jamia" class="w-full sm:w-auto p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-medium bg-white outline-none focus:border-indigo-400 transition cursor-pointer">
                             <option value="all">All Jamiaat</option>
                             ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
                         </select>
@@ -189,6 +190,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                 <div id="performance-table-body" class="space-y-4 md:space-y-6"></div>
             `;
         }
+
 
         const jamiaSelect = document.getElementById('report-jamia');
         const monthSelect = document.getElementById('performance-month-select');
@@ -607,33 +609,38 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 publicMonthData = publicPerfSnap.data()[targetMonthKey] || publicPerfSnap.data()[currentYearMonthPrefix] || null;
             }
 
+            // FLAT DESIGN CARD START
             html += `
-            <div class="bg-white rounded-xl md:rounded-2xl border border-slate-200 shadow-sm overflow-hidden jamia-card mb-6" id="card-${safeId}">
-                <div class="bg-slate-50 p-3 md:p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div><h3 class="font-black text-indigo-950 text-sm md:text-lg">${jamiaName}</h3></div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden jamia-card mb-6" id="card-${safeId}">
+                <div class="p-3 md:p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div><h3 class="font-extrabold text-slate-800 text-base md:text-lg tracking-tight">${jamiaName}</h3></div>
+                    
+                    <!-- Soft Action Buttons -->
                     <div class="flex flex-wrap gap-1.5 md:gap-2 w-full sm:w-auto">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-indigo-600 text-white text-[10px] md:text-xs px-3.5 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition font-bold flex items-center justify-center"><i class="fas fa-edit mr-1"></i> Edit</button>
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-slate-50 border border-slate-200 text-slate-600 text-[10px] md:text-xs px-2.5 py-1.5 rounded-md hover:bg-slate-100 transition font-medium flex items-center justify-center"><i class="fas fa-link mr-1.5 text-indigo-400"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-slate-50 border border-slate-200 text-slate-600 text-[10px] md:text-xs px-2.5 py-1.5 rounded-md hover:bg-slate-100 transition font-medium flex items-center justify-center"><i class="fas fa-image mr-1.5 text-rose-400"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-slate-50 border border-slate-200 text-slate-600 text-[10px] md:text-xs px-2.5 py-1.5 rounded-md hover:bg-slate-100 transition font-medium flex items-center justify-center"><i class="fas fa-file-excel mr-1.5 text-emerald-400"></i> Excel</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px] md:text-xs px-3 py-1.5 rounded-md hover:bg-indigo-100 transition font-bold flex items-center justify-center"><i class="fas fa-edit mr-1.5"></i> Edit</button>
                     </div>
                 </div>
+                
+                <!-- Clean Table Structure -->
                 <div class="overflow-x-auto no-scrollbar">
                     <table class="w-full text-left whitespace-nowrap min-w-max">
-                        <thead class="bg-slate-50 text-slate-500 text-[9px] md:text-[11px] uppercase font-black border-b border-slate-200 tracking-wider">
+                        <thead class="bg-slate-50/50 text-slate-500 text-[10px] md:text-[11px] uppercase font-semibold border-b border-slate-100 tracking-wide">
                             <tr>
-                                <th class="p-2 md:p-4 border-r border-slate-100">Teacher</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100">Class</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100">Subject</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100 text-center">Total</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100 text-center text-indigo-600">Target</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100 text-center">Achieved</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100 text-center">%</th>
-                                <th class="p-2 md:p-4 border-r border-slate-100 text-center">Kaifiyat</th>
-                                <th class="p-2 md:p-4 text-center">Action</th> 
+                                <th class="px-3 py-2.5 md:px-4 md:py-3">Teacher</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3">Class</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3">Subject</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Total</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center text-indigo-500">Target</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Achieved</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">%</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Kaifiyat</th>
+                                <th class="px-3 py-2.5 md:px-4 md:py-3 text-center">Action</th> 
                             </tr>
                         </thead>
-                        <tbody class="text-xs md:text-sm divide-y divide-slate-100 text-slate-700">`;
+                        <tbody class="text-xs md:text-sm text-slate-600">`;
 
             jamiaData.teachers.forEach((teacher) => {
                 const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
@@ -644,6 +651,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                 let firstPeriodSemester = 1;
 
                 teacher.periods?.forEach((p, pIdx) => {
+                    // ... (Yahan target aur achieved calculate karne ka purana logic same rahega, usko change nahi karna hai) ...
                     let target = 0;
                     const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
 
@@ -695,26 +703,27 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
                     const teacherRowId = `row-${safeId}-${teacher.id}`;
 
+                    // NAYA TABLE ROW DESIGN (No vertical borders, simple bottom border)
                     html += `
-                        <tr class="hover:bg-slate-50 transition-colors ${teacherRowId}">
-                            <td class="p-2 md:p-4 border-r border-slate-100 font-bold text-slate-800 whitespace-normal min-w-[100px] md:min-w-[150px]">${pIdx === 0 ? teacher.name : ''}</td>
-                            <td class="p-2 md:p-4 border-r border-slate-100 text-slate-600 whitespace-normal min-w-[100px] md:min-w-[150px]">${p.className}</td>
-                            <td class="p-2 md:p-4 border-r border-slate-100 text-slate-600 whitespace-normal min-w-[100px] md:min-w-[150px] font-semibold">${p.bookName}</td>
-                            <td class="p-2 md:p-4 border-r border-slate-100 text-center text-slate-600">${p.totalPages}</td>
-                            <td class="p-2 md:p-4 border-r border-slate-100 text-center font-black text-indigo-700 bg-indigo-50/50">${target}</td>
-                            <td class="p-1 md:p-2 border-r border-slate-100 text-center">
+                        <tr class="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 ${teacherRowId}">
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 font-medium text-slate-800 whitespace-normal min-w-[120px] md:min-w-[150px]">${pIdx === 0 ? teacher.name : ''}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 whitespace-normal min-w-[120px] md:min-w-[150px]">${p.className}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 whitespace-normal min-w-[120px] md:min-w-[150px]">${p.bookName}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center">${p.totalPages}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-indigo-500 bg-indigo-50/30 rounded-md">${target}</td>
+                            <td class="px-2 py-2 md:px-3 md:py-2 text-center">
                                 <input type="number" value="${achievedValue}" disabled 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
-                                       class="achieved-input-${safeId} w-14 md:w-20 p-1.5 md:p-2 border border-transparent rounded-lg text-center bg-transparent mx-auto block text-xs md:text-sm font-bold focus:outline-none transition-colors"
+                                       class="achieved-input-${safeId} w-12 md:w-16 p-1 md:p-1.5 border border-transparent rounded-md text-center bg-transparent mx-auto block text-xs md:text-sm font-bold focus:ring-1 focus:ring-indigo-300 transition-all outline-none"
                                        oninput="updateRowStatusLive(this, ${target}, '${targetMonthKey}', '${p.semester}')">
                             </td>
-                            <td class="p-2 md:p-4 border-r border-slate-100 text-center font-black text-slate-700 perc-cell text-[10px] md:text-sm">${percentage}%</td>
-                            <td class="p-2 md:p-4 border-r border-slate-100 text-center italic status-cell text-[10px] md:text-sm ${result.colorClass}">${result.kaifiyat}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-slate-600 perc-cell text-[10px] md:text-sm">${percentage}%</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center italic status-cell text-[10px] md:text-sm ${result.colorClass}">${result.kaifiyat}</td>
                             ${pIdx === 0 ? `
-                            <td class="p-1.5 md:p-3 text-center bg-slate-50/30" rowspan="${totalPeriodsCount + 1}">
+                            <td class="px-2 py-2 md:px-3 text-center align-middle" rowspan="${totalPeriodsCount + 1}">
                                 <div class="flex flex-col gap-1.5 items-center justify-center">
-                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[9px] px-2 py-1.5 rounded-lg shadow-sm flex items-center hover:bg-rose-50 font-bold">Image</button>
-                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="bg-white border border-red-200 text-red-500 text-[9px] px-2 py-1.5 rounded-lg shadow-sm flex items-center hover:bg-red-50 font-bold">Reset</button>
+                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="text-slate-400 hover:text-rose-500 transition text-xs"><i class="fas fa-camera"></i></button>
+                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="text-slate-400 hover:text-red-500 transition text-xs"><i class="fas fa-undo"></i></button>
                                 </div>
                             </td>` : ''}
                         </tr>`;
@@ -725,17 +734,18 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const overallResult = calculateKaifiyatAndStyle(overallPercentage, targetMonthKey, firstPeriodSemester);
 
                     html += `
-                        <tr class="bg-indigo-50 border-b-[3px] border-indigo-200">
-                            <td colspan="4" class="p-2 md:p-4 text-right font-black text-indigo-900 uppercase text-[9px] md:text-[11px] tracking-wider">Summary:</td>
-                            <td class="p-2 md:p-4 border-r border-indigo-100 text-center font-black text-indigo-800 bg-indigo-100/50">${totalTeacherTarget}</td>
-                            <td class="p-2 md:p-4 border-r border-indigo-100 text-center font-black text-emerald-700 bg-indigo-100/50">${totalTeacherAchieved}</td>
-                            <td class="p-2 md:p-4 border-r border-indigo-100 text-center font-black text-slate-800 text-[10px] md:text-sm">${overallPercentage}%</td>
-                            <td class="p-2 md:p-4 border-r border-indigo-100 text-center italic status-cell text-[10px] md:text-sm ${overallResult.colorClass}">${overallResult.kaifiyat}</td>
+                        <tr class="bg-indigo-50/50 border-b-2 border-indigo-100/50">
+                            <td colspan="4" class="px-3 py-2.5 md:px-4 md:py-3 text-right font-bold text-indigo-800 uppercase text-[9px] md:text-[11px] tracking-wider">Summary:</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-indigo-600">${totalTeacherTarget}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-emerald-600">${totalTeacherAchieved}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-slate-700 text-[10px] md:text-sm">${overallPercentage}%</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center italic status-cell text-[10px] md:text-sm ${overallResult.colorClass}">${overallResult.kaifiyat}</td>
                         </tr>`;
                 }
             });
             html += `</tbody></table></div></div>`;
         }
+
         container.innerHTML = html || '<div class="p-8 text-center text-slate-400 font-medium">Data nahi mila.</div>';
     } catch (e) {
         console.error("Load Error:", e);
