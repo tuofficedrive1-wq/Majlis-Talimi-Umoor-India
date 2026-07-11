@@ -15,33 +15,56 @@ let gDb = null;
 let gCurrentUser = null;
 const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 let gAssignedJamiaat = [];
+
 // --- Summary Tab Global Data ---
 let gAllYearReportsData = [];
 let gSummaryActiveYear = null;
 let gSummaryKarkardagiStructure = [];
 
+// NAYE GLOBAL VARIABLES: Dynamic Semester Months ke liye yahan add kiye gaye hain
+let gActiveSem1Months = [];
+let gActiveSem2Months = [];
+
 // Current month default set rahega
 let currentSelectedMonth = monthNames[new Date().getMonth()]; 
 
-// Academic Admin ki settings fetch karne ka function
+// Academic Admin ki settings fetch karne ka function (Naya function jo 0 days walo ko hata dega)
 async function getAcademicConfig(db) {
-    if (academicConfig) return academicConfig;
-    const snap = await getDoc(doc(db, "settings", "academic_calendar")); 
-    if (snap.exists()) {
-        academicConfig = snap.data();
-        return academicConfig;
+    if (!academicConfig) {
+        const [calSnap, configSnap] = await Promise.all([
+            getDoc(doc(db, "settings", "academic_calendar")),
+            getDoc(doc(db, "settings", "academic_config"))
+        ]);
+        let calData = calSnap.exists() ? calSnap.data() : {};
+        let confData = configSnap.exists() ? configSnap.data() : {};
+        academicConfig = { ...confData, ...calData };
     }
-    return null;
+
+    // Dynamic Mahine check karna (Jisme 0 days hain unhe skip karna)
+    if (gActiveSem1Months.length === 0 || gActiveSem2Months.length === 0) {
+        let s1 = [], s2 = [];
+        monthNames.forEach((m, idx) => {
+            let sem1Days = 0, sem2Days = 0;
+            if (academicConfig.months && academicConfig.months[m]) {
+                sem1Days = parseInt(academicConfig.months[m].sem1) || 0;
+                sem2Days = parseInt(academicConfig.months[m].sem2) || 0;
+            } else if (academicConfig.monthDetails && academicConfig.monthDetails[idx]) {
+                sem1Days = parseInt(academicConfig.monthDetails[idx].sem1) || 0;
+                sem2Days = parseInt(academicConfig.monthDetails[idx].sem2) || 0;
+            }
+            if (sem1Days > 0) s1.push(m);
+            if (sem2Days > 0) s2.push(m);
+        });
+
+        gActiveSem1Months = s1.length > 0 ? s1 : ["apr", "may", "jun", "jul", "aug"];
+        gActiveSem2Months = s2.length > 0 ? s2 : ["sep", "oct", "nov", "dec", "jan", "feb", "mar"];
+    }
+
+    return academicConfig;
 }
+
 // Add this helper near the top of monthly-performance.js
 const getActiveShortMonth = () => {
-    return currentSelectedMonth;
-    const globalMonthInput = document.getElementById('report-month');
-    if (globalMonthInput && globalMonthInput.value) {
-        // "2026-04" format ko "apr" me convert karega
-        const monthIndex = parseInt(globalMonthInput.value.split('-')[1], 10) - 1;
-        return monthNames[monthIndex];
-    }
     return currentSelectedMonth;
 };
 export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
@@ -139,8 +162,13 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
+    await getAcademicConfig(db); // Settings aur dynamic months load karein
+    
+    // Sirf wahi mahine nikalen jinme kisi bhi semester ke days > 0 hain
+    const activeMonths = [...new Set([...gActiveSem1Months, ...gActiveSem2Months])];
+    const orderedActiveMonths = monthNames.filter(m => activeMonths.includes(m));
 
- if (tabName === 'performance') {
+    if (tabName === 'performance') {
         if (!document.getElementById('report-jamia')) {
             contentArea.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm gap-3">
@@ -149,18 +177,13 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                         <p class="text-[9px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
                     </div>
                     <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-3">
-                        
-                        <!-- NAYA: Month Filter Dropdown -->
                         <select id="performance-month-select" class="w-full sm:w-auto p-2 md:p-2.5 border border-slate-200 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 transition">
-                            ${monthNames.map(m => `<option value="${m}" ${m === currentSelectedMonth ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}
+                            ${orderedActiveMonths.map(m => `<option value="${m}" ${m === currentSelectedMonth ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}
                         </select>
-
-                        <!-- PURANA: Jamia Filter Dropdown -->
                         <select id="report-jamia" class="w-full sm:w-auto p-2 md:p-2.5 border border-slate-200 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 transition">
                             <option value="all">All Jamiaat</option>
                             ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
                         </select>
-
                     </div>
                 </div>
                 <div id="performance-table-body" class="space-y-4 md:space-y-6"></div>
@@ -168,27 +191,22 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
         }
 
         const jamiaSelect = document.getElementById('report-jamia');
-        const monthSelect = document.getElementById('performance-month-select'); // Naya element fetch kiya
+        const monthSelect = document.getElementById('performance-month-select');
 
         if (jamiaSelect) {
-            jamiaSelect.onchange = () => {
+            jamiaSelect.onchange = () => loadPerformanceTable(assignedJamiaat, db, currentUser);
+        }
+        
+        if (monthSelect) {
+            monthSelect.onchange = (e) => {
+                currentSelectedMonth = e.target.value.toLowerCase().trim(); 
                 loadPerformanceTable(assignedJamiaat, db, currentUser);
             };
         }
-        
-        // NAYA: Mahina change hone par data reload karne ka event
-       if (monthSelect) {
-        monthSelect.onchange = (e) => {
-            // Global variable update kar diya taake baqi sab jagah bhi yehi mahina jaye
-            currentSelectedMonth = e.target.value.toLowerCase().trim(); 
-            // Table ko naye mahine ke sath reload karein
-            loadPerformanceTable(assignedJamiaat, db, currentUser);
-        };
-    } // <-- 1st Bracket: if (monthSelect) ko close kar raha hai
     
-    loadPerformanceTable(assignedJamiaat, db, currentUser);
+        loadPerformanceTable(assignedJamiaat, db, currentUser);
     
-} else if (tabName === 'summary') { // <-- 2nd Bracket: performance tab ko close kar raha hai
+    } else if (tabName === 'summary') {
         contentArea.innerHTML = `
             <div class="bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6 shadow-sm">
                 <div class="flex border-b border-slate-200 gap-4 overflow-x-auto no-scrollbar mb-4 pb-2">
@@ -201,7 +219,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                     <div class="flex items-center gap-4 mb-4">
                         <label class="font-bold text-slate-600 text-sm">Select Month:</label>
                         <select id="summary-month-select" class="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none focus:border-indigo-500">
-                             ${monthNames.map((m, i) => `<option value="${i}">${m.toUpperCase()}</option>`).join('')}
+                             ${orderedActiveMonths.map(m => `<option value="${monthNames.indexOf(m)}" ${m === currentSelectedMonth ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}
                         </select>
                     </div>
                     <div id="monthly-munasib-container" class="space-y-4">
@@ -237,13 +255,9 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             </div>
         `;
 
-        // Sub-Tab Switching & Events Logic
         const summaryBtns = contentArea.querySelectorAll('.summary-sub-btn');
         const summaryContents = contentArea.querySelectorAll('.summary-content');
         const monthSelect = document.getElementById('summary-month-select');
-        
-        // Match default month
-        monthSelect.value = monthNames.indexOf(currentSelectedMonth);
 
         summaryBtns.forEach(btn => {
             btn.onclick = () => {
@@ -264,7 +278,6 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
 
         monthSelect.onchange = () => loadAndRenderSummaryTabs('munasib-tab', db, currentUser, assignedJamiaat);
 
-        // Teacher Profile Setup
         document.getElementById('teacher-profile-jamia').onchange = (e) => {
             const jamia = e.target.value;
             const teacherSelect = document.getElementById('teacher-profile-teacher');
@@ -279,9 +292,10 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
 
         document.getElementById('show-teacher-profile-btn').onclick = () => loadAndRenderSummaryTabs('profile-tab', db, currentUser, assignedJamiaat);
 
-        // Initialize First Tab automatically
         loadAndRenderSummaryTabs('munasib-tab', db, currentUser, assignedJamiaat);
+        
     } else if (tabName === 'structure') {
+        // (Iska baqi code waisa hi rahega)
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
 
@@ -292,9 +306,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
 
         contentArea.innerHTML = `
             <div class="bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6 shadow-sm flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                <div>
-                    <h4 class="text-xs md:text-sm font-black text-slate-700 uppercase tracking-wide">Academic Year</h4>
-                </div>
+                <div><h4 class="text-xs md:text-sm font-black text-slate-700 uppercase tracking-wide">Academic Year</h4></div>
                 <select id="structure-year-select" class="w-full sm:w-auto p-2 md:p-2.5 border-2 border-indigo-100 rounded-lg md:rounded-xl text-xs md:text-sm font-bold text-indigo-700 bg-indigo-50 outline-none transition">
                     ${allYears.map(yr => `<option value="${yr}" ${yr === activeYearByAdmin ? 'selected' : ''}>${yr}${yr === activeYearByAdmin ? ' (Active)' : ''}</option>`).join('')}
                 </select>
@@ -305,6 +317,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
         const updateStructureView = (selectedYear) => {
             const displayArea = document.getElementById('structure-display-area');
             if (!displayArea) return;
+         
 
             displayArea.innerHTML = assignedJamiaat.map(jamia => `
                 <div class="border border-slate-200 rounded-xl md:rounded-2xl bg-white overflow-hidden shadow-sm">
@@ -731,11 +744,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 };
 
 function getSemesterMonthNumber(monthId, semester) {
-    const s1Map = { "apr": 1, "may": 2, "jun": 3, "jul": 4, "aug": 5 }; 
-    const s2Map = { "sep": 1, "oct": 2, "nov": 3, "dec": 4, "jan": 5, "feb": 6, "mar": 7 }; 
-    
-    if (semester == "1" || semester === 1) return s1Map[monthId] || 0;
-    return s2Map[monthId] || 0;
+    // Ab ye direct Admin Calendar ki list se month ka order nikalega
+    if (semester == "1" || semester === 1) {
+        return gActiveSem1Months.indexOf(monthId) + 1; 
+    } else {
+        return gActiveSem2Months.indexOf(monthId) + 1; 
+    }
 }
 
 const calculateKaifiyatAndStyle = (achievement, monthIdx, semester) => {
@@ -1444,7 +1458,8 @@ const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentY
 
 const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJamiaat) => {
     try {
-        // 1. Initial Setup and Basic Config
+        await getAcademicConfig(db); // Database Calendar Sync
+        
         if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
             const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
             gSummaryActiveYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
@@ -1464,24 +1479,20 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         const targetMonthKey = monthNames[monthIdx];
         const currentYearMonthPrefix = `${gSummaryActiveYear.split('-')[0]}-${monthIdx + 1 < 10 ? '0' + (monthIdx + 1) : monthIdx + 1}`;
         
-        const semester = (monthIdx >= 3 && monthIdx <= 7) ? "1" : "2";
-        const semMonths = semester === "1" ? ["apr", "may", "jun", "jul", "aug"] : ["sep", "oct", "nov", "dec", "jan", "feb", "mar"];
+        // DYNAMIC SEMESTER & MONTHS LINKED TO YOUR DB
+        const semester = gActiveSem1Months.includes(targetMonthKey) ? "1" : "2";
+        const semMonths = semester === "1" ? gActiveSem1Months : gActiveSem2Months;
 
-        // 2. PUBLIC DATA FETCH (Performance tab wala logic taake 0 na aaye)
         const publicDataMap = {};
         const publicDataPromises = assignedJamiaat.map(async (jamiaName) => {
             const match = jamiaName.match(/\d+/);
             const jamiaDocId = match ? match[0] : "001";
             const snap = await getDoc(doc(db, "academic_performance", jamiaDocId));
-            if (snap.exists()) {
-                publicDataMap[jamiaName] = snap.data();
-            } else {
-                publicDataMap[jamiaName] = {};
-            }
+            if (snap.exists()) publicDataMap[jamiaName] = snap.data();
+            else publicDataMap[jamiaName] = {};
         });
         await Promise.all(publicDataPromises);
 
-        // HELPER 1: Get Target Value
         const getTargetValue = (period, monthKey) => {
             let target = 0;
             const exactSubId = `${(period.className || "").trim()}_${(period.bookName || "").trim()}`.replace(/\s+/g, '_');
@@ -1508,16 +1519,13 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             return target;
         };
 
-        // HELPER 2: Get Achieved Value
         const getAchievedValue = (period, monthKey, jamiaName, teacherName) => {
             const prefix = `${gSummaryActiveYear.split('-')[0]}-${monthNames.indexOf(monthKey) + 1 < 10 ? '0' + (monthNames.indexOf(monthKey) + 1) : monthNames.indexOf(monthKey) + 1}`;
             let val = 0;
             
-            if (period.achieved && period.achieved[prefix] !== undefined) {
-                val = period.achieved[prefix];
-            } else if (period.achieved && period.achieved[monthKey] !== undefined) {
-                val = period.achieved[monthKey];
-            } else {
+            if (period.achieved && period.achieved[prefix] !== undefined) val = period.achieved[prefix];
+            else if (period.achieved && period.achieved[monthKey] !== undefined) val = period.achieved[monthKey];
+            else {
                 const publicJamia = publicDataMap[jamiaName] || {};
                 const publicMonth = publicJamia[monthKey] || publicJamia[prefix];
                 if (publicMonth && publicMonth.teachers) {
@@ -1664,6 +1672,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                                         <th class="border border-slate-200 p-2 min-w-[70px] bg-green-100 text-green-700 font-bold uppercase text-center">Percent</th>
                 `;
 
+                // Header ke columns (Sirf wahi mahine jinme working days > 0 hain)
                 semMonths.forEach(m => {
                     html += `<th colspan="2" class="border border-slate-200 p-2 font-bold text-indigo-900 uppercase text-center">${m}</th>`;
                 });
@@ -1751,7 +1760,6 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                             }
                         });
 
-                        // Agar is subject me ek baar bhi Munasib (kam performance) aayi ho
                         if (munasibCount > 0) {
                             if (!historyData[jamia.jamiaName]) historyData[jamia.jamiaName] = {};
                             if (!historyData[jamia.jamiaName][teacher.name]) historyData[jamia.jamiaName][teacher.name] = [];
@@ -1818,7 +1826,6 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                             html += `<td class="p-3 border-r border-slate-200 text-center">${badgeHtml}</td>`;
                         });
 
-                        // Dynamic colors for total munasib count
                         let countClass = p.munasibCount >= 3 ? 'bg-red-600 text-white' : (p.munasibCount === 2 ? 'bg-orange-500 text-white' : 'bg-yellow-100 text-yellow-800');
 
                         html += `<td class="p-3 text-center font-black text-lg ${countClass}">${p.munasibCount}</td>
