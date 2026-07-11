@@ -1815,12 +1815,12 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 });
             });
 
-           html += `</tbody></table></div>`;
+          html += `</tbody></table></div>`;
             document.getElementById('munasib-history-container').innerHTML = html;
             
-        } // <-- YAHAN EK BRACKET AAYEGA (else if block ko close karne ke liye)
+        } // <-- 1. Ye bracket 'else if (targetTabId === history-tab)' ko close kar raha hai
 
-    catch (err) { // <-- Aur ye bracket 'try' block ko close kar raha hai
+    } catch (err) { // <-- 2. Ye bracket 'try' block ko close kar raha hai (Ye aapke code me miss ho gaya tha)
         console.error("Summary Render Error:", err);
     }
 };
