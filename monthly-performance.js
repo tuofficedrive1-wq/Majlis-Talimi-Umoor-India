@@ -3,7 +3,11 @@ import {
     getDoc,
     updateDoc,
     setDoc,
-    serverTimestamp 
+    serverTimestamp,
+    collection,
+    query,
+    where,
+    getDocs
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 let academicConfig = null;
@@ -11,6 +15,10 @@ let gDb = null;
 let gCurrentUser = null;
 const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 let gAssignedJamiaat = [];
+// --- Summary Tab Global Data ---
+let gAllYearReportsData = [];
+let gSummaryActiveYear = null;
+let gSummaryKarkardagiStructure = [];
 
 // Current month default set rahega
 let currentSelectedMonth = monthNames[new Date().getMonth()]; 
@@ -150,6 +158,99 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
         
         loadPerformanceTable(assignedJamiaat, db, currentUser);
         
+    } else if (tabName === 'summary') {
+        contentArea.innerHTML = `
+            <div class="bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6 shadow-sm">
+                <div class="flex border-b border-slate-200 gap-4 overflow-x-auto no-scrollbar mb-4 pb-2">
+                    <button class="summary-sub-btn active border-b-2 border-indigo-600 px-3 py-2 text-sm font-bold text-indigo-600 whitespace-nowrap transition" data-target="munasib-tab">Monthly Munasib</button>
+                    <button class="summary-sub-btn px-3 py-2 text-sm font-bold text-slate-500 hover:text-indigo-500 whitespace-nowrap transition" data-target="history-tab">Semester Munasib History</button>
+                    <button class="summary-sub-btn px-3 py-2 text-sm font-bold text-slate-500 hover:text-indigo-500 whitespace-nowrap transition" data-target="profile-tab">Teacher Profile</button>
+                </div>
+
+                <div id="munasib-tab" class="summary-content block space-y-4">
+                    <div class="flex items-center gap-4 mb-4">
+                        <label class="font-bold text-slate-600 text-sm">Select Month:</label>
+                        <select id="summary-month-select" class="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none focus:border-indigo-500">
+                             ${monthNames.map((m, i) => `<option value="${i}">${m.toUpperCase()}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="monthly-munasib-container" class="space-y-4">
+                        <p class="text-slate-500 text-center py-4">Data load ho raha hai...</p>
+                    </div>
+                </div>
+
+                <div id="history-tab" class="summary-content hidden space-y-4">
+                    <div id="munasib-history-container" class="space-y-4">
+                        <p class="text-slate-500 text-center py-4">History data load ho raha hai...</p>
+                    </div>
+                </div>
+
+                <div id="profile-tab" class="summary-content hidden space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-1">Select Jamia:</label>
+                            <select id="teacher-profile-jamia" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none focus:border-indigo-500">
+                                <option value="">Select Jamia</option>
+                                ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-1">Select Teacher:</label>
+                            <select id="teacher-profile-teacher" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none focus:border-indigo-500">
+                                <option value="">Select Teacher</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="show-teacher-profile-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition shadow-sm active:scale-95">Show Profile</button>
+                    <div id="teacher-profile-container" class="mt-6 space-y-4"></div>
+                </div>
+            </div>
+        `;
+
+        // Sub-Tab Switching & Events Logic
+        const summaryBtns = contentArea.querySelectorAll('.summary-sub-btn');
+        const summaryContents = contentArea.querySelectorAll('.summary-content');
+        const monthSelect = document.getElementById('summary-month-select');
+        
+        // Match default month
+        monthSelect.value = monthNames.indexOf(currentSelectedMonth);
+
+        summaryBtns.forEach(btn => {
+            btn.onclick = () => {
+                summaryBtns.forEach(b => {
+                    b.classList.remove('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+                    b.classList.add('text-slate-500');
+                });
+                btn.classList.add('active', 'border-b-2', 'border-indigo-600', 'text-indigo-600');
+                btn.classList.remove('text-slate-500');
+
+                summaryContents.forEach(c => c.classList.add('hidden'));
+                const targetId = btn.dataset.target;
+                document.getElementById(targetId).classList.remove('hidden');
+                
+                loadAndRenderSummaryTabs(targetId, db, currentUser, assignedJamiaat);
+            };
+        });
+
+        monthSelect.onchange = () => loadAndRenderSummaryTabs('munasib-tab', db, currentUser, assignedJamiaat);
+
+        // Teacher Profile Setup
+        document.getElementById('teacher-profile-jamia').onchange = (e) => {
+            const jamia = e.target.value;
+            const teacherSelect = document.getElementById('teacher-profile-teacher');
+            if(!jamia) { teacherSelect.innerHTML = '<option value="">Select Teacher</option>'; return; }
+            
+            const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamia);
+            if(jamiaData && jamiaData.teachers) {
+                teacherSelect.innerHTML = '<option value="all" class="font-bold text-indigo-700">تمام اساتذہ (All Teachers)</option>' + 
+                    jamiaData.teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+            }
+        };
+
+        document.getElementById('show-teacher-profile-btn').onclick = () => loadAndRenderSummaryTabs('profile-tab', db, currentUser, assignedJamiaat);
+
+        // Initialize First Tab automatically
+        loadAndRenderSummaryTabs('munasib-tab', db, currentUser, assignedJamiaat);
     } else if (tabName === 'structure') {
         const config = await getAcademicConfig(db);
         const activeYearByAdmin = config ? config.activeYear : "2026-2027";
@@ -1293,4 +1394,246 @@ window.downloadTeacherReportImage = (rowClass, teacherName) => {
         link.click();
         document.body.removeChild(tempContainer);
     });
+};
+// ==========================================
+// SUMMARY TAB HELPER FUNCTIONS
+// ==========================================
+
+const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentYearNum, allReports) => {
+    let cumulative = 0;
+    allReports.forEach(report => {
+        const rMonth = report.monthNum;
+        const rYear = report.year;
+        const isSemMatch = semester === '1' ? (rMonth >= 3 && rMonth <= 7) : (rMonth >= 8 || rMonth === 0);
+        
+        if (isSemMatch) {
+            if (rYear < currentYearNum || (rYear === currentYearNum && rMonth <= currentMonthNum)) {
+                const entry = report.karkardagiReport?.data?.find(e => e.periodId === periodId);
+                if (entry) cumulative += (entry.pagesTaught || 0);
+            }
+        }
+    });
+    return cumulative;
+};
+
+const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJamiaat) => {
+    try {
+        // Fetch Active Year and Database only once
+        if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
+            const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+            gSummaryActiveYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
+            
+            const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+            if (userSnap.exists()) {
+                const academicYears = userSnap.data().academicYears || {};
+                gSummaryKarkardagiStructure = academicYears[gSummaryActiveYear]?.karkardagiStructure || [];
+            }
+
+            const reportsRef = collection(db, 'monthly_reports');
+            const q = query(reportsRef, where('userId', '==', currentUser.uid), where('academicYear', '==', gSummaryActiveYear));
+            const snap = await getDocs(q);
+            gAllYearReportsData = [];
+            snap.forEach(d => gAllYearReportsData.push(d.data()));
+        }
+
+        const monthIdx = parseInt(document.getElementById('summary-month-select')?.value || new Date().getMonth());
+        const semester = monthIdx >= 3 && monthIdx <= 7 ? "1" : "2";
+        const currentYearNum = parseInt(gSummaryActiveYear.split('-')[semester === "1" ? 0 : (monthIdx >= 8 ? 0 : 1)]);
+
+        // 1. MONTHLY MUNASIB REPORT
+        if (targetTabId === 'munasib-tab') {
+            const container = document.getElementById('monthly-munasib-container');
+            const monthReport = gAllYearReportsData.find(r => r.monthNum === monthIdx && r.year === currentYearNum);
+            
+            if (!monthReport || !monthReport.karkardagiReport?.data) {
+                container.innerHTML = `<p class="text-yellow-600 font-bold p-4 bg-yellow-50 rounded-lg text-center">Is mahine ka data available nahi hai.</p>`;
+                return;
+            }
+
+            const munasibPeriods = monthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib' && assignedJamiaat.includes(p.jamiaName));
+            if (munasibPeriods.length === 0) {
+                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center">الحمدللہ! Is mahine koi 'Munasib' karkardagi nahi.</p>`;
+                return;
+            }
+
+            let html = `<div class="overflow-x-auto border rounded-lg shadow-sm bg-white"><table class="w-full text-sm"><tbody>`;
+            const jamiaGroups = {};
+            munasibPeriods.forEach(p => {
+                if(!jamiaGroups[p.jamiaName]) jamiaGroups[p.jamiaName] = {};
+                if(!jamiaGroups[p.jamiaName][p.teacherId]) jamiaGroups[p.jamiaName][p.teacherId] = { name: p.teacherName, periods: [] };
+                jamiaGroups[p.jamiaName][p.teacherId].periods.push(p);
+            });
+
+            Object.keys(jamiaGroups).sort().forEach(jamia => {
+                html += `
+                <tr class="bg-indigo-50 border-b-2 border-indigo-200">
+                    <td colspan="10" class="p-3 font-bold text-indigo-900 text-lg urdu-font text-right">${jamia}</td>
+                </tr>
+                <tr class="bg-red-50 text-red-800 text-xs font-bold border-b border-red-200 text-center">
+                    <td class="p-2 border-r border-red-200">Teacher</td>
+                    <td class="p-2 border-r border-red-200">Class</td>
+                    <td class="p-2 border-r border-red-200">Book</td>
+                    <td class="p-2 border-r border-red-200">Total</td>
+                    <td class="p-2 border-r border-red-200">Target</td>
+                    <td class="p-2 border-r border-red-200">Achieved</td>
+                    <td class="p-2 border-r border-red-200">%</td>
+                    <td class="p-2">Status</td>
+                </tr>`;
+
+                Object.keys(jamiaGroups[jamia]).forEach((tid, idx) => {
+                    const teacher = jamiaGroups[jamia][tid];
+                    const bgClass = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+                    teacher.periods.forEach((p, pIdx) => {
+                        html += `
+                        <tr class="${bgClass} border-b border-gray-100 hover:bg-gray-100 text-center">
+                            ${pIdx === 0 ? `<td rowspan="${teacher.periods.length}" class="p-2 border-r border-gray-200 urdu-font font-bold text-red-800">${teacher.name}</td>` : ''}
+                            <td class="p-2 border-r border-gray-200 urdu-font">${p.className}</td>
+                            <td class="p-2 border-r border-gray-200 urdu-font">${p.bookName}</td>
+                            <td class="p-2 border-r border-gray-200 font-bold">${p.monthlyTarget || 0}</td>
+                            <td class="p-2 border-r border-gray-200">${p.pagesTaught || 0}</td>
+                            <td class="p-2 border-r border-gray-200 font-bold text-blue-700">${p.achievement}%</td>
+                            <td class="p-2 border-r border-gray-200 font-bold text-red-600">${p.kaifiyat}</td>
+                        </tr>`;
+                    });
+                });
+            });
+            html += `</tbody></table></div>`;
+            container.innerHTML = html;
+        }
+
+        // 2. SEMESTER HISTORY
+        else if (targetTabId === 'history-tab') {
+            const container = document.getElementById('munasib-history-container');
+            const semMonths = semester === '1' ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0];
+            let historyData = {};
+
+            semMonths.forEach(m => {
+                let y = currentYearNum;
+                if (semester === '2' && m < 8) y = parseInt(gSummaryActiveYear.split('-')[1]); 
+                const report = gAllYearReportsData.find(r => r.monthNum === m && r.year === y);
+                
+                if (report && report.karkardagiReport?.data) {
+                    report.karkardagiReport.data.forEach(entry => {
+                        if (!assignedJamiaat.includes(entry.jamiaName)) return;
+                        if (!historyData[entry.jamiaName]) historyData[entry.jamiaName] = {};
+                        if (!historyData[entry.jamiaName][entry.teacherId]) {
+                            historyData[entry.jamiaName][entry.teacherId] = { name: entry.teacherName, periods: {} };
+                        }
+                        if (!historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId]) {
+                            historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId] = { class: entry.className, book: entry.bookName, status: {}, mCount: 0 };
+                        }
+                        const pData = historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId];
+                        pData.status[m] = entry.kaifiyat;
+                        if (entry.kaifiyat === 'Munasib') pData.mCount++;
+                    });
+                }
+            });
+
+            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white"><table class="w-full text-sm text-center" dir="rtl"><thead class="bg-slate-100 border-b"><tr>
+                <th class="p-3 text-right">استاد کا نام</th>
+                <th class="p-3 text-right">کتاب / درجہ</th>`;
+            semMonths.forEach(m => { html += `<th class="p-3 urdu-font text-indigo-700">${urduMonths[monthNames[m]] || monthNames[m]}</th>`; });
+            html += `<th class="p-2 text-center text-red-700 font-bold text-xs">کل مناسب</th></tr></thead><tbody>`;
+
+            let hasData = false;
+            Object.keys(historyData).forEach(jamia => {
+                let jamiaHasMunasib = false;
+                Object.values(historyData[jamia]).forEach(t => { Object.values(t.periods).forEach(p => { if(p.mCount > 0) jamiaHasMunasib = true; }); });
+                
+                if(jamiaHasMunasib) {
+                    hasData = true;
+                    html += `<tr class="bg-indigo-50 border-b border-indigo-200"><td colspan="${semMonths.length + 3}" class="p-3 text-right urdu-font text-lg font-bold text-indigo-900">${jamia}</td></tr>`;
+                    Object.values(historyData[jamia]).forEach(t => {
+                        const periods = Object.values(t.periods).filter(p => p.mCount > 0);
+                        periods.forEach((p, pIdx) => {
+                            html += `<tr class="border-b border-gray-100 hover:bg-slate-50">
+                                ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-3 text-right font-bold urdu-font border-l border-gray-200">${t.name}</td>` : ''}
+                                <td class="p-3 text-right urdu-font border-l border-gray-200">${p.book}<br><span class="text-xs text-gray-500">${p.class}</span></td>`;
+                            
+                            semMonths.forEach(m => {
+                                const st = p.status[m];
+                                let badge = `<span class="text-gray-300">-</span>`;
+                                if(st === 'Munasib') badge = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-xs">مناسب</span>`;
+                                else if(st === 'Mumtaz' || st === 'Behtar') badge = `<span class="text-emerald-500"><i class="fas fa-check-circle"></i></span>`;
+                                html += `<td class="p-3 border-l border-gray-100">${badge}</td>`;
+                            });
+                            html += `<td class="p-3 font-bold bg-red-50 text-red-700 border-l border-gray-100 text-lg">${p.mCount}</td></tr>`;
+                        });
+                    });
+                }
+            });
+
+            html += `</tbody></table></div>`;
+            container.innerHTML = hasData ? html : `<div class="p-6 bg-emerald-50 rounded-xl border border-emerald-200 text-center"><i class="fas fa-trophy text-emerald-500 text-3xl mb-2"></i><h5 class="text-xl font-bold text-emerald-800 urdu-font">الحمدللہ!</h5><p class="text-emerald-700 mt-2">Is semester koi Munasib history nahi.</p></div>`;
+        }
+
+        // 3. TEACHER PROFILE
+        else if (targetTabId === 'profile-tab') {
+            const jamia = document.getElementById('teacher-profile-jamia').value;
+            const teacherId = document.getElementById('teacher-profile-teacher').value;
+            const container = document.getElementById('teacher-profile-container');
+            
+            if (!jamia || !teacherId) { container.innerHTML = `<p class="text-red-500 font-bold">Please select Jamia and Teacher.</p>`; return; }
+            
+            const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamia);
+            let teachersToRender = teacherId === 'all' ? jamiaData.teachers.filter(t => (t.periods || []).some(p => p.semester === semester)) : [jamiaData.teachers.find(t => t.id === teacherId)];
+
+            const semMonths = semester === '1' ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0];
+            const validMonths = semMonths.filter(m => {
+                let y = semester === '1' ? parseInt(gSummaryActiveYear.split('-')[0]) : (m >= 8 ? parseInt(gSummaryActiveYear.split('-')[0]) : parseInt(gSummaryActiveYear.split('-')[1]));
+                if (y < currentYearNum) return true;
+                if (y === currentYearNum && m <= monthIdx) return true;
+                return false;
+            });
+
+            let html = ``;
+            teachersToRender.forEach(t => {
+                const periods = (t.periods || []).filter(p => p.semester === semester);
+                if (periods.length === 0) return;
+
+                html += `
+                <div class="mb-8 border rounded-xl shadow-sm bg-white overflow-hidden p-4">
+                    <h6 class="text-lg font-bold urdu-font text-indigo-700 mb-3 border-b-2 border-indigo-100 pb-2 text-right">استاد: ${t.name}</h6>
+                    <div class="overflow-x-auto no-scrollbar"><table class="w-full text-sm text-center" dir="rtl">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-2 urdu-font text-right border-l border-gray-200">کتاب / درجہ</th>
+                                <th class="p-2 border-l border-gray-200">کل صفحات</th>
+                                <th class="p-2 border-l border-gray-200">کل پڑھائے گئے</th>
+                                <th class="p-2 bg-yellow-100 text-red-700 border-l border-gray-200">بقیہ</th>
+                                <th class="p-2 bg-emerald-100 text-emerald-800 border-l border-gray-200">%</th>`;
+                                
+                validMonths.forEach(m => { html += `<th colspan="2" class="p-2 border-l border-gray-200 text-indigo-700 urdu-font">${urduMonths[monthNames[m]] || monthNames[m]}</th>`; });
+                html += `</tr><tr><th colspan="5" class="border-b border-gray-200"></th>`;
+                
+                validMonths.forEach(() => { html += `<th class="p-2 bg-slate-50 text-blue-600 border-l border-gray-200">ہدف</th><th class="p-2 bg-slate-50 text-emerald-600 border-l border-gray-200">پڑھایا</th>`; });
+                html += `</tr></thead><tbody>`;
+
+                periods.forEach(p => {
+                    const cumTaught = calculateCumulativeTaught(p.id, semester, monthIdx, currentYearNum, gAllYearReportsData);
+                    const rem = p.totalPages - cumTaught;
+                    const pct = p.totalPages > 0 ? Math.round((cumTaught/p.totalPages)*100) : 0;
+
+                    html += `<tr class="border-b border-gray-100 hover:bg-slate-50">
+                        <td class="p-2 text-right urdu-font border-l border-gray-200">${p.bookName} <span class="text-xs text-gray-500">(${p.className})</span></td>
+                        <td class="p-2 font-bold border-l border-gray-200">${p.totalPages}</td>
+                        <td class="p-2 font-bold text-indigo-700 border-l border-gray-200">${cumTaught}</td>
+                        <td class="p-2 font-bold bg-yellow-50 text-red-700 border-l border-gray-200">${rem}</td>
+                        <td class="p-2 font-bold bg-emerald-50 text-emerald-700 border-l border-gray-200">${pct}%</td>`;
+
+                    validMonths.forEach(m => {
+                        let y = semester === '1' ? parseInt(gSummaryActiveYear.split('-')[0]) : (m >= 8 ? parseInt(gSummaryActiveYear.split('-')[0]) : parseInt(gSummaryActiveYear.split('-')[1]));
+                        const mReport = gAllYearReportsData.find(r => r.monthNum === m && r.year === y);
+                        const entry = mReport?.karkardagiReport?.data?.find(e => e.periodId === p.id);
+                        html += `<td class="p-2 border-l border-gray-200">${entry?.monthlyTarget || 0}</td><td class="p-2 border-l border-gray-200 font-bold">${entry?.pagesTaught || 0}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            });
+            container.innerHTML = html;
+        }
+    } catch (err) {
+        console.error("Summary Render Error:", err);
+    }
 };
