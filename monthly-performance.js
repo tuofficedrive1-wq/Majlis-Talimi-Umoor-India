@@ -35,6 +35,7 @@ async function getAcademicConfig(db) {
 }
 // Add this helper near the top of monthly-performance.js
 const getActiveShortMonth = () => {
+    return currentSelectedMonth;
     const globalMonthInput = document.getElementById('report-month');
     if (globalMonthInput && globalMonthInput.value) {
         // "2026-04" format ko "apr" me convert karega
@@ -535,6 +536,16 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 };
 
 const loadPerformanceTable = async (jamiaat, db, currentUser) => {
+    const container = document.getElementById('performance-table-body');
+    if (!container) return; 
+
+    // NAYA: Data aane tak Loader show karein taake UI freeze na ho
+    container.innerHTML = `
+        <div class="flex flex-col items-center justify-center p-12 space-y-4">
+            <i class="fas fa-circle-notch fa-spin text-4xl text-indigo-500"></i>
+            <p class="font-bold text-slate-500 text-sm">Performance Data Load Ho Raha Hai...</p>
+        </div>`;
+
     try {
         const [targetSnap, calSnap, userSnap] = await Promise.all([
             getDoc(doc(db, "settings", "monthly_page_targets")),
@@ -543,9 +554,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         ]);
 
         const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
-        const container = document.getElementById('performance-table-body');
-        if (!container) return; 
-
+        
         const jamiaSelectElem = document.getElementById('report-jamia');
         const selectedJamia = jamiaSelectElem ? jamiaSelectElem.value : "all";
         
@@ -554,27 +563,32 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const academicYears = userData.academicYears || {};
 
         if(!academicYears[activeYear]){
-            console.error("Academic Year Missing:", activeYear);
             container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold text-sm">Academic Year Data Missing</div>`;
             return;
         }
 
         const karkardagi = academicYears[activeYear]?.karkardagiStructure || [];
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
-       const targetMonthKey = getActiveShortMonth();
+        const targetMonthKey = getActiveShortMonth();
         const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(targetMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(targetMonthKey) + 1) : monthNames.indexOf(targetMonthKey) + 1}`;
+
+        // NAYA: Sab Jamiaat ka Public data ek hi baar fetch karein (Speed Optimized)
+        const publicDataPromises = filteredJamiaat.map(jamiaName => {
+            const match = jamiaName.match(/\d+/);
+            const jamiaDocId = match ? match[0] : "001";
+            return getDoc(doc(db, "academic_performance", jamiaDocId));
+        });
+        const publicSnaps = await Promise.all(publicDataPromises);
 
         let html = "";
 
-        for (const jamiaName of filteredJamiaat) {
+        for (let i = 0; i < filteredJamiaat.length; i++) {
+            const jamiaName = filteredJamiaat[i];
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) continue;
 
             const safeId = jamiaName.replace(/\s+/g, '');
-            const match = jamiaName.match(/\d+/);
-            const jamiaDocId = match ? match[0] : "001";
-            
-            const publicPerfSnap = await getDoc(doc(db, "academic_performance", jamiaDocId));
+            const publicPerfSnap = publicSnaps[i];
             let publicMonthData = null;
             if (publicPerfSnap.exists()) {
                 publicMonthData = publicPerfSnap.data()[targetMonthKey] || publicPerfSnap.data()[currentYearMonthPrefix] || null;
@@ -583,14 +597,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             html += `
             <div class="bg-white rounded-xl md:rounded-2xl border border-slate-200 shadow-sm overflow-hidden jamia-card mb-6" id="card-${safeId}">
                 <div class="bg-slate-50 p-3 md:p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div>
-                        <h3 class="font-black text-indigo-950 text-sm md:text-lg">${jamiaName}</h3>
-                    </div>
+                    <div><h3 class="font-black text-indigo-950 text-sm md:text-lg">${jamiaName}</h3></div>
                     <div class="flex flex-wrap gap-1.5 md:gap-2 w-full sm:w-auto">
-                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 md:py-2.5 rounded-lg md:rounded-xl hover:bg-slate-50 transition font-bold shadow-sm justify-center flex items-center"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
-                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 md:py-2.5 rounded-lg md:rounded-xl hover:bg-slate-50 transition font-bold shadow-sm justify-center flex items-center"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
-                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 md:py-2.5 rounded-lg md:rounded-xl hover:bg-slate-50 transition font-bold shadow-sm justify-center flex items-center"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
-                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-indigo-600 text-white text-[10px] md:text-xs px-3.5 py-2 md:py-2.5 rounded-lg md:rounded-xl hover:bg-indigo-700 shadow-sm transition font-bold justify-center flex items-center"><i class="fas fa-edit mr-1"></i> Edit</button>
+                        <button onclick="copyTeacherFormLink('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-link mr-1 text-indigo-500"></i> Link</button>
+                        <button onclick="downloadJamiaImage('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-image mr-1 text-rose-500"></i> Image</button>
+                        <button onclick="downloadJamiaExcel('${jamiaName}')" class="flex-1 sm:flex-none bg-white border border-slate-200 text-slate-700 text-[10px] md:text-xs px-2.5 py-2 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center justify-center"><i class="fas fa-file-excel mr-1 text-emerald-500"></i> Excel</button>
+                        <button onclick="toggleEditMode('${jamiaName}')" class="edit-btn-${safeId} flex-1 sm:flex-none bg-indigo-600 text-white text-[10px] md:text-xs px-3.5 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition font-bold flex items-center justify-center"><i class="fas fa-edit mr-1"></i> Edit</button>
                     </div>
                 </div>
                 <div class="overflow-x-auto no-scrollbar">
@@ -626,9 +638,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
                     } 
                     else if (monthlyTargets) {
-                        const userClassNameLower = (p.className || "").trim().toLowerCase();
-                        // User ki class me se saare spaces, hyphens aur underscores hata diye
-                        const userClassNoSpace = userClassNameLower.replace(/[\s\-_]/g, ''); 
+                        const userClassNoSpace = (p.className || "").trim().toLowerCase().replace(/[\s\-_]/g, ''); 
                         const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
 
                         for (const adminKey in monthlyTargets) {
@@ -637,12 +647,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             
                             if (adminKeyLower.endsWith(suffix)) {
                                 const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
-                                // Admin ki class se bhi saare spaces aur extra characters hata diye
                                 const adminClassNoSpace = adminClassKeyPart.replace(/[\s\-_]/g, '');
-                                
-                                // Ab directly spaceless text ka shuruati hissa check karega
                                 if (userClassNoSpace.startsWith(adminClassNoSpace)) {
-                                    
                                     if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
                                         target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
                                         break; 
@@ -691,19 +697,13 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             </td>
                             <td class="p-2 md:p-4 border-r border-slate-100 text-center font-black text-slate-700 perc-cell text-[10px] md:text-sm">${percentage}%</td>
                             <td class="p-2 md:p-4 border-r border-slate-100 text-center italic status-cell text-[10px] md:text-sm ${result.colorClass}">${result.kaifiyat}</td>
-                            
                             ${pIdx === 0 ? `
                             <td class="p-1.5 md:p-3 text-center bg-slate-50/30" rowspan="${totalPeriodsCount + 1}">
-                                <div class="flex flex-col gap-1.5 md:gap-2 items-center justify-center">
-                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[9px] md:text-[11px] px-2 md:px-3 py-1.5 md:py-2 rounded-lg shadow-sm flex items-center gap-1.5 hover:bg-rose-50 transition-colors font-bold" title="Image Download">
-                                        <i class="fas fa-image"></i> Image
-                                    </button>
-                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="bg-white border border-red-200 text-red-500 text-[9px] md:text-[11px] px-2 md:px-3 py-1.5 md:py-2 rounded-lg shadow-sm flex items-center gap-1.5 hover:bg-red-50 transition-colors font-bold" title="Reset">
-                                        <i class="fas fa-sync-alt"></i> Reset
-                                    </button>
+                                <div class="flex flex-col gap-1.5 items-center justify-center">
+                                    <button onclick="downloadTeacherReportImage('${teacherRowId}', '${teacher.name}')" class="bg-white border border-slate-200 text-rose-600 text-[9px] px-2 py-1.5 rounded-lg shadow-sm flex items-center hover:bg-rose-50 font-bold">Image</button>
+                                    <button onclick="window.resetTeacherMonthReport('${jamiaName}', '${teacher.id}', '${teacher.name}')" class="bg-white border border-red-200 text-red-500 text-[9px] px-2 py-1.5 rounded-lg shadow-sm flex items-center hover:bg-red-50 font-bold">Reset</button>
                                 </div>
-                            </td>
-                            ` : ''}
+                            </td>` : ''}
                         </tr>`;
                 });
 
@@ -711,24 +711,22 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                     const overallPercentage = totalTeacherTarget > 0 ? Math.round((totalTeacherAchieved / totalTeacherTarget) * 100) : 0;
                     const overallResult = calculateKaifiyatAndStyle(overallPercentage, targetMonthKey, firstPeriodSemester);
 
-                    const teacherRowId = `row-${safeId}-${teacher.id}`; 
-
                     html += `
-                        <tr class="bg-indigo-50 border-b-[3px] border-indigo-200 ${teacherRowId}">
+                        <tr class="bg-indigo-50 border-b-[3px] border-indigo-200">
                             <td colspan="4" class="p-2 md:p-4 text-right font-black text-indigo-900 uppercase text-[9px] md:text-[11px] tracking-wider">Summary:</td>
                             <td class="p-2 md:p-4 border-r border-indigo-100 text-center font-black text-indigo-800 bg-indigo-100/50">${totalTeacherTarget}</td>
                             <td class="p-2 md:p-4 border-r border-indigo-100 text-center font-black text-emerald-700 bg-indigo-100/50">${totalTeacherAchieved}</td>
                             <td class="p-2 md:p-4 border-r border-indigo-100 text-center font-black text-slate-800 text-[10px] md:text-sm">${overallPercentage}%</td>
                             <td class="p-2 md:p-4 border-r border-indigo-100 text-center italic status-cell text-[10px] md:text-sm ${overallResult.colorClass}">${overallResult.kaifiyat}</td>
-                        </tr>
-                    `;
+                        </tr>`;
                 }
             });
             html += `</tbody></table></div></div>`;
         }
-        container.innerHTML = html || '<div class="p-8 text-center text-slate-400 text-sm md:text-base font-medium">Data nahi mila.</div>';
+        container.innerHTML = html || '<div class="p-8 text-center text-slate-400 font-medium">Data nahi mila.</div>';
     } catch (e) {
         console.error("Load Error:", e);
+        container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold">Error loading data.</div>`;
     }
 };
 
@@ -1446,7 +1444,6 @@ const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentY
 
 const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJamiaat) => {
     try {
-        // Active Year aur Structure Fetch Karein
         if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
             const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
             gSummaryActiveYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
@@ -1458,51 +1455,66 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             }
         }
 
-        // Target Fetch karein taake percentage nikal sakein
         const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
         const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
 
-        // Month Selection
         const monthSelectElem = document.getElementById('summary-month-select');
         const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(getActiveShortMonth()));
         const targetMonthKey = monthNames[monthIdx];
-        const semester = monthIdx >= 3 && monthIdx <= 7 ? "1" : "2";
+        const currentYearMonthPrefix = `${gSummaryActiveYear.split('-')[0]}-${monthIdx + 1 < 10 ? '0' + (monthIdx + 1) : monthIdx + 1}`;
 
-        // 1. MONTHLY MUNASIB REPORT
         if (targetTabId === 'munasib-tab') {
             const container = document.getElementById('monthly-munasib-container');
             let munasibPeriods = [];
 
-            // Directly Karkardagi Structure se data filter karna
             gSummaryKarkardagiStructure.forEach(jamia => {
                 if (!assignedJamiaat.includes(jamia.jamiaName)) return;
 
                 jamia.teachers.forEach(teacher => {
                     (teacher.periods || []).forEach(p => {
+                        // NAYA LOGIC: Sahi se Target fetch karne ke liye (Performance Tab wala same logic)
                         let target = 0;
                         const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
                         
                         if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
                             target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
+                        } else if (monthlyTargets) {
+                            const userClassNoSpace = (p.className || "").trim().toLowerCase().replace(/[\s\-_]/g, ''); 
+                            const userBookNameFormatted = (p.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
+
+                            for (const adminKey in monthlyTargets) {
+                                const adminKeyLower = adminKey.toLowerCase();
+                                const suffix = `_${userBookNameFormatted}`;
+                                if (adminKeyLower.endsWith(suffix)) {
+                                    const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
+                                    const adminClassNoSpace = adminClassKeyPart.replace(/[\s\-_]/g, '');
+                                    if (userClassNoSpace.startsWith(adminClassNoSpace)) {
+                                        if (monthlyTargets[adminKey][targetMonthKey] !== undefined) {
+                                            target = parseInt(monthlyTargets[adminKey][targetMonthKey]) || 0;
+                                            break; 
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        // Get Achieved Value
-                        let achievedValue = (p.achieved && p.achieved[targetMonthKey]) ? p.achieved[targetMonthKey] : 0;
+                        // Sahi Achieved Value fetch karna (Performance Tab wala same logic)
+                        let achievedValue = 0;
+                        if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
+                            achievedValue = p.achieved[currentYearMonthPrefix];
+                        } else if (p.achieved && p.achieved[targetMonthKey] !== undefined) {
+                            achievedValue = p.achieved[targetMonthKey];
+                        }
                         
-                        // Calculate
                         const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
                         const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
 
                         if (result.kaifiyat === 'Munasib') {
                             munasibPeriods.push({
-                                jamiaName: jamia.jamiaName,
-                                teacherName: teacher.name,
-                                className: p.className,
-                                bookName: p.bookName,
-                                monthlyTarget: target,
-                                pagesTaught: achievedValue,
-                                achievement: percentage,
-                                kaifiyat: result.kaifiyat
+                                jamiaName: jamia.jamiaName, teacherName: teacher.name,
+                                className: p.className, bookName: p.bookName,
+                                monthlyTarget: target, pagesTaught: achievedValue,
+                                achievement: percentage, kaifiyat: result.kaifiyat
                             });
                         }
                     });
@@ -1510,12 +1522,11 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             });
 
             if (munasibPeriods.length === 0) {
-                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center">Excellent! Is mahine koi 'Munasib' performance nahi hai.</p>`;
+                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center border border-emerald-100">Excellent! Is mahine koi 'Munasib' (kam) performance nahi hai.</p>`;
                 return;
             }
 
-            // HTML Table Generation
-            let html = `<div class="overflow-x-auto border rounded-lg shadow-sm bg-white"><table class="w-full text-sm text-left"><tbody>`;
+            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white"><table class="w-full text-sm text-left whitespace-nowrap"><tbody>`;
             const jamiaGroups = {};
             munasibPeriods.forEach(p => {
                 if(!jamiaGroups[p.jamiaName]) jamiaGroups[p.jamiaName] = {};
@@ -1524,32 +1535,95 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             });
 
             Object.keys(jamiaGroups).sort().forEach(jamia => {
-                html += `<tr class="bg-indigo-50 border-b-2 border-indigo-200"><td colspan="8" class="p-3 font-bold text-indigo-900 text-lg">${jamia}</td></tr>
-                         <tr class="bg-red-50 text-red-800 text-xs font-bold border-b border-red-200 uppercase">
-                             <td class="p-2 border-r border-red-200">Teacher</td><td class="p-2 border-r border-red-200">Class</td><td class="p-2 border-r border-red-200">Book</td><td class="p-2 border-r border-red-200 text-center">Target</td><td class="p-2 border-r border-red-200 text-center">Achieved</td><td class="p-2 border-r border-red-200 text-center">%</td><td class="p-2 text-center">Status</td>
+                html += `<tr class="bg-indigo-50 border-b border-indigo-100"><td colspan="7" class="p-3 font-black text-indigo-900 text-sm tracking-wide uppercase">${jamia}</td></tr>
+                         <tr class="bg-red-50 text-red-800 text-[10px] md:text-xs font-black border-b border-red-100 uppercase tracking-wider">
+                             <td class="p-2 md:p-3 border-r border-red-100">Teacher</td><td class="p-2 md:p-3 border-r border-red-100">Class</td><td class="p-2 md:p-3 border-r border-red-100">Book</td><td class="p-2 md:p-3 border-r border-red-100 text-center">Target</td><td class="p-2 md:p-3 border-r border-red-100 text-center">Achieved</td><td class="p-2 md:p-3 border-r border-red-100 text-center">%</td><td class="p-2 md:p-3 text-center">Status</td>
                          </tr>`;
 
                 Object.keys(jamiaGroups[jamia]).forEach((teacherName, idx) => {
                     const periods = jamiaGroups[jamia][teacherName];
-                    const bgClass = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
                     periods.forEach((p, pIdx) => {
-                        html += `<tr class="${bgClass} border-b border-gray-100 hover:bg-gray-100">
-                            ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-2 border-r border-gray-200 font-bold text-red-800">${teacherName}</td>` : ''}
-                            <td class="p-2 border-r border-gray-200">${p.className}</td>
-                            <td class="p-2 border-r border-gray-200">${p.bookName}</td>
-                            <td class="p-2 border-r border-gray-200 font-bold text-center">${p.monthlyTarget}</td>
-                            <td class="p-2 border-r border-gray-200 text-center">${p.pagesTaught}</td>
-                            <td class="p-2 border-r border-gray-200 font-bold text-blue-700 text-center">${p.achievement}%</td>
-                            <td class="p-2 border-r border-gray-200 font-bold text-red-600 text-center">${p.kaifiyat}</td>
+                        html += `<tr class="bg-white border-b border-slate-100 hover:bg-slate-50 transition">
+                            ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-2 md:p-3 border-r border-slate-200 font-bold text-slate-800">${teacherName}</td>` : ''}
+                            <td class="p-2 md:p-3 border-r border-slate-100 text-slate-600">${p.className}</td>
+                            <td class="p-2 md:p-3 border-r border-slate-100 text-slate-700 font-semibold">${p.bookName}</td>
+                            <td class="p-2 md:p-3 border-r border-slate-100 font-bold text-center text-indigo-600 bg-indigo-50/30">${p.monthlyTarget}</td>
+                            <td class="p-2 md:p-3 border-r border-slate-100 text-center font-bold text-slate-700">${p.pagesTaught}</td>
+                            <td class="p-2 md:p-3 border-r border-slate-100 font-black text-red-600 text-center">${p.achievement}%</td>
+                            <td class="p-2 md:p-3 font-bold text-red-600 text-center italic">${p.kaifiyat}</td>
                         </tr>`;
                     });
                 });
             });
             html += `</tbody></table></div>`;
             container.innerHTML = html;
+        } 
+        else if (targetTabId === 'profile-tab') {
+            // NAYA LOGIC: Teacher Profile Renderer
+            const jamiaName = document.getElementById('teacher-profile-jamia').value;
+            const teacherId = document.getElementById('teacher-profile-teacher').value;
+            const container = document.getElementById('teacher-profile-container');
+            
+            if (!jamiaName || !teacherId) {
+                container.innerHTML = `<div class="p-5 text-center text-slate-500 font-bold bg-slate-50 rounded-xl border border-dashed border-slate-200">Please select Jamia and Teacher.</div>`;
+                return;
+            }
+
+            const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamiaName);
+            let teachersToShow = teacherId === 'all' ? jamiaData.teachers : [jamiaData.teachers.find(t => t.id === teacherId)];
+
+            let html = "";
+            teachersToShow.forEach(teacher => {
+                if(!teacher) return;
+                html += `
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 md:p-6 mb-4">
+                    <div class="flex flex-col md:flex-row justify-between md:items-center border-b border-slate-100 pb-4 mb-4 gap-4">
+                        <div>
+                            <h3 class="text-lg md:text-xl font-black text-indigo-950">${teacher.name}</h3>
+                            <p class="text-xs font-bold tracking-widest text-indigo-500 uppercase mt-1">Ajeer Code: ${teacher.loginCode || 'N/A'}</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-slate-600">
+                            <div><span class="font-bold text-slate-800">Phone:</span> ${teacher.contact || '-'}</div>
+                            <div><span class="font-bold text-slate-800">Exp:</span> ${teacher.experience || '-'}</div>
+                            <div><span class="font-bold text-slate-800">Qual:</span> ${teacher.highestQualification || '-'}</div>
+                            <div><span class="font-bold text-slate-800">Ijara:</span> <span class="text-emerald-600 font-bold">${teacher.ijaraStatus || '-'}</span></div>
+                        </div>
+                    </div>
+                    <h4 class="font-bold text-slate-700 text-sm mb-3">Assigned Classes</h4>
+                    <div class="overflow-x-auto no-scrollbar border rounded-lg">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                                <tr>
+                                    <th class="p-2 md:p-3 border-r border-slate-100">Class</th>
+                                    <th class="p-2 md:p-3 border-r border-slate-100">Subject</th>
+                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Semester</th>
+                                    <th class="p-2 md:p-3 text-center">Total Pages</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-slate-700">
+                                ${teacher.periods?.length ? teacher.periods.map(p => `
+                                    <tr class="hover:bg-slate-50">
+                                        <td class="p-2 md:p-3 border-r border-slate-100">${p.className}</td>
+                                        <td class="p-2 md:p-3 border-r border-slate-100 font-semibold">${p.bookName}</td>
+                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center">${p.semester}</td>
+                                        <td class="p-2 md:p-3 text-center font-bold text-indigo-600">${p.totalPages}</td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="4" class="p-4 text-center text-slate-400">No periods assigned</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+            });
+            container.innerHTML = html;
         }
-        
-        // Note: History aur Profile tabs ko baad mein update karenge agar zaroorat hui
+        else if (targetTabId === 'history-tab') {
+            document.getElementById('munasib-history-container').innerHTML = `
+                <div class="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                    <i class="fas fa-tools text-3xl text-slate-400 mb-3"></i>
+                    <p class="font-bold text-slate-500 text-sm">Semester History Report is abhi active structure data ke format mein mojud nahi hai.</p>
+                </div>`;
+        }
+
     } catch (err) {
         console.error("Summary Render Error:", err);
     }
