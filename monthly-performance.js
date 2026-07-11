@@ -33,7 +33,16 @@ async function getAcademicConfig(db) {
     }
     return null;
 }
-
+// Add this helper near the top of monthly-performance.js
+const getActiveShortMonth = () => {
+    const globalMonthInput = document.getElementById('report-month');
+    if (globalMonthInput && globalMonthInput.value) {
+        // "2026-04" format ko "apr" me convert karega
+        const monthIndex = parseInt(globalMonthInput.value.split('-')[1], 10) - 1;
+        return monthNames[monthIndex];
+    }
+    return currentSelectedMonth;
+};
 export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
     gDb = db;
     gCurrentUser = currentUser;
@@ -552,7 +561,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         const karkardagi = academicYears[activeYear]?.karkardagiStructure || [];
         const filteredJamiaat = selectedJamia === "all" ? jamiaat : jamiaat.filter(j => j === selectedJamia);
-        const targetMonthKey = (currentSelectedMonth || "").toLowerCase().trim();
+       const targetMonthKey = getActiveShortMonth();
         const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(targetMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(targetMonthKey) + 1) : monthNames.indexOf(targetMonthKey) + 1}`;
 
         let html = "";
@@ -1024,8 +1033,7 @@ window.toggleEditMode = async (jamiaName) => {
     if (!inputs || inputs.length === 0) return;
     const isLocked = inputs[0].disabled;
 
-    const monthSelect = document.getElementById('report-month');
-    const savingMonthId = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
+    const savingMonthId = getActiveShortMonth();
 
     if (isLocked) {
         inputs.forEach(inp => {
@@ -1438,7 +1446,7 @@ const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentY
 
 const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJamiaat) => {
     try {
-        // Fetch Active Year and Database only once
+        // Active Year aur Structure Fetch Karein
         if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
             const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
             gSummaryActiveYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
@@ -1448,69 +1456,89 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 const academicYears = userSnap.data().academicYears || {};
                 gSummaryKarkardagiStructure = academicYears[gSummaryActiveYear]?.karkardagiStructure || [];
             }
-
-            const reportsRef = collection(db, 'monthly_reports');
-            const q = query(reportsRef, where('userId', '==', currentUser.uid), where('academicYear', '==', gSummaryActiveYear));
-            const snap = await getDocs(q);
-            gAllYearReportsData = [];
-            snap.forEach(d => gAllYearReportsData.push(d.data()));
         }
 
-        const monthIdx = parseInt(document.getElementById('summary-month-select')?.value || new Date().getMonth());
+        // Target Fetch karein taake percentage nikal sakein
+        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
+
+        // Month Selection
+        const monthSelectElem = document.getElementById('summary-month-select');
+        const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(getActiveShortMonth()));
+        const targetMonthKey = monthNames[monthIdx];
         const semester = monthIdx >= 3 && monthIdx <= 7 ? "1" : "2";
-        const currentYearNum = parseInt(gSummaryActiveYear.split('-')[semester === "1" ? 0 : (monthIdx >= 8 ? 0 : 1)]);
 
         // 1. MONTHLY MUNASIB REPORT
         if (targetTabId === 'munasib-tab') {
             const container = document.getElementById('monthly-munasib-container');
-            const monthReport = gAllYearReportsData.find(r => r.monthNum === monthIdx && r.year === currentYearNum);
-            
-            if (!monthReport || !monthReport.karkardagiReport?.data) {
-                container.innerHTML = `<p class="text-yellow-600 font-bold p-4 bg-yellow-50 rounded-lg text-center">No data available for this month.</p>`;
-                return;
-            }
+            let munasibPeriods = [];
 
-            const munasibPeriods = monthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib' && assignedJamiaat.includes(p.jamiaName));
+            // Directly Karkardagi Structure se data filter karna
+            gSummaryKarkardagiStructure.forEach(jamia => {
+                if (!assignedJamiaat.includes(jamia.jamiaName)) return;
+
+                jamia.teachers.forEach(teacher => {
+                    (teacher.periods || []).forEach(p => {
+                        let target = 0;
+                        const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
+                        
+                        if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][targetMonthKey] !== undefined) {
+                            target = parseInt(monthlyTargets[exactSubId][targetMonthKey]) || 0;
+                        }
+
+                        // Get Achieved Value
+                        let achievedValue = (p.achieved && p.achieved[targetMonthKey]) ? p.achieved[targetMonthKey] : 0;
+                        
+                        // Calculate
+                        const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                        const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
+
+                        if (result.kaifiyat === 'Munasib') {
+                            munasibPeriods.push({
+                                jamiaName: jamia.jamiaName,
+                                teacherName: teacher.name,
+                                className: p.className,
+                                bookName: p.bookName,
+                                monthlyTarget: target,
+                                pagesTaught: achievedValue,
+                                achievement: percentage,
+                                kaifiyat: result.kaifiyat
+                            });
+                        }
+                    });
+                });
+            });
+
             if (munasibPeriods.length === 0) {
-                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center">Excellent! No 'Munasib' performance this month.</p>`;
+                container.innerHTML = `<p class="text-emerald-600 font-bold p-4 bg-emerald-50 rounded-lg text-center">Excellent! Is mahine koi 'Munasib' performance nahi hai.</p>`;
                 return;
             }
 
+            // HTML Table Generation
             let html = `<div class="overflow-x-auto border rounded-lg shadow-sm bg-white"><table class="w-full text-sm text-left"><tbody>`;
             const jamiaGroups = {};
             munasibPeriods.forEach(p => {
                 if(!jamiaGroups[p.jamiaName]) jamiaGroups[p.jamiaName] = {};
-                if(!jamiaGroups[p.jamiaName][p.teacherId]) jamiaGroups[p.jamiaName][p.teacherId] = { name: p.teacherName, periods: [] };
-                jamiaGroups[p.jamiaName][p.teacherId].periods.push(p);
+                if(!jamiaGroups[p.jamiaName][p.teacherName]) jamiaGroups[p.jamiaName][p.teacherName] = [];
+                jamiaGroups[p.jamiaName][p.teacherName].push(p);
             });
 
             Object.keys(jamiaGroups).sort().forEach(jamia => {
-                html += `
-                <tr class="bg-indigo-50 border-b-2 border-indigo-200">
-                    <td colspan="10" class="p-3 font-bold text-indigo-900 text-lg">${jamia}</td>
-                </tr>
-                <tr class="bg-red-50 text-red-800 text-xs font-bold border-b border-red-200 uppercase">
-                    <td class="p-2 border-r border-red-200">Teacher</td>
-                    <td class="p-2 border-r border-red-200">Class</td>
-                    <td class="p-2 border-r border-red-200">Book</td>
-                    <td class="p-2 border-r border-red-200 text-center">Total</td>
-                    <td class="p-2 border-r border-red-200 text-center">Target</td>
-                    <td class="p-2 border-r border-red-200 text-center">Achieved</td>
-                    <td class="p-2 border-r border-red-200 text-center">%</td>
-                    <td class="p-2 text-center">Status</td>
-                </tr>`;
+                html += `<tr class="bg-indigo-50 border-b-2 border-indigo-200"><td colspan="8" class="p-3 font-bold text-indigo-900 text-lg">${jamia}</td></tr>
+                         <tr class="bg-red-50 text-red-800 text-xs font-bold border-b border-red-200 uppercase">
+                             <td class="p-2 border-r border-red-200">Teacher</td><td class="p-2 border-r border-red-200">Class</td><td class="p-2 border-r border-red-200">Book</td><td class="p-2 border-r border-red-200 text-center">Target</td><td class="p-2 border-r border-red-200 text-center">Achieved</td><td class="p-2 border-r border-red-200 text-center">%</td><td class="p-2 text-center">Status</td>
+                         </tr>`;
 
-                Object.keys(jamiaGroups[jamia]).forEach((tid, idx) => {
-                    const teacher = jamiaGroups[jamia][tid];
+                Object.keys(jamiaGroups[jamia]).forEach((teacherName, idx) => {
+                    const periods = jamiaGroups[jamia][teacherName];
                     const bgClass = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
-                    teacher.periods.forEach((p, pIdx) => {
-                        html += `
-                        <tr class="${bgClass} border-b border-gray-100 hover:bg-gray-100">
-                            ${pIdx === 0 ? `<td rowspan="${teacher.periods.length}" class="p-2 border-r border-gray-200 font-bold text-red-800">${teacher.name}</td>` : ''}
+                    periods.forEach((p, pIdx) => {
+                        html += `<tr class="${bgClass} border-b border-gray-100 hover:bg-gray-100">
+                            ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-2 border-r border-gray-200 font-bold text-red-800">${teacherName}</td>` : ''}
                             <td class="p-2 border-r border-gray-200">${p.className}</td>
                             <td class="p-2 border-r border-gray-200">${p.bookName}</td>
-                            <td class="p-2 border-r border-gray-200 font-bold text-center">${p.monthlyTarget || 0}</td>
-                            <td class="p-2 border-r border-gray-200 text-center">${p.pagesTaught || 0}</td>
+                            <td class="p-2 border-r border-gray-200 font-bold text-center">${p.monthlyTarget}</td>
+                            <td class="p-2 border-r border-gray-200 text-center">${p.pagesTaught}</td>
                             <td class="p-2 border-r border-gray-200 font-bold text-blue-700 text-center">${p.achievement}%</td>
                             <td class="p-2 border-r border-gray-200 font-bold text-red-600 text-center">${p.kaifiyat}</td>
                         </tr>`;
@@ -1520,139 +1548,8 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             html += `</tbody></table></div>`;
             container.innerHTML = html;
         }
-
-        // 2. SEMESTER HISTORY
-        else if (targetTabId === 'history-tab') {
-            const container = document.getElementById('munasib-history-container');
-            const semMonths = semester === '1' ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0];
-            let historyData = {};
-
-            semMonths.forEach(m => {
-                let y = currentYearNum;
-                if (semester === '2' && m < 8) y = parseInt(gSummaryActiveYear.split('-')[1]); 
-                const report = gAllYearReportsData.find(r => r.monthNum === m && r.year === y);
-                
-                if (report && report.karkardagiReport?.data) {
-                    report.karkardagiReport.data.forEach(entry => {
-                        if (!assignedJamiaat.includes(entry.jamiaName)) return;
-                        if (!historyData[entry.jamiaName]) historyData[entry.jamiaName] = {};
-                        if (!historyData[entry.jamiaName][entry.teacherId]) {
-                            historyData[entry.jamiaName][entry.teacherId] = { name: entry.teacherName, periods: {} };
-                        }
-                        if (!historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId]) {
-                            historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId] = { class: entry.className, book: entry.bookName, status: {}, mCount: 0 };
-                        }
-                        const pData = historyData[entry.jamiaName][entry.teacherId].periods[entry.periodId];
-                        pData.status[m] = entry.kaifiyat;
-                        if (entry.kaifiyat === 'Munasib') pData.mCount++;
-                    });
-                }
-            });
-
-            let html = `<div class="overflow-x-auto border rounded-xl shadow-sm bg-white"><table class="w-full text-sm text-left"><thead class="bg-slate-100 border-b"><tr>
-                <th class="p-3">Teacher Name</th>
-                <th class="p-3">Book / Class</th>`;
-            semMonths.forEach(m => { html += `<th class="p-3 text-indigo-700 text-center">${monthNames[m].toUpperCase()}</th>`; });
-            html += `<th class="p-2 text-center text-red-700 font-bold text-xs uppercase">Total Munasib</th></tr></thead><tbody>`;
-
-            let hasData = false;
-            Object.keys(historyData).forEach(jamia => {
-                let jamiaHasMunasib = false;
-                Object.values(historyData[jamia]).forEach(t => { Object.values(t.periods).forEach(p => { if(p.mCount > 0) jamiaHasMunasib = true; }); });
-                
-                if(jamiaHasMunasib) {
-                    hasData = true;
-                    html += `<tr class="bg-indigo-50 border-b border-indigo-200"><td colspan="${semMonths.length + 3}" class="p-3 text-lg font-bold text-indigo-900">${jamia}</td></tr>`;
-                    Object.values(historyData[jamia]).forEach(t => {
-                        const periods = Object.values(t.periods).filter(p => p.mCount > 0);
-                        periods.forEach((p, pIdx) => {
-                            html += `<tr class="border-b border-gray-100 hover:bg-slate-50">
-                                ${pIdx === 0 ? `<td rowspan="${periods.length}" class="p-3 font-bold border-r border-gray-200">${t.name}</td>` : ''}
-                                <td class="p-3 border-r border-gray-200 font-medium">${p.book}<br><span class="text-xs text-gray-500">${p.class}</span></td>`;
-                            
-                            semMonths.forEach(m => {
-                                const st = p.status[m];
-                                let badge = `<span class="text-gray-300">-</span>`;
-                                if(st === 'Munasib') badge = `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-xs">Munasib</span>`;
-                                else if(st === 'Mumtaz' || st === 'Behtar') badge = `<span class="text-emerald-500"><i class="fas fa-check-circle"></i></span>`;
-                                html += `<td class="p-3 border-r border-gray-100 text-center">${badge}</td>`;
-                            });
-                            html += `<td class="p-3 font-bold bg-red-50 text-red-700 text-center text-lg">${p.mCount}</td></tr>`;
-                        });
-                    });
-                }
-            });
-
-            html += `</tbody></table></div>`;
-            container.innerHTML = hasData ? html : `<div class="p-6 bg-emerald-50 rounded-xl border border-emerald-200 text-center"><i class="fas fa-check-circle text-emerald-500 text-3xl mb-2"></i><h5 class="text-xl font-bold text-emerald-800">Excellent!</h5><p class="text-emerald-700 mt-2">No 'Munasib' history for this semester.</p></div>`;
-        }
-
-        // 3. TEACHER PROFILE
-        else if (targetTabId === 'profile-tab') {
-            const jamia = document.getElementById('teacher-profile-jamia').value;
-            const teacherId = document.getElementById('teacher-profile-teacher').value;
-            const container = document.getElementById('teacher-profile-container');
-            
-            if (!jamia || !teacherId) { container.innerHTML = `<p class="text-red-500 font-bold">Please select Jamia and Teacher.</p>`; return; }
-            
-            const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamia);
-            let teachersToRender = teacherId === 'all' ? jamiaData.teachers.filter(t => (t.periods || []).some(p => p.semester === semester)) : [jamiaData.teachers.find(t => t.id === teacherId)];
-
-            const semMonths = semester === '1' ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0];
-            const validMonths = semMonths.filter(m => {
-                let y = semester === '1' ? parseInt(gSummaryActiveYear.split('-')[0]) : (m >= 8 ? parseInt(gSummaryActiveYear.split('-')[0]) : parseInt(gSummaryActiveYear.split('-')[1]));
-                if (y < currentYearNum) return true;
-                if (y === currentYearNum && m <= monthIdx) return true;
-                return false;
-            });
-
-            let html = ``;
-            teachersToRender.forEach(t => {
-                const periods = (t.periods || []).filter(p => p.semester === semester);
-                if (periods.length === 0) return;
-
-                html += `
-                <div class="mb-8 border rounded-xl shadow-sm bg-white overflow-hidden p-4">
-                    <h6 class="text-lg font-bold text-indigo-700 mb-3 border-b-2 border-indigo-100 pb-2">Teacher: ${t.name}</h6>
-                    <div class="overflow-x-auto no-scrollbar"><table class="w-full text-sm text-left">
-                        <thead class="bg-gray-100">
-                            <tr>
-                                <th class="p-2 border-r border-gray-200">Book / Class</th>
-                                <th class="p-2 border-r border-gray-200 text-center">Total Pages</th>
-                                <th class="p-2 border-r border-gray-200 text-center">Total Taught</th>
-                                <th class="p-2 bg-yellow-100 text-red-700 border-r border-gray-200 text-center">Remaining</th>
-                                <th class="p-2 bg-emerald-100 text-emerald-800 border-r border-gray-200 text-center">%</th>`;
-                                
-                validMonths.forEach(m => { html += `<th colspan="2" class="p-2 border-r border-gray-200 text-indigo-700 text-center uppercase">${monthNames[m]}</th>`; });
-                html += `</tr><tr><th colspan="5" class="border-b border-gray-200"></th>`;
-                
-                validMonths.forEach(() => { html += `<th class="p-2 bg-slate-50 text-blue-600 border-r border-gray-200 text-center">Target</th><th class="p-2 bg-slate-50 text-emerald-600 border-r border-gray-200 text-center">Taught</th>`; });
-                html += `</tr></thead><tbody>`;
-
-                periods.forEach(p => {
-                    const cumTaught = calculateCumulativeTaught(p.id, semester, monthIdx, currentYearNum, gAllYearReportsData);
-                    const rem = p.totalPages - cumTaught;
-                    const pct = p.totalPages > 0 ? Math.round((cumTaught/p.totalPages)*100) : 0;
-
-                    html += `<tr class="border-b border-gray-100 hover:bg-slate-50">
-                        <td class="p-2 border-r border-gray-200 font-medium">${p.bookName} <span class="text-xs text-gray-500">(${p.className})</span></td>
-                        <td class="p-2 font-bold border-r border-gray-200 text-center">${p.totalPages}</td>
-                        <td class="p-2 font-bold text-indigo-700 border-r border-gray-200 text-center">${cumTaught}</td>
-                        <td class="p-2 font-bold bg-yellow-50 text-red-700 border-r border-gray-200 text-center">${rem}</td>
-                        <td class="p-2 font-bold bg-emerald-50 text-emerald-700 border-r border-gray-200 text-center">${pct}%</td>`;
-
-                    validMonths.forEach(m => {
-                        let y = semester === '1' ? parseInt(gSummaryActiveYear.split('-')[0]) : (m >= 8 ? parseInt(gSummaryActiveYear.split('-')[0]) : parseInt(gSummaryActiveYear.split('-')[1]));
-                        const mReport = gAllYearReportsData.find(r => r.monthNum === m && r.year === y);
-                        const entry = mReport?.karkardagiReport?.data?.find(e => e.periodId === p.id);
-                        html += `<td class="p-2 border-r border-gray-200 text-center">${entry?.monthlyTarget || 0}</td><td class="p-2 border-r border-gray-200 font-bold text-center">${entry?.pagesTaught || 0}</td>`;
-                    });
-                    html += `</tr>`;
-                });
-                html += `</tbody></table></div></div>`;
-            });
-            container.innerHTML = html;
-        }
+        
+        // Note: History aur Profile tabs ko baad mein update karenge agar zaroorat hui
     } catch (err) {
         console.error("Summary Render Error:", err);
     }
