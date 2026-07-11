@@ -130,19 +130,27 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
 const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) => {
     const contentArea = document.getElementById('sub-tab-content');
 
-    if (tabName === 'performance') {
+ if (tabName === 'performance') {
         if (!document.getElementById('report-jamia')) {
             contentArea.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm gap-3">
                     <div class="flex flex-col">
                         <h3 class="font-black text-indigo-950 text-base md:text-lg">Performance Analytics</h3>
-                        <p class="text-[9px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">Select Jamia (Month synced)</p>
+                        <p class="text-[9px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">Filter by Month & Jamia</p>
                     </div>
-                    <div class="w-full sm:w-auto">
+                    <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-3">
+                        
+                        <!-- NAYA: Month Filter Dropdown -->
+                        <select id="performance-month-select" class="w-full sm:w-auto p-2 md:p-2.5 border border-slate-200 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 transition">
+                            ${monthNames.map(m => `<option value="${m}" ${m === currentSelectedMonth ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}
+                        </select>
+
+                        <!-- PURANA: Jamia Filter Dropdown -->
                         <select id="report-jamia" class="w-full sm:w-auto p-2 md:p-2.5 border border-slate-200 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-200 transition">
                             <option value="all">All Jamiaat</option>
                             ${assignedJamiaat.map(j => `<option value="${j}">${j}</option>`).join('')}
                         </select>
+
                     </div>
                 </div>
                 <div id="performance-table-body" class="space-y-4 md:space-y-6"></div>
@@ -150,15 +158,27 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
         }
 
         const jamiaSelect = document.getElementById('report-jamia');
+        const monthSelect = document.getElementById('performance-month-select'); // Naya element fetch kiya
+
         if (jamiaSelect) {
             jamiaSelect.onchange = () => {
                 loadPerformanceTable(assignedJamiaat, db, currentUser);
             };
         }
         
+        // NAYA: Mahina change hone par data reload karne ka event
+        if (monthSelect) {
+            monthSelect.onchange = (e) => {
+                // Global variable update kar diya taake baqi sab jagah bhi yehi mahina jaye
+                currentSelectedMonth = e.target.value.toLowerCase().trim(); 
+                // Table ko naye mahine ke sath reload karein
+                loadPerformanceTable(assignedJamiaat, db, currentUser);
+            };
+        }
+        
         loadPerformanceTable(assignedJamiaat, db, currentUser);
         
-    } else if (tabName === 'summary') {
+    } else if (tabName === 'structure') { else if (tabName === 'summary') {
         contentArea.innerHTML = `
             <div class="bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6 shadow-sm">
                 <div class="flex border-b border-slate-200 gap-4 overflow-x-auto no-scrollbar mb-4 pb-2">
