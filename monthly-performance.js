@@ -1820,7 +1820,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             
         } // <-- YAHAN EK BRACKET AAYEGA (else if block ko close karne ke liye)
 
-    } catch (err) { // <-- Aur ye bracket 'try' block ko close kar raha hai
+    catch (err) { // <-- Aur ye bracket 'try' block ko close kar raha hai
         console.error("Summary Render Error:", err);
     }
 };
