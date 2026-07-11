@@ -176,14 +176,18 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
         }
         
         // NAYA: Mahina change hone par data reload karne ka event
-        if (monthSelect) {
-            monthSelect.onchange = (e) => {
-                // Global variable update kar diya taake baqi sab jagah bhi yehi mahina jaye
-                currentSelectedMonth = e.target.value.toLowerCase().trim(); 
-                // Table ko naye mahine ke sath reload karein
-                loadPerformanceTable(assignedJamiaat, db, currentUser);
-            };
-          } else if (tabName === 'summary') {
+       if (monthSelect) {
+        monthSelect.onchange = (e) => {
+            // Global variable update kar diya taake baqi sab jagah bhi yehi mahina jaye
+            currentSelectedMonth = e.target.value.toLowerCase().trim(); 
+            // Table ko naye mahine ke sath reload karein
+            loadPerformanceTable(assignedJamiaat, db, currentUser);
+        };
+    } // <-- 1st Bracket: if (monthSelect) ko close kar raha hai
+    
+    loadPerformanceTable(assignedJamiaat, db, currentUser);
+    
+} else if (tabName === 'summary') { // <-- 2nd Bracket: performance tab ko close kar raha hai
         contentArea.innerHTML = `
             <div class="bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6 shadow-sm">
                 <div class="flex border-b border-slate-200 gap-4 overflow-x-auto no-scrollbar mb-4 pb-2">
