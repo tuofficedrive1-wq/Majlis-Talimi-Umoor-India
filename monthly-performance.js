@@ -1743,7 +1743,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             if (html === ``) html = `<p class="text-slate-500 text-center p-5">No data found.</p>`;
             container.innerHTML = html;
         }
-        // ----------------------------------------------------
+      // ----------------------------------------------------
         // TAB 3: MUNASIB HISTORY TAB (All Semester Munasib Status)
         // ----------------------------------------------------
         else if (targetTabId === 'history-tab') {
@@ -1759,7 +1759,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 return;
             }
 
-           let html = `<div class="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white p-2"><table class="w-full text-sm text-left whitespace-nowrap"><tbody>`;
+            let html = `<div class="overflow-x-auto rounded-lg border border-slate-200 shadow-sm bg-white p-2">
                             <table class="min-w-full text-sm text-left whitespace-nowrap">
                                 <thead class="bg-slate-100/50 border-y border-slate-200">
                                     <tr>
@@ -1773,32 +1773,54 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                                 </thead>
                                 <tbody class="divide-y divide-slate-100 text-slate-700">`;
 
-           Object.keys(jamiaGroups).sort().forEach(jamia => {
-                html += `<tr class="bg-slate-50/80 border-t-2 border-indigo-100"><td colspan="7" class="px-4 py-3 font-black text-slate-800 text-sm tracking-wide uppercase">${jamia}</td></tr>
-                         <tr class="bg-slate-100/50 text-slate-600 text-[10px] md:text-xs font-bold border-y border-slate-200 uppercase tracking-wider">
-                             <th class="px-4 py-2">Teacher</th><th class="px-4 py-2">Class</th><th class="px-4 py-2">Book</th><th class="px-4 py-2 text-center">Target</th><th class="px-4 py-2 text-center">Achieved</th><th class="px-4 py-2 text-center">%</th><th class="px-4 py-2 text-center">Status</th>
-                         </tr>`;
+            Object.keys(historyData).sort().forEach(jamiaName => {
+                // CLEAN JAMIA HEADER ROW
+                html += `<tr class="bg-slate-50/80 border-t-2 border-indigo-100"><td colspan="${2 + semMonths.length + 1}" class="px-4 py-3 font-black text-slate-800 text-sm tracking-wide uppercase">${jamiaName}</td></tr>`;
+                
+                Object.keys(historyData[jamiaName]).sort().forEach((teacherName, tIdx) => {
+                    const periods = historyData[jamiaName][teacherName];
 
-                Object.keys(jamiaGroups[jamia]).forEach((teacherName, idx) => {
-                    const periods = jamiaGroups[jamia][teacherName];
                     periods.forEach((p, pIdx) => {
-                        html += `<tr class="bg-white border-b border-slate-100 hover:bg-slate-50/50 transition">
-                            ${pIdx === 0 ? `<td rowspan="${periods.length}" class="px-4 py-3 border-r border-slate-50 font-bold text-slate-800 whitespace-normal min-w-[120px]">${teacherName}</td>` : ''}
-                            <td class="px-4 py-3 text-slate-600 text-xs whitespace-normal min-w-[120px]">${p.className}</td>
-                            <td class="px-4 py-3 text-slate-700 font-semibold text-xs whitespace-normal min-w-[120px]">${p.bookName}</td>
-                            <td class="px-4 py-3 font-bold text-center text-indigo-500 bg-indigo-50/30 rounded">${p.monthlyTarget}</td>
-                            <td class="px-4 py-3 text-center font-bold text-slate-700">${p.pagesTaught}</td>
-                            <td class="px-4 py-3 font-black text-red-500 text-center">${p.achievement}%</td>
-                            <td class="px-4 py-3 text-center"><span class="bg-red-50 text-red-600 font-bold px-2 py-1 rounded-md text-[10px] uppercase border border-red-100 shadow-sm">Munasib</span></td>
-                        </tr>`;
+                        html += `<tr class="hover:bg-slate-50/50 transition-colors bg-white">`;
+                        if (pIdx === 0) {
+                            html += `<td rowspan="${periods.length}" class="px-4 py-3 border-r border-slate-50 font-bold text-slate-800 align-middle whitespace-normal min-w-[140px]">${teacherName}</td>`;
+                        }
+                        html += `<td class="px-4 py-3 whitespace-normal min-w-[150px]">
+                                    <div class="font-bold text-slate-700">${p.bookName}</div>
+                                    <div class="text-[10px] text-slate-500 font-medium uppercase mt-0.5">${p.className}</div>
+                                 </td>`;
+
+                        semMonths.forEach(m => {
+                            const status = p.monthlyStatuses[m];
+                            let badgeHtml = `<span class="text-slate-300">-</span>`;
+                            if (status === 'Munasib') {
+                                // SOFT PINK BADGE (Red text)
+                                badgeHtml = `<span class="bg-red-50 text-red-600 font-bold px-2 py-1 rounded-md text-[10px] uppercase border border-red-100 shadow-sm">Munasib</span>`;
+                            } else if (status === 'Mumtaz' || status === 'Behtar') {
+                                badgeHtml = `<i class="fas fa-check-circle text-emerald-500 text-base"></i>`;
+                            }
+                            html += `<td class="px-4 py-3 text-center">${badgeHtml}</td>`;
+                        });
+
+                        // SOFT BACKGROUND FOR "TOTAL MUNASIB" (Is se aankhon par zor nahi padega)
+                        let countClass = '';
+                        if (p.munasibCount >= 4) countClass = 'bg-red-100 text-red-700 font-black';
+                        else if (p.munasibCount === 3) countClass = 'bg-orange-100 text-orange-700 font-black';
+                        else if (p.munasibCount === 2) countClass = 'bg-amber-50 text-amber-600 font-bold';
+                        else countClass = 'bg-slate-50 text-slate-600 font-bold';
+
+                        html += `<td class="px-4 py-3 text-center text-sm ${countClass}">${p.munasibCount}</td>
+                            </tr>`;
                     });
                 });
             });
-            html += `</tbody></table></div>`;
-            document.getElementById('munasib-history-container').innerHTML = html;
-        }
 
-    } catch (err) {
+           html += `</tbody></table></div>`;
+            document.getElementById('munasib-history-container').innerHTML = html;
+            
+        } // <-- YAHAN EK BRACKET AAYEGA (else if block ko close karne ke liye)
+
+    } catch (err) { // <-- Aur ye bracket 'try' block ko close kar raha hai
         console.error("Summary Render Error:", err);
     }
 };
