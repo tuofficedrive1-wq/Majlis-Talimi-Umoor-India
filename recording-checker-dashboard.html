@@ -262,6 +262,24 @@
     let currentEditingDocId = null;
     let currentEditingIndex = null;
     let loggedInCheckerName = ""; 
+    let jamiaRegionMap = {};
+    async function fetchJamiaRegions() {
+        try {
+            const usersSnap = await db.collection('users').get();
+            usersSnap.forEach(doc => {
+                const ud = doc.data();
+                const userRegion = ud.region || "Unknown";
+                if (ud.jamiaatList && Array.isArray(ud.jamiaatList)) {
+                    ud.jamiaatList.forEach(jamia => { jamiaRegionMap[jamia] = userRegion; });
+                }
+                if (ud.academicStructure && Array.isArray(ud.academicStructure)) {
+                    ud.academicStructure.forEach(item => {
+                        if (item.jamiaName) jamiaRegionMap[item.jamiaName] = userRegion;
+                    });
+                }
+            });
+        } catch(e) { console.error("Region fetch error:", e); }
+    }
 
     // --- AUTH & CHECKER IDENTIFICATION ---
     auth.onAuthStateChanged(async user => {
@@ -283,7 +301,7 @@
                 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                 document.getElementById('filter-month').value = months[d.getMonth()];
                 document.getElementById('filter-year').value = d.getFullYear();
-                
+                await fetchJamiaRegions();
                 fetchReports();
             } catch (error) {
                 console.error("User data lane me masla:", error);
@@ -322,42 +340,42 @@
                    
 
                     if (data.tadrisRecording && Array.isArray(data.tadrisRecording.data)) {
-    data.tadrisRecording.data.forEach((rec, i) => {
-        let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
+                        data.tadrisRecording.data.forEach((rec, i) => {
+                            let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
 
-        // YAHAN NAYI LINE ADD KAREIN: Har possible jagah se region nikalne ki koshish karein
-        let finalRegion = rec.region || rec.Region || data.region || data.Region || "Unknown";
+                            // YAHAN REGION KA TARIQA UPDATE KIYA GAYA HAI
+                            const jamiaNameVal = rec.jamiaName || rec.jamia || 'Unknown';
+                            const finalRegion = jamiaRegionMap[jamiaNameVal] || data.region || "Unknown";
 
-        if (rec.assignedTo === loggedInCheckerName) {
-            
-            // UPDATE: Handle both single and multiple images
-            let imagesArray = [];
-            if (rec.imageUrls && Array.isArray(rec.imageUrls) && rec.imageUrls.length > 0) {
-                imagesArray = rec.imageUrls;
-            } else if (rec.imageUrl || rec.image || rec.photo) {
-                imagesArray = [rec.imageUrl || rec.image || rec.photo];
-            }
+                            if (rec.assignedTo === loggedInCheckerName) {
+                                
+                                let imagesArray = [];
+                                if (rec.imageUrls && Array.isArray(rec.imageUrls) && rec.imageUrls.length > 0) {
+                                    imagesArray = rec.imageUrls;
+                                } else if (rec.imageUrl || rec.image || rec.photo) {
+                                    imagesArray = [rec.imageUrl || rec.image || rec.photo];
+                                }
 
-            allReportsData.push({
-                parentDocId: doc.id,
-                arrayIndex: i, 
-                jamiaName: rec.jamiaName || rec.jamia || 'Unknown',
-                teacherName: rec.teacherName || rec.teacher || 'Unknown',
-                className: rec.className || rec.class || '-',
-                kitabName: rec.kitabName || rec.kitab || '-',
-                date: rec.date || '-', 
-                duration: rec.duration || '--:--', 
-                tasurat: rec.tasurat || '', 
-                recordingLink: rec.url || rec.link || '#',
-                imageUrls: imagesArray, 
-                zimmedarName: finalZimmedarName,
-                
-                // YAHAN BHI UPDATE KAREIN:
-                region: finalRegion 
-            });
-        }
-    });
-}
+                                allReportsData.push({
+                                    parentDocId: doc.id,
+                                    arrayIndex: i, 
+                                    jamiaName: jamiaNameVal,
+                                    teacherName: rec.teacherName || rec.teacher || 'Unknown',
+                                    className: rec.className || rec.class || '-',
+                                    kitabName: rec.kitabName || rec.kitab || '-',
+                                    date: rec.date || '-', 
+                                    duration: rec.duration || '--:--', 
+                                    tasurat: rec.tasurat || '', 
+                                    recordingLink: rec.url || rec.link || '#',
+                                    imageUrls: imagesArray,
+                                    zimmedarName: finalZimmedarName,
+                                    
+                                    // Yahan finalRegion pass karein
+                                    region: finalRegion 
+                                });
+                            }
+                        });
+                    }
                 });
 
                 allReportsData.sort((a, b) => new Date(a.date) - new Date(b.date));
