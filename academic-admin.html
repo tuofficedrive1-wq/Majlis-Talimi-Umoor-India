@@ -1962,6 +1962,14 @@ window.generateTestReport = () => {
     let rowsHtml = '';
     let count = 1;
 
+    // --- NAYE SUMMARY CARD VARIABLES ---
+    let totalJamiaat = 0;
+    let totalTested = 0;
+    let totalPending = 0;
+    let totalStudentsAll = 0;
+    let totalPassAll = 0;
+    let totalPresentAll = 0;
+
     inspectors.forEach(ins => {
         // User (Inspector) Filter Check
         if (selUser !== 'all' && ins.id !== selUser) return;
@@ -1974,9 +1982,12 @@ window.generateTestReport = () => {
                 if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                 if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
+                // Total Jamiaat me izaafa karein (Filters pass hone ke baad)
+                totalJamiaat++;
+
                 const normalizeName = (name) => (name || "").trim().toLowerCase();
                 
-                // 2. Exact Month & Year Filter Logic (Double Counting Khatam)
+                // 2. Exact Month & Year Filter Logic 
                 let jamiaSheets = allTestSheets.filter(sheet => {
                     if (normalizeName(sheet.jamiaName) !== normalizeName(jamia)) return false;
                     
@@ -1988,8 +1999,15 @@ window.generateTestReport = () => {
                     if (selYear !== 'all' && sYear !== selYear) return false;
                     if (selMonth !== 'all' && sMonth !== selMonth) return false;
                     
-                    return true; // Agar saal aur mahina dono match ho gaye
+                    return true; 
                 });
+
+                // Status Track for Summary Cards
+                if (jamiaSheets.length > 0) {
+                    totalTested++;
+                } else {
+                    totalPending++;
+                }
 
                 // 3. Agar 'Sirf Pending' par tick hai, aur Test submit ho chuka hai, to yeh row skip karein
                 if (isPendingOnly && jamiaSheets.length > 0) return;
@@ -2002,9 +2020,12 @@ window.generateTestReport = () => {
                     jamiaSheets.forEach(sheet => {
                         const students = sheet.students || [];
                         totalStudentsCount += students.length;
+                        
                         students.forEach(std => {
-                            let eng = std.marks['English'];
-                            let math = std.marks['Maths'];
+                            // SAFE CHECK: Ab agar kisi bachay ke marks nahi hain to code crash nahi hoga
+                            let eng = std.marks ? std.marks['English'] : undefined;
+                            let math = std.marks ? std.marks['Maths'] : undefined;
+                            
                             if (eng !== undefined || math !== undefined) {
                                 let asriFullAbsent = (eng === 'A' && math === 'A') || (eng === 'A' && math === undefined) || (math === 'A' && eng === undefined);
                                 if (!asriFullAbsent) {
@@ -2018,6 +2039,11 @@ window.generateTestReport = () => {
                             }
                         });
                     });
+
+                    // Master Totals for Cards
+                    totalStudentsAll += totalStudentsCount;
+                    totalPresentAll += grandPresent;
+                    totalPassAll += grandPass;
 
                     let overallPerc = grandPresent > 0 ? ((grandPass / grandPresent) * 100).toFixed(1) : "0.0";
                     
@@ -2055,31 +2081,55 @@ window.generateTestReport = () => {
         }
     });
 
-    // Final HTML Render
+    let overallAvgPerc = totalPresentAll > 0 ? ((totalPassAll / totalPresentAll) * 100).toFixed(1) : "0.0";
+
+    // 4. Final HTML Render (WITH SUMMARY CARDS)
     testSection.innerHTML = `
-        <div class="mb-4 flex items-center justify-between animate-hubFadeUp block">
-            <h4 class="text-lg font-bold text-indigo-800"><i class="fas fa-file-signature mr-2"></i> Monthly Test Performance</h4>
-        </div>
-        <div class="overflow-x-auto bg-white rounded-xl shadow-sm border border-indigo-100 animate-hubFadeUp block">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-indigo-50 text-indigo-800 uppercase text-[10px] font-bold tracking-wider">
-                    <tr>
-                        <th class="p-3 border-r border-indigo-100 w-10 text-center">Sr</th>
-                        <th class="p-3 border-r border-indigo-100">Inspector</th>
-                        <th class="p-3 border-r border-indigo-100">Jamia Name</th>
-                        <th class="p-3 border-r border-indigo-100 text-center">Classes</th>
-                        <th class="p-3 border-r border-indigo-100 text-center">Total St.</th>
-                        <th class="p-3 border-r border-indigo-100 text-center">Present</th>
-                        <th class="p-3 border-r border-indigo-100 text-center">Pass</th>
-                        <th class="p-3 border-r border-indigo-100 text-center">Fail</th>
-                        <th class="p-3 border-r border-indigo-100 text-center">Total %</th>
-                        <th class="p-3 text-center">Grade</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-indigo-50">
-                    ${rowsHtml || '<tr><td colspan="10" class="p-8 text-center text-gray-400 font-medium">Koi test data nahi mila.</td></tr>'}
-                </tbody>
-            </table>
+        <div class="mb-6 animate-hubFadeUp block">
+            
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
+                    <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
+                    <i class="fas fa-university text-3xl text-slate-500"></i>
+                </div>
+                <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Tested</p><p class="text-2xl font-black text-blue-800">${totalTested}</p></div>
+                    <i class="fas fa-file-signature text-3xl text-blue-300"></i>
+                </div>
+                <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending</p><p class="text-2xl font-black text-red-800">${totalPending}</p></div>
+                    <i class="fas fa-exclamation-triangle text-3xl text-red-300"></i>
+                </div>
+                <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Students</p><p class="text-2xl font-black text-indigo-800">${totalStudentsAll}</p></div>
+                    <i class="fas fa-users text-3xl text-indigo-300"></i>
+                </div>
+                <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div><p class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Avg Pass %</p><p class="text-2xl font-black text-emerald-800">${overallAvgPerc}%</p></div>
+                    <i class="fas fa-chart-line text-3xl text-emerald-300"></i>
+                </div>
+            </div>
+            <div class="overflow-x-auto bg-white rounded-xl shadow-sm border border-indigo-100">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-indigo-50 text-indigo-800 uppercase text-[10px] font-bold tracking-wider">
+                        <tr>
+                            <th class="p-3 border-r border-indigo-100 w-10 text-center">Sr</th>
+                            <th class="p-3 border-r border-indigo-100">Inspector</th>
+                            <th class="p-3 border-r border-indigo-100">Jamia Name</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Classes</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Total St.</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Present</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Pass</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Fail</th>
+                            <th class="p-3 border-r border-indigo-100 text-center">Total %</th>
+                            <th class="p-3 text-center">Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-indigo-50">
+                        ${rowsHtml || '<tr><td colspan="10" class="p-8 text-center text-gray-400 font-medium">Koi test data nahi mila ya filters ki wajah se data khali hai.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
         </div>
     `;
 };
