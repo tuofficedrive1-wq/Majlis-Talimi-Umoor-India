@@ -1608,149 +1608,316 @@ window.generateAnalysisReport = () => {
     const jaizaSection = document.getElementById('summary-jaiza-section');
     if (!jaizaSection) return;
 
-    // Filters Read
-    const selYear = document.getElementById('master-filter-year')?.value || 'all';
-    const selMonth = document.getElementById('master-filter-month')?.value || 'all';
-    const selRegion = document.getElementById('master-filter-region')?.value || 'all';
-    const selState = document.getElementById('master-filter-state')?.value || 'all';
-    const selUser = document.getElementById('master-filter-user')?.value || 'all';
-    const isPendingOnly = document.getElementById('filter-pending-only')?.checked || false;
+    try {
+        const selYear = document.getElementById('master-filter-year')?.value || 'all';
+        const selMonth = document.getElementById('master-filter-month')?.value || 'all';
+        const selRegion = document.getElementById('master-filter-region')?.value || 'all';
+        const selState = document.getElementById('master-filter-state')?.value || 'all';
+        const selUser = document.getElementById('master-filter-user')?.value || 'all';
+        const isPendingOnly = document.getElementById('filter-pending-only')?.checked || false;
 
-    let rowsHtml = '';
-    let count = 1;
-    let totalJamiaat = 0, totalInspected = 0, totalVisited = 0, totalNahiHua = 0, totalPending = 0;
+        let rowsHtml = '';
+        let count = 1;
+        let totalJamiaat = 0, totalInspected = 0, totalVisited = 0, totalNahiHua = 0, totalPending = 0;
 
-    // 🔥 OPTIMIZATION 1: Data Indexing (Browser ko baar baar loop nahi chalana padega)
-    const reportsMap = {};
-    allReports.forEach(r => {
-        let rYear = "", rMonth = "";
-        if (r.month && r.month.includes('-')) {
-            [rYear, rMonth] = r.month.split('-');
-        }
-        // Sirf selected filter wala data map me jayega
-        if (selYear !== 'all' && rYear !== selYear) return;
-        if (selMonth !== 'all' && rMonth !== selMonth) return;
+        // 🔥 Safe Data Indexing
+        const reportsMap = {};
+        (allReports || []).forEach(r => {
+            let rYear = "", rMonth = "";
+            if (r.month && typeof r.month === 'string' && r.month.includes('-')) {
+                [rYear, rMonth] = r.month.split('-');
+            }
+            if (selYear !== 'all' && rYear !== selYear) return;
+            if (selMonth !== 'all' && rMonth !== selMonth) return;
+            reportsMap[`${r.inspectorId}_${r.jamiaName}`] = r;
+        });
 
-        // Key banayen (Inspector ID + Jamia Name) taake direct search ho
-        const key = `${r.inspectorId}_${r.jamiaName}`;
-        reportsMap[key] = r;
-    });
+        (inspectors || []).forEach(ins => {
+            if (selUser !== 'all' && ins.id !== selUser) return;
+            
+            if (ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
+                ins.jamiaatList.forEach(jamia => {
+                    const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jamia);
+                    if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
+                    if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
-    inspectors.forEach(ins => {
-        if (selUser !== 'all' && ins.id !== selUser) return;
-
-        if (ins.jamiaatList && ins.jamiaatList.length > 0) {
-            ins.jamiaatList.forEach(jamia => {
-                
-                const mJamia = masterJamiaat.find(m => m.jamiaName === jamia);
-                if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
-                if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
-
-                totalJamiaat++;
-                
-                // 🔥 FAST LOOKUP: Direct map se data nikala (No Loop!)
-                const key = `${ins.id}_${jamia}`;
-                const report = reportsMap[key];
-
-                let statusBadge = ""; let wazahat = "-"; let percentage = "-";
-                let dateDisplay = "-"; let rowClass = "";
-                let isPending = false;
-
-                if (report) {
-                    dateDisplay = report.date || (report.submittedAt ? new Date(report.submittedAt.toDate()).toLocaleDateString() : '-');
+                    totalJamiaat++;
                     
-                    if (report.type === "Inspection") {
-                        statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[11px] font-bold">Inspected</span>`;
-                        percentage = `<span class="font-bold text-teal-700">${report.score || 0}%</span>`;
-                        totalInspected++; rowClass = "bg-white";
-                    } else if (report.type === "Visit") {
-                        statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[11px] font-bold">Visit Only</span>`;
-                        wazahat = report.score || "-"; totalVisited++; rowClass = "bg-blue-50/50";
-                    } else if (report.type === "N/A" || report.type === "Nahi Hua" || report.type === "Not Conduct") {
-                        statusBadge = `<span class="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[11px] font-bold">Not Conduct</span>`;
-                        wazahat = report.score || "-"; totalNahiHua++; rowClass = "bg-orange-50/50";
+                    const report = reportsMap[`${ins.id}_${jamia}`];
+                    let statusBadge = "", wazahat = "-", percentage = "-", dateDisplay = "-", rowClass = "";
+                    let isPending = false;
+
+                    if (report) {
+                        // Date safe handling
+                        try {
+                            if (report.date) {
+                                dateDisplay = report.date;
+                            } else if (report.submittedAt) {
+                                dateDisplay = typeof report.submittedAt.toDate === 'function' ? new Date(report.submittedAt.toDate()).toLocaleDateString() : new Date(report.submittedAt).toLocaleDateString();
+                            }
+                        } catch(e) { dateDisplay = "Invalid Date"; }
+                        
+                        if (report.type === "Inspection") {
+                            statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[11px] font-bold">Inspected</span>`;
+                            percentage = `<span class="font-bold text-teal-700">${report.score || 0}%</span>`;
+                            totalInspected++; rowClass = "bg-white";
+                        } else if (report.type === "Visit") {
+                            statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[11px] font-bold">Visit Only</span>`;
+                            wazahat = report.score || "-"; totalVisited++; rowClass = "bg-blue-50/50";
+                        } else if (report.type === "N/A" || report.type === "Nahi Hua" || report.type === "Not Conduct") {
+                            statusBadge = `<span class="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[11px] font-bold">Not Conduct</span>`;
+                            wazahat = report.score || "-"; totalNahiHua++; rowClass = "bg-orange-50/50";
+                        } else {
+                            statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[11px] font-bold">Done</span>`;
+                            rowClass = "bg-white";
+                        }
                     } else {
-                        statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[11px] font-bold">Done</span>`;
-                        rowClass = "bg-white";
+                        isPending = true;
+                        statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-[11px] font-bold">Pending</span>`;
+                        totalPending++; rowClass = "bg-red-50/40";
                     }
-                } else {
-                    isPending = true;
-                    statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-[11px] font-bold">Pending</span>`;
-                    totalPending++; rowClass = "bg-red-50/40";
-                }
 
-                if (isPendingOnly && !isPending) return;
+                    if (isPendingOnly && !isPending) return;
 
-                let actionBtn = report ? `
-                    <button onclick="editReport('${report.id}')" class="text-blue-500 hover:bg-blue-100 px-2 py-1.5 rounded transition mr-1"><i class="fas fa-edit"></i></button>
-                    <button onclick="deleteReport('${report.id}')" class="text-red-500 hover:bg-red-100 px-2 py-1.5 rounded transition"><i class="fas fa-trash"></i></button>
-                ` : `<span class="text-gray-400 text-xs italic">No Action</span>`;
+                    let actionBtn = report ? `
+                        <button onclick="editReport('${report.id}')" class="text-blue-500 hover:bg-blue-100 px-2 py-1.5 rounded transition mr-1"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteReport('${report.id}')" class="text-red-500 hover:bg-red-100 px-2 py-1.5 rounded transition"><i class="fas fa-trash"></i></button>
+                    ` : `<span class="text-gray-400 text-xs italic">No Action</span>`;
 
-                rowsHtml += `
-                    <tr class="border-b ${rowClass} transition text-sm">
-                        <td class="p-3 text-center border-r border-indigo-50 text-gray-500">${count++}</td>
-                        <td class="p-3 font-semibold text-gray-700 border-r border-indigo-50">${ins.name}</td>
-                        <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jamia}</td>
-                        <td class="p-3 text-center border-r border-indigo-50">${statusBadge}</td>
-                        <td class="p-3 text-center border-r border-indigo-50">${percentage}</td>
-                        <td class="p-3 border-r border-indigo-50 text-gray-600 text-[11px] max-w-[180px] leading-tight truncate" title="${wazahat}">${wazahat}</td>
-                        <td class="p-3 text-center border-r border-indigo-50 text-gray-600 text-xs">${dateDisplay}</td>
-                        <td class="p-3 text-center border-r border-indigo-50 font-bold ${report ? 'text-emerald-600' : 'text-red-500'}">${report ? 'Submitted' : 'Pending'}</td>
-                        <td class="p-3 text-center">${actionBtn}</td>
-                    </tr>
-                `;
-            });
-        }
-    });
-
-    // (Yahan baqi Cards aur Table rendering ka same structure rahega)
-    jaizaSection.innerHTML = `
-        <div class="mb-6 animate-hubFadeUp block">
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
-                    <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
-                    <i class="fas fa-university text-3xl text-slate-500"></i>
-                </div>
-                <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                    <div><p class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Inspected</p><p class="text-2xl font-black text-emerald-800">${totalInspected}</p></div>
-                    <i class="fas fa-check-circle text-3xl text-emerald-300"></i>
-                </div>
-                <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                    <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Visit Only</p><p class="text-2xl font-black text-blue-800">${totalVisited}</p></div>
-                    <i class="fas fa-walking text-3xl text-blue-300"></i>
-                </div>
-                <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                    <div><p class="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Not Conduct</p><p class="text-2xl font-black text-orange-800">${totalNahiHua}</p></div>
-                    <i class="fas fa-times-circle text-3xl text-orange-300"></i>
-                </div>
-                <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                    <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending</p><p class="text-2xl font-black text-red-800">${totalPending}</p></div>
-                    <i class="fas fa-exclamation-triangle text-3xl text-red-300"></i>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto bg-white rounded-xl shadow-sm border border-indigo-100">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-indigo-50 text-indigo-800 uppercase text-[10px] font-bold tracking-wider">
-                        <tr>
-                            <th class="p-3 border-r border-indigo-100 w-10 text-center">Sr</th>
-                            <th class="p-3 border-r border-indigo-100">Inspector</th>
-                            <th class="p-3 border-r border-indigo-100">Jamia Name</th>
-                            <th class="p-3 border-r border-indigo-100 text-center">Insp. Status</th>
-                            <th class="p-3 border-r border-indigo-100 text-center">Total %</th>
-                            <th class="p-3 border-r border-indigo-100 w-48">Wazahat</th>
-                            <th class="p-3 border-r border-indigo-100 text-center">Date</th>
-                            <th class="p-3 border-r border-indigo-100 text-center">Report Status</th>
-                            <th class="p-3 text-center">Actions</th>
+                    rowsHtml += `
+                        <tr class="border-b ${rowClass} transition text-sm">
+                            <td class="p-3 text-center border-r border-indigo-50 text-gray-500">${count++}</td>
+                            <td class="p-3 font-semibold text-gray-700 border-r border-indigo-50">${ins.name}</td>
+                            <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jamia}</td>
+                            <td class="p-3 text-center border-r border-indigo-50">${statusBadge}</td>
+                            <td class="p-3 text-center border-r border-indigo-50">${percentage}</td>
+                            <td class="p-3 border-r border-indigo-50 text-gray-600 text-[11px] max-w-[180px] leading-tight truncate" title="${wazahat}">${wazahat}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 text-gray-600 text-xs">${dateDisplay}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-bold ${report ? 'text-emerald-600' : 'text-red-500'}">${report ? 'Submitted' : 'Pending'}</td>
+                            <td class="p-3 text-center">${actionBtn}</td>
                         </tr>
-                    </thead>
-                    <tbody class="divide-y divide-indigo-50">
-                        ${rowsHtml || '<tr><td colspan="9" class="p-8 text-center text-gray-400 font-medium">In filters ke mutabiq koi data nahi mila.</td></tr>'}
-                    </tbody>
-                </table>
+                    `;
+                });
+            }
+        });
+
+        jaizaSection.innerHTML = `
+            <div class="mb-6 animate-hubFadeUp block">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
+                        <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
+                        <i class="fas fa-university text-3xl text-slate-500"></i>
+                    </div>
+                    <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Inspected</p><p class="text-2xl font-black text-emerald-800">${totalInspected}</p></div>
+                        <i class="fas fa-check-circle text-3xl text-emerald-300"></i>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Visit Only</p><p class="text-2xl font-black text-blue-800">${totalVisited}</p></div>
+                        <i class="fas fa-walking text-3xl text-blue-300"></i>
+                    </div>
+                    <div class="bg-orange-50 border border-orange-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-orange-600 font-bold uppercase tracking-wider">Not Conduct</p><p class="text-2xl font-black text-orange-800">${totalNahiHua}</p></div>
+                        <i class="fas fa-times-circle text-3xl text-orange-300"></i>
+                    </div>
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending</p><p class="text-2xl font-black text-red-800">${totalPending}</p></div>
+                        <i class="fas fa-exclamation-triangle text-3xl text-red-300"></i>
+                    </div>
+                </div>
+                <div class="overflow-x-auto bg-white rounded-xl shadow-sm border border-indigo-100">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-indigo-50 text-indigo-800 uppercase text-[10px] font-bold tracking-wider">
+                            <tr>
+                                <th class="p-3 border-r border-indigo-100 w-10 text-center">Sr</th>
+                                <th class="p-3 border-r border-indigo-100">Inspector</th>
+                                <th class="p-3 border-r border-indigo-100">Jamia Name</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Insp. Status</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Total %</th>
+                                <th class="p-3 border-r border-indigo-100 w-48">Wazahat</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Date</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Report Status</th>
+                                <th class="p-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-indigo-50">
+                            ${rowsHtml || '<tr><td colspan="9" class="p-8 text-center text-gray-400 font-medium">In filters ke mutabiq koi data nahi mila.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-    `;
+        `;
+    } catch (err) {
+        console.error("Jaiza Error:", err);
+        jaizaSection.innerHTML = `<div class="p-4 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold">Data fetch karne me error aagaya hai. Console check karein.</div>`;
+    }
+};
+
+window.generateTestReport = () => {
+    const testSection = document.getElementById('summary-test-section');
+    if (!testSection) return;
+
+    try {
+        const selYear = document.getElementById('master-filter-year')?.value || 'all';
+        const selMonth = document.getElementById('master-filter-month')?.value || 'all';
+        const selRegion = document.getElementById('master-filter-region')?.value || 'all';
+        const selState = document.getElementById('master-filter-state')?.value || 'all';
+        const selUser = document.getElementById('master-filter-user')?.value || 'all';
+        const isPendingOnly = document.getElementById('filter-pending-only')?.checked || false;
+
+        let rowsHtml = '';
+        let count = 1;
+        let totalJamiaat = 0, totalTested = 0, totalPending = 0;
+        let totalStudentsAll = 0, totalPassAll = 0, totalPresentAll = 0;
+        const cleanName = (name) => (name || "").trim().toLowerCase().replace(/\s+/g, '');
+
+        const testSheetsMap = {};
+        (allTestSheets || []).forEach(sheet => {
+            let sYear = "", sMonth = "";
+            if (sheet.month && typeof sheet.month === 'string' && sheet.month.includes('-')) {
+                [sYear, sMonth] = sheet.month.split('-');
+            }
+            if (selYear !== 'all' && sYear !== selYear) return;
+            if (selMonth !== 'all' && String(sMonth).padStart(2, '0') !== String(selMonth).padStart(2, '0')) return;
+            
+            const sheetName = cleanName(sheet.jamiaName);
+            if (!testSheetsMap[sheetName]) testSheetsMap[sheetName] = [];
+            testSheetsMap[sheetName].push(sheet);
+        });
+
+        (inspectors || []).forEach(ins => {
+            if (selUser !== 'all' && ins.id !== selUser) return;
+
+            if (ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
+                ins.jamiaatList.forEach(jamia => {
+                    const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jamia);
+                    if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
+                    if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
+
+                    totalJamiaat++;
+
+                    const targetJamiaClean = cleanName(jamia);
+                    const jamiaSheets = testSheetsMap[targetJamiaClean] || [];
+
+                    if (jamiaSheets.length > 0) totalTested++; else totalPending++;
+                    if (isPendingOnly && jamiaSheets.length > 0) return;
+
+                    if (jamiaSheets.length > 0) {
+                        let grandPresent = 0, grandPass = 0, grandFail = 0, totalStudentsCount = 0;
+
+                        jamiaSheets.forEach(sheet => {
+                            const students = sheet.students || [];
+                            totalStudentsCount += students.length;
+                            
+                            students.forEach(std => {
+                                let eng = std.marks ? std.marks['English'] : undefined;
+                                let math = std.marks ? std.marks['Maths'] : undefined;
+                                
+                                if (eng !== undefined || math !== undefined) {
+                                    let asriFullAbsent = (eng === 'A' && math === 'A') || (eng === 'A' && math === undefined) || (math === 'A' && eng === undefined);
+                                    if (!asriFullAbsent) {
+                                        grandPresent++;
+                                        let isFail = false;
+                                        if (eng === 'A' || math === 'A') isFail = true;
+                                        if (eng !== undefined && typeof eng === 'number' && eng < 10) isFail = true;
+                                        if (math !== undefined && typeof math === 'number' && math < 10) isFail = true;
+                                        if (isFail) grandFail++; else grandPass++;
+                                    }
+                                }
+                            });
+                        });
+
+                        totalStudentsAll += totalStudentsCount;
+                        totalPresentAll += grandPresent;
+                        totalPassAll += grandPass;
+
+                        let overallPerc = grandPresent > 0 ? ((grandPass / grandPresent) * 100).toFixed(1) : "0.0";
+                        let grade = "Kamzoor", badgeClass = "bg-red-50 text-red-600 border border-red-100";
+                        const p = parseFloat(overallPerc);
+                        if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-100"; }
+                        else if (p >= 70) { grade = "Jayyid Jiddan"; badgeClass = "bg-teal-50 text-teal-700 border border-teal-100"; }
+                        else if (p >= 60) { grade = "Jayyid"; badgeClass = "bg-blue-50 text-blue-700 border border-blue-100"; }
+                        else if (p >= 50) { grade = "Maqbul"; badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-100"; }
+                        else if (p >= 40) { grade = "Pass"; badgeClass = "bg-orange-50 text-orange-700 border border-orange-100"; }
+
+                        rowsHtml += `
+                        <tr class="hover:bg-slate-50 border-b transition text-sm">
+                            <td class="p-3 text-center border-r border-indigo-50 text-gray-500">${count++}</td>
+                            <td class="p-3 font-semibold text-gray-700 border-r border-indigo-50">${ins.name}</td>
+                            <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jamia}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-medium text-gray-600">${jamiaSheets.length}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-medium text-gray-600">${totalStudentsCount}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-bold text-indigo-900">${grandPresent}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-black text-emerald-600">${grandPass}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-black text-red-500">${grandFail}</td>
+                            <td class="p-3 text-center border-r border-indigo-50 font-bold text-indigo-700 text-base">${overallPerc}%</td>
+                            <td class="p-3 text-center"><span class="px-2 py-1 rounded text-[11px] font-bold ${badgeClass}">${grade}</span></td>
+                        </tr>`;
+                    } else {
+                        rowsHtml += `
+                        <tr class="hover:bg-red-50/30 bg-red-50/10 border-b transition text-sm">
+                            <td class="p-3 text-center border-r border-indigo-50 text-gray-400">${count++}</td>
+                            <td class="p-3 font-medium text-gray-500 border-r border-indigo-50">${ins.name}</td>
+                            <td class="p-3 font-medium text-gray-600 border-r border-indigo-50">${jamia}</td>
+                            <td colspan="7" class="p-3 text-center text-red-400 text-xs italic font-semibold">Test Data Not Submitted</td>
+                        </tr>`;
+                    }
+                });
+            }
+        });
+
+        let overallAvgPerc = totalPresentAll > 0 ? ((totalPassAll / totalPresentAll) * 100).toFixed(1) : "0.0";
+        testSection.innerHTML = `
+            <div class="mb-6 animate-hubFadeUp block">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
+                        <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
+                        <i class="fas fa-university text-3xl text-slate-500"></i>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Tested</p><p class="text-2xl font-black text-blue-800">${totalTested}</p></div>
+                        <i class="fas fa-file-signature text-3xl text-blue-300"></i>
+                    </div>
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-red-600 font-bold uppercase tracking-wider">Pending</p><p class="text-2xl font-black text-red-800">${totalPending}</p></div>
+                        <i class="fas fa-exclamation-triangle text-3xl text-red-300"></i>
+                    </div>
+                    <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Students</p><p class="text-2xl font-black text-indigo-800">${totalStudentsAll}</p></div>
+                        <i class="fas fa-users text-3xl text-indigo-300"></i>
+                    </div>
+                    <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div><p class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Avg Pass %</p><p class="text-2xl font-black text-emerald-800">${overallAvgPerc}%</p></div>
+                        <i class="fas fa-chart-line text-3xl text-emerald-300"></i>
+                    </div>
+                </div>
+                <div class="overflow-x-auto bg-white rounded-xl shadow-sm border border-indigo-100">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-indigo-50 text-indigo-800 uppercase text-[10px] font-bold tracking-wider">
+                            <tr>
+                                <th class="p-3 border-r border-indigo-100 w-10 text-center">Sr</th>
+                                <th class="p-3 border-r border-indigo-100">Inspector</th>
+                                <th class="p-3 border-r border-indigo-100">Jamia Name</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Classes</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Total St.</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Present</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Pass</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Fail</th>
+                                <th class="p-3 border-r border-indigo-100 text-center">Total %</th>
+                                <th class="p-3 text-center">Grade</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-indigo-50">
+                            ${rowsHtml || '<tr><td colspan="10" class="p-8 text-center text-gray-400 font-medium">Koi test data nahi mila ya filters ki wajah se data khali hai.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        console.error("Test Report Error:", err);
+        testSection.innerHTML = `<div class="p-4 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold">Data fetch karne me error aagaya hai. Console check karein.</div>`;
+    }
 };
 
 // ===================== REPORT HUB (UI demo — Firestore wiring next step) =====================
@@ -1821,7 +1988,7 @@ window.switchReportHubView = (viewId) => {
     if (viewId === 'summary') window.renderReportHubDemo();
 };
 
-        // --- DETAILED SUMMARY FILTER LOGIC (cleaned + Monthly Test fix) ---
+// --- DETAILED SUMMARY FILTER LOGIC (CRASH-PROOF FIXED) ---
 document.addEventListener('DOMContentLoaded', () => {
     const masterApplyBtn = document.getElementById('btn-apply-master-filter');
     const sectionFilter = document.getElementById('summary-section-filter');
@@ -1837,13 +2004,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function executeFiltering() {
         const selectedVal = sectionFilter ? sectionFilter.value : 'all';
 
-        // 1. Loading State hatana
         if (loadingMsg) loadingMsg.classList.add('hidden');
-
-        // 2. Pehle saare sections ko chhupana (Hide)
         Object.values(sections).forEach(sec => { if (sec) sec.classList.add('hidden'); });
-
-        // 3. Jo section(s) dekhne hain unhe filter data ke sath render karna
         const keysToShow = selectedVal === 'all' ? Object.keys(sections) : [selectedVal];
 
         keysToShow.forEach(key => {
@@ -1853,21 +2015,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (key === 'jaiza' && typeof window.generateAnalysisReport === 'function') {
                 window.generateAnalysisReport();
             }
-            // FIX: pehle 'test' (Monthly Test) ke liye render call missing thi,
-            // isliye filter change karne par Monthly Test table update nahi hoti thi.
             if (key === 'test' && typeof window.generateTestReport === 'function') {
                 window.generateTestReport();
             }
         });
     }
 
-    // Apply Filter Button click event
     if (masterApplyBtn) {
         masterApplyBtn.addEventListener('click', () => {
             masterApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Applying...`;
+            masterApplyBtn.disabled = true; // Button double-click na ho
+            
             setTimeout(() => {
-                executeFiltering();
-                masterApplyBtn.innerHTML = `<i class="fas fa-search mr-1"></i> Apply Filter`;
+                try {
+                    executeFiltering();
+                } catch (err) {
+                    console.error("Filter Error:", err);
+                    alert("Data process karne me error aaya: " + err.message);
+                } finally {
+                    // Yeh line har haal mein button ko theek kar degi chahe error ho ya na ho
+                    masterApplyBtn.innerHTML = `Fetch Data`; 
+                    masterApplyBtn.disabled = false;
+                }
             }, 400);
         });
     }
