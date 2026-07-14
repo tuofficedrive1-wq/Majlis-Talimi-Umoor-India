@@ -1604,7 +1604,6 @@ const loadTestSheets = () => {
     });
 };
 
-// --- JAIZA / INSPECTION REPORT DETAILED SUMMARY (CARDS & PENDING CHECKBOX FIXED) ---
 window.generateAnalysisReport = () => {
     const jaizaSection = document.getElementById('summary-jaiza-section');
     if (!jaizaSection) return;
@@ -1615,40 +1614,43 @@ window.generateAnalysisReport = () => {
     const selRegion = document.getElementById('master-filter-region')?.value || 'all';
     const selState = document.getElementById('master-filter-state')?.value || 'all';
     const selUser = document.getElementById('master-filter-user')?.value || 'all';
-    
-    // Checkbox Read
     const isPendingOnly = document.getElementById('filter-pending-only')?.checked || false;
 
     let rowsHtml = '';
     let count = 1;
     let totalJamiaat = 0, totalInspected = 0, totalVisited = 0, totalNahiHua = 0, totalPending = 0;
 
+    // 🔥 OPTIMIZATION 1: Data Indexing (Browser ko baar baar loop nahi chalana padega)
+    const reportsMap = {};
+    allReports.forEach(r => {
+        let rYear = "", rMonth = "";
+        if (r.month && r.month.includes('-')) {
+            [rYear, rMonth] = r.month.split('-');
+        }
+        // Sirf selected filter wala data map me jayega
+        if (selYear !== 'all' && rYear !== selYear) return;
+        if (selMonth !== 'all' && rMonth !== selMonth) return;
+
+        // Key banayen (Inspector ID + Jamia Name) taake direct search ho
+        const key = `${r.inspectorId}_${r.jamiaName}`;
+        reportsMap[key] = r;
+    });
+
     inspectors.forEach(ins => {
-        // User Filter Check
         if (selUser !== 'all' && ins.id !== selUser) return;
 
         if (ins.jamiaatList && ins.jamiaatList.length > 0) {
             ins.jamiaatList.forEach(jamia => {
                 
-                // Region/State Filter Check
                 const mJamia = masterJamiaat.find(m => m.jamiaName === jamia);
                 if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                 if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
-                // Har true filter pe jamiaat count barhayen
                 totalJamiaat++;
                 
-                // Report match finding
-                const report = allReports.find(r => {
-                    if (r.jamiaName !== jamia || r.inspectorId !== ins.id) return false;
-                    let rYear = "", rMonth = "";
-                    if (r.month && r.month.includes('-')) {
-                        [rYear, rMonth] = r.month.split('-');
-                    }
-                    if (selYear !== 'all' && rYear !== selYear) return false;
-                    if (selMonth !== 'all' && rMonth !== selMonth) return false;
-                    return true;
-                });
+                // 🔥 FAST LOOKUP: Direct map se data nikala (No Loop!)
+                const key = `${ins.id}_${jamia}`;
+                const report = reportsMap[key];
 
                 let statusBadge = ""; let wazahat = "-"; let percentage = "-";
                 let dateDisplay = "-"; let rowClass = "";
@@ -1664,7 +1666,6 @@ window.generateAnalysisReport = () => {
                     } else if (report.type === "Visit") {
                         statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[11px] font-bold">Visit Only</span>`;
                         wazahat = report.score || "-"; totalVisited++; rowClass = "bg-blue-50/50";
-                    // Yahan "Not Conduct" add kar diya gaya hai aur label ko bhi update kar diya gaya hai
                     } else if (report.type === "N/A" || report.type === "Nahi Hua" || report.type === "Not Conduct") {
                         statusBadge = `<span class="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[11px] font-bold">Not Conduct</span>`;
                         wazahat = report.score || "-"; totalNahiHua++; rowClass = "bg-orange-50/50";
@@ -1678,7 +1679,6 @@ window.generateAnalysisReport = () => {
                     totalPending++; rowClass = "bg-red-50/40";
                 }
 
-                // Agar PENDING CHECKBOX tick hai, aur ye report pending nahi hai, to Row na banayen
                 if (isPendingOnly && !isPending) return;
 
                 let actionBtn = report ? `
@@ -1703,10 +1703,9 @@ window.generateAnalysisReport = () => {
         }
     });
 
-    // Ab Cards Inject karna (Jo har haal me dikhenge)
+    // (Yahan baqi Cards aur Table rendering ka same structure rahega)
     jaizaSection.innerHTML = `
         <div class="mb-6 animate-hubFadeUp block">
-            
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
                     <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
@@ -1993,12 +1992,10 @@ document.getElementById('filter-pending-only')?.addEventListener('change', () =>
     if (typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
 });
 
-// --- MONTHLY TEST REPORT DETAILED SUMMARY (ULTRA-SAFE MATCHING) ---
 window.generateTestReport = () => {
     const testSection = document.getElementById('summary-test-section');
     if (!testSection) return;
 
-    // 1. Sabhi Filters Read Karein
     const selYear = document.getElementById('master-filter-year')?.value || 'all';
     const selMonth = document.getElementById('master-filter-month')?.value || 'all';
     const selRegion = document.getElementById('master-filter-region')?.value || 'all';
@@ -2008,65 +2005,54 @@ window.generateTestReport = () => {
 
     let rowsHtml = '';
     let count = 1;
+    let totalJamiaat = 0, totalTested = 0, totalPending = 0;
+    let totalStudentsAll = 0, totalPassAll = 0, totalPresentAll = 0;
+    const cleanName = (name) => (name || "").trim().toLowerCase().replace(/\s+/g, '');
 
-    // --- NAYE SUMMARY CARD VARIABLES ---
-    let totalJamiaat = 0;
-    let totalTested = 0;
-    let totalPending = 0;
-    let totalStudentsAll = 0;
-    let totalPassAll = 0;
-    let totalPresentAll = 0;
+    // 🔥 OPTIMIZATION 2: Test Sheets ka map banana
+    const testSheetsMap = {};
+    allTestSheets.forEach(sheet => {
+        let sYear = "", sMonth = "";
+        if (sheet.month && sheet.month.includes('-')) {
+            [sYear, sMonth] = sheet.month.split('-');
+        }
+        
+        if (selYear !== 'all' && sYear !== selYear) return;
+        if (selMonth !== 'all' && String(sMonth).padStart(2, '0') !== String(selMonth).padStart(2, '0')) return;
+        
+        const sheetName = cleanName(sheet.jamiaName);
+        if (!testSheetsMap[sheetName]) testSheetsMap[sheetName] = [];
+        testSheetsMap[sheetName].push(sheet);
+    });
 
     inspectors.forEach(ins => {
-        // User (Inspector) Filter Check
         if (selUser !== 'all' && ins.id !== selUser) return;
 
         if (ins.jamiaatList && ins.jamiaatList.length > 0) {
             ins.jamiaatList.forEach(jamia => {
                 
-                // Region & State Filter Check
                 const mJamia = masterJamiaat.find(m => m.jamiaName === jamia);
                 if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                 if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
                 totalJamiaat++;
 
-                // 🔴 SUPER MATCHING LOGIC FOR NAME (Extra spaces aur case ko ignore karega)
-                const cleanName = (name) => (name || "").trim().toLowerCase().replace(/\s+/g, '');
+                // 🔥 FAST LOOKUP: Filter lagane ke bajaye direct array nikala!
                 const targetJamiaClean = cleanName(jamia);
-                
-                // 2. Exact Month, Year & Name Filter Logic 
-                let jamiaSheets = allTestSheets.filter(sheet => {
-                    // Name match check
-                    if (cleanName(sheet.jamiaName) !== targetJamiaClean) return false;
-                    
-                    // Month & Year match check (Foolproof string padding)
-                    let sYear = "", sMonth = "";
-                    if (sheet.month && sheet.month.includes('-')) {
-                        [sYear, sMonth] = sheet.month.split('-');
-                    }
-                    
-                    if (selYear !== 'all' && sYear !== selYear) return false;
-                    if (selMonth !== 'all' && String(sMonth).padStart(2, '0') !== String(selMonth).padStart(2, '0')) return false;
-                    
-                    return true; 
-                });
+                const jamiaSheets = testSheetsMap[targetJamiaClean] || [];
 
-                // Status Track for Summary Cards
                 if (jamiaSheets.length > 0) {
                     totalTested++;
                 } else {
                     totalPending++;
                 }
 
-                // 3. Agar 'Sirf Pending' par tick hai, aur Test submit ho chuka hai, to yeh row skip karein
                 if (isPendingOnly && jamiaSheets.length > 0) return;
 
                 if (jamiaSheets.length > 0) {
                     let grandPresent = 0, grandPass = 0, grandFail = 0;
                     let totalStudentsCount = 0;
 
-                    // Data Calculation
                     jamiaSheets.forEach(sheet => {
                         const students = sheet.students || [];
                         totalStudentsCount += students.length;
@@ -2089,13 +2075,11 @@ window.generateTestReport = () => {
                         });
                     });
 
-                    // Master Totals for Cards
                     totalStudentsAll += totalStudentsCount;
                     totalPresentAll += grandPresent;
                     totalPassAll += grandPass;
 
                     let overallPerc = grandPresent > 0 ? ((grandPass / grandPresent) * 100).toFixed(1) : "0.0";
-                    
                     let grade = "Kamzoor"; let badgeClass = "bg-red-50 text-red-600 border border-red-100";
                     const p = parseFloat(overallPerc);
                     if (p >= 80) { grade = "Mumtaz"; badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-100"; }
@@ -2132,10 +2116,8 @@ window.generateTestReport = () => {
 
     let overallAvgPerc = totalPresentAll > 0 ? ((totalPassAll / totalPresentAll) * 100).toFixed(1) : "0.0";
 
-    // 4. Final HTML Render 
     testSection.innerHTML = `
         <div class="mb-6 animate-hubFadeUp block">
-            
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow-sm text-white">
                     <div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jamiaat</p><p class="text-2xl font-black">${totalJamiaat}</p></div>
