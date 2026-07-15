@@ -786,6 +786,7 @@
     let tempJamias = [];
     let masterJamiaat = []; // Master directory ka data store karne ke liye
     let currentTargetDocId = "global_targets"; // Target system ke liye
+    let hasFetchedReports = false; // Kya "Fetch Data" click karke kam se kam ek baar reports load ho chuki hain?
 
     const academicMonths = [
         { name: "Apr", id: "apr" }, { name: "May", id: "may" }, { name: "Jun", id: "jun" },
@@ -1094,7 +1095,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
                 renderTeacherTable();
             }
             if(btn.dataset.tab === 'report-hub') {
-                window.renderReportHubDemo();
+                // Tab open hote hi, agar reports abhi tak fetch nahi hui, to khud-ba-khud fetch kar lein
+                // (pehle yahan sirf fake demo numbers render hote thay, asli data ke liye "Fetch Data"
+                //  button click karna zaroori tha jo user ko pata nahi hota tha)
+                if (!hasFetchedReports && typeof fetchAndRenderAcademicReports === 'function') {
+                    fetchAndRenderAcademicReports();
+                } else {
+                    window.renderReportHubDemo();
+                }
             }
         };
     });
@@ -1952,15 +1960,9 @@ window.generateTestReport = () => {
     }
 };
 
-// ===================== REPORT HUB (UI demo — Firestore wiring next step) =====================
-const HUB_REGIONS = [
-    { name: 'Ajmer',      accent: 'accent-indigo',  icon: 'fa-mosque' },
-    { name: 'Dehli',      accent: 'accent-emerald', icon: 'fa-landmark' },
-    { name: 'Mumbai',     accent: 'accent-amber',   icon: 'fa-city' },
-    { name: 'Hyderabad',  accent: 'accent-rose',    icon: 'fa-building-columns' },
-    { name: 'Bengalore',  accent: 'accent-sky',     icon: 'fa-book-quran' },
-    { name: 'Kolkata',    accent: 'accent-violet',  icon: 'fa-graduation-cap' },
-];
+// ===================== REPORT HUB (LIVE data from Firestore) =====================
+const HUB_ICONS = ['fa-building-columns', 'fa-landmark', 'fa-city', 'fa-mosque', 'fa-book-quran', 'fa-graduation-cap', 'fa-map-marker-alt', 'fa-school'];
+const HUB_ACCENTS = ['accent-indigo', 'accent-emerald', 'accent-amber', 'accent-rose', 'accent-sky', 'accent-violet'];
 
 function animateHubCounter(el, target, duration = 1000) {
     if (!el) return;
@@ -1974,39 +1976,108 @@ function animateHubCounter(el, target, duration = 1000) {
     requestAnimationFrame(step);
 }
 
+// Asli Jamia list se Submitted/Pending counts nikalna (region-wise) — yeh wahi
+// matching-logic use karta hai jo "Detailed Summary" (generateAnalysisReport) use karti hai,
+// taake dono jagah numbers hamesha match karein.
+function computeReportHubStats() {
+    const selMonth = document.getElementById('master-filter-month')?.value || 'all';
+    const selYear = document.getElementById('master-filter-year')?.value || 'all';
+    const cleanName = (name) => (name || "").trim().toLowerCase().replace(/\s+/g, '');
+
+    const reportsMap = {};
+    (allReports || []).forEach(r => {
+        let rYear = "", rMonth = "";
+        if (r.month && typeof r.month === 'string' && r.month.includes('-')) {
+            [rYear, rMonth] = r.month.split('-');
+        }
+        if (selYear !== 'all' && rYear !== selYear) return;
+        if (selMonth !== 'all' && rMonth !== selMonth) return;
+        reportsMap[`${r.inspectorId}_${cleanName(r.jamiaName)}`] = r;
+    });
+
+    const regionStats = {};
+    let totalJamiaat = 0, totalSubmitted = 0;
+
+    (inspectors || []).forEach(ins => {
+        if (!ins.jamiaatList || !Array.isArray(ins.jamiaatList)) return;
+        ins.jamiaatList.forEach(jamia => {
+            const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jamia);
+            const region = (mJamia && mJamia.region) ? mJamia.region : 'Unassigned';
+
+            if (!regionStats[region]) regionStats[region] = { total: 0, submitted: 0 };
+            regionStats[region].total++;
+            totalJamiaat++;
+
+            if (reportsMap[`${ins.id}_${cleanName(jamia)}`]) {
+                regionStats[region].submitted++;
+                totalSubmitted++;
+            }
+        });
+    });
+
+    return { totalJamiaat, totalSubmitted, totalPending: totalJamiaat - totalSubmitted, regionStats };
+}
+
 window.renderReportHubDemo = () => {
-    // Demo/placeholder numbers for look & feel only — asli data agle step me Firestore se aayega
+    const stats = computeReportHubStats();
+    const pctComplete = stats.totalJamiaat > 0 ? Math.round((stats.totalSubmitted / stats.totalJamiaat) * 100) : 0;
+
     const master = document.getElementById('hub-master-stats');
     if (master) {
-        master.querySelectorAll('[data-count]').forEach(el => animateHubCounter(el, parseInt(el.dataset.count, 10)));
+        const vals = [stats.totalJamiaat, stats.totalSubmitted, stats.totalPending, pctComplete];
+        master.querySelectorAll('[data-count]').forEach((el, idx) => animateHubCounter(el, vals[idx] ?? 0));
     }
 
     const grid = document.getElementById('hub-regions-grid');
-    if (grid) {
-        grid.innerHTML = HUB_REGIONS.map(r => {
-            const total = Math.floor(Math.random() * 10) + 8;
-            const submitted = Math.floor(Math.random() * total);
-            const pct = Math.round((submitted / total) * 100);
-            return `
-            <div class="hub-card ${r.accent}">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="hub-icon"><i class="fas ${r.icon}"></i></div>
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">${r.name}</span>
-                </div>
-                <p class="text-3xl font-black text-gray-800 hub-count" data-count="${submitted}">0</p>
-                <p class="text-xs text-gray-400 font-semibold mb-3">Reports Submitted / ${total} Jamiaat</p>
-                <div class="hub-progress-track">
-                    <div class="hub-progress-fill hub-fill" data-pct="${pct}" style="width:0%"></div>
-                </div>
-                <p class="text-right text-[11px] font-bold text-gray-400 mt-1">${pct}% complete</p>
-            </div>`;
-        }).join('');
+    if (!grid) return;
 
-        grid.querySelectorAll('.hub-count').forEach(el => animateHubCounter(el, parseInt(el.dataset.count, 10)));
-        requestAnimationFrame(() => {
-            grid.querySelectorAll('.hub-fill').forEach(el => { el.style.width = el.dataset.pct + '%'; });
-        });
+    if (!hasFetchedReports) {
+        // Reports abhi tak fetch nahi hui — "sab pending" dikhane ke bajaye saaf message dikhayein
+        grid.innerHTML = `
+            <div class="hub-placeholder" style="grid-column:1/-1;">
+                <div class="hub-placeholder-icon"><i class="fas fa-cloud-arrow-down"></i></div>
+                <h3 class="font-bold text-gray-700 text-lg">Reports abhi load nahi hui hain</h3>
+                <p class="text-sm text-gray-400 mt-1 max-w-md mx-auto">Upar "Fetch Data" button par click karein taake asli Submitted/Pending numbers yahan dikhein.</p>
+            </div>`;
+        return;
     }
+
+    const regionEntries = Object.keys(stats.regionStats).sort();
+
+    if (regionEntries.length === 0) {
+        grid.innerHTML = `
+            <div class="hub-placeholder" style="grid-column:1/-1;">
+                <div class="hub-placeholder-icon"><i class="fas fa-folder-open"></i></div>
+                <h3 class="font-bold text-gray-700 text-lg">Koi Jamia nahi mili</h3>
+                <p class="text-sm text-gray-400 mt-1 max-w-md mx-auto">Filters badal kar dobara try karein.</p>
+            </div>`;
+        return;
+    }
+
+    grid.innerHTML = regionEntries.map((region, i) => {
+        const s = stats.regionStats[region];
+        const pct = s.total > 0 ? Math.round((s.submitted / s.total) * 100) : 0;
+        const accent = HUB_ACCENTS[i % HUB_ACCENTS.length];
+        const icon = HUB_ICONS[i % HUB_ICONS.length];
+        return `
+        <div class="hub-card ${accent}">
+            <div class="flex items-center justify-between mb-4">
+                <div class="hub-icon"><i class="fas ${icon}"></i></div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">${region}</span>
+            </div>
+            <p class="text-3xl font-black text-gray-800 hub-count" data-count="${s.submitted}">0</p>
+            <p class="text-xs text-gray-400 font-semibold mb-3">Reports Submitted / ${s.total} Jamiaat</p>
+            <div class="hub-progress-track">
+                <div class="hub-progress-fill hub-fill" data-pct="${pct}" style="width:0%"></div>
+            </div>
+            <p class="text-right text-[11px] font-bold text-gray-400 mt-1">${pct}% complete</p>
+        </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.hub-count').forEach(el => animateHubCounter(el, parseInt(el.dataset.count, 10)));
+    requestAnimationFrame(() => {
+        grid.querySelectorAll('.hub-fill').forEach(el => { el.style.width = el.dataset.pct + '%'; });
+    });
 };
 
 window.switchReportHubView = (viewId) => {
@@ -2020,20 +2091,15 @@ window.switchReportHubView = (viewId) => {
     if (viewId === 'summary') window.renderReportHubDemo();
 };
 
-// --- DETAILED SUMMARY FILTER LOGIC (CRASH-PROOF FIXED) ---
-document.addEventListener('DOMContentLoaded', () => {
-    const masterApplyBtn = document.getElementById('btn-apply-master-filter');
-    const sectionFilter = document.getElementById('summary-section-filter');
-    const loadingMsg = document.getElementById('summary-loading-msg');
+// --- DETAILED SUMMARY FILTER LOGIC (FIXED: race condition hata di gayi) ---
+// 🔧 PEHLE YAHAN BUG THA: "Fetch Data" button par 2 alag click-handlers lage hue thay.
+// Ek handler Firestore se asli data laata tha, doosra (setTimeout wala) sirf 400ms baad
+// PURANA/KHAALI data dobara render kar deta tha — aur zyadatar yahi doosra handler aakhri
+// baar chalta tha, isliye table hamesha "Pending" dikhati thi chahe data load ho chuka ho.
+// Ab sirf EK hi handler hai jo pehle Firestore se fetch karta hai, phir render karta hai.
 
-    const sections = {
-        jaiza: document.getElementById('summary-jaiza-section'),
-        test: document.getElementById('summary-test-section'),
-        kkd: document.getElementById('summary-kkd-section'),
-        tadris: document.getElementById('summary-tadris-section')
-    };
-
-// 🔥 Naya Global Filtering Function
+// 🔥 Global Filtering Function — ALREADY loaded (allReports/allTestSheets) data ko
+// current section-filter/pending-checkbox ke hisaab se render karta hai
 window.executeFiltering = () => {
     const sectionFilter = document.getElementById('summary-section-filter');
     const selectedVal = sectionFilter ? sectionFilter.value : 'all';
@@ -2060,17 +2126,21 @@ window.executeFiltering = () => {
     });
 };
 
-// 🔥 Buttons pe Events lagana
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. "Apply Section Filter" button
+    // 1. "Apply Section Filter" button — sirf ALREADY loaded data ko dobara filter/render karta hai
+    //    (Firestore se dobara fetch nahi karta, isliye turant chalta hai)
     const applySectionBtn = document.getElementById('summary-apply-filter-btn');
     if (applySectionBtn) {
         applySectionBtn.addEventListener('click', () => {
+            if (!hasFetchedReports) {
+                alert("Pehle upar 'Fetch Data' button se data load karein.");
+                return;
+            }
             window.executeFiltering();
         });
     }
 
-    // 2. "Fetch Data" button (Upar wala)
+    // 2. "Fetch Data" button — Firestore se naya data laata hai, phir khud render bhi kar deta hai
     const masterApplyBtn = document.getElementById('btn-apply-master-filter');
     if (masterApplyBtn) {
         masterApplyBtn.onclick = (e) => {
@@ -2079,27 +2149,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchAndRenderAcademicReports();
             }
         };
-    }
-});
-
-    if (masterApplyBtn) {
-        masterApplyBtn.addEventListener('click', () => {
-            masterApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Applying...`;
-            masterApplyBtn.disabled = true; // Button double-click na ho
-            
-            setTimeout(() => {
-                try {
-                    executeFiltering();
-                } catch (err) {
-                    console.error("Filter Error:", err);
-                    alert("Data process karne me error aaya: " + err.message);
-                } finally {
-                    // Yeh line har haal mein button ko theek kar degi chahe error ho ya na ho
-                    masterApplyBtn.innerHTML = `Fetch Data`; 
-                    masterApplyBtn.disabled = false;
-                }
-            }, 400);
-        });
     }
 });
 
@@ -2510,27 +2559,24 @@ const fetchAndRenderAcademicReports = async () => {
         // Puraane variables ko directly update karna (window. hata diya gaya hai)
         allReports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         allTestSheets = testsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        hasFetchedReports = true;
 
         // 🚨 DEBUGGING LOGS (Right-click -> Inspect -> Console me check karein)
         console.log("🔥 Total Reports Fetched:", allReports.length);
         console.log("🔥 Total Tests Fetched:", allTestSheets.length);
 
-        const selectedMonth = document.getElementById('master-month') ? document.getElementById('master-month').value : 'N/A';
-        const selectedYear = document.getElementById('master-year') ? document.getElementById('master-year').value : 'N/A';
-        console.log(`🔍 Filtering Data For: Month = ${selectedMonth}, Year = ${selectedYear}`);
-
-       // Original rendering logic call karna
+        // Detailed Summary table (jo bhi section currently selected hai) fresh data se render karein
         if (typeof window.executeFiltering === 'function') {
-            window.executeFiltering(); 
+            window.executeFiltering();
         } else {
             if (typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
             if (typeof window.generateTestReport === 'function') window.generateTestReport();
-            // ... (baki same)
-            
-            const activePill = document.querySelector('.hub-pill.active');
-            if (activePill && activePill.dataset.view === 'summary' && typeof renderReportHubDemo === 'function') {
-                 renderReportHubDemo();
-            }
+        }
+
+        // Monthly Summary (Network Overview) ko bhi hamesha refresh karein — chahe abhi
+        // wahi sub-tab khula ho ya na ho — taake dobara switch karte hi purana/fake data na dikhe
+        if (typeof window.renderReportHubDemo === 'function') {
+            window.renderReportHubDemo();
         }
 
     } catch (error) {
@@ -2542,19 +2588,6 @@ const fetchAndRenderAcademicReports = async () => {
         masterApplyBtn.disabled = false;
     }
 };
-
-// 'Fetch Data' button ke event listener ko update karna
-document.addEventListener('DOMContentLoaded', () => {
-    const masterApplyBtn = document.getElementById('btn-apply-master-filter');
-    
-    if (masterApplyBtn) {
-        // Purana listener jo executeFiltering() call karta tha, use overwrite karein
-        masterApplyBtn.onclick = (e) => {
-            e.preventDefault(); // Kisi bhi default action ko rokne ke liye
-            fetchAndRenderAcademicReports();
-        };
-    }
-});
     </script>
 </body>
 </html>
