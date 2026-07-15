@@ -222,9 +222,14 @@
         }
     </style>
 </head>
-<body>
+<body class="bg-slate-50">
 
-  <body class="bg-slate-50">
+<!-- 🔧 FIX: Global Loading Overlay - jab tak core data (inspectors, jamiaat, reports, tests)
+     pehli baar load na ho jaye tab tak ye dikhega, taake dashboard "khali/tuta hua" na lage -->
+<div id="global-loader" class="fixed inset-0 bg-slate-50 z-[999] flex flex-col items-center justify-center gap-4 transition-opacity duration-300">
+    <div class="loader" style="width:42px;height:42px;border-width:4px;"></div>
+    <p class="text-sm font-semibold text-slate-500 eng-label">Dashboard load ho raha hai...</p>
+</div>
 
 <div class="flex h-screen w-full overflow-hidden">
 
@@ -749,7 +754,10 @@
 
     <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import {
+        initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+        collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, getDocs
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     // 1. Firebase Configuration
@@ -763,7 +771,18 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+
+    // 🔧 FIX: getFirestore() ki jagah initializeFirestore() — do cheezein fix hoti hain:
+    //  1) persistentLocalCache => data IndexedDB me local save hota hai, agli baar dashboard
+    //     turant (cache se) khulega, background me hi naya data sync hoga.
+    //  2) experimentalAutoDetectLongPolling => "WebChannelConnection ... transport errored / 404"
+    //     wale baar-baar aane wale errors fix karta hai (ye tab hote hain jab koi extension,
+    //     antivirus ya network proxy Firestore ki streaming connection block kar deta hai).
+    const db = initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }),
+        experimentalAutoDetectLongPolling: true
+    });
+
     const auth = getAuth(app);
 
     // 2. State & Variables (Sare Global Variables Sabse Pehle Declare Honge)
@@ -1049,6 +1068,7 @@ document.getElementById('search-teacher')?.addEventListener('input', () => {
             // Inspectors ka loop khatam hone ke baad yahan add karein:
             if (window.populateMasterFilters) window.populateMasterFilters();
             if (typeof renderPendingJamiaat === 'function') renderPendingJamiaat();
+            markLoaded('inspectors');
         });
     };
 
@@ -1553,6 +1573,26 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         finally { btn.disabled = false; btn.innerHTML = originalText; }
     };
 
+    // 🔧 FIX: Global loader ko sirf tab hide karo jab 4 core data sources
+    // (jamiaat, inspectors, reports, tests) kam se kam ek baar aa chuke hon.
+    // Persistent cache ki wajah se repeat visits par ye turant true ho jayega.
+    const loadFlags = { jamiaat: false, inspectors: false, reports: false, tests: false };
+    function hideLoader() {
+        const loader = document.getElementById('global-loader');
+        if (loader) {
+            loader.style.opacity = '0';
+            setTimeout(() => loader.remove(), 300);
+        }
+    }
+    function markLoaded(key) {
+        loadFlags[key] = true;
+        if (Object.values(loadFlags).every(Boolean)) hideLoader();
+    }
+    // Safety net: agar kisi wajah se (jaise ek collection par permission error) koi
+    // listener kabhi fire hi na ho, tab bhi loader 10 second baad khud hat jayega —
+    // taake screen hamesha ke liye "loading" par atki na rahe.
+    setTimeout(hideLoader, 10000);
+
     // 11. CENTRALIZED BOOTSTRAPPER 
     const initMasterSystem = () => {
         // A. Realtime Master Jamia Snapshot
@@ -1565,6 +1605,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
             if (container && container.innerHTML.trim() !== "") {
                 renderMonthlyTargetsUI(); 
             }
+            markLoaded('jamiaat');
         });
 
         // B. Realtime Inspectors Data Load
@@ -1593,6 +1634,7 @@ const loadInspectionReports = () => {
     onSnapshot(reportsCollectionRef, (snap) => {
         allReports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         if (typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
+        markLoaded('reports');
     });
 };
 
@@ -1601,6 +1643,7 @@ const loadTestSheets = () => {
     onSnapshot(testCollectionRef, (snap) => {
         allTestSheets = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         if (typeof window.generateTestReport === 'function') window.generateTestReport();
+        markLoaded('tests');
     });
 };
 
