@@ -1646,7 +1646,9 @@ window.generateAnalysisReport = () => {
         let count = 1;
         let totalJamiaat = 0, totalInspected = 0, totalVisited = 0, totalNahiHua = 0, totalPending = 0;
 
-        // 🔥 Safe Data Indexing
+        // 🔥 FIX: Spaces aur Case Sensitivity ko hatane ke liye
+        const cleanName = (name) => (name || "").trim().toLowerCase().replace(/\s+/g, '');
+
         const reportsMap = {};
         (allReports || []).forEach(r => {
             let rYear = "", rMonth = "";
@@ -1655,7 +1657,9 @@ window.generateAnalysisReport = () => {
             }
             if (selYear !== 'all' && rYear !== selYear) return;
             if (selMonth !== 'all' && rMonth !== selMonth) return;
-            reportsMap[`${r.inspectorId}_${r.jamiaName}`] = r;
+            
+            // 🔥 FIX: Clean naam se map banayein
+            reportsMap[`${r.inspectorId}_${cleanName(r.jamiaName)}`] = r;
         });
 
         (inspectors || []).forEach(ins => {
@@ -1669,10 +1673,12 @@ window.generateAnalysisReport = () => {
 
                     totalJamiaat++;
                     
-                    const report = reportsMap[`${ins.id}_${jamia}`];
+                    // 🔥 FIX: Clean naam se data nikalein
+                    const report = reportsMap[`${ins.id}_${cleanName(jamia)}`];
+                    
                     let statusBadge = "", wazahat = "-", percentage = "-", dateDisplay = "-", rowClass = "";
                     let isPending = false;
-
+                   
                     if (report) {
                         // Date safe handling
                         try {
@@ -2027,25 +2033,54 @@ document.addEventListener('DOMContentLoaded', () => {
         tadris: document.getElementById('summary-tadris-section')
     };
 
-    function executeFiltering() {
-        const selectedVal = sectionFilter ? sectionFilter.value : 'all';
+// 🔥 Naya Global Filtering Function
+window.executeFiltering = () => {
+    const sectionFilter = document.getElementById('summary-section-filter');
+    const selectedVal = sectionFilter ? sectionFilter.value : 'all';
+    const loadingMsg = document.getElementById('summary-loading-msg');
 
-        if (loadingMsg) loadingMsg.classList.add('hidden');
-        Object.values(sections).forEach(sec => { if (sec) sec.classList.add('hidden'); });
-        const keysToShow = selectedVal === 'all' ? Object.keys(sections) : [selectedVal];
+    const sections = {
+        jaiza: document.getElementById('summary-jaiza-section'),
+        test: document.getElementById('summary-test-section'),
+        kkd: document.getElementById('summary-kkd-section'),
+        tadris: document.getElementById('summary-tadris-section')
+    };
 
-        keysToShow.forEach(key => {
-            if (!sections[key]) return;
-            sections[key].classList.remove('hidden');
+    if (loadingMsg) loadingMsg.classList.add('hidden');
+    Object.values(sections).forEach(sec => { if (sec) sec.classList.add('hidden'); });
 
-            if (key === 'jaiza' && typeof window.generateAnalysisReport === 'function') {
-                window.generateAnalysisReport();
-            }
-            if (key === 'test' && typeof window.generateTestReport === 'function') {
-                window.generateTestReport();
-            }
+    const keysToShow = selectedVal === 'all' ? Object.keys(sections) : [selectedVal];
+
+    keysToShow.forEach(key => {
+        if (!sections[key]) return;
+        sections[key].classList.remove('hidden');
+
+        if (key === 'jaiza' && typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
+        if (key === 'test' && typeof window.generateTestReport === 'function') window.generateTestReport();
+    });
+};
+
+// 🔥 Buttons pe Events lagana
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. "Apply Section Filter" button
+    const applySectionBtn = document.getElementById('summary-apply-filter-btn');
+    if (applySectionBtn) {
+        applySectionBtn.addEventListener('click', () => {
+            window.executeFiltering();
         });
     }
+
+    // 2. "Fetch Data" button (Upar wala)
+    const masterApplyBtn = document.getElementById('btn-apply-master-filter');
+    if (masterApplyBtn) {
+        masterApplyBtn.onclick = (e) => {
+            e.preventDefault();
+            if (typeof fetchAndRenderAcademicReports === 'function') {
+                fetchAndRenderAcademicReports();
+            }
+        };
+    }
+});
 
     if (masterApplyBtn) {
         masterApplyBtn.addEventListener('click', () => {
@@ -2484,12 +2519,13 @@ const fetchAndRenderAcademicReports = async () => {
         const selectedYear = document.getElementById('master-year') ? document.getElementById('master-year').value : 'N/A';
         console.log(`🔍 Filtering Data For: Month = ${selectedMonth}, Year = ${selectedYear}`);
 
-        // Original rendering logic call karna
-        if (typeof executeFiltering === 'function') {
-            executeFiltering(); 
+       // Original rendering logic call karna
+        if (typeof window.executeFiltering === 'function') {
+            window.executeFiltering(); 
         } else {
-            if (typeof generateAnalysisReport === 'function') generateAnalysisReport();
-            if (typeof generateTestReport === 'function') generateTestReport();
+            if (typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
+            if (typeof window.generateTestReport === 'function') window.generateTestReport();
+            // ... (baki same)
             
             const activePill = document.querySelector('.hub-pill.active');
             if (activePill && activePill.dataset.view === 'summary' && typeof renderReportHubDemo === 'function') {
