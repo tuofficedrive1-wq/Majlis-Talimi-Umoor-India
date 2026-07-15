@@ -787,6 +787,7 @@
     let masterJamiaat = []; // Master directory ka data store karne ke liye
     let currentTargetDocId = "global_targets"; // Target system ke liye
     let hasFetchedReports = false; // Kya "Fetch Data" click karke kam se kam ek baar reports load ho chuki hain?
+    let isFetchingReports = false; // Ek waqt me sirf ek hi fetch chale — do baar click hone par button "stuck" na ho
 
     const academicMonths = [
         { name: "Apr", id: "apr" }, { name: "May", id: "may" }, { name: "Jun", id: "jun" },
@@ -2541,20 +2542,43 @@ window.generateTestReport = () => {
             btn.disabled = false;
         }
     });
+// Button ka idle (normal) HTML — hamesha isi fixed value par reset karenge,
+// "capture originalText" wala tareeqa isliye nahi use kiya kyunki agar 2 clicks
+// (ya tab-open ka auto-fetch + manual click) overlap ho jayein to "original" khud
+// spinner text ban jata tha aur button hamesha "Fetching Data..." par atka reh jata tha.
+const FETCH_BTN_IDLE_HTML = 'Fetch Data';
+
+// Firestore call agar bohot zyada time le (network/connection masla), to hamesha ke liye
+// spinner me atka na rahe — ek reasonable timeout ke baad saaf error dikha kar button reset kar dein
+function withTimeout(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} me ${ms / 1000} second se zyada time lag gaya. Internet/connection check karein.`)), ms))
+    ]);
+}
+
 const fetchAndRenderAcademicReports = async () => {
     const masterApplyBtn = document.getElementById('btn-apply-master-filter');
 
+    // Agar pehle se hi ek fetch chal rahi hai, to dobara start na karein
+    // (isi wajah se button "stuck" dikhta tha — do overlapping calls chal rahi hoti thin)
+    if (isFetchingReports) return;
+    isFetchingReports = true;
+
     // Button loading state
-    const originalText = masterApplyBtn.innerHTML;
     masterApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Fetching Data...`;
     masterApplyBtn.disabled = true;
 
     try {
-        // Firebase se data fetch karna
-        const [reportsSnap, testsSnap] = await Promise.all([
-            getDocs(reportsCollectionRef),
-            getDocs(testCollectionRef)
-        ]);
+        // Firebase se data fetch karna (20 second timeout ke saath)
+        const [reportsSnap, testsSnap] = await withTimeout(
+            Promise.all([
+                getDocs(reportsCollectionRef),
+                getDocs(testCollectionRef)
+            ]),
+            20000,
+            'Data fetch'
+        );
 
         // Puraane variables ko directly update karna (window. hata diya gaya hai)
         allReports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -2583,8 +2607,9 @@ const fetchAndRenderAcademicReports = async () => {
         console.error("❌ Error fetching academic reports:", error);
         alert("Data load karne mein masla aaya: " + error.message);
     } finally {
-        // Button reset
-        masterApplyBtn.innerHTML = originalText;
+        // Button hamesha isi fixed label par reset hoga — kabhi "stuck" nahi rahega
+        isFetchingReports = false;
+        masterApplyBtn.innerHTML = FETCH_BTN_IDLE_HTML;
         masterApplyBtn.disabled = false;
     }
 };
