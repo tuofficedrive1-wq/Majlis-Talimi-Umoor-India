@@ -1609,8 +1609,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
         // C. Normal Configuration Loading
         loadCalendar();
-        loadInspectionReports();
-        loadTestSheets(); // Yahan par ye nayi line add karni hai
+        
         loadAcademicSystem().then(() => {
             renderMonthlyTargetsUI(); 
         });
@@ -1626,22 +1625,10 @@ const reportsCollectionRef = collection(db, "inspection_reports");
 const testCollectionRef = collection(db, "monthly_test_sheets"); // Test Data ki Collection
 
 // 1. Fetching Jaiza Reports Data
-const loadInspectionReports = () => {
-    onSnapshot(reportsCollectionRef, (snap) => {
-        allReports = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (typeof window.generateAnalysisReport === 'function') window.generateAnalysisReport();
-        markLoaded('reports');
-    });
-};
+
 
 // 1.1 Fetching Test Data 
-const loadTestSheets = () => {
-    onSnapshot(testCollectionRef, (snap) => {
-        allTestSheets = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (typeof window.generateTestReport === 'function') window.generateTestReport();
-        markLoaded('tests');
-    });
-};
+
 
 window.generateAnalysisReport = () => {
     const jaizaSection = document.getElementById('summary-jaiza-section');
@@ -2470,6 +2457,62 @@ window.generateTestReport = () => {
             btn.disabled = false;
         }
     });
+        // Naya function: Button click par data laane ke liye
+const fetchAndRenderAcademicReports = async () => {
+    const masterApplyBtn = document.getElementById('btn-apply-master-filter');
+
+    // Button ko loading state mein daalna
+    const originalText = masterApplyBtn.innerHTML;
+    masterApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Fetching Data...`;
+    masterApplyBtn.disabled = true;
+
+    try {
+        // Firebase se data fetch karna (Admin file ki tarah getDocs use karke)
+        const [reportsSnap, testsSnap] = await Promise.all([
+            getDocs(reportsCollectionRef),
+            getDocs(testCollectionRef)
+        ]);
+
+        // Global arrays ko update karna
+        allReports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        allTestSheets = testsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // UI update functions ko call karna
+        if (typeof window.generateAnalysisReport === 'function') {
+            window.generateAnalysisReport();
+        }
+        if (typeof window.generateTestReport === 'function') {
+            window.generateTestReport();
+        }
+
+        // Agar aur koi specific tab refresh karni ho toh yahan call karein
+        const activePill = document.querySelector('.hub-pill.active');
+        if (activePill && activePill.dataset.view === 'summary' && typeof window.renderReportHubDemo === 'function') {
+             window.renderReportHubDemo();
+        }
+
+    } catch (error) {
+        console.error("Error fetching academic reports:", error);
+        alert("Data load karne mein masla aaya: " + error.message);
+    } finally {
+        // Button ko wapas normal halat mein lana
+        masterApplyBtn.innerHTML = originalText;
+        masterApplyBtn.disabled = false;
+    }
+};
+
+// 'Fetch Data' button ke event listener ko update karna
+document.addEventListener('DOMContentLoaded', () => {
+    const masterApplyBtn = document.getElementById('btn-apply-master-filter');
+    
+    if (masterApplyBtn) {
+        // Purana listener jo executeFiltering() call karta tha, use overwrite karein
+        masterApplyBtn.onclick = (e) => {
+            e.preventDefault(); // Kisi bhi default action ko rokne ke liye
+            fetchAndRenderAcademicReports();
+        };
+    }
+});
     </script>
 </body>
 </html>
