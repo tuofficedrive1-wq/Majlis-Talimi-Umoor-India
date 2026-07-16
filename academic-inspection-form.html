@@ -76,50 +76,57 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const jamiaName = urlParams.get('jamia');
-    document.getElementById('jamia-title').textContent = jamiaName;
+    const urlMonth = urlParams.get('month');
+   document.getElementById('jamia-title').innerHTML = `${jamiaName} <br> <span class="text-yellow-300 font-bold text-[13px] border-t border-indigo-500 pt-1 mt-1 inline-block tracking-wide"><i class="far fa-calendar-alt"></i> Month: ${getMonthName(getCurrentMonthKey())}</span>`;
 
     let currentUser = null;
     let fullStructure = []; 
 
     onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        currentUser = user;
-        await loadJamiaStructure();
-        await loadExistingReport(); // Yeh line ensure karegi ke data load ho
-    } else {
-        window.location.href = "index.html";
+        if (user) {
+            currentUser = user;
+            await loadJamiaStructure();
+            await loadExistingReport();
+        } else {
+            window.location.href = "index.html";
+        }
+    });
+        function getMonthName(monthKey) {
+        if (!monthKey) return "";
+        const [year, month] = monthKey.split('-');
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        return `${monthNames[parseInt(month) - 1]} ${year}`;
     }
-});
 // Current month nikalne ka helper function
 function getCurrentMonthKey() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
+        if (urlMonth) return urlMonth; // Agar URL me month hai to usay use karein
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
         function getAcademicYear() {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
-}
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+        return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+    }
         
-    async function loadJamiaStructure() {
-    const activeYear = getAcademicYear();
-    const userRef = doc(db, "users", currentUser.uid);
-    const userSnap = await getDoc(userRef);
+async function loadJamiaStructure() {
+        const activeYear = getAcademicYear();
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userRef);
 
-    if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const academicData = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
-        
-        // Jamia match (apne jamiaName variable ko yahan verify kar lein)
-        const jamiaData = academicData.find(j => j.jamiaName.trim() === jamiaName.trim());
-        
-        if (jamiaData) {
-            fullStructure = jamiaData.teachers;
-            console.log("Structure Loaded Successfully for:", activeYear);
+        if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const academicData = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
+            
+            const jamiaData = academicData.find(j => j.jamiaName.trim() === jamiaName.trim());
+            
+            if (jamiaData) {
+                fullStructure = jamiaData.teachers;
+                console.log("Structure Loaded Successfully for:", activeYear);
+            }
         }
     }
-}
 
     // --- Dynamic UI Logic ---
 
@@ -410,47 +417,32 @@ function createQuestionInput(val = '', isBlank, scoreVal = '') {
 };
 
 async function loadExistingReport() {
-    const monthKey = getCurrentMonthKey();
-    
-    // Naya ID (Month ke sath, jo ab use ho raha hai)
-    const reportId = `REP_${jamiaName.replace(/\s+/g, '_')}_${monthKey}`;
-    // Purana ID (Bina month ke, jo update se pehle save hua tha)
-    const oldReportId = `REP_${jamiaName.replace(/\s+/g, '_')}`; 
-    
-    try {
-        let reportRef = doc(db, "academic_inspections", reportId);
-        let reportSnap = await getDoc(reportRef);
+        const monthKey = getCurrentMonthKey();
+        const reportId = `REP_${jamiaName.replace(/\s+/g, '_')}_${monthKey}`;
         
-        // Agar naya (is mahine ka) data nahi mila, to purana data check karein
-        if (!reportSnap.exists()) {
-            const oldReportRef = doc(db, "academic_inspections", oldReportId);
-            const oldSnap = await getDoc(oldReportRef);
-            
-            if (oldSnap.exists()) {
-                reportSnap = oldSnap;
-                console.log("Purana data recover kar liya gaya hai.");
+        try {
+            let reportRef = doc(db, "academic_inspections", reportId);
+            let reportSnap = await getDoc(reportRef);
+
+            if (reportSnap.exists()) {
+                const savedData = reportSnap.data();
+                console.log("Is mahine ka data mil gaya:", savedData);
+
+                document.getElementById('classes-list').innerHTML = '';
+                
+                savedData.classes.forEach(cData => {
+                    renderSavedClass(cData);
+                });
+
+                updateCalculations();
+            } else {
+                console.log("Is mahine ka form abhi fill nahi hua hai. Form blank rahega.");
+                // Yahan form bilkul blank aayega taake naye mahine ki entry ki ja sake
             }
+        } catch (error) {
+            console.error("Data load karne me galti hui:", error);
         }
-
-        if (reportSnap.exists()) {
-            const savedData = reportSnap.data();
-            console.log("Data mil gaya:", savedData);
-
-            // UI clear karke saved data bharna
-            document.getElementById('classes-list').innerHTML = '';
-            
-            savedData.classes.forEach(cData => {
-                renderSavedClass(cData);
-            });
-
-            updateCalculations();
-        } else {
-            console.log("Koi form data nahi mila.");
-        }
-    } catch (error) {
-        console.error("Data load karne me galti hui:", error);
     }
-}
 
 function renderSavedClass(cData) {
     const classId = Date.now() + Math.random(); // Unique ID
