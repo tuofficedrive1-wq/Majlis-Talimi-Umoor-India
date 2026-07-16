@@ -1444,6 +1444,34 @@ window.downloadTeacherReportImage = (rowClass, teacherName) => {
         document.body.removeChild(tempContainer);
     });
 };
+
+window.downloadProfileCardImage = (cardId, teacherName) => {
+    const card = document.getElementById(cardId);
+    if (!card) return alert("Card nahi mila!");
+    if (typeof html2canvas === 'undefined') return alert("html2canvas library missing hai!");
+
+    // 🎯 Image saaf aane ke liye download button ko temporary hide karna
+    const downloadBtn = card.querySelector('.profile-download-btn');
+    if (downloadBtn) downloadBtn.style.visibility = 'hidden';
+
+    html2canvas(card, {
+        scale: 2, // Image quality ko crystal clear/high resolution rakhne ke liye
+        useCORS: true,
+        backgroundColor: "#ffffff"
+    }).then(canvas => {
+        // Capture hone ke baad button ko wapas show karna
+        if (downloadBtn) downloadBtn.style.visibility = 'visible';
+
+        const link = document.createElement('a');
+        link.download = `${teacherName.replace(/\s+/g, '_')}_Profile_Report.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+    }).catch(err => {
+        if (downloadBtn) downloadBtn.style.visibility = 'visible';
+        console.error("Capture error:", err);
+        alert("Image generate karne me koi dikkat aayi.");
+    });
+};
 // ==========================================
 // SUMMARY TAB HELPER FUNCTIONS (ENGLISH VERSION)
 // ==========================================
@@ -1668,13 +1696,20 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 const periodsInSemester = (teacher.periods || []).filter(p => p.semester == semester);
                 if (periodsInSemester.length === 0) return;
 
+                // 🎯 NAYA: Har teacher card ke liye unique ID
+                const cardId = `teacher-profile-card-${teacher.id}`;
                 const containerClass = teacherId === 'all' ? "mb-8 bg-white border border-slate-200 p-4 md:p-5 rounded-xl shadow-sm" : "bg-white border border-slate-200 p-4 md:p-5 rounded-xl shadow-sm";
-                const teacherNameHeader = teacherId === 'all' ? `<h6 class="text-base md:text-lg font-bold text-blue-700 mb-3 border-b-2 border-blue-100 pb-2 text-left">Teacher: ${teacher.name}</h6>` : ``;
 
+                // 🎯 NAYA: Clean Header jisme right side par Download Image ka button hai
                 html += `
-                    <div class="${containerClass}">
-                        ${teacherNameHeader}
-                        <div class="overflow-x-auto rounded-lg shadow-sm border border-slate-200">
+                    <div id="${cardId}" class="${containerClass} bg-white">
+                        <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
+                            <h6 class="text-base md:text-lg font-bold text-indigo-950 m-0">Teacher: ${teacher.name} (${jamiaName})</h6>
+                            <button onclick="window.downloadProfileCardImage('${cardId}', '${teacher.name}')" class="bg-red-500 text-white text-[10px] md:text-xs px-3 py-1.5 rounded hover:bg-red-600 transition font-bold shadow-sm flex items-center justify-center profile-download-btn no-print">
+                                <i class="fas fa-image mr-1.5"></i> Download Image
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto rounded-lg shadow-sm border border-slate-200 bg-white">
                             <table class="min-w-full text-[10px] md:text-xs bg-white border-collapse text-left">
                                 <thead class="bg-slate-100">
                                     <tr>
