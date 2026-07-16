@@ -2477,7 +2477,7 @@ window.generateTestReport = () => {
         }
     });
 
-    // 3. Main Magic Logic: Button click par dhundhna aur fix karna
+   // 3. Main Magic Logic: Button click par dhundhna aur fix karna
     document.getElementById('btn-smart-fix')?.addEventListener('click', async () => {
         const collName = document.getElementById('smart-fix-coll').value;
         const insId = document.getElementById('smart-fix-inspector').value;
@@ -2496,10 +2496,9 @@ window.generateTestReport = () => {
         btn.disabled = true;
 
         try {
-            // FIX: Test sheet me ID 'adminUid' se save hoti hai, aur report me 'inspectorId' se
             const idField = collName === 'monthly_test_sheets' ? 'adminUid' : 'inspectorId';
 
-            // Firebase Query
+            // 1. Main Collection Query
             const q = query(
                 collection(db, collName), 
                 where(idField, "==", insId), 
@@ -2512,34 +2511,80 @@ window.generateTestReport = () => {
             if (querySnapshot.empty) {
                 alert(`❌ Koi ghalat record nahi mila!\nIs Inspector ne "${jamia}" ki "${wrongMonth}" me koi report jama nahi ki hai.`);
             } else {
-                // Record mil gaya!
                 const oldDoc = querySnapshot.docs[0];
                 const oldId = oldDoc.id; 
                 let data = oldDoc.data();
 
-                // Nayi ID banana: Agar purani ID me ghalat month hai to usko replace karein, warna Firebase ko nayi ID bananay dein
                 let newDocRef;
                 if (oldId.includes(wrongMonth)) {
                     newDocRef = doc(db, collName, oldId.replace(wrongMonth, correctMonth));
                 } else {
-                    newDocRef = doc(collection(db, collName)); // Firebase khud random ID generate karega
+                    newDocRef = doc(collection(db, collName)); 
                 }
 
                 if(confirm(`Mujhe record mil gaya hai! 🎉\n\nKya aap mutmain hain ki is data ko "${correctMonth}" me daal kar purana delete kar diya jaye?`)) {
                     btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Magic chal raha hai...`;
                     
-                    // Mahina update karein
+                    // (A) Shift Main Report
                     data.month = correctMonth; 
-
-                    // Naye ID me poora data daal dein
                     await setDoc(newDocRef, data);
-                    
-                    // Purana Ghalat document delete kar dein
                     await deleteDoc(doc(db, collName, oldId));
 
-                    alert(`✅ Magic Successful! 🚀\n\nData naye mahine "${correctMonth}" par shift ho gaya hai aur purani ghalat entry delete ho chuki hai.`);
+                    // ==========================================
+                    // (B) EXTRA FIX: JAIZA FORMS & ARRAY LIST 
+                    // ==========================================
+                    if (collName === 'inspection_reports') {
+                        
+                        // Part 1: 'inspector_reports' collection se array data nikal kar naye mahine me shift karna
+                        const oldArrayDocRef = doc(db, "inspector_reports", `${insId}_${wrongMonth}`);
+                        const newArrayDocRef = doc(db, "inspector_reports", `${insId}_${correctMonth}`);
+                        
+                        const oldArraySnap = await getDoc(oldArrayDocRef);
+                        let movedItem = null;
+
+                        if (oldArraySnap.exists()) {
+                            let oldData = oldArraySnap.data();
+                            let jaizaArray = oldData.jaiza || [];
+                            
+                            // Purani array me se ghalat Jamia dhundhna aur nikalna
+                            const itemIndex = jaizaArray.findIndex(j => (j.name === jamia || j.jamiaName === jamia));
+                            if (itemIndex !== -1) {
+                                movedItem = jaizaArray[itemIndex];
+                                jaizaArray.splice(itemIndex, 1);
+                                await setDoc(oldArrayDocRef, { jaiza: jaizaArray }, { merge: true });
+                            }
+                        }
+
+                        // Agar mil gaya to naye mahine ki array me daal dena
+                        if (movedItem) {
+                            movedItem.month = correctMonth; 
+                            const newArraySnap = await getDoc(newArrayDocRef);
+                            let newJaizaArray = newArraySnap.exists() ? (newArraySnap.data().jaiza || []) : [];
+                            newJaizaArray.push(movedItem);
+                            await setDoc(newArrayDocRef, { jaiza: newJaizaArray }, { merge: true });
+                        }
+
+                        // Part 2: Detailed 'jaiza_forms' ko bhi naye mahine me shift karna
+                        const qJaiza = query(
+                            collection(db, "jaiza_forms"),
+                            where("createdBy", "==", insId),
+                            where("monthKey", "==", wrongMonth)
+                        );
+                        const jaizaSnap = await getDocs(qJaiza);
+                        
+                        jaizaSnap.forEach(async (jDoc) => {
+                            const jData = jDoc.data();
+                            // Agar jamia match kar jaye to us form ki monthKey theek kardo
+                            if (jData.jamiaId === jamia || jData.jamiaName === jamia || jData.name === jamia) {
+                                await updateDoc(doc(db, "jaiza_forms", jDoc.id), {
+                                    monthKey: correctMonth
+                                });
+                            }
+                        });
+                    }
+
+                    alert(`✅ Magic Successful! 🚀\n\nMain Report, Array List, aur Form (Details) sab "${correctMonth}" par shift ho gaye hain. Ab purane mahine me koi error nahi aayega.`);
                     
-                    // Fields reset kar dein
                     document.getElementById('smart-fix-wrong-month').value = '';
                     document.getElementById('smart-fix-correct-month').value = '';
                 }
