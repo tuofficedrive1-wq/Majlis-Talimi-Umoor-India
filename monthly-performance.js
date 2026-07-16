@@ -1705,7 +1705,15 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 html += `</tr></thead><tbody>`;
 
                 periodsInSemester.forEach(period => {
-                    const totalPages = period.totalPages || 0;
+                    // 🎯 NAYA LOGIC: User ka totalPages hatakar Admin ke targets ka sum nikalna
+                    let adminTotalPages = 0;
+                    allSemMonths.forEach(m => {
+                        adminTotalPages += getTargetValue(period, m);
+                    });
+                    
+                    // Ab 'totalPages' admin ke sabhi mahinon ke target ka total ban jayega
+                    const totalPages = adminTotalPages; 
+                    
                     let cumulativeTaught = 0;
                     let monthDataHtml = ``;
 
@@ -1720,6 +1728,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                         `;
                     });
 
+                    // Remaining aur Percent bhi ab Admin ke Total par calculate hoga
                     const remainingPages = Math.max(0, totalPages - cumulativeTaught);
                     const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
 
