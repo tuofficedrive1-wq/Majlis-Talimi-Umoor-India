@@ -2447,11 +2447,11 @@ window.generateTestReport = () => {
     `;
 };
         // ==========================================
-    // SMART DATABASE FIXER LOGIC (NO ID NEEDED)
+    // SMART DATABASE FIXER LOGIC (FIXED & OPTIMIZED)
     // ==========================================
 
-    // 1. Inspectors dropdown me load karna (Jaise hi system load ho)
-    const populateSmartFixDropdown = () => {
+    // 1. Inspectors dropdown me load karna (Global function banaya)
+    window.populateSmartFixDropdown = () => {
         const insSelect = document.getElementById('smart-fix-inspector');
         if(insSelect && inspectors.length > 0) {
             insSelect.innerHTML = '<option value="">Select Inspector...</option>' + 
@@ -2459,7 +2459,7 @@ window.generateTestReport = () => {
         }
     };
 
-      // 2. Inspector select hone par uski Jamiaat ki list nikalna
+    // 2. Inspector select hone par uski Jamiaat ki list nikalna (Object vs String fix)
     document.getElementById('smart-fix-inspector')?.addEventListener('change', (e) => {
         const insId = e.target.value;
         const jamiaSelect = document.getElementById('smart-fix-jamia');
@@ -2467,7 +2467,11 @@ window.generateTestReport = () => {
         
         if(inspector && inspector.jamiaatList && inspector.jamiaatList.length > 0) {
             jamiaSelect.innerHTML = '<option value="">Select Jamia...</option>' + 
-                inspector.jamiaatList.map(j => `<option value="${j}">${j}</option>`).join('');
+                inspector.jamiaatList.map(j => {
+                    // Fix: Check agar jamia object hai ya simple text
+                    const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    return `<option value="${jName}">${jName}</option>`;
+                }).join('');
         } else {
             jamiaSelect.innerHTML = '<option value="">Koi Jamia assign nahi hai</option>';
         }
@@ -2492,10 +2496,13 @@ window.generateTestReport = () => {
         btn.disabled = true;
 
         try {
-            // Firebase Query: Wo document dhundho jiska Inspector, Jamia aur Ghalat mahina match ho
+            // FIX: Test sheet me ID 'adminUid' se save hoti hai, aur report me 'inspectorId' se
+            const idField = collName === 'monthly_test_sheets' ? 'adminUid' : 'inspectorId';
+
+            // Firebase Query
             const q = query(
                 collection(db, collName), 
-                where("inspectorId", "==", insId), 
+                where(idField, "==", insId), 
                 where("jamiaName", "==", jamia), 
                 where("month", "==", wrongMonth)
             );
@@ -2507,29 +2514,30 @@ window.generateTestReport = () => {
             } else {
                 // Record mil gaya!
                 const oldDoc = querySnapshot.docs[0];
-                const oldId = oldDoc.id; // System ne khud ID dhundh li
+                const oldId = oldDoc.id; 
                 let data = oldDoc.data();
 
-                // Nayi ID banana: "2026-07" ko hata kar "2026-06" laga dena
-                let newId = oldId.replace(wrongMonth, correctMonth);
-                
-                if (oldId === newId) {
-                    newId = `${oldId}_FIXED`; // Safety check agar ID me month nahi tha
+                // Nayi ID banana: Agar purani ID me ghalat month hai to usko replace karein, warna Firebase ko nayi ID bananay dein
+                let newDocRef;
+                if (oldId.includes(wrongMonth)) {
+                    newDocRef = doc(db, collName, oldId.replace(wrongMonth, correctMonth));
+                } else {
+                    newDocRef = doc(collection(db, collName)); // Firebase khud random ID generate karega
                 }
 
-                if(confirm(`Mujhe record mil gaya hai! 🎉\n\nSystem ne ghalat ID (${oldId}) dhundh li hai.\n\nKya aap mutmain hain ki is data ko "${correctMonth}" me daal kar purana delete kar diya jaye?`)) {
+                if(confirm(`Mujhe record mil gaya hai! 🎉\n\nKya aap mutmain hain ki is data ko "${correctMonth}" me daal kar purana delete kar diya jaye?`)) {
                     btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Magic chal raha hai...`;
                     
                     // Mahina update karein
                     data.month = correctMonth; 
 
                     // Naye ID me poora data daal dein
-                    await setDoc(doc(db, collName, newId), data);
+                    await setDoc(newDocRef, data);
                     
                     // Purana Ghalat document delete kar dein
                     await deleteDoc(doc(db, collName, oldId));
 
-                    alert(`✅ Magic Successful! 🚀\n\nData nayi ID "${newId}" par shift ho gaya hai aur purani ghalat entry delete ho chuki hai.`);
+                    alert(`✅ Magic Successful! 🚀\n\nData naye mahine "${correctMonth}" par shift ho gaya hai aur purani ghalat entry delete ho chuki hai.`);
                     
                     // Fields reset kar dein
                     document.getElementById('smart-fix-wrong-month').value = '';
