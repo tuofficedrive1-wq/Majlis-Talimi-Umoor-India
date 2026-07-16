@@ -753,12 +753,13 @@
     </div>
 
     <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    
     import {
-        initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-        collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, getDocs
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        getFirestore, collection, query, where, onSnapshot, doc, updateDoc, getDoc, setDoc, addDoc, deleteDoc, getDocs
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
     // 1. Firebase Configuration
     const firebaseConfig = {
@@ -772,11 +773,7 @@
 
     const app = initializeApp(firebaseConfig);
 
-    // 🔧 NAYA FIREBASE INIT CODE
-    const db = initializeFirestore(app, {
-        localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }),
-        experimentalForceLongPolling: true // Yahan autoDetect ki jagah Force Long Polling lagaya hai
-    });
+   const db = getFirestore(app);
 
     const auth = getAuth(app);
 
@@ -2201,8 +2198,13 @@ window.editReport = (reportId) => {
     alert(`Edit mode active for report ID: ${reportId}. Yahan aap apna modal open karenge.`);
 };
 const currentMonthNumber = String(new Date().getMonth() + 1).padStart(2, '0');
-    const monthDropdown = document.getElementById('master-filter-month');
-    if (monthDropdown) monthDropdown.value = currentMonthNumber;
+const currentYearNumber = String(new Date().getFullYear());
+
+const monthDropdown = document.getElementById('master-filter-month');
+const yearDropdown = document.getElementById('master-filter-year');
+
+if (monthDropdown) monthDropdown.value = currentMonthNumber;
+if (yearDropdown) yearDropdown.value = currentYearNumber;
     // START EVERYTHING SECURELY
     initMasterSystem();
 
@@ -2559,37 +2561,46 @@ function withTimeout(promise, ms, label) {
 
 const fetchAndRenderAcademicReports = async () => {
     const masterApplyBtn = document.getElementById('btn-apply-master-filter');
+    const selYear = document.getElementById('master-filter-year')?.value || 'all';
+    const selMonth = document.getElementById('master-filter-month')?.value || 'all';
 
-    // Agar pehle se hi ek fetch chal rahi hai, to dobara start na karein
-    // (isi wajah se button "stuck" dikhta tha — do overlapping calls chal rahi hoti thin)
     if (isFetchingReports) return;
     isFetchingReports = true;
 
-    // Button loading state
     masterApplyBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Fetching Data...`;
     masterApplyBtn.disabled = true;
 
     try {
-        // Firebase se data fetch karna (20 second timeout ke saath)
+        let qReports = reportsCollectionRef;
+        let qTests = testCollectionRef;
+
+        // Agar Year aur Month dono selected hain, to database par query lagayen
+        if (selYear !== 'all' && selMonth !== 'all') {
+            const targetMonth = `${selYear}-${selMonth}`; 
+            qReports = query(reportsCollectionRef, where("month", "==", targetMonth));
+            qTests = query(testCollectionRef, where("month", "==", targetMonth));
+        }
+
+        // Firebase se data fetch karna (ab yeh bohat fast hoga)
         const [reportsSnap, testsSnap] = await withTimeout(
             Promise.all([
-                getDocs(reportsCollectionRef),
-                getDocs(testCollectionRef)
+                getDocs(qReports), 
+                getDocs(qTests)    
             ]),
             20000,
             'Data fetch'
         );
 
-        // Puraane variables ko directly update karna (window. hata diya gaya hai)
         allReports = reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         allTestSheets = testsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         hasFetchedReports = true;
+        
+        // 🔧 BUG FIX: Loader ko batayen ke data aagaya hai taake wo fauran hat jaye
+        if (typeof markLoaded === 'function') {
+            markLoaded('reports');
+            markLoaded('tests');
+        }
 
-        // 🚨 DEBUGGING LOGS (Right-click -> Inspect -> Console me check karein)
-        console.log("🔥 Total Reports Fetched:", allReports.length);
-        console.log("🔥 Total Tests Fetched:", allTestSheets.length);
-
-        // Detailed Summary table (jo bhi section currently selected hai) fresh data se render karein
         if (typeof window.executeFiltering === 'function') {
             window.executeFiltering();
         } else {
@@ -2597,8 +2608,6 @@ const fetchAndRenderAcademicReports = async () => {
             if (typeof window.generateTestReport === 'function') window.generateTestReport();
         }
 
-        // Monthly Summary (Network Overview) ko bhi hamesha refresh karein — chahe abhi
-        // wahi sub-tab khula ho ya na ho — taake dobara switch karte hi purana/fake data na dikhe
         if (typeof window.renderReportHubDemo === 'function') {
             window.renderReportHubDemo();
         }
@@ -2607,7 +2616,6 @@ const fetchAndRenderAcademicReports = async () => {
         console.error("❌ Error fetching academic reports:", error);
         alert("Data load karne mein masla aaya: " + error.message);
     } finally {
-        // Button hamesha isi fixed label par reset hoga — kabhi "stuck" nahi rahega
         isFetchingReports = false;
         masterApplyBtn.innerHTML = FETCH_BTN_IDLE_HTML;
         masterApplyBtn.disabled = false;
