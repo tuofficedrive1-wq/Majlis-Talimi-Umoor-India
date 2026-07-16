@@ -1748,7 +1748,53 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         // ----------------------------------------------------
         else if (targetTabId === 'history-tab') {
             const container = document.getElementById('munasib-history-container');
-            // ... historyData object banne tak ka code (jamia.teachers.forEach) waisa hi rahega ...
+            
+            // historyData generate karne ka naya logic
+            const historyData = {};
+
+            gSummaryKarkardagiStructure.forEach(jamia => {
+                if (!assignedJamiaat.includes(jamia.jamiaName)) return;
+
+                jamia.teachers.forEach(teacher => {
+                    const periodsInSemester = (teacher.periods || []).filter(p => p.semester == semester);
+                    
+                    periodsInSemester.forEach(p => {
+                        let munasibCount = 0;
+                        let monthlyStatuses = {};
+                        let hasMunasib = false;
+
+                        semMonths.forEach(m => {
+                            const target = getTargetValue(p, m);
+                            const achievedValue = getAchievedValue(p, m, jamia.jamiaName, teacher.name);
+                            
+                            let status = '-';
+                            if (target > 0) {
+                                const percentage = Math.round((achievedValue / target) * 100);
+                                const result = calculateKaifiyatAndStyle(percentage, m, p.semester);
+                                status = result.kaifiyat;
+                                if (status === 'Munasib') {
+                                    munasibCount++;
+                                    hasMunasib = true;
+                                }
+                            }
+                            monthlyStatuses[m] = status;
+                        });
+
+                        // Sirf wahi subjects add karein jinme kam az kam ek baar 'Munasib' aayi ho
+                        if (hasMunasib) {
+                            if (!historyData[jamia.jamiaName]) historyData[jamia.jamiaName] = {};
+                            if (!historyData[jamia.jamiaName][teacher.name]) historyData[jamia.jamiaName][teacher.name] = [];
+                            
+                            historyData[jamia.jamiaName][teacher.name].push({
+                                className: p.className,
+                                bookName: p.bookName,
+                                monthlyStatuses: monthlyStatuses,
+                                munasibCount: munasibCount
+                            });
+                        }
+                    });
+                });
+            });
 
             if (Object.keys(historyData).length === 0) {
                 container.innerHTML = `<div class="p-10 text-center bg-emerald-50 rounded-xl border border-emerald-200">
