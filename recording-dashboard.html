@@ -11,7 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 
     <style>
         @font-face {
@@ -954,6 +954,14 @@ function downloadExcelReport() {
         return;
     }
 
+    // Border ka style bana rahe hain
+    const borderStyle = {
+        top: { style: "thin", color: { auto: 1 } },
+        bottom: { style: "thin", color: { auto: 1 } },
+        left: { style: "thin", color: { auto: 1 } },
+        right: { style: "thin", color: { auto: 1 } }
+    };
+
     // ==========================================
     // SHEET 1: MAIN DATA (Pura Data)
     // ==========================================
@@ -987,8 +995,28 @@ function downloadExcelReport() {
         { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
     ];
 
+    // Main Data Sheet ki Formatting (Headers ko color aur baqi ko border)
+    const rangeData = XLSX.utils.decode_range(dataSheet['!ref']);
+    for (let R = rangeData.s.r; R <= rangeData.e.r; ++R) {
+        for (let C = rangeData.s.c; C <= rangeData.e.c; ++C) {
+            let cell = dataSheet[XLSX.utils.encode_cell({ r: R, c: C })];
+            if (!cell) continue;
+            
+            if (R === 0) { // Top Header Row
+                cell.s = { 
+                    font: { bold: true, color: { rgb: "FFFFFF" } }, 
+                    fill: { fgColor: { rgb: "0F766E" } }, // Teal Color
+                    border: borderStyle, 
+                    alignment: { horizontal: "center", vertical: "center" } 
+                };
+            } else { // Normal Data Rows
+                cell.s = { border: borderStyle, alignment: { vertical: "center" } };
+            }
+        }
+    }
+
     // ==========================================
-    // SHEET 2: DETAILED SUMMARY (Image Jaisi)
+    // SHEET 2: DETAILED SUMMARY 
     // ==========================================
     const total = filteredReports.length;
     const checked = filteredReports.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
@@ -1005,9 +1033,9 @@ function downloadExcelReport() {
     const summaryData = [];
     const addEmptyRow = () => summaryData.push([]);
 
-    // 1. Overview / Key Metrics
     summaryData.push(["SUMMARY — Mufattish Analytics Detailed Report"]);
     addEmptyRow();
+    
     summaryData.push(["1. Recording Report Overview"]);
     summaryData.push(["Metric", "Value"]);
     summaryData.push(["Total Recordings", total]);
@@ -1021,14 +1049,12 @@ function downloadExcelReport() {
     summaryData.push(["Total Classes", uniqueClasses]);
     addEmptyRow();
 
-    // 2. Status Summary
     summaryData.push(["2. Status Summary"]);
     summaryData.push(["Status", "Count", "% of Total"]);
     summaryData.push(["Checked (Mukammal)", checked, percentChecked]);
     summaryData.push(["Pending (Baqaya)", pending, percentPending]);
     addEmptyRow();
 
-    // Helper Function: Group Wise Stats Calculate Karne Ke Liye
     function appendGroupStats(sectionTitle, objectKey, columnHeaderName, defaultValue = "Unknown") {
         summaryData.push([sectionTitle]);
         summaryData.push([columnHeaderName, "Total Recordings", "Checked (Mukammal)", "Pending (Baqaya)", "% Completed"]);
@@ -1037,13 +1063,11 @@ function downloadExcelReport() {
         filteredReports.forEach(r => {
             let keyVal = r[objectKey];
             if (!keyVal || keyVal.trim() === "") keyVal = defaultValue;
-            
             if (!statsMap[keyVal]) statsMap[keyVal] = { total: 0, checked: 0 };
             statsMap[keyVal].total++;
             if (r.tasurat && r.tasurat.trim() !== "") statsMap[keyVal].checked++;
         });
 
-        // Total Recordings ke hisaab se descending order me sort karna
         const sortedKeys = Object.keys(statsMap).sort((a, b) => statsMap[b].total - statsMap[a].total);
 
         sortedKeys.forEach(k => {
@@ -1053,52 +1077,69 @@ function downloadExcelReport() {
             summaryData.push([k, s.total, s.checked, p, perc]);
         });
         
-        // Group ka Total Row
         summaryData.push(["Total", total, checked, pending, percentChecked]);
         addEmptyRow();
     }
 
-    // 3. Mufattish Performance Summary
     appendGroupStats("3. Mufattish Performance Summary", "assignedTo", "Mufattish Name", "Unassigned");
-
-    // 4. Region-wise Summary
     appendGroupStats("4. Region-wise Summary", "region", "Region Name", "Unknown Region");
-
-    // 5. Zimmedar-wise Summary
     appendGroupStats("5. Zimmedar-wise Summary", "zimmedarName", "Zimmedar Name", "Unknown Zimmedar");
-
-    // 6. Jamia-wise Summary
     appendGroupStats("6. Jamia-wise Summary", "jamiaName", "Jamia Name", "Unknown Jamia");
-
-    // 7. Class-wise Summary
     appendGroupStats("7. Class-wise Summary", "className", "Class Name", "Unknown Class");
 
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    
-    // Summary Sheet ki Column Widths set karna taake theek se nazar aaye
-    summarySheet['!cols'] = [
-        { wch: 35 }, // Metric / Names
-        { wch: 18 }, // Value / Total Recordings
-        { wch: 20 }, // Checked
-        { wch: 20 }, // Pending
-        { wch: 15 }  // % Completed
-    ];
+    summarySheet['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 15 }];
+
+    // Summary Sheet ki Formatting
+    const rangeSum = XLSX.utils.decode_range(summarySheet['!ref']);
+    for (let R = rangeSum.s.r; R <= rangeSum.e.r; ++R) {
+        let isSectionHeader = false;
+        let isTableHeader = false;
+        let isTotalRow = false;
+        
+        let firstCellVal = summarySheet[XLSX.utils.encode_cell({ r: R, c: 0 })]?.v || "";
+
+        if (R === 0) { // Main Title
+            if(summarySheet[XLSX.utils.encode_cell({ r: R, c: 0 })]) {
+                summarySheet[XLSX.utils.encode_cell({ r: R, c: 0 })].s = { font: { sz: 14, bold: true, color: { rgb: "0F766E" } } };
+            }
+            continue;
+        }
+
+        if (typeof firstCellVal === "string" && firstCellVal.match(/^\d+\./)) isSectionHeader = true; // e.g. "1. Overview"
+        if (["Metric", "Status", "Mufattish Name", "Region Name", "Zimmedar Name", "Jamia Name", "Class Name"].includes(firstCellVal)) isTableHeader = true;
+        if (firstCellVal === "Total") isTotalRow = true;
+
+        for (let C = rangeSum.s.c; C <= rangeSum.e.c; ++C) {
+            let cell = summarySheet[XLSX.utils.encode_cell({ r: R, c: C })];
+            if (!cell) continue;
+
+            if (isSectionHeader) {
+                if (C === 0) cell.s = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1D4ED8" } } }; // Blue BG
+            } else if (isTableHeader) {
+                cell.s = { font: { bold: true }, fill: { fgColor: { rgb: "E2E8F0" } }, border: borderStyle, alignment: { horizontal: "center" } }; // Light Gray
+            } else if (isTotalRow) {
+                cell.s = { font: { bold: true }, fill: { fgColor: { rgb: "F1F5F9" } }, border: borderStyle };
+            } else if (firstCellVal !== "" && !isSectionHeader) {
+                cell.s = { border: borderStyle }; // Normal table rows
+            }
+        }
+    }
 
     // ==========================================
     // DONO SHEETS KO WORKBOOK MEIN DALNA
     // ==========================================
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary Report"); // Summary pehle rakhi hai
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary Report");
     XLSX.utils.book_append_sheet(workbook, dataSheet, "All Data");
 
-    // File ka naam
     const monthFilter = document.getElementById('filter-month').value;
     const yearFilter = document.getElementById('filter-year').value;
     const mufattishFilter = document.getElementById('filter-mufattish').value;
     
-    let fileName = `Detailed_Report_${monthFilter}_${yearFilter}.xlsx`;
+    let fileName = `Formatted_Report_${monthFilter}_${yearFilter}.xlsx`;
     if (mufattishFilter) {
-        fileName = `Detailed_Report_${mufattishFilter}_${monthFilter}_${yearFilter}.xlsx`;
+        fileName = `Formatted_Report_${mufattishFilter}_${monthFilter}_${yearFilter}.xlsx`;
     }
 
     XLSX.writeFile(workbook, fileName);
