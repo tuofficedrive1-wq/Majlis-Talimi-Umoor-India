@@ -954,7 +954,9 @@ function downloadExcelReport() {
         return;
     }
 
-    // --- SHEET 1: MAIN DATA ---
+    // ==========================================
+    // SHEET 1: MAIN DATA (Pura Data)
+    // ==========================================
     const exportData = filteredReports.map((r, i) => {
         const assignedDateFormatted = r.assignedDate ? new Date(r.assignedDate).toLocaleDateString('en-GB') : "Not Recorded";
         const checkedDateFormatted = r.tasuratDate ? new Date(r.tasuratDate).toLocaleDateString('en-GB') : "Pending";
@@ -964,11 +966,12 @@ function downloadExcelReport() {
             "S.No": i + 1,
             "Jamia Name": r.jamiaName,
             "Zimmedar": r.zimmedarName,
+            "Region": r.region,
             "Teacher": r.teacherName,
             "Class": r.className,
             "Kitab": r.kitabName,
             "Recording Date": r.date,
-            "Recording Duration": r.duration,
+            "Duration": r.duration,
             "Current Status": status,
             "Mufattish (Assigned To)": r.assignedTo || "Unassigned",
             "Assigned Date": assignedDateFormatted,
@@ -979,59 +982,124 @@ function downloadExcelReport() {
 
     const dataSheet = XLSX.utils.json_to_sheet(exportData);
     dataSheet['!cols'] = [
-        { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, 
-        { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, 
-        { wch: 15 }, { wch: 15 }, { wch: 40 }
+        { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, 
+        { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, 
+        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
     ];
 
-    // --- SHEET 2: SUMMARY ---
+    // ==========================================
+    // SHEET 2: DETAILED SUMMARY (Image Jaisi)
+    // ==========================================
     const total = filteredReports.length;
     const checked = filteredReports.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
     const pending = total - checked;
     const percentChecked = total > 0 ? ((checked / total) * 100).toFixed(2) + "%" : "0%";
+    const percentPending = total > 0 ? ((pending / total) * 100).toFixed(2) + "%" : "0%";
+
     const uniqueJamias = [...new Set(filteredReports.map(r => r.jamiaName))].length;
+    const uniqueZimmedars = [...new Set(filteredReports.map(r => r.zimmedarName))].length;
+    const uniqueTeachers = [...new Set(filteredReports.map(r => r.teacherName))].length;
+    const uniqueClasses = [...new Set(filteredReports.map(r => r.className))].length;
+    const uniqueRegions = [...new Set(filteredReports.map(r => r.region))].length;
 
-    // Mufattish Wise Stats Calculate Karna
-    const mufattishStats = {};
-    filteredReports.forEach(r => {
-        const m = r.assignedTo || "Unassigned";
-        if (!mufattishStats[m]) mufattishStats[m] = { total: 0, checked: 0 };
-        mufattishStats[m].total++;
-        if (r.tasurat && r.tasurat.trim() !== "") mufattishStats[m].checked++;
-    });
+    const summaryData = [];
+    const addEmptyRow = () => summaryData.push([]);
 
-    const summaryData = [
-        ["SUMMARY — Mufattish Analytics Report"],
-        [],
-        ["1. Overview / Key Metrics"],
-        ["Metric", "Value"],
-        ["Total Recordings", total],
-        ["Checked (Mukammal)", checked],
-        ["Pending (Baqaya)", pending],
-        ["% Checked", percentChecked],
-        ["Total Jamiaat", uniqueJamias],
-        [],
-        ["2. Mufattish Performance"],
-        ["Mufattish Name", "Total Assigned", "Checked", "Pending", "% Completed"]
-    ];
+    // 1. Overview / Key Metrics
+    summaryData.push(["SUMMARY — Mufattish Analytics Detailed Report"]);
+    addEmptyRow();
+    summaryData.push(["1. Recording Report Overview"]);
+    summaryData.push(["Metric", "Value"]);
+    summaryData.push(["Total Recordings", total]);
+    summaryData.push(["Checked (Mukammal)", checked]);
+    summaryData.push(["Pending (Baqaya)", pending]);
+    summaryData.push(["% Checked", percentChecked]);
+    summaryData.push(["Total Jamiaat", uniqueJamias]);
+    summaryData.push(["Total Regions", uniqueRegions]);
+    summaryData.push(["Total Zimmedars", uniqueZimmedars]);
+    summaryData.push(["Total Teachers", uniqueTeachers]);
+    summaryData.push(["Total Classes", uniqueClasses]);
+    addEmptyRow();
 
-    for (const [mName, stats] of Object.entries(mufattishStats)) {
-        const mPending = stats.total - stats.checked;
-        const mPercent = stats.total > 0 ? ((stats.checked / stats.total) * 100).toFixed(1) + "%" : "0%";
-        summaryData.push([mName, stats.total, stats.checked, mPending, mPercent]);
+    // 2. Status Summary
+    summaryData.push(["2. Status Summary"]);
+    summaryData.push(["Status", "Count", "% of Total"]);
+    summaryData.push(["Checked (Mukammal)", checked, percentChecked]);
+    summaryData.push(["Pending (Baqaya)", pending, percentPending]);
+    addEmptyRow();
+
+    // Helper Function: Group Wise Stats Calculate Karne Ke Liye
+    function appendGroupStats(sectionTitle, objectKey, columnHeaderName, defaultValue = "Unknown") {
+        summaryData.push([sectionTitle]);
+        summaryData.push([columnHeaderName, "Total Recordings", "Checked (Mukammal)", "Pending (Baqaya)", "% Completed"]);
+        
+        const statsMap = {};
+        filteredReports.forEach(r => {
+            let keyVal = r[objectKey];
+            if (!keyVal || keyVal.trim() === "") keyVal = defaultValue;
+            
+            if (!statsMap[keyVal]) statsMap[keyVal] = { total: 0, checked: 0 };
+            statsMap[keyVal].total++;
+            if (r.tasurat && r.tasurat.trim() !== "") statsMap[keyVal].checked++;
+        });
+
+        // Total Recordings ke hisaab se descending order me sort karna
+        const sortedKeys = Object.keys(statsMap).sort((a, b) => statsMap[b].total - statsMap[a].total);
+
+        sortedKeys.forEach(k => {
+            const s = statsMap[k];
+            const p = s.total - s.checked;
+            const perc = s.total > 0 ? ((s.checked / s.total) * 100).toFixed(1) + "%" : "0%";
+            summaryData.push([k, s.total, s.checked, p, perc]);
+        });
+        
+        // Group ka Total Row
+        summaryData.push(["Total", total, checked, pending, percentChecked]);
+        addEmptyRow();
     }
 
+    // 3. Mufattish Performance Summary
+    appendGroupStats("3. Mufattish Performance Summary", "assignedTo", "Mufattish Name", "Unassigned");
+
+    // 4. Region-wise Summary
+    appendGroupStats("4. Region-wise Summary", "region", "Region Name", "Unknown Region");
+
+    // 5. Zimmedar-wise Summary
+    appendGroupStats("5. Zimmedar-wise Summary", "zimmedarName", "Zimmedar Name", "Unknown Zimmedar");
+
+    // 6. Jamia-wise Summary
+    appendGroupStats("6. Jamia-wise Summary", "jamiaName", "Jamia Name", "Unknown Jamia");
+
+    // 7. Class-wise Summary
+    appendGroupStats("7. Class-wise Summary", "className", "Class Name", "Unknown Class");
+
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    summarySheet['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    
+    // Summary Sheet ki Column Widths set karna taake theek se nazar aaye
+    summarySheet['!cols'] = [
+        { wch: 35 }, // Metric / Names
+        { wch: 18 }, // Value / Total Recordings
+        { wch: 20 }, // Checked
+        { wch: 20 }, // Pending
+        { wch: 15 }  // % Completed
+    ];
 
-    // --- DONO SHEETS KO WORKBOOK MEIN DALNA ---
+    // ==========================================
+    // DONO SHEETS KO WORKBOOK MEIN DALNA
+    // ==========================================
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, dataSheet, "Data");
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary Report"); // Summary pehle rakhi hai
+    XLSX.utils.book_append_sheet(workbook, dataSheet, "All Data");
 
+    // File ka naam
     const monthFilter = document.getElementById('filter-month').value;
     const yearFilter = document.getElementById('filter-year').value;
-    const fileName = `Report_${monthFilter}_${yearFilter}_with_Summary.xlsx`;
+    const mufattishFilter = document.getElementById('filter-mufattish').value;
+    
+    let fileName = `Detailed_Report_${monthFilter}_${yearFilter}.xlsx`;
+    if (mufattishFilter) {
+        fileName = `Detailed_Report_${mufattishFilter}_${monthFilter}_${yearFilter}.xlsx`;
+    }
 
     XLSX.writeFile(workbook, fileName);
 }
