@@ -176,7 +176,26 @@
                     </button>
                 </div>
             </div>
-
+<!-- NEW: Dashboard Live Summary Panel -->
+<div id="live-summary-panel" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 hidden">
+    <h4 class="font-bold text-gray-700 text-sm mb-3 border-b pb-2"><i class="fas fa-chart-line text-teal-600"></i> Mufattish Live Summary</h4>
+    <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm border-collapse">
+            <thead class="bg-gray-50 text-gray-600 uppercase text-[10px] tracking-wider">
+                <tr>
+                    <th class="p-2 border-b">Mufattish Name</th>
+                    <th class="p-2 border-b text-center">Total Assigned</th>
+                    <th class="p-2 border-b text-center text-green-600">Checked</th>
+                    <th class="p-2 border-b text-center text-yellow-600">Pending</th>
+                    <th class="p-2 border-b text-center text-teal-600">Progress</th>
+                </tr>
+            </thead>
+            <tbody id="summary-table-body" class="divide-y divide-gray-100">
+                <!-- Data JS se aayega -->
+            </tbody>
+        </table>
+    </div>
+</div>
             <div id="reports-table-container" class="bg-white rounded-lg shadow-sm overflow-hidden min-h-[300px]">
             </div>
 
@@ -497,16 +516,62 @@ if (filterMufattish === "unassigned") {
     function updateStatsForFiltered() { updateStatsLogic(filteredReports); }
 
     function updateStatsLogic(dataSet) {
-        const total = dataSet.length;
-        const checked = dataSet.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
-        const pending = total - checked;
-        const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+    const total = dataSet.length;
+    const checked = dataSet.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
+    const pending = total - checked;
+    const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
 
-        document.getElementById('stat-total').innerText = total;
-        document.getElementById('stat-checked').innerText = checked;
-        document.getElementById('stat-pending').innerText = pending;
-        document.getElementById('stat-percent').innerText = percent + "%";
+    document.getElementById('stat-total').innerText = total;
+    document.getElementById('stat-checked').innerText = checked;
+    document.getElementById('stat-pending').innerText = pending;
+    document.getElementById('stat-percent').innerText = percent + "%";
+
+    // --- NEW: Update Dashboard Summary Table ---
+    const summaryBody = document.getElementById('summary-table-body');
+    const summaryPanel = document.getElementById('live-summary-panel');
+    
+    if (dataSet.length === 0) {
+        summaryPanel.classList.add('hidden');
+        return;
     }
+    
+    summaryPanel.classList.remove('hidden');
+    
+    const mStats = {};
+    dataSet.forEach(r => {
+        const m = r.assignedTo || "Unassigned";
+        if (!mStats[m]) mStats[m] = { total: 0, checked: 0 };
+        mStats[m].total++;
+        if (r.tasurat && r.tasurat.trim() !== "") mStats[m].checked++;
+    });
+
+    let rowsHtml = '';
+    for (const [mName, stats] of Object.entries(mStats)) {
+        const mPending = stats.total - stats.checked;
+        const mPercent = stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0;
+        
+        // Progress bar design
+        const barColor = mPercent === 100 ? 'bg-green-500' : (mPercent > 0 ? 'bg-teal-500' : 'bg-gray-300');
+        
+        rowsHtml += `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 font-semibold ${mName === 'Unassigned' ? 'text-red-500' : 'text-gray-700'}">${mName}</td>
+                <td class="p-2 text-center font-bold">${stats.total}</td>
+                <td class="p-2 text-center text-green-600 font-bold">${stats.checked}</td>
+                <td class="p-2 text-center text-yellow-600 font-bold">${mPending}</td>
+                <td class="p-2 text-center w-32">
+                    <div class="flex items-center gap-2">
+                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                            <div class="${barColor} h-1.5 rounded-full" style="width: ${mPercent}%"></div>
+                        </div>
+                        <span class="text-[10px] text-gray-500">${mPercent}%</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+    summaryBody.innerHTML = rowsHtml;
+}
 
     function renderTable() {
         const container = document.getElementById('reports-table-container');
@@ -883,13 +948,13 @@ updatesByDoc[pId].forEach(idx => {
             alert("Bulk Assign me masla aaya: " + error.message);
         } finally { btn.innerHTML = originalText; btn.disabled = false; }
     }
-        function downloadExcelReport() {
+function downloadExcelReport() {
     if (filteredReports.length === 0) {
         alert("Download karne ke liye koi data mojood nahi hai.");
         return;
     }
 
-    // Data ko Excel format ke liye tayyar karna
+    // --- SHEET 1: MAIN DATA ---
     const exportData = filteredReports.map((r, i) => {
         const assignedDateFormatted = r.assignedDate ? new Date(r.assignedDate).toLocaleDateString('en-GB') : "Not Recorded";
         const checkedDateFormatted = r.tasuratDate ? new Date(r.tasuratDate).toLocaleDateString('en-GB') : "Pending";
@@ -912,37 +977,61 @@ updatesByDoc[pId].forEach(idx => {
         };
     });
 
-    // SheetJS (XLSX) ke zariye workbook banana
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Mufattish Analytics Report");
-
-    // Column ki chaurai (width) thik karna taake padhne me asani ho
-    worksheet['!cols'] = [
-        { wch: 5 },  // S.No
-        { wch: 25 }, // Jamia
-        { wch: 15 }, // Zimmedar
-        { wch: 20 }, // Teacher
-        { wch: 15 }, // Class
-        { wch: 15 }, // Kitab
-        { wch: 15 }, // Rec Date
-        { wch: 15 }, // Duration
-        { wch: 20 }, // Status
-        { wch: 20 }, // Mufattish
-        { wch: 15 }, // Assigned Date
-        { wch: 15 }, // Checked Date
-        { wch: 40 }  // Tasurat
+    const dataSheet = XLSX.utils.json_to_sheet(exportData);
+    dataSheet['!cols'] = [
+        { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, 
+        { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, 
+        { wch: 15 }, { wch: 15 }, { wch: 40 }
     ];
 
-    // File ka naam dynamic rakhna (Agar kisi specific mufattish ko filter kiya hai)
-    const mufattishFilter = document.getElementById('filter-mufattish').value;
+    // --- SHEET 2: SUMMARY ---
+    const total = filteredReports.length;
+    const checked = filteredReports.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
+    const pending = total - checked;
+    const percentChecked = total > 0 ? ((checked / total) * 100).toFixed(2) + "%" : "0%";
+    const uniqueJamias = [...new Set(filteredReports.map(r => r.jamiaName))].length;
+
+    // Mufattish Wise Stats Calculate Karna
+    const mufattishStats = {};
+    filteredReports.forEach(r => {
+        const m = r.assignedTo || "Unassigned";
+        if (!mufattishStats[m]) mufattishStats[m] = { total: 0, checked: 0 };
+        mufattishStats[m].total++;
+        if (r.tasurat && r.tasurat.trim() !== "") mufattishStats[m].checked++;
+    });
+
+    const summaryData = [
+        ["SUMMARY — Mufattish Analytics Report"],
+        [],
+        ["1. Overview / Key Metrics"],
+        ["Metric", "Value"],
+        ["Total Recordings", total],
+        ["Checked (Mukammal)", checked],
+        ["Pending (Baqaya)", pending],
+        ["% Checked", percentChecked],
+        ["Total Jamiaat", uniqueJamias],
+        [],
+        ["2. Mufattish Performance"],
+        ["Mufattish Name", "Total Assigned", "Checked", "Pending", "% Completed"]
+    ];
+
+    for (const [mName, stats] of Object.entries(mufattishStats)) {
+        const mPending = stats.total - stats.checked;
+        const mPercent = stats.total > 0 ? ((stats.checked / stats.total) * 100).toFixed(1) + "%" : "0%";
+        summaryData.push([mName, stats.total, stats.checked, mPending, mPercent]);
+    }
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    summarySheet['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+
+    // --- DONO SHEETS KO WORKBOOK MEIN DALNA ---
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, dataSheet, "Data");
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
     const monthFilter = document.getElementById('filter-month').value;
     const yearFilter = document.getElementById('filter-year').value;
-    
-    let fileName = `Report_${monthFilter}_${yearFilter}.xlsx`;
-    if (mufattishFilter) {
-        fileName = `Mufattish_${mufattishFilter}_${monthFilter}_${yearFilter}.xlsx`;
-    }
+    const fileName = `Report_${monthFilter}_${yearFilter}_with_Summary.xlsx`;
 
     XLSX.writeFile(workbook, fileName);
 }
