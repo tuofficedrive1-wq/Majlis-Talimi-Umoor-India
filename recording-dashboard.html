@@ -347,24 +347,30 @@ body, input, textarea, select, button {
     let currentEditingIndex = null; 
     let subUsersList = [];
     let jamiaRegionMap = {};
+        let userRolesMap = {};
 
     async function fetchJamiaRegions() {
-        try {
-            const usersSnap = await db.collection('users').get();
-            usersSnap.forEach(doc => {
-                const ud = doc.data();
-                const userRegion = ud.region || "Unknown";
-                if (ud.jamiaatList && Array.isArray(ud.jamiaatList)) {
-                    ud.jamiaatList.forEach(jamia => { jamiaRegionMap[jamia] = userRegion; });
-                }
-                if (ud.academicStructure && Array.isArray(ud.academicStructure)) {
-                    ud.academicStructure.forEach(item => {
-                        if (item.jamiaName) jamiaRegionMap[item.jamiaName] = userRegion;
-                    });
-                }
-            });
-        } catch(e) { console.error("Region fetch error:", e); }
-    }
+    try {
+        const usersSnap = await db.collection('users').get();
+        usersSnap.forEach(doc => {
+            const ud = doc.data();
+            const userRegion = ud.region || "Unknown";
+            
+            // NEW: User ka actual naam aur role database se save kar rahe hain
+            const uName = ud.name || (ud.email ? ud.email.split('@')[0] : "Unknown");
+            userRolesMap[uName] = ud.role || "standard";
+
+            if (ud.jamiaatList && Array.isArray(ud.jamiaatList)) {
+                ud.jamiaatList.forEach(jamia => { jamiaRegionMap[jamia] = userRegion; });
+            }
+            if (ud.academicStructure && Array.isArray(ud.academicStructure)) {
+                ud.academicStructure.forEach(item => {
+                    if (item.jamiaName) jamiaRegionMap[item.jamiaName] = userRegion;
+                });
+            }
+        });
+    } catch(e) { console.error("Region fetch error:", e); }
+}
 
     auth.onAuthStateChanged(async user => {
         if (!user) window.location.href = 'index.html';
@@ -442,8 +448,9 @@ body, input, textarea, select, button {
                             const jamiaNameVal = rec.jamiaName || rec.jamia || 'Unknown';
                             const finalRegion = jamiaRegionMap[jamiaNameVal] || data.region || "Unknown";
                             let finalZimmedarName = rec.zimmedarName || rec.zimmedar || docZimmedar || "Unknown Zimmedar";
+                            let actualRole = userRolesMap[finalZimmedarName] || data.role || rec.role || "standard";
 
-                            allReportsData.push({
+                           allReportsData.push({
                                 parentDocId: doc.id,
                                 arrayIndex: i, 
                                 jamiaName: jamiaNameVal,
@@ -459,7 +466,7 @@ body, input, textarea, select, button {
                                 region: finalRegion, 
                                 assignedTo: rec.assignedTo || "", 
                                 assignedDate: rec.assignedDate || null,
-                                zimmedarRole: data.role || rec.role || "standard"
+                                zimmedarRole: actualRole // <--- YAHAN ACTUAL ROLE PASS KIYA HAI
                             });
                         });
                     }
