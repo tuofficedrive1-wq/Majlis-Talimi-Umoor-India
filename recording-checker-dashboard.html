@@ -144,11 +144,13 @@
     </div>
 
     <!-- NEW: Status Filter -->
+    <!-- UPDATED: Status Filter -->
     <div>
         <select id="filter-status" onchange="applyFilters()" class="w-full p-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 bg-blue-50">
             <option value="">All Status</option>
             <option value="pending">Pending (Baqaya)</option>
             <option value="checked">Checked (Mukammal)</option>
+            <option value="rejected">Rejected (Mustarad)</option>
         </select>
     </div>
 </div>
@@ -337,10 +339,15 @@
                 <span id="save-status" class="text-sm text-green-600 font-bold hidden bg-green-100 px-2 py-1 rounded animate-pulse">
                     <i class="fas fa-check-circle"></i> Saved!
                 </span>
-                <div class="flex gap-2 ml-auto">
+                <div class="flex gap-2 ml-auto" id="modal-action-buttons">
                     <button onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm">Cancel</button>
-                    <button onclick="saveFeedback()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow flex items-center gap-2 text-sm">
-                        <i class="fas fa-save"></i> Save & Close
+                    <!-- NEW: Reject Button -->
+                    <button onclick="saveFeedback('Rejected')" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow flex items-center gap-2 text-sm">
+                        <i class="fas fa-times-circle"></i> Reject
+                    </button>
+                    <!-- UPDATED: Approve Button -->
+                    <button onclick="saveFeedback('Checked')" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow flex items-center gap-2 text-sm">
+                        <i class="fas fa-check-circle"></i> Approve & Save
                     </button>
                 </div>
             </div>
@@ -532,8 +539,6 @@ function applyFilters() {
     const filterReg = document.getElementById('filter-region').value;
     const filterZim = document.getElementById('filter-zimmedar').value;
     const filterDate = document.getElementById('filter-date').value; 
-    
-    // Check karein agar filter-status mojood hai
     const statusDropdown = document.getElementById('filter-status');
     const filterStatus = statusDropdown ? statusDropdown.value : ""; 
 
@@ -543,27 +548,160 @@ function applyFilters() {
         const matchZim = filterZim === "" || r.zimmedarName === filterZim;
         const matchDate = filterDate === "" || r.date === filterDate; 
 
-        // Status Match Logic
-        const isChecked = r.tasurat && r.tasurat.trim() !== "";
+        // NEW: Status Match Logic
+        const isRejected = r.status === "Rejected";
+        const isChecked = r.status === "Checked" || (!isRejected && r.tasurat && r.tasurat.trim() !== "");
+        
         let matchStatus = true;
         if (filterStatus === "checked") matchStatus = isChecked;
-        if (filterStatus === "pending") matchStatus = !isChecked;
+        if (filterStatus === "pending") matchStatus = !isChecked && !isRejected;
+        if (filterStatus === "rejected") matchStatus = isRejected;
 
         return matchJamia && matchReg && matchZim && matchDate && matchStatus;
     });
 
-    // ✨ 100% WORKING STRICT SORTING LOGIC ✨
+    // ✨ SORTING LOGIC: 0 (Pending) > 1 (Rejected) > 2 (Checked) ✨
     filteredReports.sort((a, b) => {
-        // Agar tasurat mojood hain to '1' (Checked), warna '0' (Pending)
-        const aChecked = (a.tasurat && a.tasurat.trim() !== "") ? 1 : 0;
-        const bChecked = (b.tasurat && b.tasurat.trim() !== "") ? 1 : 0;
-        
-        // 0 (Pending) me se 1 (Checked) minus hoga to result -1 aayega (Yani 0 hamesha upar rahega)
-        return aChecked - bChecked; 
+        const getSortValue = (rec) => {
+            if (rec.status === "Rejected") return 1;
+            if (rec.status === "Checked" || (rec.tasurat && rec.tasurat.trim() !== "")) return 2;
+            return 0; // Pending
+        };
+        return getSortValue(a) - getSortValue(b); 
     });
 
     renderTable();
     updateStats();
+}
+
+function updateStats() {
+    const total = filteredReports.length;
+    // Checked aur Rejected dono ko 'handled' count karenge
+    const checked = filteredReports.filter(r => r.status === "Checked" || r.status === "Rejected" || (r.tasurat && r.tasurat.trim() !== "")).length;
+    const pending = total - checked;
+    const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+    document.getElementById('stat-total').innerText = total;
+    document.getElementById('stat-checked').innerText = checked;
+    document.getElementById('stat-pending').innerText = pending;
+    document.getElementById('stat-percent').innerText = percent + "%";
+}
+
+function renderTable() {
+    const container = document.getElementById('reports-table-container');
+    
+    if (filteredReports.length === 0) {
+        container.innerHTML = `<div class="p-8 text-center text-gray-500">Apke khate me is mahine koi file pending nahi hai.</div>`;
+        return;
+    }
+
+    const rows = filteredReports.map((r, i) => {
+        // Naya: Reject ko identify karein
+        const isRejected = r.status === "Rejected";
+        const isChecked = r.status === "Checked" || (!isRejected && r.tasurat && r.tasurat.trim() !== "");
+        const duration = r.duration ? r.duration : '--:--';
+        
+        let badge = '';
+        let kaifiyatHtml = `<span class="text-gray-400 text-xs">-</span>`;
+        // Reject ki shakal me row ka color surkh (red) ho jayega
+        let rowClass = isRejected ? "bg-red-50 hover:bg-red-100 border-b border-red-200 transition" : "hover:bg-gray-50 border-b border-gray-100 transition";
+        
+        if (isRejected) {
+            badge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-red-200 uppercase tracking-wide">Rejected</span>`;
+            kaifiyatHtml = `<span class="text-red-600 font-bold text-xs urdu-font bg-red-100 px-2 py-1 rounded shadow-sm border border-red-200">Mustarad</span>`;
+        } else if (isChecked) {
+            badge = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>`;
+            
+            if (r.performanceScore && r.performanceScore.percentage) {
+                let m = parseInt(r.performanceScore.majmui);
+                let gradeText = "";
+                let badgeClass = "";
+                let percColor = "";
+
+                if (m === 10) {
+                    gradeText = "Mumtaz";
+                    badgeClass = "bg-green-800 text-white border-green-900"; 
+                    percColor = "text-green-800";
+                } else if (m === 8) {
+                    gradeText = "Behtar";
+                    badgeClass = "bg-blue-100 text-blue-700 border-blue-200"; 
+                    percColor = "text-blue-700";
+                } else if (m === 6) {
+                    gradeText = "Munasib";
+                    badgeClass = "bg-orange-100 text-orange-700 border-orange-200"; 
+                    percColor = "text-orange-700";
+                } else if (m === 4) {
+                    gradeText = "Qabil-e-Islah";
+                    badgeClass = "bg-purple-100 text-purple-700 border-purple-200"; 
+                    percColor = "text-purple-700";
+                } else if (m === 2) {
+                    gradeText = "Kamzor";
+                    badgeClass = "bg-red-100 text-red-700 border-red-200"; 
+                    percColor = "text-red-700";
+                }
+
+                if(gradeText) {
+                    kaifiyatHtml = `
+                        <div class="flex flex-col items-center gap-1 mt-1">
+                            <span class="font-bold text-[12px] ${percColor}">${r.performanceScore.percentage}%</span>
+                            <span class="${badgeClass} px-2 py-0.5 rounded text-[11px] font-bold border urdu-font tracking-wide shadow-sm">${gradeText}</span>
+                        </div>
+                    `;
+                }
+            }
+        } else {
+            badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+        }
+
+        return `
+        <tr class="${rowClass}">
+            <td class="p-3 text-center text-gray-400 text-xs">${i + 1}</td>
+            <td class="p-3 text-right">
+                <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
+                <div class="flex items-center justify-end gap-1 mt-1">
+                    <i class="fas fa-user text-[10px] ${isRejected ? 'text-red-500' : 'text-blue-500'}"></i>
+                    <p class="text-xs text-gray-500 urdu-font">${r.zimmedarName}</p>
+                </div>
+            </td>
+            <td class="p-3 text-right urdu-font text-blue-700 font-semibold text-sm">${r.teacherName}</td>
+            <td class="p-3 text-center">
+                <div class="font-medium text-xs text-gray-700">${r.className}</div>
+                <div class="text-[10px] text-gray-400">${r.kitabName}</div>
+            </td>
+            <td class="p-3 text-center text-xs font-mono text-gray-600">${duration}</td>
+            <td class="p-3 text-center">${badge}</td>
+            <td class="p-3 text-center">${kaifiyatHtml}</td> 
+            <td class="p-3 text-center flex justify-center gap-2">
+                <button type="button" 
+                    class="check-btn bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                    data-pid="${r.parentDocId}" 
+                    data-idx="${r.arrayIndex}">
+                    <i class="fas fa-headphones"></i> Listen & Check
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-gray-800 text-gray-300 uppercase text-[10px] tracking-wider">
+                    <tr>
+                        <th class="p-3 text-center">#</th>
+                        <th class="p-3 text-right">Jamia / Zimmedar</th>
+                        <th class="p-3 text-right">Teacher</th>
+                        <th class="p-3 text-center">Class / Kitab</th>
+                        <th class="p-3 text-center">Duration</th>
+                        <th class="p-3 text-center">Status</th>
+                        <th class="p-3 text-center text-blue-300">Kaifiyat</th>
+                        <th class="p-3 text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">
+                    ${rows}
+                </tbody>
+            </table>
+        </div>`;
 }
 
     // --- STATS ---
@@ -788,10 +926,9 @@ function applyFilters() {
         else { p.playbackRate = 1.0; b.innerText = "1x"; }
     }
 
-async function saveFeedback() {
+async function saveFeedback(statusType) {
     if (!currentEditingDocId || currentEditingIndex === null) return;
     
-    // Naye dropdowns se values extract karein
     const ibarat = parseInt(document.getElementById('grade-ibarat').value) || 0;
     const tarjama = parseInt(document.getElementById('grade-tarjama').value) || 0;
     const siyaq = parseInt(document.getElementById('grade-siyaq').value) || 0;
@@ -802,13 +939,11 @@ async function saveFeedback() {
     const totalScore = ibarat + tarjama + siyaq + andaz + majmui;
     const percentage = ((totalScore / 50) * 100).toFixed(1);
 
-    const performanceData = {
-        ibarat, tarjama, siyaq, andaz, majmui, totalScore, percentage
-    };
+    const performanceData = { ibarat, tarjama, siyaq, andaz, majmui, totalScore, percentage };
 
-    const btn = document.querySelector('#review-modal button i.fa-save').parentNode;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-    btn.disabled = true;
+    const btnContainer = document.getElementById('modal-action-buttons');
+    const originalBtns = btnContainer.innerHTML;
+    btnContainer.innerHTML = '<span class="text-blue-600 font-bold py-2"><i class="fas fa-spinner fa-spin"></i> Saving...</span>';
 
     try {
         const reportRef = db.collection('monthly_reports').doc(currentEditingDocId);
@@ -821,33 +956,34 @@ async function saveFeedback() {
         if (!arr[currentEditingIndex]) throw new Error("Recording index not found");
 
         const now = new Date().toISOString();
-        arr[currentEditingIndex].tasurat = comment; // Optional text comment
+        arr[currentEditingIndex].tasurat = comment; 
         arr[currentEditingIndex].tasuratDate = now; 
-        arr[currentEditingIndex].mufattishComment = comment; // For backward compatibility
+        arr[currentEditingIndex].mufattishComment = comment; 
         
-        // Naya performance object array mein shamil karein
         arr[currentEditingIndex].performanceScore = performanceData;
-        arr[currentEditingIndex].status = "Checked";
+        arr[currentEditingIndex].status = statusType; // <-- NEW: Status (Checked ya Rejected)
 
         await reportRef.update({ "tadrisRecording.data": arr });
 
         document.getElementById('save-status').classList.remove('hidden');
         
-        // Local state ko update karein taake bina page refresh kiye data reflect ho
+        // Local state ko update karein
         const localRec = allReportsData.find(x => x.parentDocId === currentEditingDocId && x.arrayIndex === currentEditingIndex);
         if(localRec) {
             localRec.tasurat = comment;
             localRec.performanceScore = performanceData;
+            localRec.status = statusType; // <-- Naya status local me bhi save ho gaya
         }
         
         applyFilters(); 
-        setTimeout(() => closeModal(), 1000);
+        setTimeout(() => {
+            closeModal();
+            btnContainer.innerHTML = originalBtns;
+        }, 1000);
 
     } catch(e) {
         alert("Error: " + e.message);
-    } finally {
-        btn.innerHTML = '<i class="fas fa-save"></i> Save & Close';
-        btn.disabled = false;
+        btnContainer.innerHTML = originalBtns;
     }
 }
 
