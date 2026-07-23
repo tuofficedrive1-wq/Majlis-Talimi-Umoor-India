@@ -168,6 +168,7 @@ body, input, textarea, select, button {
             <option value="">All Status</option>
             <option value="pending">Pending (Baqaya)</option>
             <option value="checked">Checked (Mukammal)</option>
+            <option value="rejected">Rejected (Mustarad)</option>
         </select>
     </div>
 
@@ -466,7 +467,13 @@ body, input, textarea, select, button {
                                 region: finalRegion, 
                                 assignedTo: rec.assignedTo || "", 
                                 assignedDate: rec.assignedDate || null,
-                                zimmedarRole: actualRole // <--- YAHAN ACTUAL ROLE PASS KIYA HAI
+                                zimmedarRole: actualRole,
+                                
+                                // ✨ YE 4 NAYI LINES ADD KAREIN ✨
+                                status: rec.status || "",
+                                performanceScore: rec.performanceScore || {},
+                                needsAttention: rec.needsAttention || false,
+                                contactDone: rec.contactDone || false
                             });
                         });
                     }
@@ -519,40 +526,38 @@ function applyFilters() {
         const matchJamia = r.jamiaName.toLowerCase().includes(searchJamia);
         const matchZim = filterZim === "" || r.zimmedarName === filterZim;
         const matchReg = filterReg === "" || r.region === filterReg;
-        
-        // Class Check
         const matchClass = filterClass === "" || r.className === filterClass;
 
-        // Zimmedar Role Check
         let matchRole = true;
-    if (filterRole !== "") {
-        const zRole = (r.zimmedarRole || "").toLowerCase();
-        
-        if (filterRole === "standard") {
-            // Agar Madani select kiya hai, toh standard (ya standerd) role walo ko match karega
-            matchRole = (zRole === "standard" || zRole === "standerd");
-        } 
-        else if (filterRole === "inspector") {
-            // Agar Academic select kiya hai, toh inspector role walo ko match karega
-            matchRole = (zRole === "inspector");
+        if (filterRole !== "") {
+            const zRole = (r.zimmedarRole || "").toLowerCase();
+            if (filterRole === "standard") matchRole = (zRole === "standard" || zRole === "standerd");
+            else if (filterRole === "inspector") matchRole = (zRole === "inspector");
         }
-    }
 
-        // Status Check
-        const isChecked = r.tasurat && r.tasurat.trim() !== "";
+        // ✨ UPDATED: Status Match Logic
+        const isRejected = r.status === "Rejected";
+        const isChecked = r.status === "Checked" || (!isRejected && r.tasurat && r.tasurat.trim() !== "");
         let matchStatus = true;
         if (filterStatus === "checked") matchStatus = isChecked;
-        if (filterStatus === "pending") matchStatus = !isChecked;
+        if (filterStatus === "pending") matchStatus = !isChecked && !isRejected;
+        if (filterStatus === "rejected") matchStatus = isRejected;
 
-        // Mufattish Check
         let matchMufattish = true;
-        if (filterMufattish === "unassigned") {
-            matchMufattish = !r.assignedTo || r.assignedTo.trim() === "";
-        } else if (filterMufattish !== "") {
-            matchMufattish = r.assignedTo === filterMufattish;
-        }
+        if (filterMufattish === "unassigned") matchMufattish = !r.assignedTo || r.assignedTo.trim() === "";
+        else if (filterMufattish !== "") matchMufattish = r.assignedTo === filterMufattish;
 
         return matchJamia && matchZim && matchReg && matchStatus && matchMufattish && matchClass && matchRole;
+    });
+
+    // ✨ SORTING LOGIC ✨
+    filteredReports.sort((a, b) => {
+        const getSortValue = (rec) => {
+            if (rec.status === "Rejected") return 1;
+            if (rec.status === "Checked" || (rec.tasurat && rec.tasurat.trim() !== "")) return 2;
+            return 0; // Pending
+        };
+        return getSortValue(a) - getSortValue(b); 
     });
 
     renderTable();
@@ -620,7 +625,7 @@ function applyFilters() {
     summaryBody.innerHTML = rowsHtml;
 }
 
-    function renderTable() {
+function renderTable() {
         const container = document.getElementById('reports-table-container');
         if (filteredReports.length === 0) {
             container.innerHTML = `<div class="p-8 text-center text-gray-500">No records found.</div>`;
@@ -628,12 +633,54 @@ function applyFilters() {
         }
 
         const rows = filteredReports.map((r, i) => {
-            const isChecked = r.tasurat && r.tasurat.trim() !== "";
+            const isRejected = r.status === "Rejected";
+            const isChecked = r.status === "Checked" || (!isRejected && r.tasurat && r.tasurat.trim() !== "");
             const duration = r.duration ? r.duration : '--:--';
             
-            const badge = isChecked 
-                ? `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>` 
-                : `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+            // ✨ Baat karni hai vs Baat ho gayi wala badge
+            let attentionBadge = '';
+            if (r.needsAttention) {
+                if (r.contactDone) {
+                    attentionBadge = `<div class="mt-2 flex justify-end"><span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold border border-emerald-300 shadow-sm"><i class="fas fa-check-double mr-1"></i> Baat Ho Gayi</span></div>`;
+                } else {
+                    attentionBadge = `<div class="mt-2 flex justify-end"><span class="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold border border-red-300 shadow-sm animate-pulse"><i class="fas fa-phone-alt mr-1"></i> Baat Karni Hai</span></div>`;
+                }
+            }
+
+            let badge = '';
+            let kaifiyatHtml = `<span class="text-gray-400 text-xs">-</span>`;
+            let rowClass = isRejected ? "bg-red-50 hover:bg-red-100 border-b border-red-200 transition" : "hover:bg-gray-50 border-b border-gray-100 transition";
+
+            if (isRejected) {
+                badge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-red-200 uppercase tracking-wide">Rejected</span>`;
+                kaifiyatHtml = `<span class="text-red-600 font-bold text-xs urdu-font bg-red-100 px-2 py-1 rounded shadow-sm border border-red-200">Mustarad</span>`;
+            } else if (isChecked) {
+                badge = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>`;
+                
+                if (r.performanceScore && r.performanceScore.percentage) {
+                    let m = parseInt(r.performanceScore.majmui);
+                    let gradeText = "";
+                    let badgeClass = "";
+                    let percColor = "";
+
+                    if (m === 10) { gradeText = "Mumtaz"; badgeClass = "bg-green-800 text-white border-green-900"; percColor = "text-green-800"; } 
+                    else if (m === 8) { gradeText = "Behtar"; badgeClass = "bg-blue-100 text-blue-700 border-blue-200"; percColor = "text-blue-700"; } 
+                    else if (m === 6) { gradeText = "Munasib"; badgeClass = "bg-orange-100 text-orange-700 border-orange-200"; percColor = "text-orange-700"; } 
+                    else if (m === 4) { gradeText = "Qabil-e-Islah"; badgeClass = "bg-purple-100 text-purple-700 border-purple-200"; percColor = "text-purple-700"; } 
+                    else if (m === 2) { gradeText = "Kamzor"; badgeClass = "bg-red-100 text-red-700 border-red-200"; percColor = "text-red-700"; }
+
+                    if(gradeText) {
+                        kaifiyatHtml = `
+                            <div class="flex flex-col items-center gap-1 mt-1">
+                                <span class="font-bold text-[12px] ${percColor}">${r.performanceScore.percentage}%</span>
+                                <span class="${badgeClass} px-2 py-0.5 rounded text-[11px] font-bold border urdu-font tracking-wide shadow-sm">${gradeText}</span>
+                            </div>
+                        `;
+                    }
+                }
+            } else {
+                badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+            }
 
             const assignDropdown = `
                 <select onchange="assignRecording('${r.parentDocId}', ${r.arrayIndex}, this.value)" 
@@ -644,7 +691,7 @@ function applyFilters() {
             `;
 
             return `
-            <tr class="hover:bg-gray-50 border-b border-gray-100 transition">
+            <tr class="${rowClass}">
                 <td class="p-3 text-center">
                     <input type="checkbox" class="row-checkbox w-4 h-4 text-teal-600 border-gray-300 rounded cursor-pointer" 
                         data-pid="${r.parentDocId}" data-idx="${r.arrayIndex}" onchange="updateBulkPanel()">
@@ -653,9 +700,10 @@ function applyFilters() {
                 <td class="p-3 text-right">
                     <p class="font-bold urdu-font text-gray-800 text-base leading-none">${r.jamiaName}</p>
                     <div class="flex items-center justify-end gap-1 mt-1">
-                        <i class="fas fa-user text-[10px] text-teal-500"></i>
+                        <i class="fas fa-user text-[10px] ${isRejected ? 'text-red-500' : 'text-teal-500'}"></i>
                         <p class="text-xs text-gray-500 urdu-font">${r.zimmedarName}</p>
                     </div>
+                    ${attentionBadge}
                 </td>
                 <td class="p-3 text-right urdu-font text-teal-700 font-semibold text-sm">${r.teacherName}</td>
                 <td class="p-3 text-center">
@@ -664,6 +712,7 @@ function applyFilters() {
                 </td>
                 <td class="p-3 text-center text-xs font-mono text-gray-600">${duration}</td>
                 <td class="p-3 text-center">${badge}</td>
+                <td class="p-3 text-center">${kaifiyatHtml}</td> 
                 <td class="p-3 text-center flex flex-col items-center gap-1">
                     <span class="text-[10px] font-bold ${r.assignedTo ? 'text-blue-600' : 'text-gray-400'}">${r.assignedTo || 'None'}</span>
                     ${assignDropdown}
@@ -691,6 +740,7 @@ function applyFilters() {
                             <th class="p-3 text-center">Class / Kitab</th>
                             <th class="p-3 text-center">Duration</th>
                             <th class="p-3 text-center">Status</th>
+                            <th class="p-3 text-center text-teal-300">Kaifiyat</th>
                             <th class="p-3 text-center text-teal-300">Assignment</th>
                             <th class="p-3 text-center">Action</th>
                         </tr>
