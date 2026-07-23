@@ -40,12 +40,13 @@
         U+FE70-FEFF;
     }
 
-    body {
-      font-family: "Poppins", sans-serif;
+    body, input, textarea, select, button {
+      font-family: "Poppins", "Jameel Noori Nastaleeq", sans-serif !important;
       background-color: #f0f2f5;
     }
+    
     .urdu-font {
-      font-family: "Jameel Noori Nastaleeq", "Poppins", sans-serif;
+      font-family: "Poppins", "Jameel Noori Nastaleeq", sans-serif !important;
       font-size: 1.05rem;
       line-height: 1.7;
     }
@@ -249,15 +250,16 @@
           <tr>
             <th class="border px-2 py-1 text-center w-12">Sr. No.</th>
             <th class="border px-2 py-1">Jamia</th>
-    <th class="border px-2 py-1">Class</th>
-    <th class="border px-2 py-1">Kitab</th>
-    <th class="border px-2 py-1">Teacher</th>
-    <th class="border px-2 py-1">Date</th>
-    <th class="border px-2 py-1">Mufattish ke Tasuraat</th>
-    <th class="border px-2 py-1">Zimmedar Comment</th>
-    <th class="border px-2 py-1">Status</th>
-    <th class="border px-2 py-1">PDF</th>
-    <th class="border px-2 py-1 text-center">Action</th>
+            <th class="border px-2 py-1">Class</th>
+            <th class="border px-2 py-1">Kitab</th>
+            <th class="border px-2 py-1">Teacher</th>
+            <th class="border px-2 py-1">Date</th>
+            <th class="border px-2 py-1 text-center text-teal-700">Audio</th>
+            <th class="border px-2 py-1 w-48">Mufattish ke Tasuraat</th>
+            <th class="border px-2 py-1 w-48">Zimmedar Comment</th>
+            <th class="border px-2 py-1 text-center text-blue-700">Status</th>
+            <th class="border px-2 py-1 text-center text-blue-700">Kaifiyat</th>
+            <th class="border px-2 py-1 text-center w-24">Action</th>
           </tr>
         </thead>
           <tbody id="saved-table-body"></tbody>
@@ -759,7 +761,7 @@
       await setDoc(reportRef, { tadrisRecording: { data: arr, status: existing.tadrisRecording?.status || "Pending" } }, { merge: true });
     }
 
-    // ============================
+   // ============================
     // UPDATED FUNCTION: Render Saved Table
     // ============================
     function renderSavedTable() {
@@ -769,19 +771,13 @@
       if (!tbody) return;
       tbody.innerHTML = "";
 
-      // --- DATA COLLECTION STRATEGY ---
-      // 1. Koshish karein allReports (Query) se data lene ki
       let sourceData = [];
       if (allReports && allReports.length > 0) {
           sourceData = allReports;
-      } 
-      // 2. Agar allReports khali hai (Index issue), to Current Report use karein (jo Accordion me dikh raha hai)
-      else if (currentReport && currentReport.tadrisRecording) {
-          console.log("Using currentReport for table fallback");
+      } else if (currentReport && currentReport.tadrisRecording) {
           sourceData = [currentReport];
       }
 
-      // 3. Flatten data (Reports -> Recordings list)
       let allRecordings = [];
       sourceData.forEach(report => {
         if (report.tadrisRecording && Array.isArray(report.tadrisRecording.data)) {
@@ -793,25 +789,19 @@
         }
       });
 
-      console.log("Total Recordings Found for Table:", allRecordings.length);
-
-      // --- FILTER VALUES ---
       const filterJamia = jamiaFilterSelect ? jamiaFilterSelect.value : "";
       const filterTeacherEl = document.getElementById("filter-teacher");
       const filterTeacher = filterTeacherEl ? filterTeacherEl.value.toLowerCase() : "";
       
-      // NAYA DATE LOGIC STARTS HERE
       const dateRangeInput = document.getElementById("filter-date-range");
       let filterDateFrom = "";
       let filterDateTo = "";
       
       if (dateRangeInput && dateRangeInput.value) {
-          // Flatpickr format: "2025-01-01 to 2025-01-15"
           const parts = dateRangeInput.value.split(" to ");
           filterDateFrom = parts[0]; 
-          filterDateTo = parts[1] || parts[0]; // Agar single date select ki to wahi end date hogi
+          filterDateTo = parts[1] || parts[0];
       }
-      // NAYA DATE LOGIC ENDS HERE
 
       const filtered = allRecordings.filter(rec => {
         const jMatch = !filterJamia || rec.jamiaName === filterJamia;
@@ -819,12 +809,11 @@
         
         let dMatch = true;
         if (filterDateFrom) dMatch = dMatch && (rec.date >= filterDateFrom);
-        if (filterDateTo) dMatch = dMatch && (rec.date <= filterDateTo); // <= logic check
+        if (filterDateTo) dMatch = dMatch && (rec.date <= filterDateTo);
         
         return jMatch && tMatch && dMatch;
       });
 
-      // --- JAMIA DROPDOWN POPULATE ---
       if(jamiaFilterSelect && jamiaFilterSelect.options.length <= 1) {
           const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))].sort();
           uniqueJamias.forEach(j => {
@@ -837,15 +826,14 @@
           });
       }
 
-      // --- RENDER ROWS ---
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-500 text-sm">No recordings found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center py-6 text-gray-500 text-sm">No recordings found.</td></tr>`;
         return;
       }
 
-      filtered.forEach((rec, index) => { // <--- Note: added 'index' here
-        const tr = document.createElement("tr");
-        tr.className = "hover:bg-gray-50 transition-colors";
+      filtered.forEach((rec, index) => { 
+        const isRejected = rec.status === "Rejected";
+        const isChecked = rec.status === "Checked" || (!isRejected && rec.tasurat && rec.tasurat.trim() !== "");
         
         const jamia = escapeHtml(rec.jamiaName);
         const teacher = escapeHtml(rec.teacherName);
@@ -854,6 +842,7 @@
         const date = escapeHtml(rec.date);
         const adminComment = escapeHtml(rec.tasurat || "-");
         const zimmedarComment = escapeHtml(rec.adminTasurat || "-");
+        
         const audioLink = rec.url 
             ? `<button type="button" 
                   class="bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white px-3 py-1 rounded-full text-xs font-semibold transition border border-teal-200 flex items-center gap-1 mx-auto"
@@ -862,8 +851,53 @@
                   <i class="fas fa-play"></i> Play
                </button>`
             : `<span class="text-gray-400 text-xs italic">No Audio</span>`;
-        
-              
+
+        // ✨ STATUS & ATTENTION BADGES ✨
+        let statusBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-[10px] font-bold border border-yellow-200 uppercase tracking-wide">Pending</span>`;
+        if (isRejected) {
+            statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold border border-red-200 uppercase tracking-wide">Rejected</span>`;
+        } else if (isChecked) {
+            statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold border border-green-200 uppercase tracking-wide">Checked</span>`;
+        }
+
+        let attentionBadge = '';
+        if (rec.needsAttention) {
+            if (rec.contactDone) {
+                attentionBadge = `<div class="mt-1"><span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[9px] font-bold border border-emerald-300 shadow-sm"><i class="fas fa-check-double"></i> Baat Ho Gayi</span></div>`;
+            } else {
+                attentionBadge = `<div class="mt-1"><span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[9px] font-bold border border-red-300 shadow-sm animate-pulse"><i class="fas fa-phone-alt"></i> Baat Karni Hai</span></div>`;
+            }
+        }
+        let fullStatusHtml = `<div class="flex flex-col items-center justify-center gap-1">${statusBadge}${attentionBadge}</div>`;
+
+        // ✨ KAIFIYAT (GRADE) LOGIC ✨
+        let kaifiyatHtml = `<span class="text-gray-400 text-xs">-</span>`;
+        let rowClass = isRejected ? "bg-red-50 hover:bg-red-100 transition-colors" : "hover:bg-gray-50 transition-colors";
+
+        if (isRejected) {
+            kaifiyatHtml = `<span class="text-red-600 font-bold text-xs urdu-font bg-red-100 px-2 py-1 rounded shadow-sm border border-red-200">Mustarad</span>`;
+        } else if (isChecked && rec.performanceScore && rec.performanceScore.percentage) {
+            let m = parseInt(rec.performanceScore.majmui);
+            let gradeText = ""; let badgeClass = ""; let percColor = "";
+
+            if (m === 10) { gradeText = "Mumtaz"; badgeClass = "bg-green-800 text-white border-green-900"; percColor = "text-green-800"; } 
+            else if (m === 8) { gradeText = "Behtar"; badgeClass = "bg-blue-100 text-blue-700 border-blue-200"; percColor = "text-blue-700"; } 
+            else if (m === 6) { gradeText = "Munasib"; badgeClass = "bg-orange-100 text-orange-700 border-orange-200"; percColor = "text-orange-700"; } 
+            else if (m === 4) { gradeText = "Qabil-e-Islah"; badgeClass = "bg-purple-100 text-purple-700 border-purple-200"; percColor = "text-purple-700"; } 
+            else if (m === 2) { gradeText = "Kamzor"; badgeClass = "bg-red-100 text-red-700 border-red-200"; percColor = "text-red-700"; }
+
+            if(gradeText) {
+                kaifiyatHtml = `
+                    <div class="flex flex-col items-center gap-1">
+                        <span class="font-bold text-[11px] ${percColor}">${rec.performanceScore.percentage}%</span>
+                        <span class="${badgeClass} px-2 py-0.5 rounded text-[10px] font-bold border urdu-font shadow-sm">${gradeText}</span>
+                    </div>
+                `;
+            }
+        }
+
+        const tr = document.createElement("tr");
+        tr.className = rowClass;
         tr.innerHTML = `
             <td class="border px-2 py-2 text-center text-gray-500 font-bold">${index + 1}</td>
             <td class="border px-2 py-2 urdu-font">${jamia}</td>
@@ -871,6 +905,7 @@
             <td class="border px-2 py-2 urdu-font">${kitab}</td>
             <td class="border px-2 py-2 urdu-font">${teacher}</td>
             <td class="border px-2 py-2 text-xs">${date}</td>
+            <td class="border px-2 py-2 text-xs text-center">${audioLink}</td>
             <td class="border px-2 py-2 text-xs truncate max-w-[120px]" title="${adminComment}">${adminComment}</td>
             
             <td class="border px-2 py-2 text-center">
@@ -886,31 +921,33 @@
                 </div>
             </td>
 
-            <td class="border px-2 py-2 text-xs text-center">${audioLink}</td>
+            <td class="border px-2 py-2 text-center">${fullStatusHtml}</td>
+            <td class="border px-2 py-2 text-center">${kaifiyatHtml}</td>
+            
             <td class="border px-2 py-2 text-center">
-                 <button type="button" class="download-tadris-pdf-btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-xs transition"
-                    data-jamia-name="${encodeURIComponent(rec.jamiaName)}" 
-                    data-teacher-name="${encodeURIComponent(rec.teacherName)}" 
-                    data-class-name="${encodeURIComponent(rec.className)}" 
-                    data-kitab-name="${encodeURIComponent(rec.kitabName)}" 
-                    data-date="${rec.date}" 
-                    data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
-                    data-zimmedar-tasurat="${encodeURIComponent(rec.adminTasurat || '')}"> <i class="fas fa-file-pdf"></i>
-                </button>
+                <div class="flex items-center justify-center gap-2">
+                    <button type="button" class="download-tadris-pdf-btn bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-200 px-2 py-1.5 rounded transition"
+                        data-jamia-name="${encodeURIComponent(rec.jamiaName)}" 
+                        data-teacher-name="${encodeURIComponent(rec.teacherName)}" 
+                        data-class-name="${encodeURIComponent(rec.className)}" 
+                        data-kitab-name="${encodeURIComponent(rec.kitabName)}" 
+                        data-date="${rec.date}" 
+                        data-tasurat="${encodeURIComponent(rec.tasurat || '')}"
+                        data-zimmedar-tasurat="${encodeURIComponent(rec.adminTasurat || '')}" title="Download PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
+                    <button type="button" 
+                        class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 px-2 py-1.5 rounded transition"
+                        onclick="deleteRecording('${rec.id}')"
+                        title="Delete Recording">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
             </td>
-            <td class="border px-2 py-2 text-center">
-     <button type="button" 
-        class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 p-2 rounded transition"
-        onclick="deleteRecording('${rec.id}')"
-        title="Delete Recording">
-        <i class="fas fa-trash-alt"></i>
-    </button>
-</td>
         `;
         tbody.appendChild(tr);
       });
 
-      // Re-attach PDF listeners
       tbody.querySelectorAll('.download-tadris-pdf-btn').forEach(b => b.addEventListener('click', window.handleDownloadTadrisPDF));
     }
 
