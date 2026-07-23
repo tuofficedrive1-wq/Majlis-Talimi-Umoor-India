@@ -926,7 +926,11 @@
                     </div>`;
             }
         }
-
+// ✨ NAYA: PDF ke liye Score aur Grade nikalna
+        let tScore = (rec.performanceScore && rec.performanceScore.totalScore) ? rec.performanceScore.totalScore : 0;
+        let tPerc = (rec.performanceScore && rec.performanceScore.percentage) ? rec.performanceScore.percentage : 0;
+        let finalGradeForPdf = gText || (isRejected ? 'Mustarad' : '-');
+        let recStatus = rec.status || "Pending";
         const tr = document.createElement("tr");
         tr.className = rowClass;
         tr.innerHTML = `
@@ -968,7 +972,18 @@
             <td class="p-2 text-center">
                 <div class="flex items-center justify-center gap-1">
                     <button type="button" class="download-tadris-pdf-btn bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-200 px-2 py-1 rounded transition"
-                        data-jamia-name="${encodeURIComponent(rec.jamiaName)}" data-teacher-name="${encodeURIComponent(rec.teacherName)}" data-class-name="${encodeURIComponent(rec.className)}" data-kitab-name="${encodeURIComponent(rec.kitabName)}" data-date="${rec.date}" data-tasurat="${encodeURIComponent(rec.tasurat || '')}" data-zimmedar-tasurat="${encodeURIComponent(rec.adminTasurat || '')}" title="Download PDF">
+                        data-jamia-name="${encodeURIComponent(rec.jamiaName)}" 
+                        data-teacher-name="${encodeURIComponent(rec.teacherName)}" 
+                        data-class-name="${encodeURIComponent(rec.className)}" 
+                        data-kitab-name="${encodeURIComponent(rec.kitabName)}" 
+                        data-date="${rec.date}" 
+                        data-tasurat="${encodeURIComponent(rec.tasurat || '')}" 
+                        data-zimmedar-tasurat="${encodeURIComponent(rec.adminTasurat || '')}" 
+                        data-score="${tScore}" 
+                        data-percent="${tPerc}" 
+                        data-grade="${encodeURIComponent(finalGradeForPdf)}" 
+                        data-status="${encodeURIComponent(recStatus)}" 
+                        title="Download PDF">
                         <i class="fas fa-file-pdf text-xs"></i>
                     </button>
                     <button type="button" class="bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 px-2 py-1 rounded transition" onclick="deleteRecording('${rec.id}')" title="Delete">
@@ -1063,8 +1078,8 @@
       }, { capture: false });
     })();
 
-    // ============================
-    // FIXED PDF GENERATOR (Auto Height Fix)
+   // ============================
+    // FIXED PDF GENERATOR (With Score Board & Status)
     // ============================
     window.handleDownloadTadrisPDF = async function(e) {
       const btn = e.currentTarget;
@@ -1078,15 +1093,45 @@
       
       const tasuratAdmin = decodeURIComponent(btn.dataset.tasurat || "") || "کوئی تبصرہ درج نہیں۔";
       let tasuratZimmedar = decodeURIComponent(btn.dataset.zimmedarTasurat || "");
-      
       if (!tasuratZimmedar || tasuratZimmedar === "undefined" || tasuratZimmedar === "null") {
           tasuratZimmedar = "کوئی تبصرہ درج نہیں۔";
+      }
+
+      // ✨ NAYA: Performance Data get kiya gaya
+      const totalScore = btn.dataset.score || "0";
+      const percentage = btn.dataset.percent || "0";
+      const grade = decodeURIComponent(btn.dataset.grade || "-");
+      const status = decodeURIComponent(btn.dataset.status || "Pending");
+
+      // ✨ NAYA: PDF Score Board Design ✨
+      let scoreBoardHtml = '';
+      if (status === "Checked" && parseFloat(percentage) > 0) {
+          scoreBoardHtml = `
+              <div style="margin-bottom:25px; border:2px solid #3b82f6; border-radius:12px; background-color:#eff6ff; display:flex; justify-content:space-between; align-items:center; padding:15px 25px;">
+                  <div style="font-family:sans-serif; font-size:22px; font-weight:bold; color:#1e40af; direction:ltr;">
+                      Total Score: <span style="font-size:26px;">${totalScore}</span> <span style="font-size:16px; color:#60a5fa;">/ 50</span>
+                  </div>
+                  <div style="font-family:sans-serif; font-size:20px; font-weight:bold; color:#15803d; direction:ltr; background-color:#dcfce7; padding:8px 20px; border-radius:8px; border:1px solid #bbf7d0;">
+                      Performance: ${percentage}%
+                  </div>
+                  <div style="font-size:24px; font-weight:bold; color:#0f766e;">
+                      کیفیت: <span style="background-color:#ccfbf1; padding:5px 15px; border-radius:8px; border:1px solid #99f6e4;">${grade}</span>
+                  </div>
+              </div>
+          `;
+      } else if (status === "Rejected") {
+          scoreBoardHtml = `
+              <div style="margin-bottom:25px; border:2px solid #ef4444; border-radius:12px; background-color:#fef2f2; text-align:center; padding:15px;">
+                  <div style="font-size:26px; font-weight:bold; color:#b91c1c;">
+                      یہ ریکارڈنگ مسترد (Rejected) کر دی گئی ہے۔
+                  </div>
+              </div>
+          `;
       }
 
       showLoader(true);
       
       try {
-        // --- HTML CONTENT ---
         const pdfContentHTML = `
           <div style="direction:rtl; font-family:'Jameel Noori Nastaleeq', 'Arial', sans-serif; background-color:#fff; color:#111; position:relative;">
             
@@ -1111,6 +1156,9 @@
                    <td style="padding:12px; border:1px solid #ccc;">${escapeHtml(className)} - ${escapeHtml(kitabName)}</td>
                 </tr>
               </table>
+
+              <!-- ✨ SCORE BOARD YAHAN SHOW HOGA ✨ -->
+              ${scoreBoardHtml}
 
               <div style="margin-bottom:25px; border:2px solid #10b981; border-radius:12px; overflow:hidden; background-color:#fff;">
                  <div style="background-color:#ecfdf5; padding:10px 15px; border-bottom:1px solid #10b981;">
@@ -1141,20 +1189,16 @@
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = pdfContentHTML;
         
-        // --- STYLING FIXES ---
         tempDiv.style.width = "794px"; 
-        tempDiv.style.position = "fixed"; // Screen par na dikhe
+        tempDiv.style.position = "fixed"; 
         tempDiv.style.left = "-9999px";
         tempDiv.style.top = "0";
         tempDiv.style.zIndex = "-1";
         document.body.appendChild(tempDiv);
 
-        // Wait for render
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // --- HEIGHT CALCULATION FIX ---
-        // Hum element ki actual height napenge
-        const elementHeight = tempDiv.offsetHeight + 50; // Thoda extra buffer
+        const elementHeight = tempDiv.offsetHeight + 50; 
 
         const canvas = await window.html2canvas(tempDiv, { 
             scale: 2, 
@@ -1162,23 +1206,21 @@
             allowTaint: true,
             windowWidth: 794, 
             width: 794,
-            height: elementHeight,       // <--- YE FIX HAI (Force Full Height)
-            windowHeight: elementHeight, // <--- YE BHI FIX HAI
+            height: elementHeight, 
+            windowHeight: elementHeight,
             scrollY: 0
         });
         
         const imgData = canvas.toDataURL("image/jpeg", 0.95);
 
         const { jsPDF } = window.jspdf;
-        // PDF ki height content ke hisab se set karein (Dynamic Page Height)
-        // A4 width = 210mm. Ratio nikal kar height set karenge.
         const pdfWidth = 210; 
         const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
         const docPdf = new jsPDF({ 
             orientation: "portrait", 
             unit: "mm", 
-            format: [pdfWidth, pdfHeight] // Custom Page Size (Taaki kate nahi)
+            format: [pdfWidth, pdfHeight] 
         });
         
         docPdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
