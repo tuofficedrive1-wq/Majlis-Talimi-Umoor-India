@@ -4392,11 +4392,9 @@ const renderMunasibHistoryReport = () => {
              showNotification(`${fileName} Downloaded!`);
         };
         
-        // NEW FUNCTION: Download Jamia Report (IMAGE - FIX APPLIED)
         const downloadJamiaReportImage = async (jamiaName) => {
              showLoader(true);
 
-             // --- Safe Month Name Logic (same pattern as the teacher image) ---
              let monthName = currentReportPeriod.month;
              if (!monthName || monthName === 'undefined') {
                  monthName = getMonthName(currentReportPeriod.monthNum);
@@ -4404,8 +4402,6 @@ const renderMunasibHistoryReport = () => {
              const year = currentReportPeriod.yearNum;
              const userName = userProfileData.displayName || currentUser.email;
 
-             // 1. Get every row for this Jamia straight from the live data
-             //    (data attributes only – no dependency on table/DOM structure).
              const jamiaRows = Array.from(
                  reportingContainer.querySelectorAll(`tr.reporting-row[data-jamia-name="${jamiaName}"]`)
              );
@@ -4416,7 +4412,6 @@ const renderMunasibHistoryReport = () => {
                  return;
              }
 
-             // 2. Group rows by teacher, keeping the order they already appear in
              const teacherOrder = [];
              const rowsByTeacher = {};
              jamiaRows.forEach(row => {
@@ -4428,13 +4423,7 @@ const renderMunasibHistoryReport = () => {
                  rowsByTeacher[tId].push(row);
              });
 
-             // 3. Build ONE clean Urdu-formatted table: a teacher-name bar, then
-             //    that teacher's column headings, then that teacher's rows —
-             //    repeated for every teacher in this Jamia. Repeating the
-             //    headings (instead of one thead at the very top) means the
-             //    column meanings stay visible next to the data even in a long,
-             //    multi-teacher image (a static image can't "stick" on scroll,
-             //    so repeating them is what achieves that same goal here).
+             // Yahan 'مجموعی کیفیت' ka naya column add kiya gaya hai
              const columnHeadersRowHtml = `
                  <tr style="background-color: #f0f0f0;">
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: right;">درجہ (Class)</td>
@@ -4443,10 +4432,11 @@ const renderMunasibHistoryReport = () => {
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کل پڑھائے گئے (مجموعی)</td>
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</td>
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center; background-color: #d1fae5; color: #059669;">کل فیصد (%)</td>
+                     <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">مجموعی کیفیت</td>
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ ہدف</td>
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">پڑھائے گئے (ماہانہ)</td>
                      <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ کارکردگی %</td>
-                     <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کیفیت</td>
+                     <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ کیفیت</td>
                  </tr>
              `;
 
@@ -4459,17 +4449,14 @@ const renderMunasibHistoryReport = () => {
                  const rows = rowsByTeacher[tId];
                  const teacherName = rows[0].dataset.teacherName;
 
-                 // Teacher-name bar: clearly separates this teacher's rows from
-                 // the next teacher's rows in the downloaded image too.
                  tableContent += `
                      <tr>
-                         <td colspan="10" style="padding: 8px 12px; background-color: #dbeafe; border: 1px solid #93c5fd; border-top: 3px solid #2563eb; font-weight: bold; font-size: 17px; text-align: right; color: #1e3a8a;">
+                         <td colspan="11" style="padding: 8px 12px; background-color: #dbeafe; border: 1px solid #93c5fd; border-top: 3px solid #2563eb; font-weight: bold; font-size: 17px; text-align: right; color: #1e3a8a;">
                              ${teacherName}
                          </td>
                      </tr>
                  `;
 
-                 // Repeat the column headings right under THIS teacher's name
                  tableContent += columnHeadersRowHtml;
 
                  rows.forEach(row => {
@@ -4484,6 +4471,28 @@ const renderMunasibHistoryReport = () => {
 
                      const remainingPages = totalPagesSem - cumulativeTaught;
                      const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
+
+                     // --- Majmooi (Total) Kaifiyat Logic (Based on Image) ---
+                     let majmooiKaifiyatUrdu = 'مناسب';
+                     let majmooiKaifiyatColor = '#ef4444'; // Red
+
+                     if (overallPercent >= 90) {
+                         majmooiKaifiyatUrdu = 'ممتاز';
+                         majmooiKaifiyatColor = '#059669'; // Green
+                     } else if (overallPercent >= 80) {
+                         majmooiKaifiyatUrdu = 'بہتر';
+                         majmooiKaifiyatColor = '#3b82f6'; // Blue
+                     }
+                     
+                     // 121 to 150 and >150 logic adjustments
+                     if (overallPercent > 150) {
+                         majmooiKaifiyatUrdu = 'مناسب';
+                         majmooiKaifiyatColor = '#ef4444';
+                     } else if (overallPercent >= 121) {
+                         majmooiKaifiyatUrdu = 'بہتر';
+                         majmooiKaifiyatColor = '#3b82f6';
+                     }
+                     // -----------------------------------------------------
 
                      let kaifiyatUrdu = kaifiyat;
                      let kaifiyatColor = '#ef4444';
@@ -4506,6 +4515,7 @@ const renderMunasibHistoryReport = () => {
                              <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #1d4ed8; font-family: 'Poppins', sans-serif;">${cumulativeTaught}</td>
                              <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; background-color: #fef9c3; color: #b91c1c; font-family: 'Poppins', sans-serif;">${remainingPages}</td>
                              <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; background-color: #dcfce7; color: #15803d; font-family: 'Poppins', sans-serif;">${overallPercent}%</td>
+                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${majmooiKaifiyatColor};">${majmooiKaifiyatUrdu}</td>
                              <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${monthlyTarget}</td>
                              <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${pagesTaught}</td>
                              <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${achievement}</td>
@@ -4517,9 +4527,8 @@ const renderMunasibHistoryReport = () => {
 
              tableContent += '</tbody></table>';
 
-             // 4. Container + header (same clean look/scale as the teacher image)
              const tempDiv = document.createElement('div');
-             tempDiv.style.width = '1200px';
+             tempDiv.style.width = '1250px'; // Width updated for extra column
              tempDiv.style.backgroundColor = '#ffffff';
              tempDiv.style.padding = '25px';
              tempDiv.style.border = '1px solid #ccc';
@@ -4546,7 +4555,7 @@ const renderMunasibHistoryReport = () => {
                      scale: 2,
                      allowTaint: true,
                      useCORS: true,
-                     windowWidth: 1200
+                     windowWidth: 1250
                  });
 
                  const image = canvas.toDataURL("image/png");
@@ -4604,7 +4613,6 @@ const renderMunasibHistoryReport = () => {
 const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaName) => {
     showLoader(true);
 
-    // --- Safe Month Name Logic ---
     let monthName = currentReportPeriod.month;
     if (!monthName || monthName === 'undefined') {
         monthName = getMonthName(currentReportPeriod.monthNum);
@@ -4613,7 +4621,6 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
     const year = currentReportPeriod.yearNum;
     const userName = userProfileData.displayName || currentUser.email;
 
-    // 1. Find ALL periods for this specific teacher
     const periodsForTeacher = reportingContainer.querySelectorAll(`tr.reporting-row[data-teacher-id="${teacherId}"]`);
 
     if (periodsForTeacher.length === 0) {
@@ -4622,7 +4629,7 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
         return;
     }
 
-    // 2. Synthesize HTML table (Updated Headers with Remaining Pages & Total %)
+    // Yahan 'مجموعی کیفیت' ka naya column add kiya gaya hai
     let tableContent = `
          <table style="width: 100%; border-collapse: collapse; font-size: 16px; margin-top: 20px; direction: rtl; font-family: 'Jameel Noori Nastaleeq', serif;">
             <thead style="background-color: #f0f0f0;">
@@ -4633,10 +4640,11 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
                     <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کل پڑھائے گئے (مجموعی)</th>
                     <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center; background-color: #fef3c7; color: #ef4444;">بقیہ صفحات</th>
                     <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center; background-color: #d1fae5; color: #059669;">کل فیصد (%)</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">مجموعی کیفیت</th>
                     <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ ہدف</th>
                     <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">پڑھائے گئے (ماہانہ)</th>
                     <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ کارکردگی %</th>
-                    <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">کیفیت</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; font-weight: bold; text-align: center;">ماہانہ کیفیت</th>
                 </tr>
             </thead>
             <tbody>
@@ -4652,23 +4660,43 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
         const achievement = row.querySelector('.achievement-cell').textContent;
         const kaifiyat = row.dataset.kaifiyat;
 
-        // Calculation for Remaining Pages & Total Progress %
         const remainingPages = totalPagesSem - cumulativeTaught;
         const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
 
-        // Urdu Translation for Status
+        // --- Majmooi (Total) Kaifiyat Logic ---
+        let majmooiKaifiyatUrdu = 'مناسب';
+        let majmooiKaifiyatColor = '#ef4444'; // Red
+
+        if (overallPercent >= 90) {
+            majmooiKaifiyatUrdu = 'ممتاز';
+            majmooiKaifiyatColor = '#059669'; 
+        } else if (overallPercent >= 80) {
+            majmooiKaifiyatUrdu = 'بہتر';
+            majmooiKaifiyatColor = '#3b82f6'; 
+        }
+        
+        // 121 to 150 and >150 logic adjustments
+        if (overallPercent > 150) {
+            majmooiKaifiyatUrdu = 'مناسب';
+            majmooiKaifiyatColor = '#ef4444';
+        } else if (overallPercent >= 121) {
+            majmooiKaifiyatUrdu = 'بہتر';
+            majmooiKaifiyatColor = '#3b82f6';
+        }
+        // --------------------------------------
+
         let kaifiyatUrdu = kaifiyat;
-        let kaifiyatColor = '#ef4444'; // Default Red
+        let kaifiyatColor = '#ef4444'; 
 
         if (kaifiyat === 'Mumtaz') {
             kaifiyatUrdu = 'ممتاز';
-            kaifiyatColor = '#059669'; // Green
+            kaifiyatColor = '#059669'; 
         } else if (kaifiyat === 'Behtar') {
             kaifiyatUrdu = 'بہتر';
-            kaifiyatColor = '#3b82f6'; // Blue
+            kaifiyatColor = '#3b82f6'; 
         } else if (kaifiyat === 'Munasib') {
             kaifiyatUrdu = 'مناسب';
-            kaifiyatColor = '#ef4444'; // Red
+            kaifiyatColor = '#ef4444'; 
         }
 
         tableContent += `
@@ -4679,6 +4707,7 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #1d4ed8; font-family: 'Poppins', sans-serif;">${cumulativeTaught}</td> 
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; background-color: #fef9c3; color: #b91c1c; font-family: 'Poppins', sans-serif;">${remainingPages}</td>
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; background-color: #dcfce7; color: #15803d; font-family: 'Poppins', sans-serif;">${overallPercent}%</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${majmooiKaifiyatColor};">${majmooiKaifiyatUrdu}</td>
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${monthlyTarget}</td>
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${pagesTaught}</td>
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-family: 'Poppins', sans-serif;">${achievement}</td>
@@ -4689,9 +4718,8 @@ const downloadTeacherConsolidatedImage = async (teacherId, teacherName, jamiaNam
 
     tableContent += '</tbody></table>';
 
-    // 3. Create Container for Image Rendering
     const tempDiv = document.createElement('div');
-    tempDiv.style.width = '1200px'; // Width ko badha diya gaya hai taaki naye columns fit aa sakein
+    tempDiv.style.width = '1250px'; // Width badha di gayi hai columns set karne ke liye
     tempDiv.style.backgroundColor = '#ffffff';
     tempDiv.style.padding = '25px';
     tempDiv.style.border = '1px solid #ccc';
