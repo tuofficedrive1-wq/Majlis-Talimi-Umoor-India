@@ -1538,7 +1538,36 @@ monthlyMunasibContainer.addEventListener('click', (e) => {
          const teacherName = btn.dataset.teacherName;
          handleCopyWazahatLink(jamiaName, teacherId, teacherName, btn);
      }
+     // NAYA: Delete Button Click Listener
+     if (e.target.closest('.delete-wazahat-btn')) {
+         const btn = e.target.closest('.delete-wazahat-btn');
+         const wazahatId = btn.dataset.wazahatId;
+         const teacherName = btn.dataset.teacherName;
+         handleDeleteWazahat(wazahatId, teacherName, btn);
+     }
 });
+
+// NAYA FUNCTION: Wazahat Delete Karne Ke Liye
+const handleDeleteWazahat = async (wazahatId, teacherName, btnElement) => {
+    if (!confirm(`کیا آپ واقعی ${teacherName} کی وضاحت حذف (Delete) کرنا چاہتے ہیں؟\nاس کے بعد استاد کو دوبارہ وضاحت جمع کروانی ہوگی۔`)) {
+        return;
+    }
+
+    const originalText = btnElement.innerHTML;
+    btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>...';
+    btnElement.disabled = true;
+
+    try {
+        await deleteDoc(doc(db, "mahana_wazahat_records", wazahatId));
+        showNotification("وضاحت کامیابی سے ڈیلیٹ ہو گئی۔");
+        renderMonthlyMunasibReport(); // Table ko dobara refresh karna taake blank ho jaye
+    } catch (error) {
+        console.error("Delete error:", error);
+        showNotification("ڈیلیٹ کرنے میں مسئلہ آیا۔", true);
+        btnElement.innerHTML = originalText;
+        btnElement.disabled = false;
+    }
+};
 
 // NEW FUNCTION: Download Monthly Munasib Image
 const downloadMonthlyMunasibImage = async (jamiaName) => {
@@ -3786,9 +3815,10 @@ const renderMonthlyMunasibReport = async () => {
 
         const qWazahat = query(collection(db, "mahana_wazahat_records"), where("month", "==", currentMonthText));
         const wSnap = await getDocs(qWazahat);
-        wSnap.forEach(doc => {
+       wSnap.forEach(doc => {
             const d = doc.data();
             wazahatDataMap[`${d.jamia}_${d.teacherName}`] = {
+                id: doc.id, // NAYA: Document ID save kar rahe hain taake delete kar sakein
                 text: d.wazahat,
                 submitTime: d.timestamp ? new Date(d.timestamp) : null
             };
@@ -3870,8 +3900,9 @@ const renderMonthlyMunasibReport = async () => {
             const periods = teacherData.periods;
             
             const wData = wazahatDataMap[`${jamiaName}_${teacherData.name}`];
-            const wazahatText = wData ? wData.text : '';
+const wazahatText = wData ? wData.text : '';
             const submitDateObj = wData ? wData.submitTime : null;
+            const wazahatDocId = wData ? wData.id : null; // Naya variable
             const sentDateObj = linkSentMap[`${jamiaName}_${teacherData.name}`];
 
             const sentTimeHtml = sentDateObj ? `<div class="text-[10px] text-gray-500 mb-1 font-sans text-left border-b border-gray-100 pb-1" dir="ltr"><span class="font-bold text-gray-700">Link Sent:</span><br>${formatDateTime(sentDateObj)}</div>` : '';
@@ -3924,9 +3955,17 @@ const renderMonthlyMunasibReport = async () => {
                               </td>
                               
                               <td rowspan="${periods.length}" class="align-middle p-2 border-r border-gray-200 exclude-from-image">
-                                  <button type="button" class="copy-wazahat-link-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold py-2 px-3 rounded-lg flex flex-col items-center justify-center gap-1 w-full shadow-sm" data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-teacher-name="${period.teacherName}">
-                                      <i class="fas fa-link fa-sm pointer-events-none"></i> Copy Link
-                                  </button>
+                                  <div class="flex flex-col gap-2">
+                                      <button type="button" class="copy-wazahat-link-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold py-2 px-3 rounded-lg flex flex-col items-center justify-center gap-1 w-full shadow-sm" data-jamia-name="${jamiaName}" data-teacher-id="${teacherId}" data-teacher-name="${period.teacherName}">
+                                          <i class="fas fa-link fa-sm pointer-events-none"></i> Copy Link
+                                      </button>
+                                      
+                                      ${wazahatDocId ? `
+                                      <button type="button" class="delete-wazahat-btn bg-red-500 hover:bg-red-600 text-white text-xs font-semibold py-2 px-3 rounded-lg flex flex-col items-center justify-center gap-1 w-full shadow-sm" data-wazahat-id="${wazahatDocId}" data-teacher-name="${period.teacherName}">
+                                          <i class="fas fa-trash fa-sm pointer-events-none"></i> Delete
+                                      </button>
+                                      ` : ''}
+                                  </div>
                               </td>` : ''
                         }
                     </tr>
