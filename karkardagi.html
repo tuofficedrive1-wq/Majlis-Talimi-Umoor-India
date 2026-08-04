@@ -1979,12 +1979,11 @@ const handleCopyWazahatLink = async (jamiaName, teacherId, teacherName, btnEleme
         }
 
         const { monthNum, yearNum } = currentReportPeriod;
-        const monthNameStr = getMonthName(monthNum); // MAhine ka sahi naam nikalna
+        const monthNameStr = getMonthName(monthNum); 
 
-const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
+        const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
         
-        // --- NAYA LOGIC: Check Last Month & Filter ---
-       // Check if Last Month
+        // --- LOGIC: Check Last Month & Filter ---
         const semester = determineSemester(monthNum);
         const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
         const activeMonthsInSem = Object.keys(adminAcademicConfig?.monthDetails || {})
@@ -1993,12 +1992,51 @@ const selectedMonthReport = allYearReportsData.find(report => report.year === ye
             .sort((a, b) => order.indexOf(a) - order.indexOf(b));
         const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
 
-        // Urdu format logic
+        // 1. Munasib Data Filter Karna
+        let munasibPeriods = [];
+        if (selectedMonthReport && selectedMonthReport.karkardagiReport && selectedMonthReport.karkardagiReport.data) {
+            selectedMonthReport.karkardagiReport.data.forEach(p => {
+                if (p.teacherId === teacherId && p.jamiaName === jamiaName) {
+                    if (isLastMonth) {
+                        const structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
+                        const tData = structure.find(j => j.jamiaName === p.jamiaName)?.teachers?.find(t => t.id === p.teacherId);
+                        const pData = tData?.periods?.find(per => per.id === p.periodId);
+                        
+                        const totalPagesSem = pData?.totalPages || 0;
+                        const cumulativeTaught = calculateCumulativeTaught(p.periodId, semester, monthNum, yearNum, allYearReportsData);
+                        const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
+                        
+                        let majmooiKaifiyat = 'Munasib';
+                        if (overallPercent >= 90) majmooiKaifiyat = 'Mumtaz';
+                        else if (overallPercent >= 80) majmooiKaifiyat = 'Behtar';
+                        if (overallPercent > 150) majmooiKaifiyat = 'Munasib';
+                        else if (overallPercent >= 121) majmooiKaifiyat = 'Behtar';
+
+                        if (majmooiKaifiyat === 'Munasib') {
+                            munasibPeriods.push({ ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
+                        }
+                    } else {
+                        if (p.kaifiyat === 'Munasib') munasibPeriods.push(p);
+                    }
+                }
+            });
+        }
+
+        // 2. Payload Data Ready Karna
+        const payloadData = munasibPeriods.map(p => ({
+            class: p.className,
+            book: p.bookName,
+            percent: p.achievement,
+            grade: p.kaifiyat
+        }));
+
+        // 3. Urdu Format aur Display Text set karna
         const semText = semester === "1" ? "ششماہی اول" : "ششماہی ثانی";
         const displayMonthText = isLastMonth ? `${semText} ${yearNum}` : `${monthNameStr} ${yearNum}`;
 
         console.log("🔗 Generating link for Month:", displayMonthText);
 
+        // 4. Database me Save karna (Ab ye sirf ek dafa hoga)
         const newDoc = await addDoc(collection(db, "jaiza_short_links"), {
             jamia: jamiaName,
             teacher: teacherName,
@@ -2009,56 +2047,8 @@ const selectedMonthReport = allYearReportsData.find(report => report.year === ye
             createdAt: serverTimestamp()
         });
 
-        let munasibPeriods = [];
-        selectedMonthReport.karkardagiReport.data.forEach(p => {
-            if (p.teacherId === teacherId && p.jamiaName === jamiaName) {
-                if (isLastMonth) {
-                    const structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-                    const tData = structure.find(j => j.jamiaName === p.jamiaName)?.teachers?.find(t => t.id === p.teacherId);
-                    const pData = tData?.periods?.find(per => per.id === p.periodId);
-                    
-                    const totalPagesSem = pData?.totalPages || 0;
-                    const cumulativeTaught = calculateCumulativeTaught(p.periodId, semester, monthNum, yearNum, allYearReportsData);
-                    const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
-                    
-                    let majmooiKaifiyat = 'Munasib';
-                    if (overallPercent >= 90) majmooiKaifiyat = 'Mumtaz';
-                    else if (overallPercent >= 80) majmooiKaifiyat = 'Behtar';
-                    if (overallPercent > 150) majmooiKaifiyat = 'Munasib';
-                    else if (overallPercent >= 121) majmooiKaifiyat = 'Behtar';
-
-                    if (majmooiKaifiyat === 'Munasib') {
-                        munasibPeriods.push({ ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
-                    }
-                } else {
-                    if (p.kaifiyat === 'Munasib') munasibPeriods.push(p);
-                }
-            }
-        });
-
-        const payloadData = munasibPeriods.map(p => ({
-            class: p.className,
-            book: p.bookName,
-            percent: p.achievement,
-            grade: p.kaifiyat
-        }));
-
-        // 1 aur 2 ko Urdu format me badalna
-        const semText = semester === "1" ? "ششماہی اول" : "ششماہی ثانی";
-        const displayMonthText = isLastMonth ? `${semText} ${yearNum}` : `${monthNameStr} ${yearNum}`;
-
-        const newDoc = await addDoc(collection(db, "jaiza_short_links"), {
-            jamia: jamiaName,
-            teacher: teacherName,
-            expectedCode: String(teacherCode),
-            month: displayMonthText, // Ab 'ششماہی اول 2026' dikhega
-            type: "munasib", 
-            data: payloadData,
-            createdAt: serverTimestamp()
-        });
-
+        // 5. Link generate karke Copy karwana
         const baseUrl = window.location.href.replace(/[^\/?#]+(\?.*)?$/, "");
-        // URL me type=munasib add kar diya gaya hai
         const link = `${baseUrl}teacher-wazahat.html?mode=jaiza&type=munasib&sid=${newDoc.id}`;
 
         await navigator.clipboard.writeText(link);
