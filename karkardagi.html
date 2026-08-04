@@ -1959,8 +1959,43 @@ const handleCopyWazahatLink = async (jamiaName, teacherId, teacherName, btnEleme
         const { monthNum, yearNum } = currentReportPeriod;
         const monthNameStr = getMonthName(monthNum); // MAhine ka sahi naam nikalna
 
-        const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
-        const munasibPeriods = selectedMonthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib' && p.teacherId === teacherId && p.jamiaName === jamiaName);
+const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
+        
+        // --- NAYA LOGIC: Check Last Month & Filter ---
+        const semester = monthNum >= 3 && monthNum <= 7 ? "1" : "2";
+        const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+        const activeMonthsInSem = Object.keys(adminAcademicConfig?.monthDetails || {})
+            .filter(idx => semester === "1" ? adminAcademicConfig.monthDetails[idx].sem1 > 0 : adminAcademicConfig.monthDetails[idx].sem2 > 0)
+            .map(Number)
+            .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
+
+        let munasibPeriods = [];
+        selectedMonthReport.karkardagiReport.data.forEach(p => {
+            if (p.teacherId === teacherId && p.jamiaName === jamiaName) {
+                if (isLastMonth) {
+                    const structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
+                    const tData = structure.find(j => j.jamiaName === p.jamiaName)?.teachers?.find(t => t.id === p.teacherId);
+                    const pData = tData?.periods?.find(per => per.id === p.periodId);
+                    
+                    const totalPagesSem = pData?.totalPages || 0;
+                    const cumulativeTaught = calculateCumulativeTaught(p.periodId, semester, monthNum, yearNum, allYearReportsData);
+                    const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
+                    
+                    let majmooiKaifiyat = 'Munasib';
+                    if (overallPercent >= 90) majmooiKaifiyat = 'Mumtaz';
+                    else if (overallPercent >= 80) majmooiKaifiyat = 'Behtar';
+                    if (overallPercent > 150) majmooiKaifiyat = 'Munasib';
+                    else if (overallPercent >= 121) majmooiKaifiyat = 'Behtar';
+
+                    if (majmooiKaifiyat === 'Munasib') {
+                        munasibPeriods.push({ ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
+                    }
+                } else {
+                    if (p.kaifiyat === 'Munasib') munasibPeriods.push(p);
+                }
+            }
+        });
 
         const payloadData = munasibPeriods.map(p => ({
             class: p.className,
@@ -3651,7 +3686,43 @@ const renderMonthlyMunasibReport = async () => {
         return;
     }
 
-    const munasibPeriods = selectedMonthReport.karkardagiReport.data.filter(p => p.kaifiyat === 'Munasib');
+// --- SEMESTER LAST MONTH LOGIC ---
+    const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+    const activeMonthsInSem = Object.keys(adminAcademicConfig?.monthDetails || {})
+        .filter(idx => semester === "1" ? adminAcademicConfig.monthDetails[idx].sem1 > 0 : adminAcademicConfig.monthDetails[idx].sem2 > 0)
+        .map(Number)
+        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    
+    const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
+
+    let munasibPeriods = [];
+    selectedMonthReport.karkardagiReport.data.forEach(p => {
+        if (isLastMonth) {
+            // Aakhri mahine me Majmooi (Overall) Kaifiyat check karein
+            const structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
+            const jamiaData = structure.find(j => j.jamiaName === p.jamiaName);
+            const teacherData = jamiaData?.teachers?.find(t => t.id === p.teacherId);
+            const periodData = teacherData?.periods?.find(per => per.id === p.periodId);
+            
+            const totalPagesSem = periodData?.totalPages || 0;
+            const cumulativeTaught = calculateCumulativeTaught(p.periodId, semester, monthNum, yearNum, allYearReportsData);
+            
+            const overallPercent = totalPagesSem > 0 ? Math.round((cumulativeTaught / totalPagesSem) * 100) : 0;
+            
+            let majmooiKaifiyat = 'Munasib';
+            if (overallPercent >= 90) majmooiKaifiyat = 'Mumtaz';
+            else if (overallPercent >= 80) majmooiKaifiyat = 'Behtar';
+            if (overallPercent > 150) majmooiKaifiyat = 'Munasib';
+            else if (overallPercent >= 121) majmooiKaifiyat = 'Behtar';
+
+            if (majmooiKaifiyat === 'Munasib') {
+                munasibPeriods.push({ ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
+            }
+        } else {
+            // Normal mahine me Monthly Kaifiyat
+            if (p.kaifiyat === 'Munasib') munasibPeriods.push(p);
+        }
+    });
 
     if (munasibPeriods.length === 0) {
         monthlyMunasibContainer.innerHTML = `<p class="text-green-600 font-semibold">Alhamdulillah! No 'Munasib' periods found for ${getMonthName(monthNum)} ${year}.</p>`;
@@ -3697,7 +3768,19 @@ const renderMonthlyMunasibReport = async () => {
         return acc;
     }, {});
 
-    let html = `
+  let html = ``;
+    
+    if (isLastMonth) {
+        html += `<div class="mb-4 bg-yellow-50 border border-yellow-300 text-yellow-800 p-3 rounded-lg shadow-sm flex items-center gap-3">
+                    <i class="fas fa-info-circle text-xl text-yellow-600"></i>
+                    <div>
+                        <strong class="block urdu-font text-lg">نوٹ: سمسٹر کا آخری مہینہ</strong>
+                        <span class="text-sm">یہ سمسٹر کا آخری مہینہ ہے۔ اس لیے یہاں صرف وہ کتابیں دکھائی جا رہی ہیں جن کی <b>مجموعی (Overall) کارکردگی</b> 'مناسب' ہے۔</span>
+                    </div>
+                 </div>`;
+    }
+    
+    html += `
         <div class="overflow-x-auto border rounded-lg shadow-md reporting-table-container">
             <table class="min-w-full text-sm bg-white" id="munasib-report-table">
                 <tbody>
@@ -3727,6 +3810,9 @@ const renderMonthlyMunasibReport = async () => {
                 </tr>`;
         
         // Headings Row (with Sr No)
+        const achievHeading = isLastMonth ? "Overall %" : "Achiev. %";
+        const statusHeading = isLastMonth ? "Overall Status" : "Status";
+        
         html += `<tr class="bg-red-50 text-red-800 border-b border-red-200 font-semibold text-xs md:text-sm">
                     <td class="p-2 text-center border-l border-r border-red-200">Sr No.</td>
                     <td class="p-2 text-center border-r border-red-200">Teacher</td>
@@ -3736,8 +3822,8 @@ const renderMonthlyMunasibReport = async () => {
                     <td class="p-2 text-center border-r border-red-200">Cum. Taught</td>
                     <td class="p-2 text-center border-r border-red-200">Monthly Target</td>
                     <td class="p-2 text-center border-r border-red-200">Pages Taught</td>
-                    <td class="p-2 text-center border-r border-red-200">Achiev. %</td>
-                    <td class="p-2 text-center border-r border-red-200">Status</td>
+                    <td class="p-2 text-center border-r border-red-200 ${isLastMonth ? 'bg-yellow-100' : ''}">${achievHeading}</td>
+                    <td class="p-2 text-center border-r border-red-200 ${isLastMonth ? 'bg-yellow-100' : ''}">${statusHeading}</td>
                     <td class="p-2 text-center border-r border-red-200" style="min-width: 180px;">Wazahat (وضاحت)</td>
                     <td class="p-2 text-center border-r border-red-200 exclude-from-image" style="min-width: 100px;">Action</td>
                 </tr>`;
