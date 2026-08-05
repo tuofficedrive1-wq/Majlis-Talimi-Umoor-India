@@ -89,8 +89,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             <option value="سالانہ امتحان">سالانہ امتحان</option>
                         </select>
                         <select id="admin-exam-year" class="w-full p-2 border rounded-lg text-sm">
-                            <option value="2024-25">24-25</option>
-                            <option value="2025-26" selected>25-26</option>
+                           
                         </select>
                     </div>
                 </div>
@@ -171,7 +170,46 @@ export async function initAdminResultAnalysis(db, containerId) {
         userFilter: document.getElementById("admin-user-filter"),
         jamiaSelect: document.getElementById("admin-jamia-select")
     };
+// --- NAYA CODE: Admin Exam Year Auto-Populate ---
+    const adminExamYearSelect = document.getElementById('admin-exam-year');
+    if (adminExamYearSelect) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth(); 
+        const startYear = (currentMonth >= 3) ? currentYear : currentYear - 1;
+        const currentAcademicYear = `${startYear}-${(startYear + 1).toString().slice(-2)}`; 
 
+        let availableYears = new Set();
+        
+        // Sabhi users ke data se saal nikalenge
+        if (allUsers && allUsers.length > 0) {
+            allUsers.forEach(u => {
+                if (u.academicYears) {
+                    Object.keys(u.academicYears).forEach(year => {
+                        const parts = year.split('-');
+                        if (parts.length === 2 && parts[1].length === 4) {
+                            availableYears.add(`${parts[0]}-${parts[1].slice(-2)}`);
+                        } else {
+                            availableYears.add(year);
+                        }
+                    });
+                }
+            });
+        }
+        
+        availableYears.add(currentAcademicYear);
+        const sortedYears = Array.from(availableYears).sort().reverse();
+
+        adminExamYearSelect.innerHTML = '';
+        sortedYears.forEach(yearVal => {
+            const option = document.createElement('option');
+            option.value = yearVal;
+            option.textContent = yearVal;
+            if (yearVal === currentAcademicYear) option.selected = true;
+            adminExamYearSelect.appendChild(option);
+        });
+    }
+    // --------------------------------------------------------
     const updateJamiaList = () => {
         const selUser = elements.userFilter.value;
         const selReg = elements.regionFilter.value;
