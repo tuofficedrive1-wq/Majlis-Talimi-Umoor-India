@@ -128,9 +128,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Taleemi Saal</label>
                     <select id="ra-exam-year" class="w-full p-2 border rounded text-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                        <option value="2024-25">2024-25</option>
-                        <option value="2025-26" selected>2025-26</option>
-                    </select>
+                                           </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-700 mb-1">Select Jamia</label>
@@ -188,7 +186,41 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         </div>
       </div>
     `;
+// --- NAYA CODE: Exam Year Auto-Populate for Analysis ---
+    const raExamYearSelect = document.getElementById('ra-exam-year');
+    if (raExamYearSelect) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth(); 
+        const startYear = (currentMonth >= 3) ? currentYear : currentYear - 1;
+        const endYear = startYear + 1;
+        const currentAcademicYear = `${startYear}-${endYear.toString().slice(-2)}`; 
 
+        let availableYears = new Set();
+        if (userProfileData && userProfileData.academicYears) {
+            Object.keys(userProfileData.academicYears).forEach(year => {
+                const parts = year.split('-');
+                if (parts.length === 2 && parts[1].length === 4) {
+                    availableYears.add(`${parts[0]}-${parts[1].slice(-2)}`);
+                } else {
+                    availableYears.add(year);
+                }
+            });
+        }
+        
+        availableYears.add(currentAcademicYear);
+        const sortedYears = Array.from(availableYears).sort().reverse();
+
+        raExamYearSelect.innerHTML = '';
+        sortedYears.forEach(yearVal => {
+            const option = document.createElement('option');
+            option.value = yearVal;
+            option.textContent = yearVal;
+            if (yearVal === currentAcademicYear) option.selected = true;
+            raExamYearSelect.appendChild(option);
+        });
+    }
+    
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
     userJamiaat.forEach(j => { 
