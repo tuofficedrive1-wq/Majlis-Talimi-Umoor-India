@@ -4,7 +4,7 @@ import {
     collection, 
     query 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
- 
+
 // Helper: Score ke hisab se Kaifiyat (Grade) nikalne ke liye
 const getGradeDetails = (percText) => {
     if (!percText) return { text: "-", class: "text-slate-400" };
@@ -116,6 +116,7 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
         });
     }
 
+    // Event Listeners for buttons
     document.getElementById('js-show-btn').addEventListener('click', () => fetchAndRenderReport(db, assignedJamiaat));
     document.getElementById('js-download-img').addEventListener('click', downloadReportImage);
 }
@@ -261,7 +262,11 @@ async function downloadReportImage() {
             clonedTable.style.width = '100%';
             clonedTable.style.borderCollapse = 'collapse';
             
-            clonedTable.querySelectorAll('tr').forEach(tr => tr.removeChild(tr.lastElementChild));
+            clonedTable.querySelectorAll('tr').forEach(tr => {
+                if(tr.lastElementChild) {
+                    tr.removeChild(tr.lastElementChild);
+                }
+            });
 
             clonedTable.querySelectorAll('th').forEach(th => {
                 th.style.backgroundColor = '#f8fafc';
