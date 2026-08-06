@@ -3,9 +3,8 @@ import {
     getDocs, 
     collection, 
     query 
-} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-  
-// Helper: Score ke hisab se Kaifiyat (Grade) nikalne ke liye
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"; 
+ // Helper: Score ke hisab se Kaifiyat (Grade) nikalne ke liye
 const getGradeDetails = (percText) => {
     if (!percText) return { text: "-", class: "text-slate-400" };
     const num = parseFloat(percText.replace('%', '')) || 0;
