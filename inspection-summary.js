@@ -1,5 +1,5 @@
 // Filename: inspection-summary.js 
-import { 
+import {  
     getDocs, 
     collection, 
     query 
