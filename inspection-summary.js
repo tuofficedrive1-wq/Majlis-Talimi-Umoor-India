@@ -14,7 +14,7 @@ const getGradeDetails = (percText) => {
     if (num >= 40) return { text: "Munasib", class: "text-amber-600 font-bold bg-amber-50 border-amber-200" };
     return { text: "Kamzor", class: "text-red-600 font-bold bg-red-50 border-red-200" };
 };
-
+ 
 // Helper: Academic Year Calculation
 const getAcademicYear = (dateString) => {
     if (!dateString) return null;
