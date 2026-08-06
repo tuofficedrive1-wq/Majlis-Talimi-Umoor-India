@@ -4,7 +4,7 @@ import {
     collection, 
     query 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
- 
+
 // Helper: Score ke hisab se Kaifiyat (Grade) nikalne ke liye
 const getGradeDetails = (percText) => {
     if (!percText) return { text: "-", class: "text-slate-400" };
@@ -14,7 +14,7 @@ const getGradeDetails = (percText) => {
     if (num >= 40) return { text: "Munasib", class: "text-amber-600 font-bold bg-amber-50 border-amber-200" };
     return { text: "Kamzor", class: "text-red-600 font-bold bg-red-50 border-red-200" };
 };
- 
+
 export async function renderInspectionSummary(assignedJamiaat, db) {
     const container = document.getElementById('summary-container');
     if (!container) return;
