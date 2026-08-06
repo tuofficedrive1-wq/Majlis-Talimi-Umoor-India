@@ -14,7 +14,7 @@ const getGrade = (p) => {
     if (p >= 40) return "Munasib";
     return "Kamzor";
 };
-
+ 
 // Helper: Academic Year Calculation
 const getAcademicYear = (dateString) => {
     if (!dateString) return null;
