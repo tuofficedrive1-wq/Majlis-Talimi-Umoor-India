@@ -63,39 +63,44 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         </div>
         <!-- Filters & Search Section -->
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Student Search</label>
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
-                        <input type="text" id="filter-search" onkeyup="window.applyEnrollmentFilters()" placeholder="Student ka naam type karein..." 
-                            class="w-full pl-9 p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Jamia Filter</label>
-                    <select id="filter-jamia" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
-                        <option value="">All Jamiaat</option>
-                        ${uniqueJamias.map(j => `<option value="${j}">${j}</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">JM Class Filter</label>
-                    <select id="filter-class" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
-                        <option value="">All Classes</option>
-                        ${uniqueClasses.map(c => `<option value="${c}">${c}</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Admission Type</label>
-                    <select id="filter-adm" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
-                        <option value="">All Types</option>
-                        ${uniqueAdmissions.map(a => `<option value="${a}">${a}</option>`).join('')}
-                    </select>
-                </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Student Search</label>
+            <div class="relative">
+                <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
+                <input type="text" id="filter-search" onkeyup="window.applyEnrollmentFilters()" placeholder="Student ka naam type karein..." 
+                    class="w-full pl-9 p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
             </div>
         </div>
-
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Jamia Filter</label>
+            <select id="filter-jamia" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
+                <option value="">All Jamiaat</option>
+                ${uniqueJamias.map(j => `<option value="${j}">${j}</option>`).join('')}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">JM Class Filter</label>
+            <select id="filter-class" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
+                <option value="">All Classes</option>
+                ${uniqueClasses.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Admission Type</label>
+            <select id="filter-adm" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
+                <!-- NAYA HARDCODED DROPDOWN -->
+                <option value="">All Types</option>
+                <option value="NIOS">NIOS</option>
+                <option value="School">School</option>
+                <option value="Madrasa Board">Madrasa Board</option>
+                <option value="College">College</option>
+                <option value="No Admission">No Admission</option>
+                <option value="Waiting">Waiting</option>
+            </select>
+        </div>
+    </div>
+</div>
         <!-- Table Container -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
