@@ -33,111 +33,110 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
     const date = new Date();
     const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-    // --- COMPACT HTML UI FILTER & TABS STRUCTURE ---
+    // --- HTML UI FILTER & TABS STRUCTURE ---
     container.innerHTML = `
-      <div class="bg-white p-3 md:p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
+      <div class="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-200 space-y-5">
         
-        <!-- Compact Filters Section -->
-        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 no-print">
-            <h4 class="text-[11px] font-bold text-slate-500 uppercase mb-2 border-b border-slate-200 pb-1 tracking-wider">Report Filters</h4>
+        <!-- Filters Section -->
+        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 no-print">
+            <h4 class="text-sm font-bold text-slate-500 uppercase mb-3 border-b border-slate-200 pb-1 tracking-wider">Report Filters</h4>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
-                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">From Month</label>
-                    <input type="month" id="insp-month-start" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none" value="${currentMonth}">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">From Month</label>
+                    <input type="month" id="insp-month-start" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${currentMonth}">
                 </div>
                 <div>
-                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">To Month</label>
-                    <input type="month" id="insp-month-end" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none" value="${currentMonth}">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">To Month</label>
+                    <input type="month" id="insp-month-end" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${currentMonth}">
                 </div>
                 <div>
-                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Jamia</label>
-                    <select id="insp-jamia-filter" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Jamia</label>
+                    <select id="insp-jamia-filter" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="">Tamam Jamiaat (All)</option>
                     </select>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="relative group">
-                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Class (Multiple)</label>
-                    <button type="button" id="insp-class-dropdown-btn" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs text-left bg-slate-100 text-slate-500 flex justify-between items-center cursor-not-allowed" disabled>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Class (Multiple)</label>
+                    <button type="button" id="insp-class-dropdown-btn" class="w-full p-2 border border-slate-300 rounded-lg text-sm text-left bg-slate-100 text-slate-500 flex justify-between items-center cursor-not-allowed" disabled>
                         <span class="truncate">Tamam Classes</span>
-                        <i class="fas fa-chevron-down text-[10px] ml-2"></i>
+                        <i class="fas fa-chevron-down text-xs ml-2"></i>
                     </button>
-                    <div id="insp-class-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded shadow-lg mt-1 max-h-48 overflow-y-auto p-1"></div>
+                    <div id="insp-class-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto p-1"></div>
                 </div>
 
                 <div>
-                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Teacher (Optional)</label>
-                    <select id="insp-teacher-filter" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-slate-100 cursor-not-allowed outline-none" disabled>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Teacher (Optional)</label>
+                    <select id="insp-teacher-filter" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-100 cursor-not-allowed outline-none" disabled>
                         <option value="">Tamam Asatiza</option>
                     </select>
                 </div>
 
                 <div class="relative group">
-                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Kaifiyat (Multiple)</label>
-                    <button type="button" id="insp-grade-dropdown-btn" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs text-left bg-white text-slate-700 flex justify-between items-center focus:ring-1 focus:ring-indigo-500 outline-none">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Kaifiyat (Multiple)</label>
+                    <button type="button" id="insp-grade-dropdown-btn" class="w-full p-2 border border-slate-300 rounded-lg text-sm text-left bg-white text-slate-700 flex justify-between items-center focus:ring-2 focus:ring-indigo-500 outline-none">
                         <span class="truncate">Tamam (All)</span>
-                        <i class="fas fa-chevron-down text-[10px] ml-2"></i>
+                        <i class="fas fa-chevron-down text-xs ml-2"></i>
                     </button>
-                    <div id="insp-grade-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded shadow-lg mt-1 max-h-48 overflow-y-auto p-1">
-                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
-                            <input type="checkbox" value="Mumtaz" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
-                            <span class="text-xs text-emerald-700 font-bold">Mumtaz (Excellent)</span>
+                    <div id="insp-grade-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto p-1">
+                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Mumtaz" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <span class="text-sm text-emerald-700 font-bold">Mumtaz (Excellent)</span>
                         </label>
-                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
-                            <input type="checkbox" value="Behtar" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
-                            <span class="text-xs text-blue-600 font-bold">Behtar (Very Good)</span>
+                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Behtar" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <span class="text-sm text-blue-600 font-bold">Behtar (Very Good)</span>
                         </label>
-                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
-                            <input type="checkbox" value="Munasib" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
-                            <span class="text-xs text-amber-600 font-bold">Munasib (Good)</span>
+                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Munasib" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <span class="text-sm text-amber-600 font-bold">Munasib (Good)</span>
                         </label>
-                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
-                            <input type="checkbox" value="Kamzor" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
-                            <span class="text-xs text-red-600 font-bold">Kamzor (Weak)</span>
+                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Kamzor" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <span class="text-sm text-red-600 font-bold">Kamzor (Weak)</span>
                         </label>
                     </div>
                 </div>
             </div>
 
-            <button id="insp-show-btn" class="w-full mt-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow-sm transition active:scale-95 flex justify-center items-center gap-2 text-sm">
+            <button id="insp-show-btn" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow-sm transition active:scale-95 flex justify-center items-center gap-2">
                 <i class="fas fa-search"></i> Report Show Karein
             </button>
         </div>
 
-        <div id="insp-loader" class="hidden text-center py-6">
-            <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-600 border-t-transparent"></div>
-            <p class="mt-1 text-indigo-600 font-semibold text-xs">Data load ho raha hai...</p>
+        <div id="insp-loader" class="hidden text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+            <p class="mt-2 text-indigo-600 font-semibold text-sm">Data load ho raha hai...</p>
         </div>
 
         <!-- TABS SECTION -->
-        <div id="insp-tabs-container" class="hidden flex space-x-1 border-b border-slate-200 mt-2">
-            <button id="tab-report" class="py-1.5 px-4 border-b-2 border-indigo-600 text-indigo-600 font-bold text-xs focus:outline-none transition-colors">Jaiza Report</button>
-            <button id="tab-wazahat" class="py-1.5 px-4 text-slate-500 font-bold hover:text-indigo-600 text-xs border-b-2 border-transparent focus:outline-none transition-colors">Kamzori Par Wazahat</button>
+        <div id="insp-tabs-container" class="hidden flex space-x-4 border-b border-slate-200 mt-4">
+            <button id="tab-report" class="py-2 px-2 border-b-2 border-indigo-600 text-indigo-600 font-bold text-sm focus:outline-none transition-colors">Jaiza Report</button>
+            <button id="tab-wazahat" class="py-2 px-2 text-slate-500 font-bold hover:text-indigo-600 text-sm border-b-2 border-transparent focus:outline-none transition-colors">Kamzori Par Wazahat</button>
         </div>
 
         <!-- TAB 1: JAIZA REPORT AREA -->
-        <div id="insp-report-area" class="hidden mt-3 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-            <div class="bg-indigo-600 text-white p-2.5 text-center border-b-[3px] border-indigo-800">
-                <h2 id="insp-report-main-title" class="text-base md:text-lg font-bold tracking-wide">Inspection Report</h2>
-                <p id="insp-report-sub-title" class="text-[10px] md:text-xs text-indigo-100 mt-0.5"></p>
+        <div id="insp-report-area" class="hidden mt-4 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+            <div class="bg-indigo-600 text-white p-4 text-center border-b-4 border-indigo-800">
+                <h2 id="insp-report-main-title" class="text-xl md:text-2xl font-bold tracking-wide">Inspection Report</h2>
+                <p id="insp-report-sub-title" class="text-xs md:text-sm text-indigo-100 mt-1"></p>
             </div>
 
             <div class="overflow-x-auto">
-                <!-- Action column hata diya gaya hai, compact padding (px-2 py-2) -->
-                <table class="min-w-full text-center text-xs border-collapse">
+                <table class="min-w-full text-center text-sm border-collapse">
                     <thead>
                         <tr class="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wide">
-                            <th class="px-2 py-2 border-r border-slate-200">#</th>
-                            <th class="px-2 py-2 border-r border-slate-200">Mahina</th>
-                            <th class="px-2 py-2 border-r border-slate-200 text-left">Jamia Name</th>
-                            <th class="px-2 py-2 border-r border-slate-200 text-left">Ustad</th>
-                            <th class="px-2 py-2 border-r border-slate-200">Darjah</th>
-                            <th class="px-2 py-2 border-r border-slate-200 text-left">Kitab</th>
-                            <th class="px-2 py-2 border-r border-slate-200">Kaifiyat</th>
-                            <th class="px-2 py-2">Score (%)</th>
+                            <th class="px-4 py-3 border-r border-slate-200">#</th>
+                            <th class="px-4 py-3 border-r border-slate-200">Mahina</th>
+                            <th class="px-4 py-3 border-r border-slate-200 text-left">Jamia Name</th>
+                            <th class="px-4 py-3 border-r border-slate-200 text-left">Ustad</th>
+                            <th class="px-4 py-3 border-r border-slate-200">Darjah</th>
+                            <th class="px-4 py-3 border-r border-slate-200 text-left">Kitab</th>
+                            <th class="px-4 py-3 border-r border-slate-200">Kaifiyat</th>
+                            <th class="px-4 py-3">Score (%)</th>
                         </tr>
                     </thead>
                     <tbody id="insp-table-body" class="text-slate-700 divide-y divide-slate-100">
@@ -147,21 +146,21 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
         </div>
 
         <!-- TAB 2: WAZAHAT AREA -->
-        <div id="insp-wazahat-area" class="hidden mt-3 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-            <div class="bg-amber-500 text-white p-2.5 text-center border-b-[3px] border-amber-700">
-                <h2 class="text-base md:text-lg font-bold tracking-wide">Kamzori Par Wazahat Talab Asatiza</h2>
-                <p class="text-[10px] md:text-xs text-amber-50 mt-0.5">Sirf Munasib aur Kamzor kaifiyat wale records</p>
+        <div id="insp-wazahat-area" class="hidden mt-4 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+            <div class="bg-amber-500 text-white p-4 text-center border-b-4 border-amber-700">
+                <h2 class="text-xl md:text-2xl font-bold tracking-wide">Kamzori Par Wazahat Talab Asatiza</h2>
+                <p class="text-xs md:text-sm text-amber-50 mt-1">Sirf Munasib aur Kamzor kaifiyat wale records</p>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-center text-xs border-collapse">
+                <table class="min-w-full text-center text-sm border-collapse">
                     <thead>
                         <tr class="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wide">
-                            <th class="px-2 py-2 border-r border-slate-200 w-8">#</th>
-                            <th class="px-2 py-2 border-r border-slate-200 w-24">Jamia</th>
-                            <th class="px-2 py-2 border-r border-slate-200 w-32">Ustad Ka Naam</th>
-                            <th class="px-2 py-2 border-r border-slate-200">Kamzor / Munasib Mazameen Ki Tafseel</th>
-                            <th class="px-2 py-2 border-r border-slate-200 w-24">Status</th>
-                            <th class="px-2 py-2 w-28">Action / Link</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-8">#</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-28">Jamia</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-36">Ustad Ka Naam</th>
+                            <th class="px-4 py-3 border-r border-slate-200">Kamzor / Munasib Mazameen Ki Tafseel</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-32">Status</th>
+                            <th class="px-4 py-3 w-32">Action / Link</th>
                         </tr>
                     </thead>
                     <tbody id="insp-wazahat-body" class="text-slate-700 divide-y divide-slate-100">
@@ -206,12 +205,10 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
     const teacherSelect = document.getElementById('insp-teacher-filter');
     const startMonthInput = document.getElementById('insp-month-start');
 
-    // Populate Jamia Dropdown
     if (assignedJamiaat && Array.isArray(assignedJamiaat)) {
         assignedJamiaat.forEach(j => { jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`; });
     }
 
-    // Dropdown Toggle Logic
     const setupCompactDropdown = (btn, content, checkboxClass, defaultText) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -249,7 +246,6 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
         if (!gradeDropdownBtn.contains(e.target) && !gradeDropdownContent.contains(e.target)) gradeDropdownContent.classList.add('hidden');
     });
 
-    // Dynamic Filters Logic
     const updateDropdowns = () => {
         const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
@@ -290,9 +286,9 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
 
             Array.from(uniqueClasses).sort().forEach(cls => {
                 classDropdownContent.innerHTML += `
-                    <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
-                        <input type="checkbox" value="${cls}" class="insp-class-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
-                        <span class="text-[11px] text-slate-700 select-none">${cls}</span>
+                    <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
+                        <input type="checkbox" value="${cls}" class="insp-class-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                        <span class="text-sm text-slate-700 select-none">${cls}</span>
                     </label>`;
             });
             document.querySelectorAll('.insp-class-checkbox').forEach(cb => cb.addEventListener('change', updateClassText));
@@ -304,7 +300,7 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
     startMonthInput.addEventListener('change', updateDropdowns);
     document.getElementById('insp-show-btn').addEventListener('click', () => fetchAndRenderReport(db, assignedJamiaat, userProfileData));
     
-    // WhatsApp/Copy Link Delegation on Wazahat Area
+    // WhatsApp/Copy Link Delegation
     document.getElementById('insp-wazahat-area').addEventListener('click', async (e) => {
         const copyBtn = e.target.closest('.js-copy-btn');
         const waBtn = e.target.closest('.js-wa-btn');
@@ -381,7 +377,7 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
     const tbody = document.getElementById('insp-table-body');
     const wazahatBody = document.getElementById('insp-wazahat-body');
     
-    document.getElementById('tab-report').click(); // Reset to Tab 1
+    document.getElementById('tab-report').click(); 
 
     if (!startMonth || !endMonth) return alert("Start aur End month select karein.");
     if (startMonth > endMonth) return alert("Shuru ka mahina baad ka nahi ho sakta.");
@@ -442,32 +438,32 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
 
         rows.sort((a, b) => a.month.localeCompare(b.month) || a.jamiaName.localeCompare(b.jamiaName) || a.className.localeCompare(b.className));
 
-        // 1. Render Main Report Tab (Without Action Column)
+        // 1. Render Main Report Tab
         if (rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-slate-400 font-bold bg-slate-50 text-center text-xs">Is duration/filter me koi record nahi mila.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-slate-400 font-bold bg-slate-50 text-center text-sm">Is duration/filter me koi record nahi mila.</td></tr>`;
         } else {
             rows.forEach((row, index) => {
                 const [year, m] = row.month.split('-');
                 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                 
                 tbody.innerHTML += `
-                    <tr class="hover:bg-indigo-50/40 transition-colors odd:bg-white even:bg-slate-50/50 text-[11px]">
-                        <td class="px-2 py-2 border-r border-slate-200 text-slate-500">${index + 1}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 font-bold text-slate-600">${monthNames[parseInt(m) - 1]} ${year}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 text-left font-bold text-slate-800">${row.jamiaName}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 text-left font-medium text-slate-700">${row.teacherName}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 font-medium text-indigo-700">${row.className}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 text-left font-semibold text-slate-700">${row.subjectName}</td>
-                        <td class="px-2 py-2 border-r border-slate-200">
-                            <span class="px-2 py-0.5 rounded border ${row.grade.class}">${row.grade.text}</span>
+                    <tr class="hover:bg-indigo-50/40 transition-colors odd:bg-white even:bg-slate-50/50 text-sm">
+                        <td class="px-4 py-3 border-r border-slate-200 text-slate-500">${index + 1}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 font-bold text-slate-600">${monthNames[parseInt(m) - 1]} ${year}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-left font-bold text-slate-800">${row.jamiaName}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-left font-medium text-slate-700">${row.teacherName}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 font-medium text-indigo-700">${row.className}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-left font-semibold text-slate-700">${row.subjectName}</td>
+                        <td class="px-4 py-3 border-r border-slate-200">
+                            <span class="px-2.5 py-1 rounded border ${row.grade.class}">${row.grade.text}</span>
                         </td>
-                        <td class="px-2 py-2 font-black text-indigo-600">${row.score}</td>
+                        <td class="px-4 py-3 font-black text-indigo-600">${row.score}</td>
                     </tr>
                 `;
             });
         }
 
-        // 2. Render Wazahat Tab (Grouped by Jamia & Teacher)
+        // 2. Render Wazahat Tab (Without Cards, Simple Clean List)
         const wazahatData = {};
         rows.forEach(r => {
             if (r.grade.text === "Munasib" || r.grade.text === "Kamzor") {
@@ -476,18 +472,22 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
                     wazahatData[key] = { jamia: r.jamiaName, teacher: r.teacherName, month: r.month, subjects: [], rawData: [] };
                 }
                 const gradeColor = r.grade.text === 'Kamzor' ? 'text-red-600' : 'text-amber-600';
+                
+                // Card-style hata kar normal text banaya gaya
                 wazahatData[key].subjects.push(`
-                    <span class="inline-block bg-white text-[10px] border border-slate-200 px-1.5 py-0.5 rounded m-0.5 shadow-sm">
-                        ${r.className} : ${r.subjectName} (<span class="font-bold">${r.score}</span> - <span class="font-bold ${gradeColor}">${r.grade.text}</span>)
-                    </span>
+                    <div class="mb-1 last:mb-0 text-sm">
+                        <span class="font-medium text-slate-700">${r.className} : ${r.subjectName}</span> 
+                        (<span class="font-bold">${r.score}</span> - <span class="font-bold ${gradeColor}">${r.grade.text}</span>)
+                    </div>
                 `);
+                
                 wazahatData[key].rawData.push({ class: r.className, book: r.subjectName, percent: r.score, grade: r.grade.text });
             }
         });
 
         const wKeys = Object.keys(wazahatData);
         if (wKeys.length === 0) {
-            wazahatBody.innerHTML = `<tr><td colspan="6" class="py-6 text-emerald-600 font-bold bg-emerald-50 text-xs">Alhamdulillah! Koi munasib ya kamzor karkardagi nahi mili.</td></tr>`;
+            wazahatBody.innerHTML = `<tr><td colspan="6" class="py-6 text-emerald-600 font-bold bg-emerald-50 text-sm">Alhamdulillah! Koi munasib ya kamzor karkardagi nahi mili.</td></tr>`;
         } else {
             wKeys.forEach((key, index) => {
                 const item = wazahatData[key];
@@ -496,20 +496,20 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
                 const encodedPayload = encodeURIComponent(JSON.stringify(payload));
 
                 wazahatBody.innerHTML += `
-                    <tr class="hover:bg-amber-50/50 transition-colors odd:bg-white even:bg-slate-50/50 text-[11px]" data-sid="">
-                        <td class="px-2 py-2 border-r border-slate-200">${index + 1}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 text-indigo-700 font-bold">${item.jamia}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 font-bold">${item.teacher}</td>
-                        <td class="px-2 py-2 border-r border-slate-200 text-left leading-relaxed">${subList}</td>
-                        <td class="px-2 py-2 border-r border-slate-200">
-                            <span class="text-red-500 bg-red-50 px-2 py-0.5 rounded font-bold border border-red-200">Intezar mein...</span>
+                    <tr class="hover:bg-amber-50/50 transition-colors odd:bg-white even:bg-slate-50/50 text-sm" data-sid="">
+                        <td class="px-4 py-3 border-r border-slate-200">${index + 1}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-indigo-700 font-bold">${item.jamia}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 font-bold">${item.teacher}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-left leading-relaxed">${subList}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 whitespace-nowrap">
+                            <span class="text-red-500 bg-red-50 px-2.5 py-1 rounded font-bold border border-red-200 text-xs">Intezar mein...</span>
                         </td>
-                        <td class="px-2 py-2">
-                            <div class="flex flex-col gap-1.5 justify-center items-center">
-                                <button data-payload="${encodedPayload}" class="js-wa-btn bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-1 px-2 rounded transition w-full max-w-[80px] flex items-center justify-center gap-1 text-[10px]">
+                        <td class="px-4 py-3">
+                            <div class="flex flex-col gap-2 justify-center items-center">
+                                <button data-payload="${encodedPayload}" class="js-wa-btn bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-1.5 px-3 rounded transition w-full flex items-center justify-center gap-1.5 text-xs shadow-sm">
                                     <i class="fab fa-whatsapp"></i> WA
                                 </button>
-                                <button data-payload="${encodedPayload}" class="js-copy-btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2 rounded transition w-full max-w-[80px] flex items-center justify-center gap-1 text-[10px]">
+                                <button data-payload="${encodedPayload}" class="js-copy-btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded transition w-full flex items-center justify-center gap-1.5 text-xs shadow-sm">
                                     <i class="fas fa-link"></i> Link
                                 </button>
                             </div>
@@ -528,4 +528,69 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
         loader.classList.add('hidden');
         alert("Data load nahi ho pa raha: " + err.message);
     }
+}
+
+// Image Download Feature
+async function downloadReportImage() {
+    const loader = document.getElementById('insp-loader');
+    loader.classList.remove('hidden');
+    
+    setTimeout(async () => {
+        try {
+            const tableElement = document.querySelector('#insp-report-area table');
+            if (!tableElement) return;
+
+            const tempDiv = document.createElement('div');
+            tempDiv.style.width = '1200px'; 
+            tempDiv.style.padding = '30px';
+            tempDiv.style.backgroundColor = '#ffffff';
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px'; 
+
+            const mainTitle = document.getElementById('insp-report-main-title').textContent;
+            const subTitle = document.getElementById('insp-report-sub-title').textContent;
+
+            tempDiv.innerHTML = `
+                <div style="text-align: center; margin-bottom: 25px;">
+                    <h1 style="font-size: 28px; font-weight: 800; color: #4338ca; margin: 0; text-transform: uppercase;">${mainTitle}</h1>
+                    <p style="font-size: 16px; color: #64748b; margin-top: 8px; font-weight: 500;">${subTitle}</p>
+                </div>
+            `;
+
+            const clonedTable = tableElement.cloneNode(true);
+            clonedTable.style.width = '100%';
+            clonedTable.style.borderCollapse = 'collapse';
+            
+            clonedTable.querySelectorAll('th').forEach(th => {
+                th.style.backgroundColor = '#f8fafc';
+                th.style.color = '#334155';
+                th.style.border = '1px solid #cbd5e1';
+                th.style.padding = '14px';
+                th.style.fontSize = '14px';
+            });
+
+            clonedTable.querySelectorAll('td').forEach(td => {
+                td.style.border = '1px solid #e2e8f0';
+                td.style.padding = '12px';
+                td.style.fontSize = '14px';
+            });
+
+            tempDiv.appendChild(clonedTable);
+            document.body.appendChild(tempDiv);
+
+            const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+
+            const link = document.createElement('a');
+            link.download = `Inspection_Summary_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+
+            document.body.removeChild(tempDiv);
+        } catch (err) {
+            console.error(err);
+            alert("Image download failed.");
+        } finally {
+            loader.classList.add('hidden');
+        }
+    }, 100);
 }
