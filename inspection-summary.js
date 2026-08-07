@@ -148,7 +148,7 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
         <!-- TAB 2: WAZAHAT AREA -->
         <div id="insp-wazahat-area" class="hidden mt-4 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
             <div class="bg-amber-500 text-white p-4 text-center border-b-4 border-amber-700">
-                <h2 class="text-xl md:text-2xl font-bold tracking-wide">Teachers Required to Submit an Explanation for Poor Performance</h2>
+                <h2 class="text-xl md:text-2xl font-bold tracking-wide">Teachers Required to Explain Weaknesses</h2>
                 <p class="text-xs md:text-sm text-amber-50 mt-1">Sirf Munasib aur Kamzor kaifiyat wale records</p>
             </div>
             <div class="overflow-x-auto">
@@ -502,7 +502,7 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
                         <td class="px-4 py-3 border-r border-slate-200 font-bold">${item.teacher}</td>
                         <td class="px-4 py-3 border-r border-slate-200 text-left leading-relaxed">${subList}</td>
                         <td class="px-4 py-3 border-r border-slate-200 whitespace-nowrap">
-                            <span class="text-red-500 bg-red-50 px-2.5 py-1 rounded font-bold border border-red-200 text-xs"></span>
+                            <span class="text-red-500 bg-red-50 px-2.5 py-1 rounded font-bold border border-red-200 text-xs">Waiting...</span>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex flex-col gap-2 justify-center items-center">
