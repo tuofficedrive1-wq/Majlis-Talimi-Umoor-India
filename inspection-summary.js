@@ -1,10 +1,12 @@
-// Filename: inspection-summary.js  
-import {  
+// Filename: inspection-summary.js
+import { 
     getDocs, 
     collection, 
-    query 
-} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"; 
- // Helper: Score ke hisab se Kaifiyat (Grade) nikalne ke liye
+    query,
+    addDoc 
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+// Helper: Score ke hisab se Kaifiyat (Grade) nikalne ke liye
 const getGradeDetails = (percText) => {
     if (!percText) return { text: "-", class: "text-slate-400" };
     const num = parseFloat(percText.replace('%', '')) || 0;
@@ -13,7 +15,7 @@ const getGradeDetails = (percText) => {
     if (num >= 40) return { text: "Munasib", class: "text-amber-600 font-bold bg-amber-50 border-amber-200" };
     return { text: "Kamzor", class: "text-red-600 font-bold bg-red-50 border-red-200" };
 };
-     
+
 // Helper: Academic Year Calculation
 const getAcademicYear = (dateString) => {
     if (!dateString) return null;
@@ -27,132 +29,173 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
     const container = document.getElementById('summary-container');
     if (!container) return;
 
-    // User data cache se uthana taake teachers/classes load ho sakein
     const userProfileData = window.currentUserData || {}; 
-
     const date = new Date();
     const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-    // --- HTML UI FILTER STRUCTURE (Same as jaiza-summary.js) ---
+    // --- COMPACT HTML UI FILTER & TABS STRUCTURE ---
     container.innerHTML = `
-      <div class="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-200 space-y-5">
+      <div class="bg-white p-3 md:p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
         
-        <!-- Filters Section -->
-        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 no-print">
-            <h4 class="text-xs font-bold text-slate-500 uppercase mb-3 border-b border-slate-200 pb-1 tracking-wider">Report Filters</h4>
+        <!-- Compact Filters Section -->
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 no-print">
+            <h4 class="text-[11px] font-bold text-slate-500 uppercase mb-2 border-b border-slate-200 pb-1 tracking-wider">Report Filters</h4>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">From Month</label>
-                    <input type="month" id="insp-month-start" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" value="${currentMonth}">
+                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">From Month</label>
+                    <input type="month" id="insp-month-start" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none" value="${currentMonth}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">To Month</label>
-                    <input type="month" id="insp-month-end" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" value="${currentMonth}">
+                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">To Month</label>
+                    <input type="month" id="insp-month-end" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none" value="${currentMonth}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Jamia</label>
-                    <select id="insp-jamia-filter" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Jamia</label>
+                    <select id="insp-jamia-filter" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none">
                         <option value="">Tamam Jamiaat (All)</option>
                     </select>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                <!-- Class Multi-Select -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div class="relative group">
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Class (Multiple)</label>
-                    <button type="button" id="insp-class-dropdown-btn" class="w-full p-2 border border-slate-300 rounded-lg text-sm text-left bg-slate-100 text-slate-500 flex justify-between items-center cursor-not-allowed" disabled>
+                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Class (Multiple)</label>
+                    <button type="button" id="insp-class-dropdown-btn" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs text-left bg-slate-100 text-slate-500 flex justify-between items-center cursor-not-allowed" disabled>
                         <span class="truncate">Tamam Classes</span>
-                        <i class="fas fa-chevron-down text-xs ml-2"></i>
+                        <i class="fas fa-chevron-down text-[10px] ml-2"></i>
                     </button>
-                    <div id="insp-class-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded-xl shadow-xl mt-1 max-h-60 overflow-y-auto p-1">
-                    </div>
+                    <div id="insp-class-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded shadow-lg mt-1 max-h-48 overflow-y-auto p-1"></div>
                 </div>
 
-                <!-- Teacher Select -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Teacher (Optional)</label>
-                    <select id="insp-teacher-filter" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-100 cursor-not-allowed" disabled>
+                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Teacher (Optional)</label>
+                    <select id="insp-teacher-filter" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-slate-100 cursor-not-allowed outline-none" disabled>
                         <option value="">Tamam Asatiza</option>
                     </select>
                 </div>
 
-                <!-- Kaifiyat Multi-Select -->
                 <div class="relative group">
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Kaifiyat (Multiple)</label>
-                    <button type="button" id="insp-grade-dropdown-btn" class="w-full p-2 border border-slate-300 rounded-lg text-sm text-left bg-white text-slate-700 flex justify-between items-center focus:ring-2 focus:ring-indigo-500">
+                    <label class="block text-[10px] font-semibold text-slate-700 mb-1">Select Kaifiyat (Multiple)</label>
+                    <button type="button" id="insp-grade-dropdown-btn" class="w-full px-2 py-1.5 border border-slate-300 rounded text-xs text-left bg-white text-slate-700 flex justify-between items-center focus:ring-1 focus:ring-indigo-500 outline-none">
                         <span class="truncate">Tamam (All)</span>
-                        <i class="fas fa-chevron-down text-xs ml-2"></i>
+                        <i class="fas fa-chevron-down text-[10px] ml-2"></i>
                     </button>
-                    <div id="insp-grade-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded-xl shadow-xl mt-1 max-h-60 overflow-y-auto p-1">
-                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
-                            <input type="checkbox" value="Mumtaz" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
-                            <span class="text-sm text-emerald-700 font-bold">Mumtaz (Excellent)</span>
+                    <div id="insp-grade-dropdown-content" class="hidden absolute top-full left-0 right-0 z-50 bg-white border border-slate-300 rounded shadow-lg mt-1 max-h-48 overflow-y-auto p-1">
+                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Mumtaz" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
+                            <span class="text-xs text-emerald-700 font-bold">Mumtaz (Excellent)</span>
                         </label>
-                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
-                            <input type="checkbox" value="Behtar" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
-                            <span class="text-sm text-blue-600 font-bold">Behtar (Very Good)</span>
+                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Behtar" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
+                            <span class="text-xs text-blue-600 font-bold">Behtar (Very Good)</span>
                         </label>
-                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
-                            <input type="checkbox" value="Munasib" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
-                            <span class="text-sm text-amber-600 font-bold">Munasib (Good)</span>
+                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Munasib" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
+                            <span class="text-xs text-amber-600 font-bold">Munasib (Good)</span>
                         </label>
-                        <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
-                            <input type="checkbox" value="Kamzor" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
-                            <span class="text-sm text-red-600 font-bold">Kamzor (Weak)</span>
+                        <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
+                            <input type="checkbox" value="Kamzor" class="insp-grade-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
+                            <span class="text-xs text-red-600 font-bold">Kamzor (Weak)</span>
                         </label>
                     </div>
                 </div>
             </div>
 
-            <button id="insp-show-btn" class="w-full mt-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow-md transition active:scale-95 flex justify-center items-center gap-2">
+            <button id="insp-show-btn" class="w-full mt-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow-sm transition active:scale-95 flex justify-center items-center gap-2 text-sm">
                 <i class="fas fa-search"></i> Report Show Karein
             </button>
         </div>
 
-        <!-- Loader -->
-        <div id="insp-loader" class="hidden text-center py-8">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
-            <p class="mt-2 text-indigo-600 font-semibold text-sm">Data load ho raha hai...</p>
+        <div id="insp-loader" class="hidden text-center py-6">
+            <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-600 border-t-transparent"></div>
+            <p class="mt-1 text-indigo-600 font-semibold text-xs">Data load ho raha hai...</p>
         </div>
 
-        <!-- REPORT TABLE AREA -->
-        <div id="insp-report-area" class="hidden mt-4 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div class="bg-indigo-700 text-white p-4 text-center border-b-4 border-indigo-900">
-                <h2 id="insp-report-main-title" class="text-xl md:text-2xl font-bold tracking-wide">Inspection Report</h2>
-                <p id="insp-report-sub-title" class="text-xs md:text-sm text-indigo-200 mt-1"></p>
+        <!-- TABS SECTION -->
+        <div id="insp-tabs-container" class="hidden flex space-x-1 border-b border-slate-200 mt-2">
+            <button id="tab-report" class="py-1.5 px-4 border-b-2 border-indigo-600 text-indigo-600 font-bold text-xs focus:outline-none transition-colors">Jaiza Report</button>
+            <button id="tab-wazahat" class="py-1.5 px-4 text-slate-500 font-bold hover:text-indigo-600 text-xs border-b-2 border-transparent focus:outline-none transition-colors">Kamzori Par Wazahat</button>
+        </div>
+
+        <!-- TAB 1: JAIZA REPORT AREA -->
+        <div id="insp-report-area" class="hidden mt-3 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+            <div class="bg-indigo-600 text-white p-2.5 text-center border-b-[3px] border-indigo-800">
+                <h2 id="insp-report-main-title" class="text-base md:text-lg font-bold tracking-wide">Inspection Report</h2>
+                <p id="insp-report-sub-title" class="text-[10px] md:text-xs text-indigo-100 mt-0.5"></p>
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full text-center text-sm border-collapse">
+                <!-- Action column hata diya gaya hai, compact padding (px-2 py-2) -->
+                <table class="min-w-full text-center text-xs border-collapse">
                     <thead>
-                        <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-xs uppercase tracking-wider">
-                            <th class="p-3 border-r border-slate-200">#</th>
-                            <th class="p-3 border-r border-slate-200">Mahina</th>
-                            <th class="p-3 border-r border-slate-200 text-left">Jamia Name</th>
-                            <th class="p-3 border-r border-slate-200 text-left">Ustad</th>
-                            <th class="p-3 border-r border-slate-200">Darjah</th>
-                            <th class="p-3 border-r border-slate-200 text-left">Kitab</th>
-                            <th class="p-3 border-r border-slate-200">Kaifiyat</th>
-                            <th class="p-3 border-r border-slate-200">Score (%)</th>
-                            <th class="p-3 no-print">Action</th>
+                        <tr class="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wide">
+                            <th class="px-2 py-2 border-r border-slate-200">#</th>
+                            <th class="px-2 py-2 border-r border-slate-200">Mahina</th>
+                            <th class="px-2 py-2 border-r border-slate-200 text-left">Jamia Name</th>
+                            <th class="px-2 py-2 border-r border-slate-200 text-left">Ustad</th>
+                            <th class="px-2 py-2 border-r border-slate-200">Darjah</th>
+                            <th class="px-2 py-2 border-r border-slate-200 text-left">Kitab</th>
+                            <th class="px-2 py-2 border-r border-slate-200">Kaifiyat</th>
+                            <th class="px-2 py-2">Score (%)</th>
                         </tr>
                     </thead>
-                    <tbody id="insp-table-body" class="text-slate-800 divide-y divide-slate-200">
+                    <tbody id="insp-table-body" class="text-slate-700 divide-y divide-slate-100">
                     </tbody>
                 </table>
             </div>
+        </div>
 
-            <div class="bg-slate-50 p-3 flex justify-end border-t border-slate-200 no-print">
-                <button id="insp-download-img" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-5 rounded-lg shadow transition">
-                    <i class="fas fa-download"></i> Image Download
-                </button>
+        <!-- TAB 2: WAZAHAT AREA -->
+        <div id="insp-wazahat-area" class="hidden mt-3 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+            <div class="bg-amber-500 text-white p-2.5 text-center border-b-[3px] border-amber-700">
+                <h2 class="text-base md:text-lg font-bold tracking-wide">Kamzori Par Wazahat Talab Asatiza</h2>
+                <p class="text-[10px] md:text-xs text-amber-50 mt-0.5">Sirf Munasib aur Kamzor kaifiyat wale records</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-center text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wide">
+                            <th class="px-2 py-2 border-r border-slate-200 w-8">#</th>
+                            <th class="px-2 py-2 border-r border-slate-200 w-24">Jamia</th>
+                            <th class="px-2 py-2 border-r border-slate-200 w-32">Ustad Ka Naam</th>
+                            <th class="px-2 py-2 border-r border-slate-200">Kamzor / Munasib Mazameen Ki Tafseel</th>
+                            <th class="px-2 py-2 border-r border-slate-200 w-24">Status</th>
+                            <th class="px-2 py-2 w-28">Action / Link</th>
+                        </tr>
+                    </thead>
+                    <tbody id="insp-wazahat-body" class="text-slate-700 divide-y divide-slate-100">
+                    </tbody>
+                </table>
             </div>
         </div>
+
       </div>
     `;
+
+    // --- TABS LOGIC ---
+    const tabReport = document.getElementById('tab-report');
+    const tabWazahat = document.getElementById('tab-wazahat');
+    const areaReport = document.getElementById('insp-report-area');
+    const areaWazahat = document.getElementById('insp-wazahat-area');
+
+    tabReport.addEventListener('click', () => {
+        tabReport.classList.add('border-indigo-600', 'text-indigo-600');
+        tabReport.classList.remove('border-transparent', 'text-slate-500');
+        tabWazahat.classList.add('border-transparent', 'text-slate-500');
+        tabWazahat.classList.remove('border-indigo-600', 'text-indigo-600');
+        areaReport.classList.remove('hidden');
+        areaWazahat.classList.add('hidden');
+    });
+
+    tabWazahat.addEventListener('click', () => {
+        tabWazahat.classList.add('border-indigo-600', 'text-indigo-600');
+        tabWazahat.classList.remove('border-transparent', 'text-slate-500');
+        tabReport.classList.add('border-transparent', 'text-slate-500');
+        tabReport.classList.remove('border-indigo-600', 'text-indigo-600');
+        areaWazahat.classList.remove('hidden');
+        areaReport.classList.add('hidden');
+    });
 
     // --- DOM REFERENCES ---
     const jamiaSelect = document.getElementById('insp-jamia-filter');
@@ -163,14 +206,12 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
     const teacherSelect = document.getElementById('insp-teacher-filter');
     const startMonthInput = document.getElementById('insp-month-start');
 
-    // 1. Populate Jamia Dropdown
+    // Populate Jamia Dropdown
     if (assignedJamiaat && Array.isArray(assignedJamiaat)) {
-        assignedJamiaat.forEach(j => {
-            jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
-        });
+        assignedJamiaat.forEach(j => { jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`; });
     }
 
-    // 2. Dropdown Toggle Logic (Multi-select)
+    // Dropdown Toggle Logic
     const setupCompactDropdown = (btn, content, checkboxClass, defaultText) => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -196,9 +237,7 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
             }
         };
 
-        content.querySelectorAll(`.${checkboxClass}`).forEach(cb => {
-            cb.addEventListener('change', updateText);
-        });
+        content.querySelectorAll(`.${checkboxClass}`).forEach(cb => cb.addEventListener('change', updateText));
         return updateText;
     };
 
@@ -206,15 +245,11 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
     setupCompactDropdown(gradeDropdownBtn, gradeDropdownContent, 'insp-grade-checkbox', 'Tamam (All)');
 
     document.addEventListener('click', (e) => {
-        if (!classDropdownBtn.contains(e.target) && !classDropdownContent.contains(e.target)) {
-            classDropdownContent.classList.add('hidden');
-        }
-        if (!gradeDropdownBtn.contains(e.target) && !gradeDropdownContent.contains(e.target)) {
-            gradeDropdownContent.classList.add('hidden');
-        }
+        if (!classDropdownBtn.contains(e.target) && !classDropdownContent.contains(e.target)) classDropdownContent.classList.add('hidden');
+        if (!gradeDropdownBtn.contains(e.target) && !gradeDropdownContent.contains(e.target)) gradeDropdownContent.classList.add('hidden');
     });
 
-    // 3. Dynamic Filters Logic (Classes & Teachers based on selected Jamia)
+    // Dynamic Filters Logic
     const updateDropdowns = () => {
         const selectedJamia = jamiaSelect.value.trim();
         const currentStartMonth = startMonthInput.value;
@@ -223,23 +258,16 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
         const span = classDropdownBtn.querySelector('span');
         span.textContent = "Tamam Classes";
         span.classList.remove('font-bold', 'text-indigo-700');
-        
         teacherSelect.innerHTML = '<option value="">Tamam Asatiza</option>';
         
         if (!selectedJamia) {
-            classDropdownBtn.disabled = true;
-            classDropdownBtn.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
-            classDropdownBtn.classList.remove('bg-white', 'text-slate-700');
-            teacherSelect.disabled = true;
-            teacherSelect.classList.add('bg-slate-100', 'cursor-not-allowed');
+            classDropdownBtn.disabled = true; classDropdownBtn.classList.add('bg-slate-100', 'text-slate-500', 'cursor-not-allowed'); classDropdownBtn.classList.remove('bg-white', 'text-slate-700');
+            teacherSelect.disabled = true; teacherSelect.classList.add('bg-slate-100', 'cursor-not-allowed');
             return;
         }
 
-        classDropdownBtn.disabled = false;
-        classDropdownBtn.classList.remove('bg-slate-100', 'text-slate-500', 'cursor-not-allowed');
-        classDropdownBtn.classList.add('bg-white', 'text-slate-700');
-        teacherSelect.disabled = false;
-        teacherSelect.classList.remove('bg-slate-100', 'cursor-not-allowed');
+        classDropdownBtn.disabled = false; classDropdownBtn.classList.remove('bg-slate-100', 'text-slate-500', 'cursor-not-allowed'); classDropdownBtn.classList.add('bg-white', 'text-slate-700');
+        teacherSelect.disabled = false; teacherSelect.classList.remove('bg-slate-100', 'cursor-not-allowed');
 
         const academicYear = getAcademicYear(currentStartMonth);
         let jamiaData = null;
@@ -257,109 +285,132 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
             teachersList.forEach(t => {
                 const tName = t.name || t.teacherName || t.ustad;
                 if (tName) uniqueTeachers.add(tName.trim());
-                if (Array.isArray(t.periods)) {
-                    t.periods.forEach(p => {
-                        const cName = p.className || p.class || p.darja;
-                        if (cName) uniqueClasses.add(cName.trim());
-                    });
-                }
+                if (Array.isArray(t.periods)) { t.periods.forEach(p => { if (p.className) uniqueClasses.add(p.className.trim()); }); }
             });
 
             Array.from(uniqueClasses).sort().forEach(cls => {
-                const label = document.createElement('label');
-                label.className = "flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100";
-                label.innerHTML = `
-                    <input type="checkbox" value="${cls}" class="insp-class-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
-                    <span class="text-sm text-slate-700 select-none">${cls}</span>
-                `;
-                label.querySelector('input').addEventListener('change', updateClassText);
-                classDropdownContent.appendChild(label);
+                classDropdownContent.innerHTML += `
+                    <label class="flex items-center space-x-2 p-1.5 hover:bg-indigo-50 cursor-pointer rounded-lg transition border-b border-slate-100">
+                        <input type="checkbox" value="${cls}" class="insp-class-checkbox form-checkbox h-3.5 w-3.5 text-indigo-600 rounded">
+                        <span class="text-[11px] text-slate-700 select-none">${cls}</span>
+                    </label>`;
             });
-
-            Array.from(uniqueTeachers).sort().forEach(tea => {
-                teacherSelect.innerHTML += `<option value="${tea}">${tea}</option>`;
-            });
+            document.querySelectorAll('.insp-class-checkbox').forEach(cb => cb.addEventListener('change', updateClassText));
+            Array.from(uniqueTeachers).sort().forEach(tea => { teacherSelect.innerHTML += `<option value="${tea}">${tea}</option>`; });
         }
     };
 
     jamiaSelect.addEventListener('change', updateDropdowns);
     startMonthInput.addEventListener('change', updateDropdowns);
-
-    // Event Listeners for action buttons
     document.getElementById('insp-show-btn').addEventListener('click', () => fetchAndRenderReport(db, assignedJamiaat, userProfileData));
-    document.getElementById('insp-download-img').addEventListener('click', downloadReportImage);
+    
+    // WhatsApp/Copy Link Delegation on Wazahat Area
+    document.getElementById('insp-wazahat-area').addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('.js-copy-btn');
+        const waBtn = e.target.closest('.js-wa-btn');
+        const btn = copyBtn || waBtn;
+
+        if (btn) {
+            const tr = btn.closest('tr');
+            let sid = tr.getAttribute('data-sid'); 
+            const payloadStr = decodeURIComponent(btn.getAttribute('data-payload'));
+            const payloadData = JSON.parse(payloadStr);
+
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+
+            try {
+                if (!sid) {
+                    const docRef = await addDoc(collection(db, 'jaiza_short_links'), payloadData);
+                    sid = docRef.id;
+                    tr.setAttribute('data-sid', sid); 
+                }
+
+                const baseUrl = `https://tuofficedrive1-wq.github.io/Majlis-Talimi-Umoor-India/teacher-wazahat.html`;
+                const shortLink = `${baseUrl}?mode=inspection&sid=${sid}`;
+
+                if (copyBtn) {
+                    await navigator.clipboard.writeText(shortLink);
+                    btn.innerHTML = '<i class="fas fa-check"></i>';
+                    btn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+                    setTimeout(() => {
+                        btn.innerHTML = originalHtml;
+                        btn.classList.replace('bg-emerald-600', 'bg-indigo-600');
+                        btn.disabled = false;
+                    }, 2000);
+                } else if (waBtn) {
+                    let waMessage = `*Notice: Academic Inspection (Kamzori)*\n\n`;
+                    waMessage += `Muhtaram *${payloadData.teacher}* sahab,\n`;
+                    waMessage += `Aapki Jamia *${payloadData.jamia}* me (${payloadData.month}) ki inspection karkardagi weak aayi hai:\n\n`;
+                    payloadData.data.forEach(sub => {
+                        waMessage += `▪️ Darjah: ${sub.class} | Kitab: ${sub.book} | Score: ${sub.percent} (${sub.grade})\n`;
+                    });
+                    waMessage += `\nBaraye meharbani is link par click kar ke wazahat (explanation) darj karein:\n${shortLink}\n\nShukriya.`;
+
+                    window.open(`https://wa.me/?text=${encodeURIComponent(waMessage)}`, '_blank');
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Link generate karne mein error aaya.");
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            }
+        }
+    });
 }
 
-// --- DATA MATCHING & FETCHING LOGIC ---
+// --- MAIN FETCH & RENDER LOGIC ---
 async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
     const startMonth = document.getElementById('insp-month-start').value;
     const endMonth = document.getElementById('insp-month-end').value;
     const jamiaFilter = document.getElementById('insp-jamia-filter').value;
     
-    // Get checked classes
-    const classDropdownContent = document.getElementById('insp-class-dropdown-content');
-    const checkedClassBoxes = classDropdownContent.querySelectorAll('.insp-class-checkbox:checked');
-    const selectedClasses = Array.from(checkedClassBoxes).map(cb => cb.value);
-
-    // Get checked grades (Kaifiyat)
-    const gradeDropdownContent = document.getElementById('insp-grade-dropdown-content');
-    const checkedGradeBoxes = gradeDropdownContent.querySelectorAll('.insp-grade-checkbox:checked');
-    const selectedGrades = Array.from(checkedGradeBoxes).map(cb => cb.value);
-
+    const classBoxes = document.querySelectorAll('.insp-class-checkbox:checked');
+    const selectedClasses = Array.from(classBoxes).map(cb => cb.value);
+    const gradeBoxes = document.querySelectorAll('.insp-grade-checkbox:checked');
+    const selectedGrades = Array.from(gradeBoxes).map(cb => cb.value);
     const teacherFilter = document.getElementById('insp-teacher-filter').value;
 
     const loader = document.getElementById('insp-loader');
     const reportArea = document.getElementById('insp-report-area');
+    const wazahatArea = document.getElementById('insp-wazahat-area');
+    const tabsContainer = document.getElementById('insp-tabs-container');
     const tbody = document.getElementById('insp-table-body');
-    const mainTitle = document.getElementById('insp-report-main-title');
-    const subTitle = document.getElementById('insp-report-sub-title');
+    const wazahatBody = document.getElementById('insp-wazahat-body');
+    
+    document.getElementById('tab-report').click(); // Reset to Tab 1
 
     if (!startMonth || !endMonth) return alert("Start aur End month select karein.");
     if (startMonth > endMonth) return alert("Shuru ka mahina baad ka nahi ho sakta.");
 
     loader.classList.remove('hidden');
     reportArea.classList.add('hidden');
+    wazahatArea.classList.add('hidden');
+    tabsContainer.classList.add('hidden');
     tbody.innerHTML = '';
+    wazahatBody.innerHTML = '';
 
-    // Dynamic Title Logic
-    let headerText = "Jaiza Report";
-    let subText = `Duration: ${startMonth} to ${endMonth}`;
-
-    if (jamiaFilter) {
-        headerText = jamiaFilter;
-        let details = [];
-        if (selectedClasses.length > 0) details.push(`Classes: ${selectedClasses.join(', ')}`);
-        if (teacherFilter) details.push(`Teacher: ${teacherFilter}`);
-        if (selectedGrades.length > 0) details.push(`Kaifiyat: ${selectedGrades.join(', ')}`);
-        if (details.length > 0) subText += ` | ${details.join(' | ')}`;
-    } else {
-        headerText = "Tamam Jamiaat Ki Report";
-    }
-
-    mainTitle.textContent = headerText;
-    subTitle.textContent = subText;
+    document.getElementById('insp-report-main-title').textContent = jamiaFilter ? jamiaFilter : "Tamam Jamiaat Ki Report";
+    document.getElementById('insp-report-sub-title').textContent = `Duration: ${startMonth} to ${endMonth}`;
 
     try {
         const qSnap = await getDocs(query(collection(db, "academic_inspections")));
         let rows = [];
 
-        // Current user ki Jamiaat struct fetch karna mapping ke liye (Teacher ID to Teacher Name mapping)
         const academicYear = getAcademicYear(startMonth);
         let allTeachersMapping = {}; 
         if (userProfileData && userProfileData.academicYears && userProfileData.academicYears[academicYear]) {
             const structure = userProfileData.academicYears[academicYear].karkardagiStructure || [];
             structure.forEach(j => {
-                if(j.teachers) {
-                    j.teachers.forEach(t => {
-                        allTeachersMapping[t.id] = t.name || t.teacherName;
-                    });
-                }
+                if(j.teachers) { j.teachers.forEach(t => { allTeachersMapping[t.id] = t.name || t.teacherName; }); }
             });
         }
 
         qSnap.forEach(docSnap => {
             const data = docSnap.data();
-
             if (!assignedJamiaat.includes(data.jamiaName)) return;
             if (jamiaFilter && data.jamiaName !== jamiaFilter) return;
             const docMonth = data.month; 
@@ -367,31 +418,21 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
 
             if (data.classes && Array.isArray(data.classes)) {
                 data.classes.forEach(cls => {
-                    // Filter by Multiple Classes
                     if (selectedClasses.length > 0 && !selectedClasses.includes(cls.className)) return;
-
                     if (cls.subjects && Array.isArray(cls.subjects)) {
                         cls.subjects.forEach(sub => {
-                            // Extract teacher name using ID mapping, fallback to ID if not found
                             let tName = allTeachersMapping[sub.teacherId] || sub.teacherId || "-";
-
-                            // Filter by Single Teacher
                             if (teacherFilter && tName !== teacherFilter) return;
 
                             const scoreText = sub.subjectScore || "0%";
                             const gradeInfo = getGradeDetails(scoreText);
 
-                            // Filter by Multiple Grades
                             if (selectedGrades.length > 0 && !selectedGrades.includes(gradeInfo.text)) return;
 
                             rows.push({
-                                month: docMonth,
-                                jamiaName: data.jamiaName,
-                                teacherName: tName,
-                                className: cls.className || "-",
-                                subjectName: sub.subjectName || "-",
-                                score: scoreText,
-                                grade: gradeInfo
+                                month: docMonth, jamiaName: data.jamiaName, teacherName: tName,
+                                className: cls.className || "-", subjectName: sub.subjectName || "-",
+                                score: scoreText, grade: gradeInfo
                             });
                         });
                     }
@@ -399,35 +440,79 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
             }
         });
 
-        // Data Sorting
         rows.sort((a, b) => a.month.localeCompare(b.month) || a.jamiaName.localeCompare(b.jamiaName) || a.className.localeCompare(b.className));
 
-        // Table Render
+        // 1. Render Main Report Tab (Without Action Column)
         if (rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="py-8 text-slate-400 font-bold bg-slate-50 text-center">Is duration/filter me koi record nahi mila.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-slate-400 font-bold bg-slate-50 text-center text-xs">Is duration/filter me koi record nahi mila.</td></tr>`;
         } else {
             rows.forEach((row, index) => {
                 const [year, m] = row.month.split('-');
                 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                const monthStr = `${monthNames[parseInt(m) - 1]} ${year}`;
-
+                
                 tbody.innerHTML += `
-                    <tr class="hover:bg-indigo-50/40 transition-colors odd:bg-white even:bg-slate-50">
-                        <td class="p-3 border-r border-slate-200 text-slate-500 font-medium">${index + 1}</td>
-                        <td class="p-3 border-r border-slate-200 font-bold text-slate-600 text-xs">${monthStr}</td>
-                        <td class="p-3 border-r border-slate-200 text-left font-bold text-slate-800">${row.jamiaName}</td>
-                        <td class="p-3 border-r border-slate-200 text-left font-medium text-slate-700">${row.teacherName}</td>
-                        <td class="p-3 border-r border-slate-200 font-medium text-indigo-700">${row.className}</td>
-                        <td class="p-3 border-r border-slate-200 text-left font-semibold text-slate-700">${row.subjectName}</td>
-                        <td class="p-3 border-r border-slate-200">
-                            <span class="px-2.5 py-1 rounded-md text-xs border ${row.grade.class}">${row.grade.text}</span>
+                    <tr class="hover:bg-indigo-50/40 transition-colors odd:bg-white even:bg-slate-50/50 text-[11px]">
+                        <td class="px-2 py-2 border-r border-slate-200 text-slate-500">${index + 1}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 font-bold text-slate-600">${monthNames[parseInt(m) - 1]} ${year}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 text-left font-bold text-slate-800">${row.jamiaName}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 text-left font-medium text-slate-700">${row.teacherName}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 font-medium text-indigo-700">${row.className}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 text-left font-semibold text-slate-700">${row.subjectName}</td>
+                        <td class="px-2 py-2 border-r border-slate-200">
+                            <span class="px-2 py-0.5 rounded border ${row.grade.class}">${row.grade.text}</span>
                         </td>
-                        <td class="p-3 border-r border-slate-200 font-black text-indigo-600">${row.score}</td>
-                        <td class="p-3 text-center no-print">
-                            <button onclick="window.open('academic-inspection-form.html?jamia=${encodeURIComponent(row.jamiaName)}&month=${row.month}', '_blank')" 
-                                    class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1 rounded-lg text-xs font-bold transition">
-                                View
-                            </button>
+                        <td class="px-2 py-2 font-black text-indigo-600">${row.score}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // 2. Render Wazahat Tab (Grouped by Jamia & Teacher)
+        const wazahatData = {};
+        rows.forEach(r => {
+            if (r.grade.text === "Munasib" || r.grade.text === "Kamzor") {
+                const key = `${r.jamiaName}_${r.teacherName}_${r.month}`;
+                if (!wazahatData[key]) {
+                    wazahatData[key] = { jamia: r.jamiaName, teacher: r.teacherName, month: r.month, subjects: [], rawData: [] };
+                }
+                const gradeColor = r.grade.text === 'Kamzor' ? 'text-red-600' : 'text-amber-600';
+                wazahatData[key].subjects.push(`
+                    <span class="inline-block bg-white text-[10px] border border-slate-200 px-1.5 py-0.5 rounded m-0.5 shadow-sm">
+                        ${r.className} : ${r.subjectName} (<span class="font-bold">${r.score}</span> - <span class="font-bold ${gradeColor}">${r.grade.text}</span>)
+                    </span>
+                `);
+                wazahatData[key].rawData.push({ class: r.className, book: r.subjectName, percent: r.score, grade: r.grade.text });
+            }
+        });
+
+        const wKeys = Object.keys(wazahatData);
+        if (wKeys.length === 0) {
+            wazahatBody.innerHTML = `<tr><td colspan="6" class="py-6 text-emerald-600 font-bold bg-emerald-50 text-xs">Alhamdulillah! Koi munasib ya kamzor karkardagi nahi mili.</td></tr>`;
+        } else {
+            wKeys.forEach((key, index) => {
+                const item = wazahatData[key];
+                const subList = item.subjects.join('');
+                const payload = { jamia: item.jamia, teacher: item.teacher, month: item.month, data: item.rawData };
+                const encodedPayload = encodeURIComponent(JSON.stringify(payload));
+
+                wazahatBody.innerHTML += `
+                    <tr class="hover:bg-amber-50/50 transition-colors odd:bg-white even:bg-slate-50/50 text-[11px]" data-sid="">
+                        <td class="px-2 py-2 border-r border-slate-200">${index + 1}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 text-indigo-700 font-bold">${item.jamia}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 font-bold">${item.teacher}</td>
+                        <td class="px-2 py-2 border-r border-slate-200 text-left leading-relaxed">${subList}</td>
+                        <td class="px-2 py-2 border-r border-slate-200">
+                            <span class="text-red-500 bg-red-50 px-2 py-0.5 rounded font-bold border border-red-200">Intezar mein...</span>
+                        </td>
+                        <td class="px-2 py-2">
+                            <div class="flex flex-col gap-1.5 justify-center items-center">
+                                <button data-payload="${encodedPayload}" class="js-wa-btn bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-1 px-2 rounded transition w-full max-w-[80px] flex items-center justify-center gap-1 text-[10px]">
+                                    <i class="fab fa-whatsapp"></i> WA
+                                </button>
+                                <button data-payload="${encodedPayload}" class="js-copy-btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2 rounded transition w-full max-w-[80px] flex items-center justify-center gap-1 text-[10px]">
+                                    <i class="fas fa-link"></i> Link
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -435,6 +520,7 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
         }
 
         loader.classList.add('hidden');
+        tabsContainer.classList.remove('hidden');
         reportArea.classList.remove('hidden');
 
     } catch (err) {
@@ -442,75 +528,4 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
         loader.classList.add('hidden');
         alert("Data load nahi ho pa raha: " + err.message);
     }
-}
-
-// Image Download Feature
-async function downloadReportImage() {
-    const loader = document.getElementById('insp-loader');
-    loader.classList.remove('hidden');
-    
-    setTimeout(async () => {
-        try {
-            const tableElement = document.querySelector('#insp-report-area table');
-            if (!tableElement) return;
-
-            const tempDiv = document.createElement('div');
-            tempDiv.style.width = '1200px'; 
-            tempDiv.style.padding = '25px';
-            tempDiv.style.backgroundColor = '#ffffff';
-            tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px'; 
-
-            const mainTitle = document.getElementById('insp-report-main-title').textContent;
-            const subTitle = document.getElementById('insp-report-sub-title').textContent;
-
-            tempDiv.innerHTML = `
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <h1 style="font-size: 26px; font-weight: 800; color: #4338ca; margin: 0; text-transform: uppercase;">${mainTitle}</h1>
-                    <p style="font-size: 14px; color: #64748b; margin-top: 6px; font-weight: 500;">${subTitle}</p>
-                </div>
-            `;
-
-            const clonedTable = tableElement.cloneNode(true);
-            clonedTable.style.width = '100%';
-            clonedTable.style.borderCollapse = 'collapse';
-            
-            clonedTable.querySelectorAll('tr').forEach(tr => {
-                if(tr.lastElementChild) {
-                    tr.removeChild(tr.lastElementChild);
-                }
-            });
-
-            clonedTable.querySelectorAll('th').forEach(th => {
-                th.style.backgroundColor = '#f8fafc';
-                th.style.color = '#334155';
-                th.style.border = '1px solid #cbd5e1';
-                th.style.padding = '10px';
-                th.style.fontSize = '12px';
-            });
-
-            clonedTable.querySelectorAll('td').forEach(td => {
-                td.style.border = '1px solid #e2e8f0';
-                td.style.padding = '10px';
-                td.style.fontSize = '13px';
-            });
-
-            tempDiv.appendChild(clonedTable);
-            document.body.appendChild(tempDiv);
-
-            const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-
-            const link = document.createElement('a');
-            link.download = `Inspection_Summary_${Date.now()}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-
-            document.body.removeChild(tempDiv);
-        } catch (err) {
-            console.error(err);
-            alert("Image download failed.");
-        } finally {
-            loader.classList.add('hidden');
-        }
-    }, 100);
 }
