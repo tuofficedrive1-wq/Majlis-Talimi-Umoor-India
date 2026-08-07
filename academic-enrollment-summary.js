@@ -37,8 +37,30 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         const uniqueJamias = [...new Set(_allRecords.map(r => r.jamiaName).filter(Boolean))].sort();
         const uniqueClasses = [...new Set(_allRecords.map(r => r.jmClass).filter(Boolean))].sort();
         const uniqueAdmissions = [...new Set(_allRecords.map(r => r.admissionType).filter(Boolean))].sort();
+        const totalTotal = _allRecords.length;
+        const noAdmissionTotal = _allRecords.filter(r => r.admissionType === 'No Admission').length;
+        const waitingTotal = _allRecords.filter(r => r.admissionType === 'Waiting').length;
+        const enrolledTotal = totalTotal - noAdmissionTotal - waitingTotal;
 
         let html = `
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-[11px] font-bold text-slate-500 uppercase mb-1">Total Students</span>
+                <span class="text-xl font-extrabold text-slate-800">${totalTotal}</span>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-[11px] font-bold text-emerald-600 uppercase mb-1">Enrolled</span>
+                <span class="text-xl font-extrabold text-emerald-600">${enrolledTotal}</span>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-[11px] font-bold text-red-500 uppercase mb-1">No Admission</span>
+                <span class="text-xl font-extrabold text-red-500">${noAdmissionTotal}</span>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-[11px] font-bold text-amber-600 uppercase mb-1">Waiting</span>
+                <span class="text-xl font-extrabold text-amber-500">${waitingTotal}</span>
+            </div>
+        </div>
         <!-- Filters & Search Section -->
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -146,6 +168,7 @@ window.renderEnrollmentTableRows = (records) => {
                     : r.admissionType === 'School' ? `${r.classLevel||''} | ${r.board||r.stream||''}`
                     : r.admissionType === 'College' ? `${r.degree||''} | ${r.duration||''} | ${r.session||''}`
                     : r.admissionType === 'Madrasa Board' ? `Class: ${r.classLevel||''} ${r.stream ? ' | '+r.stream : ''}`
+                    : r.admissionType === 'Waiting' ? `Class: ${r.classLevel||''}`
                     : (r.reason || '—');
 
         let statusBadge = '<span class="text-slate-400">—</span>';
@@ -252,6 +275,7 @@ window.openEditModal = (docId) => {
                     <option value="Madrasa Board" ${r.admissionType === 'Madrasa Board' ? 'selected' : ''}>Madrasa Board</option>
                     <option value="College" ${r.admissionType === 'College' ? 'selected' : ''}>College</option>
                     <option value="No Admission" ${r.admissionType === 'No Admission' ? 'selected' : ''}>No Admission</option>
+                    <option value="Waiting" ${r.admissionType === 'Waiting' ? 'selected' : ''}>Waiting</option>
                 </select>
             </div>
             <div>
@@ -382,6 +406,16 @@ window.updateDynamicFields = () => {
         html = `<div><label class="text-xs font-bold text-slate-500 mb-1">Wazahat / Reason</label><textarea id="dyn-reason" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">${isSameType ? (r.reason||'') : ''}</textarea></div>`;
         container.innerHTML = html;
     }
+    else if (type === 'Waiting') {
+        html = `<div>
+            <label class="text-xs font-bold text-slate-500 mb-1">Aap kis class ke liye wait kar rahe hain?</label>
+            <select id="dyn-classLevel" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
+                <option value="">— Select —</option>
+                ${makeOpts(['Wait for 10th Class', 'Wait for 12th Class'], isSameType ? r.classLevel : '')}
+            </select>
+        </div>`;
+        container.innerHTML = html;
+    }
 };
 
 window.refreshEditModalSubFields = () => {
@@ -476,7 +510,9 @@ window.saveEditRecord = async () => {
     } else if (admType === 'No Admission') {
         updatedData.reason = getVal('dyn-reason') || '';
     }
-
+    else if (admType === 'Waiting') {
+        updatedData.classLevel = getVal('dyn-classLevel') || '';
+    }
     const saveBtn = document.getElementById('save-edit-btn');
     const originalText = saveBtn.innerHTML;
     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
