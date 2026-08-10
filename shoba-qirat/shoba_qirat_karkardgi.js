@@ -72,6 +72,7 @@ const loadUserData = async () => {
 
         // UI render karein
         renderSetupTab();
+        renderReportingTab();
         
     } catch (error) {
         console.error("User Data load karne me masla:", error);
@@ -105,6 +106,7 @@ const populateYearSelector = () => {
     yearSelect.addEventListener('change', (e) => {
         activeYear = e.target.value;
         renderSetupTab();
+        renderReportingTab();
         // future me: loadMonthlyReportData() bhi yahan call hoga
     });
 };
@@ -221,6 +223,7 @@ const setupTabListeners = () => {
             document.getElementById(`${targetTab}-content`).classList.remove('hidden');
 
             if(targetTab === 'k-setup') renderSetupTab();
+            if(targetTab === 'k-reporting') renderReportingTab();
         });
     });
 };
@@ -562,4 +565,235 @@ const deletePeriod = async (jamiaName, teacherId, periodId) => {
         teacher.periods = teacher.periods.filter(p => p.id !== periodId);
         await saveStructureToFirebase();
     }
+};
+
+// --- GLOBAL STATE FOR REPORTING ---
+let currentJamiaFilter = 'all';
+
+// --- HELPER: KAIFIYAT CALCULATION ---
+const calculateKaifiyatAndStyle = (achievement) => {
+    let kaifiyat = "Munasib";
+    let colorClass = "text-red-600 font-bold"; 
+    
+    // Basic logic (Aap isay admin config ke hisab se mazeed update kar sakte hain)
+    if (achievement >= 90) { kaifiyat = "Mumtaz"; colorClass = "text-green-600 font-bold"; }
+    else if (achievement >= 80) { kaifiyat = "Behtar"; colorClass = "text-blue-600 font-bold"; }
+    
+    // Adjustment for over-achievement
+    if (achievement > 150) { kaifiyat = "Munasib"; colorClass = "text-red-600 font-bold"; }
+    else if (achievement >= 121 && achievement <= 150) { kaifiyat = "Behtar"; colorClass = "text-blue-600 font-bold"; }
+
+    return { kaifiyat, colorClass };
+};
+
+// --- 8. RENDER REPORTING TAB ---
+const renderReportingTab = () => {
+    const container = document.getElementById('k-reporting-content');
+    if (!activeYear || !allAcademicYearsData[activeYear]) {
+        container.innerHTML = '<p class="text-red-500 font-bold text-center mt-10">Pehle "Active Year" select karein.</p>';
+        return;
+    }
+
+    const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    
+    // UI Structure (Top Bar)
+    let html = `
+        <div class="bg-blue-50 text-blue-800 p-3 rounded-lg text-center font-medium mb-4 border border-blue-100 shadow-sm">
+            Aap abhi "${activeYear}" saal ke liye reporting kar rahe hain.
+        </div>
+        
+        <div class="flex flex-col md:flex-row items-center gap-4 mb-6">
+            <div class="flex items-center gap-2">
+                <label class="text-gray-700 font-medium whitespace-nowrap">Select Month:</label>
+                <select id="k-report-month-select-inner" class="p-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 outline-none"></select>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <label class="text-gray-700 font-medium whitespace-nowrap">Select Jamia:</label>
+                <select id="k-jamia-filter-select" class="p-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500 outline-none">
+                    <option value="all">All Jamiaat</option>
+                    ${structure.map(j => `<option value="${j.jamiaName}" ${currentJamiaFilter === j.jamiaName ? 'selected' : ''}>${j.jamiaName}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        
+        <p class="text-gray-600 mb-4">Is mahine har kitab me padhaye gaye pages ki tadad enter karein.</p>
+        
+        <div id="k-reporting-table-wrapper" class="space-y-6">
+    `;
+
+    let hasData = false;
+    const sortedJamias = [...structure].sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
+
+    sortedJamias.forEach(jamia => {
+        if (currentJamiaFilter !== 'all' && jamia.jamiaName !== currentJamiaFilter) return;
+        if (!jamia.teachers || jamia.teachers.length === 0) return;
+
+        let jamiaTableHtml = `
+        <div class="overflow-x-auto border border-gray-200 rounded-xl shadow-sm bg-white">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="bg-blue-50 border-b-2 border-blue-200" data-jamia-row="${jamia.jamiaName}">
+                        <th colspan="12" class="p-3 text-left">
+                            <div class="flex justify-between items-center w-full">
+                                <span class="urdu-font text-lg font-bold text-gray-800 uppercase">${jamia.jamiaName}</span>
+                                <div class="flex gap-2">
+                                    <button class="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1"><i class="fas fa-link"></i> Link</button>
+                                    <button class="bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1"><i class="fas fa-image"></i> Image</button>
+                                    <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1"><i class="fas fa-file-csv"></i> CSV</button>
+                                    <button class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow flex items-center gap-1"><i class="fas fa-pen"></i> Edit Pages</button>
+                                </div>
+                            </div>
+                        </th>
+                    </tr>
+                    <tr class="bg-gray-100 text-gray-700 border-b font-semibold text-center">
+                        <th class="p-2 border-r text-left">Teacher</th>
+                        <th class="p-2 border-r">Class</th>
+                        <th class="p-2 border-r">Book</th>
+                        <th class="p-2 border-r urdu-font">سبق کی آخری<br>عبارت</th>
+                        <th class="p-2 border-r">Page<br>No.</th>
+                        <th class="p-2 border-r">Total Pages<br>(Sem)</th>
+                        <th class="p-2 border-r">Total<br>Taught</th>
+                        <th class="p-2 border-r">Monthly<br>Target</th>
+                        <th class="p-2 border-r w-24">Pages Taught</th>
+                        <th class="p-2 border-r">Achievement<br>%</th>
+                        <th class="p-2 border-r">Kaifiyat<br>(Status)</th>
+                        <th class="p-2">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        jamia.teachers.forEach((teacher, tIndex) => {
+            const periods = teacher.periods || [];
+            const currentSemester = '1'; 
+            const activePeriods = periods.filter(p => p.semester === currentSemester);
+            
+            if (activePeriods.length === 0) return;
+            hasData = true;
+
+            activePeriods.forEach((period, pIndex) => {
+                const isFirstPeriod = pIndex === 0;
+                
+                const totalPages = period.totalPages || 0;
+                const totalTaught = 0; 
+                const monthlyTarget = 0; 
+                const pagesTaughtVal = ''; 
+                
+                let achievement = 0;
+                const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement);
+                
+                let teacherCell = '';
+                let actionCell = '';
+                
+                if (isFirstPeriod) {
+                    teacherCell = `<td rowspan="${activePeriods.length}" class="p-2 border-r border-b align-middle text-center font-bold text-gray-800 uppercase tracking-wide bg-white">${teacher.name}</td>`;
+                    
+                    actionCell = `
+                    <td rowspan="${activePeriods.length}" class="p-2 border-b align-middle text-center bg-white">
+                        <div class="flex flex-col gap-2 items-center justify-center">
+                            <button class="text-emerald-600 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold py-1 px-3 rounded flex items-center gap-1 w-full justify-center shadow-sm">
+                                <i class="fas fa-image"></i> Image
+                            </button>
+                            <button class="text-red-500 border border-red-200 bg-red-50 hover:bg-red-100 text-xs font-bold py-1 px-3 rounded flex items-center gap-1 w-full justify-center shadow-sm">
+                                <i class="fas fa-trash-alt"></i> Reset
+                            </button>
+                        </div>
+                    </td>`;
+                }
+
+                jamiaTableHtml += `
+                <tr class="reporting-row border-b hover:bg-gray-50 transition-colors bg-white text-center" 
+                    data-period-id="${period.id}" 
+                    data-jamia="${jamia.jamiaName}" 
+                    data-teacher="${teacher.id}">
+                    
+                    ${teacherCell}
+                    
+                    <td class="p-2 border-r urdu-font text-gray-700">${period.className}</td>
+                    <td class="p-2 border-r urdu-font text-gray-700">${period.bookName}</td>
+                    <td class="p-2 border-r urdu-font text-gray-500">-</td>
+                    <td class="p-2 border-r text-gray-500">-</td>
+                    <td class="p-2 border-r font-medium">${totalPages}</td>
+                    <td class="p-2 border-r font-bold text-blue-700 cumulative-cell">${totalTaught}</td>
+                    <td class="p-2 border-r font-medium">${monthlyTarget}</td>
+                    
+                    <td class="p-2 border-r">
+                        <input type="number" 
+                               class="pages-taught-input w-full p-2 bg-gray-100 border border-gray-200 rounded-lg text-center outline-none focus:ring-2 focus:ring-teal-500 transition-all" 
+                               value="${pagesTaughtVal}" 
+                               min="0"
+                               data-target="${monthlyTarget}">
+                    </td>
+                    
+                    <td class="p-2 border-r achievement-cell text-red-500 font-medium">${achievement}%</td>
+                    <td class="p-2 border-r kaifiyat-cell ${colorClass}">${kaifiyat}</td>
+                    
+                    ${actionCell}
+                </tr>`;
+            });
+        });
+
+        jamiaTableHtml += `</tbody></table></div>`;
+        if (hasData) {
+            html += jamiaTableHtml;
+        }
+    });
+
+    if (!hasData) {
+        html += `<p class="text-yellow-600 bg-yellow-50 p-4 rounded-lg text-center font-medium border border-yellow-200">Is semester ke liye koi data nahi mila. Setup Structure check karein.</p>`;
+    }
+
+    html += `
+        </div>
+        <div class="mt-6 flex justify-end">
+            <button id="k-save-report-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105 flex items-center gap-2">
+                <i class="fas fa-save"></i> Save Monthly Report
+            </button>
+        </div>
+    `;
+
+    container.innerHTML = html;
+
+    // Filter Listeners
+    const jamiaSelect = document.getElementById('k-jamia-filter-select');
+    if (jamiaSelect) {
+        jamiaSelect.addEventListener('change', (e) => {
+            currentJamiaFilter = e.target.value;
+            renderReportingTab(); 
+        });
+    }
+
+    const monthSelectInner = document.getElementById('k-report-month-select-inner');
+    const mainMonthSelect = document.getElementById('k-report-month-select'); 
+    if (monthSelectInner && mainMonthSelect) {
+        monthSelectInner.innerHTML = mainMonthSelect.innerHTML;
+    }
+
+    // Input Auto Calculation
+    document.querySelectorAll('.pages-taught-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const row = e.target.closest('tr');
+            const target = parseInt(e.target.dataset.target, 10) || 0;
+            const taught = parseInt(e.target.value, 10) || 0;
+            
+            const achievementCell = row.querySelector('.achievement-cell');
+            const kaifiyatCell = row.querySelector('.kaifiyat-cell');
+            
+            let achievement = 0;
+            if (taught > 0 && target > 0) {
+                achievement = Math.round((taught / target) * 100);
+            }
+            
+            const { kaifiyat, colorClass } = calculateKaifiyatAndStyle(achievement);
+            
+            achievementCell.textContent = `${achievement}%`;
+            kaifiyatCell.textContent = kaifiyat;
+            
+            achievementCell.className = `p-2 border-r achievement-cell font-medium ${colorClass.replace('font-bold', '')}`;
+            kaifiyatCell.className = `p-2 border-r kaifiyat-cell ${colorClass}`;
+            
+            row.classList.add('bg-yellow-50');
+        });
+    });
 };
