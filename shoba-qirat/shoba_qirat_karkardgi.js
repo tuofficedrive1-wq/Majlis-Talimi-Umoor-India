@@ -225,7 +225,42 @@ const setupTabListeners = () => {
     });
 };
 
-// --- 7. RENDER SETUP TAB (Jamiaat & Teachers UI) ---
+let openAccordionIds = new Set();
+
+const captureAccordionState = () => {
+    openAccordionIds.clear();
+    const container = document.getElementById('k-setup-accordion-container');
+    if (!container) return;
+    
+    container.querySelectorAll('.accordion-button.open').forEach(btn => {
+        const jamiaDiv = btn.closest('[data-jamia-name]');
+        if (jamiaDiv) openAccordionIds.add(jamiaDiv.dataset.jamiaName);
+    });
+    container.querySelectorAll('.teacher-accordion-button.open').forEach(btn => {
+        const teacherDiv = btn.closest('[data-teacher-id]');
+        if (teacherDiv) openAccordionIds.add(teacherDiv.dataset.teacherId);
+    });
+};
+
+const restoreAccordionState = () => {
+    if (openAccordionIds.size === 0) return;
+    const container = document.getElementById('k-setup-accordion-container');
+    if (!container) return;
+
+    openAccordionIds.forEach(id => {
+        const targetDiv = container.querySelector(`[data-jamia-name="${id}"]`) || container.querySelector(`[data-teacher-id="${id}"]`);
+        if (targetDiv) {
+            const button = targetDiv.querySelector('.accordion-button, .teacher-accordion-button');
+            const content = targetDiv.querySelector('.accordion-content');
+            if (button && content) {
+                button.classList.add('open');
+                content.classList.add('open');
+            }
+        }
+    });
+};
+
+// --- 7. RENDER SETUP TAB (Updated for Teachers & Periods) ---
 const renderSetupTab = () => {
     const container = document.getElementById('k-setup-accordion-container');
     if (!activeYear || !allAcademicYearsData[activeYear]) {
@@ -244,22 +279,287 @@ const renderSetupTab = () => {
     container.innerHTML = jamiaat.map(jamiaName => {
         let jamiaData = structure.find(j => j.jamiaName === jamiaName) || { teachers: [] };
         
-        let teachersHtml = jamiaData.teachers.map(t => `
-            <div class="p-3 bg-gray-50 border rounded-lg mt-2 flex justify-between items-center hover:shadow-md transition">
-                <span class="urdu-font font-bold text-gray-800 text-lg">${t.name}</span>
-                <span class="text-xs font-bold bg-teal-100 text-teal-800 px-3 py-1.5 rounded-full border border-teal-200">Code: ${t.loginCode || 'N/A'}</span>
-            </div>
-        `).join('') || '<p class="text-sm text-gray-400 mt-2 p-2 text-center bg-gray-50 rounded">Abhi is Jamia me koi ustad add nahi hai.</p>';
+        // Teachers list ko render karna
+        let teachersHtml = jamiaData.teachers.map(t => renderTeacherAccordion(jamiaName, t)).join('') || '<p class="text-sm text-gray-500 mt-2 p-3 text-center bg-gray-50 rounded">Abhi is Jamia me koi ustad add nahi hai.</p>';
 
         return `
-        <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden mb-4">
-            <div class="bg-gray-100 p-4 border-b flex justify-between items-center">
+        <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden mb-4" data-jamia-name="${jamiaName}">
+            <button type="button" class="accordion-button w-full flex justify-between items-center p-4 text-left bg-gray-100 hover:bg-gray-200 transition">
                 <h4 class="font-bold text-xl urdu-font text-teal-800">${jamiaName}</h4>
-            </div>
-            <div class="p-4">
-                <h5 class="text-sm font-bold text-gray-500 uppercase mb-2">Asatiza ki Fihrist</h5>
-                ${teachersHtml}
+                <i class="fas fa-chevron-down text-gray-500 transition-transform duration-300"></i>
+            </button>
+            <div class="accordion-content max-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+                <div class="p-4 border-t">
+                    <!-- Add Teacher Form -->
+                    <form class="add-teacher-form mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row gap-3">
+                        <input type="text" placeholder="Naye Teacher ka Naam" class="teacher-name-input w-full p-2 border rounded-lg urdu-font" required>
+                        <input type="text" placeholder="Code (Optional)" class="teacher-code-input w-full sm:w-32 p-2 border rounded-lg" maxlength="5">
+                        <button type="submit" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"><i class="fas fa-plus mr-1"></i> Add</button>
+                    </form>
+                    
+                    <h5 class="text-sm font-bold text-gray-500 uppercase mb-2">Asatiza ki Fihrist</h5>
+                    <div class="space-y-3">
+                        ${teachersHtml}
+                    </div>
+                </div>
             </div>
         </div>`;
     }).join('');
+
+    // Event Delegation (Click aur Submit events container par lagana)
+    container.removeEventListener('click', handleSetupClick);
+    container.addEventListener('click', handleSetupClick);
+
+    container.removeEventListener('submit', handleSetupSubmit);
+    container.addEventListener('submit', handleSetupSubmit);
+
+    // Restore state
+    restoreAccordionState();
+};
+
+// --- Helper: Render Individual Teacher Accordion ---
+const renderTeacherAccordion = (jamiaName, teacher) => {
+    const teacherId = teacher.id;
+    const periodsHtml = renderPeriodsTable(teacher.periods);
+    
+    // Class names fetch from Admin Config for dropdown
+    let classesOptions = '';
+    if (adminAcademicConfig && adminAcademicConfig.classes) {
+        classesOptions = adminAcademicConfig.classes.map(c => c.classNameUrdu ? `<option value="${c.classNameUrdu}">` : '').join('');
+    }
+
+    return `
+    <div class="border rounded-lg bg-gray-50 overflow-hidden shadow-sm" data-teacher-id="${teacherId}">
+        <button type="button" class="teacher-accordion-button w-full flex justify-between items-center p-3 text-left bg-gray-200 hover:bg-gray-300 transition">
+            <span class="urdu-font font-bold text-gray-800">${teacher.name} <span class="text-xs font-normal text-gray-500 ml-2">(Code: ${teacher.loginCode || 'N/A'})</span></span>
+            <div class="flex items-center gap-3">
+                <span class="delete-teacher-btn text-red-500 hover:text-red-700 cursor-pointer p-1"><i class="fas fa-trash-alt pointer-events-none"></i></span>
+                <i class="fas fa-chevron-down text-gray-500 transition-transform duration-300"></i>
+            </div>
+        </button>
+        <div class="accordion-content max-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+            <div class="p-3 border-t bg-white">
+                <!-- Add Period Form -->
+                <form class="add-period-form mb-4 p-3 bg-green-50 border border-green-200 rounded-lg space-y-3">
+                    <input type="hidden" class="hidden-jamia-name" value="${jamiaName}">
+                    <input type="hidden" class="hidden-teacher-id" value="${teacherId}">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <input type="text" list="classes-list-${teacherId}" class="period-class-input w-full p-2 border rounded-lg urdu-font text-right" placeholder="درجہ لکھیں (مثلاً اول اے)" required>
+                            <datalist id="classes-list-${teacherId}">${classesOptions}</datalist>
+                        </div>
+                        <input type="text" class="period-book-input w-full p-2 border rounded-lg urdu-font text-right" placeholder="کتاب کا نام لکھیں" required>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-green-200 pt-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Semester</label>
+                            <select class="period-semester-select w-full p-2 border rounded-lg bg-white" required>
+                                <option value="1">Semester 1 (Apr-Aug)</option>
+                                <option value="2">Semester 2 (Sep-Jan)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Total Pages (for this Sem)</label>
+                            <input type="number" class="period-total-pages-input w-full p-2 border rounded-lg" placeholder="Total Pages" required min="1">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Add Period</button>
+                </form>
+                
+                <!-- Periods Table -->
+                ${periodsHtml}
+            </div>
+        </div>
+    </div>`;
+};
+
+// --- Helper: Render Periods Table ---
+const renderPeriodsTable = (periods) => {
+    if (!periods || periods.length === 0) return '<p class="text-gray-500 text-sm text-center p-2 border border-dashed rounded">Koi kitab (period) assign nahi ki gayi.</p>';
+    
+    let table = `
+    <div class="overflow-x-auto border rounded-lg">
+        <table class="min-w-full text-sm bg-white text-center">
+            <thead class="bg-gray-100 border-b">
+                <tr><th class="p-2">Class</th><th class="p-2">Book</th><th class="p-2">Sem</th><th class="p-2">Pages</th><th class="p-2">Action</th></tr>
+            </thead>
+            <tbody>`;
+            
+    periods.forEach(p => {
+        table += `
+        <tr class="border-b" data-period-id="${p.id}">
+            <td class="p-2 urdu-font text-right">${p.className}</td>
+            <td class="p-2 urdu-font text-right">${p.bookName}</td>
+            <td class="p-2 text-gray-600">${p.semester}</td>
+            <td class="p-2 font-bold">${p.totalPages}</td>
+            <td class="p-2">
+                <button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1"><i class="fas fa-times-circle pointer-events-none"></i></button>
+            </td>
+        </tr>`;
+    });
+    table += `</tbody></table></div>`;
+    return table;
+};
+
+// --- EVENT DELEGATION (Clicks) ---
+const handleSetupClick = (e) => {
+    // 1. Accordion Toggles
+    if (e.target.closest('.accordion-button') || e.target.closest('.teacher-accordion-button')) {
+        // Agar delete button par click kiya hai to accordion toggle na ho
+        if (e.target.closest('.delete-teacher-btn')) return;
+
+        const button = e.target.closest('.accordion-button') || e.target.closest('.teacher-accordion-button');
+        const content = button.nextElementSibling;
+        
+        button.classList.toggle('open');
+        content.classList.toggle('open');
+        
+        // CSS for max-height animation
+        if (content.classList.contains('open')) {
+            content.style.maxHeight = content.scrollHeight + 500 + "px"; // 500px extra for dynamic additions
+        } else {
+            content.style.maxHeight = null;
+        }
+        return;
+    }
+
+    // 2. Delete Teacher
+    if (e.target.closest('.delete-teacher-btn')) {
+        const jamiaName = e.target.closest('[data-jamia-name]').dataset.jamiaName;
+        const teacherId = e.target.closest('[data-teacher-id]').dataset.teacherId;
+        if (confirm(`Kya aap is teacher ko delete karna chahte hain?`)) {
+            deleteTeacher(jamiaName, teacherId);
+        }
+        return;
+    }
+
+    // 3. Delete Period
+    if (e.target.closest('.delete-period-btn')) {
+        const jamiaName = e.target.closest('[data-jamia-name]').dataset.jamiaName;
+        const teacherId = e.target.closest('[data-teacher-id]').dataset.teacherId;
+        const periodId = e.target.closest('[data-period-id]').dataset.periodId;
+        if (confirm(`Kya aap is kitab (period) ko delete karna chahte hain?`)) {
+            deletePeriod(jamiaName, teacherId, periodId);
+        }
+        return;
+    }
+};
+
+// --- EVENT DELEGATION (Submits) ---
+const handleSetupSubmit = (e) => {
+    e.preventDefault();
+    captureAccordionState(); // State save karein taake refresh ke baad tab khula rahe
+    
+    // 1. Add Teacher Form
+    if (e.target.classList.contains('add-teacher-form')) {
+        const form = e.target;
+        const jamiaName = form.closest('[data-jamia-name]').dataset.jamiaName;
+        const name = form.querySelector('.teacher-name-input').value.trim();
+        const code = form.querySelector('.teacher-code-input').value.trim();
+        
+        addTeacher(jamiaName, name, code);
+    }
+    
+    // 2. Add Period Form
+    if (e.target.classList.contains('add-period-form')) {
+        const form = e.target;
+        const jamiaName = form.querySelector('.hidden-jamia-name').value;
+        const teacherId = form.querySelector('.hidden-teacher-id').value;
+        const className = form.querySelector('.period-class-input').value.trim();
+        const bookName = form.querySelector('.period-book-input').value.trim();
+        const semester = form.querySelector('.period-semester-select').value;
+        const totalPages = parseInt(form.querySelector('.period-total-pages-input').value, 10);
+        
+        addPeriod(jamiaName, teacherId, className, bookName, semester, totalPages);
+    }
+};
+
+// --- DATABASE FUNCTIONS ---
+const saveStructureToFirebase = async () => {
+    try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+            [`academicYears.${activeYear}.karkardagiStructure`]: allAcademicYearsData[activeYear].karkardagiStructure,
+            lastUpdated: serverTimestamp()
+        });
+        renderSetupTab(); // Re-render UI after saving
+        // Yahan Notification show kar sakte hain: alert("Saved Successfully!");
+    } catch (error) {
+        console.error("Error saving structure:", error);
+        alert("Save karne me masla aaya. Internet check karein.");
+    }
+};
+
+const addTeacher = async (jamiaName, name, code) => {
+    let structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    let jamia = structure.find(j => j.jamiaName === jamiaName);
+    
+    if (!jamia) {
+        jamia = { jamiaName: jamiaName, teachers: [] };
+        structure.push(jamia);
+    }
+    if (!jamia.teachers) jamia.teachers = [];
+    
+    // Generate code logic if empty
+    if(!code) code = String(Math.floor(10000 + Math.random() * 90000));
+    
+    const newTeacher = {
+        id: `t-${Date.now()}`,
+        name: name,
+        loginCode: code,
+        periods: []
+    };
+    
+    jamia.teachers.push(newTeacher);
+    allAcademicYearsData[activeYear].karkardagiStructure = structure;
+    
+    openAccordionIds.add(jamiaName);
+    openAccordionIds.add(newTeacher.id);
+    
+    await saveStructureToFirebase();
+};
+
+const deleteTeacher = async (jamiaName, teacherId) => {
+    captureAccordionState();
+    let structure = allAcademicYearsData[activeYear].karkardagiStructure;
+    let jamia = structure.find(j => j.jamiaName === jamiaName);
+    if (jamia) {
+        jamia.teachers = jamia.teachers.filter(t => t.id !== teacherId);
+        await saveStructureToFirebase();
+    }
+};
+
+const addPeriod = async (jamiaName, teacherId, className, bookName, semester, totalPages) => {
+    let structure = allAcademicYearsData[activeYear].karkardagiStructure;
+    let jamia = structure.find(j => j.jamiaName === jamiaName);
+    let teacher = jamia?.teachers.find(t => t.id === teacherId);
+    
+    if (teacher) {
+        if (!teacher.periods) teacher.periods = [];
+        teacher.periods.push({
+            id: `p-${Date.now()}`,
+            className: className,
+            bookName: bookName,
+            semester: semester,
+            totalPages: totalPages
+        });
+        
+        openAccordionIds.add(jamiaName);
+        openAccordionIds.add(teacherId);
+        await saveStructureToFirebase();
+    }
+};
+
+const deletePeriod = async (jamiaName, teacherId, periodId) => {
+    captureAccordionState();
+    let structure = allAcademicYearsData[activeYear].karkardagiStructure;
+    let jamia = structure.find(j => j.jamiaName === jamiaName);
+    let teacher = jamia?.teachers.find(t => t.id === teacherId);
+    
+    if (teacher && teacher.periods) {
+        teacher.periods = teacher.periods.filter(p => p.id !== periodId);
+        await saveStructureToFirebase();
+    }
 };
