@@ -217,18 +217,14 @@
         
         document.getElementById('display-jamia').textContent = paramJamia;
         
-        // Date
         const today = new Date();
         document.getElementById('display-date').textContent = today.toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit', year: 'numeric'});
 
-        // DOM Elements
         const selectClass = document.getElementById('select-class');
         const selectTeacher = document.getElementById('select-teacher');
         const selectBook = document.getElementById('select-book');
         const btnLoad = document.getElementById('btn-load-students');
         const container = document.getElementById('students-container');
-        
-        // Buttons ko IDs ke zariye pakra gaya hai
         const btnAddStudent = document.getElementById('add-student-btn');
         const btnSaveData = document.getElementById('btn-save-data');
 
@@ -236,6 +232,11 @@
         let loadedJamiaData = null; 
         let currentUserId = null;
         let activeAcademicYear = null;
+
+        // AutoSave Key Generator (Har form ki alag pehchan)
+        const getLocalSaveKey = () => {
+            return `jaizaDraft_${paramJamia}_${selectClass.value}_${selectTeacher.value}_${selectBook.value}_${paramMonth}`;
+        };
 
         // 2. Fetch Data from Firebase
         onAuthStateChanged(auth, async (user) => {
@@ -246,7 +247,6 @@
                 </div>`;
 
                 try {
-                    // Impersonation Logic
                     const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
                     currentUserId = user.uid;
                     const impersonateId = sessionStorage.getItem('impersonateUserId');
@@ -254,14 +254,12 @@
                         currentUserId = impersonateId;
                     }
 
-                    // Active Year Setup
                     const configRef = doc(db, "settings", "academic_config");
                     const configSnap = await getDoc(configRef);
                     if (configSnap.exists()) {
                         activeAcademicYear = configSnap.data().activeYear;
                     }
 
-                    // User Data Fetch
                     const userDocRef = doc(db, 'users', currentUserId);
                     const userDocSnap = await getDoc(userDocRef);
                     
@@ -275,7 +273,6 @@
                             karkardagiStructure = userData.karkardagiStructure;
                         }
                         
-                        // Jamia dhoondein
                         loadedJamiaData = karkardagiStructure.find(j => (j.jamiaName || j.name) === paramJamia);
 
                         if (loadedJamiaData && loadedJamiaData.teachers && loadedJamiaData.teachers.length > 0) {
@@ -324,7 +321,6 @@
             const initialClass = paramClass && allClasses.has(paramClass) ? paramClass : '';
             handleClassChange(teachersData, initialClass, paramTeacher, paramBook);
 
-            // Listeners
             selectClass.addEventListener('change', () => handleClassChange(teachersData, selectClass.value, '', ''));
             selectTeacher.addEventListener('change', () => handleTeacherChange(teachersData, selectClass.value, selectTeacher.value, ''));
             selectBook.addEventListener('change', () => {
@@ -389,7 +385,7 @@
             }
         }
 
-        // 4. LOAD STUDENTS (With previous data check)
+        // 4. LOAD STUDENTS (Check Firebase then LocalStorage)
         btnLoad.addEventListener('click', async () => {
             const currentClass = selectClass.value;
             const currentTeacher = selectTeacher.value;
@@ -400,13 +396,17 @@
                 return;
             }
 
-            container.innerHTML = `<div class="text-center p-5"><i class="fas fa-spinner fa-spin text-teal-600 text-2xl"></i></div>`;
+            container.innerHTML = `<div class="text-center p-5"><i class="fas fa-spinner fa-spin text-teal-600 text-2xl"></i><p class="mt-2 urdu-font">لوڈ ہو رہا ہے...</p></div>`;
             studentCount = 0;
             btnAddStudent.classList.remove('hidden');
             btnAddStudent.classList.add('flex');
             
+            document.getElementById('display-class').textContent = currentClass;
+            document.getElementById('display-teacher').textContent = currentTeacher;
+            document.getElementById('display-book').textContent = currentBook;
+
             try {
-                // Check if any previous Jaiza report exists for this teacher/class/book
+                // 4a. Phele Firebase me is mahine ka form check karein
                 const reportsRef = collection(db, "monthly_reports");
                 const q = query(
                     reportsRef, 
@@ -418,11 +418,9 @@
                 let savedStudentsList = [];
                 let existingScoresForCurrentMonth = null;
                 
-                // Find latest students list and check if current month already has data
                 snap.forEach(doc => {
                     const data = doc.data();
                     
-                    // Check if current month is already saved
                     if (data.month === paramMonth || data.monthKey === paramMonth) {
                         if (data.jaizaReport && data.jaizaReport.data) {
                             const foundEntry = data.jaizaReport.data.find(j => 
@@ -438,7 +436,6 @@
                         }
                     }
 
-                    // Look for latest student names in any month
                     if (data.jaizaReport && data.jaizaReport.data) {
                         const anyEntry = data.jaizaReport.data.find(j => 
                             j.name === paramJamia && 
@@ -448,7 +445,6 @@
                             j.details.book === currentBook
                         );
                         if (anyEntry && anyEntry.students && anyEntry.students.length > 0) {
-                            // Collect unique names
                             anyEntry.students.forEach(st => {
                                 if (st.name && !savedStudentsList.includes(st.name)) {
                                     savedStudentsList.push(st.name);
@@ -458,49 +454,68 @@
                     }
                 });
 
-                container.innerHTML = ''; // Clear loading
+                container.innerHTML = '';
 
-                // Render Students
+                // 4b. LocalStorage ka Draft Data check karein
+                const draftData = localStorage.getItem(getLocalSaveKey());
+                
                 if (existingScoresForCurrentMonth && existingScoresForCurrentMonth.length > 0) {
-                    // Current month ka data majood hai, wo load karein
+                    // Firebase wala Saved Data (Current Month)
                     existingScoresForCurrentMonth.forEach(st => {
                         addBlankStudentCard(st.name, st.scores, st.remarks);
                     });
-                } else if (savedStudentsList.length > 0) {
-                    // Pichle mahine ke bachay load karein (marks khali)
+                } 
+                else if (draftData) {
+                    // Adhura choda hua form wapas laayein (Local Storage se)
+                    const parsedDraft = JSON.parse(draftData);
+                    if(parsedDraft.length > 0) {
+                        parsedDraft.forEach(st => {
+                            addBlankStudentCard(st.name, st.scores, st.remarks);
+                        });
+                    } else {
+                        addBlankStudentCard(); // Sirf 1 blank agar draft empty ho
+                    }
+                }
+                else if (savedStudentsList.length > 0) {
+                    // Pichle mahine ke bachay
                     savedStudentsList.forEach(stName => {
                         addBlankStudentCard(stName);
                     });
-                } else {
-                    // Koi pichla data nahi, 10 blank row do
-                    for(let i=0; i<10; i++) { addBlankStudentCard(); }
+                } 
+                else {
+                    // Koi pichla data nahi, Sirf 1 blank row do
+                    addBlankStudentCard(); 
                 }
 
-                // Initial calculation
                 document.querySelectorAll('.student-card').forEach(card => calculateCard(card));
 
             } catch (error) {
                 console.error("Error loading previous students:", error);
                 container.innerHTML = '';
-                for(let i=0; i<10; i++) { addBlankStudentCard(); }
+                addBlankStudentCard(); 
             }
         });
         
-        // Add Blank Student Button Click Event (JS Event Listener used)
+        // Add Blank Student Button Click Event
         btnAddStudent.addEventListener('click', () => addBlankStudentCard());
 
         function addBlankStudentCard(prefillName = "", prefillScores = null, prefillRemarks = "") {
             studentCount++;
+            const cardId = `student_card_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
             const card = document.createElement('div');
+            card.id = cardId;
             card.className = "student-card bg-white border border-slate-200 rounded-xl p-4 md:p-5 shadow-sm transition-all relative";
             
-            // Set default empty array if no scores
             const scores = prefillScores || ['', '', '', '', '', '', ''];
 
             card.innerHTML = `
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-4 border-b border-slate-100">
+                <button type="button" class="delete-student-btn absolute top-3 right-3 text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 rounded-full w-8 h-8 flex justify-center items-center transition" title="طالب علم کو حذف کریں">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-4 border-b border-slate-100 pr-10">
                     <div class="flex items-center gap-3 w-full sm:w-auto">
-                        <span class="bg-slate-100 text-slate-500 font-bold font-sans w-8 h-8 rounded-full flex items-center justify-center shrink-0">${studentCount}</span>
+                        <span class="bg-slate-100 text-slate-500 font-bold font-sans w-8 h-8 rounded-full flex items-center justify-center shrink-0 row-number">${studentCount}</span>
                         <input type="text" class="student-name-input w-full sm:w-64 bg-slate-50 outline-none focus:ring-2 focus:ring-teal-400 border border-slate-200 rounded-lg px-3 py-2 urdu-font text-base text-right" placeholder="طالب علم کا نام..." value="${prefillName}">
                     </div>
                     <div class="flex items-center gap-4 w-full sm:w-auto justify-end">
@@ -531,8 +546,70 @@
             `;
             container.appendChild(card);
 
-            const inputs = card.querySelectorAll('.score-input');
-            inputs.forEach(inp => inp.addEventListener('input', () => calculateCard(card)));
+            // DELETE BUTTON LOGIC
+            card.querySelector('.delete-student-btn').addEventListener('click', () => {
+                if(confirm("کیا آپ واقعی اس طالب علم کو حذف کرنا چاہتے ہیں؟")) {
+                    card.remove();
+                    updateRowNumbers();
+                    updateDashboardStats();
+                    saveDraftToLocal(); // Update local storage after delete
+                }
+            });
+
+            // REAL TIME AUTOSAVE LOGIC
+            const inputs = card.querySelectorAll('input');
+            inputs.forEach(inp => {
+                inp.addEventListener('input', () => {
+                    if (inp.classList.contains('score-input')) {
+                        calculateCard(card);
+                    } else {
+                        saveDraftToLocal(); // Naam ya remarks badalne par
+                    }
+                });
+            });
+        }
+
+        // Re-number rows after delete
+        function updateRowNumbers() {
+            const cards = container.querySelectorAll('.student-card');
+            studentCount = 0;
+            cards.forEach(card => {
+                studentCount++;
+                card.querySelector('.row-number').textContent = studentCount;
+            });
+        }
+
+        // AUTO-SAVE FUNCTION (Saves to Browser Local Storage)
+        function saveDraftToLocal() {
+            // Sirf tabhi draft save karein jab form loaded ho
+            if(container.innerHTML.trim() === '' || container.querySelector('.fa-spinner')) return;
+
+            const studentCards = document.querySelectorAll('.student-card');
+            let studentsDraft = [];
+
+            studentCards.forEach(card => {
+                const name = card.querySelector('.student-name-input').value;
+                const remarks = card.querySelector('.student-remarks-input').value;
+                const inputs = card.querySelectorAll('.score-input');
+                let scores = [];
+
+                inputs.forEach(inp => {
+                    scores.push(inp.value !== '' ? parseInt(inp.value) : '');
+                });
+
+                // Khali form save nahi hoga
+                if(name.trim() !== "" || scores.some(s => s !== '')) {
+                    studentsDraft.push({
+                        name: name,
+                        scores: scores,
+                        remarks: remarks
+                    });
+                }
+            });
+
+            // LocalStorage me save
+            localStorage.setItem(getLocalSaveKey(), JSON.stringify(studentsDraft));
+            console.log("Draft Auto-Saved locally!");
         }
 
         // 5. SMART CALCULATION LOGIC
@@ -604,6 +681,7 @@
             }
 
             updateDashboardStats();
+            saveDraftToLocal(); // Calc ke baad draft save karein
         }
 
         // 6. LIVE STATS DASHBOARD
@@ -626,7 +704,7 @@
             document.getElementById('stat-kamzor').textContent = kamzor;
         }
 
-        // 7. SAVE DATA TO FIREBASE (Attached via JS Event Listener)
+        // 7. SAVE DATA TO FIREBASE
         btnSaveData.addEventListener('click', async () => {
             const currentClass = selectClass.value;
             const currentTeacher = selectTeacher.value;
@@ -657,7 +735,7 @@
                         hasScore = true;
                         sum += val;
                     } else {
-                        scores.push(''); // Empty string for blank marks
+                        scores.push(''); 
                     }
                 });
 
@@ -682,7 +760,6 @@
                 return;
             }
 
-            // Calculation for overall Jamia average
             const overallAvg = validEntryCount > 0 ? Math.round(overallScoreSum / validEntryCount) : 0;
             let overallPercentage = `${overallAvg}%`;
 
@@ -691,12 +768,10 @@
             btnSaveData.disabled = true;
 
             try {
-                // Determine Report ID
                 const today = new Date();
                 const m = today.getMonth();
                 const y = today.getFullYear();
                 
-                // Monthly report save path format match
                 const withYearId = `${currentUserId}_${activeAcademicYear}_${y}_${m}`;
                 const reportRef = doc(db, "monthly_reports", withYearId); 
                 const docSnap = await getDoc(reportRef);
@@ -704,7 +779,6 @@
                 let existingData = docSnap.exists() ? docSnap.data() : {};
                 let jaizaData = existingData.jaizaReport?.data || [];
                 
-                // Find and update or add new entry for this jamia
                 const entryIndex = jaizaData.findIndex(j => 
                     j.name === paramJamia && 
                     j.details?.teacher === currentTeacher && 
@@ -713,34 +787,23 @@
                 );
                 
                 if (entryIndex !== -1) {
-                    // Update existing class/book entry
                     jaizaData[entryIndex] = {
                         name: paramJamia,
                         percentage: overallPercentage,
                         status: 'Jaiza',
-                        details: {
-                            class: currentClass,
-                            teacher: currentTeacher,
-                            book: currentBook,
-                        },
+                        details: { class: currentClass, teacher: currentTeacher, book: currentBook },
                         students: studentsData
                     };
                 } else {
-                    // Add new class/book entry for the same jamia
                     jaizaData.push({
                         name: paramJamia,
                         percentage: overallPercentage,
                         status: 'Jaiza',
-                        details: {
-                            class: currentClass,
-                            teacher: currentTeacher,
-                            book: currentBook,
-                        },
+                        details: { class: currentClass, teacher: currentTeacher, book: currentBook },
                         students: studentsData
                     });
                 }
 
-                // Save to Firestore
                 await setDoc(reportRef, {
                     userId: currentUserId,
                     academicYear: activeAcademicYear,
@@ -748,12 +811,12 @@
                     monthKey: paramMonth,
                     year: y,
                     monthNum: m,
-                    jaizaReport: {
-                        status: "Done",
-                        data: jaizaData
-                    },
+                    jaizaReport: { status: "Done", data: jaizaData },
                     updatedAt: serverTimestamp()
                 }, { merge: true });
+
+                // Jab Firebase me successfully save ho jaye to Local Draft Delete kar do
+                localStorage.removeItem(getLocalSaveKey());
 
                 alert('ڈیٹا کامیابی سے محفوظ کر لیا گیا ہے!');
 
