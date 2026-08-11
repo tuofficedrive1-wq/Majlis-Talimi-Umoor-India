@@ -189,7 +189,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase Config
         const firebaseConfig = {
@@ -211,6 +211,7 @@
         const paramTeacher = urlParams.get('teacher') || '';
         const paramClass = urlParams.get('class') || '';
         const paramBook = urlParams.get('book') || '';
+        const paramMonth = urlParams.get('month') || 'موجودہ ماہ';
         
         document.getElementById('display-jamia').textContent = paramJamia;
         
@@ -225,8 +226,12 @@
         const btnLoad = document.getElementById('btn-load-students');
         const container = document.getElementById('students-container');
         const btnAddStudent = document.getElementById('add-student-btn');
+        const btnSave = document.getElementById('btn-save-data'); // Yahan id dena hoga HTML me agar nahi hai
+
         let studentCount = 0;
         let loadedJamiaData = null; 
+        let currentUserId = null;
+        let activeAcademicYear = null;
 
         // 2. Fetch Data from Firebase
         onAuthStateChanged(auth, async (user) => {
@@ -237,32 +242,31 @@
                 </div>`;
 
                 try {
-                    // Impersonation Logic (Agar Admin login hai to Zimmedar ka data dikhaye)
+                    // Impersonation Logic
                     const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
-                    let activeUserId = user.uid;
+                    currentUserId = user.uid;
                     const impersonateId = sessionStorage.getItem('impersonateUserId');
                     if (user.uid === ADMIN_UID && impersonateId) {
-                        activeUserId = impersonateId;
+                        currentUserId = impersonateId;
                     }
 
                     // Active Year Setup
                     const configRef = doc(db, "settings", "academic_config");
                     const configSnap = await getDoc(configRef);
-                    let activeYear = null;
                     if (configSnap.exists()) {
-                        activeYear = configSnap.data().activeYear;
+                        activeAcademicYear = configSnap.data().activeYear;
                     }
 
                     // User Data Fetch
-                    const userDocRef = doc(db, 'users', activeUserId);
+                    const userDocRef = doc(db, 'users', currentUserId);
                     const userDocSnap = await getDoc(userDocRef);
                     
                     if (userDocSnap.exists()) {
                         const userData = userDocSnap.data();
                         
                         let karkardagiStructure = [];
-                        if (activeYear && userData.academicYears && userData.academicYears[activeYear] && Array.isArray(userData.academicYears[activeYear].karkardagiStructure)) {
-                            karkardagiStructure = userData.academicYears[activeYear].karkardagiStructure;
+                        if (activeAcademicYear && userData.academicYears && userData.academicYears[activeAcademicYear] && Array.isArray(userData.academicYears[activeAcademicYear].karkardagiStructure)) {
+                            karkardagiStructure = userData.academicYears[activeAcademicYear].karkardagiStructure;
                         } else if (Array.isArray(userData.karkardagiStructure) && userData.karkardagiStructure.length > 0) {
                             karkardagiStructure = userData.karkardagiStructure;
                         }
@@ -271,7 +275,6 @@
                         loadedJamiaData = karkardagiStructure.find(j => (j.jamiaName || j.name) === paramJamia);
 
                         if (loadedJamiaData && loadedJamiaData.teachers && loadedJamiaData.teachers.length > 0) {
-                            // Blank state wapas le aayen
                             container.innerHTML = `<div class="text-center p-10 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-slate-500">
                                 <i class="fas fa-clipboard-list text-4xl mb-3 text-slate-300"></i>
                                 <p class="urdu-font text-lg">تفصیلات منتخب کر کے طلبہ لوڈ کریں</p>
@@ -300,7 +303,7 @@
             teachersData.forEach(t => {
                 if(t.periods) {
                     t.periods.forEach(p => {
-                        const cName = p.className || p.class; // Backup check
+                        const cName = p.className || p.class;
                         if(cName) allClasses.add(cName);
                     });
                 }
@@ -314,7 +317,6 @@
                 selectClass.appendChild(opt);
             });
 
-            // Agar URL se Class mili hai to aage ka process chalao
             const initialClass = paramClass && allClasses.has(paramClass) ? paramClass : '';
             handleClassChange(teachersData, initialClass, paramTeacher, paramBook);
 
@@ -383,33 +385,124 @@
             }
         }
 
-        // 4. LOAD STUDENTS
-        btnLoad.addEventListener('click', () => {
-            container.innerHTML = ''; 
+        // 4. LOAD STUDENTS (With previous data check)
+        btnLoad.addEventListener('click', async () => {
+            const currentClass = selectClass.value;
+            const currentTeacher = selectTeacher.value;
+            const currentBook = selectBook.value;
+
+            if (!currentClass || !currentTeacher || !currentBook) {
+                alert("تفصیلات مکمل منتخب کریں۔");
+                return;
+            }
+
+            container.innerHTML = `<div class="text-center p-5"><i class="fas fa-spinner fa-spin text-teal-600 text-2xl"></i></div>`;
             studentCount = 0;
             btnAddStudent.classList.remove('hidden');
             btnAddStudent.classList.add('flex');
             
             // Header Info Update
-            document.getElementById('display-class').textContent = selectClass.value;
-            document.getElementById('display-teacher').textContent = selectTeacher.value;
-            document.getElementById('display-book').textContent = selectBook.value;
-            
-            for(let i=0; i<10; i++) { addBlankStudentCard(); }
+            document.getElementById('display-class').textContent = currentClass;
+            document.getElementById('display-teacher').textContent = currentTeacher;
+            document.getElementById('display-book').textContent = currentBook;
+
+            try {
+                // Check if any previous Jaiza report exists for this teacher/class/book
+                const reportsRef = collection(db, "monthly_reports");
+                const q = query(
+                    reportsRef, 
+                    where("userId", "==", currentUserId), 
+                    where("academicYear", "==", activeAcademicYear)
+                );
+                
+                const snap = await getDocs(q);
+                let savedStudentsList = [];
+                let existingScoresForCurrentMonth = null;
+                
+                // Find latest students list and check if current month already has data
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    
+                    // Check if current month is already saved
+                    if (data.month === paramMonth || data.monthKey === paramMonth) {
+                        if (data.jaizaReport && data.jaizaReport.data) {
+                            const foundEntry = data.jaizaReport.data.find(j => 
+                                j.name === paramJamia && 
+                                j.details && 
+                                j.details.teacher === currentTeacher &&
+                                j.details.class === currentClass &&
+                                j.details.book === currentBook
+                            );
+                            if (foundEntry && foundEntry.students) {
+                                existingScoresForCurrentMonth = foundEntry.students;
+                            }
+                        }
+                    }
+
+                    // Look for latest student names in any month
+                    if (data.jaizaReport && data.jaizaReport.data) {
+                        const anyEntry = data.jaizaReport.data.find(j => 
+                            j.name === paramJamia && 
+                            j.details && 
+                            j.details.teacher === currentTeacher &&
+                            j.details.class === currentClass &&
+                            j.details.book === currentBook
+                        );
+                        if (anyEntry && anyEntry.students && anyEntry.students.length > 0) {
+                            // Collect unique names
+                            anyEntry.students.forEach(st => {
+                                if (st.name && !savedStudentsList.includes(st.name)) {
+                                    savedStudentsList.push(st.name);
+                                }
+                            });
+                        }
+                    }
+                });
+
+                container.innerHTML = ''; // Clear loading
+
+                // Render Students
+                if (existingScoresForCurrentMonth && existingScoresForCurrentMonth.length > 0) {
+                    // Current month ka data majood hai, wo load karein
+                    existingScoresForCurrentMonth.forEach(st => {
+                        addBlankStudentCard(st.name, st.scores, st.remarks);
+                    });
+                } else if (savedStudentsList.length > 0) {
+                    // Pichle mahine ke bachay load karein (marks khali)
+                    savedStudentsList.forEach(stName => {
+                        addBlankStudentCard(stName);
+                    });
+                } else {
+                    // Koi pichla data nahi, 10 blank row do
+                    for(let i=0; i<10; i++) { addBlankStudentCard(); }
+                }
+
+                // Initial calculation
+                document.querySelectorAll('.student-card').forEach(card => calculateCard(card));
+
+            } catch (error) {
+                console.error("Error loading previous students:", error);
+                container.innerHTML = '';
+                for(let i=0; i<10; i++) { addBlankStudentCard(); }
+            }
         });
         
-        btnAddStudent.addEventListener('click', addBlankStudentCard);
+        // Add Blank Student Button Click Event
+        btnAddStudent.addEventListener('click', () => addBlankStudentCard());
 
-        function addBlankStudentCard() {
+        function addBlankStudentCard(prefillName = "", prefillScores = null, prefillRemarks = "") {
             studentCount++;
             const card = document.createElement('div');
             card.className = "student-card bg-white border border-slate-200 rounded-xl p-4 md:p-5 shadow-sm transition-all relative";
             
+            // Set default empty array if no scores
+            const scores = prefillScores || ['', '', '', '', '', '', ''];
+
             card.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-4 border-b border-slate-100">
                     <div class="flex items-center gap-3 w-full sm:w-auto">
                         <span class="bg-slate-100 text-slate-500 font-bold font-sans w-8 h-8 rounded-full flex items-center justify-center shrink-0">${studentCount}</span>
-                        <input type="text" class="w-full sm:w-64 bg-slate-50 outline-none focus:ring-2 focus:ring-teal-400 border border-slate-200 rounded-lg px-3 py-2 urdu-font text-base text-right" placeholder="طالب علم کا نام...">
+                        <input type="text" class="student-name-input w-full sm:w-64 bg-slate-50 outline-none focus:ring-2 focus:ring-teal-400 border border-slate-200 rounded-lg px-3 py-2 urdu-font text-base text-right" placeholder="طالب علم کا نام..." value="${prefillName}">
                     </div>
                     <div class="flex items-center gap-4 w-full sm:w-auto justify-end">
                         <div class="text-right">
@@ -424,38 +517,17 @@
                 </div>
 
                 <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 md:gap-3 mb-4">
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">مخارج <br><span class="font-normal text-slate-400 font-sans">Max 30</span></label>
-                        <input type="number" class="score-input" data-max="30" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">قواعد <br><span class="font-normal text-slate-400 font-sans">Max 10</span></label>
-                        <input type="number" class="score-input" data-max="10" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">رواں <br><span class="font-normal text-slate-400 font-sans">Max 20</span></label>
-                        <input type="number" class="score-input" data-max="20" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">ہجے <br><span class="font-normal text-slate-400 font-sans">Max 5</span></label>
-                        <input type="number" class="score-input" data-max="5" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">اجراء <br><span class="font-normal text-slate-400 font-sans">Max 20</span></label>
-                        <input type="number" class="score-input" data-max="20" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">حفظ سورت <br><span class="font-normal text-slate-400 font-sans">Max 10</span></label>
-                        <input type="number" class="score-input" data-max="10" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">حسن صوت <br><span class="font-normal text-slate-400 font-sans">Max 5</span></label>
-                        <input type="number" class="score-input" data-max="5" placeholder="0">
-                    </div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">مخارج <br><span class="font-normal text-slate-400 font-sans">Max 30</span></label><input type="number" class="score-input" data-max="30" placeholder="0" value="${scores[0]}"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">قواعد <br><span class="font-normal text-slate-400 font-sans">Max 10</span></label><input type="number" class="score-input" data-max="10" placeholder="0" value="${scores[1]}"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">رواں <br><span class="font-normal text-slate-400 font-sans">Max 20</span></label><input type="number" class="score-input" data-max="20" placeholder="0" value="${scores[2]}"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">ہجے <br><span class="font-normal text-slate-400 font-sans">Max 5</span></label><input type="number" class="score-input" data-max="5" placeholder="0" value="${scores[3]}"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">اجراء <br><span class="font-normal text-slate-400 font-sans">Max 20</span></label><input type="number" class="score-input" data-max="20" placeholder="0" value="${scores[4]}"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">حفظ سورت <br><span class="font-normal text-slate-400 font-sans">Max 10</span></label><input type="number" class="score-input" data-max="10" placeholder="0" value="${scores[5]}"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 text-center mb-1">حسن صوت <br><span class="font-normal text-slate-400 font-sans">Max 5</span></label><input type="number" class="score-input" data-max="5" placeholder="0" value="${scores[6]}"></div>
                 </div>
 
                 <div>
-                    <input type="text" class="w-full bg-slate-50 outline-none focus:ring-2 focus:ring-teal-400 border border-slate-200 rounded-lg px-3 py-2 urdu-font text-sm text-right" placeholder="ریمارکس / اغلاط کی نشاندہی (مثلاً: رواں میں کمزوری)...">
+                    <input type="text" class="student-remarks-input w-full bg-slate-50 outline-none focus:ring-2 focus:ring-teal-400 border border-slate-200 rounded-lg px-3 py-2 urdu-font text-sm text-right" placeholder="ریمارکس / اغلاط کی نشاندہی (مثلاً: رواں میں کمزوری)..." value="${prefillRemarks}">
                 </div>
             `;
             container.appendChild(card);
@@ -555,9 +627,141 @@
             document.getElementById('stat-kamzor').textContent = kamzor;
         }
 
-        window.saveData = function() {
-            alert('ڈیٹا کامیابی سے محفوظ کر لیا گیا ہے!');
-        }
+        // 7. SAVE DATA TO FIREBASE (Add ID to save button in HTML)
+        document.getElementById('btn-save-data').addEventListener('click', async () => {
+            const currentClass = selectClass.value;
+            const currentTeacher = selectTeacher.value;
+            const currentBook = selectBook.value;
+
+            if (!currentClass || !currentTeacher || !currentBook) {
+                alert("براہ کرم تمام تفصیلات منتخب کریں۔");
+                return;
+            }
+
+            const studentCards = document.querySelectorAll('.student-card');
+            let studentsData = [];
+            let validEntryCount = 0;
+            let overallScoreSum = 0;
+
+            studentCards.forEach(card => {
+                const name = card.querySelector('.student-name-input').value.trim();
+                const remarks = card.querySelector('.student-remarks-input').value.trim();
+                const inputs = card.querySelectorAll('.score-input');
+                let scores = [];
+                let hasScore = false;
+                let sum = 0;
+
+                inputs.forEach(inp => {
+                    let val = parseInt(inp.value);
+                    if (!isNaN(val)) {
+                        scores.push(val);
+                        hasScore = true;
+                        sum += val;
+                    } else {
+                        scores.push(''); // Empty string for blank marks
+                    }
+                });
+
+                if (name !== "") {
+                    studentsData.push({
+                        name: name,
+                        scores: scores,
+                        remarks: remarks,
+                        total: hasScore ? sum : null,
+                        grade: card.dataset.grade || null
+                    });
+                    
+                    if(hasScore) {
+                        validEntryCount++;
+                        overallScoreSum += sum;
+                    }
+                }
+            });
+
+            if (studentsData.length === 0) {
+                alert("کوئی ڈیٹا درج نہیں کیا گیا۔");
+                return;
+            }
+
+            // Calculation for overall Jamia average
+            const overallAvg = validEntryCount > 0 ? Math.round(overallScoreSum / validEntryCount) : 0;
+            let overallPercentage = `${overallAvg}%`;
+
+            const btnSave = document.getElementById('btn-save-data');
+            const originalText = btnSave.innerHTML;
+            btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...';
+            btnSave.disabled = true;
+
+            try {
+                // Determine Report ID based on date
+                const today = new Date();
+                const m = today.getMonth();
+                const y = today.getFullYear();
+                const simpleId = `${currentUserId}_${y}_${m}`;
+                const withYearId = `${currentUserId}_${activeAcademicYear}_${y}_${m}`;
+                
+                const reportRef = doc(db, "monthly_reports", withYearId); 
+                const docSnap = await getDoc(reportRef);
+                
+                let existingData = docSnap.exists() ? docSnap.data() : {};
+                let jaizaData = existingData.jaizaReport?.data || [];
+                
+                // Find and update or add new entry for this jamia
+                const entryIndex = jaizaData.findIndex(j => j.name === paramJamia);
+                
+                if (entryIndex !== -1) {
+                    // Update existing
+                    jaizaData[entryIndex] = {
+                        name: paramJamia,
+                        percentage: overallPercentage,
+                        status: 'Jaiza',
+                        details: {
+                            class: currentClass,
+                            teacher: currentTeacher,
+                            book: currentBook,
+                        },
+                        students: studentsData
+                    };
+                } else {
+                    // Add new
+                    jaizaData.push({
+                        name: paramJamia,
+                        percentage: overallPercentage,
+                        status: 'Jaiza',
+                        details: {
+                            class: currentClass,
+                            teacher: currentTeacher,
+                            book: currentBook,
+                        },
+                        students: studentsData
+                    });
+                }
+
+                // Save to Firestore
+                await setDoc(reportRef, {
+                    userId: currentUserId,
+                    academicYear: activeAcademicYear,
+                    month: paramMonth, // Store the name for display
+                    monthKey: paramMonth,
+                    year: y,
+                    monthNum: m,
+                    jaizaReport: {
+                        status: "Done",
+                        data: jaizaData
+                    },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                alert('ڈیٹا کامیابی سے محفوظ کر لیا گیا ہے!');
+
+            } catch (error) {
+                console.error("Save Error:", error);
+                alert('ڈیٹا محفوظ کرنے میں مسئلہ آیا: ' + error.message);
+            } finally {
+                btnSave.innerHTML = originalText;
+                btnSave.disabled = false;
+            }
+        });
 
     </script>
 </body>
