@@ -185,34 +185,34 @@
 
     </div>
 
-    <!-- 🧠 JAVASCRIPT LOGIC -->
-    <script>
-        // --- MOCK DATA (Demo ke liye, asal app me ye Firebase/Storage se aayega) ---
-        // Format: Jamia -> Teachers -> Periods (Class, Book)
-        const mockStructureData = {
-            "جامعہ المدینہ (ڈیمو)": [
-                {
-                    name: "استاد راشد مدنی",
-                    periods: [
-                        { className: "ابتدائیہ", bookName: "مدنی قاعدہ" },
-                        { className: "ابتدائیہ", bookName: "ناظرہ قرآن" },
-                        { className: "سال اول", bookName: "تجوید" }
-                    ]
-                },
-                {
-                    name: "استاد بلال عطاری",
-                    periods: [
-                        { className: "سال اول", bookName: "حفظ" },
-                        { className: "سال دوم", bookName: "عربی گرامر" }
-                    ]
-                }
-            ]
+   <!-- 🧠 JAVASCRIPT LOGIC (FIREBASE INTEGRATION) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Config
+        const firebaseConfig = {
+          apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+          authDomain: "data-f15ab.firebaseapp.com",
+          projectId: "data-f15ab",
+          storageBucket: "data-f15ab.appspot.com",
+          messagingSenderId: "449137002393",
+          appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
         };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
         // 1. Initial Setup & URL Params
         const urlParams = new URLSearchParams(window.location.search);
-        const jamiaParam = urlParams.get('jamia') || 'جامعہ المدینہ (ڈیمو)';
-        document.getElementById('display-jamia').textContent = jamiaParam;
+        const paramJamia = urlParams.get('jamia') || 'نامعلوم جامعہ';
+        const paramTeacher = urlParams.get('teacher') || '';
+        const paramClass = urlParams.get('class') || '';
+        const paramBook = urlParams.get('book') || '';
+        
+        document.getElementById('display-jamia').textContent = paramJamia;
         
         // Date
         const today = new Date();
@@ -224,85 +224,188 @@
         const selectBook = document.getElementById('select-book');
         const btnLoad = document.getElementById('btn-load-students');
         const container = document.getElementById('students-container');
+        const btnAddStudent = document.getElementById('add-student-btn');
         let studentCount = 0;
+        let loadedJamiaData = null; 
 
-        // 2. DEPENDANT DROPDOWNS LOGIC
-        const jamiaData = mockStructureData[jamiaParam] || [];
-        
-        // Extract Unique Classes
-        let allClasses = new Set();
-        jamiaData.forEach(t => t.periods.forEach(p => allClasses.add(p.className)));
-        
-        // Populate Classes
-        allClasses.forEach(cls => {
-            const opt = document.createElement('option');
-            opt.value = cls; opt.textContent = cls;
-            selectClass.appendChild(opt);
+        // 2. Fetch Data from Firebase
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                container.innerHTML = `<div class="text-center p-10 border-2 border-dashed border-teal-300 rounded-xl bg-teal-50 text-teal-600">
+                    <i class="fas fa-spinner fa-spin text-3xl mb-3"></i>
+                    <p class="urdu-font text-lg font-bold">ڈیٹا لوڈ ہو رہا ہے...</p>
+                </div>`;
+
+                try {
+                    // Impersonation Logic (Agar Admin login hai to Zimmedar ka data dikhaye)
+                    const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
+                    let activeUserId = user.uid;
+                    const impersonateId = sessionStorage.getItem('impersonateUserId');
+                    if (user.uid === ADMIN_UID && impersonateId) {
+                        activeUserId = impersonateId;
+                    }
+
+                    // Active Year Setup
+                    const configRef = doc(db, "settings", "academic_config");
+                    const configSnap = await getDoc(configRef);
+                    let activeYear = null;
+                    if (configSnap.exists()) {
+                        activeYear = configSnap.data().activeYear;
+                    }
+
+                    // User Data Fetch
+                    const userDocRef = doc(db, 'users', activeUserId);
+                    const userDocSnap = await getDoc(userDocRef);
+                    
+                    if (userDocSnap.exists()) {
+                        const userData = userDocSnap.data();
+                        
+                        let karkardagiStructure = [];
+                        if (activeYear && userData.academicYears && userData.academicYears[activeYear] && Array.isArray(userData.academicYears[activeYear].karkardagiStructure)) {
+                            karkardagiStructure = userData.academicYears[activeYear].karkardagiStructure;
+                        } else if (Array.isArray(userData.karkardagiStructure) && userData.karkardagiStructure.length > 0) {
+                            karkardagiStructure = userData.karkardagiStructure;
+                        }
+                        
+                        // Jamia dhoondein
+                        loadedJamiaData = karkardagiStructure.find(j => (j.jamiaName || j.name) === paramJamia);
+
+                        if (loadedJamiaData && loadedJamiaData.teachers && loadedJamiaData.teachers.length > 0) {
+                            // Blank state wapas le aayen
+                            container.innerHTML = `<div class="text-center p-10 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-slate-500">
+                                <i class="fas fa-clipboard-list text-4xl mb-3 text-slate-300"></i>
+                                <p class="urdu-font text-lg">تفصیلات منتخب کر کے طلبہ لوڈ کریں</p>
+                            </div>`;
+                            populateInitialDropdowns(loadedJamiaData.teachers);
+                        } else {
+                            container.innerHTML = `<div class="text-center p-10 border-2 border-dashed border-red-300 rounded-xl bg-red-50 text-red-500">
+                                <p class="urdu-font text-lg font-bold">اس جامعہ کا ڈیٹا موجود نہیں ہے یا اساتذہ شامل نہیں کیے گئے۔</p>
+                            </div>`;
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error fetching data:", error);
+                    container.innerHTML = `<div class="text-center p-10 border-2 border-dashed border-red-300 rounded-xl bg-red-50 text-red-500">
+                        <p class="urdu-font text-lg">ڈیٹا لوڈ کرنے میں تکنیکی مسئلہ آیا۔</p>
+                    </div>`;
+                }
+            } else {
+                alert("Please log in first.");
+            }
         });
 
-        // Class Change -> Update Teachers
-        selectClass.addEventListener('change', function() {
-            const cls = this.value;
+        // 3. Populate Dropdowns Function
+        function populateInitialDropdowns(teachersData) {
+            let allClasses = new Set();
+            teachersData.forEach(t => {
+                if(t.periods) {
+                    t.periods.forEach(p => {
+                        const cName = p.className || p.class; // Backup check
+                        if(cName) allClasses.add(cName);
+                    });
+                }
+            });
+            
+            selectClass.innerHTML = '<option value="">درجہ منتخب کریں</option>';
+            allClasses.forEach(cls => {
+                const opt = document.createElement('option');
+                opt.value = cls; opt.textContent = cls;
+                if(cls === paramClass) opt.selected = true; 
+                selectClass.appendChild(opt);
+            });
+
+            // Agar URL se Class mili hai to aage ka process chalao
+            const initialClass = paramClass && allClasses.has(paramClass) ? paramClass : '';
+            handleClassChange(teachersData, initialClass, paramTeacher, paramBook);
+
+            // Listeners
+            selectClass.addEventListener('change', () => handleClassChange(teachersData, selectClass.value, '', ''));
+            selectTeacher.addEventListener('change', () => handleTeacherChange(teachersData, selectClass.value, selectTeacher.value, ''));
+            selectBook.addEventListener('change', () => {
+                btnLoad.disabled = !selectBook.value;
+            });
+        }
+
+        function handleClassChange(teachersData, selectedClass, preSelectTeacher, preSelectBook) {
             selectTeacher.innerHTML = '<option value="">استاد منتخب کریں</option>';
             selectBook.innerHTML = '<option value="">پہلے استاد منتخب کریں</option>';
             selectTeacher.disabled = true;
             selectBook.disabled = true;
             btnLoad.disabled = true;
 
-            if (cls) {
-                const teachersInClass = jamiaData.filter(t => t.periods.some(p => p.className === cls));
+            if (selectedClass) {
+                const teachersInClass = teachersData.filter(t => t.periods && t.periods.some(p => (p.className || p.class) === selectedClass));
+                
                 teachersInClass.forEach(t => {
                     const opt = document.createElement('option');
                     opt.value = t.name; opt.textContent = t.name;
+                    if(t.name === preSelectTeacher) opt.selected = true;
                     selectTeacher.appendChild(opt);
                 });
-                selectTeacher.disabled = false;
-            }
-        });
+                
+                selectTeacher.disabled = teachersInClass.length === 0;
 
-        // Teacher Change -> Update Books
-        selectTeacher.addEventListener('change', function() {
-            const cls = selectClass.value;
-            const tName = this.value;
+                const teacherToLoad = preSelectTeacher && teachersInClass.some(t => t.name === preSelectTeacher) ? preSelectTeacher : '';
+                if (teacherToLoad) {
+                    handleTeacherChange(teachersData, selectedClass, teacherToLoad, preSelectBook);
+                }
+            }
+        }
+
+        function handleTeacherChange(teachersData, selectedClass, selectedTeacher, preSelectBook) {
             selectBook.innerHTML = '<option value="">کتاب منتخب کریں</option>';
             selectBook.disabled = true;
             btnLoad.disabled = true;
 
-            if (tName) {
-                const teacherObj = jamiaData.find(t => t.name === tName);
-                if(teacherObj) {
-                    const booksInClass = teacherObj.periods.filter(p => p.className === cls).map(p => p.bookName);
-                    booksInClass.forEach(b => {
+            if (selectedTeacher && selectedClass) {
+                const teacherObj = teachersData.find(t => t.name === selectedTeacher);
+                if(teacherObj && teacherObj.periods) {
+                    const booksInClass = teacherObj.periods
+                                         .filter(p => (p.className || p.class) === selectedClass)
+                                         .map(p => p.bookName || p.kitab);
+                    
+                    const uniqueBooks = [...new Set(booksInClass)];
+
+                    uniqueBooks.forEach(b => {
+                        if(!b) return;
                         const opt = document.createElement('option');
                         opt.value = b; opt.textContent = b;
+                        if(b === preSelectBook) opt.selected = true;
                         selectBook.appendChild(opt);
                     });
-                    selectBook.disabled = false;
+                    
+                    selectBook.disabled = uniqueBooks.length === 0;
+
+                    if (preSelectBook || selectBook.value) {
+                        btnLoad.disabled = false;
+                    }
                 }
             }
-        });
+        }
 
-        // Book Change -> Enable Load Button
-        selectBook.addEventListener('change', function() {
-            btnLoad.disabled = !this.value;
-        });
-
-        // 3. LOAD STUDENTS (Create Mobile Friendly Cards)
+        // 4. LOAD STUDENTS
         btnLoad.addEventListener('click', () => {
-            container.innerHTML = ''; // Clear empty state
+            container.innerHTML = ''; 
             studentCount = 0;
-            // Generate 10 blank cards
+            btnAddStudent.classList.remove('hidden');
+            btnAddStudent.classList.add('flex');
+            
+            // Header Info Update
+            document.getElementById('display-class').textContent = selectClass.value;
+            document.getElementById('display-teacher').textContent = selectTeacher.value;
+            document.getElementById('display-book').textContent = selectBook.value;
+            
             for(let i=0; i<10; i++) { addBlankStudentCard(); }
         });
+        
+        btnAddStudent.addEventListener('click', addBlankStudentCard);
 
-        // Mobile Friendly Student Card Generator
         function addBlankStudentCard() {
             studentCount++;
             const card = document.createElement('div');
             card.className = "student-card bg-white border border-slate-200 rounded-xl p-4 md:p-5 shadow-sm transition-all relative";
             
             card.innerHTML = `
-                <!-- Top Row: Name & Total Score -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-4 border-b border-slate-100">
                     <div class="flex items-center gap-3 w-full sm:w-auto">
                         <span class="bg-slate-100 text-slate-500 font-bold font-sans w-8 h-8 rounded-full flex items-center justify-center shrink-0">${studentCount}</span>
@@ -320,7 +423,6 @@
                     </div>
                 </div>
 
-                <!-- Marks Grid (Responsive) -->
                 <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 md:gap-3 mb-4">
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 text-center mb-1">مخارج <br><span class="font-normal text-slate-400 font-sans">Max 30</span></label>
@@ -352,19 +454,17 @@
                     </div>
                 </div>
 
-                <!-- Remarks -->
                 <div>
                     <input type="text" class="w-full bg-slate-50 outline-none focus:ring-2 focus:ring-teal-400 border border-slate-200 rounded-lg px-3 py-2 urdu-font text-sm text-right" placeholder="ریمارکس / اغلاط کی نشاندہی (مثلاً: رواں میں کمزوری)...">
                 </div>
             `;
             container.appendChild(card);
 
-            // Calculation Event Listener
             const inputs = card.querySelectorAll('.score-input');
             inputs.forEach(inp => inp.addEventListener('input', () => calculateCard(card)));
         }
 
-        // 4. SMART CALCULATION LOGIC
+        // 5. SMART CALCULATION LOGIC
         function calculateCard(card) {
             const inputs = card.querySelectorAll('.score-input');
             let sum = 0;
@@ -375,14 +475,13 @@
                 if (!isNaN(val)) {
                     sum += val;
                     hasData = true;
-                    // Auto Color Warning for Fail Marks (33%)
                     let max = parseInt(inp.getAttribute('data-max'));
                     let pass = max * 0.33; 
                     if (val < pass) {
-                        inp.style.color = '#ef4444'; // Red
+                        inp.style.color = '#ef4444'; 
                         inp.style.backgroundColor = '#fef2f2';
                     } else {
-                        inp.style.color = '#0ea5e9'; // Blue
+                        inp.style.color = '#0ea5e9'; 
                         inp.style.backgroundColor = '#ffffff';
                     }
                 } else {
@@ -398,7 +497,6 @@
                 totalCell.textContent = sum;
                 card.classList.add('evaluated'); 
                 
-                // Grades Logic
                 if (sum >= 90) {
                     qualityCell.textContent = "ممتاز الشرف";
                     qualityCell.className = "quality-cell bg-emerald-100 text-emerald-800 px-3 py-1 rounded-lg text-xs font-bold urdu-font inline-block";
@@ -437,7 +535,7 @@
             updateDashboardStats();
         }
 
-        // 5. LIVE STATS DASHBOARD
+        // 6. LIVE STATS DASHBOARD
         function updateDashboardStats() {
             const cards = document.querySelectorAll('.student-card.evaluated');
             let total = cards.length;
@@ -457,8 +555,7 @@
             document.getElementById('stat-kamzor').textContent = kamzor;
         }
 
-        // Save Function Demo
-        function saveData() {
+        window.saveData = function() {
             alert('ڈیٹا کامیابی سے محفوظ کر لیا گیا ہے!');
         }
 
