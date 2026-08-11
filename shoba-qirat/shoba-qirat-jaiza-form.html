@@ -104,7 +104,7 @@
                 <!-- Class Dropdown -->
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">درجہ (Class)</label>
-                    <select id="select-class" class="custom-select w-full bg-white border border-slate-300 text-slate-700 py-2.5 px-3 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 urdu-font text-base cursor-pointer">
+                    <select id="select-class" class="custom-select w-full bg-white border border-slate-300 text-slate-700 py-2.5 px-3 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 urdu-font text-base cursor-pointer disabled:bg-slate-100 disabled:text-slate-400">
                         <option value="">درجہ منتخب کریں</option>
                     </select>
                 </div>
@@ -169,15 +169,17 @@
 
         <!-- 🚀 ACTION BUTTONS -->
         <div class="flex flex-col sm:flex-row justify-between items-center no-print mt-8 border-t border-slate-200 pt-6 gap-4">
-            <button type="button" onclick="addBlankStudentCard()" class="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-5 rounded-lg transition flex items-center justify-center gap-2 border border-slate-300">
+            <!-- ADD STUDENT BUTTON (ID assigned) -->
+            <button id="add-student-btn" type="button" class="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-5 rounded-lg transition items-center justify-center gap-2 border border-slate-300 hidden">
                 <i class="fas fa-plus"></i> نیا طالبعلم شامل کریں
             </button>
             
-            <div class="flex flex-col sm:flex-row w-full sm:w-auto gap-3">
+            <div class="flex flex-col sm:flex-row w-full sm:w-auto gap-3 ml-auto">
                 <button type="button" onclick="window.print()" class="w-full sm:w-auto bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold py-2.5 px-6 rounded-lg transition border border-indigo-200 flex items-center justify-center gap-2">
                     <i class="fas fa-print"></i> پرنٹ کریں
                 </button>
-                <button type="button" onclick="saveData()" class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition transform hover:scale-105 flex items-center justify-center gap-2">
+                <!-- SAVE BUTTON (ID assigned) -->
+                <button id="btn-save-data" type="button" class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition transform hover:scale-105 flex items-center justify-center gap-2">
                     <i class="fas fa-save"></i> محفوظ کریں (Save)
                 </button>
             </div>
@@ -185,11 +187,11 @@
 
     </div>
 
-   <!-- 🧠 JAVASCRIPT LOGIC (FIREBASE INTEGRATION) -->
+    <!-- 🧠 JAVASCRIPT LOGIC (FIREBASE INTEGRATION) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase Config
         const firebaseConfig = {
@@ -225,8 +227,10 @@
         const selectBook = document.getElementById('select-book');
         const btnLoad = document.getElementById('btn-load-students');
         const container = document.getElementById('students-container');
+        
+        // Buttons ko IDs ke zariye pakra gaya hai
         const btnAddStudent = document.getElementById('add-student-btn');
-        const btnSave = document.getElementById('btn-save-data'); // Yahan id dena hoga HTML me agar nahi hai
+        const btnSaveData = document.getElementById('btn-save-data');
 
         let studentCount = 0;
         let loadedJamiaData = null; 
@@ -401,11 +405,6 @@
             btnAddStudent.classList.remove('hidden');
             btnAddStudent.classList.add('flex');
             
-            // Header Info Update
-            document.getElementById('display-class').textContent = currentClass;
-            document.getElementById('display-teacher').textContent = currentTeacher;
-            document.getElementById('display-book').textContent = currentBook;
-
             try {
                 // Check if any previous Jaiza report exists for this teacher/class/book
                 const reportsRef = collection(db, "monthly_reports");
@@ -487,7 +486,7 @@
             }
         });
         
-        // Add Blank Student Button Click Event
+        // Add Blank Student Button Click Event (JS Event Listener used)
         btnAddStudent.addEventListener('click', () => addBlankStudentCard());
 
         function addBlankStudentCard(prefillName = "", prefillScores = null, prefillRemarks = "") {
@@ -627,8 +626,8 @@
             document.getElementById('stat-kamzor').textContent = kamzor;
         }
 
-        // 7. SAVE DATA TO FIREBASE (Add ID to save button in HTML)
-        document.getElementById('btn-save-data').addEventListener('click', async () => {
+        // 7. SAVE DATA TO FIREBASE (Attached via JS Event Listener)
+        btnSaveData.addEventListener('click', async () => {
             const currentClass = selectClass.value;
             const currentTeacher = selectTeacher.value;
             const currentBook = selectBook.value;
@@ -679,7 +678,7 @@
             });
 
             if (studentsData.length === 0) {
-                alert("کوئی ڈیٹا درج نہیں کیا گیا۔");
+                alert("کوئی ڈیٹا درج نہیں کیا گیا۔ کم از کم ایک طالب علم کا نام درج کریں۔");
                 return;
             }
 
@@ -687,19 +686,18 @@
             const overallAvg = validEntryCount > 0 ? Math.round(overallScoreSum / validEntryCount) : 0;
             let overallPercentage = `${overallAvg}%`;
 
-            const btnSave = document.getElementById('btn-save-data');
-            const originalText = btnSave.innerHTML;
-            btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...';
-            btnSave.disabled = true;
+            const originalText = btnSaveData.innerHTML;
+            btnSaveData.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...';
+            btnSaveData.disabled = true;
 
             try {
-                // Determine Report ID based on date
+                // Determine Report ID
                 const today = new Date();
                 const m = today.getMonth();
                 const y = today.getFullYear();
-                const simpleId = `${currentUserId}_${y}_${m}`;
-                const withYearId = `${currentUserId}_${activeAcademicYear}_${y}_${m}`;
                 
+                // Monthly report save path format match
+                const withYearId = `${currentUserId}_${activeAcademicYear}_${y}_${m}`;
                 const reportRef = doc(db, "monthly_reports", withYearId); 
                 const docSnap = await getDoc(reportRef);
                 
@@ -707,10 +705,15 @@
                 let jaizaData = existingData.jaizaReport?.data || [];
                 
                 // Find and update or add new entry for this jamia
-                const entryIndex = jaizaData.findIndex(j => j.name === paramJamia);
+                const entryIndex = jaizaData.findIndex(j => 
+                    j.name === paramJamia && 
+                    j.details?.teacher === currentTeacher && 
+                    j.details?.class === currentClass && 
+                    j.details?.book === currentBook
+                );
                 
                 if (entryIndex !== -1) {
-                    // Update existing
+                    // Update existing class/book entry
                     jaizaData[entryIndex] = {
                         name: paramJamia,
                         percentage: overallPercentage,
@@ -723,7 +726,7 @@
                         students: studentsData
                     };
                 } else {
-                    // Add new
+                    // Add new class/book entry for the same jamia
                     jaizaData.push({
                         name: paramJamia,
                         percentage: overallPercentage,
@@ -741,7 +744,7 @@
                 await setDoc(reportRef, {
                     userId: currentUserId,
                     academicYear: activeAcademicYear,
-                    month: paramMonth, // Store the name for display
+                    month: paramMonth, 
                     monthKey: paramMonth,
                     year: y,
                     monthNum: m,
@@ -758,8 +761,8 @@
                 console.error("Save Error:", error);
                 alert('ڈیٹا محفوظ کرنے میں مسئلہ آیا: ' + error.message);
             } finally {
-                btnSave.innerHTML = originalText;
-                btnSave.disabled = false;
+                btnSaveData.innerHTML = originalText;
+                btnSaveData.disabled = false;
             }
         });
 
