@@ -3706,15 +3706,84 @@ const renderReportSummary = (reports) => {
         currentEditingJamias = []; 
         
         if (Array.isArray(userData.jamiaatList)) {
+            // NAYA LOGIC: Object ko object hi rehne do, string ko update mat karo jab tak admin na chahe
             currentEditingJamias = userData.jamiaatList.map(item => {
-                return typeof item === 'object' ? (item.name || item.jamiaName) : item;
-            }).filter(item => item); 
+                if (typeof item === 'object') return item;
+                // Agar purani (string) jamia hai, to ID generate karke bhej do
+                return { id: doc(collection(db, 'jamiaat_master')).id, name: item };
+            }); 
         } 
         
         renderJamiaTags(); 
         editUserModal.classList.remove('hidden');
     };
-          
+
+    window.handleAddJamiaTag = async () => {
+        const input = document.getElementById('new-jamia-input');
+        const val = input.value.trim();
+        
+        const exists = currentEditingJamias.some(j => (typeof j === 'object' ? j.name : j) === val);
+
+        if (val && !exists) {
+            showLoader(true);
+            try {
+                const masterQ = query(collection(db, 'jamiaat_master'), where('name', '==', val));
+                const masterSnap = await getDocs(masterQ);
+                let finalId = "";
+                
+                if (!masterSnap.empty) {
+                    finalId = masterSnap.docs[0].id;
+                } else {
+                    const newDocRef = doc(collection(db, 'jamiaat_master'));
+                    finalId = newDocRef.id;
+                    await setDoc(newDocRef, { name: val, createdAt: serverTimestamp() });
+                }
+
+                currentEditingJamias.push({ id: finalId, name: val }); 
+                renderJamiaTags(); 
+                input.value = ''; 
+                input.focus();
+            } catch(e) {
+                console.error(e);
+                alert("Error adding Jamia");
+            } finally {
+                showLoader(false);
+            }
+        } else if (exists) {
+            alert("Ye Jamia is user ke paas pehle se list mein hai!");
+        }
+    };
+
+    window.removeJamiaTag = (jamiaId) => {
+        // ID ke zariye delete karein
+        currentEditingJamias = currentEditingJamias.filter(j => j.id !== jamiaId);
+        renderJamiaTags();
+    };
+
+    function renderJamiaTags() {
+        const container = document.getElementById('jamia-tags-container');
+        container.innerHTML = ''; 
+
+        if (currentEditingJamias.length === 0) {
+            container.innerHTML = '<span class="text-gray-400 text-sm">Koi Jamia select nahi hai.</span>';
+            return;
+        }
+
+        currentEditingJamias.forEach(jamia => {
+            const jName = typeof jamia === 'object' ? jamia.name : jamia;
+            const jId = typeof jamia === 'object' ? jamia.id : jamia;
+            const tag = document.createElement('div');
+            tag.className = "bg-white text-teal-800 text-sm font-medium px-3 py-1 rounded-full border border-teal-200 shadow-sm flex items-center gap-2 urdu-font";
+            tag.innerHTML = `
+                <span>${jName}</span>
+                <button type="button" onclick="removeJamiaTag('${jId}')" class="text-red-500 hover:text-red-700 font-bold focus:outline-none ml-1">
+                    &times;
+                </button>
+            `;
+            container.appendChild(tag);
+        });
+    }
+        
     const handleEditUserSubmit = async (e) => {
         e.preventDefault();
         editUserError.textContent = '';
@@ -5700,9 +5769,14 @@ const initJamiaLinkingTab = () => {
 
     const inspectors = allUsersData.filter(u => u.role === 'inspector');
     let allStandardJamias = new Set();
+    
+    // 🌟 THEEK KIYA GAYA HISSA 1: Standard Jamiaat load karte waqt Object se naam nikalna
     allUsersData.forEach(u => {
         if (u.role === 'standard' || !u.role) {
-            (u.jamiaatList || []).forEach(j => allStandardJamias.add(j));
+            (u.jamiaatList || []).forEach(j => {
+                const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if(jName) allStandardJamias.add(jName);
+            });
         }
     });
 
@@ -5717,8 +5791,12 @@ const initJamiaLinkingTab = () => {
         const inspector = inspectors.find(u => u.id === inspId);
         
         if (inspector && inspector.jamiaatList) {
+            // 🌟 THEEK KIYA GAYA HISSA 2: Inspector ki Jamiaat dropdown mein load karte waqt Object se naam nikalna
             inspJamiaSelect.innerHTML = '<option value="">-- Select Inspector Jamia --</option>' + 
-                inspector.jamiaatList.map(j => `<option value="${j}">${j}</option>`).join('');
+                inspector.jamiaatList.map(j => {
+                    const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    return `<option value="${jName}">${jName}</option>`;
+                }).join('');
             inspJamiaSelect.disabled = false;
         } else {
             inspJamiaSelect.innerHTML = '<option value="">-- No Jamia Found --</option>';
