@@ -657,6 +657,33 @@
                             </table>
                         </div>
                     </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border-2 border-orange-400 mt-6 mb-6">
+        <h3 class="text-xl font-bold text-orange-700 border-b pb-2 mb-4">
+            <i class="fas fa-tools mr-2"></i> Jamia ID Migration Tool
+        </h3>
+        <p class="text-sm text-gray-600 mb-4">Pehle User select karein, phir uski purani Jamia (String) select karein, aur naya ID assign karne ke liye migrate dabayein.</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">1. Select User</label>
+                <select id="mig-user-select" class="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 urdu-font focus:ring-2 focus:ring-orange-500">
+                    <option value="">-- Load ho raha hai --</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">2. Select Jamia</label>
+                <select id="mig-jamia-select" class="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 urdu-font focus:ring-2 focus:ring-orange-500" disabled>
+                    <option value="">-- Pehle User Select Karein --</option>
+                </select>
+            </div>
+            <div>
+                <button id="btn-run-migration" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-sm" disabled>
+                    <i class="fas fa-exchange-alt mr-1"></i> Migrate This Jamia
+                </button>
+            </div>
+        </div>
+        <div id="mig-status-msg" class="mt-4 text-sm font-bold hidden"></div>
+    </div>
                 </div>
 
                 <div id="admin-transfer-tab" class="admin-tab-content hidden">
@@ -6230,7 +6257,181 @@ if (editUserRoleSelect) {
         }
     });
 }
- 
+ // ==========================================
+// TEMPORARY JAMIA MIGRATION LOGIC (Start)
+// ==========================================
+
+const migUserSelect = document.getElementById('mig-user-select');
+const migJamiaSelect = document.getElementById('mig-jamia-select');
+const btnRunMigration = document.getElementById('btn-run-migration');
+const migStatusMsg = document.getElementById('mig-status-msg');
+
+const initMigrationTool = () => {
+    if (!migUserSelect || allUsersData.length === 0) return;
+    
+    migUserSelect.innerHTML = '<option value="">-- Select User --</option>' + 
+        allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
+
+    migUserSelect.addEventListener('change', (e) => {
+        const userId = e.target.value;
+        const user = allUsersData.find(u => u.id === userId);
+        
+        if (user && user.jamiaatList && user.jamiaatList.length > 0) {
+            // Check karein kon si jamias abhi tak string hain
+            const stringJamias = user.jamiaatList.filter(j => typeof j === 'string');
+            
+            if (stringJamias.length > 0) {
+                migJamiaSelect.innerHTML = '<option value="">-- Select Jamia --</option>' + 
+                    stringJamias.map(j => `<option value="${j}">${j}</option>`).join('');
+                migJamiaSelect.disabled = false;
+            } else {
+                migJamiaSelect.innerHTML = '<option value="">-- Sab Migrate Ho Chuki Hain --</option>';
+                migJamiaSelect.disabled = true;
+                btnRunMigration.disabled = true;
+            }
+        } else {
+            migJamiaSelect.innerHTML = '<option value="">-- Koi Jamia Nahi --</option>';
+            migJamiaSelect.disabled = true;
+            btnRunMigration.disabled = true;
+        }
+    });
+
+    migJamiaSelect.addEventListener('change', (e) => {
+        btnRunMigration.disabled = !e.target.value;
+    });
+};
+
+// Data load hone ke baad tool ko start karne ke liye delay
+setTimeout(initMigrationTool, 3000); 
+
+if (btnRunMigration) {
+    btnRunMigration.addEventListener('click', async () => {
+        const userId = migUserSelect.value;
+        const targetJamiaName = migJamiaSelect.value;
+        
+        if (!userId || !targetJamiaName) return;
+
+        if (!confirm(`Kya aap waqai "${targetJamiaName}" ko unique ID assign karke uski saari purani reports (Jaiza, Test, KKd) update karna chahte hain?`)) return;
+
+        showLoader(true);
+        migStatusMsg.classList.remove('hidden', 'text-green-600', 'text-red-600');
+        migStatusMsg.classList.add('text-blue-600');
+        migStatusMsg.textContent = "Migration chal rahi hai, thora intezar karein...";
+
+        try {
+            const newJamiaId = doc(collection(db, 'jamiaat_master')).id;
+            const batch = writeBatch(db);
+
+            // 1. User Profile Update
+            const userRef = doc(db, 'users', userId);
+            const userSnap = await getDoc(userRef);
+            const userData = userSnap.data();
+
+            const updatedJamiaatList = (userData.jamiaatList || []).map(j => {
+                if (typeof j === 'string' && j === targetJamiaName) {
+                    return { id: newJamiaId, name: targetJamiaName };
+                }
+                return j;
+            });
+
+            let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
+            Object.keys(updatedAcademicYears).forEach(year => {
+                if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
+                    updatedAcademicYears[year].karkardagiStructure.forEach(j => {
+                        if (j.jamiaName === targetJamiaName) j.jamiaId = newJamiaId;
+                    });
+                }
+            });
+
+            batch.update(userRef, { jamiaatList: updatedJamiaatList, academicYears: updatedAcademicYears });
+
+            // 2. Jaiza Forms
+            const jaizaQ = query(collection(db, 'jaiza_forms'), where('createdBy', '==', userId));
+            const jaizaSnap = await getDocs(jaizaQ);
+            jaizaSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                if ((data.jamiaId || data.jamiaName || '') === targetJamiaName) {
+                    batch.update(docSnap.ref, { jamiaId: newJamiaId, jamiaName: targetJamiaName });
+                }
+            });
+
+            // 3. Test Sheets
+            const testQ = query(collection(db, 'monthly_test_sheets'), where('adminUid', '==', userId));
+            const testSnap = await getDocs(testQ);
+            testSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                if ((data.jamiaName || '') === targetJamiaName) {
+                    batch.update(docSnap.ref, { jamiaId: newJamiaId });
+                }
+            });
+
+            // 4. Monthly Reports
+            const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userId));
+            const reportsSnap = await getDocs(reportsQ);
+            
+            reportsSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                let isModified = false;
+                
+                let jaizaArray = data.jaizaReport?.data || [];
+                jaizaArray.forEach(item => {
+                    if ((item.name || item.jamiaName) === targetJamiaName) { item.jamiaId = newJamiaId; isModified = true; }
+                });
+
+                let tadrisArray = data.tadrisRecording?.data || [];
+                tadrisArray.forEach(item => {
+                    if (item.jamiaName === targetJamiaName) { item.jamiaId = newJamiaId; isModified = true; }
+                });
+
+                let testArray = data.monthlyTest?.data || [];
+                testArray.forEach(item => {
+                    if ((item.name || item.jamiaName) === targetJamiaName) { item.jamiaId = newJamiaId; isModified = true; }
+                });
+
+                let kkdArray = data.karkardagiReport?.data || [];
+                kkdArray.forEach(item => {
+                    if ((item.jamiaName || item.jamiaId) === targetJamiaName) {
+                        item.jamiaName = targetJamiaName; 
+                        item.jamiaId = newJamiaId;
+                        isModified = true;
+                    }
+                });
+
+                if (isModified) {
+                    batch.update(docSnap.ref, {
+                        'jaizaReport.data': jaizaArray,
+                        'tadrisRecording.data': tadrisArray,
+                        'monthlyTest.data': testArray,
+                        'karkardagiReport.data': kkdArray
+                    });
+                }
+            });
+
+            // Commit all changes
+            await batch.commit();
+
+            migStatusMsg.classList.remove('text-blue-600');
+            migStatusMsg.classList.add('text-green-600');
+            migStatusMsg.textContent = `Kamyabi! "${targetJamiaName}" migrate ho gayi.`;
+            
+            migJamiaSelect.innerHTML = '<option value="">-- Done! Doosri select karein --</option>';
+            btnRunMigration.disabled = true;
+            
+            if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
+
+        } catch (error) {
+            console.error("Migration Error:", error);
+            migStatusMsg.classList.remove('text-blue-600');
+            migStatusMsg.classList.add('text-red-600');
+            migStatusMsg.textContent = `Error: ${error.message}`;
+        } finally {
+            showLoader(false);
+        }
+    });
+}
+// ==========================================
+// TEMPORARY JAMIA MIGRATION LOGIC (End)
+// ==========================================
 // --- Init ---
 initApp();
 </script>
