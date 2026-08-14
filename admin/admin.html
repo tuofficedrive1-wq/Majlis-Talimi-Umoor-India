@@ -6317,18 +6317,30 @@ if (btnRunMigration) {
         
         if (!userId || !targetJamiaName) return;
 
-        if (!confirm(`Kya aap waqai "${targetJamiaName}" ko unique ID assign karke uski saari purani reports (Jaiza, Test, KKd) update karna chahte hain?`)) return;
+        if (!confirm(`Kya aap waqai "${targetJamiaName}" ko unique ID assign karke uski saari purani reports update karna chahte hain?`)) return;
 
         showLoader(true);
         migStatusMsg.classList.remove('hidden', 'text-green-600', 'text-red-600');
         migStatusMsg.classList.add('text-blue-600');
-        migStatusMsg.textContent = "Migration chal rahi hai, thora intezar karein...";
+        
+        // Progress update karne ka function (Naya Add Kiya Hai)
+        const updateProgress = (percent, text) => {
+            migStatusMsg.innerHTML = `
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
+                  <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-in-out" style="width: ${percent}%"></div>
+                </div>
+                <span class="text-blue-600 text-xs font-bold">${percent}% - ${text}</span>
+            `;
+        };
 
         try {
+            updateProgress(5, "System shuru ho raha hai...");
+
             const newJamiaId = doc(collection(db, 'jamiaat_master')).id;
             const batch = writeBatch(db);
 
             // 1. User Profile Update
+            updateProgress(15, "User profile check ki jaa rahi hai...");
             const userRef = doc(db, 'users', userId);
             const userSnap = await getDoc(userRef);
             const userData = userSnap.data();
@@ -6352,28 +6364,36 @@ if (btnRunMigration) {
             batch.update(userRef, { jamiaatList: updatedJamiaatList, academicYears: updatedAcademicYears });
 
             // 2. Jaiza Forms
+            updateProgress(35, "Jaiza forms update ho rahe hain...");
             const jaizaQ = query(collection(db, 'jaiza_forms'), where('createdBy', '==', userId));
             const jaizaSnap = await getDocs(jaizaQ);
+            let jaizaCount = 0;
             jaizaSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 if ((data.jamiaId || data.jamiaName || '') === targetJamiaName) {
                     batch.update(docSnap.ref, { jamiaId: newJamiaId, jamiaName: targetJamiaName });
+                    jaizaCount++;
                 }
             });
 
             // 3. Test Sheets
+            updateProgress(55, `Jaiza (${jaizaCount}) done. Test Sheets update ho rahi hain...`);
             const testQ = query(collection(db, 'monthly_test_sheets'), where('adminUid', '==', userId));
             const testSnap = await getDocs(testQ);
+            let testCount = 0;
             testSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 if ((data.jamiaName || '') === targetJamiaName) {
                     batch.update(docSnap.ref, { jamiaId: newJamiaId });
+                    testCount++;
                 }
             });
 
             // 4. Monthly Reports
+            updateProgress(75, `Tests (${testCount}) done. Final reports update ho rahi hain...`);
             const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userId));
             const reportsSnap = await getDocs(reportsQ);
+            let reportsCount = 0;
             
             reportsSnap.forEach(docSnap => {
                 const data = docSnap.data();
@@ -6410,15 +6430,21 @@ if (btnRunMigration) {
                         'monthlyTest.data': testArray,
                         'karkardagiReport.data': kkdArray
                     });
+                    reportsCount++;
                 }
             });
 
-            // Commit all changes
+            // 5. Commit to Database
+            updateProgress(90, `Reports (${reportsCount}) set. Database mein save kiya ja raha hai (Isme thora waqt lag sakta hai)...`);
             await batch.commit();
 
-            migStatusMsg.classList.remove('text-blue-600');
-            migStatusMsg.classList.add('text-green-600');
-            migStatusMsg.textContent = `Kamyabi! "${targetJamiaName}" migrate ho gayi.`;
+            // Final Success Message
+            migStatusMsg.innerHTML = `
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
+                  <div class="bg-green-600 h-2.5 rounded-full" style="width: 100%"></div>
+                </div>
+                <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! "${targetJamiaName}" mukammal migrate ho gayi. (100%)</span>
+            `;
             
             migJamiaSelect.innerHTML = '<option value="">-- Done! Doosri select karein --</option>';
             btnRunMigration.disabled = true;
@@ -6427,9 +6453,7 @@ if (btnRunMigration) {
 
         } catch (error) {
             console.error("Migration Error:", error);
-            migStatusMsg.classList.remove('text-blue-600');
-            migStatusMsg.classList.add('text-red-600');
-            migStatusMsg.textContent = `Error: ${error.message}`;
+            migStatusMsg.innerHTML = `<span class="text-red-600 text-sm font-bold"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
         } finally {
             showLoader(false);
         }
