@@ -938,6 +938,22 @@ if(btnEntry && btnSummary) {
         let dashboardChart = null; 
         let testDashboardChart = null; 
 
+        // NAYA HELPER: UI mein dikhane ke liye sirf Jamia ka naam nikalna
+const getPlainJamiaNames = () => {
+    if (!userProfileData || !userProfileData.jamiaatList) return [];
+    return userProfileData.jamiaatList.map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j);
+};
+
+// NAYA HELPER: Database mein save karne ke liye Jamia ki ID nikalna
+const getJamiaIdByName = (jamiaName) => {
+    if (!userProfileData || !userProfileData.jamiaatList) return null;
+    const found = userProfileData.jamiaatList.find(j => {
+        if (typeof j === 'object') return (j.name === jamiaName || j.jamiaName === jamiaName);
+        return j === jamiaName;
+    });
+    return typeof found === 'object' ? found.id : null; 
+};
+
         // --- HELPER FUNCTIONS ---
         const showLoader = (show) => loader.classList.toggle('hidden', !show);
         
@@ -1620,10 +1636,10 @@ if (userProfileData && Object.keys(userProfileData).length > 0) {
         const oldList = Array.isArray(userProfileData.jamiaatList) ? userProfileData.jamiaatList : [];
         
         // Jamia count
-        if (oldList.length > 0) {
-            totalJamiaat = oldList.length;
-            jamiaatListForDropdown = oldList;
-        } else {
+       if (oldList.length > 0) {
+    totalJamiaat = oldList.length;
+    jamiaatListForDropdown = getPlainJamiaNames(); // YEH LINE CHANGE KI HAI
+} else {
             // Agar list bhi nahi hai to structure se count karo (simple calculation)
             const jamiaSet = new Set();
             const teacherSet = new Set();
@@ -2612,7 +2628,7 @@ jaizaDisplayContainer
         showNotification("Class, Kitab, Teacher ka Naam aur Date bharna zaroori hai.", true); return; 
     }
 
-    const newEntry = { jamiaName, className, kitabName, teacherName, date, tasurat: tasurat, adminTasurat: '' };
+   const newEntry = { jamiaId: getJamiaIdByName(jamiaName), jamiaName, className, kitabName, teacherName, date, tasurat: tasurat, adminTasurat: '' };
 
     // Date se YYYY-MM nikalo (e.g., 2025-12-05 -> 2025-12)
     const customMonthYear = date.substring(0, 7);
@@ -3111,17 +3127,17 @@ saveJamiaSigBtn.addEventListener('click', async () => {
         // Is Jamia ka index dhoondhein (Case insensitive aur Trimmed match)
         const entryIndex = testData.findIndex(t => t.name.trim().toLowerCase() === jamiaName.toLowerCase());
 
-        if (entryIndex !== -1) {
-            // Agar pehle se record hai to sirf signature update karein
+       if (entryIndex !== -1) {
+            // Agar pehle se record hai
             testData[entryIndex].signature = newUrl;
-            
-            // Safety: Agar status empty hai to form se utha lein
+            testData[entryIndex].jamiaId = getJamiaIdByName(jamiaName);
             if (!testData[entryIndex].status) {
                  testData[entryIndex].status = row.querySelector('.test-status').value || '';
             }
         } else {
-            // Agar record nahi hai to naya object banayein
+            // Agar naya record hai
             testData.push({
+                jamiaId: getJamiaIdByName(jamiaName),
                 name: jamiaName,
                 status: row.querySelector('.test-status').value || '',
                 month: testMonth,
@@ -3182,6 +3198,7 @@ const handleTestFormSubmit = async (e) => {
             }
 
             filledTestData.push({
+                jamiaId: getJamiaIdByName(name),
                 name: name,
                 status: status,
                 month: month,
@@ -3339,12 +3356,12 @@ const handleJaizaSubmit = async (e) => {
         // Agar sab theek hai, to save list mein daal do
         if (selectedType === 'Visit') {
            if(!targetDateInput) targetDateInput = dateInput.value.substring(0, 7);
-           filledJaizaat.push({ name, date: dateInput.value, type: 'Visit', percentage: '', wazahat: wazahatVal });
+           filledJaizaat.push({ jamiaId: getJamiaIdByName(name), name, date: dateInput.value, type: 'Visit', percentage: '', wazahat: wazahatVal });
         } else if (selectedType === 'Jaiza') {
            if(!targetDateInput) targetDateInput = dateInput.value.substring(0, 7);
-           filledJaizaat.push({ name, date: dateInput.value, type: 'Jaiza', percentage: percentageVal, wazahat: '' });
+           filledJaizaat.push({ jamiaId: getJamiaIdByName(name), name, date: dateInput.value, type: 'Jaiza', percentage: percentageVal, wazahat: '' });
         } else if (selectedType === 'Nahi Hua') {
-           filledJaizaat.push({ name, date: '', type: 'Nahi Hua', percentage: '', wazahat: wazahatVal });
+           filledJaizaat.push({ jamiaId: getJamiaIdByName(name), name, date: '', type: 'Nahi Hua', percentage: '', wazahat: wazahatVal });
         }
     });
 
@@ -3661,14 +3678,15 @@ const showReportModal = (report, isAdmin = false) => {
             if (!filterJamiaSelect || !filterMonthYearInput) return;
             
             filterJamiaSelect.innerHTML = '<option value="All Jamiaat">All Jamiaat</option>'; 
-            if (userProfileData.jamiaatList && Array.isArray(userProfileData.jamiaatList)) {
-                userProfileData.jamiaatList.forEach(jamiaName => {
-                    const option = document.createElement('option');
-                    option.value = jamiaName;
-                    option.textContent = jamiaName;
-                    filterJamiaSelect.appendChild(option);
-                });
-            }
+            const safeJamiaNames = getPlainJamiaNames();
+if (safeJamiaNames.length > 0) {
+    safeJamiaNames.forEach(jamiaName => {
+        const option = document.createElement('option');
+        option.value = jamiaName;
+        option.textContent = jamiaName;
+        filterJamiaSelect.appendChild(option);
+    });
+}
             
             if (reportingDateInfo.monthInputFormat) {
                 filterMonthYearInput.value = reportingDateInfo.monthInputFormat;
@@ -3995,7 +4013,7 @@ const renderAsatizaDetailsTab = async () => {
     const container = document.getElementById('asatiza-details-list-container');
     if (!container) return;
 
-    const allJamiaat = userProfileData.jamiaatList || [];
+    const allJamiaat = getPlainJamiaNames();
     
     if (allJamiaat.length === 0) {
         container.innerHTML = '<p class="text-center text-gray-500">Koi Jamia add nahi hai.</p>';
@@ -4208,7 +4226,7 @@ window.sortAsatizaTable = (n) => {
 // Is line ko `fetchSavedAsatizaData` ke shuruat me add karein:
 const populateJamiaFilter = () => {
     const select = document.getElementById('asatiza-jamia-filter');
-    const jamiaat = userProfileData.jamiaatList || [];
+    const jamiaat = getPlainJamiaNames();
     select.innerHTML = '<option value="">All Jamiaat</option>';
     jamiaat.forEach(j => {
         select.innerHTML += `<option value="${j}">${j}</option>`;
