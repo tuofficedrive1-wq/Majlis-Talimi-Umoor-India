@@ -6257,7 +6257,7 @@ if (editUserRoleSelect) {
         }
     });
 }
- // ==========================================
+// ==========================================
 // TEMPORARY JAMIA MIGRATION LOGIC (Start)
 // ==========================================
 
@@ -6266,34 +6266,47 @@ const migJamiaSelect = document.getElementById('mig-jamia-select');
 const btnRunMigration = document.getElementById('btn-run-migration');
 const migStatusMsg = document.getElementById('mig-status-msg');
 
+// NAYA FUNCTION: Jamia ki list ko smart tareeqe se load karne ke liye
+const populateJamiaDropdown = (userId) => {
+    const user = allUsersData.find(u => u.id === userId);
+    migJamiaSelect.innerHTML = '<option value="">-- Select Jamia --</option>';
+    
+    if (user && user.jamiaatList && user.jamiaatList.length > 0) {
+        let pendingCount = 0;
+        
+        user.jamiaatList.forEach(j => {
+            if (typeof j === 'object') {
+                // Jo migrate ho chuki hain (Green tick aur disabled)
+                const jName = j.name || j.jamiaName;
+                migJamiaSelect.innerHTML += `<option value="" disabled style="color: green; font-weight: bold;">✅ [Done] ${jName}</option>`;
+            } else {
+                // Jo migrate karni baqi hain (Normal list)
+                migJamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
+                pendingCount++;
+            }
+        });
+        
+        if (pendingCount > 0) {
+            migJamiaSelect.disabled = false;
+        } else {
+            migJamiaSelect.innerHTML += '<option value="" disabled>🎉 Sab Migrate Ho Chuki Hain</option>';
+            migJamiaSelect.disabled = false; // Option dikhane ke liye enable rakhein
+        }
+    } else {
+        migJamiaSelect.innerHTML = '<option value="">-- Koi Jamia Nahi --</option>';
+        migJamiaSelect.disabled = true;
+    }
+    btnRunMigration.disabled = true; // Reset button
+};
+
 const initMigrationTool = () => {
-    if (!migUserSelect || allUsersData.length === 0) return;
+    if (!migUserSelect || typeof allUsersData === 'undefined' || allUsersData.length === 0) return;
     
     migUserSelect.innerHTML = '<option value="">-- Select User --</option>' + 
         allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
 
     migUserSelect.addEventListener('change', (e) => {
-        const userId = e.target.value;
-        const user = allUsersData.find(u => u.id === userId);
-        
-        if (user && user.jamiaatList && user.jamiaatList.length > 0) {
-            // Check karein kon si jamias abhi tak string hain
-            const stringJamias = user.jamiaatList.filter(j => typeof j === 'string');
-            
-            if (stringJamias.length > 0) {
-                migJamiaSelect.innerHTML = '<option value="">-- Select Jamia --</option>' + 
-                    stringJamias.map(j => `<option value="${j}">${j}</option>`).join('');
-                migJamiaSelect.disabled = false;
-            } else {
-                migJamiaSelect.innerHTML = '<option value="">-- Sab Migrate Ho Chuki Hain --</option>';
-                migJamiaSelect.disabled = true;
-                btnRunMigration.disabled = true;
-            }
-        } else {
-            migJamiaSelect.innerHTML = '<option value="">-- Koi Jamia Nahi --</option>';
-            migJamiaSelect.disabled = true;
-            btnRunMigration.disabled = true;
-        }
+        populateJamiaDropdown(e.target.value);
     });
 
     migJamiaSelect.addEventListener('change', (e) => {
@@ -6301,15 +6314,14 @@ const initMigrationTool = () => {
     });
 };
 
-// Data load hone ka wait karne ke liye Smart Check (Naya Tariqa)
+// Smart Check for Data Load
 const checkAndInitMigrationTool = setInterval(() => {
-    // Agar allUsersData load ho chuka hai aur usme users hain
     if (typeof allUsersData !== 'undefined' && allUsersData.length > 0) {
-        initMigrationTool(); // Dropdown bhar do
-        clearInterval(checkAndInitMigrationTool); // Check karna band kar do
+        initMigrationTool(); 
+        clearInterval(checkAndInitMigrationTool); 
     }
-}, 1000); // Har 1 second baad check karega jab tak data na aa jaye
-        
+}, 1000); 
+
 if (btnRunMigration) {
     btnRunMigration.addEventListener('click', async () => {
         const userId = migUserSelect.value;
@@ -6323,7 +6335,6 @@ if (btnRunMigration) {
         migStatusMsg.classList.remove('hidden', 'text-green-600', 'text-red-600');
         migStatusMsg.classList.add('text-blue-600');
         
-        // Progress update karne ka function (Naya Add Kiya Hai)
         const updateProgress = (percent, text) => {
             migStatusMsg.innerHTML = `
                 <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
@@ -6438,17 +6449,24 @@ if (btnRunMigration) {
             updateProgress(90, `Reports (${reportsCount}) set. Database mein save kiya ja raha hai (Isme thora waqt lag sakta hai)...`);
             await batch.commit();
 
+            // NAYA LOGIC: Memory mein data update karein taake list foran refresh ho jaye bina page reload kiye
+            const memUser = allUsersData.find(u => u.id === userId);
+            if (memUser) {
+                memUser.jamiaatList = updatedJamiaatList; // Pehle se tayyar list assign kar di
+            }
+
+            // Dropdown ko dobara naye data ke sath load karein (Jo migrate ho gaya uspe ✅ lag jayega)
+            populateJamiaDropdown(userId);
+
             // Final Success Message
             migStatusMsg.innerHTML = `
                 <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
                   <div class="bg-green-600 h-2.5 rounded-full" style="width: 100%"></div>
                 </div>
-                <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! "${targetJamiaName}" mukammal migrate ho gayi. (100%)</span>
+                <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! "${targetJamiaName}" mukammal migrate ho gayi.</span>
             `;
             
-            migJamiaSelect.innerHTML = '<option value="">-- Done! Doosri select karein --</option>';
-            btnRunMigration.disabled = true;
-            
+            // Background me users data refresh karein (Aage ke liye)
             if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
 
         } catch (error) {
