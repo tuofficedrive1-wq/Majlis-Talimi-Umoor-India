@@ -657,7 +657,7 @@
                             </table>
                         </div>
                     </div>
-                   <!-- TEMPORARY MIGRATION TOOL (Start) -->
+                  <!-- TEMPORARY MIGRATION TOOL (Start) -->
 <div class="bg-white p-6 rounded-2xl shadow-sm border-2 border-orange-400 mt-6 mb-6">
     <h3 class="text-xl font-bold text-orange-700 border-b pb-2 mb-4">
         <i class="fas fa-magic mr-2"></i> Jamia ID Migration Tool (Bulk Mode)
@@ -677,6 +677,13 @@
             </button>
         </div>
     </div>
+    
+    <!-- NAYA: Jamiaat ki visual list dikhane ki jagah -->
+    <div class="mt-4">
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 hidden" id="jamia-list-title">Jamiaat Status:</p>
+        <div id="mig-jamia-list-display" class="flex flex-wrap gap-2"></div>
+    </div>
+
     <div id="mig-status-msg" class="mt-4 text-sm font-bold hidden"></div>
 </div>
 <!-- TEMPORARY MIGRATION TOOL (End) -->
@@ -6314,18 +6321,31 @@ if (editUserRoleSelect) {
 const migUserSelect = document.getElementById('mig-user-select');
 const btnRunMigration = document.getElementById('btn-run-migration');
 const migStatusMsg = document.getElementById('mig-status-msg');
+const listDisplay = document.getElementById('mig-jamia-list-display'); 
+const listTitle = document.getElementById('jamia-list-title'); 
 
 let currentUserPendingJamias = [];
 
-// Ye function check karega ke is user ki kitni Jamiaat migrate hone wali baqi hain
 const checkUserJamiaStatus = (userId) => {
     const user = allUsersData.find(u => u.id === userId);
     currentUserPendingJamias = [];
+    if (listDisplay) listDisplay.innerHTML = '';
     
     if (user && user.jamiaatList && user.jamiaatList.length > 0) {
-        // Sirf un Jamiaat ko filter karein jo abhi tak String hain
         currentUserPendingJamias = user.jamiaatList.filter(j => typeof j === 'string');
         
+        // Visual List Update (Green aur Orange tags)
+        if (listTitle) listTitle.classList.remove('hidden');
+        if (listDisplay) {
+            user.jamiaatList.forEach(j => {
+                if (typeof j === 'object') {
+                    listDisplay.innerHTML += `<span class="bg-green-50 text-green-700 text-xs px-2.5 py-1 rounded-md border border-green-200 urdu-font font-semibold shadow-sm">✅ ${j.name || j.jamiaName}</span>`;
+                } else {
+                    listDisplay.innerHTML += `<span class="bg-orange-50 text-orange-700 text-xs px-2.5 py-1 rounded-md border border-orange-200 urdu-font font-semibold shadow-sm">⏳ ${j}</span>`;
+                }
+            });
+        }
+
         if (currentUserPendingJamias.length > 0) {
             btnRunMigration.disabled = false;
             btnRunMigration.innerHTML = `<i class="fas fa-magic mr-1"></i> Ek Sath ${currentUserPendingJamias.length} Jamiaat Migrate Karein`;
@@ -6336,6 +6356,8 @@ const checkUserJamiaStatus = (userId) => {
             btnRunMigration.classList.replace('bg-orange-600', 'bg-gray-400');
         }
     } else {
+        if (listTitle) listTitle.classList.add('hidden');
+        if (listDisplay) listDisplay.innerHTML = '<span class="text-sm text-gray-500">Is user ke paas koi Jamia nahi hai.</span>';
         btnRunMigration.disabled = true;
         btnRunMigration.innerHTML = `<i class="fas fa-ban mr-1"></i> Koi Jamia Nahi Hai`;
         btnRunMigration.classList.replace('bg-orange-600', 'bg-gray-400');
@@ -6349,7 +6371,7 @@ const initMigrationTool = () => {
         allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
 
     migUserSelect.addEventListener('change', (e) => {
-        migStatusMsg.innerHTML = '';
+        if (migStatusMsg) migStatusMsg.innerHTML = '';
         checkUserJamiaStatus(e.target.value);
     });
 };
@@ -6369,75 +6391,89 @@ if (btnRunMigration) {
         if (!confirm(`Kya aap waqai is user ki saari (${currentUserPendingJamias.length}) Jamiaat ko bulk mein migrate karna chahte hain?`)) return;
 
         showLoader(true);
-        migStatusMsg.classList.remove('hidden');
+        if (migStatusMsg) migStatusMsg.classList.remove('hidden');
         
         const updateProgress = (percent, text) => {
-            migStatusMsg.innerHTML = `
-                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
-                  <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" style="width: ${percent}%"></div>
-                </div>
-                <span class="text-blue-600 text-xs font-bold">${percent}% - ${text}</span>
-            `;
+            if (migStatusMsg) {
+                migStatusMsg.innerHTML = `
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
+                    <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" style="width: ${percent}%"></div>
+                    </div>
+                    <span class="text-blue-600 text-xs font-bold">${percent}% - ${text}</span>
+                `;
+            }
         };
 
         try {
             let totalJamias = currentUserPendingJamias.length;
-            
-            // User ka data ek hi baar nikalein
             const userRef = doc(db, 'users', userId);
             const userSnap = await getDoc(userRef);
             let userData = userSnap.data();
             
-            // Memory mein arrays bana lein taake loop ke dauran save karte rahein
             let updatedJamiaatList = userData.jamiaatList ? [...userData.jamiaatList] : [];
             let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
 
-            // 🔁 LOOP SHURU HOTA HAI (Ek ek Jamia migrate hogi)
             for (let i = 0; i < totalJamias; i++) {
                 const targetJamiaName = currentUserPendingJamias[i];
-                
-                // Progress percentage calculate karna
                 let currentProgress = Math.round((i / totalJamias) * 100);
                 updateProgress(currentProgress, `Progress (${i + 1}/${totalJamias}): "${targetJamiaName}" migrate ho rahi hai...`);
                 
-                const newJamiaId = doc(collection(db, 'jamiaat_master')).id;
                 const batch = writeBatch(db);
+                let finalJamiaId = null;
 
-                // 1. User ki list memory mein update karein
+                // 🌟 SMART LOGIC: Mapped Name + Trim Check (Duplicates ko rokne ke liye)
+                let actualJamiaName = targetJamiaName;
+                if (userData.jamiaatMapping && userData.jamiaatMapping[targetJamiaName]) {
+                    actualJamiaName = userData.jamiaatMapping[targetJamiaName]; 
+                }
+                const cleanTargetName = actualJamiaName.trim().toLowerCase().replace(/\s+/g, ' ');
+
+                const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+                masterSnap.forEach(doc => {
+                    const dbName = (doc.data().name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                    if (dbName === cleanTargetName) {
+                        finalJamiaId = doc.id; 
+                        actualJamiaName = doc.data().name; 
+                    }
+                });
+
+                if (!finalJamiaId) {
+                    const newDocRef = doc(collection(db, 'jamiaat_master'));
+                    finalJamiaId = newDocRef.id;
+                    batch.set(newDocRef, { name: actualJamiaName, createdAt: serverTimestamp() });
+                }
+
                 updatedJamiaatList = updatedJamiaatList.map(j => {
-                    if (typeof j === 'string' && j === targetJamiaName) return { id: newJamiaId, name: targetJamiaName };
+                    if (typeof j === 'string' && j === targetJamiaName) return { id: finalJamiaId, name: actualJamiaName };
                     return j;
                 });
 
                 Object.keys(updatedAcademicYears).forEach(year => {
                     if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
                         updatedAcademicYears[year].karkardagiStructure.forEach(j => {
-                            if (j.jamiaName === targetJamiaName) j.jamiaId = newJamiaId;
+                            if (j.jamiaName === targetJamiaName) j.jamiaId = finalJamiaId;
                         });
                     }
                 });
 
-                // 2. Jaiza Forms Update
                 const jaizaQ = query(collection(db, 'jaiza_forms'), where('createdBy', '==', userId));
                 const jaizaSnap = await getDocs(jaizaQ);
                 jaizaSnap.forEach(docSnap => {
                     const data = docSnap.data();
                     if ((data.jamiaId || data.jamiaName || '') === targetJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: newJamiaId, jamiaName: targetJamiaName });
+                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
                     }
                 });
 
-                // 3. Test Sheets Update
                 const testQ = query(collection(db, 'monthly_test_sheets'), where('adminUid', '==', userId));
                 const testSnap = await getDocs(testQ);
                 testSnap.forEach(docSnap => {
                     const data = docSnap.data();
                     if ((data.jamiaName || '') === targetJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: newJamiaId });
+                        batch.update(docSnap.ref, { jamiaId: finalJamiaId });
                     }
                 });
 
-                // 4. Monthly Reports Update
                 const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userId));
                 const reportsSnap = await getDocs(reportsQ);
                 
@@ -6447,24 +6483,24 @@ if (btnRunMigration) {
                     
                     let jaizaArray = data.jaizaReport?.data || [];
                     jaizaArray.forEach(item => {
-                        if ((item.name || item.jamiaName) === targetJamiaName) { item.jamiaId = newJamiaId; isModified = true; }
+                        if ((item.name || item.jamiaName) === targetJamiaName) { item.jamiaId = finalJamiaId; item.name = actualJamiaName; isModified = true; }
                     });
 
                     let tadrisArray = data.tadrisRecording?.data || [];
                     tadrisArray.forEach(item => {
-                        if (item.jamiaName === targetJamiaName) { item.jamiaId = newJamiaId; isModified = true; }
+                        if (item.jamiaName === targetJamiaName) { item.jamiaId = finalJamiaId; item.jamiaName = actualJamiaName; isModified = true; }
                     });
 
                     let testArray = data.monthlyTest?.data || [];
                     testArray.forEach(item => {
-                        if ((item.name || item.jamiaName) === targetJamiaName) { item.jamiaId = newJamiaId; isModified = true; }
+                        if ((item.name || item.jamiaName) === targetJamiaName) { item.jamiaId = finalJamiaId; item.name = actualJamiaName; isModified = true; }
                     });
 
                     let kkdArray = data.karkardagiReport?.data || [];
                     kkdArray.forEach(item => {
                         if ((item.jamiaName || item.jamiaId) === targetJamiaName) {
-                            item.jamiaName = targetJamiaName; 
-                            item.jamiaId = newJamiaId;
+                            item.jamiaName = actualJamiaName; 
+                            item.jamiaId = finalJamiaId;
                             isModified = true;
                         }
                     });
@@ -6479,11 +6515,9 @@ if (btnRunMigration) {
                     }
                 });
 
-                // Ek Jamia ka database update perform karein
                 await batch.commit();
             }
 
-            // Loop khatam hone ke baad: Final User Profile Update
             updateProgress(98, "Saving Final User Profile Data...");
             const finalBatch = writeBatch(db);
             finalBatch.update(doc(db, 'users', userId), { 
@@ -6492,28 +6526,28 @@ if (btnRunMigration) {
             });
             await finalBatch.commit();
 
-            // Background variables update karein
             const memUser = allUsersData.find(u => u.id === userId);
             if (memUser) {
                 memUser.jamiaatList = updatedJamiaatList; 
             }
 
-            // Button ko refresh karein
+            // UI Refresh karke done/pending status update karna
             checkUserJamiaStatus(userId);
 
-            // Final Success Message
-            migStatusMsg.innerHTML = `
-                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
-                  <div class="bg-green-600 h-2.5 rounded-full" style="width: 100%"></div>
-                </div>
-                <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! Is user ki saari (${totalJamias}) Jamiaat successfully migrate ho chuki hain.</span>
-            `;
+            if (migStatusMsg) {
+                migStatusMsg.innerHTML = `
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
+                    <div class="bg-green-600 h-2.5 rounded-full" style="width: 100%"></div>
+                    </div>
+                    <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! Is user ki saari (${totalJamias}) Jamiaat Master List Check ke sath migrate ho chuki hain.</span>
+                `;
+            }
             
             if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
 
         } catch (error) {
             console.error("Bulk Migration Error:", error);
-            migStatusMsg.innerHTML = `<span class="text-red-600 text-sm font-bold"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
+            if(migStatusMsg) migStatusMsg.innerHTML = `<span class="text-red-600 text-sm font-bold"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
         } finally {
             showLoader(false);
         }
