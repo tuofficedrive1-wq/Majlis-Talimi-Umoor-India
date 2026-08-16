@@ -6667,41 +6667,85 @@ window.renderManageJamiaList = async () => {
     try {
         // 1. Database se Master Jamiaat uthayen
         const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
-        let masterJamias = [];
+        let masterJamiasMap = new Map();
+
         masterSnap.forEach(d => {
-            masterJamias.push({ id: d.id, ...d.data(), assignedRoles: {} });
+            let data = d.data();
+            let name = (data.name || '').trim();
+            
+            // Kachra (undefined/empty) data ignore karein
+            if (name && name !== 'undefined') {
+                masterJamiasMap.set(name.toLowerCase(), { 
+                    id: d.id, 
+                    name: name,
+                    urduName: data.urduName || '',
+                    region: data.region || '',
+                    state: data.state || '',
+                    assignedRoles: {} 
+                });
+            }
         });
 
-        // 2. Users check karein ke kaun kis jamia mein hai (Dynamic Roles ke sath)
+        // 2. Users check karein aur unka Region Jamia mein shamil karein
         allUsersData.forEach(user => {
             if (user.id === ADMIN_UID) return;
             
             let rawRole = user.role || 'standard';
-            // Role ko khoobsurat banayen (jaise 'recording_mufattish' -> 'Recording Mufattish')
             let roleLabel = rawRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            let userRegion = user.region || ''; // User ki profile se Region uthayen
 
             (user.jamiaatList || []).forEach(j => {
                 let jId = typeof j === 'object' ? j.id : null;
                 let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if (!jName || jName === 'undefined') return;
+
+                let cleanName = jName.trim().toLowerCase();
+                let targetJamia = masterJamiasMap.get(cleanName);
+
+                // Agar Master mein nahi hai, to UI ke liye bana lein
+                if (!targetJamia) {
+                    targetJamia = {
+                        id: jId || '', name: jName, urduName: '',
+                        region: '', state: '', assignedRoles: {}
+                    };
+                    masterJamiasMap.set(cleanName, targetJamia);
+                }
+
+                // 🌟 JADOO: Agar Master mein Region khali hai, to User ka Region laga dein!
+                if (!targetJamia.region && userRegion) {
+                    targetJamia.region = userRegion;
+                }
+
+                // Role aur User assign karein
+                if (!targetJamia.assignedRoles[roleLabel]) targetJamia.assignedRoles[roleLabel] = [];
                 
-                // Master array mein Jamia ko ID se (ya naam se backup ke taur par) dhoondein
-                let targetJamia = masterJamias.find(m => m.id === jId || m.name === jName);
-                if (targetJamia) {
-                    if (!targetJamia.assignedRoles[roleLabel]) targetJamia.assignedRoles[roleLabel] = [];
-                    targetJamia.assignedRoles[roleLabel].push(user.name || user.email);
+                let displayUser = user.name || user.email;
+                if (!targetJamia.assignedRoles[roleLabel].includes(displayUser)) {
+                    targetJamia.assignedRoles[roleLabel].push(displayUser);
                 }
             });
         });
 
-        // English naam ke hisab se sort karein
-        masterJamias.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        let finalJamias = Array.from(masterJamiasMap.values());
+
+        // 3. Sorting: Pehle Region, phir State, phir Jamia Name
+        finalJamias.sort((a, b) => {
+            let rA = (a.region || 'ZZZ').toLowerCase(); // 'ZZZ' se khali wale sabse neeche jayenge
+            let rB = (b.region || 'ZZZ').toLowerCase();
+            if (rA !== rB) return rA.localeCompare(rB);
+
+            let sA = (a.state || 'ZZZ').toLowerCase();
+            let sB = (b.state || 'ZZZ').toLowerCase();
+            if (sA !== sB) return sA.localeCompare(sB);
+
+            return (a.name || '').localeCompare(b.name || '');
+        });
 
         let html = '';
-        masterJamias.forEach((jamia, index) => {
+        finalJamias.forEach((jamia, index) => {
             let rolesHtml = '';
             
             if (Object.keys(jamia.assignedRoles).length > 0) {
-                // Jo bhi roles mile hain unki grouping banayein
                 for (const [role, users] of Object.entries(jamia.assignedRoles)) {
                     let roleColor = role.toLowerCase().includes('inspector') ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200';
                     rolesHtml += `
@@ -6717,17 +6761,16 @@ window.renderManageJamiaList = async () => {
                 rolesHtml = '<span class="text-xs text-red-400 italic">Koi user assign nahi</span>';
             }
 
-            // Global cache mein save karein taake Edit Modal ko details mil sakein
             window.jamiaMasterCache = window.jamiaMasterCache || {};
             window.jamiaMasterCache[jamia.id] = jamia;
 
             html += `
                 <tr class="hover:bg-slate-50 transition-colors border-b border-slate-100">
                     <td class="p-3 border-r text-center text-slate-500 font-bold">${index + 1}</td>
-                    <td class="p-3 border-r text-slate-700 urdu-font">${jamia.region || '<span class="text-slate-300 italic">-</span>'}</td>
-                    <td class="p-3 border-r text-slate-700 urdu-font">${jamia.state || '<span class="text-slate-300 italic">-</span>'}</td>
+                    <td class="p-3 border-r text-slate-700 font-bold urdu-font">${jamia.region || '<span class="text-slate-300 italic font-normal">-</span>'}</td>
+                    <td class="p-3 border-r text-slate-700 font-bold urdu-font">${jamia.state || '<span class="text-slate-300 italic font-normal">-</span>'}</td>
                     <td class="p-3 border-r font-bold text-teal-800 text-base">${jamia.name}</td>
-                    <td class="p-3 border-r text-right font-bold text-indigo-800 urdu-font text-lg" dir="rtl">${jamia.urduName || '<span class="text-slate-300 italic text-sm">-</span>'}</td>
+                    <td class="p-3 border-r text-right font-bold text-indigo-800 urdu-font text-lg" dir="rtl">${jamia.urduName || '<span class="text-slate-300 italic text-sm font-normal">-</span>'}</td>
                     <td class="p-3 border-r align-top">${rolesHtml}</td>
                     <td class="p-3 text-center align-middle">
                         <button onclick="window.openEditJamiaModal('${jamia.id}')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-sm whitespace-nowrap"><i class="fas fa-edit mr-1"></i> Edit / Set</button>
@@ -6743,137 +6786,6 @@ window.renderManageJamiaList = async () => {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
     }
 };
-
-window.openEditJamiaModal = (jamiaId) => {
-    const jamia = window.jamiaMasterCache[jamiaId];
-    if(!jamia) return;
-
-    document.getElementById('edit-jamia-id').value = jamiaId;
-    document.getElementById('edit-jamia-old-name').value = jamia.name || '';
-    document.getElementById('edit-jamia-region').value = jamia.region || '';
-    document.getElementById('edit-jamia-state').value = jamia.state || '';
-    document.getElementById('edit-jamia-english').value = jamia.name || '';
-    document.getElementById('edit-jamia-urdu').value = jamia.urduName || '';
-
-    document.getElementById('edit-jamia-modal').classList.remove('hidden');
-};
-
-// 🌟 RENAME & UPDATE FUNCTION (Updates Everything Seamlessly) 🌟
-window.saveJamiaMasterDetails = async () => {
-    const jamiaId = document.getElementById('edit-jamia-id').value;
-    const oldName = document.getElementById('edit-jamia-old-name').value;
-    const region = document.getElementById('edit-jamia-region').value.trim();
-    const state = document.getElementById('edit-jamia-state').value.trim();
-    const newName = document.getElementById('edit-jamia-english').value.trim();
-    const urduName = document.getElementById('edit-jamia-urdu').value.trim();
-
-    if(!jamiaId || !newName) {
-        alert("English Name zaroori hai! Ise khali nahi chhor sakte.");
-        return;
-    }
-
-    if (oldName !== newName) {
-        if (!confirm(`Tawajjoh: Aap English naam badal rahe hain ("${oldName}" se "${newName}").\nYe poore database aur reports mein automatically update ho jayega. Continue karein?`)) return;
-    }
-
-    showLoader(true);
-    try {
-        const batch = writeBatch(db);
-
-        // 1. Master Record Update karein (Ye hamesha hoga)
-        const masterRef = doc(db, 'jamiaat_master', jamiaId);
-        batch.update(masterRef, {
-            name: newName,
-            urduName: urduName,
-            region: region,
-            state: state
-        });
-
-        // 2. Agar English Name badla hai, to sab reports aur users mein update karein
-        if (oldName !== newName) {
-            allUsersData.forEach(user => {
-                let needsUpdate = false;
-                let updatedList = (user.jamiaatList || []).map(j => {
-                    let jId = typeof j === 'object' ? j.id : null;
-                    let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                    if (jId === jamiaId || jName === oldName) {
-                        needsUpdate = true;
-                        return { id: jamiaId, name: newName };
-                    }
-                    return j;
-                });
-
-                let updatedAcademicYears = user.academicYears ? JSON.parse(JSON.stringify(user.academicYears)) : {};
-                Object.keys(updatedAcademicYears).forEach(year => {
-                    if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
-                        updatedAcademicYears[year].karkardagiStructure.forEach(j => {
-                            if (j.jamiaId === jamiaId || j.jamiaName === oldName) {
-                                j.jamiaId = jamiaId;
-                                j.jamiaName = newName;
-                                needsUpdate = true;
-                            }
-                        });
-                    }
-                });
-
-                if (needsUpdate) {
-                    batch.update(doc(db, 'users', user.id), { jamiaatList: updatedList, academicYears: updatedAcademicYears });
-                }
-            });
-
-            // Reports me name update karein
-            const collectionsToSync = ['jaiza_forms', 'monthly_test_sheets', 'inspection_reports', 'enrollment_records'];
-            for(let c of collectionsToSync) {
-                // By ID
-                const q1 = query(collection(db, c), where('jamiaId', '==', jamiaId));
-                const snap1 = await getDocs(q1);
-                snap1.forEach(d => batch.update(d.ref, { jamiaName: newName }));
-
-                // Fail-safe By Old Name
-                const q2 = query(collection(db, c), where('jamiaName', '==', oldName));
-                const snap2 = await getDocs(q2);
-                snap2.forEach(d => batch.update(d.ref, { jamiaId: jamiaId, jamiaName: newName }));
-            }
-
-            // Monthly Reports
-            const reportsSnap = await getDocs(collection(db, 'monthly_reports'));
-            reportsSnap.forEach(docSnap => {
-                const data = docSnap.data();
-                let isModified = false;
-                ['jaizaReport', 'tadrisRecording', 'monthlyTest', 'karkardagiReport'].forEach(key => {
-                    let arr = data[key]?.data || [];
-                    arr.forEach(item => { 
-                        if (item.jamiaId === jamiaId || item.name === oldName || item.jamiaName === oldName) { 
-                            item.jamiaId = jamiaId; 
-                            if(item.name !== undefined) item.name = newName;
-                            if(item.jamiaName !== undefined) item.jamiaName = newName;
-                            isModified = true; 
-                        } 
-                    });
-                    if(isModified) batch.update(docSnap.ref, { [`${key}.data`]: arr });
-                });
-            });
-        }
-
-        await batch.commit();
-
-        document.getElementById('edit-jamia-modal').classList.add('hidden');
-        showNotification("Jamia successfully updated!");
-        
-        // Data background me nayi maloomat ke sath refresh karein
-        if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
-        setTimeout(() => window.renderManageJamiaList(), 1500);
-
-    } catch (e) {
-        console.error(e);
-        alert("Error saving Jamia: " + e.message);
-    } finally {
-        showLoader(false);
-    }
-};
-// ==========================================================
-// 🟢 MANAGE TAB LOGIC END
-// ==========================================================
         
 // --- Init ---
 initApp();
