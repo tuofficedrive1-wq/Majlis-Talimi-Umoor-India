@@ -6711,7 +6711,7 @@ window.renderManageJamiaList = async () => {
                     masterJamiasMap.set(cleanName, targetJamia);
                 }
 
-                // 🌟 JADOO: Agar Master mein Region khali hai, to User ka Region laga dein!
+                // Agar Master mein Region khali hai, to User ka Region laga dein!
                 if (!targetJamia.region && userRegion) {
                     targetJamia.region = userRegion;
                 }
@@ -6730,7 +6730,7 @@ window.renderManageJamiaList = async () => {
 
         // 3. Sorting: Pehle Region, phir State, phir Jamia Name
         finalJamias.sort((a, b) => {
-            let rA = (a.region || 'ZZZ').toLowerCase(); // 'ZZZ' se khali wale sabse neeche jayenge
+            let rA = (a.region || 'ZZZ').toLowerCase();
             let rB = (b.region || 'ZZZ').toLowerCase();
             if (rA !== rB) return rA.localeCompare(rB);
 
@@ -6786,6 +6786,138 @@ window.renderManageJamiaList = async () => {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
     }
 };
+
+window.openEditJamiaModal = (jamiaId) => {
+    const jamia = window.jamiaMasterCache[jamiaId];
+    if(!jamia) return;
+
+    document.getElementById('edit-jamia-id').value = jamiaId;
+    document.getElementById('edit-jamia-old-name').value = jamia.name || '';
+    document.getElementById('edit-jamia-region').value = jamia.region || '';
+    document.getElementById('edit-jamia-state').value = jamia.state || '';
+    document.getElementById('edit-jamia-english').value = jamia.name || '';
+    document.getElementById('edit-jamia-urdu').value = jamia.urduName || '';
+
+    document.getElementById('edit-jamia-modal').classList.remove('hidden');
+};
+
+// 🌟 RENAME & UPDATE FUNCTION (Updates Everything Seamlessly) 🌟
+window.saveJamiaMasterDetails = async () => {
+    const jamiaId = document.getElementById('edit-jamia-id').value;
+    const oldName = document.getElementById('edit-jamia-old-name').value;
+    const region = document.getElementById('edit-jamia-region').value.trim();
+    const state = document.getElementById('edit-jamia-state').value.trim();
+    const newName = document.getElementById('edit-jamia-english').value.trim();
+    const urduName = document.getElementById('edit-jamia-urdu').value.trim();
+
+    if(!jamiaId || !newName) {
+        alert("English Name zaroori hai! Ise khali nahi chhor sakte.");
+        return;
+    }
+
+    if (oldName !== newName) {
+        if (!confirm(`Tawajjoh: Aap English naam badal rahe hain ("${oldName}" se "${newName}").\nYe poore database aur reports mein automatically update ho jayega. Continue karein?`)) return;
+    }
+
+    showLoader(true);
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Master Record Update karein (Ye hamesha hoga)
+        const masterRef = doc(db, 'jamiaat_master', jamiaId);
+        batch.update(masterRef, {
+            name: newName,
+            urduName: urduName,
+            region: region,
+            state: state
+        });
+
+        // 2. Agar English Name badla hai, to sab reports aur users mein update karein
+        if (oldName !== newName) {
+            allUsersData.forEach(user => {
+                let needsUpdate = false;
+                let updatedList = (user.jamiaatList || []).map(j => {
+                    let jId = typeof j === 'object' ? j.id : null;
+                    let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    if (jId === jamiaId || jName === oldName) {
+                        needsUpdate = true;
+                        return { id: jamiaId, name: newName };
+                    }
+                    return j;
+                });
+
+                let updatedAcademicYears = user.academicYears ? JSON.parse(JSON.stringify(user.academicYears)) : {};
+                Object.keys(updatedAcademicYears).forEach(year => {
+                    if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
+                        updatedAcademicYears[year].karkardagiStructure.forEach(j => {
+                            if (j.jamiaId === jamiaId || j.jamiaName === oldName) {
+                                j.jamiaId = jamiaId;
+                                j.jamiaName = newName;
+                                needsUpdate = true;
+                            }
+                        });
+                    }
+                });
+
+                if (needsUpdate) {
+                    batch.update(doc(db, 'users', user.id), { jamiaatList: updatedList, academicYears: updatedAcademicYears });
+                }
+            });
+
+            // Reports me name update karein
+            const collectionsToSync = ['jaiza_forms', 'monthly_test_sheets', 'inspection_reports', 'enrollment_records'];
+            for(let c of collectionsToSync) {
+                // By ID
+                const q1 = query(collection(db, c), where('jamiaId', '==', jamiaId));
+                const snap1 = await getDocs(q1);
+                snap1.forEach(d => batch.update(d.ref, { jamiaName: newName }));
+
+                // Fail-safe By Old Name
+                const q2 = query(collection(db, c), where('jamiaName', '==', oldName));
+                const snap2 = await getDocs(q2);
+                snap2.forEach(d => batch.update(d.ref, { jamiaId: jamiaId, jamiaName: newName }));
+            }
+
+            // Monthly Reports
+            const reportsSnap = await getDocs(collection(db, 'monthly_reports'));
+            reportsSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                let isModified = false;
+                ['jaizaReport', 'tadrisRecording', 'monthlyTest', 'karkardagiReport'].forEach(key => {
+                    let arr = data[key]?.data || [];
+                    arr.forEach(item => { 
+                        if (item.jamiaId === jamiaId || item.name === oldName || item.jamiaName === oldName) { 
+                            item.jamiaId = jamiaId; 
+                            if(item.name !== undefined) item.name = newName;
+                            if(item.jamiaName !== undefined) item.jamiaName = newName;
+                            isModified = true; 
+                        } 
+                    });
+                    if(isModified) batch.update(docSnap.ref, { [`${key}.data`]: arr });
+                });
+            });
+        }
+
+        await batch.commit();
+
+        document.getElementById('edit-jamia-modal').classList.add('hidden');
+        
+        // Custom Alert in case showNotification is missing somewhere else
+        try { showNotification("Jamia successfully updated!"); } catch(e) { alert("Jamia successfully updated!"); }
+        
+        if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
+        setTimeout(() => window.renderManageJamiaList(), 1500);
+
+    } catch (e) {
+        console.error(e);
+        alert("Error saving Jamia: " + e.message);
+    } finally {
+        showLoader(false);
+    }
+};
+// ==========================================================
+// 🟢 MANAGE TAB LOGIC END
+// ==========================================================
         
 // --- Init ---
 initApp();
