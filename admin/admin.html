@@ -6874,15 +6874,19 @@ window.autoFixAllJamias = async () => {
         });
 
         allAssignments.forEach(item => {
+            if (!item.sortName) return; // 🌟 SAFE GUARD
             if (!groupedAssignments[item.sortName]) groupedAssignments[item.sortName] = [];
             groupedAssignments[item.sortName].push(item);
         });
 
-        // 2. Master Jamia List fetch karein
+        // 2. Master Jamia List fetch karein (SATH MEIN NULL CHECK)
         const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
         let masterDict = {};
         masterSnap.forEach(d => {
-            masterDict[d.data().name.trim().toLowerCase().replace(/\s+/g, ' ')] = d.id;
+            let mName = d.data().name || ''; // 🌟 CRASH ROKNE WALA SAFE GUARD
+            if (mName) {
+                masterDict[mName.trim().toLowerCase().replace(/\s+/g, ' ')] = d.id;
+            }
         });
 
         let fixCount = 0;
@@ -6893,13 +6897,15 @@ window.autoFixAllJamias = async () => {
             let allIds = group.map(i => i.jamiaId).filter(id => id !== '');
             let uniqueIds = new Set(allIds);
             
-            // Conflict ki pehchan (Agar ID alag hai ya kisi ek ki ID khali hai)
+            // Conflict ki pehchan
             let hasConflict = (uniqueIds.size > 1 || allIds.length < group.length);
 
             if (hasConflict) {
                 fixCount++;
                 const batch = writeBatch(db);
-                const cleanTargetName = jamiaName.trim().toLowerCase().replace(/\s+/g, ' ');
+                
+                // 🌟 CRASH ROKNE WALA SAFE GUARD
+                const cleanTargetName = (jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
                 
                 // Master ID dhoondein ya nayi banayein
                 let masterIdToUse = masterDict[cleanTargetName];
@@ -6915,7 +6921,7 @@ window.autoFixAllJamias = async () => {
                     if (userItem.jamiaId !== masterIdToUse) {
                         const userRef = doc(db, 'users', userItem.userId);
                         const userSnap = await getDoc(userRef);
-                        const userData = userSnap.data();
+                        const userData = userSnap.data() || {};
 
                         // Update Profile
                         let updatedJamiaatList = (userData.jamiaatList || []).map(j => {
