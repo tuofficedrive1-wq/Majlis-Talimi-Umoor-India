@@ -6801,7 +6801,7 @@ window.openEditJamiaModal = (jamiaId) => {
     document.getElementById('edit-jamia-modal').classList.remove('hidden');
 };
 
-// 🌟 RENAME & UPDATE FUNCTION (Crash-Proof) 🌟
+// 🌟 RENAME & UPDATE FUNCTION (Crash-Proof for Missing Docs) 🌟
 window.saveJamiaMasterDetails = async () => {
     const jamiaId = document.getElementById('edit-jamia-id').value;
     const oldName = document.getElementById('edit-jamia-old-name').value;
@@ -6823,21 +6823,21 @@ window.saveJamiaMasterDetails = async () => {
     try {
         const batch = writeBatch(db);
 
-        // 1. Master Record Update karein
+        // 1. Master Record Update karein (🌟 NAYA LOGIC: merge: true lagaya hai taake error na aaye)
         const masterRef = doc(db, 'jamiaat_master', jamiaId);
-        batch.update(masterRef, {
+        batch.set(masterRef, {
             name: newName,
             urduName: urduName,
             region: region,
             state: state
-        });
+        }, { merge: true });
 
         // 2. Agar English Name badla hai, to sab reports aur users mein update karein
         if (oldName !== newName) {
             allUsersData.forEach(user => {
                 let needsUpdate = false;
                 
-                // User Profile Jamia List Update (SAFE GUARD)
+                // User Profile Jamia List Update
                 let updatedList = [];
                 if (Array.isArray(user.jamiaatList)) {
                     updatedList = user.jamiaatList.map(j => {
@@ -6851,7 +6851,7 @@ window.saveJamiaMasterDetails = async () => {
                     });
                 }
 
-                // Academic Years Update (SAFE GUARD)
+                // Academic Years Update
                 let updatedAcademicYears = user.academicYears ? JSON.parse(JSON.stringify(user.academicYears)) : {};
                 Object.keys(updatedAcademicYears).forEach(year => {
                     if (updatedAcademicYears[year] && Array.isArray(updatedAcademicYears[year].karkardagiStructure)) {
@@ -6882,7 +6882,7 @@ window.saveJamiaMasterDetails = async () => {
                 snap2.forEach(d => batch.update(d.ref, { jamiaId: jamiaId, jamiaName: newName }));
             }
 
-            // Monthly Reports (🌟 YAHI ERROR THA JO FIX KIYA GAYA HAI 🌟)
+            // Monthly Reports
             const reportsSnap = await getDocs(collection(db, 'monthly_reports'));
             reportsSnap.forEach(docSnap => {
                 const data = docSnap.data();
@@ -6890,8 +6890,6 @@ window.saveJamiaMasterDetails = async () => {
                 
                 ['jaizaReport', 'tadrisRecording', 'monthlyTest', 'karkardagiReport'].forEach(key => {
                     let arr = data[key]?.data;
-                    
-                    // SAFE GUARD: Sirf tabhi aage barho jab 'arr' waqai ek list ho!
                     if (Array.isArray(arr)) { 
                         arr.forEach(item => { 
                             if (item && (item.jamiaId === jamiaId || item.name === oldName || item.jamiaName === oldName)) { 
