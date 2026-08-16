@@ -6801,7 +6801,7 @@ window.openEditJamiaModal = (jamiaId) => {
     document.getElementById('edit-jamia-modal').classList.remove('hidden');
 };
 
-// 🌟 RENAME & UPDATE FUNCTION (Updates Everything Seamlessly) 🌟
+// 🌟 RENAME & UPDATE FUNCTION (Crash-Proof) 🌟
 window.saveJamiaMasterDetails = async () => {
     const jamiaId = document.getElementById('edit-jamia-id').value;
     const oldName = document.getElementById('edit-jamia-old-name').value;
@@ -6823,7 +6823,7 @@ window.saveJamiaMasterDetails = async () => {
     try {
         const batch = writeBatch(db);
 
-        // 1. Master Record Update karein (Ye hamesha hoga)
+        // 1. Master Record Update karein
         const masterRef = doc(db, 'jamiaat_master', jamiaId);
         batch.update(masterRef, {
             name: newName,
@@ -6836,19 +6836,25 @@ window.saveJamiaMasterDetails = async () => {
         if (oldName !== newName) {
             allUsersData.forEach(user => {
                 let needsUpdate = false;
-                let updatedList = (user.jamiaatList || []).map(j => {
-                    let jId = typeof j === 'object' ? j.id : null;
-                    let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                    if (jId === jamiaId || jName === oldName) {
-                        needsUpdate = true;
-                        return { id: jamiaId, name: newName };
-                    }
-                    return j;
-                });
+                
+                // User Profile Jamia List Update (SAFE GUARD)
+                let updatedList = [];
+                if (Array.isArray(user.jamiaatList)) {
+                    updatedList = user.jamiaatList.map(j => {
+                        let jId = typeof j === 'object' ? j.id : null;
+                        let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                        if (jId === jamiaId || jName === oldName) {
+                            needsUpdate = true;
+                            return { id: jamiaId, name: newName };
+                        }
+                        return j;
+                    });
+                }
 
+                // Academic Years Update (SAFE GUARD)
                 let updatedAcademicYears = user.academicYears ? JSON.parse(JSON.stringify(user.academicYears)) : {};
                 Object.keys(updatedAcademicYears).forEach(year => {
-                    if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
+                    if (updatedAcademicYears[year] && Array.isArray(updatedAcademicYears[year].karkardagiStructure)) {
                         updatedAcademicYears[year].karkardagiStructure.forEach(j => {
                             if (j.jamiaId === jamiaId || j.jamiaName === oldName) {
                                 j.jamiaId = jamiaId;
@@ -6867,33 +6873,36 @@ window.saveJamiaMasterDetails = async () => {
             // Reports me name update karein
             const collectionsToSync = ['jaiza_forms', 'monthly_test_sheets', 'inspection_reports', 'enrollment_records'];
             for(let c of collectionsToSync) {
-                // By ID
                 const q1 = query(collection(db, c), where('jamiaId', '==', jamiaId));
                 const snap1 = await getDocs(q1);
                 snap1.forEach(d => batch.update(d.ref, { jamiaName: newName }));
 
-                // Fail-safe By Old Name
                 const q2 = query(collection(db, c), where('jamiaName', '==', oldName));
                 const snap2 = await getDocs(q2);
                 snap2.forEach(d => batch.update(d.ref, { jamiaId: jamiaId, jamiaName: newName }));
             }
 
-            // Monthly Reports
+            // Monthly Reports (🌟 YAHI ERROR THA JO FIX KIYA GAYA HAI 🌟)
             const reportsSnap = await getDocs(collection(db, 'monthly_reports'));
             reportsSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 let isModified = false;
+                
                 ['jaizaReport', 'tadrisRecording', 'monthlyTest', 'karkardagiReport'].forEach(key => {
-                    let arr = data[key]?.data || [];
-                    arr.forEach(item => { 
-                        if (item.jamiaId === jamiaId || item.name === oldName || item.jamiaName === oldName) { 
-                            item.jamiaId = jamiaId; 
-                            if(item.name !== undefined) item.name = newName;
-                            if(item.jamiaName !== undefined) item.jamiaName = newName;
-                            isModified = true; 
-                        } 
-                    });
-                    if(isModified) batch.update(docSnap.ref, { [`${key}.data`]: arr });
+                    let arr = data[key]?.data;
+                    
+                    // SAFE GUARD: Sirf tabhi aage barho jab 'arr' waqai ek list ho!
+                    if (Array.isArray(arr)) { 
+                        arr.forEach(item => { 
+                            if (item && (item.jamiaId === jamiaId || item.name === oldName || item.jamiaName === oldName)) { 
+                                item.jamiaId = jamiaId; 
+                                if(item.name !== undefined) item.name = newName;
+                                if(item.jamiaName !== undefined) item.jamiaName = newName;
+                                isModified = true; 
+                            } 
+                        });
+                        if(isModified) batch.update(docSnap.ref, { [`${key}.data`]: arr });
+                    }
                 });
             });
         }
@@ -6902,9 +6911,9 @@ window.saveJamiaMasterDetails = async () => {
 
         document.getElementById('edit-jamia-modal').classList.add('hidden');
         
-        // Custom Alert in case showNotification is missing somewhere else
         try { showNotification("Jamia successfully updated!"); } catch(e) { alert("Jamia successfully updated!"); }
         
+        // Data background me nayi maloomat ke sath refresh karein
         if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
         setTimeout(() => window.renderManageJamiaList(), 1500);
 
