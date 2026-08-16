@@ -890,12 +890,15 @@
 <!-- MANAGE TAB (Naya Add Kiya Gaya) -->
 <div id="admin-manage-tab" class="admin-tab-content hidden space-y-6">
     <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
+       <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-4 flex-wrap gap-4">
             <div>
-                <h3 class="text-xl font-bold text-slate-800"><i class="fas fa-list-alt text-teal-600 mr-2"></i> Jamia ID Manager (Manual Sync)</h3>
-                <p class="text-sm text-gray-500 mt-1">Yahan se aap kisi bhi Jamia ki ID copy karke doosre user (jaise Inspector) mein paste karke sync kar sakte hain.</p>
+                <h3 class="text-xl font-bold text-slate-800"><i class="fas fa-list-alt text-teal-600 mr-2"></i> Jamia ID Manager</h3>
+                <p class="text-sm text-gray-500 mt-1">Ek click mein saari alag-alag IDs ko khud-ba-khud sync karein.</p>
             </div>
-            <button onclick="window.renderManageJamiaList()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition"><i class="fas fa-sync-alt mr-1"></i> Refresh List</button>
+            <div class="flex gap-2">
+                <button onclick="window.autoFixAllJamias()" class="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-md transition transform hover:scale-105"><i class="fas fa-magic mr-1"></i> Auto-Fix All Conflicts</button>
+                <button onclick="window.renderManageJamiaList()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
+            </div>
         </div>
         
         <div class="overflow-x-auto rounded-lg border border-slate-200">
@@ -6836,6 +6839,156 @@ window.syncManualId = async (userId, jamiaName, inputElementId) => {
     } catch (e) {
         console.error(e);
         alert("Error: " + e.message);
+    } finally {
+        showLoader(false);
+    }
+};
+
+        // ==========================================================
+// 🟢 MAGIC TOOL: Ek Click Mein Saare Conflicts Theek Karein
+// ==========================================================
+window.autoFixAllJamias = async () => {
+    if (!confirm("Kya aap waqai poore Database ko Auto-Fix karna chahte hain? \n\nYe tool khud-ba-khud un sabhi Jamiaat ko dhoondega jinki ID match nahi ho rahi, aur un sabko ek 'Master ID' de kar 100% sync kar dega!")) return;
+
+    showLoader(true);
+    try {
+        let allAssignments = [];
+        let groupedAssignments = {};
+
+        // 1. Saara data ikhatta karein
+        allUsersData.forEach(user => {
+            if (user.id === ADMIN_UID) return;
+            (user.jamiaatList || []).forEach(j => {
+                let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                let jId = typeof j === 'object' ? (j.id || '') : '';
+                
+                let sortName = jName;
+                if (user.role === 'inspector' && user.jamiaatMapping && user.jamiaatMapping[jName]) {
+                    sortName = user.jamiaatMapping[jName];
+                }
+
+                if (jName) {
+                    allAssignments.push({ userId: user.id, sortName: sortName, actualJamiaName: jName, jamiaId: jId });
+                }
+            });
+        });
+
+        allAssignments.forEach(item => {
+            if (!groupedAssignments[item.sortName]) groupedAssignments[item.sortName] = [];
+            groupedAssignments[item.sortName].push(item);
+        });
+
+        // 2. Master Jamia List fetch karein
+        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+        let masterDict = {};
+        masterSnap.forEach(d => {
+            masterDict[d.data().name.trim().toLowerCase().replace(/\s+/g, ' ')] = d.id;
+        });
+
+        let fixCount = 0;
+
+        // 3. Har Jamia group ko check karein aur conflicts theek karein
+        for (let jamiaName of Object.keys(groupedAssignments)) {
+            let group = groupedAssignments[jamiaName];
+            let allIds = group.map(i => i.jamiaId).filter(id => id !== '');
+            let uniqueIds = new Set(allIds);
+            
+            // Conflict ki pehchan (Agar ID alag hai ya kisi ek ki ID khali hai)
+            let hasConflict = (uniqueIds.size > 1 || allIds.length < group.length);
+
+            if (hasConflict) {
+                fixCount++;
+                const batch = writeBatch(db);
+                const cleanTargetName = jamiaName.trim().toLowerCase().replace(/\s+/g, ' ');
+                
+                // Master ID dhoondein ya nayi banayein
+                let masterIdToUse = masterDict[cleanTargetName];
+                if (!masterIdToUse) {
+                    const newDocRef = doc(collection(db, 'jamiaat_master'));
+                    masterIdToUse = newDocRef.id;
+                    batch.set(newDocRef, { name: jamiaName, createdAt: serverTimestamp() });
+                    masterDict[cleanTargetName] = masterIdToUse;
+                }
+
+                for (let userItem of group) {
+                    // Agar is user ki ID master ID jaisi nahi hai, to ise fix karein
+                    if (userItem.jamiaId !== masterIdToUse) {
+                        const userRef = doc(db, 'users', userItem.userId);
+                        const userSnap = await getDoc(userRef);
+                        const userData = userSnap.data();
+
+                        // Update Profile
+                        let updatedJamiaatList = (userData.jamiaatList || []).map(j => {
+                            let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                            if (jName === userItem.actualJamiaName) return { id: masterIdToUse, name: userItem.actualJamiaName };
+                            return j;
+                        });
+
+                        let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
+                        Object.keys(updatedAcademicYears).forEach(year => {
+                            if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
+                                updatedAcademicYears[year].karkardagiStructure.forEach(j => {
+                                    if (j.jamiaName === userItem.actualJamiaName) j.jamiaId = masterIdToUse;
+                                });
+                            }
+                        });
+
+                        batch.update(userRef, { jamiaatList: updatedJamiaatList, academicYears: updatedAcademicYears });
+
+                        // Update Main Collections
+                        const collectionsToSync = [
+                            {name: 'jaiza_forms', userField: 'createdBy'},
+                            {name: 'monthly_test_sheets', userField: 'adminUid'},
+                            {name: 'inspection_reports', userField: 'inspectorId'},
+                            {name: 'enrollment_records', userField: 'inspectorId'}
+                        ];
+
+                        for(let c of collectionsToSync) {
+                            const q = query(collection(db, c.name), where(c.userField, '==', userItem.userId), where('jamiaName', '==', userItem.actualJamiaName));
+                            const snap = await getDocs(q);
+                            snap.forEach(d => batch.update(d.ref, { jamiaId: masterIdToUse }));
+                        }
+
+                        // Update Monthly Reports
+                        const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userItem.userId));
+                        const reportsSnap = await getDocs(reportsQ);
+                        reportsSnap.forEach(docSnap => {
+                            const data = docSnap.data();
+                            let isModified = false;
+                            
+                            ['jaizaReport', 'tadrisRecording', 'monthlyTest', 'karkardagiReport'].forEach(key => {
+                                let arr = data[key]?.data || [];
+                                arr.forEach(item => { 
+                                    if (item.name === userItem.actualJamiaName || item.jamiaName === userItem.actualJamiaName) { 
+                                        item.jamiaId = masterIdToUse; isModified = true; 
+                                    } 
+                                });
+                                if(isModified) {
+                                    batch.update(docSnap.ref, { [`${key}.data`]: arr });
+                                }
+                            });
+                        });
+                    }
+                }
+                // Ek jamia ka conflict solve karke database mein save karein
+                await batch.commit();
+            }
+        }
+
+        // Memory update
+        if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
+
+        if (fixCount > 0) {
+            showNotification(`Zabardast! Total ${fixCount} Jamiaat ke Conflicts khud-ba-khud 100% fix ho gaye hain.`);
+        } else {
+            showNotification("Koi conflict nahi mila! Saari Jamiaat pehle se hi theek hain.");
+        }
+        
+        setTimeout(() => window.renderManageJamiaList(), 1500);
+
+    } catch (e) {
+        console.error(e);
+        alert("Auto-Fix Error: " + e.message);
     } finally {
         showLoader(false);
     }
