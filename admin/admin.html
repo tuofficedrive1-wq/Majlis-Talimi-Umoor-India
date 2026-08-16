@@ -6635,7 +6635,7 @@ if (btnRunMigration) {
 // ==========================================
 
 // ==========================================================
-// 🟢 MANAGE TAB LOGIC: Manual ID Sync Table (With Highlights)
+// 🟢 MANAGE TAB LOGIC: Manual ID Sync Table (With Highlights & Sync)
 // ==========================================================
 window.renderManageJamiaList = () => {
     const tbody = document.getElementById('manage-jamia-list-tbody');
@@ -6643,7 +6643,6 @@ window.renderManageJamiaList = () => {
 
     let allAssignments = [];
 
-    // 1. Saare users ka data collect karein
     allUsersData.forEach(user => {
         if (user.id === ADMIN_UID) return;
         
@@ -6655,7 +6654,6 @@ window.renderManageJamiaList = () => {
             let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
             let jId = typeof j === 'object' ? (j.id || '') : '';
             
-            // Agar Inspector ne Jamia Link ki hai to wo naam dikhayen
             let displayJamiaName = jName;
             let sortName = jName;
             if (user.role === 'inspector' && user.jamiaatMapping && user.jamiaatMapping[jName]) {
@@ -6677,14 +6675,12 @@ window.renderManageJamiaList = () => {
         });
     });
 
-    // 2. Data ko Jamia ke naam (sortName) ke hisab se Group karein
     let groupedAssignments = {};
     allAssignments.forEach(item => {
         if (!groupedAssignments[item.sortName]) groupedAssignments[item.sortName] = [];
         groupedAssignments[item.sortName].push(item);
     });
 
-    // 3. Grouped data ko alphabetically sort karke render karein
     let sortedJamiaNames = Object.keys(groupedAssignments).sort();
     let html = '';
     let globalIndex = 1;
@@ -6692,27 +6688,23 @@ window.renderManageJamiaList = () => {
     sortedJamiaNames.forEach(jamiaName => {
         let group = groupedAssignments[jamiaName];
         
-        // Check Sync Status
         let allIds = group.map(i => i.jamiaId).filter(id => id !== '');
         let uniqueIds = new Set(allIds);
         
-        // Agar ek se zyada log hain aur sabki ID exactly same hai = "Perfectly Synced"
         let isPerfectlySynced = (group.length > 1 && uniqueIds.size === 1 && allIds.length === group.length);
-        // Agar ek hi jamia ke alag alag users ke paas alag alag IDs hain = "Conflict"
         let hasConflict = (uniqueIds.size > 1);
 
         group.forEach((item) => {
             let inputId = `manual-id-${globalIndex}`;
             
-            // 🌟 Row Background Highlighting 🌟
             let rowBgClass = "hover:bg-slate-50"; 
             let statusBadge = "";
 
             if (isPerfectlySynced) {
-                rowBgClass = "bg-emerald-50/40 hover:bg-emerald-50"; // Halka hara (Green)
+                rowBgClass = "bg-emerald-50/40 hover:bg-emerald-50"; 
                 statusBadge = `<span class="ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-black border border-emerald-200" title="Dono ki ID exactly same hai"><i class="fas fa-check-double"></i> Synced</span>`;
             } else if (hasConflict) {
-                rowBgClass = "bg-red-50/40 hover:bg-red-50"; // Halka laal (Red)
+                rowBgClass = "bg-red-50/40 hover:bg-red-50"; 
                 statusBadge = `<span class="ml-2 bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-black border border-red-200" title="ID match nahi kar rahi!"><i class="fas fa-exclamation-triangle"></i> Conflict</span>`;
             }
             
@@ -6721,7 +6713,7 @@ window.renderManageJamiaList = () => {
                 : "border-red-400 bg-red-50 focus:ring-red-500 placeholder-red-300";
                 
             let copyBtnHtml = item.jamiaId 
-                ? `<button onclick="navigator.clipboard.writeText('${item.jamiaId}'); showNotification('ID Copied!');" class="text-teal-600 hover:text-teal-800 p-2 bg-white rounded border border-teal-200 shadow-sm transition" title="Copy this ID"><i class="fas fa-copy"></i></button>` 
+                ? `<button onclick="navigator.clipboard.writeText('${item.jamiaId}'); alert('ID Copied!');" class="text-teal-600 hover:text-teal-800 p-2 bg-white rounded border border-teal-200 shadow-sm transition" title="Copy this ID"><i class="fas fa-copy"></i></button>` 
                 : '';
 
             html += `
@@ -6750,6 +6742,103 @@ window.renderManageJamiaList = () => {
     });
 
     tbody.innerHTML = html || '<tr><td colspan="5" class="text-center p-6 text-gray-500">Koi Jamia assign nahi ki gayi.</td></tr>';
+};
+
+// 🌟🌟🌟 YEH WALA FUNCTION MISSING THA, AB WAPAS ADD KAR DIYA HAI 🌟🌟🌟
+window.syncManualId = async (userId, jamiaName, inputElementId) => {
+    const newJamiaId = document.getElementById(inputElementId).value.trim();
+    
+    if (!newJamiaId) {
+        alert("Barahe karam pehle ID input box mein Paste karein.");
+        return;
+    }
+
+    if (!confirm(`Kya aap waqai is user ki Jamia "${jamiaName}" ke saare records (Profile, Jaiza, Tests, Recordings) mein ye nayi ID lagana chahte hain?`)) return;
+
+    showLoader(true);
+    try {
+        const batch = writeBatch(db);
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
+
+        // 1. Profile Data Update Karein
+        let updatedJamiaatList = (userData.jamiaatList || []).map(j => {
+            let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+            if (jName === jamiaName) return { id: newJamiaId, name: jamiaName };
+            return j;
+        });
+
+        let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
+        Object.keys(updatedAcademicYears).forEach(year => {
+            if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
+                updatedAcademicYears[year].karkardagiStructure.forEach(j => {
+                    if (j.jamiaName === jamiaName) j.jamiaId = newJamiaId;
+                });
+            }
+        });
+
+        batch.update(userRef, { jamiaatList: updatedJamiaatList, academicYears: updatedAcademicYears });
+
+        // 2. Main Collections Update Karein (Zimmedar + Inspector Dono Ke Liye)
+        const collectionsToSync = [
+            {name: 'jaiza_forms', userField: 'createdBy'},
+            {name: 'monthly_test_sheets', userField: 'adminUid'},
+            {name: 'inspection_reports', userField: 'inspectorId'},
+            {name: 'enrollment_records', userField: 'inspectorId'}
+        ];
+
+        for(let c of collectionsToSync) {
+            const q = query(collection(db, c.name), where(c.userField, '==', userId), where('jamiaName', '==', jamiaName));
+            const snap = await getDocs(q);
+            snap.forEach(d => batch.update(d.ref, { jamiaId: newJamiaId }));
+        }
+
+        // 3. Monthly Reports ke andar ki Arrays Update Karein
+        const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userId));
+        const reportsSnap = await getDocs(reportsQ);
+        reportsSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            let isModified = false;
+            
+            let jaizaArray = data.jaizaReport?.data || [];
+            jaizaArray.forEach(item => { if (item.name === jamiaName || item.jamiaName === jamiaName) { item.jamiaId = newJamiaId; isModified = true; } });
+
+            let tadrisArray = data.tadrisRecording?.data || [];
+            tadrisArray.forEach(item => { if (item.jamiaName === jamiaName) { item.jamiaId = newJamiaId; isModified = true; } });
+
+            let testArray = data.monthlyTest?.data || [];
+            testArray.forEach(item => { if (item.name === jamiaName || item.jamiaName === jamiaName) { item.jamiaId = newJamiaId; isModified = true; } });
+
+            let kkdArray = data.karkardagiReport?.data || [];
+            kkdArray.forEach(item => { if (item.jamiaName === jamiaName) { item.jamiaId = newJamiaId; isModified = true; } });
+
+            if (isModified) {
+                batch.update(docSnap.ref, {
+                    'jaizaReport.data': jaizaArray,
+                    'tadrisRecording.data': tadrisArray,
+                    'monthlyTest.data': testArray,
+                    'karkardagiReport.data': kkdArray
+                });
+            }
+        });
+
+        // 4. Batch Commit karke save kar dein
+        await batch.commit();
+
+        // Local Browser Memory Theek Karein taake refresh na karna pade
+        const memUser = allUsersData.find(u => u.id === userId);
+        if(memUser) { memUser.jamiaatList = updatedJamiaatList; }
+
+        alert("Kamyabi! ID saare collections mein save ho gayi hai.");
+        window.renderManageJamiaList(); // Table ko dobara load karein
+
+    } catch (e) {
+        console.error(e);
+        alert("Error: " + e.message);
+    } finally {
+        showLoader(false);
+    }
 };
         
 // --- Init ---
