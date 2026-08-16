@@ -6684,95 +6684,155 @@ window.renderManageJamiaList = () => {
         tbody.innerHTML = html;
     }
 
-    // ==========================================================
-    // 🌟 NAYA TOOL LOGIC: Separate & Rename Jamia
-    // ==========================================================
-    const renameUserSelect = document.getElementById('rename-user-select');
-    const renameJamiaSelect = document.getElementById('rename-jamia-select');
-    const renameNewName = document.getElementById('rename-new-name');
-    const btnRenameSeparate = document.getElementById('btn-rename-separate');
+   // ==========================================
+// TEMPORARY JAMIA MIGRATION LOGIC (Start)
+// ==========================================
 
-    if (renameUserSelect) {
-        renameUserSelect.innerHTML = '<option value="">-- Select User --</option>' + 
-            allUsersData.filter(u => u.id !== ADMIN_UID).map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
+const migUserSelect = document.getElementById('mig-user-select');
+const btnRunMigration = document.getElementById('btn-run-migration');
+const migStatusMsg = document.getElementById('mig-status-msg');
+const listDisplay = document.getElementById('mig-jamia-list-display'); 
+const listTitle = document.getElementById('jamia-list-title'); 
 
-        renameUserSelect.addEventListener('change', (e) => {
-            const userId = e.target.value;
-            const user = allUsersData.find(u => u.id === userId);
-            if (user && user.jamiaatList && user.jamiaatList.length > 0) {
-                renameJamiaSelect.innerHTML = '<option value="">-- Select Jamia to Rename --</option>' + 
-                    user.jamiaatList.map(j => {
-                        const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                        const jId = typeof j === 'object' ? j.id : j;
-                        return `<option value="${jId}" data-name="${jName}">${jName}</option>`;
-                    }).join('');
-                renameJamiaSelect.disabled = false;
-            } else {
-                renameJamiaSelect.innerHTML = '<option value="">-- No Jamia Found --</option>';
-                renameJamiaSelect.disabled = true;
-            }
-        });
-    }
+let currentUserPendingJamias = [];
 
-    if (btnRenameSeparate) {
-        // Purana listener hatana zaroori hai taake double click na ho
-        const newBtn = btnRenameSeparate.cloneNode(true);
-        btnRenameSeparate.parentNode.replaceChild(newBtn, btnRenameSeparate);
+const checkUserJamiaStatus = (userId) => {
+    const user = allUsersData.find(u => u.id === userId);
+    currentUserPendingJamias = [];
+    if (listDisplay) listDisplay.innerHTML = '';
+    
+    if (user && user.jamiaatList && user.jamiaatList.length > 0) {
+        // 🌟 NAYA LOGIC: Ab hum saari Jamiaat select kar rahe hain taake Inspector ka miss hua data sync ho jaye
+        currentUserPendingJamias = user.jamiaatList;
         
-        newBtn.addEventListener('click', async () => {
-            const userId = renameUserSelect.value;
-            const jamiaId = renameJamiaSelect.value;
-            const oldJamiaName = renameJamiaSelect.options[renameJamiaSelect.selectedIndex]?.dataset.name;
-            const newJamiaName = renameNewName.value.trim();
+        if (listTitle) listTitle.classList.remove('hidden');
+        if (listDisplay) {
+            user.jamiaatList.forEach(j => {
+                if (typeof j === 'object') {
+                    listDisplay.innerHTML += `<span class="bg-green-50 text-green-700 text-xs px-2.5 py-1 rounded-md border border-green-200 urdu-font font-semibold shadow-sm">✅ ${j.name || j.jamiaName}</span>`;
+                } else {
+                    listDisplay.innerHTML += `<span class="bg-orange-50 text-orange-700 text-xs px-2.5 py-1 rounded-md border border-orange-200 urdu-font font-semibold shadow-sm">⏳ ${j}</span>`;
+                }
+            });
+        }
 
-            if (!userId || !jamiaId || !newJamiaName) {
-                alert("Tamam fields bharna zaroori hai.");
-                return;
+        btnRunMigration.disabled = false;
+        btnRunMigration.innerHTML = `<i class="fas fa-sync mr-1"></i> Ek Sath ${currentUserPendingJamias.length} Jamiaat Sync & Migrate Karein`;
+        btnRunMigration.classList.replace('bg-gray-400', 'bg-orange-600');
+    } else {
+        if (listTitle) listTitle.classList.add('hidden');
+        if (listDisplay) listDisplay.innerHTML = '<span class="text-sm text-gray-500">Is user ke paas koi Jamia nahi hai.</span>';
+        btnRunMigration.disabled = true;
+        btnRunMigration.innerHTML = `<i class="fas fa-ban mr-1"></i> Koi Jamia Nahi Hai`;
+        btnRunMigration.classList.replace('bg-orange-600', 'bg-gray-400');
+    }
+};
+
+const initMigrationTool = () => {
+    if (!migUserSelect || typeof allUsersData === 'undefined' || allUsersData.length === 0) return;
+    
+    migUserSelect.innerHTML = '<option value="">-- Select User --</option>' + 
+        allUsersData.map(u => `<option value="${u.id}">${u.name || u.email}</option>`).join('');
+
+    migUserSelect.addEventListener('change', (e) => {
+        if (migStatusMsg) migStatusMsg.innerHTML = '';
+        checkUserJamiaStatus(e.target.value);
+    });
+};
+
+const checkAndInitMigrationTool = setInterval(() => {
+    if (typeof allUsersData !== 'undefined' && allUsersData.length > 0) {
+        initMigrationTool(); 
+        clearInterval(checkAndInitMigrationTool); 
+    }
+}, 1000); 
+
+if (btnRunMigration) {
+    btnRunMigration.addEventListener('click', async () => {
+        const userId = migUserSelect.value;
+        if (!userId || currentUserPendingJamias.length === 0) return;
+
+        if (!confirm(`Kya aap is user ki saari (${currentUserPendingJamias.length}) Jamiaat ka data Database mein Sync aur Migrate karna chahte hain?`)) return;
+
+        showLoader(true);
+        if (migStatusMsg) migStatusMsg.classList.remove('hidden');
+        
+        const updateProgress = (percent, text) => {
+            if (migStatusMsg) {
+                migStatusMsg.innerHTML = `
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
+                    <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" style="width: ${percent}%"></div>
+                    </div>
+                    <span class="text-blue-600 text-xs font-bold">${percent}% - ${text}</span>
+                `;
             }
+        };
 
-            if (!confirm(`Kya aap waqai "${oldJamiaName}" ko badal kar "${newJamiaName}" karna chahte hain? Is se is user ke liye ek nayi ID generate hogi aur iska purana sara data naye naam aur naye ID par shift ho jayega.`)) return;
+        try {
+            let totalJamias = currentUserPendingJamias.length;
+            const userRef = doc(db, 'users', userId);
+            const userSnap = await getDoc(userRef);
+            let userData = userSnap.data();
+            
+            let updatedJamiaatList = userData.jamiaatList ? [...userData.jamiaatList] : [];
+            let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
 
-            showLoader(true);
-            try {
-                const batch = writeBatch(db);
+            for (let i = 0; i < totalJamias; i++) {
+                const jamiaItem = currentUserPendingJamias[i];
+                const targetJamiaName = typeof jamiaItem === 'object' ? (jamiaItem.name || jamiaItem.jamiaName) : jamiaItem;
+                let finalJamiaId = typeof jamiaItem === 'object' ? jamiaItem.id : null;
+
+                let currentProgress = Math.round((i / totalJamias) * 100);
+                updateProgress(currentProgress, `Progress (${i + 1}/${totalJamias}): "${targetJamiaName}" database mein sync ho rahi hai...`);
                 
-                // 1. Create New ID in Master List
-                const newDocRef = doc(collection(db, 'jamiaat_master'));
-                const newJamiaId = newDocRef.id;
-                batch.set(newDocRef, { name: newJamiaName, createdAt: serverTimestamp() });
+                const batch = writeBatch(db);
 
-                // 2. Update User Profile
-                const userRef = doc(db, 'users', userId);
-                const userSnap = await getDoc(userRef);
-                const userData = userSnap.data();
+                let actualJamiaName = targetJamiaName;
+                if (userData.jamiaatMapping && userData.jamiaatMapping[targetJamiaName]) {
+                    actualJamiaName = userData.jamiaatMapping[targetJamiaName]; 
+                }
+                const cleanTargetName = actualJamiaName.trim().toLowerCase().replace(/\s+/g, ' ');
 
-                const updatedJamiaatList = (userData.jamiaatList || []).map(j => {
-                    const jId = typeof j === 'object' ? j.id : j;
-                    if (jId === jamiaId || j === oldJamiaName) return { id: newJamiaId, name: newJamiaName };
+                if (!finalJamiaId) {
+                    const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+                    masterSnap.forEach(doc => {
+                        const dbName = (doc.data().name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                        if (dbName === cleanTargetName) {
+                            finalJamiaId = doc.id; 
+                            actualJamiaName = doc.data().name; 
+                        }
+                    });
+
+                    if (!finalJamiaId) {
+                        const newDocRef = doc(collection(db, 'jamiaat_master'));
+                        finalJamiaId = newDocRef.id;
+                        batch.set(newDocRef, { name: actualJamiaName, createdAt: serverTimestamp() });
+                    }
+                }
+
+                updatedJamiaatList = updatedJamiaatList.map(j => {
+                    const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    if (jName === targetJamiaName) return { id: finalJamiaId, name: actualJamiaName };
                     return j;
                 });
 
-                let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
                 Object.keys(updatedAcademicYears).forEach(year => {
                     if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
                         updatedAcademicYears[year].karkardagiStructure.forEach(j => {
-                            if (j.jamiaId === jamiaId || j.jamiaName === oldJamiaName) {
-                                j.jamiaId = newJamiaId;
-                                j.jamiaName = newJamiaName;
+                            if (j.jamiaName === targetJamiaName || j.jamiaId === finalJamiaId) {
+                                j.jamiaId = finalJamiaId;
+                                j.jamiaName = actualJamiaName;
                             }
                         });
                     }
                 });
 
-                batch.update(userRef, { jamiaatList: updatedJamiaatList, academicYears: updatedAcademicYears });
-
-                // 3. Update Reports (Jaiza, Test, Monthly Reports)
                 const jaizaQ = query(collection(db, 'jaiza_forms'), where('createdBy', '==', userId));
                 const jaizaSnap = await getDocs(jaizaQ);
                 jaizaSnap.forEach(docSnap => {
                     const data = docSnap.data();
-                    if (data.jamiaId === jamiaId || data.jamiaName === oldJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: newJamiaId, jamiaName: newJamiaName });
+                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
+                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
                     }
                 });
 
@@ -6780,10 +6840,30 @@ window.renderManageJamiaList = () => {
                 const testSnap = await getDocs(testQ);
                 testSnap.forEach(docSnap => {
                     const data = docSnap.data();
-                    if (data.jamiaId === jamiaId || data.jamiaName === oldJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: newJamiaId, jamiaName: newJamiaName });
+                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
+                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
                     }
                 });
+
+                // 🌟🌟🌟 NAYA HISSA: INSPECTOR KI COLLECTIONS YAHAN UPDATE HONGI 🌟🌟🌟
+                const inspQ = query(collection(db, 'inspection_reports'), where('inspectorId', '==', userId));
+                const inspSnap = await getDocs(inspQ);
+                inspSnap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
+                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
+                    }
+                });
+
+                const enrollQ = query(collection(db, 'enrollment_records'), where('inspectorId', '==', userId));
+                const enrollSnap = await getDocs(enrollQ);
+                enrollSnap.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
+                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
+                    }
+                });
+                // 🌟🌟🌟 -------------------------------------------------------- 🌟🌟🌟
 
                 const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userId));
                 const reportsSnap = await getDocs(reportsQ);
@@ -6794,29 +6874,29 @@ window.renderManageJamiaList = () => {
                     
                     let jaizaArray = data.jaizaReport?.data || [];
                     jaizaArray.forEach(item => {
-                        if (item.jamiaId === jamiaId || item.name === oldJamiaName || item.jamiaName === oldJamiaName) { 
-                            item.jamiaId = newJamiaId; item.name = newJamiaName; item.jamiaName = newJamiaName; isModified = true; 
+                        if (item.jamiaId === finalJamiaId || item.name === targetJamiaName || item.jamiaName === targetJamiaName) { 
+                            item.jamiaId = finalJamiaId; item.name = actualJamiaName; item.jamiaName = actualJamiaName; isModified = true; 
                         }
                     });
 
                     let tadrisArray = data.tadrisRecording?.data || [];
                     tadrisArray.forEach(item => {
-                        if (item.jamiaId === jamiaId || item.jamiaName === oldJamiaName) { 
-                            item.jamiaId = newJamiaId; item.jamiaName = newJamiaName; isModified = true; 
+                        if (item.jamiaId === finalJamiaId || item.jamiaName === targetJamiaName) { 
+                            item.jamiaId = finalJamiaId; item.jamiaName = actualJamiaName; isModified = true; 
                         }
                     });
 
                     let testArray = data.monthlyTest?.data || [];
                     testArray.forEach(item => {
-                        if (item.jamiaId === jamiaId || item.name === oldJamiaName || item.jamiaName === oldJamiaName) { 
-                            item.jamiaId = newJamiaId; item.name = newJamiaName; item.jamiaName = newJamiaName; isModified = true; 
+                        if (item.jamiaId === finalJamiaId || item.name === targetJamiaName || item.jamiaName === targetJamiaName) { 
+                            item.jamiaId = finalJamiaId; item.name = actualJamiaName; item.jamiaName = actualJamiaName; isModified = true; 
                         }
                     });
 
                     let kkdArray = data.karkardagiReport?.data || [];
                     kkdArray.forEach(item => {
-                        if (item.jamiaId === jamiaId || item.jamiaName === oldJamiaName) {
-                            item.jamiaName = newJamiaName; item.jamiaId = newJamiaId; isModified = true;
+                        if (item.jamiaId === finalJamiaId || item.jamiaName === targetJamiaName) {
+                            item.jamiaName = actualJamiaName; item.jamiaId = finalJamiaId; isModified = true;
                         }
                     });
 
@@ -6831,22 +6911,45 @@ window.renderManageJamiaList = () => {
                 });
 
                 await batch.commit();
-
-                alert("Kamyabi! Jamia alag ho kar naye naam aur nayi ID par shift ho gayi hai.");
-                renameNewName.value = '';
-                
-                if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
-                setTimeout(() => window.renderManageJamiaList(), 1500);
-
-            } catch(err) {
-                console.error(err);
-                alert("Error: " + err.message);
-            } finally {
-                showLoader(false);
             }
-        });
-    }
-};
+
+            updateProgress(98, "Saving Final User Profile Data...");
+            const finalBatch = writeBatch(db);
+            finalBatch.update(doc(db, 'users', userId), { 
+                jamiaatList: updatedJamiaatList, 
+                academicYears: updatedAcademicYears 
+            });
+            await finalBatch.commit();
+
+            const memUser = allUsersData.find(u => u.id === userId);
+            if (memUser) {
+                memUser.jamiaatList = updatedJamiaatList; 
+            }
+
+            checkUserJamiaStatus(userId);
+
+            if (migStatusMsg) {
+                migStatusMsg.innerHTML = `
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
+                    <div class="bg-green-600 h-2.5 rounded-full" style="width: 100%"></div>
+                    </div>
+                    <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! Tamam records aur Inspector data successfully sync ho gaya hai.</span>
+                `;
+            }
+            
+            if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
+
+        } catch (error) {
+            console.error("Bulk Migration Error:", error);
+            if(migStatusMsg) migStatusMsg.innerHTML = `<span class="text-red-600 text-sm font-bold"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</span>`;
+        } finally {
+            showLoader(false);
+        }
+    });
+}
+// ==========================================
+// TEMPORARY JAMIA MIGRATION LOGIC (End)
+// ==========================================
         
 // --- Init ---
 initApp();
