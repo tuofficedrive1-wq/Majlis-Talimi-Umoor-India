@@ -6390,7 +6390,8 @@ const checkUserJamiaStatus = (userId) => {
     if (listDisplay) listDisplay.innerHTML = '';
     
     if (user && user.jamiaatList && user.jamiaatList.length > 0) {
-        currentUserPendingJamias = user.jamiaatList;
+        // Sirf String wali Jamiaat uthayen jo abhi migrate honi hain
+        currentUserPendingJamias = user.jamiaatList.filter(j => typeof j === 'string');
         
         if (listTitle) listTitle.classList.remove('hidden');
         if (listDisplay) {
@@ -6403,9 +6404,15 @@ const checkUserJamiaStatus = (userId) => {
             });
         }
 
-        btnRunMigration.disabled = false;
-        btnRunMigration.innerHTML = `<i class="fas fa-sync mr-1"></i> Ek Sath ${currentUserPendingJamias.length} Jamiaat Sync & Migrate Karein`;
-        btnRunMigration.classList.replace('bg-gray-400', 'bg-orange-600');
+        if (currentUserPendingJamias.length > 0) {
+            btnRunMigration.disabled = false;
+            btnRunMigration.innerHTML = `<i class="fas fa-globe mr-1"></i> Ek Sath ${currentUserPendingJamias.length} Jamiaat Global Migrate Karein`;
+            btnRunMigration.classList.replace('bg-gray-400', 'bg-orange-600');
+        } else {
+            btnRunMigration.disabled = true;
+            btnRunMigration.innerHTML = `<i class="fas fa-check-circle mr-1"></i> Sab Migrate Ho Chuki Hain`;
+            btnRunMigration.classList.replace('bg-orange-600', 'bg-gray-400');
+        }
     } else {
         if (listTitle) listTitle.classList.add('hidden');
         if (listDisplay) listDisplay.innerHTML = '<span class="text-sm text-gray-500">Is user ke paas koi Jamia nahi hai.</span>';
@@ -6439,7 +6446,7 @@ if (btnRunMigration) {
         const userId = migUserSelect.value;
         if (!userId || currentUserPendingJamias.length === 0) return;
 
-        if (!confirm(`Kya aap is user ki saari (${currentUserPendingJamias.length}) Jamiaat ka data Database mein Sync aur Migrate karna chahte hain?`)) return;
+        if (!confirm(`Kya aap waqai is user ki Jamiaat ko "GLOBAL MIGRATE" karna chahte hain?\n\nIska matlab hai ke ye Jamia Database mein kisi bhi Inspector ya Standard user ke paas hui, sabki Profile aur Reports automatically update ho jayengi!`)) return;
 
         showLoader(true);
         if (migStatusMsg) migStatusMsg.classList.remove('hidden');
@@ -6457,172 +6464,163 @@ if (btnRunMigration) {
 
         try {
             let totalJamias = currentUserPendingJamias.length;
-            const userRef = doc(db, 'users', userId);
-            const userSnap = await getDoc(userRef);
-            let userData = userSnap.data();
             
-            let updatedJamiaatList = userData.jamiaatList ? [...userData.jamiaatList] : [];
-            let updatedAcademicYears = userData.academicYears ? JSON.parse(JSON.stringify(userData.academicYears)) : {};
-
             for (let i = 0; i < totalJamias; i++) {
                 const jamiaItem = currentUserPendingJamias[i];
                 const targetJamiaName = typeof jamiaItem === 'object' ? (jamiaItem.name || jamiaItem.jamiaName) : jamiaItem;
-                let finalJamiaId = typeof jamiaItem === 'object' ? jamiaItem.id : null;
 
                 let currentProgress = Math.round((i / totalJamias) * 100);
-                updateProgress(currentProgress, `Progress (${i + 1}/${totalJamias}): "${targetJamiaName}" database mein sync ho rahi hai...`);
+                updateProgress(currentProgress, `Processing (${i + 1}/${totalJamias}): "${targetJamiaName}" globally...`);
                 
-                const batch = writeBatch(db);
-
+                // 1. Master ID aur Master Name Nikalein
                 let actualJamiaName = targetJamiaName;
-                if (userData.jamiaatMapping && userData.jamiaatMapping[targetJamiaName]) {
-                    actualJamiaName = userData.jamiaatMapping[targetJamiaName]; 
+                const userObj = allUsersData.find(u => u.id === userId);
+                if (userObj && userObj.jamiaatMapping && userObj.jamiaatMapping[targetJamiaName]) {
+                    actualJamiaName = userObj.jamiaatMapping[targetJamiaName]; 
                 }
                 const cleanTargetName = actualJamiaName.trim().toLowerCase().replace(/\s+/g, ' ');
 
+                let finalJamiaId = null;
+                const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+                masterSnap.forEach(doc => {
+                    const dbName = (doc.data().name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                    if (dbName === cleanTargetName) {
+                        finalJamiaId = doc.id; 
+                        actualJamiaName = doc.data().name; 
+                    }
+                });
+
                 if (!finalJamiaId) {
-                    const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
-                    masterSnap.forEach(doc => {
-                        const dbName = (doc.data().name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-                        if (dbName === cleanTargetName) {
-                            finalJamiaId = doc.id; 
-                            actualJamiaName = doc.data().name; 
+                    const newDocRef = doc(collection(db, 'jamiaat_master'));
+                    finalJamiaId = newDocRef.id;
+                    await setDoc(newDocRef, { name: actualJamiaName, createdAt: serverTimestamp() });
+                }
+
+                // 🌟🌟🌟 NAYA LOGIC: Poore Database ke sabhi users ko Check & Update karein
+                for (let otherUser of allUsersData) {
+                    let needsUpdate = false;
+                    let currentList = otherUser.jamiaatList || [];
+                    
+                    let updatedJamiaatList = currentList.map(j => {
+                        let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                        let cleanJName = jName.trim().toLowerCase().replace(/\s+/g, ' ');
+                        
+                        // Check if mapped for this specific user
+                        if (otherUser.jamiaatMapping && otherUser.jamiaatMapping[jName]) {
+                            cleanJName = otherUser.jamiaatMapping[jName].trim().toLowerCase().replace(/\s+/g, ' ');
                         }
+
+                        if (cleanJName === cleanTargetName) {
+                            needsUpdate = true; // Match mil gaya!
+                            return { id: finalJamiaId, name: actualJamiaName };
+                        }
+                        return j;
                     });
 
-                    if (!finalJamiaId) {
-                        const newDocRef = doc(collection(db, 'jamiaat_master'));
-                        finalJamiaId = newDocRef.id;
-                        batch.set(newDocRef, { name: actualJamiaName, createdAt: serverTimestamp() });
+                    // Agar is user ke paas ye jamia thi, to iski Profile aur Monthly Reports update karein
+                    if (needsUpdate) {
+                        const otherUserRef = doc(db, 'users', otherUser.id);
+                        const fSnap = await getDoc(otherUserRef);
+                        const fData = fSnap.data();
+                        
+                        let updatedAcademicYears = fData.academicYears ? JSON.parse(JSON.stringify(fData.academicYears)) : {};
+                        Object.keys(updatedAcademicYears).forEach(year => {
+                            if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
+                                updatedAcademicYears[year].karkardagiStructure.forEach(j => {
+                                    let cJName = j.jamiaName.trim().toLowerCase().replace(/\s+/g, ' ');
+                                    if (cJName === cleanTargetName || j.jamiaId === finalJamiaId) {
+                                        j.jamiaId = finalJamiaId;
+                                        j.jamiaName = actualJamiaName;
+                                    }
+                                });
+                            }
+                        });
+
+                        await updateDoc(otherUserRef, { 
+                            jamiaatList: updatedJamiaatList, 
+                            academicYears: updatedAcademicYears 
+                        });
+
+                        // Is user ki Monthly Reports me bhi update karein
+                        const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', otherUser.id));
+                        const reportsSnap = await getDocs(reportsQ);
+                        
+                        for (const docSnap of reportsSnap.docs) {
+                            const data = docSnap.data();
+                            let isModified = false;
+                            
+                            let jaizaArray = data.jaizaReport?.data || [];
+                            jaizaArray.forEach(item => {
+                                let cName = (item.name || item.jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                if (cName === cleanTargetName || item.jamiaId === finalJamiaId) { 
+                                    item.jamiaId = finalJamiaId; item.name = actualJamiaName; item.jamiaName = actualJamiaName; isModified = true; 
+                                }
+                            });
+
+                            let tadrisArray = data.tadrisRecording?.data || [];
+                            tadrisArray.forEach(item => {
+                                let cName = (item.jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                if (cName === cleanTargetName || item.jamiaId === finalJamiaId) { 
+                                    item.jamiaId = finalJamiaId; item.jamiaName = actualJamiaName; isModified = true; 
+                                }
+                            });
+
+                            let testArray = data.monthlyTest?.data || [];
+                            testArray.forEach(item => {
+                                let cName = (item.name || item.jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                if (cName === cleanTargetName || item.jamiaId === finalJamiaId) { 
+                                    item.jamiaId = finalJamiaId; item.name = actualJamiaName; item.jamiaName = actualJamiaName; isModified = true; 
+                                }
+                            });
+
+                            let kkdArray = data.karkardagiReport?.data || [];
+                            kkdArray.forEach(item => {
+                                let cName = (item.jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                                if (cName === cleanTargetName || item.jamiaId === finalJamiaId) {
+                                    item.jamiaName = actualJamiaName; item.jamiaId = finalJamiaId; isModified = true;
+                                }
+                            });
+
+                            if (isModified) {
+                                await updateDoc(docSnap.ref, {
+                                    'jaizaReport.data': jaizaArray,
+                                    'tadrisRecording.data': tadrisArray,
+                                    'monthlyTest.data': testArray,
+                                    'karkardagiReport.data': kkdArray
+                                });
+                            }
+                        }
                     }
                 }
 
-                updatedJamiaatList = updatedJamiaatList.map(j => {
-                    const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                    if (jName === targetJamiaName) return { id: finalJamiaId, name: actualJamiaName };
-                    return j;
-                });
-
-                Object.keys(updatedAcademicYears).forEach(year => {
-                    if (updatedAcademicYears[year] && updatedAcademicYears[year].karkardagiStructure) {
-                        updatedAcademicYears[year].karkardagiStructure.forEach(j => {
-                            if (j.jamiaName === targetJamiaName || j.jamiaId === finalJamiaId) {
-                                j.jamiaId = finalJamiaId;
-                                j.jamiaName = actualJamiaName;
-                            }
-                        });
-                    }
-                });
-
-                const jaizaQ = query(collection(db, 'jaiza_forms'), where('createdBy', '==', userId));
-                const jaizaSnap = await getDocs(jaizaQ);
-                jaizaSnap.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
-                    }
-                });
-
-                const testQ = query(collection(db, 'monthly_test_sheets'), where('adminUid', '==', userId));
-                const testSnap = await getDocs(testQ);
-                testSnap.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
-                    }
-                });
-
-                const inspQ = query(collection(db, 'inspection_reports'), where('inspectorId', '==', userId));
-                const inspSnap = await getDocs(inspQ);
-                inspSnap.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
-                    }
-                });
-
-                const enrollQ = query(collection(db, 'enrollment_records'), where('inspectorId', '==', userId));
-                const enrollSnap = await getDocs(enrollQ);
-                enrollSnap.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if ((data.jamiaId === finalJamiaId) || (data.jamiaName || '') === targetJamiaName || (data.jamiaName || '') === actualJamiaName) {
-                        batch.update(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
-                    }
-                });
-
-                const reportsQ = query(collection(db, 'monthly_reports'), where('userId', '==', userId));
-                const reportsSnap = await getDocs(reportsQ);
-                
-                reportsSnap.forEach(docSnap => {
-                    const data = docSnap.data();
-                    let isModified = false;
-                    
-                    let jaizaArray = data.jaizaReport?.data || [];
-                    jaizaArray.forEach(item => {
-                        if (item.jamiaId === finalJamiaId || item.name === targetJamiaName || item.jamiaName === targetJamiaName) { 
-                            item.jamiaId = finalJamiaId; item.name = actualJamiaName; item.jamiaName = actualJamiaName; isModified = true; 
+                // 3. Global Collections Update
+                const collectionsToSync = ['jaiza_forms', 'monthly_test_sheets', 'inspection_reports', 'enrollment_records'];
+                for (const collName of collectionsToSync) {
+                    const possibleNames = [targetJamiaName, actualJamiaName];
+                    for (const pName of possibleNames) {
+                        const q1 = query(collection(db, collName), where('jamiaName', '==', pName));
+                        const snap1 = await getDocs(q1);
+                        for (const docSnap of snap1.docs) {
+                            await updateDoc(docSnap.ref, { jamiaId: finalJamiaId, jamiaName: actualJamiaName });
                         }
-                    });
-
-                    let tadrisArray = data.tadrisRecording?.data || [];
-                    tadrisArray.forEach(item => {
-                        if (item.jamiaId === finalJamiaId || item.jamiaName === targetJamiaName) { 
-                            item.jamiaId = finalJamiaId; item.jamiaName = actualJamiaName; isModified = true; 
-                        }
-                    });
-
-                    let testArray = data.monthlyTest?.data || [];
-                    testArray.forEach(item => {
-                        if (item.jamiaId === finalJamiaId || item.name === targetJamiaName || item.jamiaName === targetJamiaName) { 
-                            item.jamiaId = finalJamiaId; item.name = actualJamiaName; item.jamiaName = actualJamiaName; isModified = true; 
-                        }
-                    });
-
-                    let kkdArray = data.karkardagiReport?.data || [];
-                    kkdArray.forEach(item => {
-                        if (item.jamiaId === finalJamiaId || item.jamiaName === targetJamiaName) {
-                            item.jamiaName = actualJamiaName; item.jamiaId = finalJamiaId; isModified = true;
-                        }
-                    });
-
-                    if (isModified) {
-                        batch.update(docSnap.ref, {
-                            'jaizaReport.data': jaizaArray,
-                            'tadrisRecording.data': tadrisArray,
-                            'monthlyTest.data': testArray,
-                            'karkardagiReport.data': kkdArray
-                        });
                     }
-                });
-
-                await batch.commit();
+                }
             }
 
-            updateProgress(98, "Saving Final User Profile Data...");
-            const finalBatch = writeBatch(db);
-            finalBatch.update(doc(db, 'users', userId), { 
-                jamiaatList: updatedJamiaatList, 
-                academicYears: updatedAcademicYears 
-            });
-            await finalBatch.commit();
+            updateProgress(100, "Global Migration Complete!");
 
-            const memUser = allUsersData.find(u => u.id === userId);
-            if (memUser) {
-                memUser.jamiaatList = updatedJamiaatList; 
-            }
-
+            // UI Refresh
             checkUserJamiaStatus(userId);
+            if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
 
             if (migStatusMsg) {
                 migStatusMsg.innerHTML = `
                     <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1 mt-2">
                     <div class="bg-green-600 h-2.5 rounded-full" style="width: 100%"></div>
                     </div>
-                    <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! Tamam records aur Inspector data successfully sync ho gaya hai.</span>
+                    <span class="text-green-600 text-sm font-bold"><i class="fas fa-check-circle"></i> Kamyabi! Tamam records aur Users ki profiles globally sync ho gayi hain.</span>
                 `;
             }
-            
-            if (typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
 
         } catch (error) {
             console.error("Bulk Migration Error:", error);
