@@ -49,29 +49,52 @@ export async function initAdminResultAnalysis(db, containerId) {
     if (!container) return;
 
     const allUsers = window.allUsersData || [];
-    const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
-
-   const getJamiaContext = (jamiaName) => {
-    if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
-    // 🟢 OBJECT PROOF: Agar object aa jaye to usay text (string) mein badal dein
-    const target = (typeof jamiaName === 'object' ? (jamiaName.name || jamiaName.jamiaName || "") : String(jamiaName)).trim().toLowerCase();
-
-    // 🛑 FIX: Filter users by those who have this jamia AND are standard users
-    const foundUser = allUsers.find(u => {
-        const list = u.jamiaatList || [];
-        const hasJamia = list.some(j => {
-            const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-            return (name || '').trim().toLowerCase() === target;
+    
+    // 🌟 NAYA LOGIC: Master Jamiaat Load Karein Taake Region Sahi Aaye
+    let masterJamiaDict = {};
+    try {
+        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+        masterSnap.forEach(md => {
+            const mData = md.data();
+            masterJamiaDict[md.id] = mData;
+            if (mData.name) masterJamiaDict[mData.name.trim().toLowerCase()] = mData;
         });
-        // Zimmedar ko priority dein (Role check)
-        return hasJamia && (u.role === 'standard' || !u.role);
-    });
+    } catch (e) { console.error("Master list load error:", e); }
 
-    return {
-        userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
-        region: foundUser ? (foundUser.region || 'N/A') : 'N/A'
+    // Region ka dropdown dono jagah (User + Master) se milakar banayein
+    let regionSet = new Set(allUsers.map(u => u.region).filter(r => r));
+    Object.values(masterJamiaDict).forEach(m => { if(m.region) regionSet.add(m.region); });
+    const regions = [...regionSet].sort();
+
+    const getJamiaContext = (jamiaName, jamiaId = null) => {
+        if (!jamiaName) return { userName: 'Not Linked', region: 'N/A' };
+        const target = (typeof jamiaName === 'object' ? (jamiaName.name || jamiaName.jamiaName || "") : String(jamiaName)).trim().toLowerCase();
+
+        // 1. Master list se Region nikalein (Sabse Zyada Priority)
+        let masterRegion = null;
+        if (jamiaId && masterJamiaDict[jamiaId] && masterJamiaDict[jamiaId].region) {
+            masterRegion = masterJamiaDict[jamiaId].region;
+        } else if (masterJamiaDict[target] && masterJamiaDict[target].region) {
+            masterRegion = masterJamiaDict[target].region;
+        }
+
+        // 2. User Check Karein (Not Linked theek karne ke liye)
+        const foundUser = allUsers.find(u => {
+            const list = u.jamiaatList || [];
+            const hasJamia = list.some(j => {
+                const jId = typeof j === 'object' ? j.id : null;
+                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if (jamiaId && jId === jamiaId) return true; // ID se pakka match
+                return (name || '').trim().toLowerCase() === target; // Naam se match
+            });
+            return hasJamia && (u.role === 'standard' || !u.role);
+        });
+
+        return {
+            userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
+            region: masterRegion || (foundUser ? (foundUser.region || 'N/A') : 'N/A')
+        };
     };
-};
 
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
@@ -311,13 +334,15 @@ export async function initAdminResultAnalysis(db, containerId) {
             const currentJamia = typeof rawJamia === 'object' ? (rawJamia.name || rawJamia.jamiaName || "") : String(rawJamia);
             
             // Record update kar dein taake table mein [object Object] na aaye
+          // Record update kar dein taake table mein [object Object] na aaye
             if (layout === 'ibtidaiya') {
                 d.jamiaName = currentJamia;
             } else {
                 d.jamia = currentJamia;
             }
 
-            const context = getJamiaContext(currentJamia);
+            // 🌟 NAYA: Jamia ID bhi pass karein taake exact match ho
+            const context = getJamiaContext(currentJamia, d.jamiaId);
 
             // Filtering Logic
             const matchRegion = (selRegion === "all" || context.region === selRegion);
