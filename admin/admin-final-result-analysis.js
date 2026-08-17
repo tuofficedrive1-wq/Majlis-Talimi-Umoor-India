@@ -51,9 +51,10 @@ export async function initAdminResultAnalysis(db, containerId) {
     const allUsers = window.allUsersData || [];
     const regions = [...new Set(allUsers.map(u => u.region).filter(r => r))].sort();
 
-    const getJamiaContext = (jamiaName) => {
+   const getJamiaContext = (jamiaName) => {
     if (!jamiaName || allUsers.length === 0) return { userName: 'Not Linked', region: 'N/A' };
-    const target = jamiaName.trim().toLowerCase();
+    // 🟢 OBJECT PROOF: Agar object aa jaye to usay text (string) mein badal dein
+    const target = (typeof jamiaName === 'object' ? (jamiaName.name || jamiaName.jamiaName || "") : String(jamiaName)).trim().toLowerCase();
 
     // 🛑 FIX: Filter users by those who have this jamia AND are standard users
     const foundUser = allUsers.find(u => {
@@ -220,12 +221,12 @@ export async function initAdminResultAnalysis(db, containerId) {
         if (selUser !== "all") filteredUsers = filteredUsers.filter(u => (u.name || u.email) === selUser);
 
         let jamiaSet = new Set();
-        filteredUsers.forEach(u => {
-            (u.jamiaatList || []).forEach(j => {
-                const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                if (name) jamiaSet.add(name.trim());
+            filteredUsers.forEach(u => {
+                (u.jamiaatList || []).forEach(j => {
+                    const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    if (name) jamiaSet.add(String(name).trim()); // 🟢 SAFE GUARD
+                });
             });
-        });
 
         [...jamiaSet].sort().forEach(j => {
             elements.jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
@@ -305,8 +306,17 @@ export async function initAdminResultAnalysis(db, containerId) {
             const d = doc.data();
             d.id = doc.id;
             
-            // Ibtidaiya ka jamia name "jamiaName" field me hota hai
-            const currentJamia = layout === 'ibtidaiya' ? (d.jamiaName || "") : (d.jamia || "");
+            // 🟢 OBJECT PROOF LOGIC: Agar database mein object save ho gaya ho to usay text banayein
+            let rawJamia = layout === 'ibtidaiya' ? (d.jamiaName || "") : (d.jamia || "");
+            const currentJamia = typeof rawJamia === 'object' ? (rawJamia.name || rawJamia.jamiaName || "") : String(rawJamia);
+            
+            // Record update kar dein taake table mein [object Object] na aaye
+            if (layout === 'ibtidaiya') {
+                d.jamiaName = currentJamia;
+            } else {
+                d.jamia = currentJamia;
+            }
+
             const context = getJamiaContext(currentJamia);
 
             // Filtering Logic
@@ -380,9 +390,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
                     // Check dono logic ke hisab se (Ibtidaiya & Others)
                     const isSub = data.some(d => {
-                        const dJamia = d.jamia || d.jamiaName || "";
-                        return dJamia.trim().toLowerCase() === jName.trim().toLowerCase();
-                    });
+                    const rawDjamia = d.jamia || d.jamiaName || "";
+                    // 🟢 SAFE GUARD
+                    const dJamia = typeof rawDjamia === 'object' ? (rawDjamia.name || rawDjamia.jamiaName || "") : String(rawDjamia);
+                    return dJamia.trim().toLowerCase() === String(jName).trim().toLowerCase();
+                });
                     return `<div class="flex justify-between p-2 border-b text-xs"><span class="urdu-font">${jName}</span>${isSub ? '<span class="text-green-600">✅ Received</span>' : '<span class="text-red-500">❌ Missing</span>'}</div>`;
                 }).join('');
                 return `<div class="bg-white p-4 rounded-lg border shadow-sm"><h5 class="font-bold text-indigo-700 border-b pb-2 mb-2 text-sm">${u.name || u.email}</h5>${jamiaRows}</div>`;
