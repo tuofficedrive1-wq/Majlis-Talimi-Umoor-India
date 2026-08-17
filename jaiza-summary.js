@@ -293,8 +293,11 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             }
         });
     }
-    if (userProfileData.jamiaatList && Array.isArray(userProfileData.jamiaatList)) {
-        userProfileData.jamiaatList.forEach(j => jamiaSet.add(j.trim()));
+   if (userProfileData.jamiaatList && Array.isArray(userProfileData.jamiaatList)) {
+        userProfileData.jamiaatList.forEach(j => {
+            let jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+            if (jName) jamiaSet.add(String(jName).trim());
+        });
     }
     Array.from(jamiaSet).sort().forEach(j => {
         jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
