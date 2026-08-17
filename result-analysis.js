@@ -223,9 +223,18 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     
     const jamiaSelect = document.getElementById('ra-jamia-filter');
     const userJamiaat = userProfileData.jamiaatList || [];
+    let userJamiaatNames = []; // Nayi list jisme sirf naam honge
+    
     userJamiaat.forEach(j => { 
-        const opt = document.createElement('option');
-        opt.value = j; opt.textContent = j; jamiaSelect.appendChild(opt);
+        // Agar j object hai to uska naam nikalo, warna string ko waise hi rakho
+        const jName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+        if(jName) {
+            userJamiaatNames.push(jName);
+            const opt = document.createElement('option');
+            opt.value = jName; 
+            opt.textContent = jName; 
+            jamiaSelect.appendChild(opt);
+        }
     });
 
             window.fetchResultData = async () => {
@@ -263,7 +272,7 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                 const d = docSnap.data();
                 d.docId = docSnap.id;
 
-                if (userJamiaat.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
+                if (userJamiaatNames.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
                     if (!d.uid || d.uid === user.uid) { 
                         let uniqueKey = layoutLevel === 'teacher' 
                             ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}` 
