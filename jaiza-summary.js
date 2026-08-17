@@ -592,28 +592,40 @@ async function fetchAndRenderReport(db, user, userProfileData) {
     mainTitle.textContent = headerText;
     subTitle.textContent = subText;
 
-    try {
+   try {
+        // 🌟 NAYA: Master Jamiaat List Fetch Karein (Urdu Naam Ke Liye)
+        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+        const jamiaMasterDict = {};
+        masterSnap.forEach(d => { jamiaMasterDict[d.id] = d.data(); });
+
         const qRef = collection(db, 'jaiza_forms');
         const q = query(qRef, where("createdBy", "==", user.uid));
         
         const snapshot = await getDocs(q);
         let allDocs = snapshot.docs.map(d => d.data());
 
-        // Filtering
         let filteredDocs = allDocs.filter(d => d.monthKey >= startMonth && d.monthKey <= endMonth);
 
         if (jamiaFilter) {
-            filteredDocs = filteredDocs.filter(d => d.jamiaId === jamiaFilter);
+            // NAYA: ID ki jagah naam se filter (Kyunki dropdown me English naam hai)
+            filteredDocs = filteredDocs.filter(d => d.jamiaName === jamiaFilter || d.jamiaId === jamiaFilter);
         }
         if (selectedClasses.length > 0) {
             filteredDocs = filteredDocs.filter(d => selectedClasses.includes(d.className));
         }
 
-        // Flattening
         let rows = [];
 
         filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
+                // 🌟 NAYA: Asli Urdu Naam Nikalein
+                let displayJamiaName = doc.jamiaName || doc.jamiaId; 
+                let englishName = doc.jamiaName;
+                if (jamiaMasterDict[doc.jamiaId]) {
+                    displayJamiaName = jamiaMasterDict[doc.jamiaId].urduName || jamiaMasterDict[doc.jamiaId].name || doc.jamiaName;
+                    englishName = jamiaMasterDict[doc.jamiaId].name || doc.jamiaName;
+                }
+
                 doc.books.forEach(book => {
                     if (teacherFilter) {
                         const tName = book.teacherName || "";
@@ -626,7 +638,8 @@ async function fetchAndRenderReport(db, user, userProfileData) {
 
                     rows.push({
                         month: doc.monthKey,
-                        jamia: doc.jamiaId,
+                        jamia: displayJamiaName,     // 🌟 UI aur WhatsApp ke liye (Urdu)
+                        jamiaEnglish: englishName,   // Code/Logic ke liye (English)
                         teacher: book.teacherName || "-",
                         className: doc.className || "-",
                         book: book.bookName || "-",
@@ -694,7 +707,8 @@ async function fetchAndRenderReport(db, user, userProfileData) {
             if (r.grade === "مناسب" || r.grade === "کمزور") {
                 const key = `${r.jamia}_${r.teacher}_${r.month}`;
                 if (!wazahatData[key]) {
-                    wazahatData[key] = { jamia: r.jamia, teacher: r.teacher, month: r.month, subjects: [], rawData: [] };
+                    // English naam bhi save karwa rahe hain Ajeer Code ke liye
+                    wazahatData[key] = { jamia: r.jamia, jamiaEnglish: r.jamiaEnglish, teacher: r.teacher, month: r.month, subjects: [], rawData: [] };
                 }
                 const gradeColor = r.grade === 'کمزور' ? 'text-red-600' : 'text-amber-600';
                 wazahatData[key].subjects.push(`
@@ -719,7 +733,8 @@ async function fetchAndRenderReport(db, user, userProfileData) {
                 if (userProfileData && userProfileData.academicYears) {
                     Object.values(userProfileData.academicYears).forEach(yearData => {
                         if (yearData.karkardagiStructure) {
-                            const jData = yearData.karkardagiStructure.find(j => j.jamiaName === item.jamia);
+                            // English naam se match karein taake Ajeer code mil jaye
+                            const jData = yearData.karkardagiStructure.find(j => j.jamiaName === item.jamiaEnglish || j.jamiaName === item.jamia);
                             if (jData && jData.teachers) {
                                 const tData = jData.teachers.find(t => t.name === item.teacher);
                                 if (tData && tData.loginCode) expectedCode = String(tData.loginCode);
