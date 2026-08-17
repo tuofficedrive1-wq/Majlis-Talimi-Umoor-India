@@ -50,49 +50,64 @@ export async function initAdminResultAnalysis(db, containerId) {
 
     const allUsers = window.allUsersData || [];
     
-    // 🌟 NAYA LOGIC: Master Jamiaat Load Karein Taake Region Sahi Aaye
+    // 🌟 NAYA LOGIC: Master Jamiaat Load Karein
     let masterJamiaDict = {};
     try {
         const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
         masterSnap.forEach(md => {
             const mData = md.data();
+            mData.id = md.id;
             masterJamiaDict[md.id] = mData;
             if (mData.name) masterJamiaDict[mData.name.trim().toLowerCase()] = mData;
         });
     } catch (e) { console.error("Master list load error:", e); }
 
-    // Region ka dropdown dono jagah (User + Master) se milakar banayein
     let regionSet = new Set(allUsers.map(u => u.region).filter(r => r));
     Object.values(masterJamiaDict).forEach(m => { if(m.region) regionSet.add(m.region); });
     const regions = [...regionSet].sort();
 
+    // 🌟 SMART CONTEXT FINDER (Master List + Fuzzy Match)
     const getJamiaContext = (jamiaName, jamiaId = null) => {
-        if (!jamiaName) return { userName: 'Not Linked', region: 'N/A' };
-        const target = (typeof jamiaName === 'object' ? (jamiaName.name || jamiaName.jamiaName || "") : String(jamiaName)).trim().toLowerCase();
+        if (!jamiaName && !jamiaId) return { userName: 'Not Linked', region: 'N/A', display: '', english: '' };
+        
+        const target = String(jamiaName || '').trim().toLowerCase();
 
-        // 1. Master list se Region nikalein (Sabse Zyada Priority)
-        let masterRegion = null;
-        if (jamiaId && masterJamiaDict[jamiaId] && masterJamiaDict[jamiaId].region) {
-            masterRegion = masterJamiaDict[jamiaId].region;
-        } else if (masterJamiaDict[target] && masterJamiaDict[target].region) {
-            masterRegion = masterJamiaDict[target].region;
+        let mData = null;
+        if (jamiaId && masterJamiaDict[jamiaId]) {
+            mData = masterJamiaDict[jamiaId];
+        } else if (masterJamiaDict[target]) {
+            mData = masterJamiaDict[target];
+        } else {
+            // Fuzzy match agar spelling thodi aage peeche ho
+            let foundKey = Object.keys(masterJamiaDict).find(k => k === target || k.replace(/\s+/g, '') === target.replace(/\s+/g, ''));
+            if (foundKey) mData = masterJamiaDict[foundKey];
         }
 
-        // 2. User Check Karein (Not Linked theek karne ke liye)
+        // User Check Karein
         const foundUser = allUsers.find(u => {
             const list = u.jamiaatList || [];
             const hasJamia = list.some(j => {
                 const jId = typeof j === 'object' ? j.id : null;
                 const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                if (jamiaId && jId === jamiaId) return true; // ID se pakka match
-                return (name || '').trim().toLowerCase() === target; // Naam se match
+                if (jamiaId && jId === jamiaId) return true;
+                if (mData && jId === mData.id) return true;
+                const jTarget = String(name || '').trim().toLowerCase();
+                return jTarget === target || (mData && jTarget === String(mData.name || '').trim().toLowerCase());
             });
-            return hasJamia && (u.role === 'standard' || !u.role);
+            // Inspector ke ilawa baqi sabko Zimmedar maanein (Not Linked fix)
+            return hasJamia && (u.role !== 'inspector' && u.role !== 'education_office');
         });
+
+        const finalMasterName = mData ? (mData.name || jamiaName) : jamiaName;
+        const finalUrduName = mData ? (mData.urduName || '') : '';
+        let finalRegion = mData ? (mData.region || '') : '';
+        if (!finalRegion && foundUser) finalRegion = foundUser.region || '';
 
         return {
             userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
-            region: masterRegion || (foundUser ? (foundUser.region || 'N/A') : 'N/A')
+            region: finalRegion || 'N/A',
+            display: finalUrduName || finalMasterName, // Urdu ko priority dega table ke liye
+            english: finalMasterName
         };
     };
 
@@ -322,39 +337,35 @@ export async function initAdminResultAnalysis(db, containerId) {
             snapshot = await getDocs(q);
         }
         
-        // Latest Data Map: Duplicacy khatam karne ke liye
+       // Latest Data Map: Duplicacy khatam karne ke liye
         let latestDataMap = new Map();
 
         snapshot.forEach(doc => {
             const d = doc.data();
             d.id = doc.id;
             
-            // 🟢 OBJECT PROOF LOGIC: Agar database mein object save ho gaya ho to usay text banayein
             let rawJamia = layout === 'ibtidaiya' ? (d.jamiaName || "") : (d.jamia || "");
             const currentJamia = typeof rawJamia === 'object' ? (rawJamia.name || rawJamia.jamiaName || "") : String(rawJamia);
             
-            // Record update kar dein taake table mein [object Object] na aaye
-          // Record update kar dein taake table mein [object Object] na aaye
-            if (layout === 'ibtidaiya') {
-                d.jamiaName = currentJamia;
-            } else {
-                d.jamia = currentJamia;
-            }
-
-            // 🌟 NAYA: Jamia ID bhi pass karein taake exact match ho
+            // 🌟 Master List se Sahi Naam, Region aur Zimmedar Nikalein
             const context = getJamiaContext(currentJamia, d.jamiaId);
 
-            // Filtering Logic
+            // Record update kar dein taake table mein Master List wala naam aaye (Urdu ya Corrected English)
+            if (layout === 'ibtidaiya') {
+                d.jamiaName = context.display;
+            } else {
+                d.jamia = context.display;
+            }
+
+            // Filtering Logic (English naam se ya display naam se filter)
             const matchRegion = (selRegion === "all" || context.region === selRegion);
             const matchUser = (selUser === "all" || context.userName === selUser);
-            const matchJamia = (selJamia === "all" || currentJamia.toLowerCase().includes(selJamia));
+            const matchJamia = (selJamia === "all" || context.english.toLowerCase().includes(selJamia) || context.display.toLowerCase().includes(selJamia) || currentJamia.toLowerCase().includes(selJamia));
 
             if (matchRegion && matchUser && matchJamia) {
                 if (layout === 'ibtidaiya') {
-                    // Ibtidaiya ke liye unique key sirf doc ID hai
                     latestDataMap.set(d.id, { ...d, ...context });
                 } else {
-                    // Purana logic baqi forms ke liye
                     let uniqueKey = (layout === 'teacher' || layout === 'wazahat') 
                         ? `${d.jamia}_${d.teacher}`.toLowerCase() 
                         : `${d.jamia}_${d.darjah || d.class}`.toLowerCase();
