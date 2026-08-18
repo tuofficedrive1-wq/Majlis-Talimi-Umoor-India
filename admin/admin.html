@@ -7095,47 +7095,52 @@ window.fixSpecificOrphan = async (oldName, selectId) => {
     }
 };
 
+// 🌟 ONE-TIME RESULT FIXER (ID + NAME OVERHAUL - BATCH SAFE) 🌟
 window.fixOrphanResultData = async () => {
-    if (!confirm("Kya aap bache hue/unlinked Result forms ko theek karna chahte hain?")) return;
+    if (!confirm("Kya aap bache hue Results mein 'jamiaId' aur 'Sahi Naam' dono update karna chahte hain? \n\nYe un sabhi files mein ID add karega aur purane ghalat naam ko Master List wale naam se badal dega.")) return;
     
     showLoader(true);
     try {
-        const batch = writeBatch(db);
         let updateCount = 0;
+        let batches = [];
+        let currentBatch = writeBatch(db);
+        let operationCount = 0;
 
+        // 1. Master Jamias ki ID aur Naam dono load karein
         const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
-        let masterDict = {}; 
         let searchMap = {}; 
         
         masterSnap.forEach(d => {
             const data = d.data();
-            let mName = data.name || ''; // 🌟 SAFE GUARD
-            
+            let mName = data.name || '';
             if (mName && mName !== 'undefined') {
-                masterDict[d.id] = mName;
-                searchMap[mName.trim().toLowerCase()] = d.id;
-                searchMap[mName.trim().toLowerCase().replace(/\s+/g, '')] = d.id;
-                if(data.urduName) searchMap[data.urduName.trim()] = d.id;
+                let masterInfo = { id: d.id, name: mName };
+                searchMap[d.id] = masterInfo; // ID ke zariye bhi save kiya
+                searchMap[mName.trim().toLowerCase()] = masterInfo; // English naam se save kiya
+                if(data.urduName) searchMap[data.urduName.trim().toLowerCase()] = masterInfo; // Urdu naam se save kiya
             }
         });
 
+        // 2. User ki Mapping History
         allUsersData.forEach(u => {
             if (u.jamiaatMapping) {
                 for (let [oldN, newN] of Object.entries(u.jamiaatMapping)) {
                     let cleanNew = (newN || '').trim().toLowerCase();
-                    let masterId = searchMap[cleanNew] || searchMap[cleanNew.replace(/\s+/g, '')];
-                    if (masterId) {
-                        searchMap[(oldN || '').trim().toLowerCase()] = masterId;
-                        searchMap[(oldN || '').trim().toLowerCase().replace(/\s+/g, '')] = masterId;
+                    let masterInfo = searchMap[cleanNew];
+                    if (masterInfo) {
+                        searchMap[(oldN || '').trim().toLowerCase()] = masterInfo; // Purane ghalat naam ko bhi sahi Info se jor diya
                     }
                 }
             }
         });
 
+        // 3. Sabhi collections ko scan karein
         const collectionsToFix = [
             { name: 'class_wise_results', field: 'jamia' },
             { name: 'asatiza_wise_results', field: 'jamia' },
-            { name: 'ibtidaiya_exams', field: 'jamiaName' }
+            { name: 'ibtidaiya_exams', field: 'jamiaName' },
+            { name: 'jaiza_forms', field: 'jamiaName' },
+            { name: 'monthly_test_sheets', field: 'jamiaName' }
         ];
 
         for (let c of collectionsToFix) {
@@ -7144,37 +7149,53 @@ window.fixOrphanResultData = async () => {
                 let data = docSnap.data();
                 let currentName = data[c.field] || "";
                 let currentId = data.jamiaId;
-                let targetId = null;
 
-                if (masterDict[currentName]) {
-                    targetId = currentName;
-                } else if (currentId && masterDict[currentId]) {
-                    targetId = currentId;
-                } else if (currentName) {
+                let targetInfo = null;
+
+                // A. Pehle ID se check karein (agar ID theek hai lekin Naam ghalat hai)
+                if (currentId && searchMap[currentId]) {
+                    targetInfo = searchMap[currentId];
+                } 
+                // B. Agar ID nahi hai, to Naam se check karein
+                else if (currentName) {
                     let cleanStr = currentName.trim().toLowerCase();
-                    let noSpaceStr = cleanStr.replace(/\s+/g, '');
-                    if (searchMap[cleanStr]) targetId = searchMap[cleanStr];
-                    else if (searchMap[noSpaceStr]) targetId = searchMap[noSpaceStr];
+                    targetInfo = searchMap[cleanStr];
                 }
 
-                if (targetId && masterDict[targetId]) {
-                    let correctName = masterDict[targetId];
-                    if (currentId !== targetId || currentName !== correctName) {
-                        batch.update(docSnap.ref, {
-                            jamiaId: targetId,
-                            [c.field]: correctName
+                // Agar Master List ki sahi maloomat mil gayi
+                if (targetInfo) {
+                    // Check karein kya ID missing hai? YA kya Naam mismatch ho raha hai?
+                    if (currentId !== targetInfo.id || currentName !== targetInfo.name) {
+                        currentBatch.update(docSnap.ref, {
+                            jamiaId: targetInfo.id,
+                            [c.field]: targetInfo.name // Purana naam mita kar naya theek naam save karega
                         });
                         updateCount++;
+                        operationCount++;
+
+                        // Batch limit 500 hoti hai, 450 par naya batch
+                        if (operationCount >= 450) {
+                            batches.push(currentBatch);
+                            currentBatch = writeBatch(db);
+                            operationCount = 0;
+                        }
                     }
                 }
             });
         }
 
+        if (operationCount > 0) {
+            batches.push(currentBatch);
+        }
+
+        for (let b of batches) {
+            await b.commit();
+        }
+
         if (updateCount > 0) {
-            await batch.commit();
-            alert(`Kamyabi! Total ${updateCount} Result forms theek ho gaye.`);
+            alert(`Kamyabi! Total ${updateCount} files mein 'jamiaId' aur 'Sahi Naam' dono update kar diye gaye hain.`);
         } else {
-            alert("Koi unlinked result form nahi mila. Sab data theek hai.");
+            alert("Sabhi records mein 'jamiaId' aur 'Naam' pehle se theek hain. Koi update ki zarurat nahi.");
         }
 
     } catch (e) {
