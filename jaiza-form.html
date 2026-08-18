@@ -1014,18 +1014,31 @@ const loadExistingJaizaForms = async (user) => {
     }
   }
 
+
   // Agar draft nahi hai, toh Firebase se data layein
   if (!usingDraft) {
     const qRef = query(
       collection(db,"jaiza_forms"),
-      where("jamiaId","==",jamiaId),
       where("monthKey","==",monthKey),
       where("createdBy","==",user.uid)
     );
     const snap = await getDocs(qRef);
 
+    const decodedJamia = decodeURIComponent(jamiaId).trim().toLowerCase();
+    
+    snap.forEach(d => {
+        const data = d.data();
+        const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
+        const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
+        
+        // 🌟 NAYA LOGIC: jamiaName ya jamiaId me se kisi se bhi match ho jaye to utha lo
+        if (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) {
+            docs.push({ id: d.id, ...data });
+        }
+    });
+
     // Agar koi data nahi mila to blank form (editable)
-    if (snap.empty) {
+    if (docs.length === 0) {
       classesContainer.innerHTML = "";
       classCount = 0;
       addNewClassCard(); // Sirf tabhi add karein jab data na ho
@@ -1325,6 +1338,7 @@ formEl.addEventListener("submit", async (e) => {
 
     payloads.push({
       jamiaId,
+      jamiaName: decodeURIComponent(jamiaId), // 🌟 NAYA: Data save karte waqt name alag se bhejna zaroori hai
       monthKey,
       className,
       totalStudents,
@@ -1348,16 +1362,26 @@ formEl.addEventListener("submit", async (e) => {
 
   showLoader(true);
   try {
-    // pehle purane is mahine ke jaiza forms delete
+   // pehle purane is mahine ke jaiza forms delete
     const qRef = query(
       collection(db,"jaiza_forms"),
-      where("jamiaId","==",jamiaId),
       where("monthKey","==",monthKey),
       where("createdBy","==",currentUser.uid)
     );
     const oldSnap = await getDocs(qRef);
     const delPromises = [];
-    oldSnap.forEach(d => delPromises.push(deleteDoc(d.ref)));
+    const decodedJamia = decodeURIComponent(jamiaId).trim().toLowerCase();
+    
+    oldSnap.forEach(d => {
+        const data = d.data();
+        const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
+        const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
+        
+        // 🌟 NAYA LOGIC: Sahi document pehchan kar hi delete karein
+        if (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) {
+            delPromises.push(deleteDoc(d.ref));
+        }
+    });
     await Promise.all(delPromises);
 
     // phir naya data add
