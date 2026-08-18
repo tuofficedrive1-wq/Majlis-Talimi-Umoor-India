@@ -918,7 +918,31 @@
         </div>
     </div>
 </div>
-
+<!-- NAYA TOOL: Fix Broken Results -->
+        <div class="mt-8 bg-white p-6 rounded-2xl shadow-sm border-2 border-rose-200">
+            <h3 class="text-xl font-bold text-rose-800 mb-2"><i class="fas fa-link mr-2"></i> Fix Broken / Unlinked Results</h3>
+            <p class="text-sm text-gray-600 mb-4">Ye tool database se wo purane Results dhoondega jinke naam badal chuke hain aur wo Master List se link nahi ho paa rahe.</p>
+            
+            <button onclick="window.findOrphanResults()" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-sm transition mb-4">
+                <i class="fas fa-search mr-1"></i> Purane/Ghalat Naam Dhoondein
+            </button>
+            
+            <div class="overflow-x-auto border border-slate-200 rounded-lg hidden" id="orphan-results-container">
+                <table class="min-w-full text-sm text-left border-collapse">
+                    <thead class="bg-slate-100 text-slate-700">
+                        <tr>
+                            <th class="p-3 border-b border-r font-bold">Purana/Ghalat Naam (Jo Database me hai)</th>
+                            <th class="p-3 border-b border-r font-bold text-center">Total Records</th>
+                            <th class="p-3 border-b border-r font-bold">Sahi Master Jamia Select Karein</th>
+                            <th class="p-3 border-b text-center font-bold">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orphan-results-tbody" class="divide-y divide-gray-100 bg-white">
+                        <tr><td colspan="4" class="text-center p-4 text-gray-500">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 <!-- Edit Jamia Details Modal -->
 <div id="edit-jamia-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex justify-center items-center">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden transform transition-all">
@@ -6925,6 +6949,150 @@ window.saveJamiaMasterDetails = async () => {
 // ==========================================================
 // 🟢 MANAGE TAB LOGIC END
 // ==========================================================
+        // ==========================================================
+// 🟢 FIX ORPHAN / BROKEN RESULTS LOGIC
+// ==========================================================
+window.findOrphanResults = async () => {
+    showLoader(true);
+    const container = document.getElementById('orphan-results-container');
+    const tbody = document.getElementById('orphan-results-tbody');
+    container.classList.remove('hidden');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-slate-500"><i class="fas fa-spinner fa-spin mr-2"></i> Database scan ho raha hai...</td></tr>';
+
+    try {
+        // 1. Master Jamias Load Karein
+        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+        let masterDict = {}; 
+        let masterOptionsHtml = '<option value="">-- Sahi Jamia Select Karein --</option>';
+        
+        let masterArray = [];
+        masterSnap.forEach(d => {
+            const data = d.data();
+            masterDict[d.id] = data; // ID se save kiya
+            masterDict[data.name.trim().toLowerCase()] = data; // Naam se bhi save kiya
+            masterArray.push({ id: d.id, name: data.name });
+        });
+
+        masterArray.sort((a,b) => a.name.localeCompare(b.name)).forEach(m => {
+            masterOptionsHtml += `<option value="${m.id}">${m.name}</option>`;
+        });
+
+        // 2. Results Check Karein ke kiska link toota hua hai
+        let orphanNamesMap = {}; // Jo nahi milenge unko yahan save karenge
+        const collectionsToCheck = [
+            { name: 'class_wise_results', field: 'jamia' },
+            { name: 'asatiza_wise_results', field: 'jamia' },
+            { name: 'ibtidaiya_exams', field: 'jamiaName' }
+        ];
+
+        for (let c of collectionsToCheck) {
+            const snap = await getDocs(collection(db, c.name));
+            snap.forEach(docSnap => {
+                let data = docSnap.data();
+                let currentName = data[c.field] || "";
+                let currentId = data.jamiaId;
+
+                // Check: Kya ID ya Naam Master List mein hai?
+                let isLinked = false;
+                if (currentId && masterDict[currentId]) isLinked = true;
+                if (!isLinked && currentName && masterDict[currentName.trim().toLowerCase()]) isLinked = true;
+
+                // Agar nahi mila to La-waaris (Orphan) hai!
+                if (!isLinked && currentName) {
+                    if (!orphanNamesMap[currentName]) orphanNamesMap[currentName] = 0;
+                    orphanNamesMap[currentName]++; // Ginti badhayen
+                }
+            });
+        }
+
+        // 3. Table mein dikhayen
+        let html = '';
+        let index = 0;
+        for (let [oldName, count] of Object.entries(orphanNamesMap)) {
+            let selectId = `orphan-select-${index}`;
+            html += `
+                <tr class="hover:bg-rose-50 transition-colors">
+                    <td class="p-3 border-r font-bold text-rose-700">${oldName}</td>
+                    <td class="p-3 border-r text-center font-bold">${count} Files</td>
+                    <td class="p-3 border-r">
+                        <select id="${selectId}" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-teal-500 urdu-font">
+                            ${masterOptionsHtml}
+                        </select>
+                    </td>
+                    <td class="p-3 text-center">
+                        <button onclick="window.fixSpecificOrphan('${oldName.replace(/'/g, "\\'")}', '${selectId}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded text-xs font-bold shadow-sm transition">
+                            <i class="fas fa-link mr-1"></i> Sahi Karein
+                        </button>
+                    </td>
+                </tr>
+            `;
+            index++;
+        }
+
+        if (html === '') {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-emerald-600 font-bold bg-emerald-50"><i class="fas fa-check-circle mr-2 text-xl"></i> Mubarak ho! Koi broken result nahi mila, sab perfectly linked hain.</td></tr>';
+        } else {
+            tbody.innerHTML = html;
+        }
+
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
+    } finally {
+        showLoader(false);
+    }
+};
+
+window.fixSpecificOrphan = async (oldName, selectId) => {
+    const masterId = document.getElementById(selectId).value;
+    if (!masterId) {
+        alert("Barahe karam dropdown se Sahi Jamia select karein.");
+        return;
+    }
+
+    if (!confirm(`Kya aap waqai "${oldName}" wale sabhi results ko naye Jamia ke sath link karna chahte hain?`)) return;
+
+    showLoader(true);
+    try {
+        const batch = writeBatch(db);
+        
+        // Master ka Asli naam nikalein
+        const masterRef = doc(db, 'jamiaat_master', masterId);
+        const masterSnap = await getDoc(masterRef);
+        const masterName = masterSnap.data().name;
+
+        const collectionsToFix = [
+            { name: 'class_wise_results', field: 'jamia' },
+            { name: 'asatiza_wise_results', field: 'jamia' },
+            { name: 'ibtidaiya_exams', field: 'jamiaName' }
+        ];
+
+        let totalFixed = 0;
+        for (let c of collectionsToFix) {
+            const q = query(collection(db, c.name), where(c.field, '==', oldName));
+            const snap = await getDocs(q);
+            snap.forEach(d => {
+                batch.update(d.ref, {
+                    jamiaId: masterId,
+                    [c.field]: masterName // Naya naam bhi likh diya
+                });
+                totalFixed++;
+            });
+        }
+
+        await batch.commit();
+        alert(`Zabardast! Total ${totalFixed} results successfully theek ho gaye.`);
+        
+        // List dubara refresh karein taake theek kiya hua naam gayab ho jaye
+        window.findOrphanResults(); 
+
+    } catch (e) {
+        console.error(e);
+        alert("Error fixing result: " + e.message);
+    } finally {
+        showLoader(false);
+    }
+};
         
 // --- Init ---
 initApp();
