@@ -6949,15 +6949,15 @@ window.saveJamiaMasterDetails = async () => {
 // ==========================================================
 // 🟢 MANAGE TAB LOGIC END
 // ==========================================================
-        // ==========================================================
-// 🟢 FIX ORPHAN / BROKEN RESULTS LOGIC
+       // ==========================================================
+// 🟢 FIX ORPHAN / BROKEN RESULTS LOGIC (CRASH PROOF)
 // ==========================================================
 window.findOrphanResults = async () => {
     showLoader(true);
     const container = document.getElementById('orphan-results-container');
     const tbody = document.getElementById('orphan-results-tbody');
-    container.classList.remove('hidden');
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-slate-500"><i class="fas fa-spinner fa-spin mr-2"></i> Database scan ho raha hai...</td></tr>';
+    if(container) container.classList.remove('hidden');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-slate-500"><i class="fas fa-spinner fa-spin mr-2"></i> Database scan ho raha hai...</td></tr>';
 
     try {
         // 1. Master Jamias Load Karein
@@ -6968,9 +6968,13 @@ window.findOrphanResults = async () => {
         let masterArray = [];
         masterSnap.forEach(d => {
             const data = d.data();
-            masterDict[d.id] = data; // ID se save kiya
-            masterDict[data.name.trim().toLowerCase()] = data; // Naam se bhi save kiya
-            masterArray.push({ id: d.id, name: data.name });
+            let mName = data.name || ''; // 🌟 SAFE GUARD: Agar naam khali hai to error nahi aayega
+            
+            if (mName && mName !== 'undefined') {
+                masterDict[d.id] = data; 
+                masterDict[mName.trim().toLowerCase()] = data; 
+                masterArray.push({ id: d.id, name: mName });
+            }
         });
 
         masterArray.sort((a,b) => a.name.localeCompare(b.name)).forEach(m => {
@@ -6978,7 +6982,7 @@ window.findOrphanResults = async () => {
         });
 
         // 2. Results Check Karein ke kiska link toota hua hai
-        let orphanNamesMap = {}; // Jo nahi milenge unko yahan save karenge
+        let orphanNamesMap = {};
         const collectionsToCheck = [
             { name: 'class_wise_results', field: 'jamia' },
             { name: 'asatiza_wise_results', field: 'jamia' },
@@ -6992,15 +6996,14 @@ window.findOrphanResults = async () => {
                 let currentName = data[c.field] || "";
                 let currentId = data.jamiaId;
 
-                // Check: Kya ID ya Naam Master List mein hai?
                 let isLinked = false;
                 if (currentId && masterDict[currentId]) isLinked = true;
                 if (!isLinked && currentName && masterDict[currentName.trim().toLowerCase()]) isLinked = true;
 
                 // Agar nahi mila to La-waaris (Orphan) hai!
-                if (!isLinked && currentName) {
+                if (!isLinked && currentName && currentName !== 'undefined') {
                     if (!orphanNamesMap[currentName]) orphanNamesMap[currentName] = 0;
-                    orphanNamesMap[currentName]++; // Ginti badhayen
+                    orphanNamesMap[currentName]++; 
                 }
             });
         }
@@ -7030,14 +7033,14 @@ window.findOrphanResults = async () => {
         }
 
         if (html === '') {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-emerald-600 font-bold bg-emerald-50"><i class="fas fa-check-circle mr-2 text-xl"></i> Mubarak ho! Koi broken result nahi mila, sab perfectly linked hain.</td></tr>';
+            if(tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-emerald-600 font-bold bg-emerald-50"><i class="fas fa-check-circle mr-2 text-xl"></i> Mubarak ho! Koi broken result nahi mila, sab perfectly linked hain.</td></tr>';
         } else {
-            tbody.innerHTML = html;
+            if(tbody) tbody.innerHTML = html;
         }
 
     } catch (e) {
         console.error(e);
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
+        if(tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
     } finally {
         showLoader(false);
     }
@@ -7056,7 +7059,6 @@ window.fixSpecificOrphan = async (oldName, selectId) => {
     try {
         const batch = writeBatch(db);
         
-        // Master ka Asli naam nikalein
         const masterRef = doc(db, 'jamiaat_master', masterId);
         const masterSnap = await getDoc(masterRef);
         const masterName = masterSnap.data().name;
@@ -7074,7 +7076,7 @@ window.fixSpecificOrphan = async (oldName, selectId) => {
             snap.forEach(d => {
                 batch.update(d.ref, {
                     jamiaId: masterId,
-                    [c.field]: masterName // Naya naam bhi likh diya
+                    [c.field]: masterName 
                 });
                 totalFixed++;
             });
@@ -7083,12 +7085,101 @@ window.fixSpecificOrphan = async (oldName, selectId) => {
         await batch.commit();
         alert(`Zabardast! Total ${totalFixed} results successfully theek ho gaye.`);
         
-        // List dubara refresh karein taake theek kiya hua naam gayab ho jaye
         window.findOrphanResults(); 
 
     } catch (e) {
         console.error(e);
         alert("Error fixing result: " + e.message);
+    } finally {
+        showLoader(false);
+    }
+};
+
+window.fixOrphanResultData = async () => {
+    if (!confirm("Kya aap bache hue/unlinked Result forms ko theek karna chahte hain?")) return;
+    
+    showLoader(true);
+    try {
+        const batch = writeBatch(db);
+        let updateCount = 0;
+
+        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
+        let masterDict = {}; 
+        let searchMap = {}; 
+        
+        masterSnap.forEach(d => {
+            const data = d.data();
+            let mName = data.name || ''; // 🌟 SAFE GUARD
+            
+            if (mName && mName !== 'undefined') {
+                masterDict[d.id] = mName;
+                searchMap[mName.trim().toLowerCase()] = d.id;
+                searchMap[mName.trim().toLowerCase().replace(/\s+/g, '')] = d.id;
+                if(data.urduName) searchMap[data.urduName.trim()] = d.id;
+            }
+        });
+
+        allUsersData.forEach(u => {
+            if (u.jamiaatMapping) {
+                for (let [oldN, newN] of Object.entries(u.jamiaatMapping)) {
+                    let cleanNew = (newN || '').trim().toLowerCase();
+                    let masterId = searchMap[cleanNew] || searchMap[cleanNew.replace(/\s+/g, '')];
+                    if (masterId) {
+                        searchMap[(oldN || '').trim().toLowerCase()] = masterId;
+                        searchMap[(oldN || '').trim().toLowerCase().replace(/\s+/g, '')] = masterId;
+                    }
+                }
+            }
+        });
+
+        const collectionsToFix = [
+            { name: 'class_wise_results', field: 'jamia' },
+            { name: 'asatiza_wise_results', field: 'jamia' },
+            { name: 'ibtidaiya_exams', field: 'jamiaName' }
+        ];
+
+        for (let c of collectionsToFix) {
+            const snap = await getDocs(collection(db, c.name));
+            snap.forEach(docSnap => {
+                let data = docSnap.data();
+                let currentName = data[c.field] || "";
+                let currentId = data.jamiaId;
+                let targetId = null;
+
+                if (masterDict[currentName]) {
+                    targetId = currentName;
+                } else if (currentId && masterDict[currentId]) {
+                    targetId = currentId;
+                } else if (currentName) {
+                    let cleanStr = currentName.trim().toLowerCase();
+                    let noSpaceStr = cleanStr.replace(/\s+/g, '');
+                    if (searchMap[cleanStr]) targetId = searchMap[cleanStr];
+                    else if (searchMap[noSpaceStr]) targetId = searchMap[noSpaceStr];
+                }
+
+                if (targetId && masterDict[targetId]) {
+                    let correctName = masterDict[targetId];
+                    if (currentId !== targetId || currentName !== correctName) {
+                        batch.update(docSnap.ref, {
+                            jamiaId: targetId,
+                            [c.field]: correctName
+                        });
+                        updateCount++;
+                    }
+                }
+            });
+        }
+
+        if (updateCount > 0) {
+            await batch.commit();
+            alert(`Kamyabi! Total ${updateCount} Result forms theek ho gaye.`);
+        } else {
+            alert("Koi unlinked result form nahi mila. Sab data theek hai.");
+        }
+
+    } catch (e) {
+        console.error(e);
+        alert("Error: " + e.message);
     } finally {
         showLoader(false);
     }
