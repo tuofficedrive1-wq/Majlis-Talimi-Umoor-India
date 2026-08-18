@@ -2008,8 +2008,8 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
                     const jamiaName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia) || 'Unknown';
                     const jamiaId = (typeof jamia === 'object' ? jamia.id : null);
                     
-                    const targets = getJamiaTargets(user, jamiaName, monthKey);
-                    const actuals = getJaizaActuals(user.id, jamiaName);
+                   const targets = getJamiaTargets(user, jamiaName, monthKey);
+                    const actuals = getJaizaActuals(user.id, jamiaName, jamiaId); // 🌟 NAYA: jamiaId bhi bhej di
 
                     const reportEntry = jaizaEntries.find(entry => {
                         const rName = (entry.name || entry.jamiaName || '').trim().toLowerCase();
@@ -2055,10 +2055,11 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
                         }
                     }
 
-                    if (actuals.classesChecked > 0 || reportEntry) {
+                   if (actuals.classesChecked > 0 || reportEntry) {
                         const safeJamia = jamiaName.replace(/'/g, "\\'");
+                        const safeJamiaId = jamiaId ? jamiaId.replace(/'/g, "\\'") : '';
                         actionBtn = `
-                        <button onclick="viewJaizaDetail('${user.id}', '${safeJamia}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition flex items-center gap-1 mx-auto">
+                        <button onclick="viewJaizaDetail('${user.id}', '${safeJamia}', '${safeJamiaId}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded shadow transition flex items-center gap-1 mx-auto">
                             <i class="fas fa-file-alt"></i> Jaiza Form
                         </button>`;
                     }
@@ -5214,35 +5215,48 @@ const getJamiaTargets = (user, jamiaName, monthKey) => {
     return targets;
 };
 
-const getJaizaActuals = (userId, jamiaName) => {
-    let actuals = { classesChecked: 0, booksChecked: 0, teachersChecked: 0 };
-    
-    const userForms = fetchedJaizaForms.filter(f => 
-        f.createdBy === userId && 
-        (f.jamiaId || '').trim() === jamiaName.trim()
-    );
-
-    actuals.classesChecked = userForms.length;
-
-    let teachersSet = new Set();
-    
-    userForms.forEach(form => {
-        if (Array.isArray(form.books)) {
-            actuals.booksChecked += form.books.length; 
+const getJaizaActuals = (userId, jamiaName, targetJamiaId = null) => {
+            let actuals = { classesChecked: 0, booksChecked: 0, teachersChecked: 0 };
+            const searchName = jamiaName.trim().toLowerCase();
             
-            form.books.forEach(b => {
-                if (b.teacherName) teachersSet.add(b.teacherName);
+            // 🌟 NAYA LOGIC: jamiaId aur jamiaName dono se match karein
+            const userForms = fetchedJaizaForms.filter(f => {
+                if (f.createdBy !== userId) return false;
+                const dbId = (f.jamiaId || '').trim().toLowerCase();
+                const dbName = (f.jamiaName || f.name || '').trim().toLowerCase();
+                
+                return dbName === searchName || dbId === searchName || (targetJamiaId && dbId === targetJamiaId.toLowerCase());
             });
-        }
-    });
 
-    actuals.teachersChecked = teachersSet.size;
-    return actuals;
-};
+            actuals.classesChecked = userForms.length;
 
-window.viewJaizaDetail = (userId, jamiaName) => {
+            let teachersSet = new Set();
+            
+            userForms.forEach(form => {
+                if (Array.isArray(form.books)) {
+                    actuals.booksChecked += form.books.length; 
+                    
+                    form.books.forEach(b => {
+                        if (b.teacherName) teachersSet.add(b.teacherName);
+                    });
+                }
+            });
+
+            actuals.teachersChecked = teachersSet.size;
+            return actuals;
+        };
+
+window.viewJaizaDetail = (userId, jamiaName, targetJamiaId = null) => {
+    const searchName = jamiaName.trim().toLowerCase();
+    
+    // 🌟 NAYA LOGIC: Sahi se form dhoondhega
     const detailedForms = typeof fetchedJaizaForms !== 'undefined' 
-        ? fetchedJaizaForms.filter(f => f.createdBy === userId && (f.jamiaId || '').trim().toLowerCase() === jamiaName.trim().toLowerCase())
+        ? fetchedJaizaForms.filter(f => {
+            if (f.createdBy !== userId) return false;
+            const dbId = (f.jamiaId || '').trim().toLowerCase();
+            const dbName = (f.jamiaName || f.name || '').trim().toLowerCase();
+            return dbName === searchName || dbId === searchName || (targetJamiaId && dbId === targetJamiaId.toLowerCase());
+        })
         : [];
 
     const userReport = fetchedAdminReports.find(r => r.userId === userId);
