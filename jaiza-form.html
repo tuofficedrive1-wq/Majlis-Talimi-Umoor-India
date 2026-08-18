@@ -996,71 +996,78 @@ const addNewClassCard = () => {
 const loadExistingJaizaForms = async (user) => {
   if (!jamiaId || !monthKey) return;
 
-  // --- NAYA LOCALSTORAGE DRAFT CHECK ---
   const localKey = `jaiza_draft_${jamiaId}_${monthKey}`;
   const draftStr = localStorage.getItem(localKey);
   let docs = [];
   let usingDraft = false;
 
+  // 🌟 MASLA 1 KA HAL: Agar browser memory me kachra (duplicate classes) hain to usay foran delete karo
   if (draftStr) {
-    const ask = confirm("آپ کا پچھلا نامکمل (unsaved) ڈیٹا ملا ہے۔ کیا آپ اسے واپس لانا چاہتے ہیں؟");
-    if (ask) {
-      docs = JSON.parse(draftStr);
-      usingDraft = true;
-      // Draft load karne par form ko editable rakhein
-      if (enableEditBtn) enableEditBtn.disabled = true; 
-    } else {
+    try {
+      const parsed = JSON.parse(draftStr);
+      if (parsed.length > 15) {
+        localStorage.removeItem(localKey); // Kachra saaf
+      } else {
+        const ask = confirm("آپ کا پچھلا نامکمل (unsaved) ڈیٹا ملا ہے۔ کیا آپ اسے واپس لانا چاہتے ہیں؟");
+        if (ask) {
+          docs = parsed;
+          usingDraft = true;
+          if (enableEditBtn) enableEditBtn.disabled = true;
+        } else {
+          localStorage.removeItem(localKey);
+        }
+      }
+    } catch(e) {
       localStorage.removeItem(localKey);
     }
   }
 
+  // 🌟 MASLA 2 KA HAL: Asli Jamia ID database se nikal kar preserve karein
+  let realJamiaId = jamiaId;
+  const qRef = query(
+    collection(db,"jaiza_forms"),
+    where("monthKey","==",monthKey),
+    where("createdBy","==",user.uid)
+  );
+  const snap = await getDocs(qRef);
+  const decodedJamia = decodeURIComponent(jamiaId).trim().toLowerCase();
 
-  // Agar draft nahi hai, toh Firebase se data layein
+  let uniqueDocsMap = {};
+
+  snap.forEach(d => {
+    const data = d.data();
+    const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
+    const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
+
+    if (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) {
+      let clsName = data.className || "Unknown";
+      uniqueDocsMap[clsName] = { id: d.id, ...data };
+      
+      // Agar asli lambi wali Master ID mil jaye to usay save kar lein
+      if (data.jamiaId && data.jamiaId.length > 10 && data.jamiaId !== decodedJamia) {
+        realJamiaId = data.jamiaId;
+      }
+    }
+  });
+
+  window.REAL_JAMIA_ID = realJamiaId; // Submit button ko dene ke liye global save kiya
+
   if (!usingDraft) {
-    const qRef = query(
-      collection(db,"jaiza_forms"),
-      where("monthKey","==",monthKey),
-      where("createdBy","==",user.uid)
-    );
-    const snap = await getDocs(qRef);
-
-    const decodedJamia = decodeURIComponent(jamiaId).trim().toLowerCase();
-    let uniqueDocsMap = {}; // 🌟 NAYA: Duplicate classes rokne ke liye
-    
-    snap.forEach(d => {
-        const data = d.data();
-        const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
-        const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
-        
-        // Agar jamiaName ya jamiaId me se kisi se bhi match ho jaye
-        if (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) {
-            let clsName = data.className || "Unknown";
-            // 🌟 NAYA LOGIC: Ek Class ka sirf ek hi record rakhega (Duplicate ignore)
-            // Agar purani 50 files bhi hain, to sirf latest wali UI pe dikhayega
-            uniqueDocsMap[clsName] = { id: d.id, ...data }; 
-        }
-    });
-
-    // Object se wapas array mein daal dein
     Object.values(uniqueDocsMap).forEach(item => docs.push(item));
 
-    // Agar koi data nahi mila to blank form (editable)
     if (docs.length === 0) {
       classesContainer.innerHTML = "";
       classCount = 0;
-      addNewClassCard(); // Sirf tabhi add karein jab data na ho
+      addNewClassCard();
       recalcJamia();
       if (enableEditBtn) enableEditBtn.disabled = true;
       return;
     }
-
-    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
   }
 
-  classesContainer.innerHTML = ""; // Container saaf karein
+  classesContainer.innerHTML = "";
   classCount = 0;
 
-  // YAHAN SE 'const docs = [];' wali line hata di gayi hai taake error na aaye
   docs.forEach(d => {
     const card = createClassCard();
     classesContainer.appendChild(card);
@@ -1074,7 +1081,6 @@ const loadExistingJaizaForms = async (user) => {
     const classGradeInput     = card.querySelector(".class-grade");
     const bookListDiv         = card.querySelector(".book-list");
 
-    // ensure class option exists
     const cName = d.className || "";
     if (cName) {
       let exists = false;
@@ -1096,7 +1102,6 @@ const loadExistingJaizaForms = async (user) => {
     issuesInput.value          = d.issues || "";
     suggestionsInput.value     = d.suggestions || "";
 
-    // purani default book card hatao, phir saved books ke hisaab se banao
     bookListDiv.innerHTML = "";
 
     const books = Array.isArray(d.books) ? d.books : [];
@@ -1109,7 +1114,6 @@ const loadExistingJaizaForms = async (user) => {
       const weaknessTa    = bookCard.querySelector(".weakness");
       const bookPercInput = bookCard.querySelector(".book-percent");
 
-      // teacherOptions ensure
       if (cName) {
         const teacherSet = teachingMap[cName] ? new Set(teachingMap[cName].map(r=>r.teacherName)) : new Set();
         if (b.teacherName && !teacherSet.has(b.teacherName)) {
@@ -1139,7 +1143,6 @@ const loadExistingJaizaForms = async (user) => {
 
       weaknessTa.value = b.weakness || "";
 
-      // questions fill
       const qRows = bookCard.querySelectorAll(".question-row");
       const questions = Array.isArray(b.questions) ? b.questions : [];
       questions.forEach(q => {
@@ -1150,7 +1153,6 @@ const loadExistingJaizaForms = async (user) => {
         row.querySelector(".q-correct").value = q.correctStudents ?? "";
       });
 
-      // checks
       const checks = b.checks || {};
       bookCard.querySelector(".chk-sabaq-sunana").checked  = !!checks.sabaqSunana;
       bookCard.querySelector(".chk-sabaq-parhana").checked = !!checks.sabaqParhana;
@@ -1159,7 +1161,6 @@ const loadExistingJaizaForms = async (user) => {
       bookCard.querySelector(".chk-takrar").checked        = !!checks.takrar;
       bookCard.querySelector(".chk-nizam").checked         = !!checks.nizam;
 
-      // stored percentage (agar hai) else recalc
       if (typeof b.percentage === "number") {
         bookPercInput.value = b.percentage.toFixed(1) + "%";
       } else {
@@ -1167,7 +1168,6 @@ const loadExistingJaizaForms = async (user) => {
       }
     });
 
-    // class % / grade
     if (typeof d.classPercentage === "number") {
       classPercentInput.value = d.classPercentage.toFixed(1) + "%";
       classGradeInput.value   = d.grade || getGrade(d.classPercentage);
@@ -1176,10 +1176,8 @@ const loadExistingJaizaForms = async (user) => {
     }
   });
 
-  // jamia ka overall
   recalcJamia();
 
-  // existing data: start in read-only mode, update button enabled
   if (docs.length && enableEditBtn) {
     toggleEditMode(false);
     enableEditBtn.disabled = false;
@@ -1268,6 +1266,8 @@ formEl.addEventListener("submit", async (e) => {
   }
 
   const payloads = [];
+  const finalJamiaId = window.REAL_JAMIA_ID || jamiaId; // 🌟 Asli lambi ID yahan istemal hogi
+  const decodedJamia = decodeURIComponent(jamiaId);
 
   cards.forEach(card => {
     const className       = card.querySelector(".class-select").value.trim();
@@ -1344,8 +1344,8 @@ formEl.addEventListener("submit", async (e) => {
     if (allEmptyClass) return;
 
     payloads.push({
-      jamiaId,
-      jamiaName: decodeURIComponent(jamiaId), // 🌟 NAYA: Data save karte waqt name alag se bhejna zaroori hai
+      jamiaId: finalJamiaId, // 🌟 Asli ID store ho rahi hai
+      jamiaName: decodedJamia, // 🌟 Naam alag se store ho raha hai
       monthKey,
       className,
       totalStudents,
@@ -1369,7 +1369,7 @@ formEl.addEventListener("submit", async (e) => {
 
   showLoader(true);
   try {
-   // pehle purane is mahine ke jaiza forms delete
+    // 🌟 SAARE KACHRE WALE PURANE FORMS DELETE KAREIN
     const qRef = query(
       collection(db,"jaiza_forms"),
       where("monthKey","==",monthKey),
@@ -1377,29 +1377,25 @@ formEl.addEventListener("submit", async (e) => {
     );
     const oldSnap = await getDocs(qRef);
     const delPromises = [];
-    const decodedJamia = decodeURIComponent(jamiaId).trim().toLowerCase();
+    const searchJamia = decodedJamia.trim().toLowerCase();
     
     oldSnap.forEach(d => {
         const data = d.data();
         const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
         const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
         
-        // 🌟 NAYA LOGIC: Sahi document pehchan kar hi delete karein
-        if (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) {
+        if (dbJamiaId === searchJamia || dbJamiaName === searchJamia || dbJamiaId === finalJamiaId.toLowerCase()) {
             delPromises.push(deleteDoc(d.ref));
         }
     });
     await Promise.all(delPromises);
 
-    // phir naya data add
-   // phir naya data add
+    // NAYA FRESH DATA ADD KAREIN
     const addPromises = payloads.map(p => addDoc(collection(db,"jaiza_forms"), p));
     await Promise.all(addPromises);
 
     showSuccess("تعلیمی جائزہ کامیابی کے ساتھ محفوظ ہو گیا۔");
     isFormDirty = false; 
-    
-    // NAYI LINE: Database mein save hone ke baad browser memory saaf kar dein
     localStorage.removeItem(`jaiza_draft_${jamiaId}_${monthKey}`);
   } catch(err) {
     console.error(err);
