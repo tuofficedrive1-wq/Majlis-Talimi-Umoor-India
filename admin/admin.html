@@ -919,26 +919,27 @@
     </div>
 </div>
 <!-- NAYA TOOL: Fix Broken Results -->
-        <div class="mt-8 bg-white p-6 rounded-2xl shadow-sm border-2 border-rose-200">
-            <h3 class="text-xl font-bold text-rose-800 mb-2"><i class="fas fa-link mr-2"></i> Fix Broken / Unlinked Results</h3>
-            <p class="text-sm text-gray-600 mb-4">Ye tool database se wo purane Results dhoondega jinke naam badal chuke hain aur wo Master List se link nahi ho paa rahe.</p>
+       <div class="mt-8 bg-white p-6 rounded-2xl shadow-sm border-2 border-rose-200">
+            <h3 class="text-xl font-bold text-rose-800 mb-2"><i class="fas fa-link mr-2"></i> Advanced Missing ID Fixer</h3>
+            <p class="text-sm text-gray-600 mb-4">Ye tool har collection me ja kar check karega ke kis file me Jamia ID nahi hai, aur aapko manual theek karne ka option dega.</p>
             
             <button onclick="window.findOrphanResults()" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-sm transition mb-4">
-                <i class="fas fa-search mr-1"></i> Purane/Ghalat Naam Dhoondein
+                <i class="fas fa-search mr-1"></i> Missing IDs Dhoondein
             </button>
             
             <div class="overflow-x-auto border border-slate-200 rounded-lg hidden" id="orphan-results-container">
                 <table class="min-w-full text-sm text-left border-collapse">
                     <thead class="bg-slate-100 text-slate-700">
                         <tr>
-                            <th class="p-3 border-b border-r font-bold">Purana/Ghalat Naam (Jo Database me hai)</th>
-                            <th class="p-3 border-b border-r font-bold text-center">Total Records</th>
+                            <th class="p-3 border-b border-r font-bold">Collection Ka Naam</th>
+                            <th class="p-3 border-b border-r font-bold text-rose-600">File me Likhha Naam</th>
+                            <th class="p-3 border-b border-r font-bold text-center">Total Files</th>
                             <th class="p-3 border-b border-r font-bold">Sahi Master Jamia Select Karein</th>
                             <th class="p-3 border-b text-center font-bold">Action</th>
                         </tr>
                     </thead>
                     <tbody id="orphan-results-tbody" class="divide-y divide-gray-100 bg-white">
-                        <tr><td colspan="4" class="text-center p-4 text-gray-500">Loading...</td></tr>
+                        <tr><td colspan="5" class="text-center p-4 text-gray-500">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -6949,18 +6950,18 @@ window.saveJamiaMasterDetails = async () => {
 // ==========================================================
 // 🟢 MANAGE TAB LOGIC END
 // ==========================================================
-       // ==========================================================
-// 🟢 FIX ORPHAN / BROKEN RESULTS LOGIC (CRASH PROOF)
+      // ==========================================================
+// 🟢 ADVANCED ORPHAN SCANNER & FIXER (COLLECTION WISE)
 // ==========================================================
 window.findOrphanResults = async () => {
     showLoader(true);
     const container = document.getElementById('orphan-results-container');
     const tbody = document.getElementById('orphan-results-tbody');
     if(container) container.classList.remove('hidden');
-    if(tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-slate-500"><i class="fas fa-spinner fa-spin mr-2"></i> Database scan ho raha hai...</td></tr>';
+    if(tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center p-6 text-slate-500"><i class="fas fa-spinner fa-spin mr-2"></i> Database ke har collection ki talashi ho rahi hai...</td></tr>';
 
     try {
-        // 1. Master Jamias Load Karein
+        // 1. Master Jamias Load Karein Dropdown ke liye
         const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
         let masterDict = {}; 
         let masterOptionsHtml = '<option value="">-- Sahi Jamia Select Karein --</option>';
@@ -6968,12 +6969,9 @@ window.findOrphanResults = async () => {
         let masterArray = [];
         masterSnap.forEach(d => {
             const data = d.data();
-            let mName = data.name || ''; // 🌟 SAFE GUARD: Agar naam khali hai to error nahi aayega
-            
-            if (mName && mName !== 'undefined') {
-                masterDict[d.id] = data; 
-                masterDict[mName.trim().toLowerCase()] = data; 
-                masterArray.push({ id: d.id, name: mName });
+            masterDict[d.id] = true; // Sirf check karne ke liye ke ID theek hai ya nahi
+            if (data.name && data.name !== 'undefined') {
+                masterArray.push({ id: d.id, name: data.name });
             }
         });
 
@@ -6981,50 +6979,63 @@ window.findOrphanResults = async () => {
             masterOptionsHtml += `<option value="${m.id}">${m.name}</option>`;
         });
 
-        // 2. Results Check Karein ke kiska link toota hua hai
-        let orphanNamesMap = {};
-        const collectionsToCheck = [
-            { name: 'class_wise_results', field: 'jamia' },
-            { name: 'asatiza_wise_results', field: 'jamia' },
-            { name: 'ibtidaiya_exams', field: 'jamiaName' }
+        // 2. Collections ki list jahan Jamia ka data hota hai
+        const allKnownCollections = [
+            'class_wise_results', 
+            'asatiza_wise_results', 
+            'ibtidaiya_exams', 
+            'jaiza_forms', 
+            'monthly_test_sheets', 
+            'inspection_reports', 
+            'enrollment_records'
         ];
 
-        for (let c of collectionsToCheck) {
-            const snap = await getDocs(collection(db, c.name));
+        let orphanDataMap = {}; // { "collectionName|||GhalatName": { count: 1 } }
+
+        // Har collection mein jayen aur scan karein
+        for (let collName of allKnownCollections) {
+            const snap = await getDocs(collection(db, collName));
             snap.forEach(docSnap => {
                 let data = docSnap.data();
-                let currentName = data[c.field] || "";
+                let currentName = data.jamia || data.jamiaName || "";
                 let currentId = data.jamiaId;
 
-                let isLinked = false;
-                if (currentId && masterDict[currentId]) isLinked = true;
-                if (!isLinked && currentName && masterDict[currentName.trim().toLowerCase()]) isLinked = true;
-
-                // Agar nahi mila to La-waaris (Orphan) hai!
-                if (!isLinked && currentName && currentName !== 'undefined') {
-                    if (!orphanNamesMap[currentName]) orphanNamesMap[currentName] = 0;
-                    orphanNamesMap[currentName]++; 
+                // 🌟 ASLI CHECK: Agar ID missing hai YA ID master list me nahi hai
+                if (!currentId || !masterDict[currentId]) {
+                    if (currentName && currentName !== 'undefined') {
+                        let uniqueKey = `${collName}|||${currentName}`;
+                        if (!orphanDataMap[uniqueKey]) {
+                            orphanDataMap[uniqueKey] = {
+                                collection: collName,
+                                oldName: currentName,
+                                count: 0
+                            };
+                        }
+                        orphanDataMap[uniqueKey].count++;
+                    }
                 }
             });
         }
 
-        // 3. Table mein dikhayen
+        // 3. UI Table Banayen
         let html = '';
         let index = 0;
-        for (let [oldName, count] of Object.entries(orphanNamesMap)) {
+        
+        for (let [key, info] of Object.entries(orphanDataMap)) {
             let selectId = `orphan-select-${index}`;
             html += `
                 <tr class="hover:bg-rose-50 transition-colors">
-                    <td class="p-3 border-r font-bold text-rose-700">${oldName}</td>
-                    <td class="p-3 border-r text-center font-bold">${count} Files</td>
+                    <td class="p-3 border-r font-bold text-slate-700 uppercase text-xs">${info.collection}</td>
+                    <td class="p-3 border-r font-bold text-rose-700">${info.oldName}</td>
+                    <td class="p-3 border-r text-center font-bold">${info.count} Files</td>
                     <td class="p-3 border-r">
                         <select id="${selectId}" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-teal-500 urdu-font">
                             ${masterOptionsHtml}
                         </select>
                     </td>
                     <td class="p-3 text-center">
-                        <button onclick="window.fixSpecificOrphan('${oldName.replace(/'/g, "\\'")}', '${selectId}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded text-xs font-bold shadow-sm transition">
-                            <i class="fas fa-link mr-1"></i> Sahi Karein
+                        <button onclick="window.fixSpecificOrphan('${info.collection}', '${info.oldName.replace(/'/g, "\\'")}', '${selectId}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded text-xs font-bold shadow-sm transition whitespace-nowrap">
+                            <i class="fas fa-check-circle mr-1"></i> Update Karein
                         </button>
                     </td>
                 </tr>
@@ -7033,174 +7044,91 @@ window.findOrphanResults = async () => {
         }
 
         if (html === '') {
-            if(tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center p-6 text-emerald-600 font-bold bg-emerald-50"><i class="fas fa-check-circle mr-2 text-xl"></i> Mubarak ho! Koi broken result nahi mila, sab perfectly linked hain.</td></tr>';
+            if(tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center p-6 text-emerald-600 font-bold bg-emerald-50"><i class="fas fa-check-circle mr-2 text-xl"></i> Mubarak ho! Sabhi collections mein Jamia ID bilkul perfect aur linked hai.</td></tr>';
         } else {
             if(tbody) tbody.innerHTML = html;
         }
 
     } catch (e) {
         console.error(e);
-        if(tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
+        if(tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
     } finally {
         showLoader(false);
     }
 };
 
-window.fixSpecificOrphan = async (oldName, selectId) => {
+// 🌟 FIXER ALGORITHM (ID + NAME DONO UPDATE KAREGA)
+window.fixSpecificOrphan = async (collectionName, oldName, selectId) => {
     const masterId = document.getElementById(selectId).value;
     if (!masterId) {
         alert("Barahe karam dropdown se Sahi Jamia select karein.");
         return;
     }
 
-    if (!confirm(`Kya aap waqai "${oldName}" wale sabhi results ko naye Jamia ke sath link karna chahte hain?`)) return;
+    if (!confirm(`Kya aap "${collectionName}" me maujood "${oldName}" ko update karna chahte hain?`)) return;
 
     showLoader(true);
     try {
-        const batch = writeBatch(db);
+        let batches = [];
+        let currentBatch = writeBatch(db);
+        let operationCount = 0;
+        let totalFixed = 0;
         
+        // Master ka Asli naam nikalein taake wo bhi update ho
         const masterRef = doc(db, 'jamiaat_master', masterId);
         const masterSnap = await getDoc(masterRef);
         const masterName = masterSnap.data().name;
 
-        const collectionsToFix = [
-            { name: 'class_wise_results', field: 'jamia' },
-            { name: 'asatiza_wise_results', field: 'jamia' },
-            { name: 'ibtidaiya_exams', field: 'jamiaName' }
-        ];
+        // Collection me wo saari files dhoondein jinka naam purana wala hai
+        // Kyunki hume nahi pata ke field ka naam 'jamia' hai ya 'jamiaName', hum dono check karenge
+        const q1 = query(collection(db, collectionName), where("jamia", "==", oldName));
+        const snap1 = await getDocs(q1);
+        
+        const q2 = query(collection(db, collectionName), where("jamiaName", "==", oldName));
+        const snap2 = await getDocs(q2);
 
-        let totalFixed = 0;
-        for (let c of collectionsToFix) {
-            const q = query(collection(db, c.name), where(c.field, '==', oldName));
-            const snap = await getDocs(q);
-            snap.forEach(d => {
-                batch.update(d.ref, {
-                    jamiaId: masterId,
-                    [c.field]: masterName 
-                });
-                totalFixed++;
-            });
+        // Dono queries ke results ko mila lein
+        let allDocs = [];
+        snap1.forEach(d => allDocs.push(d));
+        snap2.forEach(d => {
+            if (!allDocs.find(doc => doc.id === d.id)) allDocs.push(d); // Duplicate hatayen
+        });
+
+        // Ab un sabko Update karein
+        allDocs.forEach(d => {
+            let updateData = { jamiaId: masterId };
+            
+            // Jo field database mein pehle se maujood ho, usi ko update karein
+            if (d.data().jamia !== undefined) updateData.jamia = masterName;
+            if (d.data().jamiaName !== undefined) updateData.jamiaName = masterName;
+
+            currentBatch.update(d.ref, updateData);
+            totalFixed++;
+            operationCount++;
+
+            // Batch Limit handle karne ke liye (Max 500)
+            if (operationCount >= 450) {
+                batches.push(currentBatch);
+                currentBatch = writeBatch(db);
+                operationCount = 0;
+            }
+        });
+
+        if (operationCount > 0) batches.push(currentBatch);
+
+        // Sabhi batches ko firebase par commit karein
+        for (let b of batches) {
+            await b.commit();
         }
 
-        await batch.commit();
-        alert(`Zabardast! Total ${totalFixed} results successfully theek ho gaye.`);
+        alert(`Zabardast! "${collectionName}" me total ${totalFixed} files theek ho gayi hain.\nID aur Naya Naam dono update ho gaye hain.`);
         
+        // List dubara refresh karein
         window.findOrphanResults(); 
 
     } catch (e) {
         console.error(e);
         alert("Error fixing result: " + e.message);
-    } finally {
-        showLoader(false);
-    }
-};
-
-// 🌟 ONE-TIME RESULT FIXER (ID + NAME OVERHAUL - BATCH SAFE) 🌟
-window.fixOrphanResultData = async () => {
-    if (!confirm("Kya aap bache hue Results mein 'jamiaId' aur 'Sahi Naam' dono update karna chahte hain? \n\nYe un sabhi files mein ID add karega aur purane ghalat naam ko Master List wale naam se badal dega.")) return;
-    
-    showLoader(true);
-    try {
-        let updateCount = 0;
-        let batches = [];
-        let currentBatch = writeBatch(db);
-        let operationCount = 0;
-
-        // 1. Master Jamias ki ID aur Naam dono load karein
-        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
-        let searchMap = {}; 
-        
-        masterSnap.forEach(d => {
-            const data = d.data();
-            let mName = data.name || '';
-            if (mName && mName !== 'undefined') {
-                let masterInfo = { id: d.id, name: mName };
-                searchMap[d.id] = masterInfo; // ID ke zariye bhi save kiya
-                searchMap[mName.trim().toLowerCase()] = masterInfo; // English naam se save kiya
-                if(data.urduName) searchMap[data.urduName.trim().toLowerCase()] = masterInfo; // Urdu naam se save kiya
-            }
-        });
-
-        // 2. User ki Mapping History
-        allUsersData.forEach(u => {
-            if (u.jamiaatMapping) {
-                for (let [oldN, newN] of Object.entries(u.jamiaatMapping)) {
-                    let cleanNew = (newN || '').trim().toLowerCase();
-                    let masterInfo = searchMap[cleanNew];
-                    if (masterInfo) {
-                        searchMap[(oldN || '').trim().toLowerCase()] = masterInfo; // Purane ghalat naam ko bhi sahi Info se jor diya
-                    }
-                }
-            }
-        });
-
-        // 3. Sabhi collections ko scan karein
-        const collectionsToFix = [
-            { name: 'class_wise_results', field: 'jamia' },
-            { name: 'asatiza_wise_results', field: 'jamia' },
-            { name: 'ibtidaiya_exams', field: 'jamiaName' },
-            { name: 'jaiza_forms', field: 'jamiaName' },
-            { name: 'monthly_test_sheets', field: 'jamiaName' }
-        ];
-
-        for (let c of collectionsToFix) {
-            const snap = await getDocs(collection(db, c.name));
-            snap.forEach(docSnap => {
-                let data = docSnap.data();
-                let currentName = data[c.field] || "";
-                let currentId = data.jamiaId;
-
-                let targetInfo = null;
-
-                // A. Pehle ID se check karein (agar ID theek hai lekin Naam ghalat hai)
-                if (currentId && searchMap[currentId]) {
-                    targetInfo = searchMap[currentId];
-                } 
-                // B. Agar ID nahi hai, to Naam se check karein
-                else if (currentName) {
-                    let cleanStr = currentName.trim().toLowerCase();
-                    targetInfo = searchMap[cleanStr];
-                }
-
-                // Agar Master List ki sahi maloomat mil gayi
-                if (targetInfo) {
-                    // Check karein kya ID missing hai? YA kya Naam mismatch ho raha hai?
-                    if (currentId !== targetInfo.id || currentName !== targetInfo.name) {
-                        currentBatch.update(docSnap.ref, {
-                            jamiaId: targetInfo.id,
-                            [c.field]: targetInfo.name // Purana naam mita kar naya theek naam save karega
-                        });
-                        updateCount++;
-                        operationCount++;
-
-                        // Batch limit 500 hoti hai, 450 par naya batch
-                        if (operationCount >= 450) {
-                            batches.push(currentBatch);
-                            currentBatch = writeBatch(db);
-                            operationCount = 0;
-                        }
-                    }
-                }
-            });
-        }
-
-        if (operationCount > 0) {
-            batches.push(currentBatch);
-        }
-
-        for (let b of batches) {
-            await b.commit();
-        }
-
-        if (updateCount > 0) {
-            alert(`Kamyabi! Total ${updateCount} files mein 'jamiaId' aur 'Sahi Naam' dono update kar diye gaye hain.`);
-        } else {
-            alert("Sabhi records mein 'jamiaId' aur 'Naam' pehle se theek hain. Koi update ki zarurat nahi.");
-        }
-
-    } catch (e) {
-        console.error(e);
-        alert("Error: " + e.message);
     } finally {
         showLoader(false);
     }
