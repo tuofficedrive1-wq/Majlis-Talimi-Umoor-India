@@ -6955,7 +6955,7 @@ window.saveJamiaMasterDetails = async () => {
 // 🟢 MANAGE TAB LOGIC END
 // ==========================================================
     // ==========================================================
-// 🟢 BULK ORPHAN SCANNER & FIXER (EK-SATH UPDATE)
+// 🟢 BULK ORPHAN SCANNER (EK-SATH UPDATE + A-Z SORTING)
 // ==========================================================
 window.findOrphanResults = async () => {
     showLoader(true);
@@ -6982,6 +6982,7 @@ window.findOrphanResults = async () => {
             }
         });
 
+        // Dropdown options ko A-Z sort kiya
         masterArray.sort((a,b) => a.name.localeCompare(b.name)).forEach(m => {
             masterOptionsHtml += `<option value="${m.id}">${m.name}</option>`;
         });
@@ -6991,8 +6992,7 @@ window.findOrphanResults = async () => {
             'jaiza_forms', 'monthly_test_sheets', 'inspection_reports', 'enrollment_records'
         ];
 
-        // 🌟 NAYA DATA STRUCTURE: Har Jamia sirf ek baar aayegi
-        let orphanDataMap = {}; // Format: { "JamiaName": { collections: { "collName": count }, total: X } }
+        let orphanDataMap = {}; 
 
         for (let collName of allKnownCollections) {
             const snap = await getDocs(collection(db, collName));
@@ -7018,12 +7018,15 @@ window.findOrphanResults = async () => {
             });
         }
 
-        // 2. UI Table Banayen
+        // 2. UI Table Banayen (🌟 NAYA LOGIC: YAHAN A-Z SORTING KI GAYI HAI)
         let html = '';
         let index = 0;
-        window.currentOrphanList = []; // Global list for bulk update
+        window.currentOrphanList = []; 
 
-        for (let [oldName, info] of Object.entries(orphanDataMap)) {
+        // Object ko array mein badal kar A-Z sort kiya
+        let sortedOrphanEntries = Object.entries(orphanDataMap).sort((a, b) => a[0].localeCompare(b[0]));
+
+        for (let [oldName, info] of sortedOrphanEntries) {
             let selectId = `orphan-select-${index}`;
             
             // Collections ki tags banayen
@@ -7031,7 +7034,7 @@ window.findOrphanResults = async () => {
                 return `<span class="inline-block bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-1 rounded border border-slate-200 m-0.5 uppercase tracking-wider">${cName.replace(/_/g, ' ')} (${count})</span>`;
             }).join('');
 
-            // Array mein save karein taake update karte waqt kaam aaye
+            // Array mein save karein
             window.currentOrphanList.push({
                 oldName: oldName,
                 selectId: selectId,
@@ -7063,111 +7066,12 @@ window.findOrphanResults = async () => {
             if(bulkBtn) bulkBtn.classList.add('hidden');
         } else {
             if(tbody) tbody.innerHTML = html;
-            if(bulkBtn) bulkBtn.classList.remove('hidden'); // Bulk button show kar diya
+            if(bulkBtn) bulkBtn.classList.remove('hidden');
         }
 
     } catch (e) {
         console.error(e);
         if(tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-center p-6 text-red-500">Error: ${e.message}</td></tr>`;
-    } finally {
-        showLoader(false);
-    }
-};
-
-// 🌟 BULK FIXER ALGORITHM
-window.fixAllSelectedOrphans = async () => {
-    let tasksToRun = [];
-    
-    // Check karein ke user ne kin kin dropdowns me value select ki hai
-    window.currentOrphanList.forEach(item => {
-        let dropdown = document.getElementById(item.selectId);
-        if (dropdown && dropdown.value) {
-            tasksToRun.push({
-                oldName: item.oldName,
-                masterId: dropdown.value,
-                collections: item.collections,
-                selectId: item.selectId
-            });
-        }
-    });
-
-    if (tasksToRun.length === 0) {
-        alert("Aapne kisi bhi Jamia ke samne naya naam select nahi kiya hai. Pehle dropdowns se Sahi Jamia select karein.");
-        return;
-    }
-
-    if (!confirm(`Kya aap waqai in ${tasksToRun.length} Jamiaat ko ek sath (Bulk) update karna chahte hain?`)) return;
-
-    showLoader(true);
-    try {
-        // Master names cache karein taake baar baar database ko aawaz na lagani pade
-        let masterCache = {};
-        const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
-        masterSnap.forEach(d => { masterCache[d.id] = d.data().name; });
-
-        let batches = [];
-        let currentBatch = writeBatch(db);
-        let operationCount = 0;
-        let totalFixedFiles = 0;
-
-        for (let task of tasksToRun) {
-            let statusCell = document.getElementById(`status-${task.selectId}`);
-            if (statusCell) statusCell.innerHTML = '<span class="text-blue-600 text-xs font-bold"><i class="fas fa-spinner fa-spin"></i> Updating...</span>';
-
-            let masterName = masterCache[task.masterId];
-            if (!masterName) continue;
-
-            for (let collName of task.collections) {
-                // Dono fields se query lagayenge taake koi file na bache
-                const q1 = query(collection(db, collName), where("jamia", "==", task.oldName));
-                const q2 = query(collection(db, collName), where("jamiaName", "==", task.oldName));
-                
-                const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-                
-                let allDocs = new Map();
-                snap1.forEach(d => allDocs.set(d.id, d));
-                snap2.forEach(d => allDocs.set(d.id, d));
-
-                allDocs.forEach(d => {
-                    let updateData = { jamiaId: task.masterId };
-                    
-                    // Jo field database mein ho, usko naye naam se badal do
-                    if (d.data().jamia !== undefined) updateData.jamia = masterName;
-                    if (d.data().jamiaName !== undefined) updateData.jamiaName = masterName;
-
-                    currentBatch.update(d.ref, updateData);
-                    totalFixedFiles++;
-                    operationCount++;
-
-                    // Batch Limit handle karein
-                    if (operationCount >= 450) {
-                        batches.push(currentBatch);
-                        currentBatch = writeBatch(db);
-                        operationCount = 0;
-                    }
-                });
-            }
-            if (statusCell) {
-                statusCell.innerHTML = '<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-xs font-bold border border-emerald-200"><i class="fas fa-check"></i> Done</span>';
-                document.getElementById(`row-${task.selectId}`).classList.add('opacity-50'); // Row ko thoda dhundla kar diya
-            }
-        }
-
-        if (operationCount > 0) batches.push(currentBatch);
-
-        // Sabhi updates ko Firebase par bhej dein
-        for (let b of batches) {
-            await b.commit();
-        }
-
-        alert(`Mubarak ho! Total ${tasksToRun.length} Jamiaat ki ${totalFixedFiles} files ek sath theek ho gayi hain.`);
-        
-        // List dubara refresh karein taake jo theek ho gaye wo gayab ho jayen
-        window.findOrphanResults(); 
-
-    } catch (e) {
-        console.error(e);
-        alert("Error fixing results: " + e.message);
     } finally {
         showLoader(false);
     }
