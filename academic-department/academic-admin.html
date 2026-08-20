@@ -964,11 +964,17 @@ document.getElementById('search-teacher')?.addEventListener('input', () => {
         alert("Teacher details functional logic yahan aaygi. ID: " + teacherId);
     };
 
-    // 4. Inspector Management Functions
+   // 4. Inspector Management Functions
+    const getJName = (j) => typeof j === 'object' ? (j.name || j.jamiaName) : j; // 🌟 NAYA HELPER FUNCTION
+
     const renderInspectors = () => {
         const list = document.getElementById('inspectors-list');
         if (!list) return;
-        list.innerHTML = inspectors.map(ins => `
+        list.innerHTML = inspectors.map(ins => {
+            // 🌟 NAYA: Object ko string mein badla
+            let jamiaTags = (ins.jamiaatList || []).map(j => `<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100">${getJName(j)}</span>`).join('');
+            
+            return `
             <tr class="hover:bg-gray-50 transition border-b">
                 <td class="px-6 py-4">
                     <img src="${ins.photoURL || 'https://placehold.co/40'}" class="w-10 h-10 rounded-full object-cover border shadow-sm">
@@ -980,20 +986,23 @@ document.getElementById('search-teacher')?.addEventListener('input', () => {
                 <td class="px-6 py-4 text-gray-600 font-medium">${ins.region || '-'}</td>
                 <td class="px-6 py-4">
                     <div class="flex flex-wrap gap-1">
-                        ${(ins.jamiaatList || []).map(j => `<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100">${j}</span>`).join('')}
+                        ${jamiaTags}
                     </div>
                 </td>
                 <td class="px-6 py-4 text-center">
                     <button onclick="window.editIns('${ins.id}')" class="text-indigo-600 hover:bg-indigo-50 px-3 py-1 rounded-lg font-bold border border-indigo-200 text-xs transition">EDIT</button>
                 </td>
             </tr>
-        `).join('');
+            `;
+        }).join('');
     };
 
     window.editIns = (id) => {
         const ins = inspectors.find(i => i.id === id);
         if(!ins) return;
         currentId = id;
+        // 🌟 NAYA: Edit modal ke liye object se text nikal liya
+        tempJamias = (ins.jamiaatList || []).map(j => getJName(j));
         tempJamias = [...(ins.jamiaatList || [])];
         document.getElementById('edit-name').value = ins.name || '';
         document.getElementById('edit-email').value = ins.email || '';
@@ -1355,9 +1364,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
         let allExistingJamias = [];
         inspectors.forEach(ins => {
-            if(ins.jamiaatList && Array.isArray(ins.jamiaatList)) { allExistingJamias.push(...ins.jamiaatList); }
+            if(ins.jamiaatList && Array.isArray(ins.jamiaatList)) { 
+                // 🌟 NAYA LOGIC
+                let names = ins.jamiaatList.map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j);
+                allExistingJamias.push(...names); 
+            }
         });
-        allExistingJamias = [...new Set(allExistingJamias)]; 
+        allExistingJamias = [...new Set(allExistingJamias)];
 
         const normalizeStr = (str) => str ? str.trim().toUpperCase().replace(/\s+/g, ' ') : '';
         const masterNames = masterJamiaat.map(j => normalizeStr(j.jamiaName));
@@ -1826,13 +1839,18 @@ window.generateTestReport = () => {
         (inspectors || []).forEach(ins => {
             if (selUser !== 'all' && ins.id !== selUser) return;
 
-            if (ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
+           if (ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
                 ins.jamiaatList.forEach(jamia => {
-                    const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jamia);
+                    // 🌟 NAYA LOGIC
+                    const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
+                    const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jName);
                     if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                     if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
                     totalJamiaat++;
+                    
+                    // 🔥 FIX: Clean naam se data nikalein
+                    const report = reportsMap[`${ins.id}_${cleanName(jName)}`];
 
                     const targetJamiaClean = cleanName(jamia);
                     const jamiaSheets = testSheetsMap[targetJamiaClean] || [];
@@ -1882,7 +1900,7 @@ window.generateTestReport = () => {
                         <tr class="hover:bg-slate-50 border-b transition text-sm">
                             <td class="p-3 text-center border-r border-indigo-50 text-gray-500">${count++}</td>
                             <td class="p-3 font-semibold text-gray-700 border-r border-indigo-50">${ins.name}</td>
-                            <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jamia}</td>
+                            <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jName}</td>  <!-- 🌟 Yahan jamia ki jagah jName likha hai -->
                             <td class="p-3 text-center border-r border-indigo-50 font-medium text-gray-600">${jamiaSheets.length}</td>
                             <td class="p-3 text-center border-r border-indigo-50 font-medium text-gray-600">${totalStudentsCount}</td>
                             <td class="p-3 text-center border-r border-indigo-50 font-bold text-indigo-900">${grandPresent}</td>
@@ -1996,24 +2014,26 @@ function computeReportHubStats() {
     const regionStats = {};
     let totalJamiaat = 0, totalSubmitted = 0;
 
-    (inspectors || []).forEach(ins => {
+ (inspectors || []).forEach(ins => {
         if (!ins.jamiaatList || !Array.isArray(ins.jamiaatList)) return;
         ins.jamiaatList.forEach(jamia => {
-            const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jamia);
+            // 🌟 NAYA LOGIC
+            const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
+            const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jName);
             const region = (mJamia && mJamia.region) ? mJamia.region : 'Unassigned';
 
             if (!regionStats[region]) regionStats[region] = { total: 0, submitted: 0 };
             regionStats[region].total++;
             totalJamiaat++;
 
-            if (reportsMap[`${ins.id}_${cleanName(jamia)}`]) {
+            if (reportsMap[`${ins.id}_${cleanName(jName)}`]) {
                 regionStats[region].submitted++;
                 totalSubmitted++;
             }
         });
     });
 
-    return { totalJamiaat, totalSubmitted, totalPending: totalJamiaat - totalSubmitted, regionStats };
+               return { totalJamiaat, totalSubmitted, totalPending: totalJamiaat - totalSubmitted, regionStats };
 }
 
 window.renderReportHubDemo = () => {
@@ -2244,7 +2264,9 @@ window.populateMasterFilters = () => {
     if (activeRegion !== 'all' || activeState !== 'all') {
         filteredInspectors = insList.filter(ins => {
             if (!ins.jamiaatList || ins.jamiaatList.length === 0) return false;
-            return ins.jamiaatList.some(jName => {
+            return ins.jamiaatList.some(jamia => {
+                // 🌟 NAYA LOGIC
+                const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
                 const matchJamia = jamiaList.find(m => m.jamiaName === jName);
                 if (!matchJamia) return false;
                 let matchesRegion = (activeRegion === 'all' || matchJamia.region === activeRegion);
@@ -2310,17 +2332,19 @@ window.generateTestReport = () => {
     inspectors.forEach(ins => {
         if (selUser !== 'all' && ins.id !== selUser) return;
 
-        if (ins.jamiaatList && ins.jamiaatList.length > 0) {
+       if (ins.jamiaatList && ins.jamiaatList.length > 0) {
             ins.jamiaatList.forEach(jamia => {
+                // 🌟 NAYA LOGIC
+                const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
                 
-                const mJamia = masterJamiaat.find(m => m.jamiaName === jamia);
+                const mJamia = masterJamiaat.find(m => m.jamiaName === jName);
                 if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                 if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
                 totalJamiaat++;
 
                 // 🔥 FAST LOOKUP: Filter lagane ke bajaye direct array nikala!
-                const targetJamiaClean = cleanName(jamia);
+                const targetJamiaClean = cleanName(jName);
                 const jamiaSheets = testSheetsMap[targetJamiaClean] || [];
 
                 if (jamiaSheets.length > 0) {
@@ -2374,7 +2398,7 @@ window.generateTestReport = () => {
                     <tr class="hover:bg-slate-50 border-b transition text-sm">
                         <td class="p-3 text-center border-r border-indigo-50 text-gray-500">${count++}</td>
                         <td class="p-3 font-semibold text-gray-700 border-r border-indigo-50">${ins.name}</td>
-                        <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jamia}</td>
+                        <td class="p-3 font-bold text-indigo-800 border-r border-indigo-50">${jName}</td>
                         <td class="p-3 text-center border-r border-indigo-50 font-medium text-gray-600">${jamiaSheets.length}</td>
                         <td class="p-3 text-center border-r border-indigo-50 font-medium text-gray-600">${totalStudentsCount}</td>
                         <td class="p-3 text-center border-r border-indigo-50 font-bold text-indigo-900">${grandPresent}</td>
@@ -2388,7 +2412,7 @@ window.generateTestReport = () => {
                     <tr class="hover:bg-red-50/30 bg-red-50/10 border-b transition text-sm">
                         <td class="p-3 text-center border-r border-indigo-50 text-gray-400">${count++}</td>
                         <td class="p-3 font-medium text-gray-500 border-r border-indigo-50">${ins.name}</td>
-                        <td class="p-3 font-medium text-gray-600 border-r border-indigo-50">${jamia}</td>
+                        <td class="p-3 font-medium text-gray-600 border-r border-indigo-50">${jName}</td>
                         <td colspan="7" class="p-3 text-center text-red-400 text-xs italic font-semibold">Test Data Not Submitted</td>
                     </tr>`;
                 }
