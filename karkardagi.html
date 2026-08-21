@@ -2386,6 +2386,20 @@ if (saveAcademicMonthsBtn) {
             if (e.target.closest('.delete-period-btn')) { handleDeletePeriod(e); }
             // Edit Period Button
             if (e.target.closest('.edit-period-btn')) { handleEditPeriod(e); }
+            // NEW: Duplicate Single Period (Ek kitab copy karne ke liye)
+            if (e.target.closest('.duplicate-period-btn')) { 
+                e.stopPropagation(); 
+                handleDuplicatePeriod(e); 
+                return; 
+            }
+            
+            // NEW: Copy All Semester Periods (Poora semester copy karne ke liye)
+            if (e.target.closest('.copy-sem-btn')) { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                handleCopySemesterPeriods(e); 
+                return; 
+            }
             
             // Reporting Link Button (Delegated, but catching any stray clicks inside this container)
             if (e.target.closest('.reporting-link-btn')) {
@@ -2479,46 +2493,77 @@ if (saveAcademicMonthsBtn) {
         };
 
         const renderPeriodsTable = (periods) => {
-            if (!periods || periods.length === 0) {
-                return '<p class="text-gray-500 text-sm p-2">Abhi koi period add nahi hua hai.</p>';
-            }
-            let table = `
-            <div class="overflow-x-auto">
+    if (!periods || periods.length === 0) {
+        return '<p class="text-gray-500 text-sm p-2">Abhi koi period add nahi hua hai.</p>';
+    }
+
+    // Purani kitabein upar dikhane ke liye sort karna
+    periods.sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
+
+    // Semester ke hisab se alag alag karna
+    const sem1Periods = periods.filter(p => p.semester === "1");
+    const sem2Periods = periods.filter(p => p.semester === "2");
+
+    let html = '';
+
+    // Table banane ka sub-function
+    const renderTable = (semPeriods, semName, semValue) => {
+        if (semPeriods.length === 0) return '';
+        
+        // Jo semester chal raha hai use automatically open rakhna
+        const isOpen = currentReportPeriod.semester === semValue ? 'open' : '';
+        const targetSem = semValue === "1" ? "2" : "1"; // Copy kis me karna hai
+
+        let table = `
+        <details class="mb-3 border border-gray-200 rounded-lg bg-white shadow-sm" ${isOpen}>
+            <summary class="font-bold text-gray-700 bg-gray-100 p-3 cursor-pointer rounded-lg flex justify-between items-center hover:bg-gray-200 transition select-none">
+                <div class="flex items-center">
+                    <i class="fas fa-chevron-down text-gray-400 mr-2 text-sm"></i> 
+                    <span>${semName}</span>
+                    <span class="text-xs font-normal bg-white border border-gray-300 text-gray-700 px-2 py-0.5 rounded-full ml-3">${semPeriods.length} Kitabein</span>
+                </div>
+                <button type="button" class="copy-sem-btn text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded shadow" data-sem="${semValue}" title="Sari kitabein dusre semester me copy karein">
+                    <i class="fas fa-copy mr-1"></i> Sem ${targetSem} Me Copy Karein
+                </button>
+            </summary>
+            <div class="overflow-x-auto p-2 pt-3">
                 <table class="min-w-full text-sm">
-                    <thead class="bg-gray-100">
-                        <tr><th>Class</th><th>Book</th><th>Semester</th><th>Total Pages</th><th>Action</th></tr>
+                    <thead class="bg-gray-50">
+                        <tr><th>Class</th><th>Book</th><th>Total Pages</th><th>Action</th></tr>
                     </thead>
                     <tbody>
+        `;
+        semPeriods.forEach(period => {
+            const periodId = period.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            if(!period.id) period.id = periodId; 
+            
+            table += `
+            <tr data-period-id="${periodId}" 
+                data-class="${period.className}" 
+                data-book="${period.bookName}" 
+                data-sem="${period.semester}" 
+                data-total="${period.totalPages}">
+                <td class="urdu-font">${period.className}</td>
+                <td class="urdu-font">${period.bookName}</td>
+                <td>${period.totalPages}</td>
+                <td class="flex gap-2">
+                    <button type="button" class="duplicate-period-btn text-green-600 hover:text-green-800 p-1" title="Duplicate (Copy)"><i class="fas fa-copy"></i></button>
+                    <button type="button" class="edit-period-btn text-blue-500 hover:text-blue-700 p-1 ml-1" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button type="button" class="transfer-period-btn text-purple-600 hover:text-purple-800 p-1 ml-1" title="Transfer Book"><i class="fas fa-exchange-alt"></i></button>
+                    <button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1 ml-1" title="Delete"><i class="fas fa-times-circle"></i></button>
+                </td>
+            </tr>
             `;
-            // Sorting periods by ID (which acts as creation time: higher ID means newer, so sort ascending to show older first)
-            periods.sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
+        });
+        table += '</tbody></table></div></details>';
+        return table;
+    };
 
-            periods.forEach(period => {
-                const periodId = period.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                if(!period.id) period.id = periodId; 
-                
-                const semText = period.semester === "1" ? "Sem 1" : "Sem 2";
-                table += `
-                <tr data-period-id="${periodId}" 
-                    data-class="${period.className}" 
-                    data-book="${period.bookName}" 
-                    data-sem="${period.semester}" 
-                    data-total="${period.totalPages}">
-                    <td class="urdu-font">${period.className}</td>
-                    <td class="urdu-font">${period.bookName}</td>
-                    <td>${semText}</td>
-                    <td>${period.totalPages}</td>
-                    <td class="flex gap-2">
-                        <button type="button" class="edit-period-btn text-blue-500 hover:text-blue-700 p-1"><i class="fas fa-edit"></i> Edit</button>
-                        <button type="button" class="transfer-period-btn text-purple-600 hover:text-purple-800 p-1 ml-2" title="Transfer Book"><i class="fas fa-exchange-alt"></i></button>
-                        <button type="button" class="delete-period-btn text-red-500 hover:text-red-700 p-1 ml-2"><i class="fas fa-times-circle"></i></button>
-                    </td>
-                </tr>
-                `;
-            });
-            table += '</tbody></table></div>';
-            return table;
-        };
+    html += renderTable(sem1Periods, "Semester 1 (Apr-Aug)", "1");
+    html += renderTable(sem2Periods, "Semester 2 (Sep-Jan)", "2");
+
+    return html;
+};
         
         // --- Setup Tab Event Handlers (Unchanged) ---
 
@@ -5814,6 +5859,126 @@ window.renderSubmitStatusReport = () => {
     }
 };
 
+        // Function 1: Ek kitab ko usi waqt copy/duplicate karna
+const handleDuplicatePeriod = async (e) => {
+    if (!activeYear || !currentUser) return;
+    
+    const button = e.target.closest('.duplicate-period-btn');
+    const row = button.closest('tr[data-period-id]');
+    const teacherDiv = button.closest('[data-teacher-id]');
+    const jamiaDiv = button.closest('[data-jamia-name]');
+    
+    const jamiaName = jamiaDiv?.dataset.jamiaName;
+    const teacherId = teacherDiv?.dataset.teacherId;
+
+    if (!jamiaName || !teacherId) return;
+
+    // Nayi kitab ka object banayein (Pages 0 rakhein taake user edit kar le)
+    const duplicatedPeriod = {
+        id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        className: row.dataset.class,
+        bookName: row.dataset.book,
+        semester: row.dataset.sem, 
+        totalPages: parseInt(row.dataset.total, 10) || 0
+    };
+
+    showLoader(true);
+    try {
+        let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
+        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+
+        if (teacherData) {
+            if (!teacherData.periods) teacherData.periods = [];
+            teacherData.periods.push(duplicatedPeriod);
+
+            const userRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userRef, {
+                [`academicYears.${activeYear}.karkardagiStructure`]: currentStructure,
+                lastUpdated: serverTimestamp()
+            });
+
+            allAcademicYearsData[activeYear].karkardagiStructure = currentStructure;
+            
+            captureAccordionState();
+            openAccordionIds.add(jamiaName);
+            openAccordionIds.add(teacherId);
+
+            showNotification("Kitab duplicate ho gayi! Aap pencil icon se ise edit kar sakte hain.");
+            renderSetupTab();
+            renderReportingTab();
+        }
+    } catch (error) {
+        showNotification("Duplicate karne mein error aayi.", true);
+    } finally {
+        showLoader(false);
+    }
+};
+
+// Function 2: Poore Semester ki kitabein ek sath dusre Semester me copy karna
+const handleCopySemesterPeriods = async (e) => {
+    if (!activeYear || !currentUser) return;
+    
+    const button = e.target.closest('.copy-sem-btn');
+    const sourceSem = button.dataset.sem;
+    const targetSem = sourceSem === "1" ? "2" : "1"; // Agar 1 hai to 2 me copy hoga
+    
+    const teacherDiv = button.closest('[data-teacher-id]');
+    const jamiaDiv = button.closest('[data-jamia-name]');
+    const jamiaName = jamiaDiv?.dataset.jamiaName;
+    const teacherId = teacherDiv?.dataset.teacherId;
+
+    if (!confirm(`Kya aap waqai Semester ${sourceSem} ki saari kitabein Semester ${targetSem} me copy karna chahte hain?`)) return;
+
+    showLoader(true);
+    try {
+        let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
+        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
+
+        if (teacherData && teacherData.periods) {
+            const kitabeinToCopy = teacherData.periods.filter(p => p.semester === sourceSem);
+            
+            if (kitabeinToCopy.length === 0) {
+                showNotification(`Semester ${sourceSem} me copy karne ke liye koi kitab nahi hai.`, true);
+                showLoader(false);
+                return;
+            }
+
+            // Nayi list banayein aur semester change kar dein
+            kitabeinToCopy.forEach(kitab => {
+                teacherData.periods.push({
+                    id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    className: kitab.className,
+                    bookName: kitab.bookName,
+                    semester: targetSem,
+                    totalPages: kitab.totalPages
+                });
+            });
+
+            const userRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userRef, {
+                [`academicYears.${activeYear}.karkardagiStructure`]: currentStructure,
+                lastUpdated: serverTimestamp()
+            });
+
+            allAcademicYearsData[activeYear].karkardagiStructure = currentStructure;
+            
+            captureAccordionState();
+            openAccordionIds.add(jamiaName);
+            openAccordionIds.add(teacherId);
+
+            showNotification(`Kamyabi se Semester ${sourceSem} ki sari kitabein Semester ${targetSem} me copy ho gayin!`);
+            renderSetupTab();
+            renderReportingTab();
+        }
+    } catch (error) {
+        showNotification("Sari kitabein copy karne mein error aayi.", true);
+    } finally {
+        showLoader(false);
+    }
+};
+        
         // --- Init ---
         initApp();
     </script>
