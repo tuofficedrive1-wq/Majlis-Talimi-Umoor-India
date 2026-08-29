@@ -1147,8 +1147,9 @@ if (saveStructureBtn) {
                     const existingReportSnap = await getDoc(reportRef);
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
                     
+                    // 1. FIXED: Extract string names properly if they are objects
                     const jamiaNamesInReport = jamiaFilter === 'all' 
-                                                ? (userProfileData.jamiaatList || []) 
+                                                ? (userProfileData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j)
                                                 : [jamiaFilter]; 
 
                     // Remove old entries for the reported jamia(t)
@@ -1156,6 +1157,13 @@ if (saveStructureBtn) {
                     
                     // Add new/updated entries
                     mergedReportData.push(...newReportData);
+
+                    // 2. FIXED: Database me jama hue duplicates ko clean karne ke liye Deduplication logic
+                    const uniqueDataMap = new Map();
+                    mergedReportData.forEach(entry => {
+                        uniqueDataMap.set(entry.periodId, entry); // Ek periodId ki sirf ek hi entry bachegi
+                    });
+                    mergedReportData = Array.from(uniqueDataMap.values());
 
                     const monthNameSafe = (typeof month === 'string' && month.trim().length > 0)
                         ? month
@@ -1860,19 +1868,27 @@ if (editTeacherForm) {
             const mapKey = `${finalJamiaName}::${teacherId}::${periodId}`;
 
             let existingData = teacherSubmissionsMap.get(mapKey);
+            let newPagesTaught = parseInt(data.pagesTaught || 0, 10);
+            
             if (!existingData) {
-                existingData = { pagesTaught: 0, lastIbarat: '', lastPageNo: '', isUserUpdate: false, timestamp: timestamp, deeniKaam: deeniKaamData }; 
+                existingData = { 
+                    pagesTaught: newPagesTaught, 
+                    lastIbarat: data.lastIbarat || '', 
+                    lastPageNo: data.lastPageNo || '', 
+                    isUserUpdate: false, 
+                    timestamp: timestamp, 
+                    deeniKaam: deeniKaamData 
+                }; 
             } else {
-                if (timestamp && (!existingData.timestamp || timestamp > existingData.timestamp)) {
+                // Hamesha latest timestamp wala data purane ko replace karega, plus nahi hoga
+                if (timestamp && (!existingData.timestamp || timestamp >= existingData.timestamp)) {
                     existingData.timestamp = timestamp;
-                    if (deeniKaamData) existingData.deeniKaam = deeniKaamData; // Latest deeni kaam update
+                    existingData.pagesTaught = newPagesTaught; // <-- += ki jagah sirf = laga diya
+                    if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
+                    if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
+                    if (deeniKaamData) existingData.deeniKaam = deeniKaamData; 
                 }
             }
-            
-            existingData.pagesTaught += parseInt(data.pagesTaught || 0, 10);
-            if (data.lastIbarat) existingData.lastIbarat = data.lastIbarat;
-            if (data.lastPageNo) existingData.lastPageNo = data.lastPageNo;
-            
             teacherSubmissionsMap.set(mapKey, existingData);
         });
 
@@ -3802,7 +3818,9 @@ const renderMonthlyMunasibReport = async () => {
     
     const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
 
-    let munasibPeriods = [];
+    // FIXED: Use Map instead of Array to prevent rendering duplicates
+    let munasibPeriodsMap = new Map(); 
+    
     selectedMonthReport.karkardagiReport.data.forEach(p => {
         if (isLastMonth) {
             // Aakhri mahine me Majmooi (Overall) Kaifiyat check karein
@@ -3823,13 +3841,17 @@ const renderMonthlyMunasibReport = async () => {
             else if (overallPercent >= 121) majmooiKaifiyat = 'Behtar';
 
             if (majmooiKaifiyat === 'Munasib') {
-                munasibPeriods.push({ ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
+                munasibPeriodsMap.set(p.periodId, { ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
             }
         } else {
             // Normal mahine me Monthly Kaifiyat
-            if (p.kaifiyat === 'Munasib') munasibPeriods.push(p);
+            if (p.kaifiyat === 'Munasib') {
+                munasibPeriodsMap.set(p.periodId, p);
+            }
         }
     });
+
+    let munasibPeriods = Array.from(munasibPeriodsMap.values());
 
     if (munasibPeriods.length === 0) {
         monthlyMunasibContainer.innerHTML = `<p class="text-green-600 font-semibold">Alhamdulillah! No 'Munasib' periods found for ${getMonthName(monthNum)} ${year}.</p>`;
