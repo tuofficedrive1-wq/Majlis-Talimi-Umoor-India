@@ -1147,9 +1147,8 @@ if (saveStructureBtn) {
                     const existingReportSnap = await getDoc(reportRef);
                     let mergedReportData = existingReportSnap.exists() ? existingReportSnap.data().karkardagiReport?.data || [] : []; 
                     
-                    // 1. FIXED: Extract string names properly if they are objects
                     const jamiaNamesInReport = jamiaFilter === 'all' 
-                                                ? (userProfileData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j)
+                                                ? (userProfileData.jamiaatList || []) 
                                                 : [jamiaFilter]; 
 
                     // Remove old entries for the reported jamia(t)
@@ -1157,13 +1156,6 @@ if (saveStructureBtn) {
                     
                     // Add new/updated entries
                     mergedReportData.push(...newReportData);
-
-                    // 2. FIXED: Database me jama hue duplicates ko clean karne ke liye Deduplication logic
-                    const uniqueDataMap = new Map();
-                    mergedReportData.forEach(entry => {
-                        uniqueDataMap.set(entry.periodId, entry); // Ek periodId ki sirf ek hi entry bachegi
-                    });
-                    mergedReportData = Array.from(uniqueDataMap.values());
 
                     const monthNameSafe = (typeof month === 'string' && month.trim().length > 0)
                         ? month
@@ -3810,9 +3802,7 @@ const renderMonthlyMunasibReport = async () => {
     
     const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
 
-    // FIXED: Use Map instead of Array to prevent rendering duplicates
-    let munasibPeriodsMap = new Map(); 
-    
+    let munasibPeriods = [];
     selectedMonthReport.karkardagiReport.data.forEach(p => {
         if (isLastMonth) {
             // Aakhri mahine me Majmooi (Overall) Kaifiyat check karein
@@ -3833,17 +3823,13 @@ const renderMonthlyMunasibReport = async () => {
             else if (overallPercent >= 121) majmooiKaifiyat = 'Behtar';
 
             if (majmooiKaifiyat === 'Munasib') {
-                munasibPeriodsMap.set(p.periodId, { ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
+                munasibPeriods.push({ ...p, achievement: overallPercent, kaifiyat: 'Munasib' });
             }
         } else {
             // Normal mahine me Monthly Kaifiyat
-            if (p.kaifiyat === 'Munasib') {
-                munasibPeriodsMap.set(p.periodId, p);
-            }
+            if (p.kaifiyat === 'Munasib') munasibPeriods.push(p);
         }
     });
-
-    let munasibPeriods = Array.from(munasibPeriodsMap.values());
 
     if (munasibPeriods.length === 0) {
         monthlyMunasibContainer.innerHTML = `<p class="text-green-600 font-semibold">Alhamdulillah! No 'Munasib' periods found for ${getMonthName(monthNum)} ${year}.</p>`;
