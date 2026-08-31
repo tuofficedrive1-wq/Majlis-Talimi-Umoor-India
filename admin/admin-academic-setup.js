@@ -1,7 +1,7 @@
 // admin-academic-setup.js
 import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-export async function initAcademicYearSetup(db, containerId) {
+export async function initAcademicYearSetup(db, containerId) { 
     const container = document.getElementById(containerId);
     if (!container) return;
 
