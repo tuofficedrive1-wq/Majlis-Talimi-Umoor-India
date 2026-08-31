@@ -401,6 +401,9 @@
     <button type="button" onclick="window.location.href='report-card.html'; return false;" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm text-teal-600 hover:text-teal-800 border-transparent hover:border-teal-300">
         <i class="fas fa-id-card mr-1"></i> Report Card
     </button>
+ <button type="button" class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="admin-files">
+        <i class="fas fa-folder-open text-amber-500 mr-1"></i> Zaroori Files
+    </button>
 </nav>
                             </div>
                             <div class="pt-6">
@@ -571,6 +574,21 @@
                 <h4 class="text-lg font-semibold text-gray-800 mb-4">Result Analysis & Summary</h4>
                 <div id="result-analysis-container" class="space-y-4"></div>
             </div>
+        </div>
+    </div>
+</div>
+                                <div id="admin-files-tab-content" class="tab-content hidden p-4">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex justify-between items-center mb-6 border-b pb-3">
+            <h2 class="text-xl font-bold text-gray-800">
+                <i class="fas fa-file-download text-teal-600 mr-2"></i> Zaroori Files & Documents
+            </h2>
+        </div>
+        
+        <div id="admin-files-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <p class="text-center text-gray-500 col-span-full py-8">
+                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>Files load ho rahi hain...
+            </p>
         </div>
     </div>
 </div>
@@ -1298,6 +1316,8 @@ const closeSigBtn = document.getElementById('close-sig-modal');
 const closeSigBtnX = document.getElementById('close-sig-modal-x');
 const saveSigBtn = document.getElementById('save-sig-btn');
 const sigInput = document.getElementById('sig-taleemi-input');
+
+            fetchAdminFiles();
 
 // 👇 YEH NAYA VARIABLE ADD KAREIN 👇
 const dashSigPreview = document.getElementById('dash-signature-preview');
@@ -4808,6 +4828,113 @@ auth.onAuthStateChanged(user => {
             sessionStorage.removeItem('impersonateUserId'); // Session clear kar diya
             window.location.href = 'admin.html'; // Wapas admin panel par bhej diya
         };
+        // ===============================================
+// ========= ADMIN FILES (VIEW, DOWNLOAD, SHARE) =
+// ===============================================
+
+// Global level par functions banayenge taake HTML ke onclick me chal sakein
+window.viewAdminFile = (url) => {
+    window.open(url, '_blank');
+};
+
+window.downloadAdminFile = (url, fileName) => {
+    // Note: Cross-origin ki wajah se browser naye tab me open kar sakta hai agar direct download block ho
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'download';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+};
+
+window.shareAdminFile = async (url, title) => {
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: title,
+                text: 'Yeh zaroori file check karein:',
+                url: url
+            });
+        } catch (error) {
+            console.log("Share cancel kiya gaya.");
+        }
+    } else {
+        // Agar mobile/browser web share support nahi karta to link copy kar dega
+        navigator.clipboard.writeText(url).then(() => {
+            showNotification("File ka link copy ho gaya hai. Aap isay WhatsApp par paste kar sakte hain.");
+        });
+    }
+};
+
+const fetchAdminFiles = () => {
+    const container = document.getElementById('admin-files-container');
+    if (!container) return;
+
+    // Hum maan kar chal rahe hain ke admin jo file upload karega wo "admin_files" collection me save hogi
+    const q = query(collection(db, "admin_files"), orderBy("createdAt", "desc"));
+    
+    onSnapshot(q, (snapshot) => {
+        if (snapshot.empty) {
+            container.innerHTML = `
+                <div class="col-span-full bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl p-8 text-center">
+                    <i class="fas fa-folder-open text-4xl text-gray-300 mb-3"></i>
+                    <p class="text-gray-500 font-medium urdu-font">Abhi tak admin ki taraf se koi file upload nahi ki gayi hai.</p>
+                </div>`;
+            return;
+        }
+
+        let html = '';
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const fileName = data.fileName || 'Document';
+            const fileUrl = data.fileUrl || '#';
+            const fileType = (data.fileType || '').toLowerCase();
+            const date = data.createdAt ? data.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+
+            // File ki type ke hisaab se icon aur color change karna
+            let iconClass = 'fa-file-alt';
+            let iconColor = 'text-gray-500';
+            let bgColor = 'bg-gray-50';
+
+            if (fileType.includes('pdf')) { 
+                iconClass = 'fa-file-pdf'; iconColor = 'text-red-500'; bgColor = 'bg-red-50';
+            } else if (fileType.includes('image') || fileType.includes('jpg') || fileType.includes('png')) { 
+                iconClass = 'fa-image'; iconColor = 'text-blue-500'; bgColor = 'bg-blue-50';
+            } else if (fileType.includes('excel') || fileType.includes('sheet') || fileType.includes('csv')) { 
+                iconClass = 'fa-file-excel'; iconColor = 'text-emerald-600'; bgColor = 'bg-emerald-50';
+            }
+
+            html += `
+                <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300 flex flex-col overflow-hidden group">
+                    <div class="p-5 flex gap-4 items-start flex-grow">
+                        <div class="w-12 h-12 rounded-lg ${bgColor} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            <i class="fas ${iconClass} ${iconColor} text-2xl"></i>
+                        </div>
+                        <div class="flex-grow overflow-hidden">
+                            <h3 class="font-bold text-gray-800 text-sm mb-1 truncate urdu-font" title="${fileName}">${fileName}</h3>
+                            <p class="text-xs text-gray-500 font-medium"><i class="fas fa-clock mr-1"></i> ${date}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 border-t border-gray-100 bg-gray-50/50">
+                        <button onclick="viewAdminFile('${fileUrl}')" class="py-2.5 text-xs font-bold text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition border-r border-gray-100 flex flex-col items-center justify-center gap-1">
+                            <i class="fas fa-eye text-sm"></i> View
+                        </button>
+                        <button onclick="downloadAdminFile('${fileUrl}', '${fileName}')" class="py-2.5 text-xs font-bold text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 transition border-r border-gray-100 flex flex-col items-center justify-center gap-1">
+                            <i class="fas fa-download text-sm"></i> Download
+                        </button>
+                        <button onclick="shareAdminFile('${fileUrl}', '${fileName}')" class="py-2.5 text-xs font-bold text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition flex flex-col items-center justify-center gap-1">
+                            <i class="fas fa-share-alt text-sm"></i> Share
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    });
+};
         
         // --- Init ---
         initApp();
