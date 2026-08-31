@@ -263,6 +263,7 @@
     let currentReportYear   = null;
     let currentJamiaData    = null;
     let currentYearData     = null; // <--- YE ADD KAREIN
+    let globalAcademicConfig = null;
     let formLocked          = false;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -397,15 +398,25 @@
         }
     });
 
-    // ===== DATA FETCHING =====
+   // ===== DATA FETCHING =====
     async function loadJamiaData(jamia, userId, year, monthIndex, currentYear) {
         const loadingSpinner = document.getElementById('loading-spinner');
         const formContainer  = document.getElementById('report-form-container');
         const teacherSelect  = document.getElementById('teacher-select');
 
         try {
+            // NAYA CODE: Admin ka Global Setup Load Karein
+            const configRef = db.collection('settings').doc('academic_config');
+            const configSnap = await configRef.get();
+            if (configSnap.exists) {
+                globalAcademicConfig = configSnap.data();
+            } else {
+                console.warn("Global academic config not found!");
+            }
+
             const userRef  = db.collection('users').doc(userId);
             const userSnap = await userRef.get();
+           
 
             if (!userSnap.exists) {
                 loadingSpinner.innerHTML =
@@ -491,14 +502,13 @@
 
         // --- NAYA LOGIC: Transferred kitabo ko hide karein ---
      const mIndex = parseInt(monthIndex, 10);
+// --- AUTO DETECT FROM ADMIN DATA ---
 let isSem1 = true; // Default assumption
 
-// --- AUTO DETECT FROM ADMIN DATA ---
-if (currentYearData && currentYearData.sem1Months && currentYearData.sem1Months.includes(mIndex)) {
-    // Agar admin ne database me is mahine ko Sem 1 me rakha hai
+// YAHAN UPDATE KIYA HAI: Ab ye global config se check karega
+if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
     isSem1 = true;
-} else if (currentYearData && currentYearData.sem2Months && currentYearData.sem2Months.includes(mIndex)) {
-    // Agar admin ne database me is mahine ko Sem 2 me rakha hai
+} else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
     isSem1 = false;
 } else {
     // Agar database me setting na mile to purana ahtiyati (fallback) tareeqa
@@ -1152,20 +1162,21 @@ let semTotalDays = 0;
 let isSem1 = true;
 
 // --- AUTO DETECT FROM ADMIN DATA ---
-if (currentYearData && currentYearData.sem1Months && currentYearData.sem1Months.includes(mIndex)) {
+// YAHAN BHI UPDATE KIYA HAI
+if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
     isSem1 = true;
-    semMonths = currentYearData.sem1Months; // Admin ki set ki hui list uthayega
-    semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
-} else if (currentYearData && currentYearData.sem2Months && currentYearData.sem2Months.includes(mIndex)) {
+    semMonths = globalAcademicConfig.sem1Months; 
+    semTotalDays = parseInt(globalAcademicConfig.sem1TotalDays || 0, 10);
+} else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
     isSem1 = false;
-    semMonths = currentYearData.sem2Months; // Admin ki set ki hui list uthayega
-    semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
+    semMonths = globalAcademicConfig.sem2Months; 
+    semTotalDays = parseInt(globalAcademicConfig.sem2TotalDays || 0, 10);
 } else {
-    // Fallback logic agar admin ka data fetch na ho
+    // Fallback logic
     isSem1 = (mIndex >= 3 && mIndex <= 6);
     if (isSem1) {
         semMonths = [3, 4, 5, 6]; 
-        semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
+        semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10); // currentYearData backup ke tor pe
     } else {
         semMonths = [7, 8, 9, 10, 11, 0, 1, 2]; 
         semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
