@@ -891,18 +891,19 @@ const attachDropdownEvents = (container, config) => {
 };
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
-   // Semester dropdown (accordion) ko open/close karne ke liye
-    container.querySelectorAll('.sem-toggle').forEach(toggle => {
+    
+    // NAYA ADD KIYA GAYA: Teacher ka main dropdown open/close karne ke liye
+    container.querySelectorAll('.teacher-toggle').forEach(toggle => {
         toggle.onclick = (e) => {
-            if (e.target.closest('.copy-sem-btn')) return; // Button click par accordion band na ho
-            const content = toggle.nextElementSibling;
-            content.classList.toggle('hidden');
-            toggle.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
+            if (e.target.closest('.edit-t-btn') || e.target.closest('.del-t-btn')) return; 
+            toggle.nextElementSibling.classList.toggle('hidden');
+            const icon = toggle.querySelector('.fa-chevron-down');
+            if (icon) icon.classList.toggle('rotate-180');
         };
     });
 
-    // Copy Button ka Logic
-    container.querySelectorAll('.copy-sem-btn').forEach(btn => {
+   // Semester dropdown (accordion) ko open/close karne ke liye
+    container.querySelectorAll('.sem-toggle').forEach(toggle => {
         btn.onclick = async (e) => {
             e.stopPropagation();
             const tid = btn.dataset.tid;
