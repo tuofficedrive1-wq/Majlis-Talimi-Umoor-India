@@ -95,9 +95,15 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
             const jamiaRecs = allFetchedRecordings.filter(r => r.jamiaName === jamia);
             const count = jamiaRecs.length;
             
-            // YAHAN URL GENERATION FIX KIYA GAYA HAI
+            // YAHAN FOLDER PATH KA MASLA HAL KIYA GAYA HAI
             const cleanUrl = window.location.href.split('?')[0].split('#')[0];
-            const baseUrl = cleanUrl.substring(0, cleanUrl.lastIndexOf('/'));
+            let baseUrl = cleanUrl.substring(0, cleanUrl.lastIndexOf('/'));
+            
+            // Agar folder mein academic-department shamil hai, toh usko remove kar do
+            if (baseUrl.endsWith('/academic-department')) {
+                baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf('/'));
+            }
+            
             const portalLink = `${baseUrl}/tadris-teacher-portal.html?jamiaId=${encodeURIComponent(jamia)}&userId=${currentUser.uid}&activeYear=${encodeURIComponent(academicYear)}&lang=en`;
 
             listHTML += `
