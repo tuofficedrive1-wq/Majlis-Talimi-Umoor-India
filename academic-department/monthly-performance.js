@@ -510,16 +510,17 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                         </div>
                         
                         <!-- SEMESTER ACCORDIONS (NAYA DESIGN) -->
-                        <div class="p-3 space-y-3 bg-slate-50/50">
+                        <div class="p-3 md:p-4 space-y-3 md:space-y-4 bg-slate-50/50">
+                            
                             <!-- SEMESTER 1 BOX -->
-                            <div class="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                                <div class="sem-toggle flex justify-between items-center p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
-                                    <div class="flex items-center gap-2 font-bold text-slate-700 text-sm">
+                            <div class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                <div class="sem-toggle flex justify-between items-center p-2 md:p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
+                                    <div class="flex items-center gap-2 font-bold text-slate-700 text-xs md:text-sm">
                                         <i class="fas fa-chevron-down text-xs transition-transform"></i>
                                         Semester 1 (Apr-Aug) 
-                                        <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm">${sem1Periods.length} Kitabein</span>
+                                        <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm text-slate-500">${sem1Periods.length} Kitabein</span>
                                     </div>
-                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="1" data-to="2">
+                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-3 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="1" data-to="2">
                                         <i class="fas fa-copy mr-1"></i> Sem 2 Me Copy Karein
                                     </button>
                                 </div>
@@ -527,19 +528,27 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                     <div class="overflow-x-auto no-scrollbar w-full bg-white p-1">
                                         <table class="w-full text-left whitespace-nowrap min-w-max">
                                             <thead class="bg-slate-100/50 text-slate-500 uppercase font-black border-b border-slate-200 text-[9px] md:text-xs">
-                                                <tr><th class="p-2 border-r border-slate-100">Class</th><th class="p-2 border-r border-slate-100">Book</th><th class="p-2 border-r border-slate-100 text-center">Pages</th><th class="p-2 border-r border-slate-100 text-center">Syllabus</th><th class="p-2 text-center">Action</th></tr>
+                                                <tr>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100">Class</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100">Book</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Sem</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Pages</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Syllabus</th>
+                                                    <th class="p-2 md:p-3 text-center">Action</th>
+                                                </tr>
                                             </thead>
                                             <tbody class="text-[10px] md:text-sm divide-y divide-slate-100 text-slate-700">
-                                                ${sem1Periods.length === 0 ? `<tr><td colspan="5" class="p-3 text-center text-slate-400 italic font-bold">Koi record nahi hai.</td></tr>` : sem1Periods.map(p => `
+                                                ${sem1Periods.length === 0 ? `<tr><td colspan="6" class="p-3 text-center text-slate-400 italic font-bold">Koi record nahi hai.</td></tr>` : sem1Periods.map(p => `
                                                     <tr class="hover:bg-slate-50 transition-colors">
-                                                        <td class="p-2 border-r border-slate-100">${p.className}</td>
-                                                        <td class="p-2 border-r border-slate-100 font-semibold">${p.bookName}</td>
-                                                        <td class="p-2 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
-                                                        <td class="p-2 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
-                                                        <td class="p-2 text-center">
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 whitespace-normal min-w-[100px] md:min-w-[150px]">${p.className}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 whitespace-normal min-w-[100px] md:min-w-[150px] font-semibold">${p.bookName}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center">${p.semester}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
+                                                        <td class="p-2 md:p-3 text-center">
                                                             <div class="flex justify-center gap-3">
-                                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
-                                                                <button class="del-period-btn text-red-500 hover:text-red-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-times"></i></button>
+                                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition md:text-lg" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
+                                                                <button class="del-period-btn text-red-500 hover:text-red-700 transition md:text-lg" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-times"></i></button>
                                                             </div>
                                                         </td>
                                                     </tr>`).join('')}
@@ -550,14 +559,14 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                             </div>
 
                             <!-- SEMESTER 2 BOX -->
-                            <div class="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                                <div class="sem-toggle flex justify-between items-center p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
-                                    <div class="flex items-center gap-2 font-bold text-slate-700 text-sm">
+                            <div class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                <div class="sem-toggle flex justify-between items-center p-2 md:p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
+                                    <div class="flex items-center gap-2 font-bold text-slate-700 text-xs md:text-sm">
                                         <i class="fas fa-chevron-down text-xs transition-transform"></i>
                                         Semester 2 (Sep-Jan) 
-                                        <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm">${sem2Periods.length} Kitabein</span>
+                                        <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm text-slate-500">${sem2Periods.length} Kitabein</span>
                                     </div>
-                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="2" data-to="1">
+                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-3 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="2" data-to="1">
                                         <i class="fas fa-copy mr-1"></i> Sem 1 Me Copy Karein
                                     </button>
                                 </div>
@@ -565,19 +574,27 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                     <div class="overflow-x-auto no-scrollbar w-full bg-white p-1">
                                         <table class="w-full text-left whitespace-nowrap min-w-max">
                                             <thead class="bg-slate-100/50 text-slate-500 uppercase font-black border-b border-slate-200 text-[9px] md:text-xs">
-                                                <tr><th class="p-2 border-r border-slate-100">Class</th><th class="p-2 border-r border-slate-100">Book</th><th class="p-2 border-r border-slate-100 text-center">Pages</th><th class="p-2 border-r border-slate-100 text-center">Syllabus</th><th class="p-2 text-center">Action</th></tr>
+                                                <tr>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100">Class</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100">Book</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Sem</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Pages</th>
+                                                    <th class="p-2 md:p-3 border-r border-slate-100 text-center">Syllabus</th>
+                                                    <th class="p-2 md:p-3 text-center">Action</th>
+                                                </tr>
                                             </thead>
                                             <tbody class="text-[10px] md:text-sm divide-y divide-slate-100 text-slate-700">
-                                                ${sem2Periods.length === 0 ? `<tr><td colspan="5" class="p-3 text-center text-slate-400 italic font-bold">Koi record nahi hai.</td></tr>` : sem2Periods.map(p => `
+                                                ${sem2Periods.length === 0 ? `<tr><td colspan="6" class="p-3 text-center text-slate-400 italic font-bold">Koi record nahi hai.</td></tr>` : sem2Periods.map(p => `
                                                     <tr class="hover:bg-slate-50 transition-colors">
-                                                        <td class="p-2 border-r border-slate-100">${p.className}</td>
-                                                        <td class="p-2 border-r border-slate-100 font-semibold">${p.bookName}</td>
-                                                        <td class="p-2 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
-                                                        <td class="p-2 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
-                                                        <td class="p-2 text-center">
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 whitespace-normal min-w-[100px] md:min-w-[150px]">${p.className}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 whitespace-normal min-w-[100px] md:min-w-[150px] font-semibold">${p.bookName}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center">${p.semester}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
+                                                        <td class="p-2 md:p-3 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
+                                                        <td class="p-2 md:p-3 text-center">
                                                             <div class="flex justify-center gap-3">
-                                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
-                                                                <button class="del-period-btn text-red-500 hover:text-red-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-times"></i></button>
+                                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition md:text-lg" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
+                                                                <button class="del-period-btn text-red-500 hover:text-red-700 transition md:text-lg" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-times"></i></button>
                                                             </div>
                                                         </td>
                                                     </tr>`).join('')}
