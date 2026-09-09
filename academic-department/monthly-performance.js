@@ -456,9 +456,9 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
             listDiv.innerHTML = jamiaData.teachers.map(t => {
                 const uniqueId = t.id;
-                
-                // NAYI LINE YAHAN ADD KAREIN: Current month ke hisab se active semester nikalein
-                const activeSem = gActiveSem2Months.includes(currentSelectedMonth) ? "2" : "1";
+                // NAYA: Dono semesters ke periods alag alag filter karein
+                const sem1Periods = (t.periods || []).filter(p => p.semester == "1" || p.semester == 1);
+                const sem2Periods = (t.periods || []).filter(p => p.semester == "2" || p.semester == 2);
 
                 return `
                 <div class="border border-slate-200 rounded-xl bg-white mb-3 shadow-sm overflow-hidden" id="teacher-card-${uniqueId}">
@@ -509,44 +509,85 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                             </div>
                         </div>
                         
-                        <!-- Compact Table (No extra outer card padding) -->
-                        <div class="overflow-x-auto no-scrollbar w-full bg-white">
-                            <table class="w-full text-left whitespace-nowrap min-w-max">
-                                <thead>
-                                    <tr class="bg-slate-100/50 text-slate-500 uppercase font-black border-b border-slate-200 text-[9px] md:text-xs">
-                                        <th class="p-2 md:p-3 border-r border-slate-100">Class</th>
-                                        <th class="p-2 md:p-3 border-r border-slate-100">Book</th>
-                                        <th class="p-2 md:p-3 border-r border-slate-100 text-center">Sem</th>
-                                        <th class="p-2 md:p-3 border-r border-slate-100 text-center">Pages</th>
-                                        <th class="p-2 md:p-3 border-r border-slate-100 text-center">Syllabus</th>
-                                        <th class="p-2 md:p-3 text-center">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="text-[10px] md:text-sm divide-y divide-slate-100 text-slate-700">
-                                    ${(t.periods || []).map(p => `
-                                        <tr class="hover:bg-slate-50 transition-colors">
-                                            <td class="p-2 md:p-3 border-r border-slate-100 whitespace-normal min-w-[100px] md:min-w-[150px]">${p.className}</td>
-                                            <td class="p-2 md:p-3 border-r border-slate-100 whitespace-normal min-w-[100px] md:min-w-[150px] font-semibold">${p.bookName}</td>
-                                            <td class="p-2 md:p-3 border-r border-slate-100 text-center">${p.semester}</td>
-                                            <td class="p-2 md:p-3 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
-                                            <td class="p-2 md:p-3 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
-                                            <td class="p-2 md:p-3 text-center">
-                                                <div class="flex justify-center gap-3">
-                                                    <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition md:text-lg" 
-                                                            data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}">
-                                                        <i class="fas fa-edit"></i>
-                                                    </button>
-                                                    <button class="del-period-btn text-red-500 hover:text-red-700 transition md:text-lg" 
-                                                            data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}">
-                                                        <i class="fas fa-times"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>`).join('')}
-                                </tbody>
-                            </table>
+                        <!-- SEMESTER ACCORDIONS (NAYA DESIGN) -->
+                        <div class="p-3 space-y-3 bg-slate-50/50">
+                            <!-- SEMESTER 1 BOX -->
+                            <div class="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                                <div class="sem-toggle flex justify-between items-center p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
+                                    <div class="flex items-center gap-2 font-bold text-slate-700 text-sm">
+                                        <i class="fas fa-chevron-down text-xs transition-transform"></i>
+                                        Semester 1 (Apr-Aug) 
+                                        <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm">${sem1Periods.length} Kitabein</span>
+                                    </div>
+                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="1" data-to="2">
+                                        <i class="fas fa-copy mr-1"></i> Sem 2 Me Copy Karein
+                                    </button>
+                                </div>
+                                <div class="sem-content hidden border-t border-slate-100">
+                                    <div class="overflow-x-auto no-scrollbar w-full bg-white p-1">
+                                        <table class="w-full text-left whitespace-nowrap min-w-max">
+                                            <thead class="bg-slate-100/50 text-slate-500 uppercase font-black border-b border-slate-200 text-[9px] md:text-xs">
+                                                <tr><th class="p-2 border-r border-slate-100">Class</th><th class="p-2 border-r border-slate-100">Book</th><th class="p-2 border-r border-slate-100 text-center">Pages</th><th class="p-2 border-r border-slate-100 text-center">Syllabus</th><th class="p-2 text-center">Action</th></tr>
+                                            </thead>
+                                            <tbody class="text-[10px] md:text-sm divide-y divide-slate-100 text-slate-700">
+                                                ${sem1Periods.length === 0 ? `<tr><td colspan="5" class="p-3 text-center text-slate-400 italic font-bold">Koi record nahi hai.</td></tr>` : sem1Periods.map(p => `
+                                                    <tr class="hover:bg-slate-50 transition-colors">
+                                                        <td class="p-2 border-r border-slate-100">${p.className}</td>
+                                                        <td class="p-2 border-r border-slate-100 font-semibold">${p.bookName}</td>
+                                                        <td class="p-2 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
+                                                        <td class="p-2 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
+                                                        <td class="p-2 text-center">
+                                                            <div class="flex justify-center gap-3">
+                                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
+                                                                <button class="del-period-btn text-red-500 hover:text-red-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-times"></i></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>`).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SEMESTER 2 BOX -->
+                            <div class="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                                <div class="sem-toggle flex justify-between items-center p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
+                                    <div class="flex items-center gap-2 font-bold text-slate-700 text-sm">
+                                        <i class="fas fa-chevron-down text-xs transition-transform"></i>
+                                        Semester 2 (Sep-Jan) 
+                                        <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm">${sem2Periods.length} Kitabein</span>
+                                    </div>
+                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="2" data-to="1">
+                                        <i class="fas fa-copy mr-1"></i> Sem 1 Me Copy Karein
+                                    </button>
+                                </div>
+                                <div class="sem-content hidden border-t border-slate-100">
+                                    <div class="overflow-x-auto no-scrollbar w-full bg-white p-1">
+                                        <table class="w-full text-left whitespace-nowrap min-w-max">
+                                            <thead class="bg-slate-100/50 text-slate-500 uppercase font-black border-b border-slate-200 text-[9px] md:text-xs">
+                                                <tr><th class="p-2 border-r border-slate-100">Class</th><th class="p-2 border-r border-slate-100">Book</th><th class="p-2 border-r border-slate-100 text-center">Pages</th><th class="p-2 border-r border-slate-100 text-center">Syllabus</th><th class="p-2 text-center">Action</th></tr>
+                                            </thead>
+                                            <tbody class="text-[10px] md:text-sm divide-y divide-slate-100 text-slate-700">
+                                                ${sem2Periods.length === 0 ? `<tr><td colspan="5" class="p-3 text-center text-slate-400 italic font-bold">Koi record nahi hai.</td></tr>` : sem2Periods.map(p => `
+                                                    <tr class="hover:bg-slate-50 transition-colors">
+                                                        <td class="p-2 border-r border-slate-100">${p.className}</td>
+                                                        <td class="p-2 border-r border-slate-100 font-semibold">${p.bookName}</td>
+                                                        <td class="p-2 border-r border-slate-100 text-center font-bold text-indigo-700">${p.totalPages}</td>
+                                                        <td class="p-2 border-r border-slate-100 text-center text-emerald-600 font-bold">${p.syllabus || 'Majlis'}</td>
+                                                        <td class="p-2 text-center">
+                                                            <div class="flex justify-center gap-3">
+                                                                <button class="edit-period-btn text-indigo-500 hover:text-indigo-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-edit"></i></button>
+                                                                <button class="del-period-btn text-red-500 hover:text-red-700 transition" data-pid="${p.id}" data-tid="${uniqueId}" data-jamia="${jamia}"><i class="fas fa-times"></i></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>`).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <!-- Table End -->
+                        <!-- SEMESTER ACCORDIONS END -->
                     </div>
                 </div>`;
             }).join('');
@@ -829,11 +870,59 @@ const attachDropdownEvents = (container, config) => {
 };
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
-    container.querySelectorAll('.teacher-toggle').forEach(toggle => {
+   // Semester dropdown (accordion) ko open/close karne ke liye
+    container.querySelectorAll('.sem-toggle').forEach(toggle => {
         toggle.onclick = (e) => {
-            if (e.target.closest('.edit-t-btn') || e.target.closest('.del-t-btn')) return; 
-            toggle.nextElementSibling.classList.toggle('hidden');
+            if (e.target.closest('.copy-sem-btn')) return; // Button click par accordion band na ho
+            const content = toggle.nextElementSibling;
+            content.classList.toggle('hidden');
             toggle.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
+        };
+    });
+
+    // Copy Button ka Logic
+    container.querySelectorAll('.copy-sem-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            const tid = btn.dataset.tid;
+            const jamiaName = btn.dataset.jamia;
+            const fromSem = btn.dataset.from;
+            const toSem = btn.dataset.to;
+
+            if (!confirm(`Kya aap Sem ${fromSem} ki saari kitabein Sem ${toSem} me copy karna chahte hain?`)) return;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Copying...`;
+
+            try {
+                await updateTeacherData(db, currentUser, jamiaName, selectedYear, (teachers) => {
+                    const tIndex = teachers.findIndex(teach => teach.id === tid);
+                    if (tIndex > -1) {
+                        const periods = teachers[tIndex].periods || [];
+                        const periodsToCopy = periods.filter(p => p.semester == fromSem);
+                        
+                        // Nayi IDs generate karke duplicate periods banayein
+                        const newPeriods = periodsToCopy.map((p, idx) => ({
+                            id: `p-${Date.now()}-${idx}`,
+                            className: p.className,
+                            bookName: p.bookName,
+                            semester: toSem, // Target semester update kiya
+                            totalPages: p.totalPages,
+                            syllabus: p.syllabus
+                        }));
+                        
+                        teachers[tIndex].periods = [...periods, ...newPeriods];
+                    }
+                    return teachers;
+                });
+
+                alert(`Data Sem ${toSem} me successfully copy ho gaya!`);
+                loadAllTeachers(jamiaat, db, currentUser, selectedYear);
+            } catch (err) {
+                alert("Error: " + err.message);
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-copy mr-1"></i> Sem ${toSem} Me Copy Karein`;
+            }
         };
     });
 
