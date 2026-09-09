@@ -456,6 +456,10 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
             listDiv.innerHTML = jamiaData.teachers.map(t => {
                 const uniqueId = t.id;
+                
+                // ERROR FIX: activeSem ko yahan define karna zaroori hai taake naye period form ko current month pata chal sake
+                const activeSem = gActiveSem2Months.includes(currentSelectedMonth) ? "2" : "1";
+                
                 // NAYA: Dono semesters ke periods alag alag filter karein
                 const sem1Periods = (t.periods || []).filter(p => p.semester == "1" || p.semester == 1);
                 const sem2Periods = (t.periods || []).filter(p => p.semester == "2" || p.semester == 2);
