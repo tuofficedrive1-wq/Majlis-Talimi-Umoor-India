@@ -649,14 +649,18 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         <tbody class="text-xs md:text-sm text-slate-700 divide-y divide-slate-100">`;
 
             jamiaData.teachers.forEach((teacher) => {
-                const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
-                const totalPeriodsCount = teacher.periods?.length || 0;
+    const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
+    
+    // NAYA: Current mahine ka semester pata lagayein aur sirf usi semester ke periods filter karein
+    const currentSemester = gActiveSem2Months.includes(targetMonthKey) ? "2" : "1";
+    const filteredPeriods = (teacher.periods || []).filter(p => p.semester == currentSemester);
+    const totalPeriodsCount = filteredPeriods.length;
 
-                let totalTeacherTarget = 0;
-                let totalTeacherAchieved = 0;
-                let firstPeriodSemester = 1;
+    let totalTeacherTarget = 0;
+    let totalTeacherAchieved = 0;
+    let firstPeriodSemester = 1;
 
-                teacher.periods?.forEach((p, pIdx) => {
+    filteredPeriods.forEach((p, pIdx) => {
                     // ... (Yahan target aur achieved calculate karne ka purana logic same rahega, usko change nahi karna hai) ...
                     let target = 0;
                     const exactSubId = `${(p.className || "").trim()}_${(p.bookName || "").trim()}`.replace(/\s+/g, '_');
