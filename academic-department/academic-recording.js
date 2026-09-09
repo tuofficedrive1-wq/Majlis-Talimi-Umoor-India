@@ -94,7 +94,10 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
         assignedJamiaat.forEach(jamia => {
             const jamiaRecs = allFetchedRecordings.filter(r => r.jamiaName === jamia);
             const count = jamiaRecs.length;
-            const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+            
+            // YAHAN URL GENERATION FIX KIYA GAYA HAI
+            const cleanUrl = window.location.href.split('?')[0].split('#')[0];
+            const baseUrl = cleanUrl.substring(0, cleanUrl.lastIndexOf('/'));
             const portalLink = `${baseUrl}/tadris-teacher-portal.html?jamiaId=${encodeURIComponent(jamia)}&userId=${currentUser.uid}&activeYear=${encodeURIComponent(academicYear)}&lang=en`;
 
             listHTML += `
