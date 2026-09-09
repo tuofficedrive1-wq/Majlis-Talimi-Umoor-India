@@ -28,7 +28,7 @@ let gActiveSem2Months = [];
 // Current month default set rahega
 let currentSelectedMonth = monthNames[new Date().getMonth()]; 
 
-// Academic Admin ki settings fetch karne ka function (Naya function jo 0 days walo ko hata dega)
+// Academic Admin ki settings fetch karne ka function
 async function getAcademicConfig(db) {
     if (!academicConfig) {
         const [calSnap, configSnap] = await Promise.all([
@@ -40,28 +40,35 @@ async function getAcademicConfig(db) {
         academicConfig = { ...confData, ...calData };
     }
 
-    // Dynamic Mahine check karna (Jisme 0 days hain unhe skip karna)
-    if (gActiveSem1Months.length === 0 || gActiveSem2Months.length === 0) {
-        let s1 = [], s2 = [];
-        monthNames.forEach((m, idx) => {
-            let sem1Days = 0, sem2Days = 0;
-            if (academicConfig.months && academicConfig.months[m]) {
-                sem1Days = parseInt(academicConfig.months[m].sem1) || 0;
-                sem2Days = parseInt(academicConfig.months[m].sem2) || 0;
-            } else if (academicConfig.monthDetails && academicConfig.monthDetails[idx]) {
-                sem1Days = parseInt(academicConfig.monthDetails[idx].sem1) || 0;
-                sem2Days = parseInt(academicConfig.monthDetails[idx].sem2) || 0;
-            }
-            if (sem1Days > 0) s1.push(m);
-            if (sem2Days > 0) s2.push(m);
-        });
+    // ERROR FIX: DB me keys 's1' aur 's2' ke naam se save hoti hain
+    let s1 = [], s2 = [];
+    monthNames.forEach((m) => {
+        let sem1Days = 0, sem2Days = 0;
+        if (academicConfig.months && academicConfig.months[m]) {
+            sem1Days = parseInt(academicConfig.months[m].s1) || 0;
+            sem2Days = parseInt(academicConfig.months[m].s2) || 0;
+        }
+        if (sem1Days > 0) s1.push(m);
+        if (sem2Days > 0) s2.push(m);
+    });
 
-        gActiveSem1Months = s1.length > 0 ? s1 : ["apr", "may", "jun", "jul", "aug"];
-        gActiveSem2Months = s2.length > 0 ? s2 : ["sep", "oct", "nov", "dec", "jan", "feb", "mar"];
-    }
+    gActiveSem1Months = s1.length > 0 ? s1 : ["apr", "may", "jun", "jul", "aug"];
+    gActiveSem2Months = s2.length > 0 ? s2 : ["sep", "oct", "nov", "dec", "jan", "feb", "mar"];
 
     return academicConfig;
 }
+
+// NAYA FUNCTION: Jo Calendar ke dino ke hisab se exact active semester batayega
+window.getActiveSemesterForMonth = (monthKey) => {
+    if (academicConfig && academicConfig.months && academicConfig.months[monthKey]) {
+        const d1 = parseInt(academicConfig.months[monthKey].s1) || 0;
+        const d2 = parseInt(academicConfig.months[monthKey].s2) || 0;
+        // Agar kisi mahine me dono sem ke din hain, to jisme zyada din hain wahi active hoga
+        if (d2 > 0 && d2 >= d1) return "2";
+        if (d1 > 0) return "1";
+    }
+    return gActiveSem2Months.includes(monthKey) ? "2" : "1";
+};
 
 // Add this helper near the top of monthly-performance.js
 const getActiveShortMonth = () => {
@@ -457,8 +464,8 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
             listDiv.innerHTML = jamiaData.teachers.map(t => {
                 const uniqueId = t.id;
                 
-                // ERROR FIX: activeSem ko yahan define karna zaroori hai taake naye period form ko current month pata chal sake
-                const activeSem = gActiveSem2Months.includes(currentSelectedMonth) ? "2" : "1";
+                // ERROR FIX: activeSem ko yahan define karna zaroori hai
+                const activeSem = window.getActiveSemesterForMonth(currentSelectedMonth);
                 
                 // NAYA: Dono semesters ke periods alag alag filter karein
                 const sem1Periods = (t.periods || []).filter(p => p.semester == "1" || p.semester == 1);
@@ -713,8 +720,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             jamiaData.teachers.forEach((teacher) => {
     const publicTeacher = publicMonthData?.teachers?.find(t => t.name.toLowerCase() === teacher.name.toLowerCase());
     
-    // NAYA: Current mahine ka semester pata lagayein aur sirf usi semester ke periods filter karein
-    const currentSemester = gActiveSem2Months.includes(targetMonthKey) ? "2" : "1";
+   // NAYA: Calendar ke din padh kar decide karega ki abhi konsa semester chal raha hai
+    const currentSemester = window.getActiveSemesterForMonth(targetMonthKey);
     const filteredPeriods = (teacher.periods || []).filter(p => p.semester == currentSemester);
     const totalPeriodsCount = filteredPeriods.length;
 
@@ -1657,8 +1664,8 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         const targetMonthKey = monthNames[monthIdx];
         const currentYearMonthPrefix = `${gSummaryActiveYear.split('-')[0]}-${monthIdx + 1 < 10 ? '0' + (monthIdx + 1) : monthIdx + 1}`;
         
-        // DYNAMIC SEMESTER & MONTHS LINKED TO YOUR DB
-        const semester = gActiveSem1Months.includes(targetMonthKey) ? "1" : "2";
+       // DYNAMIC SEMESTER & MONTHS LINKED TO YOUR DB
+        const semester = window.getActiveSemesterForMonth(targetMonthKey);
         const allSemMonths = semester === "1" ? gActiveSem1Months : gActiveSem2Months;
         
         // 🎯 NAYA LOGIC: Selected mahine tak hi columns ko limit karna
