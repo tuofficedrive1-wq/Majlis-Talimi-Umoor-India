@@ -456,6 +456,10 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
 
             listDiv.innerHTML = jamiaData.teachers.map(t => {
                 const uniqueId = t.id;
+                
+                // NAYI LINE YAHAN ADD KAREIN: Current month ke hisab se active semester nikalein
+                const activeSem = gActiveSem2Months.includes(currentSelectedMonth) ? "2" : "1";
+
                 return `
                 <div class="border border-slate-200 rounded-xl bg-white mb-3 shadow-sm overflow-hidden" id="teacher-card-${uniqueId}">
                     <!-- Teacher Header -->
@@ -488,7 +492,10 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                     <datalist id="books-${uniqueId}"></datalist>
                                 </div>
                                 <div>
-                                    <select class="p-sem w-full p-2 md:p-2.5 border border-slate-300 focus:border-indigo-400 rounded-lg text-xs md:text-sm bg-white outline-none transition"><option value="1">Sem 1</option><option value="2">Sem 2</option></select>
+                                    <select class="p-sem w-full p-2 md:p-2.5 border border-slate-300 focus:border-indigo-400 rounded-lg text-xs md:text-sm bg-white outline-none transition">
+                                        <option value="1" ${activeSem === '1' ? 'selected' : ''}>Sem 1</option>
+                                        <option value="2" ${activeSem === '2' ? 'selected' : ''}>Sem 2</option>
+                                    </select>
                                 </div>
                                 <div>
                                     <input type="number" placeholder="Pages" class="p-pages w-full p-2 md:p-2.5 border border-slate-300 focus:border-indigo-400 rounded-lg text-xs md:text-sm bg-white outline-none transition">
