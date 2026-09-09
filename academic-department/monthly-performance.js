@@ -892,18 +892,30 @@ const attachDropdownEvents = (container, config) => {
 
 const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) => {
     
-    // NAYA ADD KIYA GAYA: Teacher ka main dropdown open/close karne ke liye
+    // 1. Teacher ka main dropdown open/close karne ke liye
     container.querySelectorAll('.teacher-toggle').forEach(toggle => {
         toggle.onclick = (e) => {
             if (e.target.closest('.edit-t-btn') || e.target.closest('.del-t-btn')) return; 
-            toggle.nextElementSibling.classList.toggle('hidden');
+            const content = toggle.nextElementSibling;
+            if (content) content.classList.toggle('hidden');
             const icon = toggle.querySelector('.fa-chevron-down');
             if (icon) icon.classList.toggle('rotate-180');
         };
     });
 
-   // Semester dropdown (accordion) ko open/close karne ke liye
+    // 2. Semester dropdown (accordion) ko open/close karne ke liye
     container.querySelectorAll('.sem-toggle').forEach(toggle => {
+        toggle.onclick = (e) => {
+            if (e.target.closest('.copy-sem-btn')) return; 
+            const content = toggle.nextElementSibling;
+            if (content) content.classList.toggle('hidden');
+            const icon = toggle.querySelector('.fa-chevron-down');
+            if (icon) icon.classList.toggle('rotate-180');
+        };
+    });
+
+    // 3. Copy Button Ka Logic
+    container.querySelectorAll('.copy-sem-btn').forEach(btn => {
         btn.onclick = async (e) => {
             e.stopPropagation();
             const tid = btn.dataset.tid;
@@ -913,6 +925,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
 
             if (!confirm(`Kya aap Sem ${fromSem} ki saari kitabein Sem ${toSem} me copy karna chahte hain?`)) return;
 
+            const originalHtml = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Copying...`;
 
@@ -921,7 +934,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                     const tIndex = teachers.findIndex(teach => teach.id === tid);
                     if (tIndex > -1) {
                         const periods = teachers[tIndex].periods || [];
-                        const periodsToCopy = periods.filter(p => p.semester == fromSem);
+                        const periodsToCopy = periods.filter(p => String(p.semester) === String(fromSem));
                         
                         // Nayi IDs generate karke duplicate periods banayein
                         const newPeriods = periodsToCopy.map((p, idx) => ({
@@ -930,7 +943,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                             bookName: p.bookName,
                             semester: toSem, // Target semester update kiya
                             totalPages: p.totalPages,
-                            syllabus: p.syllabus
+                            syllabus: p.syllabus || 'Majlis'
                         }));
                         
                         teachers[tIndex].periods = [...periods, ...newPeriods];
@@ -943,11 +956,12 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
             } catch (err) {
                 alert("Error: " + err.message);
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fas fa-copy mr-1"></i> Sem ${toSem} Me Copy Karein`;
+                btn.innerHTML = originalHtml;
             }
         };
     });
 
+    // 4. Edit Teacher Profile
     container.querySelectorAll('.edit-t-btn').forEach(btn => {
         btn.onclick = async (e) => {
             e.stopPropagation();
@@ -982,6 +996,7 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
         };
     });
 
+    // 5. Delete Period / Teacher
     container.querySelectorAll('.del-period-btn, .del-t-btn').forEach(btn => {
         btn.onclick = async () => {
             if (!confirm("Are you sure?")) return;
@@ -990,13 +1005,16 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                 if (isPeriod) {
                     const t = teachers.find(te => te.id === btn.dataset.tid);
                     t.periods = t.periods.filter(p => p.id !== btn.dataset.pid);
-                } else { teachers = teachers.filter(t => t.id !== btn.dataset.tid); }
+                } else { 
+                    teachers = teachers.filter(t => t.id !== btn.dataset.tid); 
+                }
                 return teachers;
             });
             loadAllTeachers(jamiaat, db, currentUser, selectedYear);
         };
     });
 
+    // 6. Save New Period
     container.querySelectorAll('.save-period-btn').forEach(btn => {
         btn.onclick = async () => {
             const tid = btn.dataset.tid;
@@ -1047,96 +1065,97 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
 
     window.closePeriodModal = () => document.getElementById('edit-period-modal').classList.add('hidden');
 
+    // 7. Edit Period Modal
     container.querySelectorAll('.edit-period-btn').forEach(btn => {
-    btn.onclick = async () => {
-        const { pid, tid, jamia } = btn.dataset;
-        
-        const [configSnap, userSnap] = await Promise.all([
-            getDoc(doc(db, "settings", "academic_admin_config")),
-            getDoc(doc(db, "users", currentUser.uid))
-        ]);
+        btn.onclick = async () => {
+            const { pid, tid, jamia } = btn.dataset;
+            
+            const [configSnap, userSnap] = await Promise.all([
+                getDoc(doc(db, "settings", "academic_admin_config")),
+                getDoc(doc(db, "users", currentUser.uid))
+            ]);
 
-        if (!configSnap.exists()) return alert("Config not found!");
+            if (!configSnap.exists()) return alert("Config not found!");
 
-        const currentConfig = configSnap.data();
-        const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
-        const jamiaData = structure.find(j => j.jamiaName === jamia);
-        const teacher = jamiaData?.teachers.find(t => t.id === tid);
-        const period = teacher?.periods.find(p => p.id === pid);
+            const currentConfig = configSnap.data();
+            const structure = userSnap.data().academicYears?.[selectedYear]?.karkardagiStructure || [];
+            const jamiaData = structure.find(j => j.jamiaName === jamia);
+            const teacher = jamiaData?.teachers.find(t => t.id === tid);
+            const period = teacher?.periods.find(p => p.id === pid);
 
-        if (!period) return alert("Period not found!");
+            if (!period) return alert("Period not found!");
 
-        const classInput = document.getElementById('edit-p-class');
-        const bookInput = document.getElementById('edit-p-book');
-        const classDatalist = document.getElementById('edit-class-suggestions');
-        const bookDatalist = document.getElementById('edit-book-suggestions');
-        const updateBtn = document.getElementById('btn-update-period');
+            const classInput = document.getElementById('edit-p-class');
+            const bookInput = document.getElementById('edit-p-book');
+            const classDatalist = document.getElementById('edit-class-suggestions');
+            const bookDatalist = document.getElementById('edit-book-suggestions');
+            const updateBtn = document.getElementById('btn-update-period');
 
-        if (!classInput || !bookInput || !classDatalist || !bookDatalist) {
-            return alert("Modal elements nahi mile. Refresh karein.");
-        }
-
-        classDatalist.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}"></option>`).join('');
-        classInput.value = period.className;
-
-        const loadModalBooks = (className) => {
-            bookDatalist.innerHTML = '';
-            const cls = currentConfig.classes.find(c => c.name === className);
-            if (cls?.subjects) {
-                cls.subjects.forEach(s => {
-                    bookDatalist.innerHTML += `<option value="${s}"></option>`;
-                });
+            if (!classInput || !bookInput || !classDatalist || !bookDatalist) {
+                return alert("Modal elements nahi mile. Refresh karein.");
             }
-        };
 
-        loadModalBooks(period.className);
-        bookInput.value = period.bookName;
+            classDatalist.innerHTML = currentConfig.classes.map(c => `<option value="${c.name}"></option>`).join('');
+            classInput.value = period.className;
 
-        classInput.oninput = (e) => loadModalBooks(e.target.value);
-        classInput.onchange = (e) => loadModalBooks(e.target.value);
-
-        document.getElementById('edit-p-sem').value = period.semester || "1";
-        document.getElementById('edit-p-pages').value = period.totalPages || 0;
-        document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
-
-        updateBtn.onclick = async (e) => {
-            e.preventDefault(); 
-            updateBtn.disabled = true;
-            updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
-
-            const updatedObj = {
-                id: pid,
-                className: classInput.value.trim(),
-                bookName: bookInput.value.trim(),
-                semester: document.getElementById('edit-p-sem').value,
-                totalPages: parseInt(document.getElementById('edit-p-pages').value) || 0,
-                syllabus: document.getElementById('edit-p-syllabus').value
+            const loadModalBooks = (className) => {
+                bookDatalist.innerHTML = '';
+                const cls = currentConfig.classes.find(c => c.name === className);
+                if (cls?.subjects) {
+                    cls.subjects.forEach(s => {
+                        bookDatalist.innerHTML += `<option value="${s}"></option>`;
+                    });
+                }
             };
 
-            try {
-                await updateTeacherData(db, currentUser, jamia, selectedYear, (teachers) => {
-                    const tIndex = teachers.findIndex(teach => teach.id === tid);
-                    if (tIndex > -1) {
-                        const pIndex = teachers[tIndex].periods.findIndex(p => p.id === pid);
-                        if (pIndex > -1) teachers[tIndex].periods[pIndex] = updatedObj;
-                    }
-                    return teachers;
-                });
+            loadModalBooks(period.className);
+            bookInput.value = period.bookName;
 
-                closePeriodModal();
-                loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear); 
-                alert("Updated!");
-            } catch (err) {
-                alert("Error: " + err.message);
-            } finally {
-                updateBtn.disabled = false;
-                updateBtn.innerText = 'Update Data';
-            }
+            classInput.oninput = (e) => loadModalBooks(e.target.value);
+            classInput.onchange = (e) => loadModalBooks(e.target.value);
+
+            document.getElementById('edit-p-sem').value = period.semester || "1";
+            document.getElementById('edit-p-pages').value = period.totalPages || 0;
+            document.getElementById('edit-p-syllabus').value = period.syllabus || 'Majlis';
+
+            updateBtn.onclick = async (e) => {
+                e.preventDefault(); 
+                updateBtn.disabled = true;
+                updateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+                const updatedObj = {
+                    id: pid,
+                    className: classInput.value.trim(),
+                    bookName: bookInput.value.trim(),
+                    semester: document.getElementById('edit-p-sem').value,
+                    totalPages: parseInt(document.getElementById('edit-p-pages').value) || 0,
+                    syllabus: document.getElementById('edit-p-syllabus').value
+                };
+
+                try {
+                    await updateTeacherData(db, currentUser, jamia, selectedYear, (teachers) => {
+                        const tIndex = teachers.findIndex(teach => teach.id === tid);
+                        if (tIndex > -1) {
+                            const pIndex = teachers[tIndex].periods.findIndex(p => p.id === pid);
+                            if (pIndex > -1) teachers[tIndex].periods[pIndex] = updatedObj;
+                        }
+                        return teachers;
+                    });
+
+                    closePeriodModal();
+                    loadAllTeachers(jamiaat || gAssignedJamiaat, db, currentUser, selectedYear); 
+                    alert("Updated!");
+                } catch (err) {
+                    alert("Error: " + err.message);
+                } finally {
+                    updateBtn.disabled = false;
+                    updateBtn.innerText = 'Update Data';
+                }
+            };
+
+            document.getElementById('edit-period-modal').classList.remove('hidden');
         };
-
-        document.getElementById('edit-period-modal').classList.remove('hidden');
-    };
-});
+    });
 };
 
 async function updateTeacherData(db, currentUser, jamiaName, selectedYear, updateFn) {
