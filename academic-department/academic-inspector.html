@@ -8,7 +8,6 @@
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- html2canvas + jspdf removed: not referenced anywhere in this file. downloadChart() uses native Canvas toDataURL() instead. -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
@@ -390,9 +389,6 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        // getFirestore(app) ki jagah initializeFirestore + persistentLocalCache -
-        // isse baar baar aane wale visitors ke liye Firestore IndexedDB cache use karta hai,
-        // jo network wait ko kam karta hai jab wahi data phir se maanga jaye.
         const db = initializeFirestore(app, {
             localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
         });
@@ -402,37 +398,30 @@
         let assignedJamiaat = [];
         let allReports = [];
         let reportsData = null;
-        // Cache: "users/{uid}" ek hi baar fetch hota hai, phir yahan se reuse hota hai
-        // (pehle ye document initDashboard, loadStats, aur loadInspectorTestSummary teeno mein alag alag fetch ho raha tha)
+        
         window.currentUserData = null;
-        // Cache: monthly_test_sheets ka result month ke hisab se store hota hai
-        // taake loadStats() aur loadInspectorTestSummary() same mahine ka data dobara na maangein
         window.testSheetsCache = {};
-        // --- NAYA FUNCTION: Admin Dashboard Sync Listener ---
-window.allReports = [];
-let adminReportUnsubscribe = null; // Mahina badalne par purana listener rokne ke liye
+        window.allReports = [];
+        let adminReportUnsubscribe = null; 
 
-window.listenToAdminReports = (selectedMonth) => {
-    // Agar pehle se koi listener chal raha hai to use band karein
-    if (adminReportUnsubscribe) {
-        adminReportUnsubscribe(); 
-    }
-    
-    // Sirf is inspector ki aur is mahine ki reports fetch karein
-    const q = query(
-        collection(db, "inspection_reports"), 
-        where("month", "==", selectedMonth),
-        where("inspectorId", "==", currentUser.uid)
-    );
-    
-    adminReportUnsubscribe = onSnapshot(q, (snapshot) => {
-        window.allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Data aate hi list ko refresh kar dein
-        if (typeof window.renderInspectionList === 'function' && assignedJamiaat && assignedJamiaat.length > 0) {
-            window.renderInspectionList();
-        }
-    });
-};
+        window.listenToAdminReports = (selectedMonth) => {
+            if (adminReportUnsubscribe) {
+                adminReportUnsubscribe(); 
+            }
+            
+            const q = query(
+                collection(db, "inspection_reports"), 
+                where("month", "==", selectedMonth),
+                where("inspectorId", "==", currentUser.uid)
+            );
+            
+            adminReportUnsubscribe = onSnapshot(q, (snapshot) => {
+                window.allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (typeof window.renderInspectionList === 'function' && assignedJamiaat && assignedJamiaat.length > 0) {
+                    window.renderInspectionList();
+                }
+            });
+        };
 
         // AUTH CHECK
         onAuthStateChanged(auth, async user => {
@@ -463,7 +452,7 @@ window.listenToAdminReports = (selectedMonth) => {
                 const userDoc = await getDoc(doc(db, "users", currentUser.uid));
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
-                    window.currentUserData = userData; // cache kar liya - dobara fetch nahi karna kahin bhi is session mein
+                    window.currentUserData = userData; 
                     const nameElement = document.getElementById('inspector-name');
                     if (nameElement) nameElement.textContent = userData.name || "Inspector";
 
@@ -475,7 +464,7 @@ window.listenToAdminReports = (selectedMonth) => {
                 const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
                 const currentShortMonth = shortMonths[parseInt(month) - 1];
                 handleDashboardMonthChange(currentShortMonth, assignedJamiaat, db, currentUser);
-// 👇🔴 YEH NAYI LINE ADD KAREIN 👇🔴
+
                 window.listenToAdminReports(monthInput.value);
                 await loadStats(); 
             } catch (err) {
@@ -485,7 +474,6 @@ window.listenToAdminReports = (selectedMonth) => {
             }
         }
 
-        // MONTH CHANGE LISTENER
         // MONTH CHANGE LISTENER
         document.getElementById('report-month').addEventListener('change', (e) => {
             if (!e.target.value) return;
@@ -498,8 +486,6 @@ window.listenToAdminReports = (selectedMonth) => {
             if (headerText) headerText.textContent = `${monthNames[parseInt(month)-1]} ${year}`;
 
             handleDashboardMonthChange(selectedShortMonth, assignedJamiaat, db, currentUser);
-            
-            // 👇🔴 YEH NAYI LINE YAHAN BHI ADD KAREIN 👇🔴
             window.listenToAdminReports(e.target.value);
             
             if (typeof loadStats === "function") loadStats();
@@ -511,22 +497,7 @@ window.listenToAdminReports = (selectedMonth) => {
                 }
             }
         });
-
-        // Realtime listener for Admin Sync
-const listenToAdminReports = (userId, selectedMonth) => {
-    const q = query(collection(db, "inspection_reports"), where("month", "==", selectedMonth));
-    onSnapshot(q, (snapshot) => {
-        allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Jaise hi data change hoga (ya admin delete karega), list dobara render ho jayegi
-        if(typeof renderInspectionList === 'function' && assignedJamiaat.length > 0) {
-            renderInspectionList();
-        }
-    });
-};
         
-        // Helper: monthly_test_sheets sirf 1 baar fetch hota hai per month, phir cache se milta hai.
-        // Pehle loadStats() aur loadInspectorTestSummary() dono alag alag isi exact query ko chala rahe the -
-        // matlab Test tab kholte hi same mahine ka data dobara Firestore se download hota tha.
         async function getMonthlyTestSheets(month) {
             if (window.testSheetsCache[month]) {
                 return window.testSheetsCache[month];
@@ -551,10 +522,6 @@ const listenToAdminReports = (userId, selectedMonth) => {
                 const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
                 reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
 
-                // Pehle: assignedJamiaat par sequential for-loop, har jamia ke liye ek awaited read -
-                // ek ke baad ek (15 jamiaat = 15 round-trips, network latency N baar lagti thi).
-                // Ab: sab reads Promise.all se ek saath fire hote hain. Read COUNT same hai
-                // (utne hi documents padhe ja rahe hain), lekin WAIT TIME ~N guna kam ho jata hai.
                 const detailResults = await Promise.all(
                     assignedJamiaat.map(jamia => {
                         const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`;
@@ -587,11 +554,7 @@ const listenToAdminReports = (userId, selectedMonth) => {
                     }
                 });
 
-                // Monthly Test Processing — cache se milta hai, isliye Test tab par jaane par dobara read nahi hota
                 const allSheets = await getMonthlyTestSheets(month);
-
-                // Pehle: "users/{uid}" yahan PHIR SE fetch ho raha tha (initDashboard mein ek baar ho chuka tha).
-                // Ab: initDashboard wali cached copy (window.currentUserData) reuse ho rahi hai - ek extra read bachi.
                 const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
                 const normalizeName = (name) => String(typeof name === 'object' ? (name.name || name.jamiaName || '') : (name || '')).trim().toLowerCase();
 
@@ -744,197 +707,187 @@ const listenToAdminReports = (userId, selectedMonth) => {
             });
         }
 
-// --- UPDATED: RENDER INSPECTION LIST ---
-window.renderInspectionList = () => {
-    const monthInput = document.getElementById('report-month').value;
-    const badge = document.getElementById('inspection-month-badge');
-    if(badge) badge.textContent = monthInput;
-    
-    const saved = (reportsData && reportsData.jaiza) ? reportsData.jaiza : [];
-    let pendingHTML = '';
-    let submittedHTML = '';
-    
-    assignedJamiaat.forEach((jamia, index) => {
-        const adminReport = (window.allReports || []).find(r => r.jamiaName === jamia && r.inspectorId === currentUser.uid && r.month === monthInput);
-        const isSubmitted = !!adminReport;
-
-        const draftEntry = saved.find(s => s.name === jamia) || {};
-        let entry = isSubmitted ? adminReport : draftEntry;
-        
-        let inputPlaceholder = "Select type first...";
-        let inputType = "text";
-        
-        if (entry.type === 'Visit') {
-            inputPlaceholder = "Visit details...";
-        } else if (entry.type === 'Not Conduct') {
-            inputPlaceholder = "Reason...";
-        } else if (entry.type === 'Inspection') {
-            inputPlaceholder = "Score%";
-            inputType = "number";
-        }
-        
-        const isDisabled = isSubmitted ? 'disabled bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white focus:ring-1 focus:ring-indigo-500';
-
-        const rowHTML = `
-        <div class="inspection-row flex flex-col md:flex-row items-stretch md:items-center gap-2.5 p-3 border ${isSubmitted ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'} rounded-xl transition-colors">
-            <div class="md:w-1/4 font-bold text-slate-700 text-sm pl-1 flex items-center gap-2">
-                ${isSubmitted ? '<i class="fas fa-check text-emerald-500"></i>' : '<i class="fas fa-circle-notch text-red-400 text-[10px]"></i>'}
-                ${jamia}
-            </div>
+        window.renderInspectionList = () => {
+            const monthInput = document.getElementById('report-month').value;
+            const badge = document.getElementById('inspection-month-badge');
+            if(badge) badge.textContent = monthInput;
             
-            <div class="flex gap-2 w-full md:w-auto flex-1">
-                <input type="date" ${isDisabled} ${entry.type === 'Not Conduct' ? 'disabled' : ''} class="insp-date w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm ${entry.type === 'Not Conduct' ? 'bg-slate-100 cursor-not-allowed opacity-50' : ''}" value="${entry.date || ''}">
-                <select ${isDisabled} class="insp-type w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-semibold" onchange="handleTypeChange(this, ${index})">
-                    <option value="" ${!entry.type ? 'selected' : ''} disabled>Select Option</option>
-                    <option value="Inspection" ${entry.type === 'Inspection' ? 'selected' : ''}>Inspection</option>
-                    <option value="Visit" ${entry.type === 'Visit' ? 'selected' : ''}>Visit</option>
-                    <option value="Not Conduct" ${entry.type === 'Not Conduct' ? 'selected' : ''}>Not Conduct</option>
-                </select>
-            </div>
+            const saved = (reportsData && reportsData.jaiza) ? reportsData.jaiza : [];
+            let pendingHTML = '';
+            let submittedHTML = '';
+            
+            assignedJamiaat.forEach((jamia, index) => {
+                const adminReport = (window.allReports || []).find(r => r.jamiaName === jamia && r.inspectorId === currentUser.uid && r.month === monthInput);
+                const isSubmitted = !!adminReport;
 
-            <div class="flex gap-2 w-full md:w-1/3">
-                <input type="${inputType}" ${isDisabled} id="score-input-${index}" placeholder="${inputPlaceholder}" 
-                       class="insp-score flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-bold ${isSubmitted ? 'text-emerald-600' : (entry.type === 'Inspection' ? 'text-indigo-600' : '')}" 
-                       value="${entry.score || ''}">
+                const draftEntry = saved.find(s => s.name === jamia) || {};
+                let entry = isSubmitted ? adminReport : draftEntry;
                 
-                <a id="form-link-${index}" style="display: ${(entry.type === 'Inspection' || isSubmitted) ? 'flex' : 'none'}" 
-   href="academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}&month=${monthInput}" 
-   target="_blank" 
-   class="items-center justify-center px-3 py-1.5 ${isSubmitted ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 border-indigo-100'} hover:text-white rounded-lg transition-all text-xs font-bold border gap-1.5 shrink-0">
-    <i class="${isSubmitted ? 'fas fa-file-alt' : 'fas fa-edit'}"></i>
-    <span class="whitespace-nowrap">${isSubmitted ? 'View Form' : 'Fill Form'}</span>
-</a>
-            </div>
-            <input type="hidden" class="insp-jamia-name" value="${jamia}">
-        </div>`;
+                let inputPlaceholder = "Select type first...";
+                let inputType = "text";
+                
+                if (entry.type === 'Visit') {
+                    inputPlaceholder = "Visit details...";
+                } else if (entry.type === 'Not Conduct') {
+                    inputPlaceholder = "Reason...";
+                } else if (entry.type === 'Inspection') {
+                    inputPlaceholder = "Score%";
+                    inputType = "number";
+                }
+                
+                const isDisabled = isSubmitted ? 'disabled bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white focus:ring-1 focus:ring-indigo-500';
 
-        if (isSubmitted) {
-            submittedHTML += rowHTML;
-        } else {
-            pendingHTML += rowHTML;
-        }
-    });
+                const rowHTML = `
+                <div class="inspection-row flex flex-col md:flex-row items-stretch md:items-center gap-2.5 p-3 border ${isSubmitted ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'} rounded-xl transition-colors">
+                    <div class="md:w-1/4 font-bold text-slate-700 text-sm pl-1 flex items-center gap-2">
+                        ${isSubmitted ? '<i class="fas fa-check text-emerald-500"></i>' : '<i class="fas fa-circle-notch text-red-400 text-[10px]"></i>'}
+                        ${jamia}
+                    </div>
+                    
+                    <div class="flex gap-2 w-full md:w-auto flex-1">
+                        <input type="date" ${isDisabled} ${entry.type === 'Not Conduct' ? 'disabled' : ''} class="insp-date w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm ${entry.type === 'Not Conduct' ? 'bg-slate-100 cursor-not-allowed opacity-50' : ''}" value="${entry.date || ''}">
+                        <select ${isDisabled} class="insp-type w-1/2 md:w-auto flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-semibold" onchange="handleTypeChange(this, ${index})">
+                            <option value="" ${!entry.type ? 'selected' : ''} disabled>Select Option</option>
+                            <option value="Inspection" ${entry.type === 'Inspection' ? 'selected' : ''}>Inspection</option>
+                            <option value="Visit" ${entry.type === 'Visit' ? 'selected' : ''}>Visit</option>
+                            <option value="Not Conduct" ${entry.type === 'Not Conduct' ? 'selected' : ''}>Not Conduct</option>
+                        </select>
+                    </div>
 
-    document.getElementById('pending-list').innerHTML = pendingHTML || '<p class="text-xs text-slate-400 italic p-2">MashaAllah, koi report pending nahi hai.</p>';
-    document.getElementById('submitted-list').innerHTML = submittedHTML || '<p class="text-xs text-slate-400 italic p-2">Abhi tak koi report submit nahi hui hai.</p>';
-};
+                    <div class="flex gap-2 w-full md:w-1/3">
+                        <input type="${inputType}" ${isDisabled} id="score-input-${index}" placeholder="${inputPlaceholder}" 
+                               class="insp-score flex-1 p-2 border border-slate-200 rounded-lg text-xs md:text-sm font-bold ${isSubmitted ? 'text-emerald-600' : (entry.type === 'Inspection' ? 'text-indigo-600' : '')}" 
+                               value="${entry.score || ''}">
+                        
+                        <a id="form-link-${index}" style="display: ${(entry.type === 'Inspection' || isSubmitted) ? 'flex' : 'none'}" 
+           href="academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}&month=${monthInput}" 
+           target="_blank" 
+           class="items-center justify-center px-3 py-1.5 ${isSubmitted ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 border-indigo-100'} hover:text-white rounded-lg transition-all text-xs font-bold border gap-1.5 shrink-0">
+            <i class="${isSubmitted ? 'fas fa-file-alt' : 'fas fa-edit'}"></i>
+            <span class="whitespace-nowrap">${isSubmitted ? 'View Form' : 'Fill Form'}</span>
+        </a>
+                    </div>
+                    <input type="hidden" class="insp-jamia-name" value="${jamia}">
+                </div>`;
 
-window.handleTypeChange = (selectElem, index) => {
-    const row = selectElem.closest('.inspection-row');
-    const dateInput = row.querySelector('.insp-date');
-    const inputField = document.getElementById(`score-input-${index}`);
-    const formLink = document.getElementById(`form-link-${index}`);
-    const val = selectElem.value;
-
-    inputField.type = val === "Inspection" ? "number" : "text";
-    inputField.placeholder = val === "Inspection" ? "Score%" : (val === "Visit" ? "Visit details..." : "Reason...");
-
-    // Date input ko disable/enable karne ka logic
-    if (val === "Not Conduct") {
-        dateInput.disabled = true;
-        dateInput.value = ''; // Date clear kar dein
-        dateInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
-    } else {
-        dateInput.disabled = false;
-        dateInput.classList.remove('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
-    }
-
-    if(val === "Inspection") {
-        inputField.classList.add('text-indigo-600'); 
-        if (formLink) formLink.style.display = 'flex';
-    } else {
-        inputField.classList.remove('text-indigo-600');
-        if (formLink) formLink.style.display = 'none';
-    }
-};
-
-document.getElementById('save-jaiza-btn').onclick = async () => {
-    const selectedMonth = document.getElementById('report-month').value; 
-    const rows = document.querySelectorAll('.inspection-row');
-    const data = [];
-    let hasError = false;
-    
-    for (let row of rows) {
-        const dateInput = row.querySelector('.insp-date');
-        const date = dateInput.value;
-        const jamiaName = row.querySelector('.insp-jamia-name').value;
-        const type = row.querySelector('.insp-type').value; 
-        const scoreInput = row.querySelector('.insp-score');
-        const score = scoreInput.value.trim();
-
-        // Agar option select nahi hua hai (""), toh is jamia ko chhor dein aur aage badhein
-        if (!type || type === "") {
-            continue;
-        }
-
-        // Agar 'Not Conduct' hai, toh sirf reason chahiye (date ki zarurat nahi)
-        if (type === "Not Conduct") {
-            if (score === "") {
-                alert(`${jamiaName} ke liye 'Not Conduct' ka reason likhna zaroori hai.`);
-                hasError = true;
-                break;
-            }
-        } else { 
-            // Agar 'Visit' ya 'Inspection' hai, toh date aur details/score dono zaroori hain
-            if (date === "") {
-                alert(`${jamiaName} me ${type} ki date add karna zaroori hai.`);
-                hasError = true;
-                break;
-            }
-            if (score === "") {
-                alert(`${jamiaName} me ${type} ki details/score dalna zaroori hai.`);
-                hasError = true;
-                break;
-            }
-        }
-
-        data.push({ name: jamiaName, date: type === "Not Conduct" ? "" : date, type: type, score: score });
-    }
-
-    // Agar kisi row me detail ki kami hui, toh yahan save process ruk jayega
-    if (hasError) return;
-
-    // Agar saari rows me "Select Option" hi chora gaya hai
-    if (data.length === 0) {
-        alert("Aapne koi naya data select nahi kiya hai.");
-        return;
-    }
-
-    showLoader(true);
-    try {
-        for (let item of data) {
-            const adminReportId = `${currentUser.uid}_${item.name.replace(/\s+/g, '_')}_${selectedMonth}`; 
-            const inspectorName = document.getElementById('inspector-name').textContent;
-            
-            await setDoc(doc(db, "inspection_reports", adminReportId), {
-                jamiaName: item.name,
-                inspectorId: currentUser.uid,
-                inspectorName: inspectorName,
-                date: item.date,
-                score: item.score,
-                type: item.type,
-                submittedAt: serverTimestamp(),
-                month: selectedMonth
+                if (isSubmitted) {
+                    submittedHTML += rowHTML;
+                } else {
+                    pendingHTML += rowHTML;
+                }
             });
-        }
 
-        const reportId = `${currentUser.uid}_${selectedMonth}`;
-        await setDoc(doc(db, "inspector_reports", reportId), { 
-            jaiza: data, updatedAt: serverTimestamp(), month: selectedMonth 
-        }, { merge: true });
-        
-        alert("Reports successfully submit ho gayi hain!");
-        window.backToSummary();
-        await loadStats(); 
-    } catch (error) {
-        console.error("Save Error: ", error);
-        alert("Report save karne mein masla aaya: " + error.message);
-    } finally {
-        showLoader(false);
-    }
-};
+            document.getElementById('pending-list').innerHTML = pendingHTML || '<p class="text-xs text-slate-400 italic p-2">MashaAllah, koi report pending nahi hai.</p>';
+            document.getElementById('submitted-list').innerHTML = submittedHTML || '<p class="text-xs text-slate-400 italic p-2">Abhi tak koi report submit nahi hui hai.</p>';
+        };
 
-        // NAYA SIDEBAR LOGIC YAHAN HAI
+        window.handleTypeChange = (selectElem, index) => {
+            const row = selectElem.closest('.inspection-row');
+            const dateInput = row.querySelector('.insp-date');
+            const inputField = document.getElementById(`score-input-${index}`);
+            const formLink = document.getElementById(`form-link-${index}`);
+            const val = selectElem.value;
+
+            inputField.type = val === "Inspection" ? "number" : "text";
+            inputField.placeholder = val === "Inspection" ? "Score%" : (val === "Visit" ? "Visit details..." : "Reason...");
+
+            if (val === "Not Conduct") {
+                dateInput.disabled = true;
+                dateInput.value = ''; 
+                dateInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
+            } else {
+                dateInput.disabled = false;
+                dateInput.classList.remove('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
+            }
+
+            if(val === "Inspection") {
+                inputField.classList.add('text-indigo-600'); 
+                if (formLink) formLink.style.display = 'flex';
+            } else {
+                inputField.classList.remove('text-indigo-600');
+                if (formLink) formLink.style.display = 'none';
+            }
+        };
+
+        document.getElementById('save-jaiza-btn').onclick = async () => {
+            const selectedMonth = document.getElementById('report-month').value; 
+            const rows = document.querySelectorAll('.inspection-row');
+            const data = [];
+            let hasError = false;
+            
+            for (let row of rows) {
+                const dateInput = row.querySelector('.insp-date');
+                const date = dateInput.value;
+                const jamiaName = row.querySelector('.insp-jamia-name').value;
+                const type = row.querySelector('.insp-type').value; 
+                const scoreInput = row.querySelector('.insp-score');
+                const score = scoreInput.value.trim();
+
+                if (!type || type === "") continue;
+
+                if (type === "Not Conduct") {
+                    if (score === "") {
+                        alert(`${jamiaName} ke liye 'Not Conduct' ka reason likhna zaroori hai.`);
+                        hasError = true;
+                        break;
+                    }
+                } else { 
+                    if (date === "") {
+                        alert(`${jamiaName} me ${type} ki date add karna zaroori hai.`);
+                        hasError = true;
+                        break;
+                    }
+                    if (score === "") {
+                        alert(`${jamiaName} me ${type} ki details/score dalna zaroori hai.`);
+                        hasError = true;
+                        break;
+                    }
+                }
+
+                data.push({ name: jamiaName, date: type === "Not Conduct" ? "" : date, type: type, score: score });
+            }
+
+            if (hasError) return;
+
+            if (data.length === 0) {
+                alert("Aapne koi naya data select nahi kiya hai.");
+                return;
+            }
+
+            showLoader(true);
+            try {
+                for (let item of data) {
+                    const adminReportId = `${currentUser.uid}_${item.name.replace(/\s+/g, '_')}_${selectedMonth}`; 
+                    const inspectorName = document.getElementById('inspector-name').textContent;
+                    
+                    await setDoc(doc(db, "inspection_reports", adminReportId), {
+                        jamiaName: item.name,
+                        inspectorId: currentUser.uid,
+                        inspectorName: inspectorName,
+                        date: item.date,
+                        score: item.score,
+                        type: item.type,
+                        submittedAt: serverTimestamp(),
+                        month: selectedMonth
+                    });
+                }
+
+                const reportId = `${currentUser.uid}_${selectedMonth}`;
+                await setDoc(doc(db, "inspector_reports", reportId), { 
+                    jaiza: data, updatedAt: serverTimestamp(), month: selectedMonth 
+                }, { merge: true });
+                
+                alert("Reports successfully submit ho gayi hain!");
+                window.backToSummary();
+                await loadStats(); 
+            } catch (error) {
+                console.error("Save Error: ", error);
+                alert("Report save karne mein masla aaya: " + error.message);
+            } finally {
+                showLoader(false);
+            }
+        };
+
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebar-overlay');
         const menuBtn = document.getElementById('menu-btn');
@@ -958,7 +911,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         closeSidebarBtn.onclick = closeSidebar;
         sidebarOverlay.onclick = closeSidebar;
 
-        // UI ACTIONS & TAB SWITCHING
         window.openReports = () => {
             document.getElementById('summary-section').classList.add('hidden');
             document.getElementById('reports-section').classList.remove('hidden');
@@ -971,14 +923,12 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         };
 
         window.switchTab = (tabName) => {
-            window.openReports(); // Tab pe click kare toh sidha form khul jaye
+            window.openReports(); 
 
-            // Desktop Buttons Update
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-indigo-600', 'text-white'));
             const desktopBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
             if(desktopBtn) desktopBtn.classList.add('active', 'bg-indigo-600', 'text-white');
 
-            // Mobile Sidebar Buttons Update
             document.querySelectorAll('.mobile-tab-btn').forEach(b => {
                 b.classList.remove('active', 'bg-indigo-50', 'text-indigo-700');
                 b.classList.add('text-slate-600');
@@ -989,20 +939,17 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
                 mobileBtn.classList.remove('text-slate-600');
             }
 
-            // Hide all contents and show selected
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById(`tab-${tabName}`).classList.remove('hidden');
             
             const titleText = desktopBtn ? desktopBtn.textContent : (mobileBtn ? mobileBtn.textContent.trim() : tabName);
             document.getElementById('active-tab-title').textContent = `Section: ${titleText}`;
 
-            // Trigger specific files
             if (tabName === 'performance') renderPerformanceTab(assignedJamiaat, currentUser, db); 
             if (tabName === 'test') window.loadInspectorTestSummary();
             if (tabName === 'recording') renderRecordingTab(assignedJamiaat, currentUser, db);
             if (tabName === 'enroll') {
-                window.renderEnrollmentTab(); // Default tab (Links load hongi)
-                // Default pehle sub-tab ko active dikhayen
+                window.renderEnrollmentTab();
                 document.querySelectorAll('.enroll-sub-btn').forEach(b => {
                     b.classList.remove('text-indigo-600', 'border-indigo-600', 'active');
                     b.classList.add('text-slate-400', 'border-transparent');
@@ -1013,20 +960,17 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             }
         };
 
-        // Desktop Tabs Click Listener
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.onclick = () => window.switchTab(btn.dataset.tab);
         });
 
-        // Mobile Sidebar Menu Listeners
         document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
             btn.onclick = () => {
                 window.switchTab(btn.dataset.tab);
-                closeSidebar(); // Click ke baad drawer band ho jayega
+                closeSidebar(); 
             };
         });
 
-        // Dashboard Navigation from Sidebar
         document.querySelector('.mobile-nav-btn[data-action="dashboard"]').onclick = () => {
             window.backToSummary();
             closeSidebar();
@@ -1034,12 +978,10 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
 
         const showLoader = (s) => document.getElementById('loader').classList.toggle('hidden', !s);
         
-        // Dono Logout Buttons ke liye
         const logoutAction = () => signOut(auth);
         document.getElementById('desktop-logout-btn').onclick = logoutAction;
         document.getElementById('mobile-logout-btn').onclick = logoutAction;
 
-        // SUB TAB LOGIC (Fill vs Summary)
         document.querySelectorAll('.sub-tab-btn').forEach(btn => {
             btn.onclick = () => {
                 document.querySelectorAll('.sub-tab-btn').forEach(b => {
@@ -1058,7 +1000,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             };
         });
 
-        // PHOTO UPLOAD
         document.getElementById('photo-input').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -1086,7 +1027,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
 
         window.currentInspectorTestData = {};
 
-        // TEST SUMMARY LOGIC
         window.loadInspectorTestSummary = async () => {
             const tbody = document.getElementById('inspector-test-summary-body');
             const monthInput = document.getElementById('report-month').value;
@@ -1099,9 +1039,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-indigo-500 font-bold text-center"><i class="fas fa-spinner fa-spin mr-2"></i> Linked Jamiaat ka data calculate ho raha hai...</td></tr>';
 
             try {
-                // Pehle: "users/{uid}" aur "monthly_test_sheets" yahan PHIR SE fetch ho rahe the -
-                // dono already initDashboard/loadStats mein fetch ho chuke hote hain isi session mein.
-                // Ab: dono cache se reuse ho rahe hain - Test tab kholte hi 2 extra reads nahi lagti.
                 const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
                 const allSheets = await getMonthlyTestSheets(monthInput);
 
@@ -1368,159 +1305,147 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
 
         window.closeAsriModal = () => document.getElementById('asri-modal').classList.add('hidden');
 
-  // ENROLLMENT TAB LOGIC
-window.renderEnrollmentTab = async () => {
-    const tbody = document.getElementById('enrollment-jamia-list');
-    
-    // Agar koi jamia assign nahi hai
-    if (!assignedJamiaat || assignedJamiaat.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
-        return;
-    }
+        // ENROLLMENT TAB LOGIC (Fix Applied Here)
+        window.renderEnrollmentTab = async () => {
+            const tbody = document.getElementById('enrollment-jamia-list');
+            
+            if (!assignedJamiaat || assignedJamiaat.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
+                return;
+            }
 
-    tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium"><i class="fas fa-spinner fa-spin mr-2"></i>Load ho raha hai...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium"><i class="fas fa-spinner fa-spin mr-2"></i>Load ho raha hai...</td></tr>';
 
-    // Aapke Enrollment Form ka naya URL file name ke mutabik
-    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-    const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`; // Yahan file name update kar diya hai
+            // YAHAN URL GENERATION FIX KAR DIYA GAYA HAI
+            const cleanUrl = window.location.href.split('?')[0].split('#')[0];
+            const baseUrl = cleanUrl.substring(0, cleanUrl.lastIndexOf('/'));
+            const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`; 
 
-    try {
-        // Codes aur stats dono ek saath (parallel) fetch hote hain
-        const [codesByJamia, statsByJamia] = await Promise.all([
-            getOrCreateJamiaCodes(assignedJamiaat),
-            getEnrollmentStats(assignedJamiaat)
-        ]);
+            try {
+                const [codesByJamia, statsByJamia] = await Promise.all([
+                    getOrCreateJamiaCodes(assignedJamiaat),
+                    getEnrollmentStats(assignedJamiaat)
+                ]);
 
-        let rowsHTML = '';
-        assignedJamiaat.forEach(jamia => {
-            // Link me jamia ka naam parameter bankar jayega
-            const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
-            const code = codesByJamia[jamia] || '—';
-            const stats = statsByJamia[jamia] || { classes: 0, students: 0 };
+                let rowsHTML = '';
+                assignedJamiaat.forEach(jamia => {
+                    const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
+                    const code = codesByJamia[jamia] || '—';
+                    const stats = statsByJamia[jamia] || { classes: 0, students: 0 };
 
-            rowsHTML += `
-            <tr class="hover:bg-slate-50 transition-colors">
-                <td class="p-3 md:p-4 font-bold text-slate-700">${jamia}</td>
-                <td class="p-3 md:p-4">
-                    <span class="bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider">${code}</span>
-                </td>
-                <td class="p-3 md:p-4 text-center font-semibold">${stats.classes}</td>
-                <td class="p-3 md:p-4 text-center font-semibold">${stats.students}</td>
-                <td class="p-3 md:p-4 text-right">
-                    <button onclick="window.copyEnrollmentLink('${formUrl}', this)" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto border border-indigo-100">
-                        <i class="fas fa-link"></i> <span class="btn-text">Copy Link</span>
-                    </button>
-                </td>
-            </tr>`;
-        });
-        
-        tbody.innerHTML = rowsHTML;
-    } catch (err) {
-        console.error('Enrollment tab load error:', err);
-        tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-red-500 font-medium">Data load nahi ho saka. Console check karen.</td></tr>';
-    }
-};
+                    rowsHTML += `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-3 md:p-4 font-bold text-slate-700">${jamia}</td>
+                        <td class="p-3 md:p-4">
+                            <span class="bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider">${code}</span>
+                        </td>
+                        <td class="p-3 md:p-4 text-center font-semibold">${stats.classes}</td>
+                        <td class="p-3 md:p-4 text-center font-semibold">${stats.students}</td>
+                        <td class="p-3 md:p-4 text-right">
+                            <button onclick="window.copyEnrollmentLink('${formUrl}', this)" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ml-auto border border-indigo-100">
+                                <i class="fas fa-link"></i> <span class="btn-text">Copy Link</span>
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+                
+                tbody.innerHTML = rowsHTML;
+            } catch (err) {
+                console.error('Enrollment tab load error:', err);
+                tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-red-500 font-medium">Data load nahi ho saka. Console check karen.</td></tr>';
+            }
+        };
 
-// Har jamia ka 5-digit access code — "jamia_codes" collection mein ek baar generate hoke store hota hai,
-// uske baad hamesha wahi se reuse hota hai (academic-enrollment-data.html isi collection se code verify karta hai)
-async function getOrCreateJamiaCodes(jamiaatList) {
-    const idToJamia = {};
-    jamiaatList.forEach(j => { idToJamia[j.replace(/\s+/g, '_')] = j; });
-    const allIds = Object.keys(idToJamia);
+        async function getOrCreateJamiaCodes(jamiaatList) {
+            const idToJamia = {};
+            jamiaatList.forEach(j => { idToJamia[j.replace(/\s+/g, '_')] = j; });
+            const allIds = Object.keys(idToJamia);
 
-    const result = {};
-    const missingIds = [];
+            const result = {};
+            const missingIds = [];
 
-    // Firestore 'in' query zyada se zyada 30 values leti hai - isliye 30-30 ke chunks mein todte hain
-    for (let i = 0; i < allIds.length; i += 30) {
-        const chunk = allIds.slice(i, i + 30);
-        const snap = await getDocs(query(collection(db, "jamia_codes"), where(documentId(), "in", chunk)));
-        const foundIds = new Set();
-        snap.forEach(d => {
-            foundIds.add(d.id);
-            result[idToJamia[d.id]] = d.data().code;
-        });
-        chunk.forEach(id => { if (!foundIds.has(id)) missingIds.push(id); });
-    }
+            for (let i = 0; i < allIds.length; i += 30) {
+                const chunk = allIds.slice(i, i + 30);
+                const snap = await getDocs(query(collection(db, "jamia_codes"), where(documentId(), "in", chunk)));
+                const foundIds = new Set();
+                snap.forEach(d => {
+                    foundIds.add(d.id);
+                    result[idToJamia[d.id]] = d.data().code;
+                });
+                chunk.forEach(id => { if (!foundIds.has(id)) missingIds.push(id); });
+            }
 
-    // Jin jamiaat ka code pehli baar chahiye, unke liye naya generate karke save karte hain (life mein ek hi baar hoga)
-    if (missingIds.length > 0) {
-        await Promise.all(missingIds.map(async (id) => {
-            const jamia = idToJamia[id];
-            const newCode = String(Math.floor(10000 + Math.random() * 90000));
-            await setDoc(doc(db, "jamia_codes", id), { jamiaName: jamia, code: newCode, createdAt: serverTimestamp() });
-            result[jamia] = newCode;
-        }));
-    }
+            if (missingIds.length > 0) {
+                await Promise.all(missingIds.map(async (id) => {
+                    const jamia = idToJamia[id];
+                    const newCode = String(Math.floor(10000 + Math.random() * 90000));
+                    await setDoc(doc(db, "jamia_codes", id), { jamiaName: jamia, code: newCode, createdAt: serverTimestamp() });
+                    result[jamia] = newCode;
+                }));
+            }
 
-    return result;
-}
+            return result;
+        }
 
-// "enrollment_records" se har jamia ke liye: kitni alag classes ka data hai + kul kitne students hain.
-// Ek hi query se sab assigned jamiaat ka data aata hai (N alag queries nahi chalani padti)
-async function getEnrollmentStats(jamiaatList) {
-    const stats = {};
-    jamiaatList.forEach(j => { stats[j] = { classes: 0, students: 0 }; });
+        async function getEnrollmentStats(jamiaatList) {
+            const stats = {};
+            jamiaatList.forEach(j => { stats[j] = { classes: 0, students: 0 }; });
 
-    const classesByJamia = {};
-    for (let i = 0; i < jamiaatList.length; i += 30) {
-        const chunk = jamiaatList.slice(i, i + 30);
-        const snap = await getDocs(query(
-            collection(db, "enrollment_records"),
-            where("inspectorId", "==", currentUser.uid),
-            where("jamiaName", "in", chunk)
-        ));
-        snap.forEach(d => {
-            const rec = d.data();
-            const jamia = rec.jamiaName;
-            if (!stats[jamia]) stats[jamia] = { classes: 0, students: 0 };
-            stats[jamia].students++;
-            if (!classesByJamia[jamia]) classesByJamia[jamia] = new Set();
-            if (rec.jmClass) classesByJamia[jamia].add(rec.jmClass);
-        });
-    }
+            const classesByJamia = {};
+            for (let i = 0; i < jamiaatList.length; i += 30) {
+                const chunk = jamiaatList.slice(i, i + 30);
+                const snap = await getDocs(query(
+                    collection(db, "enrollment_records"),
+                    where("inspectorId", "==", currentUser.uid),
+                    where("jamiaName", "in", chunk)
+                ));
+                snap.forEach(d => {
+                    const rec = d.data();
+                    const jamia = rec.jamiaName;
+                    if (!stats[jamia]) stats[jamia] = { classes: 0, students: 0 };
+                    stats[jamia].students++;
+                    if (!classesByJamia[jamia]) classesByJamia[jamia] = new Set();
+                    if (rec.jmClass) classesByJamia[jamia].add(rec.jmClass);
+                });
+            }
 
-    Object.keys(classesByJamia).forEach(jamia => {
-        stats[jamia].classes = classesByJamia[jamia].size;
-    });
+            Object.keys(classesByJamia).forEach(jamia => {
+                stats[jamia].classes = classesByJamia[jamia].size;
+            });
 
-    return stats;
-}
+            return stats;
+        }
 
-// LINK COPY FUNCTION
-window.copyEnrollmentLink = (url, btnElement) => {
-    navigator.clipboard.writeText(url).then(() => {
-        const textSpan = btnElement.querySelector('.btn-text');
-        const icon = btnElement.querySelector('i');
-        const originalText = textSpan.innerText;
+        window.copyEnrollmentLink = (url, btnElement) => {
+            navigator.clipboard.writeText(url).then(() => {
+                const textSpan = btnElement.querySelector('.btn-text');
+                const icon = btnElement.querySelector('i');
+                const originalText = textSpan.innerText;
 
-        textSpan.innerText = "Copied!";
-        icon.classList.replace('fa-link', 'fa-check');
-        btnElement.classList.replace('bg-indigo-50', 'bg-emerald-50');
-        btnElement.classList.replace('text-indigo-600', 'text-emerald-600');
-        btnElement.classList.replace('border-indigo-100', 'border-emerald-200');
+                textSpan.innerText = "Copied!";
+                icon.classList.replace('fa-link', 'fa-check');
+                btnElement.classList.replace('bg-indigo-50', 'bg-emerald-50');
+                btnElement.classList.replace('text-indigo-600', 'text-emerald-600');
+                btnElement.classList.replace('border-indigo-100', 'border-emerald-200');
 
-        setTimeout(() => {
-            textSpan.innerText = originalText;
-            icon.classList.replace('fa-check', 'fa-link');
-            btnElement.classList.replace('bg-emerald-50', 'bg-indigo-50');
-            btnElement.classList.replace('text-emerald-600', 'text-indigo-600');
-            btnElement.classList.replace('border-emerald-200', 'border-indigo-100');
-        }, 2000);
-    }).catch(err => {
-        alert("Link copy karne mein masla aaya: " + err);
-    });
-};
+                setTimeout(() => {
+                    textSpan.innerText = originalText;
+                    icon.classList.replace('fa-check', 'fa-link');
+                    btnElement.classList.replace('bg-emerald-50', 'bg-indigo-50');
+                    btnElement.classList.replace('text-emerald-600', 'text-indigo-600');
+                    btnElement.classList.replace('border-emerald-200', 'border-indigo-100');
+                }, 2000);
+            }).catch(err => {
+                alert("Link copy karne mein masla aaya: " + err);
+            });
+        };
 
-        // Naya Function: Summary load karne ke liye
         window.renderEnrollmentSummaryTab = () => {
             renderEnrollmentSummary(assignedJamiaat, db, currentUser);
         };
 
-        // Enrollment ke Sub-tabs ko switch karne ka logic
         document.querySelectorAll('.enroll-sub-btn').forEach(btn => {
             btn.onclick = () => {
-                // Button Styling
                 document.querySelectorAll('.enroll-sub-btn').forEach(b => {
                     b.classList.remove('text-indigo-600', 'border-indigo-600', 'active');
                     b.classList.add('text-slate-400', 'border-transparent');
@@ -1528,20 +1453,17 @@ window.copyEnrollmentLink = (url, btnElement) => {
                 btn.classList.add('text-indigo-600', 'border-indigo-600', 'active');
                 btn.classList.remove('text-slate-400', 'border-transparent');
 
-                // Content Toggle
                 const target = btn.dataset.enrollSub;
                 document.getElementById('enroll-sub-links').classList.toggle('hidden', target !== 'links');
                 document.getElementById('enroll-sub-links').classList.toggle('block', target === 'links');
                 document.getElementById('enroll-sub-summary').classList.toggle('hidden', target !== 'summary');
                 document.getElementById('enroll-sub-summary').classList.toggle('block', target === 'summary');
 
-                // Agar Summary tab khola hai, tou data fetch karein
                 if(target === 'summary') {
                     window.renderEnrollmentSummaryTab();
                 }
             };
         });
-        
         
     </script>
 </body>
