@@ -22,8 +22,6 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             const q = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid), where("jamiaName", "in", chunk));
             const snap = await getDocs(q);
             snap.forEach(doc => { 
-                // YAHAN FIX KIYA GAYA HAI: ...doc.data() pehle aur id: doc.id baad mein
-                // Taake form ki fake ID asli Firebase ID ko overwrite na kare
                 _allRecords.push({ ...doc.data(), id: doc.id }); 
             });
         }
@@ -33,7 +31,6 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             return;
         }
 
-        // Dropdowns ke liye unique values nikalna
         const uniqueJamias = [...new Set(_allRecords.map(r => r.jamiaName).filter(Boolean))].sort();
         const uniqueClasses = [...new Set(_allRecords.map(r => r.jmClass).filter(Boolean))].sort();
         const uniqueAdmissions = [...new Set(_allRecords.map(r => r.admissionType).filter(Boolean))].sort();
@@ -41,6 +38,8 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         const noAdmissionTotal = _allRecords.filter(r => r.admissionType === 'No Admission').length;
         const waitingTotal = _allRecords.filter(r => r.admissionType === 'Waiting').length;
         const enrolledTotal = totalTotal - noAdmissionTotal - waitingTotal;
+
+        window._currentFilteredRecords = _allRecords; // CSV download ke liye globally save kiya
 
         let html = `
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -89,7 +88,6 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         <div>
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Admission Type</label>
             <select id="filter-adm" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
-                <!-- NAYA HARDCODED DROPDOWN -->
                 <option value="">All Types</option>
                 <option value="NIOS">NIOS</option>
                 <option value="School">School</option>
@@ -105,6 +103,11 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                 <h4 class="font-bold text-slate-700 text-sm">Showing: <span id="record-count" class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">${_allRecords.length}</span> Students</h4>
+                
+                <!-- NAYA DOWNLOAD CSV BUTTON -->
+                <button onclick="window.downloadEnrollmentCSV()" class="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border border-emerald-200">
+                    <i class="fas fa-download"></i> Download CSV
+                </button>
             </div>
             <div class="overflow-x-auto max-h-[500px]">
                 <table class="w-full text-left border-collapse whitespace-nowrap">
@@ -115,7 +118,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                             <th class="p-3">Father's Name</th>
                             <th class="p-3">JM Class</th>
                             <th class="p-3">Adm Type</th>
-                            <th class="p-3">Details</th>
+                            <th class="p-3">Class</th> <!-- HEADER CHANGED -->
                             <th class="p-3 text-center">Status</th>
                             <th class="p-3 text-center">Action</th>
                         </tr>
@@ -169,29 +172,25 @@ window.renderEnrollmentTableRows = (records) => {
 
     let html = '';
     records.forEach(r => {
-        let details = r.admissionType === 'NIOS' ? `Langs: ${(r.languages||[]).length} | Subs: ${(r.subjects||[]).length}` 
-                    : r.admissionType === 'School' ? `${r.classLevel||''} | ${r.board||r.stream||''}`
-                    : r.admissionType === 'College' ? `${r.degree||''} | ${r.duration||''} | ${r.session||''}`
-                    : r.admissionType === 'Madrasa Board' ? `Class: ${r.classLevel||''} ${r.stream ? ' | '+r.stream : ''}`
-                    : r.admissionType === 'Waiting' ? `Class: ${r.classLevel||''}`
-                    : (r.reason || '—');
-
         let statusBadge = '<span class="text-slate-400">—</span>';
         if(r.status === 'Pass') statusBadge = `<span class="bg-emerald-50 text-emerald-600 border border-emerald-100 px-2 py-1 rounded font-bold text-[10px] uppercase">Pass ${r.result?'('+r.result+')':''}</span>`;
         else if(r.status === 'Fail') statusBadge = `<span class="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded font-bold text-[10px] uppercase">Fail</span>`;
 
+        // VALUE CHANGED TO SHOW ONLY CLASS LEVEL
+        const displayClass = escapeHtml(r.classLevel || '—'); 
+
         html += `
             <tr class="hover:bg-slate-50 transition-colors">
-                <td class="p-3 font-semibold text-slate-700">${r.jamiaName || '—'}</td>
-                <td class="p-3 font-bold text-indigo-700">${r.studentName || '—'}</td>
-                <td class="p-3">${r.fatherName || '—'}</td>
-                <td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-semibold">${r.jmClass || '—'}</span></td>
-                <td class="p-3"><span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">${r.admissionType || '—'}</span></td>
-                <td class="p-3 text-slate-500 text-xs truncate max-w-[200px]" title="${details}">${details}</td>
+                <td class="p-3 font-semibold text-slate-700">${escapeHtml(r.jamiaName || '—')}</td>
+                <td class="p-3 font-bold text-indigo-700">${escapeHtml(r.studentName || '—')}</td>
+                <td class="p-3">${escapeHtml(r.fatherName || '—')}</td>
+                <td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-semibold">${escapeHtml(r.jmClass || '—')}</span></td>
+                <td class="p-3"><span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">${escapeHtml(r.admissionType || '—')}</span></td>
+                <td class="p-3 text-slate-500 font-medium text-xs truncate max-w-[200px]" title="${displayClass}">${displayClass}</td>
                 <td class="p-3 text-center">${statusBadge}</td>
                 <td class="p-3 text-center">
                     <button onclick="window.openEditModal('${r.id}')" class="text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 p-1.5 rounded mr-1 transition" title="Edit"><i class="fas fa-edit"></i></button>
-                    <button onclick="window.deleteEnrollmentRecord('${r.id}', '${r.studentName.replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded transition" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                    <button onclick="window.deleteEnrollmentRecord('${r.id}', '${escapeHtml(r.studentName).replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded transition" title="Delete"><i class="fas fa-trash-alt"></i></button>
                 </td>
             </tr>
         `;
@@ -213,8 +212,68 @@ window.applyEnrollmentFilters = () => {
         return matchesSearch && matchesJamia && matchesClass && matchesAdm;
     });
 
+    window._currentFilteredRecords = filtered; // Filtered records ko save kiya taake CSV me yehi download hon
     window.renderEnrollmentTableRows(filtered);
 };
+
+// ══════════════════════════════════════════════════
+// 🛑 CSV DOWNLOAD LOGIC (NAYA FUNCTION)
+// ══════════════════════════════════════════════════
+window.downloadEnrollmentCSV = () => {
+    const recordsToExport = window._currentFilteredRecords || _allRecords;
+    
+    if(!recordsToExport || recordsToExport.length === 0) {
+        alert("Download karne ke liye koi data majood nahi hai.");
+        return;
+    }
+    
+    // CSV Headers
+    const headers = ["Sr.", "Jamia", "Student Name", "Father's Name", "JM Class", "Admission Type", "Class", "Status", "Result"];
+    
+    // Function jo commas aur quotes ko sahi se handle kare CSV format ke liye
+    const escapeCSV = (val) => {
+        let str = String(val || '');
+        if(str.includes(',') || str.includes('"') || str.includes('\n')) {
+            str = `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+    };
+
+    // Data Rows banana
+    const rows = recordsToExport.map((r, index) => {
+        return [
+            index + 1,
+            escapeCSV(r.jamiaName),
+            escapeCSV(r.studentName),
+            escapeCSV(r.fatherName),
+            escapeCSV(r.jmClass),
+            escapeCSV(r.admissionType),
+            escapeCSV(r.classLevel),
+            escapeCSV(r.status),
+            escapeCSV(r.result)
+        ].join(',');
+    });
+
+    // Final CSV text create karna (UTF-8 BOM ke sath taake Excel me Urdu/Arabic characters theek se open hon)
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows].join('\n');
+    
+    // File download trigger karna
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Jamia_Enrollment_Summary.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+// HTML escape function jo security ke liye table render me use ho raha hai
+function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c){
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+}
 
 // ══════════════════════════════════════════════════
 // 🛑 DELETE LOGIC
