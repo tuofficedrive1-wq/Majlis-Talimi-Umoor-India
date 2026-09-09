@@ -118,7 +118,6 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                             <th class="p-3">JM Class</th>
                             <th class="p-3">Adm Type</th>
                             <th class="p-3">Class</th>
-                            <!-- NAYA COLUMN ADD KIYA GAYA HAI -->
                             <th class="p-3">No Admission Reason</th>
                             <th class="p-3 text-center">Status</th>
                             <th class="p-3 text-center">Action</th>
@@ -167,7 +166,6 @@ window.renderEnrollmentTableRows = (records) => {
     if(countEl) countEl.textContent = records.length;
 
     if (records.length === 0) {
-        // Naye column ki wajah se colspan 8 se 9 kar diya hai
         tbody.innerHTML = '<tr><td colspan="9" class="p-8 text-center text-slate-400 font-medium">Koi record nahi mila.</td></tr>';
         return;
     }
@@ -179,7 +177,7 @@ window.renderEnrollmentTableRows = (records) => {
         else if(r.status === 'Fail') statusBadge = `<span class="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded font-bold text-[10px] uppercase">Fail</span>`;
 
         const displayClass = escapeHtml(r.classLevel || '—'); 
-        const displayReason = escapeHtml(r.reason || '—'); // Reason ka data nikaal liya
+        const displayReason = escapeHtml(r.reason || '—'); 
 
         html += `
             <tr class="hover:bg-slate-50 transition-colors">
@@ -189,10 +187,7 @@ window.renderEnrollmentTableRows = (records) => {
                 <td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-semibold">${escapeHtml(r.jmClass || '—')}</span></td>
                 <td class="p-3"><span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">${escapeHtml(r.admissionType || '—')}</span></td>
                 <td class="p-3 text-slate-500 font-medium text-xs truncate max-w-[150px]" title="${displayClass}">${displayClass}</td>
-                
-                <!-- NAYA COLUMN DATA -->
                 <td class="p-3 text-slate-500 font-medium text-xs truncate max-w-[200px]" title="${displayReason}">${displayReason}</td>
-                
                 <td class="p-3 text-center">${statusBadge}</td>
                 <td class="p-3 text-center">
                     <button onclick="window.openEditModal('${r.id}')" class="text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 p-1.5 rounded mr-1 transition" title="Edit"><i class="fas fa-edit"></i></button>
@@ -540,7 +535,8 @@ window.refreshEditModalSubFields = () => {
         else if (cls === '10th') bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board','CBSE'], isSameType?r.board:'')}</select>`;
         else if (cls === '11th') sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
         else if (cls === '12th') {
-            bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board'], isSameType?r.board:'')}</select>`;
+            // YAHAN 12TH CLASS MEIN CBSE ADD KIYA GAYA HAI
+            bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board','CBSE'], isSameType?r.board:'')}</select>`;
             sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
         }
         bCont.innerHTML = bHtml; sCont.innerHTML = sHtml;
