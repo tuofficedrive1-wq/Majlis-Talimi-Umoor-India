@@ -39,7 +39,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         const waitingTotal = _allRecords.filter(r => r.admissionType === 'Waiting').length;
         const enrolledTotal = totalTotal - noAdmissionTotal - waitingTotal;
 
-        window._currentFilteredRecords = _allRecords; // CSV download ke liye globally save kiya
+        window._currentFilteredRecords = _allRecords; 
 
         let html = `
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -104,7 +104,6 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                 <h4 class="font-bold text-slate-700 text-sm">Showing: <span id="record-count" class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">${_allRecords.length}</span> Students</h4>
                 
-                <!-- NAYA DOWNLOAD CSV BUTTON -->
                 <button onclick="window.downloadEnrollmentCSV()" class="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border border-emerald-200">
                     <i class="fas fa-download"></i> Download CSV
                 </button>
@@ -118,7 +117,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                             <th class="p-3">Father's Name</th>
                             <th class="p-3">JM Class</th>
                             <th class="p-3">Adm Type</th>
-                            <th class="p-3">Class</th> <!-- HEADER CHANGED -->
+                            <th class="p-3">Class</th>
                             <th class="p-3 text-center">Status</th>
                             <th class="p-3 text-center">Action</th>
                         </tr>
@@ -176,7 +175,6 @@ window.renderEnrollmentTableRows = (records) => {
         if(r.status === 'Pass') statusBadge = `<span class="bg-emerald-50 text-emerald-600 border border-emerald-100 px-2 py-1 rounded font-bold text-[10px] uppercase">Pass ${r.result?'('+r.result+')':''}</span>`;
         else if(r.status === 'Fail') statusBadge = `<span class="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded font-bold text-[10px] uppercase">Fail</span>`;
 
-        // VALUE CHANGED TO SHOW ONLY CLASS LEVEL
         const displayClass = escapeHtml(r.classLevel || '—'); 
 
         html += `
@@ -212,12 +210,12 @@ window.applyEnrollmentFilters = () => {
         return matchesSearch && matchesJamia && matchesClass && matchesAdm;
     });
 
-    window._currentFilteredRecords = filtered; // Filtered records ko save kiya taake CSV me yehi download hon
+    window._currentFilteredRecords = filtered; 
     window.renderEnrollmentTableRows(filtered);
 };
 
 // ══════════════════════════════════════════════════
-// 🛑 CSV DOWNLOAD LOGIC (NAYA FUNCTION)
+// 🛑 CSV DOWNLOAD LOGIC 
 // ══════════════════════════════════════════════════
 window.downloadEnrollmentCSV = () => {
     const recordsToExport = window._currentFilteredRecords || _allRecords;
@@ -227,10 +225,8 @@ window.downloadEnrollmentCSV = () => {
         return;
     }
     
-    // CSV Headers
     const headers = ["Sr.", "Jamia", "Student Name", "Father's Name", "JM Class", "Admission Type", "Class", "Status", "Result"];
     
-    // Function jo commas aur quotes ko sahi se handle kare CSV format ke liye
     const escapeCSV = (val) => {
         let str = String(val || '');
         if(str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -239,7 +235,6 @@ window.downloadEnrollmentCSV = () => {
         return str;
     };
 
-    // Data Rows banana
     const rows = recordsToExport.map((r, index) => {
         return [
             index + 1,
@@ -254,10 +249,8 @@ window.downloadEnrollmentCSV = () => {
         ].join(',');
     });
 
-    // Final CSV text create karna (UTF-8 BOM ke sath taake Excel me Urdu/Arabic characters theek se open hon)
     const csvContent = "\uFEFF" + [headers.join(','), ...rows].join('\n');
     
-    // File download trigger karna
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -268,7 +261,6 @@ window.downloadEnrollmentCSV = () => {
     document.body.removeChild(link);
 };
 
-// HTML escape function jo security ke liye table render me use ho raha hai
 function escapeHtml(s) {
     return String(s || '').replace(/[&<>"']/g, function(c){
         return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
@@ -343,10 +335,11 @@ window.openEditModal = (docId) => {
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-bold text-slate-500 mb-1">Current Qualification</label>
+                <!-- YAHAN TEXT LABEL AUR VARIABLE DONO CHANGE KIYE GAYE HAIN -->
+                <label class="block text-xs font-bold text-slate-500 mb-1">Previous Qualification</label>
                 <select id="edit-qual" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
                     <option value="">— Select —</option>
-                    ${QUAL_OPTIONS.map(q => `<option value="${q}" ${r.currentQualification === q ? 'selected' : ''}>${q}</option>`).join('')}
+                    ${QUAL_OPTIONS.map(q => `<option value="${q}" ${r.previousQualification === q ? 'selected' : ''}>${q}</option>`).join('')}
                 </select>
             </div>
         </div>
@@ -386,7 +379,7 @@ window.closeEditModal = () => {
 };
 
 // ══════════════════════════════════════════════════
-// DYNAMIC FIELDS RENDERER (Original Dropdowns k sath)
+// DYNAMIC FIELDS RENDERER
 // ══════════════════════════════════════════════════
 window.updateDynamicFields = () => {
     const type = document.getElementById('edit-admtype').value;
@@ -545,7 +538,8 @@ window.saveEditRecord = async () => {
         fatherName: getVal('edit-father'),
         dob: getVal('edit-dob'),
         jmClass: getVal('edit-jmclass'),
-        currentQualification: getVal('edit-qual'),
+        // YAHAN DATABASE VARIABLE BHI PREVIOUS QUALIFICATION KAR DIYA HAI
+        previousQualification: getVal('edit-qual'), 
         admissionType: admType,
         status: getVal('edit-status'),
         result: getVal('edit-result')
