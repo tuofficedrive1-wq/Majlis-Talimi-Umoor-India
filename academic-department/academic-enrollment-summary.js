@@ -215,7 +215,7 @@ window.applyEnrollmentFilters = () => {
 };
 
 // ══════════════════════════════════════════════════
-// 🛑 CSV DOWNLOAD LOGIC 
+// 🛑 UPDATED CSV DOWNLOAD LOGIC 
 // ══════════════════════════════════════════════════
 window.downloadEnrollmentCSV = () => {
     const recordsToExport = window._currentFilteredRecords || _allRecords;
@@ -225,7 +225,30 @@ window.downloadEnrollmentCSV = () => {
         return;
     }
     
-    const headers = ["Sr.", "Jamia", "Student Name", "Father's Name", "JM Class", "Admission Type", "Class", "Status", "Result"];
+    // Naye Headers Add Kiye Gaye Hain
+    const headers = [
+        "Sr.", 
+        "Jamia", 
+        "Student's Name", 
+        "Father's Name", 
+        "Date of Birth", 
+        "Jamiatul Madina Class", 
+        "Previous Qualification", 
+        "Admission Type", 
+        "Program Level", 
+        "Class/Degree", 
+        "Medium", 
+        "Board/State Board", 
+        "Stream", 
+        "Duration", 
+        "Session", 
+        "Languages", 
+        "Subjects", 
+        "No Admission Reason", 
+        "Status", 
+        "Result", 
+        "Saved At"
+    ];
     
     const escapeCSV = (val) => {
         let str = String(val || '');
@@ -235,17 +258,39 @@ window.downloadEnrollmentCSV = () => {
         return str;
     };
 
-    const rows = recordsToExport.map((r, index) => {
+    // Date Format fix karne ka function
+    const formatDate = (iso) => { 
+        if(!iso) return ''; 
+        const p = iso.split('-'); 
+        return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : iso; 
+    };
+
+    const rows = recordsToExport.map((e, index) => {
+        // Board aur State Board ko combine karna (Taake excel mein 1 hi box mein nazar aaye)
+        let boardCombine = e.admissionType === 'Madrasa Board' ? e.madrasaBoard : (e.board === 'State Board' && e.stateBoard ? e.stateBoard : e.board);
+        
         return [
             index + 1,
-            escapeCSV(r.jamiaName),
-            escapeCSV(r.studentName),
-            escapeCSV(r.fatherName),
-            escapeCSV(r.jmClass),
-            escapeCSV(r.admissionType),
-            escapeCSV(r.classLevel),
-            escapeCSV(r.status),
-            escapeCSV(r.result)
+            escapeCSV(e.jamiaName),
+            escapeCSV(e.studentName),
+            escapeCSV(e.fatherName),
+            escapeCSV(formatDate(e.dob)),
+            escapeCSV(e.jmClass),
+            escapeCSV(e.previousQualification),
+            escapeCSV(e.admissionType),
+            escapeCSV(e.programLevel),
+            escapeCSV(e.classLevel || e.degree),
+            escapeCSV(e.medium),
+            escapeCSV(boardCombine),
+            escapeCSV(e.stream),
+            escapeCSV(e.duration),
+            escapeCSV(e.session),
+            escapeCSV((e.languages || []).join('; ')),
+            escapeCSV((e.subjects || []).join('; ')),
+            escapeCSV(e.reason),
+            escapeCSV(e.status),
+            escapeCSV(e.result),
+            escapeCSV(e.savedAt)
         ].join(',');
     });
 
@@ -255,7 +300,7 @@ window.downloadEnrollmentCSV = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "Jamia_Enrollment_Summary.csv");
+    link.setAttribute("download", "Jamia_Enrollment_Detailed_Data.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -335,7 +380,6 @@ window.openEditModal = (docId) => {
                 </select>
             </div>
             <div>
-                <!-- YAHAN TEXT LABEL AUR VARIABLE DONO CHANGE KIYE GAYE HAIN -->
                 <label class="block text-xs font-bold text-slate-500 mb-1">Previous Qualification</label>
                 <select id="edit-qual" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
                     <option value="">— Select —</option>
@@ -538,7 +582,6 @@ window.saveEditRecord = async () => {
         fatherName: getVal('edit-father'),
         dob: getVal('edit-dob'),
         jmClass: getVal('edit-jmclass'),
-        // YAHAN DATABASE VARIABLE BHI PREVIOUS QUALIFICATION KAR DIYA HAI
         previousQualification: getVal('edit-qual'), 
         admissionType: admType,
         status: getVal('edit-status'),
