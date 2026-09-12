@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (MASTER UPLOAD & 40 PASSING MARKS DEFAULT)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (TABS FIXED, DELETE FEATURE ADDED, DEFAULT 40 MARKS)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -124,9 +124,29 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label><select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Regions</option>${regions.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label><select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Users</option>${allUsers.map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label><select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font"><option value="all">All Jamiaat</option></select></div>
-                <div id="dashboard-filters-div"><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Dashboard Type</label><select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold"><option value="region-wise">🌍 Region Summary</option><option value="user-wise">👨‍💼 User Summary</option><option value="submission-status">📋 Submission Status</option></select></div>
-                <div id="reports-layout-filter-div" class="hidden"><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Report Layout</label><select id="admin-layout" class="w-full p-2 border rounded-lg text-sm"><option value="jamia">Jamia Wise</option><option value="class">Class Wise</option><option value="teacher">Asatiza Wise</option><option value="wazahat">Kamzor Result (Wazahat)</option><option value="ibtidaiya">Ibtidaiya (Student Wise)</option></select></div>
+                
+                <div id="dashboard-filters-div">
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Dashboard Type</label>
+                    <select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold">
+                        <option value="region-wise">🌍 Region Summary</option>
+                        <option value="user-wise">👨‍💼 User Summary</option>
+                        <option value="submission-status">📋 Submission Status</option>
+                    </select>
+                </div>
+                
+                <!-- 🟢 YEH WOH DROPDOWN HAI JO CHHUP GAYA THA 🟢 -->
+                <div id="reports-layout-filter-div" class="hidden">
+                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Report Layout</label>
+                    <select id="admin-layout" class="w-full p-2 border rounded-lg text-sm">
+                        <option value="jamia">Jamia Wise</option>
+                        <option value="class">Class Wise</option>
+                        <option value="teacher">Asatiza Wise</option>
+                        <option value="wazahat">Kamzor Result (Wazahat)</option>
+                        <option value="ibtidaiya">Ibtidaiya (Student Wise)</option>
+                    </select>
+                </div>
             </div>
+
             <div class="flex gap-3">
                 <button id="admin-show-btn" class="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Show Analysis</button>
                 <button id="admin-export-btn" class="hidden flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg transition">📥 Excel</button>
@@ -149,7 +169,8 @@ export async function initAdminResultAnalysis(db, containerId) {
         <div id="upload-view" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-2xl border border-teal-100 shadow-sm">
                 <h3 class="text-xl font-bold text-slate-800 border-b pb-3 mb-4"><i class="fas fa-file-excel text-teal-600 mr-2"></i> Master Excel Upload (All Jamiaat)</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-1">Imtihan (Upload Type)</label>
                         <select id="upload-exam-type" class="w-full p-2 border rounded-lg urdu-font bg-gray-50">
@@ -161,10 +182,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <label class="block text-sm font-bold text-gray-700 mb-1">Saal (Upload Year)</label>
                         <select id="upload-exam-year" class="w-full p-2 border rounded-lg bg-gray-50"></select>
                     </div>
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Upload Master Excel File</label>
-                        <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-1.5 border rounded-lg bg-gray-50 cursor-pointer">
-                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Upload Master Excel File</label>
+                    <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-2 border border-teal-300 rounded-lg bg-teal-50 cursor-pointer focus:outline-none">
                 </div>
 
                 <div id="subject-passing-marks-container" class="hidden p-4 bg-teal-50 border border-teal-200 rounded-xl mb-6">
@@ -172,7 +194,22 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <div id="dynamic-subjects-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
                     <button id="btn-process-upload" class="mt-6 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-lg transition">🚀 Process All Jamiaat & Save Data</button>
                 </div>
-                <div id="upload-logs" class="hidden p-4 rounded-lg font-mono text-sm border bg-gray-50 max-h-60 overflow-y-auto"></div>
+
+                <!-- 🗑️ DELETE DATA SECTION -->
+                <div class="mt-8 border-t border-gray-200 pt-6">
+                    <h4 class="text-lg font-bold text-red-700 mb-3"><i class="fas fa-trash-alt mr-2"></i> Delete Old Uploaded Data</h4>
+                    <div class="flex flex-col md:flex-row gap-4">
+                        <select id="delete-jamia-select" class="w-full md:w-1/2 p-2 border rounded-lg urdu-font bg-gray-50">
+                            <option value="all">All Jamiaat (Poora Result Delete)</option>
+                        </select>
+                        <button id="btn-delete-result" class="w-full md:w-1/2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition shadow">
+                            🗑 Delete Result
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">نوٹ: جو سال اور امتحان آپ نے اوپر سیلیکٹ کیا ہوگا، اسی کا رزلٹ ڈیلیٹ ہوگا۔</p>
+                </div>
+
+                <div id="upload-logs" class="hidden"></div>
             </div>
         </div>
     </div>`;
@@ -189,11 +226,15 @@ export async function initAdminResultAnalysis(db, containerId) {
         exportBtn: document.getElementById("admin-export-btn"),
         regionFilter: document.getElementById("admin-region-filter"),
         userFilter: document.getElementById("admin-user-filter"),
-        jamiaSelect: document.getElementById("admin-jamia-select")
+        jamiaSelect: document.getElementById("admin-jamia-select"),
+        dashboardFilters: document.getElementById("dashboard-filters-div"), 
+        reportsLayoutFilter: document.getElementById("reports-layout-filter-div"),
+        statsContainer: document.getElementById("stats-summary")
     };
 
-    // 🌟 ERROR-FREE TAB SWITCHING 🌟
+    // 🌟 ERROR-FREE TAB SWITCHING (FIXED LOGIC) 🌟
     const switchTab = (activeBtn, activeView) => {
+        // Reset Tab Buttons
         [elements.btnDashboard, elements.btnReports, elements.btnUpload].forEach(btn => {
             if (btn) btn.classList.remove("active-sub-tab", "text-teal-600", "text-gray-600");
         });
@@ -204,15 +245,39 @@ export async function initAdminResultAnalysis(db, containerId) {
             else activeBtn.classList.add("text-gray-600");
         }
 
+        // Hide All Views
         [elements.dashboardView, elements.reportsView, elements.uploadView].forEach(v => {
             if (v) v.classList.add("hidden");
         });
+        
+        // Show Active View
         if (activeView) activeView.classList.remove("hidden");
 
+        // Filter Logic Handle karna
         if (activeView === elements.uploadView) {
             if (elements.filterSection) elements.filterSection.classList.add("hidden");
+            if (elements.statsContainer) elements.statsContainer.classList.add("hidden");
+            if (elements.exportBtn) elements.exportBtn.classList.add("hidden");
         } else {
             if (elements.filterSection) elements.filterSection.classList.remove("hidden");
+
+            // Dashboard vs Reports Filter Toggling
+            if (activeView === elements.dashboardView) {
+                if (elements.dashboardFilters) elements.dashboardFilters.classList.remove("hidden");
+                if (elements.reportsLayoutFilter) elements.reportsLayoutFilter.classList.add("hidden");
+                if (elements.statsContainer) elements.statsContainer.classList.remove("hidden");
+                if (elements.exportBtn) elements.exportBtn.classList.add("hidden");
+            } else if (activeView === elements.reportsView) {
+                if (elements.dashboardFilters) elements.dashboardFilters.classList.add("hidden");
+                if (elements.reportsLayoutFilter) elements.reportsLayoutFilter.classList.remove("hidden");
+                if (elements.statsContainer) elements.statsContainer.classList.add("hidden");
+                
+                // Export btn if data exists
+                const tbody = document.getElementById("admin-body");
+                if (tbody && tbody.innerHTML.trim() !== "") {
+                    if (elements.exportBtn) elements.exportBtn.classList.remove("hidden");
+                }
+            }
         }
     };
 
@@ -220,7 +285,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     if (elements.btnReports) elements.btnReports.onclick = () => switchTab(elements.btnReports, elements.reportsView);
     if (elements.btnUpload) elements.btnUpload.onclick = () => switchTab(elements.btnUpload, elements.uploadView);
 
-    // Auto-Populate Exam Year for Both Filters and Upload Section
+    // Auto-Populate Exam Year
     const adminExamYearSelect = document.getElementById('admin-exam-year');
     const uploadExamYearSelect = document.getElementById('upload-exam-year');
     
@@ -258,11 +323,14 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     }
 
-    // Update Jamia Dropdown
+    // Update Jamia Dropdown (View & Delete Dropdowns)
     const updateJamiaList = () => {
         const selUser = elements.userFilter.value;
         const selReg = elements.regionFilter.value;
+        const delJamiaSelect = document.getElementById('delete-jamia-select');
+        
         if(elements.jamiaSelect) elements.jamiaSelect.innerHTML = '<option value="all">All Jamiaat</option>';
+        if(delJamiaSelect) delJamiaSelect.innerHTML = '<option value="all">All Jamiaat (Poora Result Delete)</option>';
 
         let filteredUsers = allUsers;
         if (selReg !== "all") filteredUsers = filteredUsers.filter(u => u.region === selReg);
@@ -276,9 +344,10 @@ export async function initAdminResultAnalysis(db, containerId) {
             });
         });
 
-        if(elements.jamiaSelect) {
-            [...jamiaSet].sort().forEach(j => elements.jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`);
-        }
+        [...jamiaSet].sort().forEach(j => {
+            if(elements.jamiaSelect) elements.jamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
+            if(delJamiaSelect) delJamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
+        });
     };
 
     if (elements.regionFilter) {
@@ -292,6 +361,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         };
     }
     if (elements.userFilter) elements.userFilter.onchange = updateJamiaList;
+    updateJamiaList(); // Initial Call
 
     // Show Analysis Button
     const showBtn = document.getElementById("admin-show-btn");
@@ -509,6 +579,19 @@ export async function initAdminResultAnalysis(db, containerId) {
         if (e.target && e.target.id === 'result-excel-file') {
             const file = e.target.files[0];
             if (!file) return;
+            
+            // RESET UI FOR NEW FILE
+            const logs = document.getElementById('upload-logs');
+            if (logs) {
+                logs.classList.add('hidden');
+                logs.className = "hidden"; // reset class
+            }
+            const processBtn = document.getElementById('btn-process-upload');
+            if (processBtn) {
+                processBtn.disabled = false;
+                processBtn.innerHTML = '🚀 Process All Jamiaat & Save Data';
+                processBtn.classList.remove('hidden', 'opacity-70', 'cursor-not-allowed');
+            }
 
             const reader = new FileReader();
             reader.onload = (evt) => {
@@ -523,7 +606,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 mapData.forEach((row, idx) => {
                     if(idx === 0) return; 
-                    const className = row[9]; // Column J (Index 9)
+                    const className = row[9]; // Column J
                     if (className) {
                         classSubjectMap[className.trim()] = [];
                         for(let i = 0; i <= 8; i++) {
@@ -536,9 +619,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 });
 
                 let html = '';
-                // 🔹 NAYA LOGIC: Sort Subjects Alphabetically and Set Default Value to 40
                 const sortedSubjects = Array.from(uniqueSubjects).sort();
-                
                 sortedSubjects.forEach(sub => {
                     html += `
                         <div class="bg-white p-2 border rounded flex justify-between items-center shadow-sm">
@@ -558,7 +639,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     });
 
-    // Ustad ka naam dhoondne ka logic
     const getTeacherName = (jamiaName, className, subject) => {
         for (let u of allUsers) {
             if (!u.academicYears) continue;
@@ -582,6 +662,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
     // Calculate & Process Button
     document.addEventListener('click', async (e) => {
+        // --- 1. UPLOAD LOGIC ---
         const processBtn = e.target.closest('#btn-process-upload');
         if (processBtn) {
             const examType = document.getElementById('upload-exam-type')?.value;
@@ -593,15 +674,20 @@ export async function initAdminResultAnalysis(db, containerId) {
                 return;
             }
 
+            // BUTTON STATE: Processing
+            processBtn.disabled = true;
+            processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing... Please Wait';
+            processBtn.classList.add('opacity-70', 'cursor-not-allowed');
+
             if (logs) {
                 logs.classList.remove('hidden');
+                logs.className = "p-4 rounded-lg font-mono text-sm border bg-gray-50 max-h-60 overflow-y-auto mt-4";
                 logs.innerHTML = `<span class="text-blue-600 font-bold">⏳ Master Sheet Processing started...</span><br>`;
             }
 
             const passingMarks = {};
             uniqueSubjects.forEach(sub => {
                 const markInput = document.getElementById(`pass_mark_${sub}`);
-                // 🔹 NAYA LOGIC: Change fallback to 40 instead of 33
                 passingMarks[sub] = parseFloat(markInput?.value) || 40; 
             });
 
@@ -664,7 +750,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 if(logs) logs.innerHTML += `<span class="text-gray-600">Uploading data to Database...</span><br>`;
 
                 for (const jamiaName of Object.keys(multiJamiaClassData)) {
-                    
                     let contextUserName = "Admin", contextRegion = "N/A", ownerUserId = "admin";
                     if (typeof getJamiaContext === 'function') {
                         const context = getJamiaContext(jamiaName);
@@ -704,15 +789,101 @@ export async function initAdminResultAnalysis(db, containerId) {
                             jamia: jamiaName, examType: examType, examYear: examYear, data: tDataArr, timestamp: Date.now()
                         });
                     }
-
-                    if(logs) logs.innerHTML += `<span class="text-green-600">✔ ${jamiaName} Uploaded.</span><br>`;
                 }
 
-                if(logs) logs.innerHTML += `<br><span class="text-green-600 font-bold text-lg">✅ All Jamiaat Successfully Processed & Saved!</span>`;
+                // 🌟 SUCCESS UI: Bada Message aur Buttons 🌟
+                if(logs) {
+                    logs.className = "mt-6 p-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center shadow-sm";
+                    logs.innerHTML = `
+                        <div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
+                        <h4 class="text-3xl font-bold text-emerald-800 urdu-font mb-2">الحمدللہ!</h4>
+                        <p class="text-emerald-700 font-bold text-lg mb-6">تمام جامعات کا رزلٹ کامیابی سے ڈیٹا بیس میں محفوظ ہو گیا ہے۔</p>
+                        <div class="flex flex-col sm:flex-row justify-center gap-4">
+                            <button id="jump-to-dashboard" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
+                                <i class="fas fa-chart-pie mr-2"></i> Result Dashboard دیکھیں
+                            </button>
+                            <button id="jump-to-reports" type="button" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
+                                <i class="fas fa-table mr-2"></i> Detailed Reports دیکھیں
+                            </button>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('subject-passing-marks-container').classList.add('hidden');
+                processBtn.classList.add('hidden');
                 
             } catch (error) {
-                if(logs) logs.innerHTML += `<br><span class="text-red-600 font-bold">❌ Error: ${error.message}</span>`;
+                if(logs) logs.innerHTML += `<br><br><span class="text-red-600 font-bold text-lg">❌ Error: ${error.message}</span>`;
+                processBtn.disabled = false;
+                processBtn.innerHTML = '🚀 Retry Process & Save Data';
+                processBtn.classList.remove('opacity-70', 'cursor-not-allowed');
             }
         }
-    });
+    }
+
+    // --- B. Navigation Buttons from Success Message ---
+    if (e.target.closest('#jump-to-dashboard')) {
+        document.getElementById('tab-dashboard').click();
+        document.getElementById('admin-show-btn').click();
+    }
+
+    if (e.target.closest('#jump-to-reports')) {
+        document.getElementById('tab-reports').click();
+        document.getElementById('admin-show-btn').click();
+    }
+
+    // --- C. DELETE UPLOADED DATA LOGIC ---
+    if (e.target.closest('#btn-delete-result')) {
+        const delJamia = document.getElementById('delete-jamia-select')?.value;
+        const delYear = document.getElementById('upload-exam-year')?.value;
+        const delType = document.getElementById('upload-exam-type')?.value;
+        const logs = document.getElementById('upload-logs');
+
+        if (!delYear || !delType) {
+            alert("Exam Type اور Year سیلیکٹ ہونا ضروری ہے۔");
+            return;
+        }
+
+        const confirmMsg = delJamia === 'all' 
+            ? `WARNING: کیا آپ واقعی ${delYear} (${delType}) کا **تمام جامعات** کا ڈیٹا ہمیشہ کے لیے ڈیلیٹ کرنا چاہتے ہیں؟`
+            : `WARNING: کیا آپ واقعی ${delJamia} کا ${delYear} (${delType}) کا ڈیٹا ہمیشہ کے لیے ڈیلیٹ کرنا چاہتے ہیں؟`;
+
+        if (!confirm(confirmMsg)) return;
+
+        if (logs) {
+            logs.classList.remove('hidden');
+            logs.className = "mt-6 p-6 rounded-2xl border-2 border-red-200 bg-red-50 text-center shadow-sm";
+            logs.innerHTML = `<i class="fas fa-spinner fa-spin text-red-500 text-3xl mb-3"></i><br><span class="text-red-700 font-bold text-lg">ڈیٹا ڈیلیٹ ہو رہا ہے...</span>`;
+        }
+
+        try {
+            const deleteDataFromColl = async (collName) => {
+                let q = delJamia === 'all' 
+                    ? query(collection(db, collName), where("examYear", "==", delYear), where("examType", "==", delType))
+                    : query(collection(db, collName), where("jamia", "==", delJamia), where("examYear", "==", delYear), where("examType", "==", delType));
+                
+                const snap = await getDocs(q);
+                let count = 0;
+                const batch = writeBatch(db);
+                snap.forEach(d => { batch.delete(d.ref); count++; });
+                if (count > 0) await batch.commit();
+                return count;
+            };
+
+            const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
+            const classCount = await deleteDataFromColl("class_wise_results");
+
+            if(logs) {
+                logs.innerHTML = `
+                    <div class="mb-4"><i class="fas fa-trash-check text-green-500 text-5xl"></i></div>
+                    <h4 class="text-2xl font-bold text-green-800 urdu-font mb-2">ڈیلیٹ مکمل!</h4>
+                    <p class="text-green-700 font-bold">منتخب کیا گیا رزلٹ کامیابی سے ڈیلیٹ کر دیا گیا ہے۔</p>
+                    <p class="text-sm text-gray-500 mt-2">(${classCount} کلاسز اور ${asatizaCount} اساتذہ کا ریکارڈ حذف ہوا)</p>
+                `;
+            }
+        } catch(err) {
+            if(logs) logs.innerHTML = `<span class="text-red-600 font-bold">❌ Error: ${err.message}</span>`;
+        }
+    }
+});
 }
