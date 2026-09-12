@@ -1,7 +1,7 @@
 // ✅ FINAL FIXED: ADMIN RESULT ANALYSIS
 
 import {
-    collection, query, where, getDocs, orderBy
+    collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 🔹 HELPERS: Status & Colors
@@ -113,70 +113,32 @@ export async function initAdminResultAnalysis(db, containerId) {
 
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
+        <!-- 3 Tabs -->
         <div class="flex border-b mb-6 bg-gray-50 rounded-t-lg overflow-hidden">
             <button id="tab-dashboard" class="flex-1 py-3 font-bold text-gray-600 hover:bg-white transition active-sub-tab">📊 Result Dashboard</button>
             <button id="tab-reports" class="flex-1 py-3 font-bold text-gray-600 hover:bg-white transition">📝 Detailed Reports</button>
+            <button id="tab-upload" class="flex-1 py-3 font-bold text-teal-600 hover:bg-white transition">📤 Upload Excel Result</button>
         </div>
 
-        <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
+        <!-- Dashboard/Reports Filters (Purana Code) -->
+        <div id="filter-section" class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
                 <div>
                     <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Exam & Year</label>
                     <div class="flex gap-1">
                         <select id="admin-exam-type" class="w-full p-2 border rounded-lg text-sm urdu-font">
-                            <option value="ششماہی امتحان">ششماہی امتحان</option>
                             <option value="سالانہ امتحان">سالانہ امتحان</option>
+                            <option value="ششماہی امتحان">ششماہی امتحان</option>
                         </select>
-                        <select id="admin-exam-year" class="w-full p-2 border rounded-lg text-sm">
-                           
-                        </select>
+                        <select id="admin-exam-year" class="w-full p-2 border rounded-lg text-sm"></select>
                     </div>
                 </div>
-
-                <div>
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label>
-                    <select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm">
-                        <option value="all">All Regions</option>
-                        ${regions.map(r => `<option value="${r}">${r}</option>`).join('')}
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label>
-                    <select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm">
-                        <option value="all">All Users</option>
-                        ${allUsers.map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label>
-                    <select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font">
-                        <option value="all">All Jamiaat</option>
-                    </select>
-                </div>
-
-                <div id="dashboard-filters-div">
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Dashboard Type</label>
-                    <select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold">
-                        <option value="region-wise">🌍 Region Summary</option>
-                        <option value="user-wise">👨‍💼 User Summary</option>
-                        <option value="submission-status">📋 Submission Status</option>
-                    </select>
-                </div>
-
-                <div id="reports-layout-filter-div" class="hidden">
-                    <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Report Layout</label>
-                    <select id="admin-layout" class="w-full p-2 border rounded-lg text-sm">
-                        <option value="jamia">Jamia Wise</option>
-                        <option value="class">Class Wise</option>
-                        <option value="teacher">Asatiza Wise</option>
-                        <option value="wazahat">Kamzor Result (Wazahat)</option>
-                        <option value="ibtidaiya">Ibtidaiya (Student Wise)</option>
-                    </select>
-                </div>
+                <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label><select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Regions</option>${regions.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
+                <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label><select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Users</option>${allUsers.map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}</select></div>
+                <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label><select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font"><option value="all">All Jamiaat</option></select></div>
+                <div id="dashboard-filters-div"><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Dashboard Type</label><select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold"><option value="region-wise">🌍 Region Summary</option><option value="user-wise">👨‍💼 User Summary</option><option value="submission-status">📋 Submission Status</option></select></div>
+                <div id="reports-layout-filter-div" class="hidden"><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Report Layout</label><select id="admin-layout" class="w-full p-2 border rounded-lg text-sm"><option value="jamia">Jamia Wise</option><option value="class">Class Wise</option><option value="teacher">Asatiza Wise</option><option value="wazahat">Kamzor Result (Wazahat)</option><option value="ibtidaiya">Ibtidaiya (Student Wise)</option></select></div>
             </div>
-
             <div class="flex gap-3">
                 <button id="admin-show-btn" class="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg transition">Show Analysis</button>
                 <button id="admin-export-btn" class="hidden flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg transition">📥 Excel</button>
@@ -185,7 +147,9 @@ export async function initAdminResultAnalysis(db, containerId) {
 
         <div id="stats-summary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
         <div id="admin-loader" class="hidden text-center py-12"><div class="loader mx-auto"></div><p>Loading Data...</p></div>
+        
         <div id="dashboard-view" class="space-y-6"></div>
+        
         <div id="reports-view" class="hidden overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
              <table class="w-full text-center border-collapse" id="final-analysis-table-to-export">
                 <thead><tr id="admin-head" class="bg-gray-800 text-white urdu-font text-[14px]"></tr></thead>
@@ -193,22 +157,72 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <tfoot id="admin-foot" class="bg-gray-800 text-white font-bold"></tfoot>
             </table>
         </div>
+
+        <!-- 🚀 NAYA UPLOAD EXCEL VIEW -->
+        <div id="upload-view" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl border border-teal-100 shadow-sm">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Jamia Name</label>
+                        <select id="upload-jamia-name" class="w-full p-2 border rounded-lg urdu-font bg-gray-50"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Upload Excel File</label>
+                        <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-1.5 border rounded-lg bg-gray-50 cursor-pointer">
+                    </div>
+                    <div class="flex items-end gap-2">
+                        <button id="btn-delete-result" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg w-full transition">🗑 Delete Old Result</button>
+                    </div>
+                </div>
+
+                <div id="subject-passing-marks-container" class="hidden p-4 bg-teal-50 border border-teal-200 rounded-xl mb-6">
+                    <h4 class="font-bold text-teal-800 mb-3 border-b border-teal-200 pb-2"><i class="fas fa-sliders-h mr-2"></i> Sheet 2 se mile gaye Subjects (Passing Marks set karein)</h4>
+                    <div id="dynamic-subjects-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                    <button id="btn-process-upload" class="mt-6 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-lg transition">🚀 Process, Calculate & Save Data</button>
+                </div>
+
+                <div id="upload-logs" class="hidden p-4 rounded-lg font-mono text-sm"></div>
+            </div>
+        </div>
     </div>`;
 
     // Internal State Management - Elements Fix
-    const elements = {
+  const elements = {
         btnDashboard: document.getElementById("tab-dashboard"),
         btnReports: document.getElementById("tab-reports"),
+        btnUpload: document.getElementById("tab-upload"), // Naya
         dashboardView: document.getElementById("dashboard-view"),
         reportsView: document.getElementById("reports-view"),
-        dashboardFilters: document.getElementById("dashboard-filters-div"),
-        reportsLayoutFilter: document.getElementById("reports-layout-filter-div"),
-        statsContainer: document.getElementById("stats-summary"),
+        uploadView: document.getElementById("upload-view"), // Naya
+        filterSection: document.getElementById("filter-section"), // Naya ID diya
+        // Baqi wahi hain...
         exportBtn: document.getElementById("admin-export-btn"),
         regionFilter: document.getElementById("admin-region-filter"),
         userFilter: document.getElementById("admin-user-filter"),
         jamiaSelect: document.getElementById("admin-jamia-select")
     };
+
+    // Tab Switching Logic update karein
+    const switchTab = (activeBtn, activeView) => {
+        [elements.btnDashboard, elements.btnReports, elements.btnUpload].forEach(btn => btn.classList.remove("active-sub-tab", "text-teal-600"));
+        activeBtn.classList.add("active-sub-tab", activeBtn === elements.btnUpload ? "text-teal-600" : "text-gray-600");
+
+        [elements.dashboardView, elements.reportsView, elements.uploadView].forEach(v => v.classList.add("hidden"));
+        activeView.classList.remove("hidden");
+
+        if (activeView === elements.uploadView) {
+            elements.filterSection.classList.add("hidden");
+            // Upload ke liye Jamia Dropdown bharein
+            const uploadJamiaSelect = document.getElementById("upload-jamia-name");
+            uploadJamiaSelect.innerHTML = elements.jamiaSelect.innerHTML; // Copy options
+        } else {
+            elements.filterSection.classList.remove("hidden");
+        }
+    };
+
+    elements.btnDashboard.onclick = () => switchTab(elements.btnDashboard, elements.dashboardView);
+    elements.btnReports.onclick = () => switchTab(elements.btnReports, elements.reportsView);
+    elements.btnUpload.onclick = () => switchTab(elements.btnUpload, elements.uploadView);
 // --- NAYA CODE: Admin Exam Year Auto-Populate ---
     const adminExamYearSelect = document.getElementById('admin-exam-year');
     if (adminExamYearSelect) {
@@ -754,3 +768,259 @@ else if (layout === 'wazahat') {
 }
         }
 }
+
+// ==========================================
+    // 🚀 EXCEL UPLOAD & AUTO-CALCULATION LOGIC
+    // ==========================================
+    let uploadedWorkbook = null;
+    let classSubjectMap = {}; // Sheet 2 mapping
+    let uniqueSubjects = new Set(); // For passing marks UI
+
+    // 1. File Select Hote hi Sheet 2 Padhna
+    document.getElementById('result-excel-file').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const data = new Uint8Array(evt.target.result);
+            uploadedWorkbook = XLSX.read(data, {type: 'array'});
+
+            // Sheet 2 Padhna (Index 1)
+            const mapSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[1]];
+            const mapData = XLSX.utils.sheet_to_json(mapSheet, {header: 1});
+
+            classSubjectMap = {};
+            uniqueSubjects.clear();
+
+            mapData.forEach((row, idx) => {
+                if(idx === 0) return; // Heading skip
+                const className = row[9]; // Column J (10th column)
+                if (className) {
+                    classSubjectMap[className.trim()] = [];
+                    // Column A se I tak subjects hain
+                    for(let i = 0; i <= 8; i++) {
+                        if(row[i] && typeof row[i] === 'string' && row[i].trim() !== '') {
+                            classSubjectMap[className.trim()].push(row[i].trim());
+                            uniqueSubjects.add(row[i].trim());
+                        }
+                    }
+                }
+            });
+
+            // UI Generate karein
+            let html = '';
+            uniqueSubjects.forEach(sub => {
+                html += `
+                    <div class="bg-white p-2 border rounded flex justify-between items-center shadow-sm">
+                        <span class="urdu-font font-bold text-gray-700">${sub}</span>
+                        <input type="number" id="pass_mark_${sub}" value="33" class="w-16 p-1 border rounded text-center font-bold text-red-600">
+                    </div>`;
+            });
+
+            document.getElementById('dynamic-subjects-grid').innerHTML = html;
+            document.getElementById('subject-passing-marks-container').classList.remove('hidden');
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // Ustad ka naam dhondne wala helper
+    const getTeacherName = (jamiaName, className, subject) => {
+        for (let u of allUsers) {
+            if (!u.academicYears) continue;
+            let years = Object.keys(u.academicYears).sort().reverse();
+            if (years.length === 0) continue;
+            let struct = u.academicYears[years[0]].karkardagiStructure || [];
+            let jData = struct.find(j => j.jamiaName === jamiaName);
+            
+            if (jData && jData.teachers) {
+                for (let t of jData.teachers) {
+                    if (t.periods) {
+                        for (let p of t.periods) {
+                            if (p.className === className && p.bookName === subject) return t.name;
+                        }
+                    }
+                }
+            }
+        }
+        return "Na-Maloom";
+    };
+
+    // 2. Process & Upload Button Logic
+    document.getElementById('btn-process-upload').addEventListener('click', async () => {
+        const jamiaName = document.getElementById('upload-jamia-name').value;
+        const examType = document.getElementById('admin-exam-type').value;
+        const examYear = document.getElementById('admin-exam-year').value;
+        const logs = document.getElementById('upload-logs');
+
+        if (!uploadedWorkbook || jamiaName === 'all') {
+            alert("Jamia aur Excel file select karna zaroori hai!");
+            return;
+        }
+
+        logs.classList.remove('hidden');
+        logs.innerHTML = `<span class="text-blue-600">⏳ Processing started for ${jamiaName}...</span><br>`;
+
+        // Get passing marks
+        const passingMarks = {};
+        uniqueSubjects.forEach(sub => {
+            passingMarks[sub] = parseFloat(document.getElementById(`pass_mark_${sub}`).value) || 33;
+        });
+
+        // Parse Sheet 1 (Row 4 se)
+        const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
+        const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
+
+        let classWiseData = {};
+        let asatizaWiseData = {};
+        let studentReportCards = [];
+
+        // Context nikalein taake user id aur userName save ho sake
+        const context = getJamiaContext(jamiaName);
+        const ownerUserId = allUsers.find(u => (u.name || u.email) === context.userName)?.id || "admin";
+
+        resultData.forEach(row => {
+            const className = row['Class'] || row['کلاس'];
+            const kaifiyat = row['کیفیت'] ? row['کیفیت'].trim() : '';
+            if (!className) return;
+
+            const cName = className.trim();
+            const allowedSubjects = classSubjectMap[cName] || [];
+
+            // A. CLASS-WISE CALCULATION
+            if (!classWiseData[cName]) classWiseData[cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
+            
+            if (kaifiyat) {
+                classWiseData[cName].total++;
+                if (kaifiyat.includes('ممتاز مع شرف')) { classWiseData[cName].mumtazSharf++; classWiseData[cName].passed++; }
+                else if (kaifiyat.includes('ممتاز')) { classWiseData[cName].mumtaz++; classWiseData[cName].passed++; }
+                else if (kaifiyat.includes('جید جدا')) { classWiseData[cName].jayyidJidda++; classWiseData[cName].passed++; }
+                else if (kaifiyat.includes('جید')) { classWiseData[cName].jayyid++; classWiseData[cName].passed++; }
+                else if (kaifiyat.includes('مقبول')) { classWiseData[cName].maqbool++; classWiseData[cName].passed++; }
+                else if (kaifiyat.includes('مجاز ضمنی')) { classWiseData[cName].majazZimni++; }
+                else if (kaifiyat.includes('ناکام')) { classWiseData[cName].nakam++; }
+                else if (kaifiyat.includes('غ') || kaifiyat.includes('غیر حاضر')) { classWiseData[cName].ghaib++; classWiseData[cName].total--; }
+            }
+
+            // B. ASATIZA-WISE CALCULATION & REPORT CARD DATA
+            let stdMarksList = [];
+            allowedSubjects.forEach(sub => {
+                const marksRaw = row[sub];
+                let markVal = (marksRaw === 'غ' || marksRaw === undefined) ? 'غ' : marksRaw;
+                stdMarksList.push({ subject: sub, marks: markVal });
+
+                if (markVal !== 'غ' && markVal !== undefined) {
+                    let marks = typeof markVal === 'string' && markVal.includes('+') ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) : parseFloat(markVal);
+                    
+                    const tName = getTeacherName(jamiaName, cName, sub);
+                    if (tName !== "Na-Maloom") {
+                        if (!asatizaWiseData[tName]) asatizaWiseData[tName] = {};
+                        if (!asatizaWiseData[tName][sub]) asatizaWiseData[tName][sub] = { class: cName, subject: sub, total: 0, passed: 0 };
+                        
+                        asatizaWiseData[tName][sub].total++;
+                        if (marks >= passingMarks[sub]) asatizaWiseData[tName][sub].passed++;
+                    }
+                }
+            });
+
+            // Report Card Push
+            studentReportCards.push({
+                rollNo: row['رول نمبر'] || '-',
+                dakhlaNo: row['داخلہ نمبر'] || '-',
+                name: row['نام'] || '-',
+                fatherName: row['والد کا نام'] || '-',
+                darjah: cName,
+                jamiaRank: row['جامعہ میں رینک'] || '-',
+                totalMarks: row['کل نمبر'] || '-',
+                obtainedMarks: row['حاصل نمبر'] || '-',
+                percentage: row['فیصد'] || '-',
+                grade: row['گریڈ'] || '-',
+                kaifiyat: kaifiyat,
+                marksDetails: stdMarksList
+            });
+        });
+
+        // 3. BATCH UPLOAD TO FIREBASE (Replace mode)
+        try {
+            const batch = writeBatch(db);
+
+            // Report Cards
+            const rcId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
+            batch.set(doc(db, "student_report_cards", rcId), {
+                jamia: jamiaName, examYear: examYear, examType: examType,
+                students: studentReportCards, timestamp: Date.now()
+            });
+
+            // Class-Wise
+            for (const cName in classWiseData) {
+                const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
+                batch.set(doc(db, "class_wise_results", customId), {
+                    uid: ownerUserId, userId: ownerUserId, userName: context.userName, region: context.region,
+                    jamia: jamiaName, examType: examType, examYear: examYear, darjah: cName,
+                    ...classWiseData[cName], timestamp: Date.now()
+                });
+            }
+
+            // Asatiza-Wise
+            const tDataArr = [];
+            for (const tName in asatizaWiseData) {
+                const periods = [];
+                for (const subjKey in asatizaWiseData[tName]) {
+                    const sData = asatizaWiseData[tName][subjKey];
+                    let perc = sData.total > 0 ? ((sData.passed / sData.total) * 100).toFixed(1) : 0;
+                    periods.push({
+                        class: sData.class, subject: sData.subject, total: sData.total, passed: sData.passed,
+                        percentage: `${perc}%`, kaifiyat: getJamiaKefiyat(`${perc}%`, 'teacher')
+                    });
+                }
+                tDataArr.push({ teacher: tName, periods: periods });
+            }
+            if (tDataArr.length > 0) {
+                const asatizaId = `${jamiaName}_${examYear}_${examType}_asatiza`.replace(/\//g, '-').replace(/\s+/g, '_');
+                batch.set(doc(db, "asatiza_wise_results", asatizaId), {
+                    jamia: jamiaName, examType: examType, examYear: examYear, data: tDataArr, timestamp: Date.now()
+                });
+            }
+
+            await batch.commit();
+            logs.innerHTML += `<span class="text-green-600 font-bold">✅ Data successfully Processed aur Database mein Save/Replace ho gaya hai!</span>`;
+            
+        } catch (error) {
+            logs.innerHTML += `<span class="text-red-600 font-bold">❌ Error: ${error.message}</span>`;
+        }
+    });
+
+    // 3. DELETE OLD DATA LOGIC
+    document.getElementById('btn-delete-result').addEventListener('click', async () => {
+        const jamiaName = document.getElementById('upload-jamia-name').value;
+        const examType = document.getElementById('admin-exam-type').value;
+        const examYear = document.getElementById('admin-exam-year').value;
+        const logs = document.getElementById('upload-logs');
+
+        if (!confirm(`WARNING: Kya aap ${jamiaName} ka ${examYear} ka data Hamesha ke liye Delete karna chahte hain?`)) return;
+
+        logs.classList.remove('hidden');
+        logs.innerHTML = `<span class="text-red-600">🗑 Deleting data...</span><br>`;
+
+        try {
+            const batch = writeBatch(db);
+
+            // Report Cards
+            const rcId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
+            batch.delete(doc(db, "student_report_cards", rcId));
+
+            // Asatiza
+            const asatizaId = `${jamiaName}_${examYear}_${examType}_asatiza`.replace(/\//g, '-').replace(/\s+/g, '_');
+            batch.delete(doc(db, "asatiza_wise_results", asatizaId));
+
+            // Class-wise (Delete via query)
+            const classQuery = query(collection(db, "class_wise_results"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
+            const classSnap = await getDocs(classQuery);
+            classSnap.forEach(d => batch.delete(d.ref));
+
+            await batch.commit();
+            logs.innerHTML += `<span class="text-green-600 font-bold">✅ Data successfully delete ho gaya hai!</span>`;
+        } catch(e) {
+            logs.innerHTML += `<span class="text-red-600 font-bold">❌ Error: ${e.message}</span>`;
+        }
+    });
