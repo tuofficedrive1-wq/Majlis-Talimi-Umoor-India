@@ -1,5 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS
-// ⚠️ TAWWAJOH: IS FILE KA PURANA SARA CODE MUKAMMAL DELETE KAR DEIN AUR YEH NAYA CODE PASTE KAREIN.
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (AUTO PASSING MARKS FROM EXCEL SHEET 2)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -189,10 +188,13 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-2 border border-teal-300 rounded-lg bg-teal-50 cursor-pointer focus:outline-none">
                 </div>
 
-                <div id="subject-passing-marks-container" class="hidden p-4 bg-teal-50 border border-teal-200 rounded-xl mb-6">
-                    <h4 class="font-bold text-teal-800 mb-3 border-b border-teal-200 pb-2"><i class="fas fa-sliders-h mr-2"></i> Sheet 2 se mile gaye Subjects (Passing Marks set karein)</h4>
-                    <div id="dynamic-subjects-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
-                    <button id="btn-process-upload" class="mt-6 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-lg transition">🚀 Process All Jamiaat & Save Data</button>
+                <!-- 🟢 READY TO PROCESS UI -->
+                <div id="ready-to-process-container" class="hidden p-6 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-center shadow-sm">
+                    <h4 class="font-bold text-emerald-800 mb-2 text-xl"><i class="fas fa-check-circle mr-2"></i> Excel Sheet Successfully Loaded!</h4>
+                    <p class="text-emerald-700 mb-4 font-semibold urdu-font text-lg">Sheet 2 سے تمام مضامین اور ان کے پاسنگ مارکس آٹو فیچ کر لیے گئے ہیں۔</p>
+                    <button id="btn-process-upload" class="w-full md:w-2/3 mx-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
+                        <i class="fas fa-rocket"></i> Process All Jamiaat & Save Data
+                    </button>
                 </div>
 
                 <!-- 🗑️ DELETE DATA SECTION -->
@@ -566,13 +568,12 @@ export async function initAdminResultAnalysis(db, containerId) {
     // ==========================================
     let uploadedWorkbook = null;
     let classSubjectMap = {}; 
-    let uniqueSubjects = new Set(); 
 
     // Prevent Multiple Bindings
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
-        // 1. File Selection Event
+        // 1. File Selection Event (Auto Fetch Passing Marks from Excel)
         document.addEventListener('change', (e) => {
             if (e.target && e.target.id === 'result-excel-file') {
                 const file = e.target.files[0];
@@ -600,37 +601,51 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const mapData = XLSX.utils.sheet_to_json(mapSheet, {header: 1});
 
                     classSubjectMap = {};
-                    uniqueSubjects.clear();
 
-                    mapData.forEach((row, idx) => {
-                        if(idx === 0) return; 
-                        const className = row[9]; // Column J
-                        if (className) {
-                            classSubjectMap[className.trim()] = [];
-                            for(let i = 0; i <= 8; i++) {
+                    // Naya Logic: Excel (Sheet 2) Se Seedha Passing Marks Padhna
+                    for (let idx = 0; idx < mapData.length; idx++) {
+                        const row = mapData[idx];
+                        if (!row || row.length === 0) continue; 
+                        
+                        let className = row[10] || row[9] || row[11]; // Find 'درجہ' column
+                        
+                        if (className && typeof className === 'string' && className.trim() !== '' && className.trim() !== 'درجہ') {
+                            const currentClass = className.trim();
+                            classSubjectMap[currentClass] = { subjects: [], passingMarks: {} };
+                            
+                            // Passing marks Excel mein 2 rows neechay hote hain
+                            const passingMarksRow = mapData[idx + 2] || [];
+                            
+                            for(let i = 0; i <= 9; i++) {
                                 if(row[i] && typeof row[i] === 'string' && row[i].trim() !== '') {
-                                    classSubjectMap[className.trim()].push(row[i].trim());
-                                    uniqueSubjects.add(row[i].trim());
+                                    const subName = row[i].trim();
+                                    classSubjectMap[currentClass].subjects.push(subName);
+                                    
+                                    const passMark = parseFloat(passingMarksRow[i]);
+                                    classSubjectMap[currentClass].passingMarks[subName] = isNaN(passMark) ? 33 : passMark; 
                                 }
                             }
                         }
-                    });
+                    }
 
-                    let html = '';
-                    const sortedSubjects = Array.from(uniqueSubjects).sort();
-                    sortedSubjects.forEach(sub => {
-                        html += `
-                            <div class="bg-white p-2 border rounded flex justify-between items-center shadow-sm">
-                                <span class="urdu-font font-bold text-gray-700">${sub}</span>
-                                <input type="number" id="pass_mark_${sub}" value="40" class="w-16 p-1 border rounded text-center font-bold text-red-600">
-                            </div>`;
-                    });
-
-                    const grid = document.getElementById('dynamic-subjects-grid');
+                    // Passing marks ka container hide aur "Ready" message show karein
                     const container = document.getElementById('subject-passing-marks-container');
-                    if (grid && container) {
-                        grid.innerHTML = html;
-                        container.classList.remove('hidden');
+                    if (container) container.classList.add('hidden');
+
+                    let readyHtml = `
+                        <div id="ready-to-process-container" class="p-6 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-center shadow-sm">
+                            <h4 class="font-bold text-emerald-800 mb-2 text-xl"><i class="fas fa-check-circle mr-2"></i> Excel Sheet Successfully Loaded!</h4>
+                            <p class="text-emerald-700 font-semibold urdu-font text-lg">Sheet 2 سے تمام مضامین اور ان کے پاسنگ مارکس آٹو فیچ کر لیے گئے ہیں۔</p>
+                        </div>
+                    `;
+                    
+                    // Agar pehle se ready container hai to usko update karein, nahi to append karein
+                    let existingReady = document.getElementById('ready-to-process-container');
+                    if(existingReady) {
+                        existingReady.outerHTML = readyHtml;
+                    } else {
+                        const fileInputDiv = document.getElementById('result-excel-file').parentElement.parentElement;
+                        fileInputDiv.insertAdjacentHTML('afterend', readyHtml);
                     }
                 };
                 reader.readAsArrayBuffer(file);
@@ -684,18 +699,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                     logs.innerHTML = `<span class="text-blue-600 font-bold">⏳ Master Sheet Processing started...</span><br>`;
                 }
 
-                const passingMarks = {};
-                uniqueSubjects.forEach(sub => {
-                    const markInput = document.getElementById(`pass_mark_${sub}`);
-                    passingMarks[sub] = parseFloat(markInput?.value) || 40; 
-                });
-
                 const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
                 const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
 
                 let multiJamiaClassData = {};
                 let multiJamiaAsatizaData = {};
-                let studentReportCards = [];
 
                 resultData.forEach(row => {
                     const rawJamiaName = row['جامعۃ المدینہ'] || row['جامعہ کوڈ'];
@@ -706,7 +714,9 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     const jamiaName = rawJamiaName.trim();
                     const cName = className.trim();
-                    const allowedSubjects = classSubjectMap[cName] || [];
+                    const classConfig = classSubjectMap[cName];
+                    const allowedSubjects = classConfig ? classConfig.subjects : [];
+                    const passingMarksMap = classConfig ? classConfig.passingMarks : {};
 
                     if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
                     if (!multiJamiaAsatizaData[jamiaName]) multiJamiaAsatizaData[jamiaName] = {};
@@ -727,11 +737,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                         else if (kaifiyat.includes('غ') || kaifiyat.includes('غیر حاضر')) { multiJamiaClassData[jamiaName][cName].ghaib++; multiJamiaClassData[jamiaName][cName].total--; }
                     }
 
-                    let stdMarksList = [];
                     allowedSubjects.forEach(sub => {
                         const marksRaw = row[sub];
                         let markVal = (marksRaw === 'غ' || marksRaw === undefined || marksRaw === '') ? 'غ' : marksRaw;
-                        stdMarksList.push({ subject: sub, marks: markVal });
 
                         if (markVal !== 'غ') {
                             let marks = typeof markVal === 'string' && markVal.includes('+') ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) : parseFloat(markVal);
@@ -742,24 +750,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 if (!multiJamiaAsatizaData[jamiaName][tName][sub]) multiJamiaAsatizaData[jamiaName][tName][sub] = { class: cName, subject: sub, total: 0, passed: 0 };
                                 
                                 multiJamiaAsatizaData[jamiaName][tName][sub].total++;
-                                if (marks >= passingMarks[sub]) multiJamiaAsatizaData[jamiaName][tName][sub].passed++;
+                                
+                                const passTarget = passingMarksMap[sub] !== undefined ? passingMarksMap[sub] : 33;
+                                if (marks >= passTarget) multiJamiaAsatizaData[jamiaName][tName][sub].passed++;
                             }
                         }
-                    });
-
-                    studentReportCards.push({
-                        rollNo: row['رول نمبر'] || '-',
-                        dakhlaNo: row['داخلہ نمبر'] || '-',
-                        name: row['نام'] || '-',
-                        fatherName: row['والد کا نام'] || '-',
-                        darjah: cName,
-                        jamiaRank: row['جامعہ میں رینک'] || '-',
-                        totalMarks: row['کل نمبر'] || '-',
-                        obtainedMarks: row['حاصل نمبر'] || '-',
-                        percentage: row['فیصد'] || '-',
-                        grade: row['گریڈ'] || '-',
-                        kaifiyat: kaifiyat,
-                        marksDetails: stdMarksList
                     });
                 });
 
@@ -806,12 +801,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 jamia: jamiaName, examType: examType, examYear: examYear, data: tDataArr, timestamp: Date.now()
                             });
                         }
-
-                        const rcId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
-                        await setDoc(doc(db, "student_report_cards", rcId), {
-                            jamia: jamiaName, examYear: examYear, examType: examType,
-                            students: studentReportCards.filter(s => s.jamiaName === jamiaName), timestamp: Date.now()
-                        });
                     }
 
                     if(logs) {
@@ -831,7 +820,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                         `;
                     }
 
-                    document.getElementById('subject-passing-marks-container').classList.add('hidden');
+                    const readyContainer = document.getElementById('ready-to-process-container');
+                    if (readyContainer) readyContainer.classList.add('hidden');
                     processBtn.classList.add('hidden');
                     
                 } catch (error) {
@@ -889,7 +879,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         for (let i = 0; i < snap.docs.length; i++) {
                             batch.delete(snap.docs[i].ref);
                             count++;
-                            if (count % 400 === 0) { // Batch limit is 500, writing at 400 for safety
+                            if (count % 400 === 0) {
                                 await batch.commit();
                                 batch = writeBatch(db);
                             }
@@ -902,14 +892,13 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
                     const classCount = await deleteDataFromColl("class_wise_results");
-                    const reportCount = await deleteDataFromColl("student_report_cards");
 
                     if(logs) {
                         logs.innerHTML = `
                             <div class="mb-4"><i class="fas fa-check-circle text-green-500 text-5xl"></i></div>
                             <h4 class="text-2xl font-bold text-green-800 urdu-font mb-2">ڈیلیٹ مکمل!</h4>
                             <p class="text-green-700 font-bold">منتخب کیا گیا رزلٹ کامیابی سے ڈیلیٹ کر دیا گیا ہے۔</p>
-                            <p class="text-sm text-gray-500 mt-2">(${classCount} کلاسز، ${asatizaCount} اساتذہ اور رپورٹ کارڈز کا ریکارڈ حذف ہوا)</p>
+                            <p class="text-sm text-gray-500 mt-2">(${classCount} کلاسز اور ${asatizaCount} اساتذہ کا ریکارڈ حذف ہوا)</p>
                         `;
                     }
                 } catch(err) {
