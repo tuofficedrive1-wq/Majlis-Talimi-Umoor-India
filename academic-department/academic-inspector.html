@@ -1497,7 +1497,6 @@ window.copyEnrollmentLink = (url, btnElement) => {
             renderEnrollmentSummary(assignedJamiaat, db, currentUser);
         };
         
-        // Naya Javascript Function: Class Wise Summary me data fetch aur show karne ke liye
         window.renderClassWiseSummaryTab = async () => {
             const tbody = document.getElementById('enrollment-classwise-container');
             if (!assignedJamiaat || assignedJamiaat.length === 0) {
@@ -1509,9 +1508,8 @@ window.copyEnrollmentLink = (url, btnElement) => {
             tbody.innerHTML = '<tr><td colspan="15" class="p-6 text-center text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i>Data load ho raha hai...</td></tr>';
 
             try {
-                const recordsMap = {}; // Data store karne ke liye object
+                const recordsMap = {}; 
 
-                // Firestore se data fetch karna (30 ke chunks me kyunke 'in' query ki limit hoti hai)
                 for (let i = 0; i < assignedJamiaat.length; i += 30) {
                     const chunk = assignedJamiaat.slice(i, i + 30);
                     const snap = await getDocs(query(
@@ -1523,15 +1521,32 @@ window.copyEnrollmentLink = (url, btnElement) => {
                     snap.forEach(doc => {
                         const data = doc.data();
                         const jName = data.jamiaName;
-                        const jmCls = data.jmClass; // Jamiatul Madina Class
-                        const asriCls = data.asriClass; // Asri Class field
+                        let jmCls = data.jmClass; 
+                        const admType = data.admissionType;
+                        let mappedAsri = null;
+
+                        if (admType === 'College') {
+                            if (data.programLevel === 'Under-Graduate') mappedAsri = 'Under Graduate';
+                            else if (data.programLevel === 'Post-Graduate') mappedAsri = 'Post Graduate';
+                        } else if (admType === 'Waiting') {
+                            if (data.classLevel === 'Wait for 10th Class') mappedAsri = 'Wait for 10 th Class';
+                            else if (data.classLevel === 'Wait for 12th Class') mappedAsri = 'Wait For 12th Class';
+                        } else if (['School', 'NIOS', 'Madrasa Board'].includes(admType)) {
+                            if (data.classLevel) {
+                                mappedAsri = data.classLevel + " Class";
+                            }
+                        }
+
+                        if (jmCls === 'Darse Nizami Final Year') {
+                            jmCls = 'Darse Nizami 8th year';
+                        }
                         
-                        if (jName && jmCls && asriCls) {
+                        if (jName && jmCls && mappedAsri) {
                             if (!recordsMap[jName]) recordsMap[jName] = {};
                             if (!recordsMap[jName][jmCls]) recordsMap[jName][jmCls] = {};
-                            if (!recordsMap[jName][jmCls][asriCls]) recordsMap[jName][jmCls][asriCls] = 0;
+                            if (!recordsMap[jName][jmCls][mappedAsri]) recordsMap[jName][jmCls][mappedAsri] = 0;
                             
-                            recordsMap[jName][jmCls][asriCls]++; // Count badhana
+                            recordsMap[jName][jmCls][mappedAsri]++; 
                         }
                     });
                 }
@@ -1543,7 +1558,6 @@ window.copyEnrollmentLink = (url, btnElement) => {
                     "Darse Nizami 7th year", "Darse Nizami 8th year"
                 ];
                 
-                // Table ke columns wale names
                 const asriCols = [
                     "5th Class", "6th Class", "7th Class", "8th Class", 
                     "9th Class", "10th Class", "11th Class", "12th Class", 
@@ -1555,7 +1569,6 @@ window.copyEnrollmentLink = (url, btnElement) => {
                     jmClasses.forEach((cls, cIndex) => {
                         rowsHTML += `<tr class="hover:bg-slate-50 transition-colors">`;
                         
-                        // Jamia aur S.No ko merge (rowspan) karna sirf pehli row me
                         if (cIndex === 0) {
                             rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold text-slate-700 bg-white">${index + 1}</td>`;
                             rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold text-slate-800 bg-white text-left">${jamia}</td>`;
@@ -1563,20 +1576,12 @@ window.copyEnrollmentLink = (url, btnElement) => {
                         
                         rowsHTML += `<td class="p-2 border border-slate-200 text-left font-semibold whitespace-nowrap bg-slate-50 text-slate-700">${cls}</td>`;
                         
-                        // Columns me match karke values dalna
                         asriCols.forEach(asri => {
                             let count = 0;
-                            if (recordsMap[jamia] && recordsMap[jamia][cls]) {
-                                // Spaces aur case ignore karke match karna taake spelling mistakes ka issue na aye
-                                const foundKey = Object.keys(recordsMap[jamia][cls]).find(
-                                    k => k.toLowerCase().replace(/\s+/g, '') === asri.toLowerCase().replace(/\s+/g, '')
-                                );
-                                if (foundKey) {
-                                    count = recordsMap[jamia][cls][foundKey];
-                                }
+                            if (recordsMap[jamia] && recordsMap[jamia][cls] && recordsMap[jamia][cls][asri]) {
+                                count = recordsMap[jamia][cls][asri];
                             }
                             
-                            // Agar zero hai to dash (-), warna count dikhaye
                             const displayVal = count > 0 ? `<span class="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">${count}</span>` : `<span class="text-slate-300">-</span>`;
                             rowsHTML += `<td class="p-2 border border-slate-200 text-center">${displayVal}</td>`;
                         });
