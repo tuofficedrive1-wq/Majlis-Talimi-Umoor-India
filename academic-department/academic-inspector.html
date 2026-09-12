@@ -1497,45 +1497,99 @@ window.copyEnrollmentLink = (url, btnElement) => {
             renderEnrollmentSummary(assignedJamiaat, db, currentUser);
         };
         
-        // Naya Javascript Function: Class Wise Summary table create karne ke liye
-        window.renderClassWiseSummaryTab = () => {
+        // Naya Javascript Function: Class Wise Summary me data fetch aur show karne ke liye
+        window.renderClassWiseSummaryTab = async () => {
             const tbody = document.getElementById('enrollment-classwise-container');
             if (!assignedJamiaat || assignedJamiaat.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="15" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
                 return;
             }
 
-            const jmClasses = [
-                "Primary",
-                "Pre Darse Nizami 1st Year",
-                "Pre Darse Nizami 2nd Year",
-                "Darse Nizami 1st year",
-                "Darse Nizami 2nd year",
-                "Darse Nizami 3rd year",
-                "Darse Nizami 4th year",
-                "Darse Nizami 5th year",
-                "Darse Nizami 6th year",
-                "Darse Nizami 7th year",
-                "Darse Nizami 8th year"
-            ];
-            const cols = 12;
+            // Loading State
+            tbody.innerHTML = '<tr><td colspan="15" class="p-6 text-center text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i>Data load ho raha hai...</td></tr>';
 
-            let rowsHTML = '';
-            assignedJamiaat.forEach((jamia, index) => {
-                jmClasses.forEach((cls, cIndex) => {
-                    rowsHTML += `<tr class="hover:bg-slate-50 transition-colors">`;
-                    if (cIndex === 0) {
-                        rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold bg-white">${index + 1}</td>`;
-                        rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold bg-white">${jamia}</td>`;
-                    }
-                    rowsHTML += `<td class="p-2 border border-slate-200 text-left font-medium whitespace-nowrap bg-slate-50/50">${cls}</td>`;
-                    for(let i=0; i<cols; i++) {
-                        rowsHTML += `<td class="p-2 border border-slate-200 text-center text-slate-400">-</td>`;
-                    }
-                    rowsHTML += `</tr>`;
+            try {
+                const recordsMap = {}; // Data store karne ke liye object
+
+                // Firestore se data fetch karna (30 ke chunks me kyunke 'in' query ki limit hoti hai)
+                for (let i = 0; i < assignedJamiaat.length; i += 30) {
+                    const chunk = assignedJamiaat.slice(i, i + 30);
+                    const snap = await getDocs(query(
+                        collection(db, "enrollment_records"),
+                        where("inspectorId", "==", currentUser.uid),
+                        where("jamiaName", "in", chunk)
+                    ));
+                    
+                    snap.forEach(doc => {
+                        const data = doc.data();
+                        const jName = data.jamiaName;
+                        const jmCls = data.jmClass; // Jamiatul Madina Class
+                        const asriCls = data.asriClass; // Asri Class field
+                        
+                        if (jName && jmCls && asriCls) {
+                            if (!recordsMap[jName]) recordsMap[jName] = {};
+                            if (!recordsMap[jName][jmCls]) recordsMap[jName][jmCls] = {};
+                            if (!recordsMap[jName][jmCls][asriCls]) recordsMap[jName][jmCls][asriCls] = 0;
+                            
+                            recordsMap[jName][jmCls][asriCls]++; // Count badhana
+                        }
+                    });
+                }
+
+                const jmClasses = [
+                    "Primary", "Pre Darse Nizami 1st Year", "Pre Darse Nizami 2nd Year",
+                    "Darse Nizami 1st year", "Darse Nizami 2nd year", "Darse Nizami 3rd year",
+                    "Darse Nizami 4th year", "Darse Nizami 5th year", "Darse Nizami 6th year",
+                    "Darse Nizami 7th year", "Darse Nizami 8th year"
+                ];
+                
+                // Table ke columns wale names
+                const asriCols = [
+                    "5th Class", "6th Class", "7th Class", "8th Class", 
+                    "9th Class", "10th Class", "11th Class", "12th Class", 
+                    "Under Graduate", "Post Graduate", "Wait for 10 th Class", "Wait For 12th Class"
+                ];
+
+                let rowsHTML = '';
+                assignedJamiaat.forEach((jamia, index) => {
+                    jmClasses.forEach((cls, cIndex) => {
+                        rowsHTML += `<tr class="hover:bg-slate-50 transition-colors">`;
+                        
+                        // Jamia aur S.No ko merge (rowspan) karna sirf pehli row me
+                        if (cIndex === 0) {
+                            rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold text-slate-700 bg-white">${index + 1}</td>`;
+                            rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold text-slate-800 bg-white text-left">${jamia}</td>`;
+                        }
+                        
+                        rowsHTML += `<td class="p-2 border border-slate-200 text-left font-semibold whitespace-nowrap bg-slate-50 text-slate-700">${cls}</td>`;
+                        
+                        // Columns me match karke values dalna
+                        asriCols.forEach(asri => {
+                            let count = 0;
+                            if (recordsMap[jamia] && recordsMap[jamia][cls]) {
+                                // Spaces aur case ignore karke match karna taake spelling mistakes ka issue na aye
+                                const foundKey = Object.keys(recordsMap[jamia][cls]).find(
+                                    k => k.toLowerCase().replace(/\s+/g, '') === asri.toLowerCase().replace(/\s+/g, '')
+                                );
+                                if (foundKey) {
+                                    count = recordsMap[jamia][cls][foundKey];
+                                }
+                            }
+                            
+                            // Agar zero hai to dash (-), warna count dikhaye
+                            const displayVal = count > 0 ? `<span class="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">${count}</span>` : `<span class="text-slate-300">-</span>`;
+                            rowsHTML += `<td class="p-2 border border-slate-200 text-center">${displayVal}</td>`;
+                        });
+                        
+                        rowsHTML += `</tr>`;
+                    });
                 });
-            });
-            tbody.innerHTML = rowsHTML;
+                tbody.innerHTML = rowsHTML;
+
+            } catch (error) {
+                console.error("Class Wise Summary Load Error: ", error);
+                tbody.innerHTML = '<tr><td colspan="15" class="p-6 text-center text-red-500 font-bold">Data fetch karne mein masla aaya! Console check karein.</td></tr>';
+            }
         };
 
         document.querySelectorAll('.enroll-sub-btn').forEach(btn => {
@@ -1553,7 +1607,6 @@ window.copyEnrollmentLink = (url, btnElement) => {
                 document.getElementById('enroll-sub-summary').classList.toggle('hidden', target !== 'summary');
                 document.getElementById('enroll-sub-summary').classList.toggle('block', target === 'summary');
                 
-                // Naya Tab yahan handle kiya gaya hai
                 document.getElementById('enroll-sub-classwise').classList.toggle('hidden', target !== 'classwise');
                 document.getElementById('enroll-sub-classwise').classList.toggle('block', target === 'classwise');
 
