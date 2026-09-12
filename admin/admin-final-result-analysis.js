@@ -1,4 +1,5 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (TABS FIXED, DELETE FEATURE ADDED, DEFAULT 40 MARKS)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS
+// ⚠️ TAWWAJOH: IS FILE KA PURANA SARA CODE MUKAMMAL DELETE KAR DEIN AUR YEH NAYA CODE PASTE KAREIN.
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -134,7 +135,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     </select>
                 </div>
                 
-                <!-- 🟢 YEH WOH DROPDOWN HAI JO CHHUP GAYA THA 🟢 -->
                 <div id="reports-layout-filter-div" class="hidden">
                     <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Report Layout</label>
                     <select id="admin-layout" class="w-full p-2 border rounded-lg text-sm">
@@ -232,9 +232,8 @@ export async function initAdminResultAnalysis(db, containerId) {
         statsContainer: document.getElementById("stats-summary")
     };
 
-    // 🌟 ERROR-FREE TAB SWITCHING (FIXED LOGIC) 🌟
+    // 🌟 ERROR-FREE TAB SWITCHING 🌟
     const switchTab = (activeBtn, activeView) => {
-        // Reset Tab Buttons
         [elements.btnDashboard, elements.btnReports, elements.btnUpload].forEach(btn => {
             if (btn) btn.classList.remove("active-sub-tab", "text-teal-600", "text-gray-600");
         });
@@ -245,15 +244,12 @@ export async function initAdminResultAnalysis(db, containerId) {
             else activeBtn.classList.add("text-gray-600");
         }
 
-        // Hide All Views
         [elements.dashboardView, elements.reportsView, elements.uploadView].forEach(v => {
             if (v) v.classList.add("hidden");
         });
         
-        // Show Active View
         if (activeView) activeView.classList.remove("hidden");
 
-        // Filter Logic Handle karna
         if (activeView === elements.uploadView) {
             if (elements.filterSection) elements.filterSection.classList.add("hidden");
             if (elements.statsContainer) elements.statsContainer.classList.add("hidden");
@@ -261,7 +257,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         } else {
             if (elements.filterSection) elements.filterSection.classList.remove("hidden");
 
-            // Dashboard vs Reports Filter Toggling
             if (activeView === elements.dashboardView) {
                 if (elements.dashboardFilters) elements.dashboardFilters.classList.remove("hidden");
                 if (elements.reportsLayoutFilter) elements.reportsLayoutFilter.classList.add("hidden");
@@ -272,7 +267,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 if (elements.reportsLayoutFilter) elements.reportsLayoutFilter.classList.remove("hidden");
                 if (elements.statsContainer) elements.statsContainer.classList.add("hidden");
                 
-                // Export btn if data exists
                 const tbody = document.getElementById("admin-body");
                 if (tbody && tbody.innerHTML.trim() !== "") {
                     if (elements.exportBtn) elements.exportBtn.classList.remove("hidden");
@@ -323,7 +317,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     }
 
-    // Update Jamia Dropdown (View & Delete Dropdowns)
+    // Update Jamia Dropdown (View & Delete)
     const updateJamiaList = () => {
         const selUser = elements.userFilter.value;
         const selReg = elements.regionFilter.value;
@@ -361,7 +355,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         };
     }
     if (elements.userFilter) elements.userFilter.onchange = updateJamiaList;
-    updateJamiaList(); // Initial Call
+    updateJamiaList(); 
 
     // Show Analysis Button
     const showBtn = document.getElementById("admin-show-btn");
@@ -568,322 +562,360 @@ export async function initAdminResultAnalysis(db, containerId) {
     }
 
     // ==========================================
-    // 🚀 EXCEL UPLOAD LOGIC & DATA PROCESSING
+    // 🚀 EXCEL UPLOAD LOGIC & EVENT DELEGATION
     // ==========================================
     let uploadedWorkbook = null;
     let classSubjectMap = {}; 
     let uniqueSubjects = new Set(); 
 
-    // File Selection event (Delegation)
-    document.addEventListener('change', (e) => {
-        if (e.target && e.target.id === 'result-excel-file') {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            // RESET UI FOR NEW FILE
-            const logs = document.getElementById('upload-logs');
-            if (logs) {
-                logs.classList.add('hidden');
-                logs.className = "hidden"; // reset class
+    // Prevent Multiple Bindings
+    if (!window.adminResultAnalysisInitialized) {
+        window.adminResultAnalysisInitialized = true;
+
+        // 1. File Selection Event
+        document.addEventListener('change', (e) => {
+            if (e.target && e.target.id === 'result-excel-file') {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // RESET UI FOR NEW FILE
+                const logs = document.getElementById('upload-logs');
+                if (logs) {
+                    logs.classList.add('hidden');
+                    logs.className = "hidden";
+                }
+                const processBtn = document.getElementById('btn-process-upload');
+                if (processBtn) {
+                    processBtn.disabled = false;
+                    processBtn.innerHTML = '🚀 Process All Jamiaat & Save Data';
+                    processBtn.classList.remove('hidden', 'opacity-70', 'cursor-not-allowed');
+                }
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const data = new Uint8Array(evt.target.result);
+                    uploadedWorkbook = XLSX.read(data, {type: 'array'});
+
+                    const mapSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[1]];
+                    const mapData = XLSX.utils.sheet_to_json(mapSheet, {header: 1});
+
+                    classSubjectMap = {};
+                    uniqueSubjects.clear();
+
+                    mapData.forEach((row, idx) => {
+                        if(idx === 0) return; 
+                        const className = row[9]; // Column J
+                        if (className) {
+                            classSubjectMap[className.trim()] = [];
+                            for(let i = 0; i <= 8; i++) {
+                                if(row[i] && typeof row[i] === 'string' && row[i].trim() !== '') {
+                                    classSubjectMap[className.trim()].push(row[i].trim());
+                                    uniqueSubjects.add(row[i].trim());
+                                }
+                            }
+                        }
+                    });
+
+                    let html = '';
+                    const sortedSubjects = Array.from(uniqueSubjects).sort();
+                    sortedSubjects.forEach(sub => {
+                        html += `
+                            <div class="bg-white p-2 border rounded flex justify-between items-center shadow-sm">
+                                <span class="urdu-font font-bold text-gray-700">${sub}</span>
+                                <input type="number" id="pass_mark_${sub}" value="40" class="w-16 p-1 border rounded text-center font-bold text-red-600">
+                            </div>`;
+                    });
+
+                    const grid = document.getElementById('dynamic-subjects-grid');
+                    const container = document.getElementById('subject-passing-marks-container');
+                    if (grid && container) {
+                        grid.innerHTML = html;
+                        container.classList.remove('hidden');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
             }
-            const processBtn = document.getElementById('btn-process-upload');
-            if (processBtn) {
-                processBtn.disabled = false;
-                processBtn.innerHTML = '🚀 Process All Jamiaat & Save Data';
-                processBtn.classList.remove('hidden', 'opacity-70', 'cursor-not-allowed');
-            }
+        });
 
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const data = new Uint8Array(evt.target.result);
-                uploadedWorkbook = XLSX.read(data, {type: 'array'});
-
-                const mapSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[1]];
-                const mapData = XLSX.utils.sheet_to_json(mapSheet, {header: 1});
-
-                classSubjectMap = {};
-                uniqueSubjects.clear();
-
-                mapData.forEach((row, idx) => {
-                    if(idx === 0) return; 
-                    const className = row[9]; // Column J
-                    if (className) {
-                        classSubjectMap[className.trim()] = [];
-                        for(let i = 0; i <= 8; i++) {
-                            if(row[i] && typeof row[i] === 'string' && row[i].trim() !== '') {
-                                classSubjectMap[className.trim()].push(row[i].trim());
-                                uniqueSubjects.add(row[i].trim());
+        const getTeacherName = (jamiaName, className, subject) => {
+            const usersList = window.allUsersData || [];
+            for (let u of usersList) {
+                if (!u.academicYears) continue;
+                let years = Object.keys(u.academicYears).sort().reverse();
+                if (years.length === 0) continue;
+                let struct = u.academicYears[years[0]].karkardagiStructure || [];
+                let jData = struct.find(j => (j.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
+                
+                if (jData && jData.teachers) {
+                    for (let t of jData.teachers) {
+                        if (t.periods) {
+                            for (let p of t.periods) {
+                                if (p.className.trim() === className.trim() && p.bookName.trim() === subject.trim()) return t.name;
                             }
                         }
                     }
-                });
-
-                let html = '';
-                const sortedSubjects = Array.from(uniqueSubjects).sort();
-                sortedSubjects.forEach(sub => {
-                    html += `
-                        <div class="bg-white p-2 border rounded flex justify-between items-center shadow-sm">
-                            <span class="urdu-font font-bold text-gray-700">${sub}</span>
-                            <input type="number" id="pass_mark_${sub}" value="40" class="w-16 p-1 border rounded text-center font-bold text-red-600">
-                        </div>`;
-                });
-
-                const grid = document.getElementById('dynamic-subjects-grid');
-                const container = document.getElementById('subject-passing-marks-container');
-                if (grid && container) {
-                    grid.innerHTML = html;
-                    container.classList.remove('hidden');
                 }
-            };
-            reader.readAsArrayBuffer(file);
-        }
-    });
+            }
+            return "Na-Maloom";
+        };
 
-    const getTeacherName = (jamiaName, className, subject) => {
-        for (let u of allUsers) {
-            if (!u.academicYears) continue;
-            let years = Object.keys(u.academicYears).sort().reverse();
-            if (years.length === 0) continue;
-            let struct = u.academicYears[years[0]].karkardagiStructure || [];
-            let jData = struct.find(j => (j.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
+        // 2. Click Events (Process, Navigate, Delete)
+        document.addEventListener('click', async (e) => {
             
-            if (jData && jData.teachers) {
-                for (let t of jData.teachers) {
-                    if (t.periods) {
-                        for (let p of t.periods) {
-                            if (p.className.trim() === className.trim() && p.bookName.trim() === subject.trim()) return t.name;
-                        }
-                    }
-                }
-            }
-        }
-        return "Na-Maloom";
-    };
+            // --- A. PROCESS UPLOAD BUTTON ---
+            if (e.target.closest('#btn-process-upload')) {
+                const processBtn = e.target.closest('#btn-process-upload');
+                const examType = document.getElementById('upload-exam-type')?.value;
+                const examYear = document.getElementById('upload-exam-year')?.value;
+                const logs = document.getElementById('upload-logs');
 
-    // Calculate & Process Button
-    document.addEventListener('click', async (e) => {
-        // --- 1. UPLOAD LOGIC ---
-        const processBtn = e.target.closest('#btn-process-upload');
-        if (processBtn) {
-            const examType = document.getElementById('upload-exam-type')?.value;
-            const examYear = document.getElementById('upload-exam-year')?.value;
-            const logs = document.getElementById('upload-logs');
-
-            if (!uploadedWorkbook) {
-                alert("Pehle Master Excel file select karein!");
-                return;
-            }
-
-            // BUTTON STATE: Processing
-            processBtn.disabled = true;
-            processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing... Please Wait';
-            processBtn.classList.add('opacity-70', 'cursor-not-allowed');
-
-            if (logs) {
-                logs.classList.remove('hidden');
-                logs.className = "p-4 rounded-lg font-mono text-sm border bg-gray-50 max-h-60 overflow-y-auto mt-4";
-                logs.innerHTML = `<span class="text-blue-600 font-bold">⏳ Master Sheet Processing started...</span><br>`;
-            }
-
-            const passingMarks = {};
-            uniqueSubjects.forEach(sub => {
-                const markInput = document.getElementById(`pass_mark_${sub}`);
-                passingMarks[sub] = parseFloat(markInput?.value) || 40; 
-            });
-
-            const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
-            const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
-
-            let multiJamiaClassData = {};
-            let multiJamiaAsatizaData = {};
-
-            resultData.forEach(row => {
-                const rawJamiaName = row['جامعۃ المدینہ'] || row['جامعہ کوڈ'];
-                const className = row['Class'] || row['کلاس'] || row['درجہ'];
-                const kaifiyat = row['کیفیت'] ? row['کیفیت'].trim() : '';
-                
-                if (!rawJamiaName || !className) return;
-
-                const jamiaName = rawJamiaName.trim();
-                const cName = className.trim();
-                const allowedSubjects = classSubjectMap[cName] || [];
-
-                if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
-                if (!multiJamiaAsatizaData[jamiaName]) multiJamiaAsatizaData[jamiaName] = {};
-
-                if (!multiJamiaClassData[jamiaName][cName]) {
-                    multiJamiaClassData[jamiaName][cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
-                }
-                
-                if (kaifiyat) {
-                    multiJamiaClassData[jamiaName][cName].total++;
-                    if (kaifiyat.includes('ممتاز مع شرف')) { multiJamiaClassData[jamiaName][cName].mumtazSharf++; multiJamiaClassData[jamiaName][cName].passed++; }
-                    else if (kaifiyat.includes('ممتاز')) { multiJamiaClassData[jamiaName][cName].mumtaz++; multiJamiaClassData[jamiaName][cName].passed++; }
-                    else if (kaifiyat.includes('جید جدا')) { multiJamiaClassData[jamiaName][cName].jayyidJidda++; multiJamiaClassData[jamiaName][cName].passed++; }
-                    else if (kaifiyat.includes('جید')) { multiJamiaClassData[jamiaName][cName].jayyid++; multiJamiaClassData[jamiaName][cName].passed++; }
-                    else if (kaifiyat.includes('مقبول')) { multiJamiaClassData[jamiaName][cName].maqbool++; multiJamiaClassData[jamiaName][cName].passed++; }
-                    else if (kaifiyat.includes('مجاز ضمنی')) { multiJamiaClassData[jamiaName][cName].majazZimni++; }
-                    else if (kaifiyat.includes('ناکام')) { multiJamiaClassData[jamiaName][cName].nakam++; }
-                    else if (kaifiyat.includes('غ') || kaifiyat.includes('غیر حاضر')) { multiJamiaClassData[jamiaName][cName].ghaib++; multiJamiaClassData[jamiaName][cName].total--; }
+                if (!uploadedWorkbook) {
+                    alert("Pehle Master Excel file select karein!");
+                    return;
                 }
 
-                allowedSubjects.forEach(sub => {
-                    const marksRaw = row[sub];
-                    let markVal = (marksRaw === 'غ' || marksRaw === undefined || marksRaw === '') ? 'غ' : marksRaw;
+                processBtn.disabled = true;
+                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing... Please Wait';
+                processBtn.classList.add('opacity-70', 'cursor-not-allowed');
 
-                    if (markVal !== 'غ') {
-                        let marks = typeof markVal === 'string' && markVal.includes('+') ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) : parseFloat(markVal);
-                        const tName = getTeacherName(jamiaName, cName, sub);
-                        
-                        if (tName !== "Na-Maloom") {
-                            if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
-                            if (!multiJamiaAsatizaData[jamiaName][tName][sub]) multiJamiaAsatizaData[jamiaName][tName][sub] = { class: cName, subject: sub, total: 0, passed: 0 };
-                            
-                            multiJamiaAsatizaData[jamiaName][tName][sub].total++;
-                            if (marks >= passingMarks[sub]) multiJamiaAsatizaData[jamiaName][tName][sub].passed++;
-                        }
-                    }
+                if (logs) {
+                    logs.classList.remove('hidden');
+                    logs.className = "p-4 rounded-lg font-mono text-sm border bg-gray-50 max-h-60 overflow-y-auto mt-4";
+                    logs.innerHTML = `<span class="text-blue-600 font-bold">⏳ Master Sheet Processing started...</span><br>`;
+                }
+
+                const passingMarks = {};
+                uniqueSubjects.forEach(sub => {
+                    const markInput = document.getElementById(`pass_mark_${sub}`);
+                    passingMarks[sub] = parseFloat(markInput?.value) || 40; 
                 });
-            });
 
-            try {
-                if(logs) logs.innerHTML += `<span class="text-gray-600">Uploading data to Database...</span><br>`;
+                const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
+                const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
 
-                for (const jamiaName of Object.keys(multiJamiaClassData)) {
-                    let contextUserName = "Admin", contextRegion = "N/A", ownerUserId = "admin";
-                    if (typeof getJamiaContext === 'function') {
-                        const context = getJamiaContext(jamiaName);
-                        contextUserName = context.userName;
-                        contextRegion = context.region;
-                        ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === contextUserName)?.id || "admin";
-                    }
+                let multiJamiaClassData = {};
+                let multiJamiaAsatizaData = {};
+                let studentReportCards = [];
 
-                    const cDataObj = multiJamiaClassData[jamiaName];
-                    for (const cName in cDataObj) {
-                        const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
-                        await setDoc(doc(db, "class_wise_results", customId), {
-                            uid: ownerUserId, userId: ownerUserId, userName: contextUserName, region: contextRegion,
-                            jamia: jamiaName, examType: examType, examYear: examYear, darjah: cName,
-                            ...cDataObj[cName], timestamp: Date.now()
-                        });
-                    }
+                resultData.forEach(row => {
+                    const rawJamiaName = row['جامعۃ المدینہ'] || row['جامعہ کوڈ'];
+                    const className = row['Class'] || row['کلاس'] || row['درجہ'];
+                    const kaifiyat = row['کیفیت'] ? row['کیفیت'].trim() : '';
+                    
+                    if (!rawJamiaName || !className) return;
 
-                    const tDataArr = [];
-                    const aDataObj = multiJamiaAsatizaData[jamiaName];
-                    for (const tName in aDataObj) {
-                        const periods = [];
-                        for (const subjKey in aDataObj[tName]) {
-                            const sData = aDataObj[tName][subjKey];
-                            let perc = sData.total > 0 ? ((sData.passed / sData.total) * 100).toFixed(1) : 0;
-                            periods.push({
-                                class: sData.class, subject: sData.subject, total: sData.total, passed: sData.passed,
-                                percentage: `${perc}%`, kaifiyat: getJamiaKefiyat(`${perc}%`, 'teacher')
-                            });
-                        }
-                        tDataArr.push({ teacher: tName, periods: periods });
+                    const jamiaName = rawJamiaName.trim();
+                    const cName = className.trim();
+                    const allowedSubjects = classSubjectMap[cName] || [];
+
+                    if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
+                    if (!multiJamiaAsatizaData[jamiaName]) multiJamiaAsatizaData[jamiaName] = {};
+
+                    if (!multiJamiaClassData[jamiaName][cName]) {
+                        multiJamiaClassData[jamiaName][cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
                     }
                     
-                    if (tDataArr.length > 0) {
-                        const asatizaId = `${jamiaName}_${examYear}_${examType}_asatiza`.replace(/\//g, '-').replace(/\s+/g, '_');
-                        await setDoc(doc(db, "asatiza_wise_results", asatizaId), {
-                            jamia: jamiaName, examType: examType, examYear: examYear, data: tDataArr, timestamp: Date.now()
+                    if (kaifiyat) {
+                        multiJamiaClassData[jamiaName][cName].total++;
+                        if (kaifiyat.includes('ممتاز مع شرف')) { multiJamiaClassData[jamiaName][cName].mumtazSharf++; multiJamiaClassData[jamiaName][cName].passed++; }
+                        else if (kaifiyat.includes('ممتاز')) { multiJamiaClassData[jamiaName][cName].mumtaz++; multiJamiaClassData[jamiaName][cName].passed++; }
+                        else if (kaifiyat.includes('جید جدا')) { multiJamiaClassData[jamiaName][cName].jayyidJidda++; multiJamiaClassData[jamiaName][cName].passed++; }
+                        else if (kaifiyat.includes('جید')) { multiJamiaClassData[jamiaName][cName].jayyid++; multiJamiaClassData[jamiaName][cName].passed++; }
+                        else if (kaifiyat.includes('مقبول')) { multiJamiaClassData[jamiaName][cName].maqbool++; multiJamiaClassData[jamiaName][cName].passed++; }
+                        else if (kaifiyat.includes('مجاز ضمنی')) { multiJamiaClassData[jamiaName][cName].majazZimni++; }
+                        else if (kaifiyat.includes('ناکام')) { multiJamiaClassData[jamiaName][cName].nakam++; }
+                        else if (kaifiyat.includes('غ') || kaifiyat.includes('غیر حاضر')) { multiJamiaClassData[jamiaName][cName].ghaib++; multiJamiaClassData[jamiaName][cName].total--; }
+                    }
+
+                    let stdMarksList = [];
+                    allowedSubjects.forEach(sub => {
+                        const marksRaw = row[sub];
+                        let markVal = (marksRaw === 'غ' || marksRaw === undefined || marksRaw === '') ? 'غ' : marksRaw;
+                        stdMarksList.push({ subject: sub, marks: markVal });
+
+                        if (markVal !== 'غ') {
+                            let marks = typeof markVal === 'string' && markVal.includes('+') ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) : parseFloat(markVal);
+                            const tName = getTeacherName(jamiaName, cName, sub);
+                            
+                            if (tName !== "Na-Maloom") {
+                                if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
+                                if (!multiJamiaAsatizaData[jamiaName][tName][sub]) multiJamiaAsatizaData[jamiaName][tName][sub] = { class: cName, subject: sub, total: 0, passed: 0 };
+                                
+                                multiJamiaAsatizaData[jamiaName][tName][sub].total++;
+                                if (marks >= passingMarks[sub]) multiJamiaAsatizaData[jamiaName][tName][sub].passed++;
+                            }
+                        }
+                    });
+
+                    studentReportCards.push({
+                        rollNo: row['رول نمبر'] || '-',
+                        dakhlaNo: row['داخلہ نمبر'] || '-',
+                        name: row['نام'] || '-',
+                        fatherName: row['والد کا نام'] || '-',
+                        darjah: cName,
+                        jamiaRank: row['جامعہ میں رینک'] || '-',
+                        totalMarks: row['کل نمبر'] || '-',
+                        obtainedMarks: row['حاصل نمبر'] || '-',
+                        percentage: row['فیصد'] || '-',
+                        grade: row['گریڈ'] || '-',
+                        kaifiyat: kaifiyat,
+                        marksDetails: stdMarksList
+                    });
+                });
+
+                try {
+                    if(logs) logs.innerHTML += `<span class="text-gray-600">Uploading data to Database...</span><br>`;
+
+                    for (const jamiaName of Object.keys(multiJamiaClassData)) {
+                        let contextUserName = "Admin", contextRegion = "N/A", ownerUserId = "admin";
+                        if (typeof getJamiaContext === 'function') {
+                            const context = getJamiaContext(jamiaName);
+                            contextUserName = context.userName;
+                            contextRegion = context.region;
+                            ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === contextUserName)?.id || "admin";
+                        }
+
+                        const cDataObj = multiJamiaClassData[jamiaName];
+                        for (const cName in cDataObj) {
+                            const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
+                            await setDoc(doc(db, "class_wise_results", customId), {
+                                uid: ownerUserId, userId: ownerUserId, userName: contextUserName, region: contextRegion,
+                                jamia: jamiaName, examType: examType, examYear: examYear, darjah: cName,
+                                ...cDataObj[cName], timestamp: Date.now()
+                            });
+                        }
+
+                        const tDataArr = [];
+                        const aDataObj = multiJamiaAsatizaData[jamiaName];
+                        for (const tName in aDataObj) {
+                            const periods = [];
+                            for (const subjKey in aDataObj[tName]) {
+                                const sData = aDataObj[tName][subjKey];
+                                let perc = sData.total > 0 ? ((sData.passed / sData.total) * 100).toFixed(1) : 0;
+                                periods.push({
+                                    class: sData.class, subject: sData.subject, total: sData.total, passed: sData.passed,
+                                    percentage: `${perc}%`, kaifiyat: getJamiaKefiyat(`${perc}%`, 'teacher')
+                                });
+                            }
+                            tDataArr.push({ teacher: tName, periods: periods });
+                        }
+                        
+                        if (tDataArr.length > 0) {
+                            const asatizaId = `${jamiaName}_${examYear}_${examType}_asatiza`.replace(/\//g, '-').replace(/\s+/g, '_');
+                            await setDoc(doc(db, "asatiza_wise_results", asatizaId), {
+                                jamia: jamiaName, examType: examType, examYear: examYear, data: tDataArr, timestamp: Date.now()
+                            });
+                        }
+
+                        const rcId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
+                        await setDoc(doc(db, "student_report_cards", rcId), {
+                            jamia: jamiaName, examYear: examYear, examType: examType,
+                            students: studentReportCards.filter(s => s.jamiaName === jamiaName), timestamp: Date.now()
                         });
                     }
+
+                    if(logs) {
+                        logs.className = "mt-6 p-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center shadow-sm";
+                        logs.innerHTML = `
+                            <div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
+                            <h4 class="text-3xl font-bold text-emerald-800 urdu-font mb-2">الحمدللہ!</h4>
+                            <p class="text-emerald-700 font-bold text-lg mb-6">تمام جامعات کا رزلٹ کامیابی سے ڈیٹا بیس میں محفوظ ہو گیا ہے۔</p>
+                            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                                <button id="jump-to-dashboard" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
+                                    <i class="fas fa-chart-pie mr-2"></i> Result Dashboard دیکھیں
+                                </button>
+                                <button id="jump-to-reports" type="button" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
+                                    <i class="fas fa-table mr-2"></i> Detailed Reports دیکھیں
+                                </button>
+                            </div>
+                        `;
+                    }
+
+                    document.getElementById('subject-passing-marks-container').classList.add('hidden');
+                    processBtn.classList.add('hidden');
+                    
+                } catch (error) {
+                    if(logs) logs.innerHTML += `<br><br><span class="text-red-600 font-bold text-lg">❌ Error: ${error.message}</span>`;
+                    processBtn.disabled = false;
+                    processBtn.innerHTML = '🚀 Retry Process & Save Data';
+                    processBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                }
+            }
+
+            // --- B. NAVIGATION BUTTONS FROM SUCCESS MESSAGE ---
+            if (e.target.closest('#jump-to-dashboard')) {
+                document.getElementById('tab-dashboard')?.click();
+                document.getElementById('admin-show-btn')?.click();
+            }
+
+            if (e.target.closest('#jump-to-reports')) {
+                document.getElementById('tab-reports')?.click();
+                document.getElementById('admin-show-btn')?.click();
+            }
+
+            // --- C. DELETE UPLOADED DATA LOGIC ---
+            if (e.target.closest('#btn-delete-result')) {
+                const delJamia = document.getElementById('delete-jamia-select')?.value;
+                const delYear = document.getElementById('upload-exam-year')?.value;
+                const delType = document.getElementById('upload-exam-type')?.value;
+                const logs = document.getElementById('upload-logs');
+
+                if (!delYear || !delType) {
+                    alert("Exam Type اور Year سیلیکٹ ہونا ضروری ہے۔");
+                    return;
                 }
 
-                // 🌟 SUCCESS UI: Bada Message aur Buttons 🌟
-                if(logs) {
-                    logs.className = "mt-6 p-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center shadow-sm";
-                    logs.innerHTML = `
-                        <div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
-                        <h4 class="text-3xl font-bold text-emerald-800 urdu-font mb-2">الحمدللہ!</h4>
-                        <p class="text-emerald-700 font-bold text-lg mb-6">تمام جامعات کا رزلٹ کامیابی سے ڈیٹا بیس میں محفوظ ہو گیا ہے۔</p>
-                        <div class="flex flex-col sm:flex-row justify-center gap-4">
-                            <button id="jump-to-dashboard" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
-                                <i class="fas fa-chart-pie mr-2"></i> Result Dashboard دیکھیں
-                            </button>
-                            <button id="jump-to-reports" type="button" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
-                                <i class="fas fa-table mr-2"></i> Detailed Reports دیکھیں
-                            </button>
-                        </div>
-                    `;
+                const confirmMsg = delJamia === 'all' 
+                    ? `WARNING: کیا آپ واقعی ${delYear} (${delType}) کا **تمام جامعات** کا ڈیٹا ہمیشہ کے لیے ڈیلیٹ کرنا چاہتے ہیں؟`
+                    : `WARNING: کیا آپ واقعی ${delJamia} کا ${delYear} (${delType}) کا ڈیٹا ہمیشہ کے لیے ڈیلیٹ کرنا چاہتے ہیں؟`;
+
+                if (!confirm(confirmMsg)) return;
+
+                if (logs) {
+                    logs.classList.remove('hidden');
+                    logs.className = "mt-6 p-6 rounded-2xl border-2 border-red-200 bg-red-50 text-center shadow-sm";
+                    logs.innerHTML = `<i class="fas fa-spinner fa-spin text-red-500 text-3xl mb-3"></i><br><span class="text-red-700 font-bold text-lg">ڈیٹا ڈیلیٹ ہو رہا ہے...</span>`;
                 }
 
-                document.getElementById('subject-passing-marks-container').classList.add('hidden');
-                processBtn.classList.add('hidden');
-                
-            } catch (error) {
-                if(logs) logs.innerHTML += `<br><br><span class="text-red-600 font-bold text-lg">❌ Error: ${error.message}</span>`;
-                processBtn.disabled = false;
-                processBtn.innerHTML = '🚀 Retry Process & Save Data';
-                processBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                try {
+                    const deleteDataFromColl = async (collName) => {
+                        let q = delJamia === 'all' 
+                            ? query(collection(db, collName), where("examYear", "==", delYear), where("examType", "==", delType))
+                            : query(collection(db, collName), where("jamia", "==", delJamia), where("examYear", "==", delYear), where("examType", "==", delType));
+                        
+                        const snap = await getDocs(q);
+                        let count = 0;
+                        let batch = writeBatch(db);
+                        for (let i = 0; i < snap.docs.length; i++) {
+                            batch.delete(snap.docs[i].ref);
+                            count++;
+                            if (count % 400 === 0) { // Batch limit is 500, writing at 400 for safety
+                                await batch.commit();
+                                batch = writeBatch(db);
+                            }
+                        }
+                        if (count % 400 !== 0 && count > 0) {
+                            await batch.commit();
+                        }
+                        return count;
+                    };
+
+                    const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
+                    const classCount = await deleteDataFromColl("class_wise_results");
+                    const reportCount = await deleteDataFromColl("student_report_cards");
+
+                    if(logs) {
+                        logs.innerHTML = `
+                            <div class="mb-4"><i class="fas fa-check-circle text-green-500 text-5xl"></i></div>
+                            <h4 class="text-2xl font-bold text-green-800 urdu-font mb-2">ڈیلیٹ مکمل!</h4>
+                            <p class="text-green-700 font-bold">منتخب کیا گیا رزلٹ کامیابی سے ڈیلیٹ کر دیا گیا ہے۔</p>
+                            <p class="text-sm text-gray-500 mt-2">(${classCount} کلاسز، ${asatizaCount} اساتذہ اور رپورٹ کارڈز کا ریکارڈ حذف ہوا)</p>
+                        `;
+                    }
+                } catch(err) {
+                    if(logs) logs.innerHTML = `<span class="text-red-600 font-bold">❌ Error: ${err.message}</span>`;
+                }
             }
-        }
+        });
     }
-
-    // --- B. Navigation Buttons from Success Message ---
-    if (e.target.closest('#jump-to-dashboard')) {
-        document.getElementById('tab-dashboard').click();
-        document.getElementById('admin-show-btn').click();
-    }
-
-    if (e.target.closest('#jump-to-reports')) {
-        document.getElementById('tab-reports').click();
-        document.getElementById('admin-show-btn').click();
-    }
-
-    // --- C. DELETE UPLOADED DATA LOGIC ---
-    if (e.target.closest('#btn-delete-result')) {
-        const delJamia = document.getElementById('delete-jamia-select')?.value;
-        const delYear = document.getElementById('upload-exam-year')?.value;
-        const delType = document.getElementById('upload-exam-type')?.value;
-        const logs = document.getElementById('upload-logs');
-
-        if (!delYear || !delType) {
-            alert("Exam Type اور Year سیلیکٹ ہونا ضروری ہے۔");
-            return;
-        }
-
-        const confirmMsg = delJamia === 'all' 
-            ? `WARNING: کیا آپ واقعی ${delYear} (${delType}) کا **تمام جامعات** کا ڈیٹا ہمیشہ کے لیے ڈیلیٹ کرنا چاہتے ہیں؟`
-            : `WARNING: کیا آپ واقعی ${delJamia} کا ${delYear} (${delType}) کا ڈیٹا ہمیشہ کے لیے ڈیلیٹ کرنا چاہتے ہیں؟`;
-
-        if (!confirm(confirmMsg)) return;
-
-        if (logs) {
-            logs.classList.remove('hidden');
-            logs.className = "mt-6 p-6 rounded-2xl border-2 border-red-200 bg-red-50 text-center shadow-sm";
-            logs.innerHTML = `<i class="fas fa-spinner fa-spin text-red-500 text-3xl mb-3"></i><br><span class="text-red-700 font-bold text-lg">ڈیٹا ڈیلیٹ ہو رہا ہے...</span>`;
-        }
-
-        try {
-            const deleteDataFromColl = async (collName) => {
-                let q = delJamia === 'all' 
-                    ? query(collection(db, collName), where("examYear", "==", delYear), where("examType", "==", delType))
-                    : query(collection(db, collName), where("jamia", "==", delJamia), where("examYear", "==", delYear), where("examType", "==", delType));
-                
-                const snap = await getDocs(q);
-                let count = 0;
-                const batch = writeBatch(db);
-                snap.forEach(d => { batch.delete(d.ref); count++; });
-                if (count > 0) await batch.commit();
-                return count;
-            };
-
-            const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
-            const classCount = await deleteDataFromColl("class_wise_results");
-
-            if(logs) {
-                logs.innerHTML = `
-                    <div class="mb-4"><i class="fas fa-trash-check text-green-500 text-5xl"></i></div>
-                    <h4 class="text-2xl font-bold text-green-800 urdu-font mb-2">ڈیلیٹ مکمل!</h4>
-                    <p class="text-green-700 font-bold">منتخب کیا گیا رزلٹ کامیابی سے ڈیلیٹ کر دیا گیا ہے۔</p>
-                    <p class="text-sm text-gray-500 mt-2">(${classCount} کلاسز اور ${asatizaCount} اساتذہ کا ریکارڈ حذف ہوا)</p>
-                `;
-            }
-        } catch(err) {
-            if(logs) logs.innerHTML = `<span class="text-red-600 font-bold">❌ Error: ${err.message}</span>`;
-        }
-    }
-});
 }
