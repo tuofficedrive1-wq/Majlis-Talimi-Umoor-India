@@ -8,7 +8,6 @@
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- html2canvas + jspdf removed: not referenced anywhere in this file. downloadChart() uses native Canvas toDataURL() instead. -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
@@ -302,6 +301,10 @@
             <i class="fas fa-table"></i>
             <span>Detailed Summary</span>
         </button>
+        <button class="enroll-sub-btn group flex items-center gap-1.5 pb-2 text-xs md:text-sm font-bold text-slate-400 hover:text-indigo-500 transition-all" data-enroll-sub="classwise">
+            <i class="fas fa-list-alt"></i>
+            <span>Class Wise Summary</span>
+        </button>
     </div>
 
     <div id="enroll-sub-links" class="enroll-sub-content block">
@@ -339,6 +342,44 @@
             </button>
         </div>
         <div id="enrollment-summary-container" class="min-h-[200px]"></div>
+    </div>
+
+    <div id="enroll-sub-classwise" class="enroll-sub-content hidden">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+            <div>
+                <h3 class="text-base md:text-lg font-bold text-slate-800 leading-tight">Class Wise Summary</h3>
+                <p class="text-[10px] md:text-xs text-slate-500 mt-0.5">Jamia aur darja ke mutabiq asri classes ka data</p>
+            </div>
+            <button onclick="window.renderClassWiseSummaryTab()" class="w-full sm:w-auto bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold flex items-center justify-center gap-1.5 transition">
+                <i class="fas fa-sync-alt"></i> Refresh Data
+            </button>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm overflow-x-auto">
+            <table class="w-full text-center border-collapse whitespace-nowrap">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-600 text-xs md:text-sm font-semibold border-b border-slate-200">
+                        <th class="p-2 border border-slate-200">S. No</th>
+                        <th class="p-2 border border-slate-200">Jamiatul Madina</th>
+                        <th class="p-2 border border-slate-200 text-left">Jamiatul Madina Class</th>
+                        <th class="p-2 border border-slate-200">5th Class</th>
+                        <th class="p-2 border border-slate-200">6th Class</th>
+                        <th class="p-2 border border-slate-200">7th Class</th>
+                        <th class="p-2 border border-slate-200">8th Class</th>
+                        <th class="p-2 border border-slate-200">9th Class</th>
+                        <th class="p-2 border border-slate-200">10th Class</th>
+                        <th class="p-2 border border-slate-200">11th Class</th>
+                        <th class="p-2 border border-slate-200">12th Class</th>
+                        <th class="p-2 border border-slate-200">Under Graduate</th>
+                        <th class="p-2 border border-slate-200">Post Graduate</th>
+                        <th class="p-2 border border-slate-200">Wait for 10 th Class</th>
+                        <th class="p-2 border border-slate-200">Wait For 12th Class</th>
+                    </tr>
+                </thead>
+                <tbody id="enrollment-classwise-container" class="text-xs md:text-sm text-slate-600 divide-y divide-slate-200">
+                    <tr><td colspan="15" class="p-6 text-center text-slate-400">Refresh Data par click karein...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
                 
@@ -390,9 +431,6 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        // getFirestore(app) ki jagah initializeFirestore + persistentLocalCache -
-        // isse baar baar aane wale visitors ke liye Firestore IndexedDB cache use karta hai,
-        // jo network wait ko kam karta hai jab wahi data phir se maanga jaye.
         const db = initializeFirestore(app, {
             localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
         });
@@ -402,23 +440,17 @@
         let assignedJamiaat = [];
         let allReports = [];
         let reportsData = null;
-        // Cache: "users/{uid}" ek hi baar fetch hota hai, phir yahan se reuse hota hai
-        // (pehle ye document initDashboard, loadStats, aur loadInspectorTestSummary teeno mein alag alag fetch ho raha tha)
         window.currentUserData = null;
-        // Cache: monthly_test_sheets ka result month ke hisab se store hota hai
-        // taake loadStats() aur loadInspectorTestSummary() same mahine ka data dobara na maangein
         window.testSheetsCache = {};
-        // --- NAYA FUNCTION: Admin Dashboard Sync Listener ---
+        
 window.allReports = [];
-let adminReportUnsubscribe = null; // Mahina badalne par purana listener rokne ke liye
+let adminReportUnsubscribe = null; 
 
 window.listenToAdminReports = (selectedMonth) => {
-    // Agar pehle se koi listener chal raha hai to use band karein
     if (adminReportUnsubscribe) {
         adminReportUnsubscribe(); 
     }
     
-    // Sirf is inspector ki aur is mahine ki reports fetch karein
     const q = query(
         collection(db, "inspection_reports"), 
         where("month", "==", selectedMonth),
@@ -427,7 +459,6 @@ window.listenToAdminReports = (selectedMonth) => {
     
     adminReportUnsubscribe = onSnapshot(q, (snapshot) => {
         window.allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Data aate hi list ko refresh kar dein
         if (typeof window.renderInspectionList === 'function' && assignedJamiaat && assignedJamiaat.length > 0) {
             window.renderInspectionList();
         }
@@ -463,7 +494,7 @@ window.listenToAdminReports = (selectedMonth) => {
                 const userDoc = await getDoc(doc(db, "users", currentUser.uid));
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
-                    window.currentUserData = userData; // cache kar liya - dobara fetch nahi karna kahin bhi is session mein
+                    window.currentUserData = userData; 
                     const nameElement = document.getElementById('inspector-name');
                     if (nameElement) nameElement.textContent = userData.name || "Inspector";
 
@@ -475,7 +506,7 @@ window.listenToAdminReports = (selectedMonth) => {
                 const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
                 const currentShortMonth = shortMonths[parseInt(month) - 1];
                 handleDashboardMonthChange(currentShortMonth, assignedJamiaat, db, currentUser);
-// 👇🔴 YEH NAYI LINE ADD KAREIN 👇🔴
+
                 window.listenToAdminReports(monthInput.value);
                 await loadStats(); 
             } catch (err) {
@@ -485,7 +516,6 @@ window.listenToAdminReports = (selectedMonth) => {
             }
         }
 
-        // MONTH CHANGE LISTENER
         // MONTH CHANGE LISTENER
         document.getElementById('report-month').addEventListener('change', (e) => {
             if (!e.target.value) return;
@@ -499,7 +529,6 @@ window.listenToAdminReports = (selectedMonth) => {
 
             handleDashboardMonthChange(selectedShortMonth, assignedJamiaat, db, currentUser);
             
-            // 👇🔴 YEH NAYI LINE YAHAN BHI ADD KAREIN 👇🔴
             window.listenToAdminReports(e.target.value);
             
             if (typeof loadStats === "function") loadStats();
@@ -512,21 +541,16 @@ window.listenToAdminReports = (selectedMonth) => {
             }
         });
 
-        // Realtime listener for Admin Sync
-const listenToAdminReports = (userId, selectedMonth) => {
-    const q = query(collection(db, "inspection_reports"), where("month", "==", selectedMonth));
-    onSnapshot(q, (snapshot) => {
-        allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Jaise hi data change hoga (ya admin delete karega), list dobara render ho jayegi
-        if(typeof renderInspectionList === 'function' && assignedJamiaat.length > 0) {
-            renderInspectionList();
-        }
-    });
-};
+        const listenToAdminReports = (userId, selectedMonth) => {
+            const q = query(collection(db, "inspection_reports"), where("month", "==", selectedMonth));
+            onSnapshot(q, (snapshot) => {
+                allReports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if(typeof renderInspectionList === 'function' && assignedJamiaat.length > 0) {
+                    renderInspectionList();
+                }
+            });
+        };
         
-        // Helper: monthly_test_sheets sirf 1 baar fetch hota hai per month, phir cache se milta hai.
-        // Pehle loadStats() aur loadInspectorTestSummary() dono alag alag isi exact query ko chala rahe the -
-        // matlab Test tab kholte hi same mahine ka data dobara Firestore se download hota tha.
         async function getMonthlyTestSheets(month) {
             if (window.testSheetsCache[month]) {
                 return window.testSheetsCache[month];
@@ -551,10 +575,6 @@ const listenToAdminReports = (userId, selectedMonth) => {
                 const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
                 reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
 
-                // Pehle: assignedJamiaat par sequential for-loop, har jamia ke liye ek awaited read -
-                // ek ke baad ek (15 jamiaat = 15 round-trips, network latency N baar lagti thi).
-                // Ab: sab reads Promise.all se ek saath fire hote hain. Read COUNT same hai
-                // (utne hi documents padhe ja rahe hain), lekin WAIT TIME ~N guna kam ho jata hai.
                 const detailResults = await Promise.all(
                     assignedJamiaat.map(jamia => {
                         const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`;
@@ -587,11 +607,7 @@ const listenToAdminReports = (userId, selectedMonth) => {
                     }
                 });
 
-                // Monthly Test Processing — cache se milta hai, isliye Test tab par jaane par dobara read nahi hota
                 const allSheets = await getMonthlyTestSheets(month);
-
-                // Pehle: "users/{uid}" yahan PHIR SE fetch ho raha tha (initDashboard mein ek baar ho chuka tha).
-                // Ab: initDashboard wali cached copy (window.currentUserData) reuse ho rahi hai - ek extra read bachi.
                 const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
                 const normalizeName = (name) => String(typeof name === 'object' ? (name.name || name.jamiaName || '') : (name || '')).trim().toLowerCase();
 
@@ -744,7 +760,6 @@ const listenToAdminReports = (userId, selectedMonth) => {
             });
         }
 
-// --- UPDATED: RENDER INSPECTION LIST ---
 window.renderInspectionList = () => {
     const monthInput = document.getElementById('report-month').value;
     const badge = document.getElementById('inspection-month-badge');
@@ -829,10 +844,9 @@ window.handleTypeChange = (selectElem, index) => {
     inputField.type = val === "Inspection" ? "number" : "text";
     inputField.placeholder = val === "Inspection" ? "Score%" : (val === "Visit" ? "Visit details..." : "Reason...");
 
-    // Date input ko disable/enable karne ka logic
     if (val === "Not Conduct") {
         dateInput.disabled = true;
-        dateInput.value = ''; // Date clear kar dein
+        dateInput.value = ''; 
         dateInput.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-50');
     } else {
         dateInput.disabled = false;
@@ -862,12 +876,10 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         const scoreInput = row.querySelector('.insp-score');
         const score = scoreInput.value.trim();
 
-        // Agar option select nahi hua hai (""), toh is jamia ko chhor dein aur aage badhein
         if (!type || type === "") {
             continue;
         }
 
-        // Agar 'Not Conduct' hai, toh sirf reason chahiye (date ki zarurat nahi)
         if (type === "Not Conduct") {
             if (score === "") {
                 alert(`${jamiaName} ke liye 'Not Conduct' ka reason likhna zaroori hai.`);
@@ -875,7 +887,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
                 break;
             }
         } else { 
-            // Agar 'Visit' ya 'Inspection' hai, toh date aur details/score dono zaroori hain
             if (date === "") {
                 alert(`${jamiaName} me ${type} ki date add karna zaroori hai.`);
                 hasError = true;
@@ -891,10 +902,8 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         data.push({ name: jamiaName, date: type === "Not Conduct" ? "" : date, type: type, score: score });
     }
 
-    // Agar kisi row me detail ki kami hui, toh yahan save process ruk jayega
     if (hasError) return;
 
-    // Agar saari rows me "Select Option" hi chora gaya hai
     if (data.length === 0) {
         alert("Aapne koi naya data select nahi kiya hai.");
         return;
@@ -934,7 +943,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
     }
 };
 
-        // NAYA SIDEBAR LOGIC YAHAN HAI
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebar-overlay');
         const menuBtn = document.getElementById('menu-btn');
@@ -958,7 +966,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         closeSidebarBtn.onclick = closeSidebar;
         sidebarOverlay.onclick = closeSidebar;
 
-        // UI ACTIONS & TAB SWITCHING
         window.openReports = () => {
             document.getElementById('summary-section').classList.add('hidden');
             document.getElementById('reports-section').classList.remove('hidden');
@@ -971,14 +978,12 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         };
 
         window.switchTab = (tabName) => {
-            window.openReports(); // Tab pe click kare toh sidha form khul jaye
+            window.openReports(); 
 
-            // Desktop Buttons Update
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-indigo-600', 'text-white'));
             const desktopBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
             if(desktopBtn) desktopBtn.classList.add('active', 'bg-indigo-600', 'text-white');
 
-            // Mobile Sidebar Buttons Update
             document.querySelectorAll('.mobile-tab-btn').forEach(b => {
                 b.classList.remove('active', 'bg-indigo-50', 'text-indigo-700');
                 b.classList.add('text-slate-600');
@@ -989,20 +994,17 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
                 mobileBtn.classList.remove('text-slate-600');
             }
 
-            // Hide all contents and show selected
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById(`tab-${tabName}`).classList.remove('hidden');
             
             const titleText = desktopBtn ? desktopBtn.textContent : (mobileBtn ? mobileBtn.textContent.trim() : tabName);
             document.getElementById('active-tab-title').textContent = `Section: ${titleText}`;
 
-            // Trigger specific files
             if (tabName === 'performance') renderPerformanceTab(assignedJamiaat, currentUser, db); 
             if (tabName === 'test') window.loadInspectorTestSummary();
             if (tabName === 'recording') renderRecordingTab(assignedJamiaat, currentUser, db);
             if (tabName === 'enroll') {
-                window.renderEnrollmentTab(); // Default tab (Links load hongi)
-                // Default pehle sub-tab ko active dikhayen
+                window.renderEnrollmentTab(); 
                 document.querySelectorAll('.enroll-sub-btn').forEach(b => {
                     b.classList.remove('text-indigo-600', 'border-indigo-600', 'active');
                     b.classList.add('text-slate-400', 'border-transparent');
@@ -1010,23 +1012,21 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
                 document.querySelector('[data-enroll-sub="links"]').classList.add('text-indigo-600', 'border-indigo-600', 'active');
                 document.getElementById('enroll-sub-links').classList.replace('hidden', 'block');
                 document.getElementById('enroll-sub-summary').classList.replace('block', 'hidden');
+                document.getElementById('enroll-sub-classwise').classList.replace('block', 'hidden');
             }
         };
 
-        // Desktop Tabs Click Listener
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.onclick = () => window.switchTab(btn.dataset.tab);
         });
 
-        // Mobile Sidebar Menu Listeners
         document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
             btn.onclick = () => {
                 window.switchTab(btn.dataset.tab);
-                closeSidebar(); // Click ke baad drawer band ho jayega
+                closeSidebar(); 
             };
         });
 
-        // Dashboard Navigation from Sidebar
         document.querySelector('.mobile-nav-btn[data-action="dashboard"]').onclick = () => {
             window.backToSummary();
             closeSidebar();
@@ -1034,12 +1034,10 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
 
         const showLoader = (s) => document.getElementById('loader').classList.toggle('hidden', !s);
         
-        // Dono Logout Buttons ke liye
         const logoutAction = () => signOut(auth);
         document.getElementById('desktop-logout-btn').onclick = logoutAction;
         document.getElementById('mobile-logout-btn').onclick = logoutAction;
 
-        // SUB TAB LOGIC (Fill vs Summary)
         document.querySelectorAll('.sub-tab-btn').forEach(btn => {
             btn.onclick = () => {
                 document.querySelectorAll('.sub-tab-btn').forEach(b => {
@@ -1058,7 +1056,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             };
         });
 
-        // PHOTO UPLOAD
         document.getElementById('photo-input').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -1086,7 +1083,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
 
         window.currentInspectorTestData = {};
 
-        // TEST SUMMARY LOGIC
         window.loadInspectorTestSummary = async () => {
             const tbody = document.getElementById('inspector-test-summary-body');
             const monthInput = document.getElementById('report-month').value;
@@ -1099,9 +1095,6 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-indigo-500 font-bold text-center"><i class="fas fa-spinner fa-spin mr-2"></i> Linked Jamiaat ka data calculate ho raha hai...</td></tr>';
 
             try {
-                // Pehle: "users/{uid}" aur "monthly_test_sheets" yahan PHIR SE fetch ho rahe the -
-                // dono already initDashboard/loadStats mein fetch ho chuke hote hain isi session mein.
-                // Ab: dono cache se reuse ho rahe hain - Test tab kholte hi 2 extra reads nahi lagti.
                 const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
                 const allSheets = await getMonthlyTestSheets(monthInput);
 
@@ -1368,11 +1361,9 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
 
         window.closeAsriModal = () => document.getElementById('asri-modal').classList.add('hidden');
 
-  // ENROLLMENT TAB LOGIC
 window.renderEnrollmentTab = async () => {
     const tbody = document.getElementById('enrollment-jamia-list');
     
-    // Agar koi jamia assign nahi hai
     if (!assignedJamiaat || assignedJamiaat.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
         return;
@@ -1380,12 +1371,10 @@ window.renderEnrollmentTab = async () => {
 
     tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400 font-medium"><i class="fas fa-spinner fa-spin mr-2"></i>Load ho raha hai...</td></tr>';
 
-    // Aapke Enrollment Form ka naya URL file name ke mutabik
     const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-    const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`; // Yahan file name update kar diya hai
+    const formBaseUrl = `${baseUrl}/academic-enrollment-data.html`; 
 
     try {
-        // Codes aur stats dono ek saath (parallel) fetch hote hain
         const [codesByJamia, statsByJamia] = await Promise.all([
             getOrCreateJamiaCodes(assignedJamiaat),
             getEnrollmentStats(assignedJamiaat)
@@ -1393,7 +1382,6 @@ window.renderEnrollmentTab = async () => {
 
         let rowsHTML = '';
         assignedJamiaat.forEach(jamia => {
-            // Link me jamia ka naam parameter bankar jayega
             const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
             const code = codesByJamia[jamia] || '—';
             const stats = statsByJamia[jamia] || { classes: 0, students: 0 };
@@ -1421,8 +1409,6 @@ window.renderEnrollmentTab = async () => {
     }
 };
 
-// Har jamia ka 5-digit access code — "jamia_codes" collection mein ek baar generate hoke store hota hai,
-// uske baad hamesha wahi se reuse hota hai (academic-enrollment-data.html isi collection se code verify karta hai)
 async function getOrCreateJamiaCodes(jamiaatList) {
     const idToJamia = {};
     jamiaatList.forEach(j => { idToJamia[j.replace(/\s+/g, '_')] = j; });
@@ -1431,7 +1417,6 @@ async function getOrCreateJamiaCodes(jamiaatList) {
     const result = {};
     const missingIds = [];
 
-    // Firestore 'in' query zyada se zyada 30 values leti hai - isliye 30-30 ke chunks mein todte hain
     for (let i = 0; i < allIds.length; i += 30) {
         const chunk = allIds.slice(i, i + 30);
         const snap = await getDocs(query(collection(db, "jamia_codes"), where(documentId(), "in", chunk)));
@@ -1443,7 +1428,6 @@ async function getOrCreateJamiaCodes(jamiaatList) {
         chunk.forEach(id => { if (!foundIds.has(id)) missingIds.push(id); });
     }
 
-    // Jin jamiaat ka code pehli baar chahiye, unke liye naya generate karke save karte hain (life mein ek hi baar hoga)
     if (missingIds.length > 0) {
         await Promise.all(missingIds.map(async (id) => {
             const jamia = idToJamia[id];
@@ -1456,8 +1440,6 @@ async function getOrCreateJamiaCodes(jamiaatList) {
     return result;
 }
 
-// "enrollment_records" se har jamia ke liye: kitni alag classes ka data hai + kul kitne students hain.
-// Ek hi query se sab assigned jamiaat ka data aata hai (N alag queries nahi chalani padti)
 async function getEnrollmentStats(jamiaatList) {
     const stats = {};
     jamiaatList.forEach(j => { stats[j] = { classes: 0, students: 0 }; });
@@ -1487,7 +1469,6 @@ async function getEnrollmentStats(jamiaatList) {
     return stats;
 }
 
-// LINK COPY FUNCTION
 window.copyEnrollmentLink = (url, btnElement) => {
     navigator.clipboard.writeText(url).then(() => {
         const textSpan = btnElement.querySelector('.btn-text');
@@ -1512,15 +1493,53 @@ window.copyEnrollmentLink = (url, btnElement) => {
     });
 };
 
-        // Naya Function: Summary load karne ke liye
         window.renderEnrollmentSummaryTab = () => {
             renderEnrollmentSummary(assignedJamiaat, db, currentUser);
         };
+        
+        // Naya Javascript Function: Class Wise Summary table create karne ke liye
+        window.renderClassWiseSummaryTab = () => {
+            const tbody = document.getElementById('enrollment-classwise-container');
+            if (!assignedJamiaat || assignedJamiaat.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="15" class="p-6 text-center text-slate-400 font-medium">Koi Jamia assign nahi hai.</td></tr>';
+                return;
+            }
 
-        // Enrollment ke Sub-tabs ko switch karne ka logic
+            const jmClasses = [
+                "Primary",
+                "Pre Darse Nizami 1st Year",
+                "Pre Darse Nizami 2nd Year",
+                "Darse Nizami 1st year",
+                "Darse Nizami 2nd year",
+                "Darse Nizami 3rd year",
+                "Darse Nizami 4th year",
+                "Darse Nizami 5th year",
+                "Darse Nizami 6th year",
+                "Darse Nizami 7th year",
+                "Darse Nizami 8th year"
+            ];
+            const cols = 12;
+
+            let rowsHTML = '';
+            assignedJamiaat.forEach((jamia, index) => {
+                jmClasses.forEach((cls, cIndex) => {
+                    rowsHTML += `<tr class="hover:bg-slate-50 transition-colors">`;
+                    if (cIndex === 0) {
+                        rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold bg-white">${index + 1}</td>`;
+                        rowsHTML += `<td rowspan="${jmClasses.length}" class="p-2 border border-slate-200 font-bold bg-white">${jamia}</td>`;
+                    }
+                    rowsHTML += `<td class="p-2 border border-slate-200 text-left font-medium whitespace-nowrap bg-slate-50/50">${cls}</td>`;
+                    for(let i=0; i<cols; i++) {
+                        rowsHTML += `<td class="p-2 border border-slate-200 text-center text-slate-400">-</td>`;
+                    }
+                    rowsHTML += `</tr>`;
+                });
+            });
+            tbody.innerHTML = rowsHTML;
+        };
+
         document.querySelectorAll('.enroll-sub-btn').forEach(btn => {
             btn.onclick = () => {
-                // Button Styling
                 document.querySelectorAll('.enroll-sub-btn').forEach(b => {
                     b.classList.remove('text-indigo-600', 'border-indigo-600', 'active');
                     b.classList.add('text-slate-400', 'border-transparent');
@@ -1528,16 +1547,21 @@ window.copyEnrollmentLink = (url, btnElement) => {
                 btn.classList.add('text-indigo-600', 'border-indigo-600', 'active');
                 btn.classList.remove('text-slate-400', 'border-transparent');
 
-                // Content Toggle
                 const target = btn.dataset.enrollSub;
                 document.getElementById('enroll-sub-links').classList.toggle('hidden', target !== 'links');
                 document.getElementById('enroll-sub-links').classList.toggle('block', target === 'links');
                 document.getElementById('enroll-sub-summary').classList.toggle('hidden', target !== 'summary');
                 document.getElementById('enroll-sub-summary').classList.toggle('block', target === 'summary');
+                
+                // Naya Tab yahan handle kiya gaya hai
+                document.getElementById('enroll-sub-classwise').classList.toggle('hidden', target !== 'classwise');
+                document.getElementById('enroll-sub-classwise').classList.toggle('block', target === 'classwise');
 
-                // Agar Summary tab khola hai, tou data fetch karein
                 if(target === 'summary') {
                     window.renderEnrollmentSummaryTab();
+                }
+                if(target === 'classwise') {
+                    window.renderClassWiseSummaryTab();
                 }
             };
         });
