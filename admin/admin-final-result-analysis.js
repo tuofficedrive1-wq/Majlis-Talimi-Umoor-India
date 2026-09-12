@@ -767,17 +767,16 @@ else if (layout === 'wazahat') {
     if (exportBtn) exportBtn.classList.remove("hidden");
 }
         }
-}
-
-// ==========================================
-    // 🚀 EXCEL UPLOAD & AUTO-CALCULATION LOGIC
     // ==========================================
-    let uploadedWorkbook = null;
-    let classSubjectMap = {}; // Sheet 2 mapping
-    let uniqueSubjects = new Set(); // For passing marks UI
+// 🚀 EXCEL UPLOAD & AUTO-CALCULATION LOGIC
+// ==========================================
+let uploadedWorkbook = null;
+let classSubjectMap = {}; // Sheet 2 mapping
+let uniqueSubjects = new Set(); // For passing marks UI
 
-    // 1. File Select Hote hi Sheet 2 Padhna
-    document.getElementById('result-excel-file').addEventListener('change', (e) => {
+// 1. File Select Hote hi Sheet 2 Padhna (Delegation se Error Fix)
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'result-excel-file') {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -798,7 +797,6 @@ else if (layout === 'wazahat') {
                 const className = row[9]; // Column J (10th column)
                 if (className) {
                     classSubjectMap[className.trim()] = [];
-                    // Column A se I tak subjects hain
                     for(let i = 0; i <= 8; i++) {
                         if(row[i] && typeof row[i] === 'string' && row[i].trim() !== '') {
                             classSubjectMap[className.trim()].push(row[i].trim());
@@ -818,39 +816,48 @@ else if (layout === 'wazahat') {
                     </div>`;
             });
 
-            document.getElementById('dynamic-subjects-grid').innerHTML = html;
-            document.getElementById('subject-passing-marks-container').classList.remove('hidden');
+            const grid = document.getElementById('dynamic-subjects-grid');
+            const container = document.getElementById('subject-passing-marks-container');
+            if (grid && container) {
+                grid.innerHTML = html;
+                container.classList.remove('hidden');
+            }
         };
         reader.readAsArrayBuffer(file);
-    });
+    }
+});
 
-    // Ustad ka naam dhondne wala helper
-    const getTeacherName = (jamiaName, className, subject) => {
-        for (let u of allUsers) {
-            if (!u.academicYears) continue;
-            let years = Object.keys(u.academicYears).sort().reverse();
-            if (years.length === 0) continue;
-            let struct = u.academicYears[years[0]].karkardagiStructure || [];
-            let jData = struct.find(j => j.jamiaName === jamiaName);
-            
-            if (jData && jData.teachers) {
-                for (let t of jData.teachers) {
-                    if (t.periods) {
-                        for (let p of t.periods) {
-                            if (p.className === className && p.bookName === subject) return t.name;
-                        }
+// Ustad ka naam dhondne wala helper
+const getTeacherName = (jamiaName, className, subject) => {
+    const usersList = window.allUsersData || [];
+    for (let u of usersList) {
+        if (!u.academicYears) continue;
+        let years = Object.keys(u.academicYears).sort().reverse();
+        if (years.length === 0) continue;
+        let struct = u.academicYears[years[0]].karkardagiStructure || [];
+        let jData = struct.find(j => j.jamiaName === jamiaName);
+        
+        if (jData && jData.teachers) {
+            for (let t of jData.teachers) {
+                if (t.periods) {
+                    for (let p of t.periods) {
+                        if (p.className === className && p.bookName === subject) return t.name;
                     }
                 }
             }
         }
-        return "Na-Maloom";
-    };
+    }
+    return "Na-Maloom";
+};
 
-    // 2. Process & Upload Button Logic
-    document.getElementById('btn-process-upload').addEventListener('click', async () => {
-        const jamiaName = document.getElementById('upload-jamia-name').value;
-        const examType = document.getElementById('admin-exam-type').value;
-        const examYear = document.getElementById('admin-exam-year').value;
+// 2. Process & Delete Button Logic (Delegation se Event Attach)
+document.addEventListener('click', async (e) => {
+    
+    // --- A. Process Upload Button ---
+    if (e.target.closest('#btn-process-upload')) {
+        const jamiaName = document.getElementById('upload-jamia-name')?.value;
+        const examType = document.getElementById('admin-exam-type')?.value;
+        const examYear = document.getElementById('admin-exam-year')?.value;
         const logs = document.getElementById('upload-logs');
 
         if (!uploadedWorkbook || jamiaName === 'all') {
@@ -858,16 +865,17 @@ else if (layout === 'wazahat') {
             return;
         }
 
-        logs.classList.remove('hidden');
-        logs.innerHTML = `<span class="text-blue-600">⏳ Processing started for ${jamiaName}...</span><br>`;
+        if (logs) {
+            logs.classList.remove('hidden');
+            logs.innerHTML = `<span class="text-blue-600">⏳ Processing started for ${jamiaName}...</span><br>`;
+        }
 
-        // Get passing marks
         const passingMarks = {};
         uniqueSubjects.forEach(sub => {
-            passingMarks[sub] = parseFloat(document.getElementById(`pass_mark_${sub}`).value) || 33;
+            const markInput = document.getElementById(`pass_mark_${sub}`);
+            passingMarks[sub] = parseFloat(markInput?.value) || 33;
         });
 
-        // Parse Sheet 1 (Row 4 se)
         const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
         const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
 
@@ -875,9 +883,17 @@ else if (layout === 'wazahat') {
         let asatizaWiseData = {};
         let studentReportCards = [];
 
-        // Context nikalein taake user id aur userName save ho sake
-        const context = getJamiaContext(jamiaName);
-        const ownerUserId = allUsers.find(u => (u.name || u.email) === context.userName)?.id || "admin";
+        // Safe Context Retrieval
+        let contextUserName = "Admin";
+        let contextRegion = "N/A";
+        // Agar function available hai to call karo
+        if (typeof window.getJamiaContext === 'function') {
+            const context = window.getJamiaContext(jamiaName);
+            contextUserName = context.userName;
+            contextRegion = context.region;
+        }
+        
+        const ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === contextUserName)?.id || "admin";
 
         resultData.forEach(row => {
             const className = row['Class'] || row['کلاس'];
@@ -902,7 +918,7 @@ else if (layout === 'wazahat') {
                 else if (kaifiyat.includes('غ') || kaifiyat.includes('غیر حاضر')) { classWiseData[cName].ghaib++; classWiseData[cName].total--; }
             }
 
-            // B. ASATIZA-WISE CALCULATION & REPORT CARD DATA
+            // B. ASATIZA-WISE CALCULATION
             let stdMarksList = [];
             allowedSubjects.forEach(sub => {
                 const marksRaw = row[sub];
@@ -940,28 +956,25 @@ else if (layout === 'wazahat') {
             });
         });
 
-        // 3. BATCH UPLOAD TO FIREBASE (Replace mode)
+        // 3. BATCH UPLOAD TO FIREBASE
         try {
             const batch = writeBatch(db);
 
-            // Report Cards
             const rcId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
             batch.set(doc(db, "student_report_cards", rcId), {
                 jamia: jamiaName, examYear: examYear, examType: examType,
                 students: studentReportCards, timestamp: Date.now()
             });
 
-            // Class-Wise
             for (const cName in classWiseData) {
                 const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
                 batch.set(doc(db, "class_wise_results", customId), {
-                    uid: ownerUserId, userId: ownerUserId, userName: context.userName, region: context.region,
+                    uid: ownerUserId, userId: ownerUserId, userName: contextUserName, region: contextRegion,
                     jamia: jamiaName, examType: examType, examYear: examYear, darjah: cName,
                     ...classWiseData[cName], timestamp: Date.now()
                 });
             }
 
-            // Asatiza-Wise
             const tDataArr = [];
             for (const tName in asatizaWiseData) {
                 const periods = [];
@@ -983,44 +996,52 @@ else if (layout === 'wazahat') {
             }
 
             await batch.commit();
-            logs.innerHTML += `<span class="text-green-600 font-bold">✅ Data successfully Processed aur Database mein Save/Replace ho gaya hai!</span>`;
+            if(logs) logs.innerHTML += `<span class="text-green-600 font-bold">✅ Data successfully Processed aur Database mein Save ho gaya hai!</span>`;
             
         } catch (error) {
-            logs.innerHTML += `<span class="text-red-600 font-bold">❌ Error: ${error.message}</span>`;
+            if(logs) logs.innerHTML += `<span class="text-red-600 font-bold">❌ Error: ${error.message}</span>`;
         }
-    });
+    }
 
-    // 3. DELETE OLD DATA LOGIC
-    document.getElementById('btn-delete-result').addEventListener('click', async () => {
-        const jamiaName = document.getElementById('upload-jamia-name').value;
-        const examType = document.getElementById('admin-exam-type').value;
-        const examYear = document.getElementById('admin-exam-year').value;
+    // --- B. Delete Result Button ---
+    if (e.target.closest('#btn-delete-result')) {
+        const jamiaName = document.getElementById('upload-jamia-name')?.value;
+        const examType = document.getElementById('admin-exam-type')?.value;
+        const examYear = document.getElementById('admin-exam-year')?.value;
         const logs = document.getElementById('upload-logs');
+
+        if (!jamiaName || jamiaName === 'all') {
+            alert("Jamia select karein jiska data delete karna hai.");
+            return;
+        }
 
         if (!confirm(`WARNING: Kya aap ${jamiaName} ka ${examYear} ka data Hamesha ke liye Delete karna chahte hain?`)) return;
 
-        logs.classList.remove('hidden');
-        logs.innerHTML = `<span class="text-red-600">🗑 Deleting data...</span><br>`;
+        if (logs) {
+            logs.classList.remove('hidden');
+            logs.innerHTML = `<span class="text-red-600">🗑 Deleting data...</span><br>`;
+        }
 
         try {
             const batch = writeBatch(db);
 
-            // Report Cards
             const rcId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
             batch.delete(doc(db, "student_report_cards", rcId));
 
-            // Asatiza
             const asatizaId = `${jamiaName}_${examYear}_${examType}_asatiza`.replace(/\//g, '-').replace(/\s+/g, '_');
             batch.delete(doc(db, "asatiza_wise_results", asatizaId));
 
-            // Class-wise (Delete via query)
             const classQuery = query(collection(db, "class_wise_results"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
             const classSnap = await getDocs(classQuery);
             classSnap.forEach(d => batch.delete(d.ref));
 
             await batch.commit();
-            logs.innerHTML += `<span class="text-green-600 font-bold">✅ Data successfully delete ho gaya hai!</span>`;
-        } catch(e) {
-            logs.innerHTML += `<span class="text-red-600 font-bold">❌ Error: ${e.message}</span>`;
+            if(logs) logs.innerHTML += `<span class="text-green-600 font-bold">✅ Data successfully delete ho gaya hai!</span>`;
+        } catch(error) {
+            if(logs) logs.innerHTML += `<span class="text-red-600 font-bold">❌ Error: ${error.message}</span>`;
         }
-    });
+    }
+});
+}
+
+
