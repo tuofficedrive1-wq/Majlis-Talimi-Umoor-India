@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (MULTI-JAMIA MASTER UPLOAD)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (MASTER UPLOAD & 40 PASSING MARKS DEFAULT)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -8,6 +8,7 @@ import {
 const getJamiaKefiyat = (p, level = 'teacher') => {
     let val = parseFloat(String(p).replace('%', ''));
     if (isNaN(val)) return "-";
+    
     if (level === 'jamia' || level === 'class') {
         if (val >= 85) return "ممتاز مع شرف";
         if (val >= 76) return "ممتاز";
@@ -535,11 +536,14 @@ export async function initAdminResultAnalysis(db, containerId) {
                 });
 
                 let html = '';
-                uniqueSubjects.forEach(sub => {
+                // 🔹 NAYA LOGIC: Sort Subjects Alphabetically and Set Default Value to 40
+                const sortedSubjects = Array.from(uniqueSubjects).sort();
+                
+                sortedSubjects.forEach(sub => {
                     html += `
                         <div class="bg-white p-2 border rounded flex justify-between items-center shadow-sm">
                             <span class="urdu-font font-bold text-gray-700">${sub}</span>
-                            <input type="number" id="pass_mark_${sub}" value="33" class="w-16 p-1 border rounded text-center font-bold text-red-600">
+                            <input type="number" id="pass_mark_${sub}" value="40" class="w-16 p-1 border rounded text-center font-bold text-red-600">
                         </div>`;
                 });
 
@@ -597,7 +601,8 @@ export async function initAdminResultAnalysis(db, containerId) {
             const passingMarks = {};
             uniqueSubjects.forEach(sub => {
                 const markInput = document.getElementById(`pass_mark_${sub}`);
-                passingMarks[sub] = parseFloat(markInput?.value) || 33;
+                // 🔹 NAYA LOGIC: Change fallback to 40 instead of 33
+                passingMarks[sub] = parseFloat(markInput?.value) || 40; 
             });
 
             const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
@@ -658,7 +663,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             try {
                 if(logs) logs.innerHTML += `<span class="text-gray-600">Uploading data to Database...</span><br>`;
 
-                // Batch likhne ke liye normal loop lagaya taake safe upload ho sake
                 for (const jamiaName of Object.keys(multiJamiaClassData)) {
                     
                     let contextUserName = "Admin", contextRegion = "N/A", ownerUserId = "admin";
