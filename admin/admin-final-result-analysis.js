@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (AUTO PASSING MARKS FROM EXCEL SHEET 2)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH PREVIEW FEATURE BEFORE UPLOAD)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -192,9 +192,26 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <div id="ready-to-process-container" class="hidden p-6 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-center shadow-sm">
                     <h4 class="font-bold text-emerald-800 mb-2 text-xl"><i class="fas fa-check-circle mr-2"></i> Excel Sheet Successfully Loaded!</h4>
                     <p class="text-emerald-700 mb-4 font-semibold urdu-font text-lg">Sheet 2 سے تمام مضامین اور ان کے پاسنگ مارکس آٹو فیچ کر لیے گئے ہیں۔</p>
-                    <button id="btn-process-upload" class="w-full md:w-2/3 mx-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
-                        <i class="fas fa-rocket"></i> Process All Jamiaat & Save Data
+                    <button id="btn-process-upload" class="w-full md:w-1/2 mx-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
+                        <i class="fas fa-eye"></i> Process & Preview Data
                     </button>
+                </div>
+
+                <!-- 🟢 PREVIEW CONTAINER (NAYA) -->
+                <div id="preview-container" class="hidden mt-6 p-6 border-2 border-indigo-200 bg-indigo-50 rounded-2xl shadow-sm">
+                    <h4 class="text-xl font-bold text-indigo-800 mb-4"><i class="fas fa-search mr-2"></i> Data Preview (ڈیٹا کا جائزہ لیں)</h4>
+                    <p class="text-sm text-indigo-600 mb-4">ڈیٹا بیس میں محفوظ کرنے سے پہلے دیکھ لیں کہ کلاسز اور اساتذہ کی تفصیلات درست ہیں یا نہیں۔</p>
+                    
+                    <div id="preview-content" class="space-y-4 mb-6 max-h-96 overflow-y-auto pr-2 custom-scrollbar"></div>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4 mt-6">
+                        <button id="btn-cancel-preview" class="w-full sm:w-1/3 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold py-3 px-4 rounded-xl shadow-sm transition flex justify-center items-center gap-2">
+                            <i class="fas fa-times"></i> Cancel & Re-upload
+                        </button>
+                        <button id="btn-confirm-upload" class="w-full sm:w-2/3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
+                            <i class="fas fa-cloud-upload-alt"></i> Confirm & Upload to Database
+                        </button>
+                    </div>
                 </div>
 
                 <!-- 🗑️ DELETE DATA SECTION -->
@@ -319,7 +336,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     }
 
-    // Update Jamia Dropdown (View & Delete)
+    // Update Jamia Dropdown
     const updateJamiaList = () => {
         const selUser = elements.userFilter.value;
         const selReg = elements.regionFilter.value;
@@ -568,6 +585,8 @@ export async function initAdminResultAnalysis(db, containerId) {
     // ==========================================
     let uploadedWorkbook = null;
     let classSubjectMap = {}; 
+    let uniqueSubjects = new Set(); 
+    let pendingUploadData = null; // PREVIEW KE LIYE DATA SAVE KARNA
 
     // Prevent Multiple Bindings
     if (!window.adminResultAnalysisInitialized) {
@@ -581,14 +600,15 @@ export async function initAdminResultAnalysis(db, containerId) {
                 
                 // RESET UI FOR NEW FILE
                 const logs = document.getElementById('upload-logs');
-                if (logs) {
-                    logs.classList.add('hidden');
-                    logs.className = "hidden";
-                }
+                if (logs) logs.classList.add('hidden');
+                
+                const previewContainer = document.getElementById('preview-container');
+                if (previewContainer) previewContainer.classList.add('hidden');
+                
                 const processBtn = document.getElementById('btn-process-upload');
                 if (processBtn) {
                     processBtn.disabled = false;
-                    processBtn.innerHTML = '🚀 Process All Jamiaat & Save Data';
+                    processBtn.innerHTML = '<i class="fas fa-eye"></i> Process & Preview Data';
                     processBtn.classList.remove('hidden', 'opacity-70', 'cursor-not-allowed');
                 }
 
@@ -602,18 +622,16 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     classSubjectMap = {};
 
-                    // Naya Logic: Excel (Sheet 2) Se Seedha Passing Marks Padhna
                     for (let idx = 0; idx < mapData.length; idx++) {
                         const row = mapData[idx];
                         if (!row || row.length === 0) continue; 
                         
-                        let className = row[10] || row[9] || row[11]; // Find 'درجہ' column
+                        let className = row[10] || row[9] || row[11]; 
                         
                         if (className && typeof className === 'string' && className.trim() !== '' && className.trim() !== 'درجہ') {
                             const currentClass = className.trim();
                             classSubjectMap[currentClass] = { subjects: [], passingMarks: {} };
                             
-                            // Passing marks Excel mein 2 rows neechay hote hain
                             const passingMarksRow = mapData[idx + 2] || [];
                             
                             for(let i = 0; i <= 9; i++) {
@@ -622,15 +640,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                                     classSubjectMap[currentClass].subjects.push(subName);
                                     
                                     const passMark = parseFloat(passingMarksRow[i]);
-                                    classSubjectMap[currentClass].passingMarks[subName] = isNaN(passMark) ? 33 : passMark; 
+                                    classSubjectMap[currentClass].passingMarks[subName] = isNaN(passMark) ? 40 : passMark; 
                                 }
                             }
                         }
                     }
-
-                    // Passing marks ka container hide aur "Ready" message show karein
-                    const container = document.getElementById('subject-passing-marks-container');
-                    if (container) container.classList.add('hidden');
 
                     let readyHtml = `
                         <div id="ready-to-process-container" class="p-6 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-center shadow-sm">
@@ -639,7 +653,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         </div>
                     `;
                     
-                    // Agar pehle se ready container hai to usko update karein, nahi to append karein
                     let existingReady = document.getElementById('ready-to-process-container');
                     if(existingReady) {
                         existingReady.outerHTML = readyHtml;
@@ -674,30 +687,22 @@ export async function initAdminResultAnalysis(db, containerId) {
             return "Na-Maloom";
         };
 
-        // 2. Click Events (Process, Navigate, Delete)
+        // 2. Click Events (Process Preview, Confirm Upload, Navigate, Delete)
         document.addEventListener('click', async (e) => {
             
-            // --- A. PROCESS UPLOAD BUTTON ---
+            // --- A. PROCESS & PREVIEW BUTTON ---
             if (e.target.closest('#btn-process-upload')) {
                 const processBtn = e.target.closest('#btn-process-upload');
                 const examType = document.getElementById('upload-exam-type')?.value;
                 const examYear = document.getElementById('upload-exam-year')?.value;
-                const logs = document.getElementById('upload-logs');
 
                 if (!uploadedWorkbook) {
                     alert("Pehle Master Excel file select karein!");
                     return;
                 }
 
+                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
                 processBtn.disabled = true;
-                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing... Please Wait';
-                processBtn.classList.add('opacity-70', 'cursor-not-allowed');
-
-                if (logs) {
-                    logs.classList.remove('hidden');
-                    logs.className = "p-4 rounded-lg font-mono text-sm border bg-gray-50 max-h-60 overflow-y-auto mt-4";
-                    logs.innerHTML = `<span class="text-blue-600 font-bold">⏳ Master Sheet Processing started...</span><br>`;
-                }
 
                 const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
                 const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
@@ -750,16 +755,96 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 if (!multiJamiaAsatizaData[jamiaName][tName][sub]) multiJamiaAsatizaData[jamiaName][tName][sub] = { class: cName, subject: sub, total: 0, passed: 0 };
                                 
                                 multiJamiaAsatizaData[jamiaName][tName][sub].total++;
-                                
-                                const passTarget = passingMarksMap[sub] !== undefined ? passingMarksMap[sub] : 33;
+                                const passTarget = passingMarksMap[sub] !== undefined ? passingMarksMap[sub] : 40;
                                 if (marks >= passTarget) multiJamiaAsatizaData[jamiaName][tName][sub].passed++;
                             }
                         }
                     });
                 });
 
+                // Save Data Temporarily for confirmation
+                pendingUploadData = {
+                    examType,
+                    examYear,
+                    multiJamiaClassData,
+                    multiJamiaAsatizaData
+                };
+
+                // GENERATE PREVIEW HTML
+                let previewHtml = '';
+                for (const jamiaName of Object.keys(multiJamiaClassData)) {
+                    const cData = multiJamiaClassData[jamiaName];
+                    const tData = multiJamiaAsatizaData[jamiaName] || {};
+                    
+                    let totalStudents = 0;
+                    let classesHtml = Object.keys(cData).map(c => {
+                        totalStudents += cData[c].total;
+                        return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs urdu-font border border-indigo-200 shadow-sm">${c} (${cData[c].total} طلبا)</span>`;
+                    }).join(' ');
+                    
+                    let teachersHtml = Object.keys(tData).map(t => {
+                        let subjects = Object.keys(tData[t]).join('، ');
+                        return `<div class="text-sm bg-gray-50 p-2 rounded border border-gray-200 mb-1 urdu-font flex justify-between items-center"><span class="font-bold text-gray-800">${t}</span> <span class="text-teal-700 text-xs">${subjects}</span></div>`;
+                    }).join('');
+
+                    if (!teachersHtml) teachersHtml = `<span class="text-xs text-red-500 italic">کوئی استاد میپ (Map) نہیں ہوا، براہ کرم سیٹ اپ چیک کریں۔</span>`;
+
+                    previewHtml += `
+                        <div class="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm">
+                            <div class="flex justify-between items-center border-b border-indigo-100 pb-2 mb-3">
+                                <h5 class="font-bold text-xl text-indigo-800 urdu-font">${jamiaName}</h5>
+                                <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold border border-indigo-200">کل طلباء: ${totalStudents}</span>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <h6 class="font-bold text-xs text-gray-500 uppercase tracking-wider mb-2">Class-wise Data (درجے):</h6>
+                                <div class="flex flex-wrap gap-2">${classesHtml}</div>
+                            </div>
+
+                            <div>
+                                <h6 class="font-bold text-xs text-gray-500 uppercase tracking-wider mb-2">Asatiza-wise Data (اساتذہ اور مضامین):</h6>
+                                <div class="max-h-40 overflow-y-auto pr-2 custom-scrollbar space-y-1">
+                                    ${teachersHtml}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('preview-content').innerHTML = previewHtml;
+                document.getElementById('preview-container').classList.remove('hidden');
+                
+                const readyContainer = document.getElementById('ready-to-process-container');
+                if (readyContainer) readyContainer.classList.add('hidden');
+                processBtn.classList.add('hidden');
+            }
+
+            // --- B. CANCEL PREVIEW BUTTON ---
+            if (e.target.closest('#btn-cancel-preview')) {
+                pendingUploadData = null;
+                document.getElementById('preview-container').classList.add('hidden');
+                
+                const processBtn = document.getElementById('btn-process-upload');
+                processBtn.classList.remove('hidden');
+                processBtn.disabled = false;
+                processBtn.innerHTML = '<i class="fas fa-eye"></i> Process & Preview Data';
+
+                const readyContainer = document.getElementById('ready-to-process-container');
+                if (readyContainer) readyContainer.classList.remove('hidden');
+            }
+
+            // --- C. CONFIRM & UPLOAD BUTTON ---
+            if (e.target.closest('#btn-confirm-upload')) {
+                const confirmBtn = e.target.closest('#btn-confirm-upload');
+                const cancelBtn = document.getElementById('btn-cancel-preview');
+                const logs = document.getElementById('upload-logs');
+
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Uploading to Database...';
+                confirmBtn.disabled = true;
+                if(cancelBtn) cancelBtn.disabled = true;
+
                 try {
-                    if(logs) logs.innerHTML += `<span class="text-gray-600">Uploading data to Database...</span><br>`;
+                    const { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData } = pendingUploadData;
 
                     for (const jamiaName of Object.keys(multiJamiaClassData)) {
                         let contextUserName = "Admin", contextRegion = "N/A", ownerUserId = "admin";
@@ -803,36 +888,33 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
+                    document.getElementById('preview-container').classList.add('hidden');
+                    
                     if(logs) {
+                        logs.classList.remove('hidden');
                         logs.className = "mt-6 p-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center shadow-sm";
                         logs.innerHTML = `
                             <div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
                             <h4 class="text-3xl font-bold text-emerald-800 urdu-font mb-2">الحمدللہ!</h4>
                             <p class="text-emerald-700 font-bold text-lg mb-6">تمام جامعات کا رزلٹ کامیابی سے ڈیٹا بیس میں محفوظ ہو گیا ہے۔</p>
                             <div class="flex flex-col sm:flex-row justify-center gap-4">
-                                <button id="jump-to-dashboard" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
-                                    <i class="fas fa-chart-pie mr-2"></i> Result Dashboard دیکھیں
+                                <button id="jump-to-dashboard" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                                    <i class="fas fa-chart-pie"></i> Result Dashboard دیکھیں
                                 </button>
-                                <button id="jump-to-reports" type="button" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center">
-                                    <i class="fas fa-table mr-2"></i> Detailed Reports دیکھیں
+                                <button id="jump-to-reports" type="button" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                                    <i class="fas fa-table"></i> Detailed Reports دیکھیں
                                 </button>
                             </div>
                         `;
                     }
-
-                    const readyContainer = document.getElementById('ready-to-process-container');
-                    if (readyContainer) readyContainer.classList.add('hidden');
-                    processBtn.classList.add('hidden');
                     
                 } catch (error) {
-                    if(logs) logs.innerHTML += `<br><br><span class="text-red-600 font-bold text-lg">❌ Error: ${error.message}</span>`;
-                    processBtn.disabled = false;
-                    processBtn.innerHTML = '🚀 Retry Process & Save Data';
-                    processBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                    confirmBtn.innerHTML = '<i class="fas fa-times"></i> Error Uploading';
+                    alert("Error: " + error.message);
                 }
             }
 
-            // --- B. NAVIGATION BUTTONS FROM SUCCESS MESSAGE ---
+            // --- D. NAVIGATION BUTTONS FROM SUCCESS MESSAGE ---
             if (e.target.closest('#jump-to-dashboard')) {
                 document.getElementById('tab-dashboard')?.click();
                 document.getElementById('admin-show-btn')?.click();
@@ -843,7 +925,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 document.getElementById('admin-show-btn')?.click();
             }
 
-            // --- C. DELETE UPLOADED DATA LOGIC ---
+            // --- E. DELETE UPLOADED DATA LOGIC ---
             if (e.target.closest('#btn-delete-result')) {
                 const delJamia = document.getElementById('delete-jamia-select')?.value;
                 const delYear = document.getElementById('upload-exam-year')?.value;
