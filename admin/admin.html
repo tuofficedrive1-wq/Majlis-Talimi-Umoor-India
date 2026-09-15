@@ -1993,14 +1993,12 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
             });
             
             document.getElementById('btn-execute-teacher-transfer').addEventListener('click', async () => {
-    // 1. Dono taraf ke dropdowns se values uthana
     const oldUserId = document.getElementById('tt-old-user').value;
     const oldJamia = document.getElementById('tt-old-jamia').value;
     const teacherId = document.getElementById('tt-teacher').value;
     const newUserId = document.getElementById('tt-new-user').value;
     const newJamia = document.getElementById('tt-new-jamia').value;
 
-    // 2. Validation check (Koi field khali na ho)
     if(!oldUserId || !oldJamia || !teacherId || !newUserId || !newJamia) {
         alert("Barahe karam source aur destination ki tamam maloomat (fields) select karein.");
         return;
@@ -2011,22 +2009,81 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
         return;
     }
 
-    // 3. Confirmation aur Firebase Logic
     if(confirm(`Kya aap waqai is teacher ko ${oldJamia} se nikal kar ${newJamia} mein transfer karna chahte hain?`)) {
         showLoader(true);
         try {
-            // YAHAN PAR FIREBASE KA LOGIC AAYEGA
-            // Jisme aap purane user ke 'academicYears' structure se teacher ko delete karenge
-            // Aur naye user ke 'academicYears' structure mein teacher ko add karenge.
+            // 1. Global variables se User Data uthana
+            const oldU = allUsersData.find(u => u.id === oldUserId);
+            const newU = allUsersData.find(u => u.id === newUserId);
             
-            console.log("Teacher transfer in progress...", {oldUserId, oldJamia, teacherId, newUserId, newJamia});
+            if (!oldU || !newU) throw new Error("User data nahi mila.");
+
+            // 2. Dono users ka active Academic Year nikalna
+            const oldYears = Object.keys(oldU.academicYears || {}).sort().reverse();
+            const newYears = Object.keys(newU.academicYears || {}).sort().reverse();
             
-            // Temporary alert jab tak logic na likha jaye
-            alert("Button kaam karne lag gaya hai! Lekin Firebase ka mukammal update logic yahan likhna baqi hai.");
+            if (oldYears.length === 0 || newYears.length === 0) {
+                throw new Error("Dono ya kisi ek user ka Academic Year structure nahi mila.");
+            }
+
+            const oldActiveYear = oldYears[0];
+            const newActiveYear = newYears[0];
+
+            // 3. Database mein bhejne ke liye data ki copy banana
+            let oldAcademicYears = JSON.parse(JSON.stringify(oldU.academicYears));
+            let newAcademicYears = JSON.parse(JSON.stringify(newU.academicYears));
+
+            let teacherToTransfer = null;
+
+            // 4. Purane user ke Jamia se teacher ko nikalna (Remove)
+            let oldStructure = oldAcademicYears[oldActiveYear].karkardagiStructure || [];
+            let oldJamiaIndex = oldStructure.findIndex(j => j.jamiaName === oldJamia);
+            
+            if (oldJamiaIndex !== -1) {
+                let teachersArr = oldStructure[oldJamiaIndex].teachers || [];
+                let teacherIndex = teachersArr.findIndex(t => t.id === teacherId);
+                
+                if (teacherIndex !== -1) {
+                    teacherToTransfer = teachersArr.splice(teacherIndex, 1)[0]; // Teacher ko array se nikal liya
+                }
+            }
+
+            if (!teacherToTransfer) {
+                throw new Error("Purane Jamia mein teacher nahi mila.");
+            }
+
+            // 5. Naye user ke Jamia mein teacher ko add karna
+            let newStructure = newAcademicYears[newActiveYear].karkardagiStructure || [];
+            let newJamiaIndex = newStructure.findIndex(j => j.jamiaName === newJamia);
+            
+            if (newJamiaIndex !== -1) {
+                if (!newStructure[newJamiaIndex].teachers) {
+                    newStructure[newJamiaIndex].teachers = [];
+                }
+                newStructure[newJamiaIndex].teachers.push(teacherToTransfer); // Teacher naye Jamia mein add
+            } else {
+                throw new Error("Naye user ka Jamia structure nahi mila. Kya naye user ke paas yeh Jamia assign hai?");
+            }
+
+            // 6. Firebase Batch Update (Dono users ek sath update honge)
+            const batch = writeBatch(db);
+            const oldUserRef = doc(db, 'users', oldUserId);
+            const newUserRef = doc(db, 'users', newUserId);
+
+            batch.update(oldUserRef, { academicYears: oldAcademicYears });
+            batch.update(newUserRef, { academicYears: newAcademicYears });
+
+            await batch.commit();
+
+            showNotification("Teacher successfully transfer ho gaya!");
+            
+            // UI aur Dropdowns ko refresh karna
+            if(typeof initTeacherTransferTab === 'function') initTeacherTransferTab();
+            if(typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
             
         } catch (err) {
             console.error("Teacher Transfer Error: ", err);
-            showNotification("Transfer fail ho gaya. Console check karein.", true);
+            showNotification(err.message || "Transfer fail ho gaya. Console check karein.", true);
         } finally {
             showLoader(false);
         }
