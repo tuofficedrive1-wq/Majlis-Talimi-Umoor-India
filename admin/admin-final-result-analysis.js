@@ -917,33 +917,120 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
 
+               // 🌟 ADVANCED PREVIEW UI GENERATION 🌟
                 let previewHtml = '';
                 Object.keys(multiJamiaClassData).forEach(jamiaName => {
                     const cData = multiJamiaClassData[jamiaName];
-                    const tData = multiJamiaAsatizaData[jamiaName] || {};
+                    // Original data kharab na ho isliye copy bana rahe hain
+                    const tData = JSON.parse(JSON.stringify(multiJamiaAsatizaData[jamiaName] || {}));
                     
                     let totalStudents = 0;
                     let classesHtml = Object.keys(cData).map(c => {
                         totalStudents += cData[c].total;
                         return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs border">${c} (${cData[c].total} طلباء)</span>`;
                     }).join(' ');
-                    
-                    let teachersHtml = Object.keys(tData).map(t => {
-                        let subjects = Object.keys(tData[t]).map(sub => `${sub} (${tData[t][sub].passed}/${tData[t][sub].total} Pass)`).join('، ');
-                        let tClass = t.includes("Unassigned") ? "text-red-600 bg-red-50" : "text-gray-800 bg-gray-50";
-                        return `<div class="text-sm ${tClass} p-2 rounded border mb-1 urdu-font flex justify-between"><span class="font-bold">${t}</span> <span class="text-teal-700 text-[11px]">${subjects}</span></div>`;
-                    }).join('');
 
-                    if(!teachersHtml) teachersHtml = '<span class="text-xs text-red-500 italic">کوئی مضمون لنک نہیں کیا گیا۔</span>';
+                    // 🌟 NAYA TEACHER PREVIEW LOGIC (STRUCTURE VS MAPPED) 🌟
+                    let dbJamiaStruct = null;
+                    const usersList = window.allUsersData || [];
+                    for (let u of usersList) {
+                        if (!u.academicYears) continue;
+                        let years = Object.keys(u.academicYears).sort().reverse();
+                        if(years.length === 0) continue;
+                        let struct = u.academicYears[years[0]].karkardagiStructure || [];
+                        dbJamiaStruct = struct.find(j => (j.jamiaName||'').trim() === jamiaName);
+                        if (dbJamiaStruct) break;
+                    }
+
+                    let teachersHtml = '';
+
+                    if (dbJamiaStruct && dbJamiaStruct.teachers) {
+                        dbJamiaStruct.teachers.forEach(teacher => {
+                            let tName = teacher.name;
+                            let periods = teacher.periods || [];
+                            let totalPeriods = periods.length;
+                            let mappedCount = 0;
+                            
+                            let periodsHtml = periods.map(p => {
+                                // DB Subject ke naam se tData mein check karein
+                                let subData = tData[tName] ? tData[tName][p.bookName] : null;
+                                
+                                if (subData) {
+                                    mappedCount++;
+                                    return `<span class="inline-block bg-green-100 text-green-800 border border-green-300 px-2 py-1 rounded text-[11px] m-1 shadow-sm">✅ ${p.bookName} (${p.className}) - ${subData.passed}/${subData.total} Pass</span>`;
+                                } else {
+                                    return `<span class="inline-block bg-red-50 text-red-600 border border-red-200 px-2 py-1 rounded text-[11px] m-1 shadow-sm">❌ ${p.bookName} (${p.className}) - No Data</span>`;
+                                }
+                            }).join('');
+
+                            if (totalPeriods === 0) {
+                                periodsHtml = `<span class="text-xs text-gray-400 p-1">کوئی پیریڈ اسائن نہیں ہے۔ (No periods assigned)</span>`;
+                            }
+
+                            // Box ka color condition ke hisab se badlega
+                            let tClass = "";
+                            if (totalPeriods === 0) {
+                                tClass = "bg-gray-50 border-gray-200";
+                            } else if (mappedCount === totalPeriods) {
+                                tClass = "bg-emerald-50 border-emerald-300"; // Sab mukammal hain
+                            } else if (mappedCount > 0) {
+                                tClass = "bg-yellow-50 border-yellow-300"; // Kuch aaye, kuch reh gaye
+                            } else {
+                                tClass = "bg-red-50 border-red-200"; // Ek bhi nahi aaya
+                            }
+                            
+                            teachersHtml += `
+                                <div class="p-3 rounded-lg border mb-3 urdu-font shadow-sm ${tClass}">
+                                    <div class="flex justify-between items-center mb-2 border-b pb-2 border-gray-300">
+                                        <span class="font-bold text-gray-900 text-base">${tName}</span>
+                                        <span class="text-xs font-bold text-gray-700 bg-white px-3 py-1 rounded-full border shadow-sm">Periods Mapped: <span class="${mappedCount === totalPeriods ? 'text-green-600' : 'text-red-500'}">${mappedCount}/${totalPeriods}</span></span>
+                                    </div>
+                                    <div class="flex flex-wrap leading-relaxed">${periodsHtml}</div>
+                                </div>
+                            `;
+                            
+                            // Jo teacher match ho gaya usay tData se nikal dein taake aakhir mein sirf unmapped (extra) bachein
+                            if (tData[tName]) delete tData[tName];
+                        });
+                    } else {
+                        teachersHtml += `<div class="text-xs text-red-500 mb-3 font-bold p-3 bg-red-50 rounded border border-red-200">⚠️ ڈیٹا بیس میں اس جامعہ کا اسٹرکچر نہیں ملا۔ نیچے صرف ایکسل کا ڈیٹا ہے۔</div>`;
+                    }
+
+                    // Leftover / Unassigned Teachers (Jo structure mein the hi nahi lekin excel me thay)
+                    Object.keys(tData).forEach(t => {
+                        let subjects = Object.keys(tData[t]).map(sub => `<span class="inline-block bg-white text-gray-700 border border-gray-300 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${tData[t][sub].passed}/${tData[t][sub].total} Pass)</span>`).join('');
+                        let tClass = t.includes("Unassigned") ? "text-red-700 bg-red-50 border-red-300" : "text-gray-800 bg-gray-50 border-gray-300";
+                        teachersHtml += `
+                            <div class="p-3 rounded-lg border mb-3 urdu-font shadow-sm ${tClass}">
+                                <div class="flex justify-between items-center mb-2 border-b pb-2 border-gray-300">
+                                    <span class="font-bold text-base">${t}</span>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider bg-white px-2 py-0.5 rounded border text-red-500">Unmapped Data</span>
+                                </div>
+                                <div class="flex flex-wrap leading-relaxed">${subjects}</div>
+                            </div>
+                        `;
+                    });
+
+                    if(!teachersHtml) teachersHtml = '<span class="text-xs text-red-500 italic p-2 block">کوئی مضمون لنک نہیں کیا گیا۔</span>';
 
                     previewHtml += `
-                        <div class="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm mb-4">
-                            <div class="flex justify-between items-center border-b pb-2 mb-3">
-                                <h5 class="font-bold text-xl text-indigo-800 urdu-font">${jamiaName}</h5>
-                                <span class="text-xs bg-indigo-50 px-2 py-1 rounded font-bold">کل طلباء: ${totalStudents}</span>
+                        <div class="bg-white p-6 rounded-2xl border-2 border-indigo-100 shadow-md mb-6">
+                            <div class="flex justify-between items-center border-b-2 border-indigo-50 pb-3 mb-4">
+                                <h5 class="font-bold text-2xl text-indigo-900 urdu-font">${jamiaName}</h5>
+                                <span class="text-sm bg-indigo-100 text-indigo-800 px-3 py-1.5 rounded-lg font-bold border border-indigo-200 shadow-sm">کل طلباء: ${totalStudents}</span>
                             </div>
-                            <div class="mb-4"><h6 class="font-bold text-xs mb-2">Class-wise Summary:</h6><div class="flex flex-wrap gap-2">${classesHtml}</div></div>
-                            <div><h6 class="font-bold text-xs mb-2">Asatiza-wise Summary (Based on your Mapping):</h6>${teachersHtml}</div>
+                            
+                            <div class="mb-6">
+                                <h6 class="font-bold text-[11px] text-gray-500 uppercase tracking-wider mb-3">Class-wise Summary (درجے):</h6>
+                                <div class="flex flex-wrap gap-2">${classesHtml}</div>
+                            </div>
+
+                            <div>
+                                <h6 class="font-bold text-[11px] text-gray-500 uppercase tracking-wider mb-3">Asatiza-wise Mapping Status (اساتذہ اور مضامین کی تفصیل):</h6>
+                                <div class="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                                    ${teachersHtml}
+                                </div>
+                            </div>
                         </div>
                     `;
                 });
