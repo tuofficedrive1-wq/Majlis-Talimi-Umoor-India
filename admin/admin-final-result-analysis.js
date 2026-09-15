@@ -1,7 +1,7 @@
 // ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH PREVIEW FEATURE BEFORE UPLOAD)
 
 import {
-    collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
+    collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc, getDoc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 🔹 HELPERS: Status & Colors
@@ -188,19 +188,18 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-2 border border-teal-300 rounded-lg bg-teal-50 cursor-pointer focus:outline-none">
                 </div>
 
-                <!-- 🟢 SUBJECT MAPPING CONTAINER (NAYA) -->
+               <!-- 🟢 SUBJECT MAPPING CONTAINER (NAYA) -->
                 <div id="mapping-container" class="hidden mt-6 p-6 border-2 border-teal-200 bg-teal-50 rounded-2xl shadow-sm">
                     <h4 class="text-xl font-bold text-teal-800 mb-2"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
-                    <p class="text-sm text-teal-700 mb-4 urdu-font">ایکسل کے مضامین کو ڈیٹا بیس (Structure) کے مضامین کے ساتھ میچ کریں۔ اگر کوئی مضمون لسٹ میں نہ ہو تو اسے 'Ignore' کر سکتے ہیں۔</p>
+                    <p class="text-sm text-teal-700 mb-4 urdu-font">ایکسل کے مضامین کو Academic Setup (ڈیٹا بیس) کے مضامین کے ساتھ میچ کریں۔ اگر کوئی مضمون لسٹ میں نہ ہو تو اسے 'Ignore' کر سکتے ہیں۔</p>
                     
                     <div class="max-h-96 overflow-y-auto custom-scrollbar bg-white rounded-lg border border-teal-100 shadow-inner mb-6">
                         <table class="w-full text-sm text-left">
                             <thead class="bg-teal-700 text-white uppercase text-xs sticky top-0">
                                 <tr>
-                                    <th class="p-3 border-r">Jamia Name</th>
-                                    <th class="p-3 border-r text-center">Class (درجہ)</th>
-                                    <th class="p-3 border-r text-center">Excel Subject</th>
-                                    <th class="p-3">Database Subject (Teacher) Select Karein</th>
+                                    <th class="p-3 border-r text-center w-1/4">Class (درجہ)</th>
+                                    <th class="p-3 border-r text-center w-1/3">Excel Subject</th>
+                                    <th class="p-3">Database Subject (Academic Setup) Select Karein</th>
                                 </tr>
                             </thead>
                             <tbody id="mapping-table-body" class="divide-y divide-gray-200">
@@ -599,20 +598,59 @@ export async function initAdminResultAnalysis(db, containerId) {
 
  
        // ==========================================
-   // ==========================================
     // 🚀 EXCEL UPLOAD LOGIC & EVENT DELEGATION
     // ==========================================
     let uploadedWorkbook = null;
     let classSubjectMap = {}; 
     let pendingUploadData = null; 
-    let resultHeaderInfo = {}; // Header indexes save karne ke liye
+    let resultHeaderInfo = {};
 
-    // Prevent Multiple Bindings
+    // 🌟 URDU TEXT CLEANER 🌟
+    const cleanUrduStr = (str) => {
+        if (!str) return "";
+        return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    };
+
+    // 🌟 SMART TEACHER FINDER 🌟
+    const getTeacherName = (jamiaName, className, subject) => {
+        const usersList = window.allUsersData || [];
+        const cleanJamia = cleanUrduStr(jamiaName);
+        const cleanClass = cleanUrduStr(className);
+        const cleanSubj = cleanUrduStr(subject);
+
+        for (let u of usersList) {
+            if (!u.academicYears) continue;
+            let years = Object.keys(u.academicYears).sort().reverse();
+            if (years.length === 0) continue;
+            
+            let struct = u.academicYears[years[0]].karkardagiStructure || [];
+            let jData = struct.find(j => cleanUrduStr(j.jamiaName) === cleanJamia);
+            
+            if (jData && jData.teachers) {
+                for (let t of jData.teachers) {
+                    if (t.periods) {
+                        for (let p of t.periods) {
+                            let dbClass = cleanUrduStr(p.className);
+                            let dbBook = cleanUrduStr(p.bookName);
+                            
+                            if (dbClass === cleanClass || dbClass.includes(cleanClass) || cleanClass.includes(dbClass)) {
+                                if (dbBook === cleanSubj || cleanSubj.includes(dbBook) || dbBook.includes(cleanSubj)) {
+                                    return t.name;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return "Na-Maloom";
+    };
+
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
         // 🌟 1. FILE SELECTION EVENT (Generate Mapping UI) 🌟
-        document.addEventListener('change', (e) => {
+        document.addEventListener('change', async (e) => {
             if (e.target && e.target.id === 'result-excel-file') {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -628,12 +666,22 @@ export async function initAdminResultAnalysis(db, containerId) {
                     processBtn.classList.remove('hidden');
                 }
 
+                // 🌟 FETCH ACADEMIC SETUP 🌟
+                let academicConfigData = null;
+                try {
+                    const configSnap = await getDoc(doc(db, "settings", "academic_config"));
+                    if (configSnap.exists()) {
+                        academicConfigData = configSnap.data();
+                    }
+                } catch (err) {
+                    console.error("Failed to load academic setup:", err);
+                }
+
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     const data = new Uint8Array(evt.target.result);
                     uploadedWorkbook = XLSX.read(data, {type: 'array'});
 
-                    // --- SUBJ SHEET MAPPING ---
                     const mapSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'subj') || uploadedWorkbook.SheetNames[1];
                     const mapData = XLSX.utils.sheet_to_json(uploadedWorkbook.Sheets[mapSheetName], {header: 1});
                     classSubjectMap = {};
@@ -678,7 +726,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
-                    // --- RESULT SHEET SCAN & GENERATE MAPPING UI ---
                     const resSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'result') || uploadedWorkbook.SheetNames[0];
                     const rawResultData = XLSX.utils.sheet_to_json(uploadedWorkbook.Sheets[resSheetName], { header: 1 });
                     
@@ -703,71 +750,48 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, rawResultData };
 
-                    let excelStructure = {};
-                    for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
-                        let row = rawResultData[i];
-                        if (!row || row.length === 0) continue;
-                        let jName = String(row[jamiaColIdx] || '').trim();
-                        let cName = String(row[classColIdx] || '').trim();
-                        if (!jName || !cName || jName === 'undefined') continue;
-                        
-                        if (!excelStructure[jName]) excelStructure[jName] = new Set();
-                        excelStructure[jName].add(cName);
-                    }
-
+                    // 🌟 GENERATE CLASS-WISE MAPPING UI FROM ACADEMIC SETUP 🌟
                     let mappingHtml = '';
-                    const usersList = window.allUsersData || [];
-
-                    Object.keys(excelStructure).forEach(jamiaName => {
-                        let jClasses = Array.from(excelStructure[jamiaName]);
+                    
+                    Object.keys(classSubjectMap).forEach(className => {
+                        let dbClassData = null;
                         
-                        let dbJamiaStruct = null;
-                        for (let u of usersList) {
-                            if (!u.academicYears) continue;
-                            let years = Object.keys(u.academicYears).sort().reverse();
-                            if(years.length === 0) continue;
-                            let struct = u.academicYears[years[0]].karkardagiStructure || [];
-                            dbJamiaStruct = struct.find(j => (j.jamiaName||'').trim() === jamiaName);
-                            if (dbJamiaStruct) break;
+                        // Find matching class from Academic Config
+                        if (academicConfigData && academicConfigData.classes) {
+                            dbClassData = academicConfigData.classes.find(c => {
+                                let c1 = cleanUrduStr(c.classNameUrdu);
+                                let c2 = cleanUrduStr(c.classNameEng);
+                                let target = cleanUrduStr(className);
+                                return c1 === target || c2 === target || target.includes(c1) || c1.includes(target);
+                            });
                         }
 
-                        jClasses.forEach(className => {
-                            if (!classSubjectMap[className]) return;
-                            
-                            let optionsHtml = '<option value="ignore">❌ Ignore (Do not link)</option>';
-                            if (dbJamiaStruct && dbJamiaStruct.teachers) {
-                                dbJamiaStruct.teachers.forEach(t => {
-                                    if(t.periods) {
-                                        t.periods.forEach(p => {
-                                            if (String(p.className).trim() === className || String(p.className).includes(className)) {
-                                                optionsHtml += `<option value="${t.name}|||${p.bookName}">${p.bookName} (Teacher: ${t.name})</option>`;
-                                            }
-                                        });
-                                    }
-                                });
-                            }
-
-                            classSubjectMap[className].mappingKeys.forEach(mapNum => {
-                                let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
-                                mappingHtml += `
-                                    <tr class="hover:bg-teal-50 border-b transition-colors">
-                                        <td class="p-3 border-r font-bold text-teal-800 urdu-font text-sm">${jamiaName}</td>
-                                        <td class="p-3 border-r text-center font-bold text-gray-700 urdu-font text-sm">${className}</td>
-                                        <td class="p-3 border-r text-center font-bold text-indigo-700 urdu-font">${excelSubjName}</td>
-                                        <td class="p-3">
-                                            <select class="map-dropdown w-full p-2 border rounded border-teal-300 bg-white urdu-font text-sm" 
-                                                data-jamia="${jamiaName}" data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
-                                                <option value="">-- DB Structure se select karein --</option>
-                                                ${optionsHtml}
-                                            </select>
-                                        </td>
-                                    </tr>
-                                `;
+                        let optionsHtml = '<option value="ignore">❌ Ignore (Do not link)</option>';
+                        if (dbClassData && dbClassData.subjects) {
+                            dbClassData.subjects.forEach(sub => {
+                                optionsHtml += `<option value="${sub.urdu}">${sub.urdu} (${sub.eng})</option>`;
                             });
+                        }
+
+                        classSubjectMap[className].mappingKeys.forEach(mapNum => {
+                            let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
+                            mappingHtml += `
+                                <tr class="hover:bg-teal-50 border-b transition-colors">
+                                    <td class="p-3 border-r text-center font-bold text-gray-700 urdu-font text-sm">${className}</td>
+                                    <td class="p-3 border-r text-center font-bold text-indigo-700 urdu-font">${excelSubjName}</td>
+                                    <td class="p-3">
+                                        <select class="map-dropdown w-full p-2 border rounded border-teal-300 bg-white urdu-font text-sm" 
+                                            data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
+                                            <option value="">-- Setup se select karein --</option>
+                                            ${optionsHtml}
+                                        </select>
+                                    </td>
+                                </tr>
+                            `;
                         });
                     });
 
-                    document.getElementById('mapping-table-body').innerHTML = mappingHtml || '<tr><td colspan="4" class="text-center p-4 text-red-500">Koi structure match nahi hua.</td></tr>';
+                    document.getElementById('mapping-table-body').innerHTML = mappingHtml || '<tr><td colspan="3" class="text-center p-4 text-red-500">Koi class match nahi hui.</td></tr>';
                     document.getElementById('mapping-container').classList.remove('hidden');
                 };
                 reader.readAsArrayBuffer(file);
@@ -788,9 +812,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                 dropdowns.forEach(dd => {
                     let val = dd.value;
                     if (val && val !== 'ignore') {
-                        let parts = val.split('|||'); 
-                        let key = `${dd.dataset.jamia}_${dd.dataset.class}_${dd.dataset.mapnum}`;
-                        userSubjectLinks[key] = { teacher: parts[0], dbSubj: parts[1], excelSubj: dd.dataset.excelsub };
+                        let key = `${dd.dataset.class}_${dd.dataset.mapnum}`;
+                        userSubjectLinks[key] = { dbSubj: val, excelSubj: dd.dataset.excelsub };
                     }
                 });
 
@@ -836,9 +859,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let subjConfig = config.subjects[mapNum];
                         let passMarks = subjConfig.pass;
                         
-                        let mapKey = `${jamiaName}_${cName}_${mapNum}`;
+                        let mapKey = `${cName}_${mapNum}`;
                         let linkedData = userSubjectLinks[mapKey];
-                        let tName = linkedData ? linkedData.teacher : "Teacher Unassigned (Not Linked)";
                         let finalSubName = linkedData ? linkedData.dbSubj : subjConfig.name;
 
                         if (markVal !== 'غ') {
@@ -853,6 +875,10 @@ export async function initAdminResultAnalysis(db, containerId) {
                             if (!isNaN(marks) && marks < passMarks) failedSubjectsCount++;
 
                             if (linkedData) { 
+                                // Teacher MAPPING logic
+                                let tName = getTeacherName(jamiaName, cName, finalSubName);
+                                if (tName === "Na-Maloom") tName = "Teacher Unassigned (Not Linked)";
+
                                 if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
                                 if (!multiJamiaAsatizaData[jamiaName][tName][finalSubName]) {
                                     multiJamiaAsatizaData[jamiaName][tName][finalSubName] = { class: cName, subject: finalSubName, total: 0, passed: 0 };
