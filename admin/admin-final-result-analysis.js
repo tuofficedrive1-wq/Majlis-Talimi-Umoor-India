@@ -597,19 +597,9 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     }
 
-    // ==========================================
-    // 🚀 EXCEL UPLOAD LOGIC & EVENT DELEGATION
-    // ==========================================
-    let uploadedWorkbook = null;
-    let classSubjectMap = {}; 
-    let uniqueSubjects = new Set(); 
-    let pendingUploadData = null; // PREVIEW KE LIYE DATA SAVE KARNA
-
-    // Prevent Multiple Bindings
-    if (!window.adminResultAnalysisInitialized) {
-        window.adminResultAnalysisInitialized = true;
-
+ 
        // ==========================================
+   // ==========================================
     // 🚀 EXCEL UPLOAD LOGIC & EVENT DELEGATION
     // ==========================================
     let uploadedWorkbook = null;
@@ -617,6 +607,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     let pendingUploadData = null; 
     let resultHeaderInfo = {}; // Header indexes save karne ke liye
 
+    // Prevent Multiple Bindings
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
@@ -710,10 +701,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                         return;
                     }
 
-                    // Save header info for later processing
                     resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, rawResultData };
 
-                    // Find Unique Jamias and Classes from Excel
                     let excelStructure = {};
                     for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
                         let row = rawResultData[i];
@@ -726,14 +715,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                         excelStructure[jName].add(cName);
                     }
 
-                    // Generate UI Rows
                     let mappingHtml = '';
                     const usersList = window.allUsersData || [];
 
                     Object.keys(excelStructure).forEach(jamiaName => {
                         let jClasses = Array.from(excelStructure[jamiaName]);
                         
-                        // Find DB Structure for this Jamia
                         let dbJamiaStruct = null;
                         for (let u of usersList) {
                             if (!u.academicYears) continue;
@@ -747,7 +734,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         jClasses.forEach(className => {
                             if (!classSubjectMap[className]) return;
                             
-                            // Build Dropdown Options from DB
                             let optionsHtml = '<option value="ignore">❌ Ignore (Do not link)</option>';
                             if (dbJamiaStruct && dbJamiaStruct.teachers) {
                                 dbJamiaStruct.teachers.forEach(t => {
@@ -761,7 +747,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 });
                             }
 
-                            // Create a row for each subject in this class
                             classSubjectMap[className].mappingKeys.forEach(mapNum => {
                                 let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
                                 mappingHtml += `
@@ -791,21 +776,19 @@ export async function initAdminResultAnalysis(db, containerId) {
 
         // 🌟 2. CLICK EVENTS (Process with Mappings) 🌟
         document.addEventListener('click', async (e) => {
-            
             // --- A. PROCESS & PREVIEW BUTTON ---
             if (e.target.closest('#btn-process-upload')) {
                 const processBtn = e.target.closest('#btn-process-upload');
                 const examType = document.getElementById('upload-exam-type')?.value;
                 const examYear = document.getElementById('upload-exam-year')?.value;
 
-                // Capture User's Manual Mappings
-                let userSubjectLinks = {}; // Format: "Jamia_Class_MapNum": { teacher, dbSubject }
+                let userSubjectLinks = {}; 
                 let dropdowns = document.querySelectorAll('.map-dropdown');
                 
                 dropdowns.forEach(dd => {
                     let val = dd.value;
                     if (val && val !== 'ignore') {
-                        let parts = val.split('|||'); // Split teacher and DB subject
+                        let parts = val.split('|||'); 
                         let key = `${dd.dataset.jamia}_${dd.dataset.class}_${dd.dataset.mapnum}`;
                         userSubjectLinks[key] = { teacher: parts[0], dbSubj: parts[1], excelSubj: dd.dataset.excelsub };
                     }
@@ -853,7 +836,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let subjConfig = config.subjects[mapNum];
                         let passMarks = subjConfig.pass;
                         
-                        // Teacher MAPPING logic
                         let mapKey = `${jamiaName}_${cName}_${mapNum}`;
                         let linkedData = userSubjectLinks[mapKey];
                         let tName = linkedData ? linkedData.teacher : "Teacher Unassigned (Not Linked)";
@@ -870,7 +852,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             
                             if (!isNaN(marks) && marks < passMarks) failedSubjectsCount++;
 
-                            if (linkedData) { // Sirf un subjects ko teacher mein add karein jo map kiye gaye hain
+                            if (linkedData) { 
                                 if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
                                 if (!multiJamiaAsatizaData[jamiaName][tName][finalSubName]) {
                                     multiJamiaAsatizaData[jamiaName][tName][finalSubName] = { class: cName, subject: finalSubName, total: 0, passed: 0 };
@@ -909,7 +891,6 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                 pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
 
-                // PREVIEW UI GENERATION
                 let previewHtml = '';
                 Object.keys(multiJamiaClassData).forEach(jamiaName => {
                     const cData = multiJamiaClassData[jamiaName];
@@ -946,10 +927,10 @@ export async function initAdminResultAnalysis(db, containerId) {
                 document.getElementById('mapping-container').classList.add('hidden');
             }
 
-            // B. Cancel Preview Logic ... (Remaining logic remains the same for Cancel & Confirm Upload)
+            // --- B. CANCEL PREVIEW BUTTON ---
             if (e.target.closest('#btn-cancel-preview')) {
                 document.getElementById('preview-container').classList.add('hidden');
-                document.getElementById('mapping-container').classList.remove('hidden'); // Show mapping again
+                document.getElementById('mapping-container').classList.remove('hidden');
                 const processBtn = document.getElementById('btn-process-upload');
                 processBtn.disabled = false;
                 processBtn.innerHTML = '<i class="fas fa-cogs"></i> Mapping Save Karein اور Preview دیکھیں';
@@ -1029,7 +1010,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             </div>
                         `;
                     }
-                    
                 } catch (error) {
                     confirmBtn.innerHTML = '<i class="fas fa-times"></i> Error Uploading';
                     alert("Error: " + error.message);
