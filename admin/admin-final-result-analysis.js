@@ -646,10 +646,13 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
-                    let readyHtml = `
+                   let readyHtml = `
                         <div id="ready-to-process-container" class="p-6 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-center shadow-sm">
                             <h4 class="font-bold text-emerald-800 mb-2 text-xl"><i class="fas fa-check-circle mr-2"></i> Excel Sheet Successfully Loaded!</h4>
-                            <p class="text-emerald-700 font-semibold urdu-font text-lg">Sheet 2 سے تمام مضامین اور ان کے پاسنگ مارکس آٹو فیچ کر لیے گئے ہیں۔</p>
+                            <p class="text-emerald-700 mb-4 font-semibold urdu-font text-lg">Sheet 2 سے تمام مضامین اور ان کے پاسنگ مارکس آٹو فیچ کر لیے گئے ہیں۔</p>
+                            <button id="btn-process-upload" class="w-full md:w-1/2 mx-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
+                                <i class="fas fa-eye"></i> Process & Preview Data
+                            </button>
                         </div>
                     `;
                     
