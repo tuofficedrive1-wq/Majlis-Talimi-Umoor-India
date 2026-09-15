@@ -617,39 +617,68 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const data = new Uint8Array(evt.target.result);
                     uploadedWorkbook = XLSX.read(data, {type: 'array'});
 
-                    const mapSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[1]];
+                    // 🌟 1. SUBJ SHEET MAPPING LOGIC 🌟
+                    const mapSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'subj') || uploadedWorkbook.SheetNames[1];
+                    const mapSheet = uploadedWorkbook.Sheets[mapSheetName];
                     const mapData = XLSX.utils.sheet_to_json(mapSheet, {header: 1});
 
                     classSubjectMap = {};
+                    let colNumberMap = {};
+                    let headerRowIdx = -1;
 
-                    for (let idx = 0; idx < mapData.length; idx++) {
-                        const row = mapData[idx];
-                        if (!row || row.length === 0) continue; 
-                        
-                        let className = row[10] || row[9] || row[11]; 
-                        
-                        if (className && typeof className === 'string' && className.trim() !== '' && className.trim() !== 'درجہ') {
-                            const currentClass = className.trim();
-                            classSubjectMap[currentClass] = { subjects: [], passingMarks: {} };
+                    // "درجہ" wala header dhoondhna
+                    for (let i = 0; i < Math.min(10, mapData.length); i++) {
+                        if (mapData[i] && mapData[i].includes('درجہ')) {
+                            headerRowIdx = i; break;
+                        }
+                    }
+
+                    if (headerRowIdx !== -1) {
+                        let headers = mapData[headerRowIdx];
+                        for(let c=0; c<headers.length; c++) {
+                            let val = String(headers[c]).trim();
+                            if(!isNaN(parseInt(val)) && parseInt(val) > 0) {
+                                colNumberMap[parseInt(val)] = c; // Mapping Column Numbers (1-10)
+                            }
+                        }
+
+                        let i = headerRowIdx + 1;
+                        while (i < mapData.length) {
+                            let classRow = mapData[i];
+                            if (!classRow) { i++; continue; }
                             
-                            const passingMarksRow = mapData[idx + 2] || [];
-                            
-                            for(let i = 0; i <= 9; i++) {
-                                if(row[i] && typeof row[i] === 'string' && row[i].trim() !== '') {
-                                    const subName = row[i].trim();
-                                    classSubjectMap[currentClass].subjects.push(subName);
-                                    
-                                    const passMark = parseFloat(passingMarksRow[i]);
-                                    classSubjectMap[currentClass].passingMarks[subName] = isNaN(passMark) ? 40 : passMark; 
-                                }
+                            let className = classRow[headers.indexOf('درجہ')];
+                            if (className && className !== "ٹوٹل نمبر" && className !== "پاسنگ نمبر" && className !== "درجہ") {
+                                let currentClass = String(className).trim();
+                                classSubjectMap[currentClass] = { subjects: {}, mappingKeys: [] };
+                                
+                                let subRow = mapData[i] || [];
+                                let totalRow = mapData[i+1] || [];
+                                let passRow = mapData[i+2] || [];
+                                
+                                Object.keys(colNumberMap).forEach(mapNum => {
+                                    let colIdx = colNumberMap[mapNum];
+                                    let subName = subRow[colIdx];
+                                    if (subName && String(subName).trim() !== '') {
+                                        classSubjectMap[currentClass].subjects[mapNum] = {
+                                            name: String(subName).trim(),
+                                            total: parseFloat(totalRow[colIdx]) || 100,
+                                            pass: parseFloat(passRow[colIdx]) || 40
+                                        };
+                                        classSubjectMap[currentClass].mappingKeys.push(parseInt(mapNum));
+                                    }
+                                });
+                                i += 3; // Next class block par jump
+                            } else {
+                                i++;
                             }
                         }
                     }
 
-                   let readyHtml = `
+                    let readyHtml = `
                         <div id="ready-to-process-container" class="p-6 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-center shadow-sm">
                             <h4 class="font-bold text-emerald-800 mb-2 text-xl"><i class="fas fa-check-circle mr-2"></i> Excel Sheet Successfully Loaded!</h4>
-                            <p class="text-emerald-700 mb-4 font-semibold urdu-font text-lg">Sheet 2 سے تمام مضامین اور ان کے پاسنگ مارکس آٹو فیچ کر لیے گئے ہیں۔</p>
+                            <p class="text-emerald-700 mb-4 font-semibold urdu-font text-lg">Subj شیٹ سے نمبرز کی مدد سے تمام مضامین اور پاسنگ مارکس میپ کر لیے گئے ہیں۔</p>
                             <button id="btn-process-upload" class="w-full md:w-1/2 mx-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
                                 <i class="fas fa-eye"></i> Process & Preview Data
                             </button>
@@ -704,27 +733,62 @@ export async function initAdminResultAnalysis(db, containerId) {
                     return;
                 }
 
+                if (Object.keys(classSubjectMap).length === 0) {
+                    alert("Subj sheet se mapping theek se nahi hui. Sheet format check karein.");
+                    return;
+                }
+
                 processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
                 processBtn.disabled = true;
 
-                const resultSheet = uploadedWorkbook.Sheets[uploadedWorkbook.SheetNames[0]];
-                const resultData = XLSX.utils.sheet_to_json(resultSheet, { range: 3 });
+                // 🌟 2. RESULT SHEET MAPPING LOGIC 🌟
+                const resultSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'result') || uploadedWorkbook.SheetNames[0];
+                const resultSheet = uploadedWorkbook.Sheets[resultSheetName];
+                const rawResultData = XLSX.utils.sheet_to_json(resultSheet, { header: 1 });
+
+                let resultHeaderIdx = -1;
+                let resultColMap = {}; 
+                let jamiaColIdx = -1;
+                let classColIdx = -1;
+
+                // Result sheet mein 1-10 numbers aur Jamia/Class columns dhoondhna
+                for (let i = 0; i < Math.min(15, rawResultData.length); i++) {
+                    let row = rawResultData[i];
+                    if(!row) continue;
+                    for (let c = 0; c < row.length; c++) {
+                        let cell = String(row[c]).trim();
+                        if (/^(10|[1-9])$/.test(cell)) {
+                            resultColMap[parseInt(cell)] = c;
+                            resultHeaderIdx = i;
+                        }
+                        if (cell === 'Jamia_tul_Madina' || cell.includes('جامعۃ المدینہ') || cell === 'جامعہ') jamiaColIdx = c;
+                        if (cell === 'Class' || cell.includes('درجہ') || cell === 'درجہ') classColIdx = c;
+                    }
+                    if (resultHeaderIdx !== -1 && jamiaColIdx !== -1 && classColIdx !== -1) break;
+                }
+
+                if (resultHeaderIdx === -1 || jamiaColIdx === -1 || classColIdx === -1) {
+                    alert("Result sheet mein headers (1-10 numbers, Jamia_tul_Madina, Class) nahi mile.");
+                    processBtn.innerHTML = '<i class="fas fa-eye"></i> Process & Preview Data';
+                    processBtn.disabled = false;
+                    return;
+                }
 
                 let multiJamiaClassData = {};
                 let multiJamiaAsatizaData = {};
 
-                resultData.forEach(row => {
-                    const rawJamiaName = row['جامعۃ المدینہ'] || row['جامعہ کوڈ'];
-                    const className = row['Class'] || row['کلاس'] || row['درجہ'];
-                    const kaifiyat = row['کیفیت'] ? row['کیفیت'].trim() : '';
+                // Har student ka data calculate karna
+                for (let i = resultHeaderIdx + 1; i < rawResultData.length; i++) {
+                    let row = rawResultData[i];
+                    if (!row || row.length === 0) continue;
                     
-                    if (!rawJamiaName || !className) return;
-
-                    const jamiaName = rawJamiaName.trim();
-                    const cName = className.trim();
-                    const classConfig = classSubjectMap[cName];
-                    const allowedSubjects = classConfig ? classConfig.subjects : [];
-                    const passingMarksMap = classConfig ? classConfig.passingMarks : {};
+                    let jamiaName = String(row[jamiaColIdx] || '').trim();
+                    let cName = String(row[classColIdx] || '').trim();
+                    
+                    if (!jamiaName || !cName || jamiaName === 'undefined' || jamiaName === '') continue;
+                    
+                    let config = classSubjectMap[cName];
+                    if (!config) continue; // Agar class ki mapping nahi mili to ignore karein
 
                     if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
                     if (!multiJamiaAsatizaData[jamiaName]) multiJamiaAsatizaData[jamiaName] = {};
@@ -732,38 +796,82 @@ export async function initAdminResultAnalysis(db, containerId) {
                     if (!multiJamiaClassData[jamiaName][cName]) {
                         multiJamiaClassData[jamiaName][cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
                     }
-                    
-                    if (kaifiyat) {
-                        multiJamiaClassData[jamiaName][cName].total++;
-                        if (kaifiyat.includes('ممتاز مع شرف')) { multiJamiaClassData[jamiaName][cName].mumtazSharf++; multiJamiaClassData[jamiaName][cName].passed++; }
-                        else if (kaifiyat.includes('ممتاز')) { multiJamiaClassData[jamiaName][cName].mumtaz++; multiJamiaClassData[jamiaName][cName].passed++; }
-                        else if (kaifiyat.includes('جید جدا')) { multiJamiaClassData[jamiaName][cName].jayyidJidda++; multiJamiaClassData[jamiaName][cName].passed++; }
-                        else if (kaifiyat.includes('جید')) { multiJamiaClassData[jamiaName][cName].jayyid++; multiJamiaClassData[jamiaName][cName].passed++; }
-                        else if (kaifiyat.includes('مقبول')) { multiJamiaClassData[jamiaName][cName].maqbool++; multiJamiaClassData[jamiaName][cName].passed++; }
-                        else if (kaifiyat.includes('مجاز ضمنی')) { multiJamiaClassData[jamiaName][cName].majazZimni++; }
-                        else if (kaifiyat.includes('ناکام')) { multiJamiaClassData[jamiaName][cName].nakam++; }
-                        else if (kaifiyat.includes('غ') || kaifiyat.includes('غیر حاضر')) { multiJamiaClassData[jamiaName][cName].ghaib++; multiJamiaClassData[jamiaName][cName].total--; }
-                    }
 
-                    allowedSubjects.forEach(sub => {
-                        const marksRaw = row[sub];
-                        let markVal = (marksRaw === 'غ' || marksRaw === undefined || marksRaw === '') ? 'غ' : marksRaw;
+                    let studentTotalMarks = 0;
+                    let studentObtainedMarks = 0;
+                    let isGhaib = true;
+                    let isNakam = false;
+                    let failedSubjectsCount = 0;
 
+                    // Mapping Number (1 to 10) ke hisab se marks uthana
+                    config.mappingKeys.forEach(mapNum => {
+                        let resColIdx = resultColMap[mapNum];
+                        if (resColIdx === undefined) return;
+                        
+                        let markCell = row[resColIdx];
+                        let markVal = (markCell === undefined || markCell === '' || String(markCell).trim() === 'غ') ? 'غ' : markCell;
+                        
+                        let subjConfig = config.subjects[mapNum];
+                        let subName = subjConfig.name;
+                        let passMarks = subjConfig.pass;
+                        
                         if (markVal !== 'غ') {
-                            let marks = typeof markVal === 'string' && markVal.includes('+') ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) : parseFloat(markVal);
-                            const tName = getTeacherName(jamiaName, cName, sub);
+                            isGhaib = false;
+                            let marks = typeof markVal === 'string' && markVal.includes('+') 
+                                        ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) 
+                                        : parseFloat(markVal);
+                                        
+                            studentObtainedMarks += isNaN(marks) ? 0 : marks;
+                            studentTotalMarks += subjConfig.total;
                             
-                            if (tName !== "Na-Maloom") {
-                                if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
-                                if (!multiJamiaAsatizaData[jamiaName][tName][sub]) multiJamiaAsatizaData[jamiaName][tName][sub] = { class: cName, subject: sub, total: 0, passed: 0 };
-                                
-                                multiJamiaAsatizaData[jamiaName][tName][sub].total++;
-                                const passTarget = passingMarksMap[sub] !== undefined ? passingMarksMap[sub] : 40;
-                                if (marks >= passTarget) multiJamiaAsatizaData[jamiaName][tName][sub].passed++;
+                            // Fail logic
+                            if (!isNaN(marks) && marks < passMarks) failedSubjectsCount++;
+
+                            // Teacher Data Map
+                            let tName = getTeacherName(jamiaName, cName, subName);
+                            if (tName === "Na-Maloom") tName = "Teacher Unassigned (Not Mapped)";
+                            
+                            if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
+                            if (!multiJamiaAsatizaData[jamiaName][tName][subName]) {
+                                multiJamiaAsatizaData[jamiaName][tName][subName] = { class: cName, subject: subName, total: 0, passed: 0 };
                             }
+                            
+                            multiJamiaAsatizaData[jamiaName][tName][subName].total++;
+                            if (!isNaN(marks) && marks >= passMarks) {
+                                multiJamiaAsatizaData[jamiaName][tName][subName].passed++;
+                            }
+                        } else {
+                            studentTotalMarks += subjConfig.total;
+                            failedSubjectsCount++; // Ghaib hone par fail count hota hai
                         }
                     });
-                });
+
+                    multiJamiaClassData[jamiaName][cName].total++;
+                    
+                    if (isGhaib) {
+                        multiJamiaClassData[jamiaName][cName].ghaib++;
+                        multiJamiaClassData[jamiaName][cName].total--; 
+                    } else {
+                        let percentage = studentTotalMarks > 0 ? (studentObtainedMarks / studentTotalMarks) * 100 : 0;
+                        
+                        if (failedSubjectsCount > 0) {
+                            isNakam = true;
+                        }
+                        
+                        // Percentage ke hisab se grading
+                        if (isNakam) {
+                            multiJamiaClassData[jamiaName][cName].nakam++;
+                        } else {
+                            multiJamiaClassData[jamiaName][cName].passed++;
+                            if (percentage >= 85) multiJamiaClassData[jamiaName][cName].mumtazSharf++;
+                            else if (percentage >= 76) multiJamiaClassData[jamiaName][cName].mumtaz++;
+                            else if (percentage >= 70) multiJamiaClassData[jamiaName][cName].jayyidJidda++;
+                            else if (percentage >= 60) multiJamiaClassData[jamiaName][cName].jayyid++;
+                            else if (percentage >= 50) multiJamiaClassData[jamiaName][cName].maqbool++;
+                            else multiJamiaClassData[jamiaName][cName].majazZimni++;
+                        }
+                    }
+                }
 
                 // Save Data Temporarily for confirmation
                 pendingUploadData = {
@@ -773,45 +881,50 @@ export async function initAdminResultAnalysis(db, containerId) {
                     multiJamiaAsatizaData
                 };
 
-                // GENERATE PREVIEW HTML
+                // 🌟 GENERATE PREVIEW HTML 🌟
                 let previewHtml = '';
-                for (const jamiaName of Object.keys(multiJamiaClassData)) {
-                    const cData = multiJamiaClassData[jamiaName];
-                    const tData = multiJamiaAsatizaData[jamiaName] || {};
-                    
-                    let totalStudents = 0;
-                    let classesHtml = Object.keys(cData).map(c => {
-                        totalStudents += cData[c].total;
-                        return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs urdu-font border border-indigo-200 shadow-sm">${c} (${cData[c].total} طلبا)</span>`;
-                    }).join(' ');
-                    
-                    let teachersHtml = Object.keys(tData).map(t => {
-                        let subjects = Object.keys(tData[t]).join('، ');
-                        return `<div class="text-sm bg-gray-50 p-2 rounded border border-gray-200 mb-1 urdu-font flex justify-between items-center"><span class="font-bold text-gray-800">${t}</span> <span class="text-teal-700 text-xs">${subjects}</span></div>`;
-                    }).join('');
+                const jamiaKeys = Object.keys(multiJamiaClassData);
+                
+                if (jamiaKeys.length === 0) {
+                    previewHtml = `<div class="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">کوئی ڈیٹا نہیں ملا۔ براہ کرم اپنی ایکسل فائل کا فارمیٹ چیک کریں۔</div>`;
+                } else {
+                    jamiaKeys.forEach(jamiaName => {
+                        const cData = multiJamiaClassData[jamiaName];
+                        const tData = multiJamiaAsatizaData[jamiaName] || {};
+                        
+                        let totalStudents = 0;
+                        let classesHtml = Object.keys(cData).map(c => {
+                            totalStudents += cData[c].total;
+                            return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs urdu-font border border-indigo-200 shadow-sm">${c} (${cData[c].total} طلباء)</span>`;
+                        }).join(' ');
+                        
+                        let teachersHtml = Object.keys(tData).map(t => {
+                            let subjects = Object.keys(tData[t]).map(sub => `${sub} (${tData[t][sub].passed}/${tData[t][sub].total} Pass)`).join('، ');
+                            let tClass = t === "Teacher Unassigned (Not Mapped)" ? "text-red-600 bg-red-50" : "text-gray-800 bg-gray-50";
+                            return `<div class="text-sm ${tClass} p-2 rounded border border-gray-200 mb-1 urdu-font flex justify-between items-center"><span class="font-bold">${t}</span> <span class="text-teal-700 text-[11px]">${subjects}</span></div>`;
+                        }).join('');
 
-                    if (!teachersHtml) teachersHtml = `<span class="text-xs text-red-500 italic">کوئی استاد میپ (Map) نہیں ہوا، براہ کرم سیٹ اپ چیک کریں۔</span>`;
+                        previewHtml += `
+                            <div class="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm mb-4">
+                                <div class="flex justify-between items-center border-b border-indigo-100 pb-2 mb-3">
+                                    <h5 class="font-bold text-xl text-indigo-800 urdu-font">${jamiaName}</h5>
+                                    <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold border border-indigo-200">کل طلباء: ${totalStudents}</span>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <h6 class="font-bold text-xs text-gray-500 uppercase tracking-wider mb-2">Class-wise Summary (درجے):</h6>
+                                    <div class="flex flex-wrap gap-2">${classesHtml}</div>
+                                </div>
 
-                    previewHtml += `
-                        <div class="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm">
-                            <div class="flex justify-between items-center border-b border-indigo-100 pb-2 mb-3">
-                                <h5 class="font-bold text-xl text-indigo-800 urdu-font">${jamiaName}</h5>
-                                <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold border border-indigo-200">کل طلباء: ${totalStudents}</span>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <h6 class="font-bold text-xs text-gray-500 uppercase tracking-wider mb-2">Class-wise Data (درجے):</h6>
-                                <div class="flex flex-wrap gap-2">${classesHtml}</div>
-                            </div>
-
-                            <div>
-                                <h6 class="font-bold text-xs text-gray-500 uppercase tracking-wider mb-2">Asatiza-wise Data (اساتذہ اور مضامین):</h6>
-                                <div class="max-h-40 overflow-y-auto pr-2 custom-scrollbar space-y-1">
-                                    ${teachersHtml}
+                                <div>
+                                    <h6 class="font-bold text-xs text-gray-500 uppercase tracking-wider mb-2">Asatiza-wise Summary (اساتذہ اور مضامین):</h6>
+                                    <div class="max-h-40 overflow-y-auto pr-2 custom-scrollbar space-y-1">
+                                        ${teachersHtml}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    });
                 }
 
                 document.getElementById('preview-content').innerHTML = previewHtml;
