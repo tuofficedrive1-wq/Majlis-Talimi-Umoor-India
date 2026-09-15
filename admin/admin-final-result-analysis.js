@@ -697,20 +697,56 @@ export async function initAdminResultAnalysis(db, containerId) {
             }
         });
 
+        // 🌟 URDU TEXT CLEANER (Farq ko barabar karne ke liye) 🌟
+        const cleanUrduStr = (str) => {
+            if (!str) return "";
+            return String(str)
+                .toLowerCase()
+                .replace(/\s+/g, ' ')       // Extra spaces khatam karega
+                .replace(/ي|ى/g, 'ی')       // Arabi Yeh ko Urdu Yeh banayega
+                .replace(/ك/g, 'ک')         // Arabi Kaf ko Urdu Kaf banayega
+                .replace(/آ/g, 'ا')         // Alif Madda ko normal Alif banayega
+                .replace(/ة/g, 'ہ')         // Gol Teh ko Heh banayega
+                .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width hidden characters hatayega
+                .trim();
+        };
+
+        // 🌟 SMART TEACHER FINDER 🌟
         const getTeacherName = (jamiaName, className, subject) => {
             const usersList = window.allUsersData || [];
+            const cleanJamia = cleanUrduStr(jamiaName);
+            const cleanClass = cleanUrduStr(className);
+            const cleanSubj = cleanUrduStr(subject);
+
             for (let u of usersList) {
                 if (!u.academicYears) continue;
                 let years = Object.keys(u.academicYears).sort().reverse();
                 if (years.length === 0) continue;
+                
                 let struct = u.academicYears[years[0]].karkardagiStructure || [];
-                let jData = struct.find(j => (j.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase());
+                // Jamia Match
+                let jData = struct.find(j => cleanUrduStr(j.jamiaName) === cleanJamia);
                 
                 if (jData && jData.teachers) {
                     for (let t of jData.teachers) {
                         if (t.periods) {
                             for (let p of t.periods) {
-                                if (p.className.trim() === className.trim() && p.bookName.trim() === subject.trim()) return t.name;
+                                let dbClass = cleanUrduStr(p.className);
+                                let dbBook = cleanUrduStr(p.bookName);
+                                
+                                // 1. Agar Class theek match ho jaye
+                                if (dbClass === cleanClass || dbClass.includes(cleanClass) || cleanClass.includes(dbClass)) {
+                                    
+                                    // 2. Agar Subject exactly match ho jaye
+                                    if (dbBook === cleanSubj) {
+                                        return t.name;
+                                    }
+                                    
+                                    // 3. Agar Subject partial match ho (e.g. "اردو" aur "اردو + ورک بک")
+                                    if (cleanSubj.includes(dbBook) || dbBook.includes(cleanSubj)) {
+                                        return t.name;
+                                    }
+                                }
                             }
                         }
                     }
