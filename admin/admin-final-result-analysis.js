@@ -832,7 +832,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         });
                     });
 
-        // 🌟 2. CLICK EVENTS (Process with Mappings) 🌟
+       // 🌟 2. CLICK EVENTS (Process with Mappings) 🌟
         document.addEventListener('click', async (e) => {
             // --- A. PROCESS & PREVIEW BUTTON ---
             if (e.target.closest('#btn-process-upload')) {
@@ -955,7 +955,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 let previewHtml = '';
                 Object.keys(multiJamiaClassData).forEach(jamiaName => {
                     const cData = multiJamiaClassData[jamiaName];
-                    // Original data kharab na ho isliye copy bana rahe hain
                     const tData = JSON.parse(JSON.stringify(multiJamiaAsatizaData[jamiaName] || {}));
                     
                     let totalStudents = 0;
@@ -964,7 +963,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs border">${c} (${cData[c].total} طلباء)</span>`;
                     }).join(' ');
 
-                    // 🌟 NAYA TEACHER PREVIEW LOGIC (STRUCTURE VS MAPPED) 🌟
                     let dbJamiaStruct = null;
                     const usersList = window.allUsersData || [];
                     for (let u of usersList) {
@@ -986,7 +984,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let mappedCount = 0;
                             
                             let periodsHtml = periods.map(p => {
-                                // DB Subject ke naam se tData mein check karein
                                 let subData = tData[tName] ? tData[tName][p.bookName] : null;
                                 
                                 if (subData) {
@@ -1001,16 +998,15 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 periodsHtml = `<span class="text-xs text-gray-400 p-1">کوئی پیریڈ اسائن نہیں ہے۔ (No periods assigned)</span>`;
                             }
 
-                            // Box ka color condition ke hisab se badlega
                             let tClass = "";
                             if (totalPeriods === 0) {
                                 tClass = "bg-gray-50 border-gray-200";
                             } else if (mappedCount === totalPeriods) {
-                                tClass = "bg-emerald-50 border-emerald-300"; // Sab mukammal hain
+                                tClass = "bg-emerald-50 border-emerald-300";
                             } else if (mappedCount > 0) {
-                                tClass = "bg-yellow-50 border-yellow-300"; // Kuch aaye, kuch reh gaye
+                                tClass = "bg-yellow-50 border-yellow-300";
                             } else {
-                                tClass = "bg-red-50 border-red-200"; // Ek bhi nahi aaya
+                                tClass = "bg-red-50 border-red-200";
                             }
                             
                             teachersHtml += `
@@ -1023,14 +1019,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 </div>
                             `;
                             
-                            // Jo teacher match ho gaya usay tData se nikal dein taake aakhir mein sirf unmapped (extra) bachein
                             if (tData[tName]) delete tData[tName];
                         });
                     } else {
                         teachersHtml += `<div class="text-xs text-red-500 mb-3 font-bold p-3 bg-red-50 rounded border border-red-200">⚠️ ڈیٹا بیس میں اس جامعہ کا اسٹرکچر نہیں ملا۔ نیچے صرف ایکسل کا ڈیٹا ہے۔</div>`;
                     }
 
-                    // Leftover / Unassigned Teachers (Jo structure mein the hi nahi lekin excel me thay)
                     Object.keys(tData).forEach(t => {
                         let subjects = Object.keys(tData[t]).map(sub => `<span class="inline-block bg-white text-gray-700 border border-gray-300 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${tData[t][sub].passed}/${tData[t][sub].total} Pass)</span>`).join('');
                         let tClass = t.includes("Unassigned") ? "text-red-700 bg-red-50 border-red-300" : "text-gray-800 bg-gray-50 border-gray-300";
