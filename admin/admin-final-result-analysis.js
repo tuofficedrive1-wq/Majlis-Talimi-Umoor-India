@@ -750,27 +750,68 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, rawResultData };
 
-                    // 🌟 GENERATE CLASS-WISE MAPPING UI FROM ACADEMIC SETUP 🌟
+                   // 🌟 1. BUILD DYNAMIC SUBJECT LIST FROM TEACHERS' PROFILES (STRUCTURE) 🌟
+                    let dynamicTeacherSubjects = {};
+                    const usersList = window.allUsersData || [];
+                    usersList.forEach(u => {
+                        if (!u.academicYears) return;
+                        Object.values(u.academicYears).forEach(yearData => {
+                            if (!yearData.karkardagiStructure) return;
+                            yearData.karkardagiStructure.forEach(jamia => {
+                                if (!jamia.teachers) return;
+                                jamia.teachers.forEach(t => {
+                                    if (!t.periods) return;
+                                    t.periods.forEach(p => {
+                                        let cName = cleanUrduStr(p.className);
+                                        let bName = String(p.bookName).trim();
+                                        if (!dynamicTeacherSubjects[cName]) dynamicTeacherSubjects[cName] = new Set();
+                                        if (bName) dynamicTeacherSubjects[cName].add(bName);
+                                    });
+                                });
+                            });
+                        });
+                    });
+
+                    // 🌟 2. GENERATE CLASS-WISE MAPPING UI 🌟
                     let mappingHtml = '';
                     
                     Object.keys(classSubjectMap).forEach(className => {
-                        let dbClassData = null;
+                        let targetClassClean = cleanUrduStr(className);
+                        let optionsHtml = '<option value="ignore">❌ Ignore (Do not link)</option>';
                         
-                        // Find matching class from Academic Config
+                        // A. Get actual subjects added by Zimmedaran in structures
+                        let matchedActualSubjects = new Set();
+                        Object.keys(dynamicTeacherSubjects).forEach(dbClass => {
+                            if (dbClass === targetClassClean || dbClass.includes(targetClassClean) || targetClassClean.includes(dbClass)) {
+                                dynamicTeacherSubjects[dbClass].forEach(sub => matchedActualSubjects.add(sub));
+                            }
+                        });
+
+                        // B. Get subjects from Academic Setup (as fallback/addition)
+                        let setupSubjects = new Set();
                         if (academicConfigData && academicConfigData.classes) {
-                            dbClassData = academicConfigData.classes.find(c => {
+                            let dbClassData = academicConfigData.classes.find(c => {
                                 let c1 = cleanUrduStr(c.classNameUrdu);
                                 let c2 = cleanUrduStr(c.classNameEng);
-                                let target = cleanUrduStr(className);
-                                return c1 === target || c2 === target || target.includes(c1) || c1.includes(target);
+                                return c1 === targetClassClean || c2 === targetClassClean || targetClassClean.includes(c1) || c1.includes(targetClassClean);
                             });
+                            if (dbClassData && dbClassData.subjects) {
+                                dbClassData.subjects.forEach(sub => setupSubjects.add(sub.urdu));
+                            }
                         }
 
-                        let optionsHtml = '<option value="ignore">❌ Ignore (Do not link)</option>';
-                        if (dbClassData && dbClassData.subjects) {
-                            dbClassData.subjects.forEach(sub => {
-                                optionsHtml += `<option value="${sub.urdu}">${sub.urdu} (${sub.eng})</option>`;
+                        // C. Combine and create options (Actual subjects first, then fallback)
+                        let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
+                        
+                        if (finalSubjectsList.size > 0) {
+                            // Agar teacher profile me mil gaya toh label dikhayenge
+                            [...finalSubjectsList].sort().forEach(sub => {
+                                let isFromTeacher = matchedActualSubjects.has(sub);
+                                let label = isFromTeacher ? `${sub} (👤 Teacher Profile)` : `${sub} (⚙️ Default Setup)`;
+                                optionsHtml += `<option value="${sub}">${label}</option>`;
                             });
+                        } else {
+                             optionsHtml += `<option disabled>Koi data nahi mila</option>`;
                         }
 
                         classSubjectMap[className].mappingKeys.forEach(mapNum => {
@@ -782,7 +823,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                                     <td class="p-3">
                                         <select class="map-dropdown w-full p-2 border rounded border-teal-300 bg-white urdu-font text-sm" 
                                             data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
-                                            <option value="">-- Setup se select karein --</option>
+                                            <option value="">-- Dropdown se sahi book select karein --</option>
                                             ${optionsHtml}
                                         </select>
                                     </td>
@@ -790,13 +831,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             `;
                         });
                     });
-
-                    document.getElementById('mapping-table-body').innerHTML = mappingHtml || '<tr><td colspan="3" class="text-center p-4 text-red-500">Koi class match nahi hui.</td></tr>';
-                    document.getElementById('mapping-container').classList.remove('hidden');
-                };
-                reader.readAsArrayBuffer(file);
-            }
-        });
 
         // 🌟 2. CLICK EVENTS (Process with Mappings) 🌟
         document.addEventListener('click', async (e) => {
