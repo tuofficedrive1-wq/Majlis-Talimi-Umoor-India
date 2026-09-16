@@ -340,7 +340,22 @@ window.openEditModal = (docId) => {
 
     const modalBody = document.getElementById('edit-modal-body');
     const r = _currentEditRecord;
-    const uniqueClasses = [...new Set(_allRecords.map(x => x.jmClass).filter(Boolean))].sort();
+    
+    // Yahan Sahi Classes ka Standard List add kiya gaya hai
+    const JM_CLASSES = [
+        "Hifz", 
+        "Primary", 
+        "Pre Darse Nizami 1st Year", 
+        "Pre Darse Nizami 2nd Year",
+        "Darse Nizami 1st year", 
+        "Darse Nizami 2nd year", 
+        "Darse Nizami 3rd year",
+        "Darse Nizami 4th year", 
+        "Darse Nizami 5th year", 
+        "Darse Nizami 6th year",
+        "Darse Nizami 7th year", 
+        "Darse Nizami Final Year"
+    ];
     
     modalBody.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -360,7 +375,7 @@ window.openEditModal = (docId) => {
                 <label class="block text-xs font-bold text-slate-500 mb-1">Jamiatul Madina Class</label>
                 <select id="edit-jmclass" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
                     <option value="${r.jmClass || ''}">${r.jmClass || '— Select —'}</option>
-                    ${uniqueClasses.filter(c => c !== r.jmClass).map(c => `<option value="${c}">${c}</option>`).join('')}
+                    ${JM_CLASSES.filter(c => c !== r.jmClass).map(c => `<option value="${c}">${c}</option>`).join('')}
                 </select>
             </div>
         </div>
@@ -535,7 +550,6 @@ window.refreshEditModalSubFields = () => {
         else if (cls === '10th') bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board','CBSE'], isSameType?r.board:'')}</select>`;
         else if (cls === '11th') sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
         else if (cls === '12th') {
-            // YAHAN 12TH CLASS MEIN CBSE ADD KIYA GAYA HAI
             bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board','CBSE'], isSameType?r.board:'')}</select>`;
             sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
         }
