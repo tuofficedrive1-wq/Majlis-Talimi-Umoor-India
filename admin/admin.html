@@ -1630,12 +1630,18 @@ window.switchReportsHubView = (viewId) => {
             });
 
             newUserSelect.addEventListener('change', (e) => {
-                const jamiaSelect = document.getElementById('tt-new-jamia');
-                const structure = getStructure(e.target.value);
-                jamiaSelect.innerHTML = '<option value="">-- Select Jamia --</option>' + 
-                    structure.map(j => `<option value="${j.jamiaName}">${j.jamiaName}</option>`).join('');
-                jamiaSelect.disabled = structure.length === 0;
-            });
+    const jamiaSelect = document.getElementById('tt-new-jamia');
+    const u = allUsersData.find(x => x.id === e.target.value);
+    
+    let jamias = [];
+    if (u && u.jamiaatList) {
+        jamias = u.jamiaatList.map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j).filter(Boolean);
+    }
+    
+    jamiaSelect.innerHTML = '<option value="">-- Select Jamia --</option>' + 
+        jamias.map(jName => `<option value="${jName}">${jName}</option>`).join('');
+    jamiaSelect.disabled = jamias.length === 0;
+});
         };
 
         window.initTeacherTransferTab = initTeacherTransferTab;
@@ -2044,22 +2050,28 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
             
             if (!oldU || !newU) throw new Error("User data nahi mila.");
 
-            // 2. Dono users ka active Academic Year nikalna
-            const oldYears = Object.keys(oldU.academicYears || {}).sort().reverse();
-            const newYears = Object.keys(newU.academicYears || {}).sort().reverse();
-            
-            if (oldYears.length === 0 || newYears.length === 0) {
-                throw new Error("Dono ya kisi ek user ka Academic Year structure nahi mila.");
-            }
+           // 2. Dono users ka active Academic Year nikalna
+const oldYears = Object.keys(oldU.academicYears || {}).sort().reverse();
 
-            const oldActiveYear = oldYears[0];
-            const newActiveYear = newYears[0];
+if (oldYears.length === 0) {
+    throw new Error("Purane user ka Academic Year structure nahi mila.");
+}
 
-            // 3. Database mein bhejne ke liye data ki copy banana
-            let oldAcademicYears = JSON.parse(JSON.stringify(oldU.academicYears));
-            let newAcademicYears = JSON.parse(JSON.stringify(newU.academicYears));
+const oldActiveYear = oldYears[0];
 
-            let teacherToTransfer = null;
+// 3. Database mein bhejne ke liye data ki copy banana
+let oldAcademicYears = JSON.parse(JSON.stringify(oldU.academicYears));
+let newAcademicYears = newU.academicYears ? JSON.parse(JSON.stringify(newU.academicYears)) : {};
+
+// Naye user ka active year nikalna (agar nahi hai to purane wala set kar dein)
+const newYears = Object.keys(newAcademicYears).sort().reverse();
+const newActiveYear = newYears.length > 0 ? newYears[0] : oldActiveYear;
+
+if (!newAcademicYears[newActiveYear]) {
+    newAcademicYears[newActiveYear] = { karkardagiStructure: [] };
+}
+
+           
 
             // 4. Purane user ke Jamia se teacher ko nikalna (Remove)
             let oldStructure = oldAcademicYears[oldActiveYear].karkardagiStructure || [];
@@ -2079,17 +2091,25 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
             }
 
             // 5. Naye user ke Jamia mein teacher ko add karna
-            let newStructure = newAcademicYears[newActiveYear].karkardagiStructure || [];
-            let newJamiaIndex = newStructure.findIndex(j => j.jamiaName === newJamia);
-            
-            if (newJamiaIndex !== -1) {
-                if (!newStructure[newJamiaIndex].teachers) {
-                    newStructure[newJamiaIndex].teachers = [];
-                }
-                newStructure[newJamiaIndex].teachers.push(teacherToTransfer); // Teacher naye Jamia mein add
-            } else {
-                throw new Error("Naye user ka Jamia structure nahi mila. Kya naye user ke paas yeh Jamia assign hai?");
-            }
+if (!newAcademicYears[newActiveYear].karkardagiStructure) {
+    newAcademicYears[newActiveYear].karkardagiStructure = [];
+}
+
+let newStructure = newAcademicYears[newActiveYear].karkardagiStructure;
+let newJamiaIndex = newStructure.findIndex(j => j.jamiaName === newJamia);
+
+if (newJamiaIndex !== -1) {
+    if (!newStructure[newJamiaIndex].teachers) {
+        newStructure[newJamiaIndex].teachers = [];
+    }
+    newStructure[newJamiaIndex].teachers.push(teacherToTransfer); // Teacher naye Jamia mein add
+} else {
+    // Agar Naye user ka Jamia structure nahi tha, to naya bana dein
+    newStructure.push({
+        jamiaName: newJamia,
+        teachers: [teacherToTransfer]
+    });
+}
 
             // 6. Firebase Batch Update (Dono users ek sath update honge)
             const batch = writeBatch(db);
