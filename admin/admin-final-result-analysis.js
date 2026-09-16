@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH PREVIEW FEATURE BEFORE UPLOAD)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH SMART AUTO-MATCH & PREVIEW)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc, getDoc
@@ -597,7 +597,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     }
 
  
-       // ==========================================
+    // ==========================================
     // 🚀 EXCEL UPLOAD LOGIC & EVENT DELEGATION
     // ==========================================
     let uploadedWorkbook = null;
@@ -772,12 +772,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                         });
                     });
 
-                    // 🌟 2. GENERATE CLASS-WISE MAPPING UI 🌟
+                    // 🌟 2. GENERATE CLASS-WISE MAPPING UI (WITH SMART AUTO-FILL) 🌟
                     let mappingHtml = '';
                     
                     Object.keys(classSubjectMap).forEach(className => {
                         let targetClassClean = cleanUrduStr(className);
-                        let optionsHtml = '<option value="ignore">❌ Ignore (Do not link)</option>';
                         
                         // A. Get actual subjects added by Zimmedaran in structures
                         let matchedActualSubjects = new Set();
@@ -800,30 +799,46 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         }
 
-                        // C. Combine and create options (Actual subjects first, then fallback)
+                        // C. Combine and create FINAL MASTER LIST
                         let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
                         
-                        if (finalSubjectsList.size > 0) {
-                            // Agar teacher profile me mil gaya toh label dikhayenge
-                            [...finalSubjectsList].sort().forEach(sub => {
-                                let isFromTeacher = matchedActualSubjects.has(sub);
-                                let label = isFromTeacher ? `${sub} (👤 Teacher Profile)` : `${sub} (⚙️ Default Setup)`;
-                                optionsHtml += `<option value="${sub}">${label}</option>`;
-                            });
-                        } else {
-                             optionsHtml += `<option disabled>Koi data nahi mila</option>`;
-                        }
-
                         classSubjectMap[className].mappingKeys.forEach(mapNum => {
                             let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
+                            let excelClean = cleanUrduStr(excelSubjName);
+                            
+                            let optionsHtml = '<option value="">-- Dropdown se sahi book select karein --</option><option value="ignore">❌ Ignore (Do not link)</option>';
+                            let isAutoMatched = false;
+
+                            if (finalSubjectsList.size > 0) {
+                                [...finalSubjectsList].sort().forEach(sub => {
+                                    let isFromTeacher = matchedActualSubjects.has(sub);
+                                    let label = isFromTeacher ? `${sub} (👤 Teacher Profile)` : `${sub} (⚙️ Default Setup)`;
+                                    
+                                    // 🌟 SMART AUTO-MATCH LOGIC 🌟
+                                    let subClean = cleanUrduStr(sub);
+                                    let isSelected = '';
+                                    if (!isAutoMatched && (excelClean === subClean || excelClean.includes(subClean) || subClean.includes(excelClean))) {
+                                        isSelected = 'selected';
+                                        isAutoMatched = true; // Taake ek hi best match select ho
+                                    }
+
+                                    optionsHtml += `<option value="${sub}" ${isSelected}>${label}</option>`;
+                                });
+                            } else {
+                                 optionsHtml += `<option disabled>Koi data nahi mila</option>`;
+                            }
+
+                            // UI Row: Agar auto-match ho gaya to color green kar denge taake asani ho
+                            let rowBgClass = isAutoMatched ? "bg-green-50 border-green-200" : "hover:bg-teal-50";
+                            let selectBgClass = isAutoMatched ? "border-green-400 bg-green-100 font-bold text-green-900" : "border-teal-300 bg-white text-gray-700";
+
                             mappingHtml += `
-                                <tr class="hover:bg-teal-50 border-b transition-colors">
+                                <tr class="${rowBgClass} border-b transition-colors">
                                     <td class="p-3 border-r text-center font-bold text-gray-700 urdu-font text-sm">${className}</td>
                                     <td class="p-3 border-r text-center font-bold text-indigo-700 urdu-font">${excelSubjName}</td>
                                     <td class="p-3">
-                                        <select class="map-dropdown w-full p-2 border rounded border-teal-300 bg-white urdu-font text-sm" 
+                                        <select class="map-dropdown w-full p-2 border rounded ${selectBgClass} urdu-font text-sm" 
                                             data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
-                                            <option value="">-- Dropdown se sahi book select karein --</option>
                                             ${optionsHtml}
                                         </select>
                                     </td>
@@ -832,7 +847,14 @@ export async function initAdminResultAnalysis(db, containerId) {
                         });
                     });
 
-       // 🌟 2. CLICK EVENTS (Process with Mappings) 🌟
+                    document.getElementById('mapping-table-body').innerHTML = mappingHtml || '<tr><td colspan="3" class="text-center p-4 text-red-500">Koi class match nahi hui.</td></tr>';
+                    document.getElementById('mapping-container').classList.remove('hidden');
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
         document.addEventListener('click', async (e) => {
             // --- A. PROCESS & PREVIEW BUTTON ---
             if (e.target.closest('#btn-process-upload')) {
