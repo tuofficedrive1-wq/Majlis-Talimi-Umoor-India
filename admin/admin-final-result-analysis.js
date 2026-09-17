@@ -753,14 +753,26 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, rawResultData };
 
-                   // 🌟 1. BUILD DYNAMIC SUBJECT LIST FROM TEACHERS' PROFILES (STRUCTURE) 🌟
+                  // 🌟 1. BUILD DYNAMIC SUBJECT LIST FROM TEACHERS' PROFILES (STRUCTURE) 🌟
                     let dynamicTeacherSubjects = {};
                     const usersList = window.allUsersData || [];
                     
-                    // 🌟 SEMESTER FILTER LOGIC 🌟
-                    const selectedExamType = document.getElementById('upload-exam-type').value;
-                    const targetExamTerm = selectedExamType === "ششماہی امتحان" ? "Shashmahi" : "Salana";
+                    // 🌟 SEMESTER FILTER LOGIC (Sirf Selected Imtihan ke subjects aayenge) 🌟
+                    const selectedExamType = document.getElementById('upload-exam-type')?.value || "سالانہ امتحان";
+                    const isShashmahi = selectedExamType.includes("ششماہی");
 
+                    // Helper: Check karega ke subject is semester ka hai ya nahi
+                    const isMatchingSemester = (itemTerm) => {
+                        if (!itemTerm) return true; // Agar term na likhi ho to show karega (taake koi miss na ho)
+                        let termStr = String(itemTerm).toLowerCase();
+                        if (isShashmahi) {
+                            return termStr.includes("shashmahi") || termStr.includes("sem 1") || termStr.includes("term 1") || termStr.includes("ششماہی") || termStr === "1";
+                        } else {
+                            return termStr.includes("salana") || termStr.includes("sem 2") || termStr.includes("term 2") || termStr.includes("سالانہ") || termStr === "2";
+                        }
+                    };
+
+                    // 💡 NOTE: 'usersList' mein Inspectors aur Zimmedaran dono ka data shamil hai
                     usersList.forEach(u => {
                         if (!u.academicYears) return;
                         Object.values(u.academicYears).forEach(yearData => {
@@ -770,8 +782,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 jamia.teachers.forEach(t => {
                                     if (!t.periods) return;
                                     t.periods.forEach(p => {
-                                        // 🌟 NAYA CODE: Sirf Selected Semester ke Subjects aayenge 🌟
-                                        if (p.examType && p.examType !== targetExamTerm) return;
+                                        // 🎯 FILTER: Agar book selected semester ki nahi hai, to usay chhor do
+                                        let periodTerm = p.term || p.examType || p.semester || p.type;
+                                        if (!isMatchingSemester(periodTerm)) return;
                                         
                                         let cName = cleanUrduStr(p.className);
                                         let bName = String(p.bookName).trim();
@@ -787,8 +800,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                     window.wizardSteps = []; 
                     window.currentWizardStep = 0;
                     
-                    // 🌟 PERMANENT MEMORY: Browser se purani mappings load karein 🌟
-                    window.userSubjectLinks = JSON.parse(localStorage.getItem('saved_subject_links')) || {};
+                    // 🌟 PERMANENT MEMORY: Browser se purani saved mappings load karein (Dobara link na karna pare) 🌟
+                    window.userSubjectLinks = JSON.parse(localStorage.getItem('saved_subject_links')) || {}; 
 
                     Object.keys(classSubjectMap).forEach(className => {
                         let targetClassClean = cleanUrduStr(className);
@@ -808,13 +821,18 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 return c1 === targetClassClean || c2 === targetClassClean || targetClassClean.includes(c1) || c1.includes(targetClassClean);
                             });
                             if (dbClassData && dbClassData.subjects) {
-                                dbClassData.subjects.forEach(sub => setupSubjects.add(sub.urdu));
+                                dbClassData.subjects.forEach(sub => {
+                                    // 🎯 FILTER: Academic Setup ke subjects ko bhi semester ke hisab se filter karein
+                                    let subTerm = sub.term || sub.semester || sub.examType || sub.type;
+                                    if (isMatchingSemester(subTerm)) {
+                                        setupSubjects.add(sub.urdu || sub.name || sub);
+                                    }
+                                });
                             }
                         }
 
                         let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
                         
-                        // Har subject ko aik naye "Card Step" ke tor par add kar rahe hain
                         classSubjectMap[className].mappingKeys.forEach(mapNum => {
                             let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
                             window.wizardSteps.push({
