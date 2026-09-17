@@ -775,13 +775,14 @@ export async function initAdminResultAnalysis(db, containerId) {
                         });
                     });
 
-                    // 🌟 2. GENERATE CLASS-WISE MAPPING UI (WITH SMART AUTO-FILL) 🌟
-                    let mappingHtml = '';
-                    
+                    // 🌟 2. GENERATE WIZARD DATA (Step-by-Step Logic) 🌟
+                    window.wizardSteps = []; // Isme sare subjects ki list banegi
+                    window.currentWizardStep = 0;
+                    window.userSubjectLinks = {}; // Global store: Combo save karne ke liye
+
                     Object.keys(classSubjectMap).forEach(className => {
                         let targetClassClean = cleanUrduStr(className);
                         
-                        // A. Get actual subjects added by Zimmedaran in structures
                         let matchedActualSubjects = new Set();
                         Object.keys(dynamicTeacherSubjects).forEach(dbClass => {
                             if (dbClass === targetClassClean || dbClass.includes(targetClassClean) || targetClassClean.includes(dbClass)) {
@@ -789,7 +790,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         });
 
-                        // B. Get subjects from Academic Setup (as fallback/addition)
                         let setupSubjects = new Set();
                         if (academicConfigData && academicConfigData.classes) {
                             let dbClassData = academicConfigData.classes.find(c => {
@@ -802,69 +802,120 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         }
 
-                       // ... C. Combine and create FINAL MASTER LIST (Is line ke baad wala code change karein)
-                       let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
+                        let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
                         
+                        // Har subject ko aik naye "Card Step" ke tor par add kar rahe hain
                         classSubjectMap[className].mappingKeys.forEach(mapNum => {
                             let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
-                            let excelClean = cleanUrduStr(excelSubjName);
-                            
-                            let optionsHtml = '';
-                            let isAutoMatched = false;
-
-                            if (finalSubjectsList.size > 0) {
-                                [...finalSubjectsList].sort().forEach(sub => {
-                                    let isFromTeacher = matchedActualSubjects.has(sub);
-                                    // Icon laga diya taake pehchan asan ho
-                                    let label = isFromTeacher ? `<i class="fas fa-user-tie text-[10px] mr-1 opacity-60"></i> ${sub}` : `<i class="fas fa-cog text-[10px] mr-1 opacity-60"></i> ${sub}`;
-                                    
-                                    // 🌟 SMART AUTO-MATCH LOGIC 🌟
-                                    let subClean = cleanUrduStr(sub);
-                                    let isChecked = '';
-                                    let autoMatchClass = 'bg-white border-gray-200'; // Default color
-                                    
-                                    if (excelClean === subClean || excelClean.includes(subClean) || subClean.includes(excelClean)) {
-                                        isChecked = 'checked';
-                                        isAutoMatched = true; 
-                                        autoMatchClass = 'bg-teal-50 border-teal-400 shadow-sm'; // Jo match ho jaye uska design alag hoga
-                                    }
-
-                                    // 🌟 NAYA TAG DESIGN 🌟
-                                    optionsHtml += `
-                                        <label class="inline-flex items-center px-3 py-2 rounded-lg border ${autoMatchClass} hover:bg-teal-100 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-100 has-[:checked]:border-teal-500 has-[:checked]:shadow-md">
-                                            <input type="checkbox" value="${sub}" ${isChecked} class="map-checkbox w-4 h-4 text-teal-600 rounded border-gray-300 mr-2 focus:ring-teal-500" data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
-                                            <span class="urdu-font text-sm font-bold text-gray-700">${label}</span>
-                                        </label>
-                                    `;
-                                });
-                            } else {
-                                 optionsHtml = `<div class="text-sm text-red-500 p-2 font-bold w-full text-center bg-red-50 rounded-lg">کوئی مضمون نہیں ملا (No data found)</div>`;
-                            }
-
-                            let rowBgClass = isAutoMatched ? "bg-green-50/30 border-green-200" : "hover:bg-teal-50/30";
-
-                            mappingHtml += `
-                                <tr class="${rowBgClass} border-b transition-colors">
-                                    <td class="p-4 border-r text-center font-bold text-gray-700 urdu-font text-sm align-middle w-[15%] shadow-sm">${className}</td>
-                                    <td class="p-4 border-r text-center font-bold text-indigo-700 urdu-font align-middle w-[20%] shadow-sm">${excelSubjName}</td>
-                                    <td class="p-4 align-top w-[65%]">
-                                        <!-- 🌟 FLEX WRAP CONTAINER (Sari list aik sath samne aaye gi) 🌟 -->
-                                        <div class="flex flex-wrap gap-2.5 bg-gray-50 p-4 rounded-xl border border-gray-100 shadow-inner min-h-[80px]">
-                                            ${optionsHtml}
-                                        </div>
-                                        <div class="text-[11px] text-teal-700 mt-2 ml-2 font-bold tracking-wide"><i class="fas fa-info-circle"></i> آپ ایک سے زیادہ مضامین سیلیکٹ کر سکتے ہیں (Combo بنانے کے لیے)</div>
-                                    </td>
-                                </tr>
-                            `;
+                            window.wizardSteps.push({
+                                className,
+                                mapNum,
+                                excelSubjName,
+                                excelClean: cleanUrduStr(excelSubjName),
+                                finalSubjectsList: Array.from(finalSubjectsList).sort(),
+                                matchedActualSubjects
+                            });
                         });
                     });
 
-                    document.getElementById('mapping-table-body').innerHTML = mappingHtml || '<tr><td colspan="3" class="text-center p-4 text-red-500">Koi class match nahi hui.</td></tr>';
-                    document.getElementById('mapping-container').classList.remove('hidden');
-                };
-                reader.readAsArrayBuffer(file);
-            }
-        });
+                    // 🌟 3. WIZARD CARD RENDER FUNCTION 🌟
+                    window.renderWizardCard = () => {
+                        const step = window.wizardSteps[window.currentWizardStep];
+                        const total = window.wizardSteps.length;
+                        const progress = ((window.currentWizardStep + 1) / total) * 100; // Progress Bar calculation
+                        
+                        let optionsHtml = '';
+                        
+                        if (step.finalSubjectsList.length > 0) {
+                            step.finalSubjectsList.forEach(sub => {
+                                let isFromTeacher = step.matchedActualSubjects.has(sub);
+                                let label = isFromTeacher ? `<i class="fas fa-user-tie text-[12px] mr-1 opacity-60"></i> ${sub}` : `<i class="fas fa-cog text-[12px] mr-1 opacity-60"></i> ${sub}`;
+                                
+                                let subClean = cleanUrduStr(sub);
+                                let isChecked = '';
+                                let autoMatchClass = 'bg-white border-gray-200';
+                                
+                                let mapKey = `${step.className}_${step.mapNum}`;
+                                
+                                // Agar user ne pehle se kuch select kiya hua hai to wo uthayen
+                                if (window.userSubjectLinks[mapKey]) {
+                                    if (window.userSubjectLinks[mapKey].dbSubj.includes(sub)) {
+                                        isChecked = 'checked';
+                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-md';
+                                    }
+                                } else {
+                                    // Warna Auto-Match (Green) kar dein
+                                    if (step.excelClean === subClean || step.excelClean.includes(subClean) || subClean.includes(step.excelClean)) {
+                                        isChecked = 'checked';
+                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-md';
+                                    }
+                                }
+
+                                // 🌟 BADE SIZE KE CHECKBOXES WALA DESIGN 🌟
+                                optionsHtml += `
+                                    <label class="inline-flex items-center p-4 rounded-xl border-2 ${autoMatchClass} hover:bg-teal-100 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-100 has-[:checked]:border-teal-600 has-[:checked]:shadow-lg min-w-[200px] justify-center">
+                                        <input type="checkbox" value="${sub}" ${isChecked} class="wizard-checkbox w-6 h-6 text-teal-600 rounded border-gray-400 mr-3 focus:ring-teal-500">
+                                        <span class="urdu-font text-xl font-bold text-gray-800">${label}</span>
+                                    </label>
+                                `;
+                            });
+                        } else {
+                            optionsHtml = `<div class="text-red-500 font-bold p-4 bg-red-50 rounded-lg w-full text-center text-lg">کوئی مضمون نہیں ملا (No Subjects Found)</div>`;
+                        }
+
+                        // Last step pe 'Next' button badal kar 'Mukammal Karen' ban jayega
+                        let isLastStep = window.currentWizardStep === total - 1;
+                        let nextBtnHtml = isLastStep 
+                            ? `<button id="btn-process-upload" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition text-lg flex items-center gap-2">مکمل کریں اور Preview دیکھیں <i class="fas fa-check-circle"></i></button>`
+                            : `<button id="btn-wizard-next" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-8 rounded-xl shadow-md transition text-lg flex items-center gap-2">اگلا مضمون <i class="fas fa-arrow-left"></i></button>`;
+
+                        let prevBtnHtml = window.currentWizardStep === 0 
+                            ? `<div></div>` // Pehle step par 'Back' button chup jayega
+                            : `<button id="btn-wizard-prev" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-6 rounded-xl transition flex items-center gap-2 text-lg"><i class="fas fa-arrow-right"></i> پیچھے</button>`;
+
+                        // 🌟 SINGLE CARD UI 🌟
+                        let html = `
+                            <div class="flex justify-between items-center mb-4">
+                                <h4 class="text-2xl font-bold text-teal-800"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
+                                <span class="bg-teal-100 text-teal-800 font-bold px-4 py-1 rounded-full text-sm">مضمون ${window.currentWizardStep + 1} از ${total}</span>
+                            </div>
+                            
+                            <div class="bg-white rounded-3xl shadow-sm border-2 border-teal-100 p-8">
+                                <!-- Progress Bar -->
+                                <div class="mb-8">
+                                    <div class="w-full bg-gray-100 rounded-full h-3">
+                                        <div class="bg-teal-500 h-3 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Step Information (Darjah & Mazmoon) -->
+                                <div class="text-center mb-8">
+                                    <div class="inline-block bg-indigo-50 border border-indigo-100 text-indigo-800 px-6 py-2 rounded-full font-bold urdu-font mb-4 text-xl shadow-sm">
+                                        درجہ: ${step.className}
+                                    </div>
+                                    <h3 class="text-4xl font-bold text-gray-900 urdu-font mb-3">${step.excelSubjName}</h3>
+                                    <p class="text-gray-500 text-base">ایکسل کے اس مضمون کے لیے ڈیٹا بیس کے مضامین سیلیکٹ کریں (Combo بنانے کے لیے ایک سے زیادہ پر ٹک کر سکتے ہیں)</p>
+                                </div>
+
+                                <!-- Subject Checkboxes (Grid) -->
+                                <div class="flex flex-wrap justify-center gap-4 bg-gray-50 p-8 rounded-2xl border border-gray-200 min-h-[180px]">
+                                    ${optionsHtml}
+                                </div>
+
+                                <!-- Next / Prev Buttons -->
+                                <div class="flex justify-between items-center mt-8 pt-6 border-t border-gray-100">
+                                    ${prevBtnHtml}
+                                    ${nextBtnHtml}
+                                </div>
+                            </div>
+                        `;
+                        
+                        document.getElementById('mapping-container').innerHTML = html;
+                        document.getElementById('mapping-container').classList.remove('hidden');
+                    };
+                    
+                    // Card ko pehli dafa show karwane ki command
+                    window.renderWizardCard();
 
         // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
         document.addEventListener('click', async (e) => {
@@ -969,7 +1020,48 @@ export async function initAdminResultAnalysis(db, containerId) {
                             failedSubjectsCount++; 
                         }
                     });
+// Naya function: Har step ka result save karne ke liye
+            const saveWizardSelection = () => {
+                let step = window.wizardSteps[window.currentWizardStep];
+                let mapKey = `${step.className}_${step.mapNum}`;
+                
+                // Jitne checkboxes par TICK hai unko utha lo (Combo array ban jayega)
+                let selected = Array.from(document.querySelectorAll('.wizard-checkbox:checked')).map(cb => cb.value);
+                
+                // Data hamesha ke liye save
+                window.userSubjectLinks[mapKey] = { dbSubj: selected, excelSubj: step.excelSubjName };
+            };
 
+            // "Agla Mazmoon (Next)" Button Click
+            if (e.target.closest('#btn-wizard-next')) {
+                saveWizardSelection(); // Pehle wali selection save karo
+                window.currentWizardStep++; // Agle step par jao
+                window.renderWizardCard(); // Naya card show karo
+            }
+
+            // "Peechay (Back)" Button Click
+            if (e.target.closest('#btn-wizard-prev')) {
+                saveWizardSelection(); // Majooda tabdeeli save karo
+                window.currentWizardStep--; // Peechle step par wapis jao
+                window.renderWizardCard(); // Purana card show karo
+            }
+
+            // --- A. LAST BUTTON: PROCESS & PREVIEW ---
+            if (e.target.closest('#btn-process-upload')) {
+                saveWizardSelection(); // Aakhri step ki selection lazmi save karo
+                
+                const processBtn = e.target.closest('#btn-process-upload');
+                const examType = document.getElementById('upload-exam-type')?.value;
+                const examYear = document.getElementById('upload-exam-year')?.value;
+
+                // Aapka userSubjectLinks pehle hi ready hai (Upar save ho chuka hai)
+                let userSubjectLinks = window.userSubjectLinks; 
+
+                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
+                processBtn.disabled = true;
+
+                // ---> Iske baad aapka baqi ka purana "Preview Generation" wala loop same chalega
+                // jisme "multiJamiaClassData" waghera bante hain. (Usko change nahi karna, sirf Combo logic lagani hai jo main ne pichle jawab me di thi)
                     multiJamiaClassData[jamiaName][cName].total++;
                     if (isGhaib) {
                         multiJamiaClassData[jamiaName][cName].ghaib++;
