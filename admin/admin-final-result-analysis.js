@@ -997,7 +997,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
                 processBtn.disabled = true;
 
-                const { resHdrIdx, resColMap, jamiaColIdx, classColIdx, rawResultData } = resultHeaderInfo;
+               const { resHdrIdx, resColMap, jamiaColIdx, classColIdx, kefiyatColIdx, rawResultData } = resultHeaderInfo;
 
                 let multiJamiaClassData = {};
                 let multiJamiaAsatizaData = {};
@@ -1008,6 +1008,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                     
                     let jamiaName = String(row[jamiaColIdx] || '').trim();
                     let cName = String(row[classColIdx] || '').trim();
+                    // 🌟 NAYA: Excel cell se Kefiyat ka lafz (word) uthayega
+                    let kefiyatVal = kefiyatColIdx !== -1 ? String(row[kefiyatColIdx] || '').trim() : '';
                     
                     if (!jamiaName || !cName || jamiaName === 'undefined') continue;
                     let config = classSubjectMap[cName];
@@ -1098,26 +1100,58 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     });
 
+                    // 🌟 Yahan config.mappingKeys ka loop khatam ho raha hai 🌟
+                    
                     multiJamiaClassData[jamiaName][cName].total++;
                     if (isGhaib) {
                         multiJamiaClassData[jamiaName][cName].ghaib++;
                         multiJamiaClassData[jamiaName][cName].total--; 
                     } else {
-                        let percentage = studentTotalMarks > 0 ? (studentObtainedMarks / studentTotalMarks) * 100 : 0;
-                        if (failedSubjectsCount > 0) isNakam = true;
-                        
-                        if (isNakam) multiJamiaClassData[jamiaName][cName].nakam++;
-                        else {
-                            multiJamiaClassData[jamiaName][cName].passed++;
-                            if (percentage >= 85) multiJamiaClassData[jamiaName][cName].mumtazSharf++;
-                            else if (percentage >= 76) multiJamiaClassData[jamiaName][cName].mumtaz++;
-                            else if (percentage >= 70) multiJamiaClassData[jamiaName][cName].jayyidJidda++;
-                            else if (percentage >= 60) multiJamiaClassData[jamiaName][cName].jayyid++;
-                            else if (percentage >= 50) multiJamiaClassData[jamiaName][cName].maqbool++;
-                            else multiJamiaClassData[jamiaName][cName].majazZimni++;
+                        // 🌟 NAYA: DIRECT EXCEL "KEFIYAT" LOGIC (Zimni ka masla hal) 🌟
+                        if (kefiyatColIdx !== -1 && kefiyatVal !== '') {
+                            
+                            if (kefiyatVal.includes('ناکام') || kefiyatVal.toLowerCase() === 'fail' || kefiyatVal === 'F') {
+                                multiJamiaClassData[jamiaName][cName].nakam++;
+                            } else if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ') {
+                                multiJamiaClassData[jamiaName][cName].ghaib++;
+                                multiJamiaClassData[jamiaName][cName].total--;
+                            } else {
+                                multiJamiaClassData[jamiaName][cName].passed++;
+                                
+                                // Excel ke text ki bunyad par summary banegi
+                                if (kefiyatVal.includes('ممتاز مع الشرف') || kefiyatVal.includes('الشرف')) {
+                                    multiJamiaClassData[jamiaName][cName].mumtazSharf++;
+                                } else if (kefiyatVal.includes('ممتاز')) {
+                                    multiJamiaClassData[jamiaName][cName].mumtaz++;
+                                } else if (kefiyatVal.includes('جید جدا')) {
+                                    multiJamiaClassData[jamiaName][cName].jayyidJidda++;
+                                } else if (kefiyatVal.includes('جید')) {
+                                    multiJamiaClassData[jamiaName][cName].jayyid++;
+                                } else if (kefiyatVal.includes('مقبول')) {
+                                    multiJamiaClassData[jamiaName][cName].maqbool++;
+                                } else if (kefiyatVal.includes('ضمنی') || kefiyatVal.includes('رعایتی')) {
+                                    multiJamiaClassData[jamiaName][cName].majazZimni++;
+                                } else {
+                                    multiJamiaClassData[jamiaName][cName].maqbool++; // Agar text samajh na aaye to Maqbool me jayega
+                                }
+                            }
+                        } else {
+                            // 🌟 FALLBACK: Agar Excel me Kefiyat ka column na mile tab hi khud percentage nikalega
+                            let percentage = studentTotalMarks > 0 ? (studentObtainedMarks / studentTotalMarks) * 100 : 0;
+                            if (failedSubjectsCount > 0) isNakam = true;
+                            
+                            if (isNakam) multiJamiaClassData[jamiaName][cName].nakam++;
+                            else {
+                                multiJamiaClassData[jamiaName][cName].passed++;
+                                if (percentage >= 85) multiJamiaClassData[jamiaName][cName].mumtazSharf++;
+                                else if (percentage >= 76) multiJamiaClassData[jamiaName][cName].mumtaz++;
+                                else if (percentage >= 70) multiJamiaClassData[jamiaName][cName].jayyidJidda++;
+                                else if (percentage >= 60) multiJamiaClassData[jamiaName][cName].jayyid++;
+                                else if (percentage >= 50) multiJamiaClassData[jamiaName][cName].maqbool++;
+                                else multiJamiaClassData[jamiaName][cName].majazZimni++;
+                            }
                         }
                     }
-                }
 
                 pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
 
