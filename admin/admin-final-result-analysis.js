@@ -756,6 +756,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                    // 🌟 1. BUILD DYNAMIC SUBJECT LIST FROM TEACHERS' PROFILES (STRUCTURE) 🌟
                     let dynamicTeacherSubjects = {};
                     const usersList = window.allUsersData || [];
+                    
+                    // 🌟 SEMESTER FILTER LOGIC 🌟
+                    const selectedExamType = document.getElementById('upload-exam-type').value;
+                    const targetExamTerm = selectedExamType === "ششماہی امتحان" ? "Shashmahi" : "Salana";
+
                     usersList.forEach(u => {
                         if (!u.academicYears) return;
                         Object.values(u.academicYears).forEach(yearData => {
@@ -765,6 +770,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 jamia.teachers.forEach(t => {
                                     if (!t.periods) return;
                                     t.periods.forEach(p => {
+                                        // 🌟 NAYA CODE: Sirf Selected Semester ke Subjects aayenge 🌟
+                                        if (p.examType && p.examType !== targetExamTerm) return;
+                                        
                                         let cName = cleanUrduStr(p.className);
                                         let bName = String(p.bookName).trim();
                                         if (!dynamicTeacherSubjects[cName]) dynamicTeacherSubjects[cName] = new Set();
@@ -776,9 +784,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                     });
 
                     // 🌟 2. GENERATE WIZARD DATA (Step-by-Step Logic) 🌟
-                    window.wizardSteps = []; // Isme sare subjects ki list banegi
+                    window.wizardSteps = []; 
                     window.currentWizardStep = 0;
-                    window.userSubjectLinks = {}; // Global store: Combo save karne ke liye
+                    
+                    // 🌟 PERMANENT MEMORY: Browser se purani mappings load karein 🌟
+                    window.userSubjectLinks = JSON.parse(localStorage.getItem('saved_subject_links')) || {};
 
                     Object.keys(classSubjectMap).forEach(className => {
                         let targetClassClean = cleanUrduStr(className);
@@ -823,6 +833,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         const step = window.wizardSteps[window.currentWizardStep];
                         const total = window.wizardSteps.length;
                         const progress = ((window.currentWizardStep + 1) / total) * 100;
+                        const selectedExamType = document.getElementById('upload-exam-type').value; // Exam name
                         
                         let optionsHtml = '';
                         
@@ -835,10 +846,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 let isChecked = '';
                                 let autoMatchClass = 'bg-white border-gray-200';
                                 
-                                let mapKey = `${step.className}_${step.mapNum}`;
+                                // 🌟 STRONG GLOBAL KEY: (Taake future uploads me bhi kaam aaye) 🌟
+                                let globalKey = `${cleanUrduStr(step.className)}_${cleanUrduStr(step.excelSubjName)}`;
                                 
-                                if (window.userSubjectLinks[mapKey]) {
-                                    if (window.userSubjectLinks[mapKey].dbSubj.includes(sub)) {
+                                if (window.userSubjectLinks[globalKey]) {
+                                    if (window.userSubjectLinks[globalKey].dbSubj.includes(sub)) {
                                         isChecked = 'checked';
                                         autoMatchClass = 'bg-teal-50 border-teal-500 shadow-sm';
                                     }
@@ -849,7 +861,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                                     }
                                 }
 
-                                // 🌟 NORMAL SIZE KE CHECKBOXES WALA DESIGN 🌟
                                 optionsHtml += `
                                     <label class="inline-flex items-center px-4 py-2 rounded-lg border-2 ${autoMatchClass} hover:bg-teal-50 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:shadow-sm justify-center">
                                         <input type="checkbox" value="${sub}" ${isChecked} class="wizard-checkbox w-4 h-4 text-teal-600 rounded border-gray-300 mr-2 focus:ring-teal-500">
@@ -870,7 +881,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             ? `<div></div>` 
                             : `<button id="btn-wizard-prev" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 px-5 rounded-lg border transition flex items-center gap-2 text-sm"><i class="fas fa-arrow-right"></i> پیچھے</button>`;
 
-                        // 🌟 COMPACT CARD UI 🌟
                         let html = `
                             <div class="flex justify-between items-center mb-3">
                                 <h4 class="text-lg font-bold text-teal-800"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
@@ -878,28 +888,28 @@ export async function initAdminResultAnalysis(db, containerId) {
                             </div>
                             
                             <div class="bg-white rounded-xl shadow-sm border border-teal-100 p-5">
-                                <!-- Progress Bar -->
                                 <div class="mb-5">
                                     <div class="w-full bg-gray-100 rounded-full h-2">
                                         <div class="bg-teal-500 h-2 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
                                     </div>
                                 </div>
 
-                                <!-- Step Information (Darjah & Mazmoon) -->
                                 <div class="text-center mb-5">
                                     <div class="inline-block bg-indigo-50 border border-indigo-100 text-indigo-800 px-4 py-1 rounded-full font-bold urdu-font mb-2 text-xs shadow-sm">
                                         درجہ: ${step.className}
+                                    </div>
+                                    <!-- 🌟 NAYA BADGE: Semester dikhane ke liye 🌟 -->
+                                    <div class="inline-block bg-purple-50 border border-purple-100 text-purple-800 px-4 py-1 rounded-full font-bold urdu-font mb-2 text-xs shadow-sm ml-2">
+                                        امتحان: ${selectedExamType}
                                     </div>
                                     <h3 class="text-2xl font-bold text-gray-900 urdu-font mb-1">${step.excelSubjName}</h3>
                                     <p class="text-gray-500 text-xs">ایکسل کے اس مضمون کے لیے ڈیٹا بیس کے مضامین سیلیکٹ کریں (Combo بنانے کے لیے ایک سے زیادہ پر ٹک کر سکتے ہیں)</p>
                                 </div>
 
-                                <!-- Subject Checkboxes (Grid) -->
                                 <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 p-5 rounded-xl border border-gray-200 min-h-[140px]">
                                     ${optionsHtml}
                                 </div>
 
-                                <!-- Next / Prev Buttons -->
                                 <div class="flex justify-between items-center mt-5 pt-4 border-t border-gray-100">
                                     ${prevBtnHtml}
                                     ${nextBtnHtml}
@@ -918,19 +928,24 @@ export async function initAdminResultAnalysis(db, containerId) {
             } // <--- 3. YAHAN IF CONDITION BAND HUI
         });
 
-      // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
+     // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
         document.addEventListener('click', async (e) => {
             
-            // 🌟 WIZARD SAVING LOGIC (Naya function yahan shuru me hi define kar diya) 🌟
+            // 🌟 WIZARD SAVING LOGIC (Browser Memory Save) 🌟
             const saveWizardSelection = () => {
                 if (window.wizardSteps && window.wizardSteps.length > 0) {
                     let step = window.wizardSteps[window.currentWizardStep];
-                    let mapKey = `${step.className}_${step.mapNum}`;
-                    // Jitne checkboxes par TICK hai unko utha lo (Combo array ban jayega)
+                    
+                    // 🌟 NAYA STRONG KEY: Sirf class + subject name (Taake Excel k column change hone par bhi match ho)
+                    let globalKey = `${cleanUrduStr(step.className)}_${cleanUrduStr(step.excelSubjName)}`;
+                    
                     let selected = Array.from(document.querySelectorAll('.wizard-checkbox:checked')).map(cb => cb.value);
                     
                     if (!window.userSubjectLinks) window.userSubjectLinks = {};
-                    window.userSubjectLinks[mapKey] = { dbSubj: selected, excelSubj: step.excelSubjName };
+                    window.userSubjectLinks[globalKey] = { dbSubj: selected, excelSubj: step.excelSubjName };
+                    
+                    // 🌟 PERMANENT SAVE (Browser LocalStorage) 🌟
+                    localStorage.setItem('saved_subject_links', JSON.stringify(window.userSubjectLinks));
                 }
             };
 
@@ -1001,11 +1016,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let subjConfig = config.subjects[mapNum];
                         let passMarks = subjConfig.pass;
                         
-                        let mapKey = `${cName}_${mapNum}`;
-                        let linkedData = userSubjectLinks[mapKey];
+                        // 🌟 USE GLOBAL KEY HERE ALSO 🌟
+                        let globalKey = `${cleanUrduStr(cName)}_${cleanUrduStr(subjConfig.name)}`;
+                        let linkedData = userSubjectLinks[globalKey];
                         
-                        // 🌟 Yahan Combo (Array) lag raha hai 🌟
-                        let comboSubjects = linkedData && linkedData.dbSubj && linkedData.dbSubj.length > 0 ? linkedData.dbSubj : [subjConfig.name]; 
+                        let comboSubjects = linkedData && linkedData.dbSubj && linkedData.dbSubj.length > 0 ? linkedData.dbSubj : [subjConfig.name];
 
                         if (markVal !== 'غ') {
                             isGhaib = false;
