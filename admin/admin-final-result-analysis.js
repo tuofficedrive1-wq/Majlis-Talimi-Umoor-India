@@ -611,12 +611,11 @@ export async function initAdminResultAnalysis(db, containerId) {
         return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     };
 
-    // 🌟 SMART TEACHER FINDER 🌟
-    const getTeacherName = (jamiaName, className, subject) => {
+    // 🌟 SMART TEACHER & COMBO SUBJECT FINDER 🌟
+    const getTeacherAndSubject = (jamiaName, className, comboSubjectsArray) => {
         const usersList = window.allUsersData || [];
         const cleanJamia = cleanUrduStr(jamiaName);
         const cleanClass = cleanUrduStr(className);
-        const cleanSubj = cleanUrduStr(subject);
 
         for (let u of usersList) {
             if (!u.academicYears) continue;
@@ -634,8 +633,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let dbBook = cleanUrduStr(p.bookName);
                             
                             if (dbClass === cleanClass || dbClass.includes(cleanClass) || cleanClass.includes(dbClass)) {
-                                if (dbBook === cleanSubj || cleanSubj.includes(dbBook) || dbBook.includes(cleanSubj)) {
-                                    return t.name;
+                                // 🌟 COMBO CHECK: Dekhein ke teacher ki book hamare combo array me se kisi se match karti hai?
+                                for(let comboSub of comboSubjectsArray) {
+                                    let cleanCombo = cleanUrduStr(comboSub);
+                                    if (dbBook === cleanCombo || cleanCombo.includes(dbBook) || dbBook.includes(cleanCombo)) {
+                                        return { teacher: t.name, exactSubject: p.bookName }; // Sahi match mil gaya!
+                                    }
                                 }
                             }
                         }
@@ -643,7 +646,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 }
             }
         }
-        return "Na-Maloom";
+        return { teacher: "Na-Maloom", exactSubject: comboSubjectsArray[0] }; // Agar na mile to pehla naam fallback me de dein
     };
 
     if (!window.adminResultAnalysisInitialized) {
@@ -799,48 +802,51 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         }
 
-                        // C. Combine and create FINAL MASTER LIST
+                       // ... C. Combine and create FINAL MASTER LIST (Is line ke baad wala code change karein)
                         let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
                         
                         classSubjectMap[className].mappingKeys.forEach(mapNum => {
                             let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
                             let excelClean = cleanUrduStr(excelSubjName);
                             
-                            let optionsHtml = '<option value="">-- Dropdown se sahi book select karein --</option><option value="ignore">❌ Ignore (Do not link)</option>';
+                            let optionsHtml = '';
                             let isAutoMatched = false;
 
                             if (finalSubjectsList.size > 0) {
                                 [...finalSubjectsList].sort().forEach(sub => {
                                     let isFromTeacher = matchedActualSubjects.has(sub);
-                                    let label = isFromTeacher ? `${sub} (👤 Teacher Profile)` : `${sub} (⚙️ Default Setup)`;
+                                    let label = isFromTeacher ? `${sub} (👤)` : `${sub} (⚙️)`;
                                     
                                     // 🌟 SMART AUTO-MATCH LOGIC 🌟
                                     let subClean = cleanUrduStr(sub);
-                                    let isSelected = '';
-                                    if (!isAutoMatched && (excelClean === subClean || excelClean.includes(subClean) || subClean.includes(excelClean))) {
-                                        isSelected = 'selected';
-                                        isAutoMatched = true; // Taake ek hi best match select ho
+                                    let isChecked = '';
+                                    if (excelClean === subClean || excelClean.includes(subClean) || subClean.includes(excelClean)) {
+                                        isChecked = 'checked';
+                                        isAutoMatched = true; 
                                     }
 
-                                    optionsHtml += `<option value="${sub}" ${isSelected}>${label}</option>`;
+                                    optionsHtml += `
+                                        <label class="flex items-center p-1.5 hover:bg-teal-50 cursor-pointer text-sm border-b border-gray-100 last:border-0">
+                                            <input type="checkbox" value="${sub}" ${isChecked} class="map-checkbox mr-2 w-4 h-4 text-teal-600 rounded border-gray-300" data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
+                                            <span class="urdu-font text-gray-700">${label}</span>
+                                        </label>
+                                    `;
                                 });
                             } else {
-                                 optionsHtml += `<option disabled>Koi data nahi mila</option>`;
+                                 optionsHtml = `<div class="text-sm text-red-500 p-2">Koi data nahi mila</div>`;
                             }
 
-                            // UI Row: Agar auto-match ho gaya to color green kar denge taake asani ho
                             let rowBgClass = isAutoMatched ? "bg-green-50 border-green-200" : "hover:bg-teal-50";
-                            let selectBgClass = isAutoMatched ? "border-green-400 bg-green-100 font-bold text-green-900" : "border-teal-300 bg-white text-gray-700";
 
                             mappingHtml += `
                                 <tr class="${rowBgClass} border-b transition-colors">
                                     <td class="p-3 border-r text-center font-bold text-gray-700 urdu-font text-sm">${className}</td>
                                     <td class="p-3 border-r text-center font-bold text-indigo-700 urdu-font">${excelSubjName}</td>
                                     <td class="p-3">
-                                        <select class="map-dropdown w-full p-2 border rounded ${selectBgClass} urdu-font text-sm" 
-                                            data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
+                                        <div class="border rounded bg-white max-h-32 overflow-y-auto border-teal-300 shadow-inner">
                                             ${optionsHtml}
-                                        </select>
+                                        </div>
+                                        <div class="text-[11px] text-teal-700 mt-1.5 font-bold"><i class="fas fa-info-circle"></i> آپ ایک سے زیادہ مضامین سیلیکٹ کر سکتے ہیں (Combo بنانے کے لیے)</div>
                                     </td>
                                 </tr>
                             `;
@@ -863,14 +869,17 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const examYear = document.getElementById('upload-exam-year')?.value;
 
                 let userSubjectLinks = {}; 
-                let dropdowns = document.querySelectorAll('.map-dropdown');
+                // 🌟 NAYA CODE: Sirf Checked (Tik kiye hue) boxes ka data lein
+                let checkboxes = document.querySelectorAll('.map-checkbox:checked');
                 
-                dropdowns.forEach(dd => {
-                    let val = dd.value;
-                    if (val && val !== 'ignore') {
-                        let key = `${dd.dataset.class}_${dd.dataset.mapnum}`;
-                        userSubjectLinks[key] = { dbSubj: val, excelSubj: dd.dataset.excelsub };
+                checkboxes.forEach(cb => {
+                    let val = cb.value;
+                    let key = `${cb.dataset.class}_${cb.dataset.mapnum}`;
+                    
+                    if (!userSubjectLinks[key]) {
+                        userSubjectLinks[key] = { dbSubj: [], excelSubj: cb.dataset.excelsub };
                     }
+                    userSubjectLinks[key].dbSubj.push(val); // Array me add kar rahe hain (Combo)
                 });
 
                 processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
@@ -916,8 +925,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let passMarks = subjConfig.pass;
                         
                         let mapKey = `${cName}_${mapNum}`;
+                       let mapKey = `${cName}_${mapNum}`;
                         let linkedData = userSubjectLinks[mapKey];
-                        let finalSubName = linkedData ? linkedData.dbSubj : subjConfig.name;
+                        let comboSubjects = linkedData ? linkedData.dbSubj : [subjConfig.name]; // Array Ban gaya
 
                         if (markVal !== 'غ') {
                             isGhaib = false;
@@ -931,8 +941,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                             if (!isNaN(marks) && marks < passMarks) failedSubjectsCount++;
 
                             if (linkedData) { 
-                                // Teacher MAPPING logic
-                                let tName = getTeacherName(jamiaName, cName, finalSubName);
+                                // 🌟 COMBO TEACHER MAPPING LOGIC 🌟
+                                let matchData = getTeacherAndSubject(jamiaName, cName, comboSubjects);
+                                let tName = matchData.teacher;
+                                let finalSubName = matchData.exactSubject; // Teacher ke paas jo original naam hai woh aayega
+
                                 if (tName === "Na-Maloom") tName = "Teacher Unassigned (Not Linked)";
 
                                 if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
@@ -944,6 +957,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                                     multiJamiaAsatizaData[jamiaName][tName][finalSubName].passed++;
                                 }
                             }
+                      
                         } else {
                             studentTotalMarks += subjConfig.total;
                             failedSubjectsCount++; 
