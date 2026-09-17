@@ -734,7 +734,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const resSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'result') || uploadedWorkbook.SheetNames[0];
                     const rawResultData = XLSX.utils.sheet_to_json(uploadedWorkbook.Sheets[resSheetName], { header: 1 });
                     
-                    let resHdrIdx = -1, resColMap = {}, jamiaColIdx = -1, classColIdx = -1;
+                   let resHdrIdx = -1, resColMap = {}, jamiaColIdx = -1, classColIdx = -1, kefiyatColIdx = -1;
 
                     for (let i = 0; i < Math.min(15, rawResultData.length); i++) {
                         let row = rawResultData[i];
@@ -744,8 +744,21 @@ export async function initAdminResultAnalysis(db, containerId) {
                             if (/^(10|[1-9])$/.test(cell)) { resColMap[parseInt(cell)] = c; resHdrIdx = i; }
                             if (cell === 'Jamia_tul_Madina' || cell.includes('جامعۃ المدینہ') || cell === 'جامعہ') jamiaColIdx = c;
                             if (cell === 'Class' || cell.includes('درجہ')) classColIdx = c;
+                            
+                            // 🌟 WIDEN SEARCH: "کیفیت", "نتیجہ", "گریڈ" 
+                            if (cell.includes('کیفیت') || cell.includes('نتیجہ') || cell.includes('گریڈ')) kefiyatColIdx = c; 
                         }
-                        if (resHdrIdx !== -1 && jamiaColIdx !== -1 && classColIdx !== -1) break;
+                    }
+
+                    // 🌟 SMART FALLBACK: Agar header me lafz na mile, to Column F (Index 5) ya aas paas check karein
+                    if (kefiyatColIdx === -1 && rawResultData.length > 15) {
+                        for(let col = 4; col <= 8; col++) {
+                            let testCell = String(rawResultData[15][col] || ''); 
+                            if (testCell.includes('ممتاز') || testCell.includes('جید') || testCell.includes('مقبول') || testCell.includes('ناکام')) {
+                                kefiyatColIdx = col;
+                                break;
+                            }
+                        }
                     }
 
                     if (resHdrIdx === -1 || jamiaColIdx === -1 || classColIdx === -1) {
@@ -753,7 +766,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         return;
                     }
 
-                    resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, rawResultData };
+                    resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, kefiyatColIdx, rawResultData };
 
                   // 🌟 1. BUILD DYNAMIC SUBJECT LIST FROM TEACHERS' PROFILES (STRUCTURE) 🌟
                     let dynamicTeacherSubjects = {};
@@ -1100,43 +1113,41 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     });
 
-                    // 🌟 Yahan config.mappingKeys ka loop khatam ho raha hai 🌟
+                   // 🌟 Yahan config.mappingKeys ka loop khatam ho raha hai 🌟
                     
                     multiJamiaClassData[jamiaName][cName].total++;
                     if (isGhaib) {
                         multiJamiaClassData[jamiaName][cName].ghaib++;
                         multiJamiaClassData[jamiaName][cName].total--; 
                     } else {
-                        // 🌟 NAYA: DIRECT EXCEL "KEFIYAT" LOGIC (Zimni ka masla hal) 🌟
+                        // 🌟 DIRECT EXCEL "KEFIYAT" LOGIC 🌟
                         if (kefiyatColIdx !== -1 && kefiyatVal !== '') {
                             
                             if (kefiyatVal.includes('ناکام') || kefiyatVal.toLowerCase() === 'fail' || kefiyatVal === 'F') {
                                 multiJamiaClassData[jamiaName][cName].nakam++;
-                            } else if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ') {
+                            } else if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || kefiyatVal.includes('غیر حاضر') || kefiyatVal === 'A') {
                                 multiJamiaClassData[jamiaName][cName].ghaib++;
                                 multiJamiaClassData[jamiaName][cName].total--;
                             } else {
                                 multiJamiaClassData[jamiaName][cName].passed++;
                                 
-                                // Excel ke text ki bunyad par summary banegi
-                                if (kefiyatVal.includes('ممتاز مع الشرف') || kefiyatVal.includes('الشرف')) {
+                                // Excel ke text ki bunyad par summary
+                                if (kefiyatVal.includes('ممتاز مع الشرف') || kefiyatVal.includes('الشرف') || kefiyatVal === 'A+') {
                                     multiJamiaClassData[jamiaName][cName].mumtazSharf++;
-                                } else if (kefiyatVal.includes('ممتاز')) {
+                                } else if (kefiyatVal.includes('ممتاز') || kefiyatVal === 'A') {
                                     multiJamiaClassData[jamiaName][cName].mumtaz++;
-                                } else if (kefiyatVal.includes('جید جدا')) {
+                                } else if (kefiyatVal.includes('جید جدا') || kefiyatVal === 'B+') {
                                     multiJamiaClassData[jamiaName][cName].jayyidJidda++;
-                                } else if (kefiyatVal.includes('جید')) {
+                                } else if (kefiyatVal.includes('جید') || kefiyatVal === 'B') {
                                     multiJamiaClassData[jamiaName][cName].jayyid++;
-                                } else if (kefiyatVal.includes('مقبول')) {
-                                    multiJamiaClassData[jamiaName][cName].maqbool++;
                                 } else if (kefiyatVal.includes('ضمنی') || kefiyatVal.includes('رعایتی')) {
-                                    multiJamiaClassData[jamiaName][cName].majazZimni++;
+                                    multiJamiaClassData[jamiaName][cName].majazZimni++; // Sirf tab Zimni hoga jab excel me likha ho!
                                 } else {
-                                    multiJamiaClassData[jamiaName][cName].maqbool++; // Agar text samajh na aaye to Maqbool me jayega
+                                    multiJamiaClassData[jamiaName][cName].maqbool++; // Baqi sab Kamyab 'Maqbool' me jayenge
                                 }
                             }
                         } else {
-                            // 🌟 FALLBACK: Agar Excel me Kefiyat ka column na mile tab hi khud percentage nikalega
+                            // 🌟 FALLBACK: Agar Excel me Kefiyat bilkul blank ho
                             let percentage = studentTotalMarks > 0 ? (studentObtainedMarks / studentTotalMarks) * 100 : 0;
                             if (failedSubjectsCount > 0) isNakam = true;
                             
@@ -1147,12 +1158,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 else if (percentage >= 76) multiJamiaClassData[jamiaName][cName].mumtaz++;
                                 else if (percentage >= 70) multiJamiaClassData[jamiaName][cName].jayyidJidda++;
                                 else if (percentage >= 60) multiJamiaClassData[jamiaName][cName].jayyid++;
-                                else if (percentage >= 50) multiJamiaClassData[jamiaName][cName].maqbool++;
-                                else multiJamiaClassData[jamiaName][cName].majazZimni++;
+                                else multiJamiaClassData[jamiaName][cName].maqbool++; // 🌟 BUG FIX: Zimni hata kar sab paas hone walon ko Maqbool me dal diya
                             }
                         }
                     }
-                } // 🌟 Yahan 'for' loop band hoga (Error ka asal hal) 🌟
+                } // <--- For loop yahan close hoga // 🌟 Yahan 'for' loop band hoga (Error ka asal hal) 🌟
 
                 pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
 
