@@ -479,7 +479,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const key = d[keyField] || 'Unknown';
                 if (!stats[key]) stats[key] = { h: 0, p: 0 };
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
-                const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
+                const p = num(d.mumtazSharf) + num(d.mumtaz) + num(d.jayyidJidda) + num(d.jayyid) + num(d.maqbool) + num(d.majazZimni);
                 stats[key].h += h; stats[key].p += p;
             });
             let rows = Object.entries(stats).map(([k, s]) => {
@@ -711,19 +711,21 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 let currentClass = String(className).trim();
                                 classSubjectMap[currentClass] = { subjects: {}, mappingKeys: [] };
                                 
-                                let subRow = mapData[i] || [];
-                                let passRow = mapData[i+2] || [];
-                                Object.keys(colNumberMap).forEach(mapNum => {
-                                    let colIdx = colNumberMap[mapNum];
-                                    let subName = subRow[colIdx];
-                                    if (subName && String(subName).trim() !== '') {
-                                        classSubjectMap[currentClass].subjects[mapNum] = {
-                                            name: String(subName).trim(),
-                                            pass: parseFloat(passRow[colIdx]) || 40
-                                        };
-                                        classSubjectMap[currentClass].mappingKeys.push(parseInt(mapNum));
-                                    }
-                                });
+                               let subRow = mapData[i] || [];
+                            let totalRow = mapData[i+1] || []; // 🌟 NAYA: Total Marks ki row add ki gayi
+                            let passRow = mapData[i+2] || [];
+                            Object.keys(colNumberMap).forEach(mapNum => {
+                                let colIdx = colNumberMap[mapNum];
+                                let subName = subRow[colIdx];
+                                if (subName && String(subName).trim() !== '') {
+                                    classSubjectMap[currentClass].subjects[mapNum] = {
+                                        name: String(subName).trim(),
+                                        total: parseFloat(totalRow[colIdx]) || 100, // 🌟 NAYA: Total Marks (Warna % NaN ho jati)
+                                        pass: parseFloat(passRow[colIdx]) || 40
+                                    };
+                                    classSubjectMap[currentClass].mappingKeys.push(parseInt(mapNum));
+                                }
+                            });
                                 i += 3;
                             } else { i++; }
                         }
@@ -1029,48 +1031,70 @@ export async function initAdminResultAnalysis(db, containerId) {
                         if (resColIdx === undefined) return;
                         
                         let markCell = row[resColIdx];
-                        let markVal = (markCell === undefined || markCell === '' || String(markCell).trim() === 'غ') ? 'غ' : markCell;
+                        let cellStr = String(markCell || '').trim();
                         
                         let subjConfig = config.subjects[mapNum];
                         let passMarks = subjConfig.pass;
+                        let totalMarks = subjConfig.total; // 🌟 NAYA
                         
-                        // 🌟 USE GLOBAL KEY HERE ALSO 🌟
                         let globalKey = `${cleanUrduStr(cName)}_${cleanUrduStr(subjConfig.name)}`;
                         let linkedData = userSubjectLinks[globalKey];
+                        let comboSubjects = linkedData && linkedData.dbSubj && linkedData.dbSubj.length > 0 ? linkedData.dbSubj : [subjConfig.name]; 
+
+                        // 🌟 "ناکام یا غیر حاضر کے علاوہ سب پاس" LOGIC 🌟
+                        let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellStr === 'غیر حاضر' || cellStr === 'A' || cellStr === '';
+                        let isTextNakam = cellStr === 'ناکام' || cellStr.toLowerCase() === 'fail' || cellStr === 'f';
                         
-                        let comboSubjects = linkedData && linkedData.dbSubj && linkedData.dbSubj.length > 0 ? linkedData.dbSubj : [subjConfig.name];
+                        let isSubjectPassed = false;
 
-                        if (markVal !== 'غ') {
-                            isGhaib = false;
-                            let marks = typeof markVal === 'string' && markVal.includes('+') 
-                                        ? parseFloat(markVal.split('+')[0]) + parseFloat(markVal.split('+')[1]) 
-                                        : parseFloat(markVal);
-                                        
-                            studentObtainedMarks += isNaN(marks) ? 0 : marks;
-                            studentTotalMarks += subjConfig.total;
+                        if (isTextGhaib) {
+                            studentTotalMarks += totalMarks;
+                            failedSubjectsCount++; // Ghaib (Absent) fail mana jayega
+                        } else {
+                            isGhaib = false; // Student present hai
+                            studentTotalMarks += totalMarks;
                             
-                            if (!isNaN(marks) && marks < passMarks) failedSubjectsCount++;
-
-                            if (linkedData) { 
-                                // 🌟 COMBO TEACHER MAPPING LOGIC 🌟
-                                let matchData = getTeacherAndSubject(jamiaName, cName, comboSubjects);
-                                let tName = matchData.teacher;
-                                let finalSubName = matchData.exactSubject; // Teacher ke paas jo original naam hai woh aayega
-
-                                if (tName === "Na-Maloom") tName = "Teacher Unassigned (Not Linked)";
-
-                                if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
-                                if (!multiJamiaAsatizaData[jamiaName][tName][finalSubName]) {
-                                    multiJamiaAsatizaData[jamiaName][tName][finalSubName] = { class: cName, subject: finalSubName, total: 0, passed: 0 };
+                            let marks = NaN;
+                            if (cellStr.includes('+')) {
+                                marks = parseFloat(cellStr.split('+')[0]) + parseFloat(cellStr.split('+')[1]);
+                            } else {
+                                marks = parseFloat(markCell);
+                            }
+                            
+                            if (!isNaN(marks)) {
+                                studentObtainedMarks += marks;
+                                if (marks >= passMarks) {
+                                    isSubjectPassed = true;
+                                } else {
+                                    failedSubjectsCount++;
                                 }
-                                multiJamiaAsatizaData[jamiaName][tName][finalSubName].total++;
-                                if (!isNaN(marks) && marks >= passMarks) {
-                                    multiJamiaAsatizaData[jamiaName][tName][finalSubName].passed++;
+                            } else {
+                                // Agar cell mein number nahi balkay sirf Text (Alfaz) likha hai
+                                if (isTextNakam) {
+                                    failedSubjectsCount++;
+                                } else {
+                                    isSubjectPassed = true; // 🌟 "ناکام کے علاوہ سب پاس ہیں" 🌟
+                                    studentObtainedMarks += passMarks; // Percentage maintain rakhne k liye passing marks de diye
                                 }
                             }
-                        } else {
-                            studentTotalMarks += subjConfig.total;
-                            failedSubjectsCount++; 
+                        }
+
+                        if (linkedData) { 
+                            // 🌟 COMBO TEACHER MAPPING LOGIC 🌟
+                            let matchData = getTeacherAndSubject(jamiaName, cName, comboSubjects);
+                            let tName = matchData.teacher;
+                            let finalSubName = matchData.exactSubject; 
+
+                            if (tName === "Na-Maloom") tName = "Teacher Unassigned (Not Linked)";
+
+                            if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
+                            if (!multiJamiaAsatizaData[jamiaName][tName][finalSubName]) {
+                                multiJamiaAsatizaData[jamiaName][tName][finalSubName] = { class: cName, subject: finalSubName, total: 0, passed: 0 };
+                            }
+                            multiJamiaAsatizaData[jamiaName][tName][finalSubName].total++;
+                            if (isSubjectPassed) {
+                                multiJamiaAsatizaData[jamiaName][tName][finalSubName].passed++;
+                            }
                         }
                     });
 
