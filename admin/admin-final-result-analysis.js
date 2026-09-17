@@ -818,18 +818,18 @@ export async function initAdminResultAnalysis(db, containerId) {
                         });
                     });
 
-                    // 🌟 3. WIZARD CARD RENDER FUNCTION 🌟
+                    // 🌟 3. WIZARD CARD RENDER FUNCTION (COMPACT & NORMAL FONT) 🌟
                     window.renderWizardCard = () => {
                         const step = window.wizardSteps[window.currentWizardStep];
                         const total = window.wizardSteps.length;
-                        const progress = ((window.currentWizardStep + 1) / total) * 100; // Progress Bar calculation
+                        const progress = ((window.currentWizardStep + 1) / total) * 100;
                         
                         let optionsHtml = '';
                         
                         if (step.finalSubjectsList.length > 0) {
                             step.finalSubjectsList.forEach(sub => {
                                 let isFromTeacher = step.matchedActualSubjects.has(sub);
-                                let label = isFromTeacher ? `<i class="fas fa-user-tie text-[12px] mr-1 opacity-60"></i> ${sub}` : `<i class="fas fa-cog text-[12px] mr-1 opacity-60"></i> ${sub}`;
+                                let label = isFromTeacher ? `<i class="fas fa-user-tie text-[10px] mr-1 opacity-60"></i> ${sub}` : `<i class="fas fa-cog text-[10px] mr-1 opacity-60"></i> ${sub}`;
                                 
                                 let subClean = cleanUrduStr(sub);
                                 let isChecked = '';
@@ -837,73 +837,70 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 
                                 let mapKey = `${step.className}_${step.mapNum}`;
                                 
-                                // Agar user ne pehle se kuch select kiya hua hai to wo uthayen
                                 if (window.userSubjectLinks[mapKey]) {
                                     if (window.userSubjectLinks[mapKey].dbSubj.includes(sub)) {
                                         isChecked = 'checked';
-                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-md';
+                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-sm';
                                     }
                                 } else {
-                                    // Warna Auto-Match (Green) kar dein
                                     if (step.excelClean === subClean || step.excelClean.includes(subClean) || subClean.includes(step.excelClean)) {
                                         isChecked = 'checked';
-                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-md';
+                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-sm';
                                     }
                                 }
 
-                                // 🌟 BADE SIZE KE CHECKBOXES WALA DESIGN 🌟
+                                // 🌟 NORMAL SIZE KE CHECKBOXES WALA DESIGN 🌟
                                 optionsHtml += `
-                                    <label class="inline-flex items-center p-4 rounded-xl border-2 ${autoMatchClass} hover:bg-teal-100 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-100 has-[:checked]:border-teal-600 has-[:checked]:shadow-lg min-w-[200px] justify-center">
-                                        <input type="checkbox" value="${sub}" ${isChecked} class="wizard-checkbox w-6 h-6 text-teal-600 rounded border-gray-400 mr-3 focus:ring-teal-500">
-                                        <span class="urdu-font text-xl font-bold text-gray-800">${label}</span>
+                                    <label class="inline-flex items-center px-4 py-2 rounded-lg border-2 ${autoMatchClass} hover:bg-teal-50 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:shadow-sm justify-center">
+                                        <input type="checkbox" value="${sub}" ${isChecked} class="wizard-checkbox w-4 h-4 text-teal-600 rounded border-gray-300 mr-2 focus:ring-teal-500">
+                                        <span class="urdu-font text-sm font-bold text-gray-700">${label}</span>
                                     </label>
                                 `;
                             });
                         } else {
-                            optionsHtml = `<div class="text-red-500 font-bold p-4 bg-red-50 rounded-lg w-full text-center text-lg">کوئی مضمون نہیں ملا (No Subjects Found)</div>`;
+                            optionsHtml = `<div class="text-red-500 font-bold p-3 bg-red-50 rounded-lg w-full text-center text-sm">کوئی مضمون نہیں ملا (No Subjects Found)</div>`;
                         }
 
-                        // Last step pe 'Next' button badal kar 'Mukammal Karen' ban jayega
                         let isLastStep = window.currentWizardStep === total - 1;
                         let nextBtnHtml = isLastStep 
-                            ? `<button id="btn-process-upload" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition text-lg flex items-center gap-2">مکمل کریں اور Preview دیکھیں <i class="fas fa-check-circle"></i></button>`
-                            : `<button id="btn-wizard-next" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-8 rounded-xl shadow-md transition text-lg flex items-center gap-2">اگلا مضمون <i class="fas fa-arrow-left"></i></button>`;
+                            ? `<button id="btn-process-upload" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition text-sm flex items-center gap-2">مکمل کریں اور Preview دیکھیں <i class="fas fa-check-circle"></i></button>`
+                            : `<button id="btn-wizard-next" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition text-sm flex items-center gap-2">اگلا مضمون <i class="fas fa-arrow-left"></i></button>`;
 
                         let prevBtnHtml = window.currentWizardStep === 0 
-                            ? `<div></div>` // Pehle step par 'Back' button chup jayega
-                            : `<button id="btn-wizard-prev" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-6 rounded-xl transition flex items-center gap-2 text-lg"><i class="fas fa-arrow-right"></i> پیچھے</button>`;
+                            ? `<div></div>` 
+                            : `<button id="btn-wizard-prev" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 px-5 rounded-lg border transition flex items-center gap-2 text-sm"><i class="fas fa-arrow-right"></i> پیچھے</button>`;
 
-                        // 🌟 SINGLE CARD UI 🌟
+                        // 🌟 COMPACT CARD UI 🌟
                         let html = `
-                            <div class="flex justify-between items-center mb-4">
-                                <h4 class="text-2xl font-bold text-teal-800"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
-                                <span class="bg-teal-100 text-teal-800 font-bold px-4 py-1 rounded-full text-sm">مضمون ${window.currentWizardStep + 1} از ${total}</span>
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 class="text-lg font-bold text-teal-800"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
+                                <span class="bg-teal-100 text-teal-800 font-bold px-3 py-1 rounded-full text-xs">مضمون ${window.currentWizardStep + 1} از ${total}</span>
                             </div>
                             
-                            <div class="bg-white rounded-3xl shadow-sm border-2 border-teal-100 p-8">
+                            <div class="bg-white rounded-xl shadow-sm border border-teal-100 p-5">
                                 <!-- Progress Bar -->
-                                <div class="mb-8">
-                                    <div class="w-full bg-gray-100 rounded-full h-3">
-                                        <div class="bg-teal-500 h-3 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
+                                <div class="mb-5">
+                                    <div class="w-full bg-gray-100 rounded-full h-2">
+                                        <div class="bg-teal-500 h-2 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
                                     </div>
                                 </div>
 
                                 <!-- Step Information (Darjah & Mazmoon) -->
-                                <div class="text-center mb-8">
-                                    <div class="inline-block bg-indigo-50 border border-indigo-100 text-indigo-800 px-6 py-2 rounded-full font-bold urdu-font mb-4 text-xl shadow-sm">
+                                <div class="text-center mb-5">
+                                    <div class="inline-block bg-indigo-50 border border-indigo-100 text-indigo-800 px-4 py-1 rounded-full font-bold urdu-font mb-2 text-xs shadow-sm">
                                         درجہ: ${step.className}
                                     </div>
-                                    <h3 class="text-4xl font-bold text-gray-900 urdu-font mb-3">${step.excelSubjName}</h3>
-                                    <p class="text-gray-500 text-base">ایکسل کے اس مضمون کے لیے ڈیٹا بیس کے مضامین سیلیکٹ کریں (Combo بنانے کے لیے ایک سے زیادہ پر ٹک کر سکتے ہیں)</p>
+                                    <h3 class="text-2xl font-bold text-gray-900 urdu-font mb-1">${step.excelSubjName}</h3>
+                                    <p class="text-gray-500 text-xs">ایکسل کے اس مضمون کے لیے ڈیٹا بیس کے مضامین سیلیکٹ کریں (Combo بنانے کے لیے ایک سے زیادہ پر ٹک کر سکتے ہیں)</p>
                                 </div>
 
                                 <!-- Subject Checkboxes (Grid) -->
-                                <div class="flex flex-wrap justify-center gap-4 bg-gray-50 p-8 rounded-2xl border border-gray-200 min-h-[180px]">
+                                <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 p-5 rounded-xl border border-gray-200 min-h-[140px]">
                                     ${optionsHtml}
                                 </div>
 
                                 <!-- Next / Prev Buttons -->
-                                <div class="flex justify-between items-center mt-8 pt-6 border-t border-gray-100">
+                                <div class="flex justify-between items-center mt-5 pt-4 border-t border-gray-100">
                                     ${prevBtnHtml}
                                     ${nextBtnHtml}
                                 </div>
