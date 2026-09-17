@@ -193,7 +193,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <h4 class="text-xl font-bold text-teal-800 mb-2"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
                     <p class="text-sm text-teal-700 mb-4 urdu-font">ایکسل کے مضامین کو Academic Setup (ڈیٹا بیس) کے مضامین کے ساتھ میچ کریں۔ اگر کوئی مضمون لسٹ میں نہ ہو تو اسے 'Ignore' کر سکتے ہیں۔</p>
                     
-                    <div class="max-h-96 overflow-y-auto custom-scrollbar bg-white rounded-lg border border-teal-100 shadow-inner mb-6">
+                    <div class="max-h-[70vh] overflow-y-auto custom-scrollbar bg-white rounded-lg border border-teal-100 shadow-inner mb-6">
                         <table class="w-full text-sm text-left">
                             <thead class="bg-teal-700 text-white uppercase text-xs sticky top-0">
                                 <tr>
@@ -803,7 +803,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
 
                        // ... C. Combine and create FINAL MASTER LIST (Is line ke baad wala code change karein)
-                        let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
+                       let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
                         
                         classSubjectMap[className].mappingKeys.forEach(mapNum => {
                             let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
@@ -815,38 +815,44 @@ export async function initAdminResultAnalysis(db, containerId) {
                             if (finalSubjectsList.size > 0) {
                                 [...finalSubjectsList].sort().forEach(sub => {
                                     let isFromTeacher = matchedActualSubjects.has(sub);
-                                    let label = isFromTeacher ? `${sub} (👤)` : `${sub} (⚙️)`;
+                                    // Icon laga diya taake pehchan asan ho
+                                    let label = isFromTeacher ? `<i class="fas fa-user-tie text-[10px] mr-1 opacity-60"></i> ${sub}` : `<i class="fas fa-cog text-[10px] mr-1 opacity-60"></i> ${sub}`;
                                     
                                     // 🌟 SMART AUTO-MATCH LOGIC 🌟
                                     let subClean = cleanUrduStr(sub);
                                     let isChecked = '';
+                                    let autoMatchClass = 'bg-white border-gray-200'; // Default color
+                                    
                                     if (excelClean === subClean || excelClean.includes(subClean) || subClean.includes(excelClean)) {
                                         isChecked = 'checked';
                                         isAutoMatched = true; 
+                                        autoMatchClass = 'bg-teal-50 border-teal-400 shadow-sm'; // Jo match ho jaye uska design alag hoga
                                     }
 
+                                    // 🌟 NAYA TAG DESIGN 🌟
                                     optionsHtml += `
-                                        <label class="flex items-center p-1.5 hover:bg-teal-50 cursor-pointer text-sm border-b border-gray-100 last:border-0">
-                                            <input type="checkbox" value="${sub}" ${isChecked} class="map-checkbox mr-2 w-4 h-4 text-teal-600 rounded border-gray-300" data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
-                                            <span class="urdu-font text-gray-700">${label}</span>
+                                        <label class="inline-flex items-center px-3 py-2 rounded-lg border ${autoMatchClass} hover:bg-teal-100 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-100 has-[:checked]:border-teal-500 has-[:checked]:shadow-md">
+                                            <input type="checkbox" value="${sub}" ${isChecked} class="map-checkbox w-4 h-4 text-teal-600 rounded border-gray-300 mr-2 focus:ring-teal-500" data-class="${className}" data-mapnum="${mapNum}" data-excelsub="${excelSubjName}">
+                                            <span class="urdu-font text-sm font-bold text-gray-700">${label}</span>
                                         </label>
                                     `;
                                 });
                             } else {
-                                 optionsHtml = `<div class="text-sm text-red-500 p-2">Koi data nahi mila</div>`;
+                                 optionsHtml = `<div class="text-sm text-red-500 p-2 font-bold w-full text-center bg-red-50 rounded-lg">کوئی مضمون نہیں ملا (No data found)</div>`;
                             }
 
-                            let rowBgClass = isAutoMatched ? "bg-green-50 border-green-200" : "hover:bg-teal-50";
+                            let rowBgClass = isAutoMatched ? "bg-green-50/30 border-green-200" : "hover:bg-teal-50/30";
 
                             mappingHtml += `
                                 <tr class="${rowBgClass} border-b transition-colors">
-                                    <td class="p-3 border-r text-center font-bold text-gray-700 urdu-font text-sm">${className}</td>
-                                    <td class="p-3 border-r text-center font-bold text-indigo-700 urdu-font">${excelSubjName}</td>
-                                    <td class="p-3">
-                                        <div class="border rounded bg-white max-h-32 overflow-y-auto border-teal-300 shadow-inner">
+                                    <td class="p-4 border-r text-center font-bold text-gray-700 urdu-font text-sm align-middle w-[15%] shadow-sm">${className}</td>
+                                    <td class="p-4 border-r text-center font-bold text-indigo-700 urdu-font align-middle w-[20%] shadow-sm">${excelSubjName}</td>
+                                    <td class="p-4 align-top w-[65%]">
+                                        <!-- 🌟 FLEX WRAP CONTAINER (Sari list aik sath samne aaye gi) 🌟 -->
+                                        <div class="flex flex-wrap gap-2.5 bg-gray-50 p-4 rounded-xl border border-gray-100 shadow-inner min-h-[80px]">
                                             ${optionsHtml}
                                         </div>
-                                        <div class="text-[11px] text-teal-700 mt-1.5 font-bold"><i class="fas fa-info-circle"></i> آپ ایک سے زیادہ مضامین سیلیکٹ کر سکتے ہیں (Combo بنانے کے لیے)</div>
+                                        <div class="text-[11px] text-teal-700 mt-2 ml-2 font-bold tracking-wide"><i class="fas fa-info-circle"></i> آپ ایک سے زیادہ مضامین سیلیکٹ کر سکتے ہیں (Combo بنانے کے لیے)</div>
                                     </td>
                                 </tr>
                             `;
