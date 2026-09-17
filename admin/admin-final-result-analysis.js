@@ -1152,6 +1152,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         }
                     }
+                } // 🌟 Yahan 'for' loop band hoga (Error ka asal hal) 🌟
 
                 pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
 
