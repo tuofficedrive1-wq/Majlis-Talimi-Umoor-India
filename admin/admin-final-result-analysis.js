@@ -925,7 +925,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let passMarks = subjConfig.pass;
                         
                         let mapKey = `${cName}_${mapNum}`;
-                       let mapKey = `${cName}_${mapNum}`;
+                       
                         let linkedData = userSubjectLinks[mapKey];
                         let comboSubjects = linkedData ? linkedData.dbSubj : [subjConfig.name]; // Array Ban gaya
 
