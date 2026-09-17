@@ -611,11 +611,32 @@ export async function initAdminResultAnalysis(db, containerId) {
         return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     };
 
+    // 🌟 NAYA: DATABASE DRIVEN CLASS MATCHER (Admin Setup se) 🌟
+    const checkClassMatch = (class1, class2) => {
+        let c1 = cleanUrduStr(class1);
+        let c2 = cleanUrduStr(class2);
+        if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
+        
+        let configData = window.academicConfigData;
+        if (configData && configData.classes) {
+            for (let c of configData.classes) {
+                let urdu = cleanUrduStr(c.classNameUrdu);
+                let eng = cleanUrduStr(c.classNameEng);
+                
+                // Check karega ke Excel aur Teacher dono Setup ki aik hi class k hissay hain ya nahi
+                let match1 = (c1 === urdu || c1 === eng || (urdu && c1.includes(urdu)) || (eng && c1.includes(eng)));
+                let match2 = (c2 === urdu || c2 === eng || (urdu && c2.includes(urdu)) || (eng && c2.includes(eng)));
+                
+                if (match1 && match2) return true;
+            }
+        }
+        return false;
+    };
+
     // 🌟 SMART TEACHER & COMBO SUBJECT FINDER 🌟
     const getTeacherAndSubject = (jamiaName, className, comboSubjectsArray) => {
         const usersList = window.allUsersData || [];
         const cleanJamia = cleanUrduStr(jamiaName);
-        const cleanClass = cleanUrduStr(className);
 
         for (let u of usersList) {
             if (!u.academicYears) continue;
@@ -629,15 +650,15 @@ export async function initAdminResultAnalysis(db, containerId) {
                 for (let t of jData.teachers) {
                     if (t.periods) {
                         for (let p of t.periods) {
-                            let dbClass = cleanUrduStr(p.className);
+                            let dbClass = String(p.className || '').trim();
                             let dbBook = cleanUrduStr(p.bookName);
                             
-                            if (dbClass === cleanClass || dbClass.includes(cleanClass) || cleanClass.includes(dbClass)) {
-                                // 🌟 COMBO CHECK: Dekhein ke teacher ki book hamare combo array me se kisi se match karti hai?
+                            // 🌟 NAYA: Admin Setup se English/Urdu Classes ko milayega
+                            if (checkClassMatch(className, dbClass)) {
                                 for(let comboSub of comboSubjectsArray) {
                                     let cleanCombo = cleanUrduStr(comboSub);
                                     if (dbBook === cleanCombo || cleanCombo.includes(dbBook) || dbBook.includes(cleanCombo)) {
-                                        return { teacher: t.name, exactSubject: p.bookName }; // Sahi match mil gaya!
+                                        return { teacher: t.name, exactSubject: p.bookName }; 
                                     }
                                 }
                             }
@@ -646,9 +667,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                 }
             }
         }
-        return { teacher: "Na-Maloom", exactSubject: comboSubjectsArray[0] }; // Agar na mile to pehla naam fallback me de dein
+        return { teacher: "Na-Maloom", exactSubject: comboSubjectsArray[0] }; 
     };
-
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
@@ -670,11 +690,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                 }
 
                 // 🌟 FETCH ACADEMIC SETUP 🌟
-                let academicConfigData = null;
+                window.academicConfigData = null; // 🌟 NAYA: Global Variable
                 try {
                     const configSnap = await getDoc(doc(db, "settings", "academic_config"));
                     if (configSnap.exists()) {
-                        academicConfigData = configSnap.data();
+                        window.academicConfigData = configSnap.data();
                     }
                 } catch (err) {
                     console.error("Failed to load academic setup:", err);
@@ -811,36 +831,33 @@ export async function initAdminResultAnalysis(db, containerId) {
                         });
                     });
 
-                    // 🌟 2. GENERATE WIZARD DATA (Step-by-Step Logic) 🌟
+                  // 🌟 2. GENERATE WIZARD DATA (Step-by-Step Logic) 🌟
                     window.wizardSteps = []; 
                     window.currentWizardStep = 0;
                     
-                    // 🌟 PERMANENT MEMORY: Browser se purani saved mappings load karein (Dobara link na karna pare) 🌟
                     window.userSubjectLinks = JSON.parse(localStorage.getItem('saved_subject_links')) || {}; 
 
                     Object.keys(classSubjectMap).forEach(className => {
-                        let targetClassClean = cleanUrduStr(className);
-                        
                         let matchedActualSubjects = new Set();
+                        
                         Object.keys(dynamicTeacherSubjects).forEach(dbClass => {
-                            if (dbClass === targetClassClean || dbClass.includes(targetClassClean) || targetClassClean.includes(dbClass)) {
+                            // 🌟 NAYA: Inspector k English names ko Excel ki Urdu classes se milayega
+                            if (checkClassMatch(className, dbClass)) {
                                 dynamicTeacherSubjects[dbClass].forEach(sub => matchedActualSubjects.add(sub));
                             }
                         });
 
                         let setupSubjects = new Set();
-                        if (academicConfigData && academicConfigData.classes) {
-                            let dbClassData = academicConfigData.classes.find(c => {
-                                let c1 = cleanUrduStr(c.classNameUrdu);
-                                let c2 = cleanUrduStr(c.classNameEng);
-                                return c1 === targetClassClean || c2 === targetClassClean || targetClassClean.includes(c1) || c1.includes(targetClassClean);
-                            });
+                        if (window.academicConfigData && window.academicConfigData.classes) {
+                            // Database se match karke subjects nikalega
+                            let dbClassData = window.academicConfigData.classes.find(c => checkClassMatch(className, c.classNameUrdu) || checkClassMatch(className, c.classNameEng));
+                            
                             if (dbClassData && dbClassData.subjects) {
                                 dbClassData.subjects.forEach(sub => {
-                                    // 🎯 FILTER: Academic Setup ke subjects ko bhi semester ke hisab se filter karein
                                     let subTerm = sub.term || sub.semester || sub.examType || sub.type;
                                     if (isMatchingSemester(subTerm)) {
-                                        setupSubjects.add(sub.urdu || sub.name || sub);
+                                        let finalSubName = sub.urdu || sub.name || sub;
+                                        setupSubjects.add(finalSubName);
                                     }
                                 });
                             }
