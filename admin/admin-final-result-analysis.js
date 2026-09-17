@@ -917,27 +917,46 @@ export async function initAdminResultAnalysis(db, containerId) {
                     // Card ko pehli dafa show karwane ki command
                     window.renderWizardCard();
 
-        // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
+      // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
         document.addEventListener('click', async (e) => {
-            // --- A. PROCESS & PREVIEW BUTTON ---
+            
+            // 🌟 WIZARD SAVING LOGIC (Naya function yahan shuru me hi define kar diya) 🌟
+            const saveWizardSelection = () => {
+                if (window.wizardSteps && window.wizardSteps.length > 0) {
+                    let step = window.wizardSteps[window.currentWizardStep];
+                    let mapKey = `${step.className}_${step.mapNum}`;
+                    // Jitne checkboxes par TICK hai unko utha lo (Combo array ban jayega)
+                    let selected = Array.from(document.querySelectorAll('.wizard-checkbox:checked')).map(cb => cb.value);
+                    
+                    if (!window.userSubjectLinks) window.userSubjectLinks = {};
+                    window.userSubjectLinks[mapKey] = { dbSubj: selected, excelSubj: step.excelSubjName };
+                }
+            };
+
+            // --- A. WIZARD NEXT BUTTON (Agla Mazmoon) ---
+            if (e.target.closest('#btn-wizard-next')) {
+                saveWizardSelection(); // Pehle wali selection save karo
+                window.currentWizardStep++; // Agle step par jao
+                window.renderWizardCard(); // Naya card show karo
+            }
+
+            // --- B. WIZARD PREV BUTTON (Peechay) ---
+            if (e.target.closest('#btn-wizard-prev')) {
+                saveWizardSelection(); // Majooda tabdeeli save karo
+                window.currentWizardStep--; // Peechle step par wapis jao
+                window.renderWizardCard(); // Purana card show karo
+            }
+
+            // --- C. PROCESS & PREVIEW BUTTON (Aakhri Step) ---
             if (e.target.closest('#btn-process-upload')) {
+                saveWizardSelection(); // Aakhri step ki selection lazmi save karo
+                
                 const processBtn = e.target.closest('#btn-process-upload');
                 const examType = document.getElementById('upload-exam-type')?.value;
                 const examYear = document.getElementById('upload-exam-year')?.value;
 
-                let userSubjectLinks = {}; 
-                // 🌟 NAYA CODE: Sirf Checked (Tik kiye hue) boxes ka data lein
-                let checkboxes = document.querySelectorAll('.map-checkbox:checked');
-                
-                checkboxes.forEach(cb => {
-                    let val = cb.value;
-                    let key = `${cb.dataset.class}_${cb.dataset.mapnum}`;
-                    
-                    if (!userSubjectLinks[key]) {
-                        userSubjectLinks[key] = { dbSubj: [], excelSubj: cb.dataset.excelsub };
-                    }
-                    userSubjectLinks[key].dbSubj.push(val); // Array me add kar rahe hain (Combo)
-                });
+                // Aapka userSubjectLinks jo Wizard se save hua hai usko utha len
+                let userSubjectLinks = window.userSubjectLinks || {}; 
 
                 processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
                 processBtn.disabled = true;
@@ -982,9 +1001,10 @@ export async function initAdminResultAnalysis(db, containerId) {
                         let passMarks = subjConfig.pass;
                         
                         let mapKey = `${cName}_${mapNum}`;
-                       
                         let linkedData = userSubjectLinks[mapKey];
-                        let comboSubjects = linkedData ? linkedData.dbSubj : [subjConfig.name]; // Array Ban gaya
+                        
+                        // 🌟 Yahan Combo (Array) lag raha hai 🌟
+                        let comboSubjects = linkedData && linkedData.dbSubj && linkedData.dbSubj.length > 0 ? linkedData.dbSubj : [subjConfig.name]; 
 
                         if (markVal !== 'غ') {
                             isGhaib = false;
@@ -1014,54 +1034,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                                     multiJamiaAsatizaData[jamiaName][tName][finalSubName].passed++;
                                 }
                             }
-                      
                         } else {
                             studentTotalMarks += subjConfig.total;
                             failedSubjectsCount++; 
                         }
                     });
-// Naya function: Har step ka result save karne ke liye
-            const saveWizardSelection = () => {
-                let step = window.wizardSteps[window.currentWizardStep];
-                let mapKey = `${step.className}_${step.mapNum}`;
-                
-                // Jitne checkboxes par TICK hai unko utha lo (Combo array ban jayega)
-                let selected = Array.from(document.querySelectorAll('.wizard-checkbox:checked')).map(cb => cb.value);
-                
-                // Data hamesha ke liye save
-                window.userSubjectLinks[mapKey] = { dbSubj: selected, excelSubj: step.excelSubjName };
-            };
 
-            // "Agla Mazmoon (Next)" Button Click
-            if (e.target.closest('#btn-wizard-next')) {
-                saveWizardSelection(); // Pehle wali selection save karo
-                window.currentWizardStep++; // Agle step par jao
-                window.renderWizardCard(); // Naya card show karo
-            }
-
-            // "Peechay (Back)" Button Click
-            if (e.target.closest('#btn-wizard-prev')) {
-                saveWizardSelection(); // Majooda tabdeeli save karo
-                window.currentWizardStep--; // Peechle step par wapis jao
-                window.renderWizardCard(); // Purana card show karo
-            }
-
-            // --- A. LAST BUTTON: PROCESS & PREVIEW ---
-            if (e.target.closest('#btn-process-upload')) {
-                saveWizardSelection(); // Aakhri step ki selection lazmi save karo
-                
-                const processBtn = e.target.closest('#btn-process-upload');
-                const examType = document.getElementById('upload-exam-type')?.value;
-                const examYear = document.getElementById('upload-exam-year')?.value;
-
-                // Aapka userSubjectLinks pehle hi ready hai (Upar save ho chuka hai)
-                let userSubjectLinks = window.userSubjectLinks; 
-
-                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
-                processBtn.disabled = true;
-
-                // ---> Iske baad aapka baqi ka purana "Preview Generation" wala loop same chalega
-                // jisme "multiJamiaClassData" waghera bante hain. (Usko change nahi karna, sirf Combo logic lagani hai jo main ne pichle jawab me di thi)
                     multiJamiaClassData[jamiaName][cName].total++;
                     if (isGhaib) {
                         multiJamiaClassData[jamiaName][cName].ghaib++;
@@ -1084,6 +1062,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                 }
 
                 pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
+
+            
 
                // 🌟 ADVANCED PREVIEW UI GENERATION 🌟
                 let previewHtml = '';
