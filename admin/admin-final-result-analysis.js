@@ -916,6 +916,10 @@ export async function initAdminResultAnalysis(db, containerId) {
                     
                     // Card ko pehli dafa show karwane ki command
                     window.renderWizardCard();
+                    }; // <--- 1. YAHAN READER.ONLOAD BAND HUA
+                reader.readAsArrayBuffer(file); // <--- 2. YAHAN FILE READ HOGI
+            } // <--- 3. YAHAN IF CONDITION BAND HUI
+        });
 
       // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
         document.addEventListener('click', async (e) => {
