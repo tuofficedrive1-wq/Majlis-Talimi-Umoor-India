@@ -434,7 +434,7 @@
                 jaizaData = jaizaData.filter(j => j.name !== jamiaName); 
                 
                 // DATA SAVE: Status ke sath reason (wazahat) bhi save ho rahi hai
-                jaizaData.push({ name: jamiaName, status: status, submittedAt: dateStr, percentage: '0%', students: [], reason: reasonText });
+               jaizaData.push({ name: jamiaName, status: status, submittedAt: dateStr, percentage: '0%', students: [], reason: reasonText, isLocked: true });
 
                 await setDoc(reportRef, {
                     userId: currentUser.uid, academicYear: currentAcademicYear, month: entryMonthSelector.value, monthKey: entryMonthSelector.value,
@@ -450,6 +450,32 @@
         };
 
        const renderJaizaTabList = (allJamiaat, submittedJaizaat) => {
+           // --- NAYA LOGIC: Final Submit Function ---
+            const finalSubmitJamia = async (jamiaName) => {
+                if (!currentUser) return;
+                loader.classList.remove('hidden');
+                try {
+                    const currentReportInfo = getReportingMonthYearFromInput(entryMonthSelector.value);
+                    const { monthNum, yearNum } = currentReportInfo;
+                    const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+                    const reportId = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`; 
+                    
+                    const reportRef = doc(db, 'monthly_reports', reportId);
+                    const docSnap = await getDoc(reportRef);
+                    
+                    if (docSnap.exists() && docSnap.data().jaizaReport?.data) {
+                        let jaizaData = docSnap.data().jaizaReport.data;
+                        jaizaData = jaizaData.map(j => (j.name === jamiaName ? { ...j, isLocked: true } : j));
+                        await updateDoc(reportRef, { "jaizaReport.data": jaizaData });
+                        showNotification(`"${jamiaName}" Final Submit ho gaya!`);
+                    }
+                } catch(err) {
+                    console.error(err);
+                    showNotification("Error: Submit nahi ho saka.", true);
+                } finally {
+                    loader.classList.add('hidden');
+                }
+            };
             const container = document.getElementById('jaiza-list-container');
             if (!container) return;
 
@@ -465,7 +491,18 @@
 
             allJamiaat.forEach(name => {
                 const jamiaEntries = submittedJaizaat.filter(j => normalizeName(j.name) === normalizeName(name));
-                const isSubmitted = jamiaEntries.length > 0;
+                const hasData = jamiaEntries.length > 0;
+                
+                // NAYA: Draft (Pending) ya Locked check karne ka logic
+                let isLocked = false;
+                let hasDraft = false;
+                if (hasData) {
+                    if (jamiaEntries[0].isLocked === false) {
+                        hasDraft = true; 
+                    } else {
+                        isLocked = true; 
+                    }
+                }
 
                 let status = ""; 
                 let submitDate = "";
@@ -474,7 +511,7 @@
                 let kaifiyat = "";
                 let reasonText = ""; 
 
-                if (isSubmitted) {
+                if (hasData) {
                     const firstEntry = jamiaEntries[0];
                     status = firstEntry.status || "Jaiza";
                     submitDate = firstEntry.submittedAt || "";
@@ -498,23 +535,41 @@
 
                 const defaultDate = submitDate || new Date().toISOString().split('T')[0];
                 
-                // 🔒 NAYA LOGIC: Agar report submit ho chuki hai, to sab kuch LOCK kar do
-                const disableInputs = isSubmitted ? 'disabled' : '';
-                const lockBgClass = isSubmitted ? 'bg-gray-100 cursor-not-allowed opacity-80' : 'bg-white';
+                const disableInputs = isLocked ? 'disabled' : '';
+                const lockBgClass = isLocked ? 'bg-gray-100 cursor-not-allowed opacity-80' : 'bg-white';
+
+                // NAYA: Action Buttons (Submit, Edit ya Aage Badhein)
+                let actionBtnsHTML = '';
+                if (isLocked) {
+                    actionBtnsHTML = `
+                    <span class="bg-gray-200 text-gray-500 border border-gray-300 px-5 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto text-center urdu-font cursor-not-allowed">
+                        <i class="fas fa-lock"></i> لاک شدہ
+                    </span>`;
+                } else if (hasDraft) {
+                    actionBtnsHTML = `
+                    <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <button data-jamia="${name}" class="action-btn bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-md text-sm font-semibold transition whitespace-nowrap w-full shadow-sm flex items-center justify-center gap-1">
+                            <i class="fas fa-edit"></i> Edit Form
+                        </button>
+                        <button data-jamia="${name}" class="final-lock-btn bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-md text-sm font-semibold transition whitespace-nowrap w-full shadow-sm flex items-center justify-center gap-1">
+                            <i class="fas fa-check-circle"></i> Submit
+                        </button>
+                    </div>`;
+                } else {
+                    actionBtnsHTML = `
+                    <button data-jamia="${name}" class="action-btn bg-[#0f766e] hover:bg-teal-700 text-white px-5 py-2 rounded-md text-sm font-semibold transition whitespace-nowrap w-full sm:w-auto shadow-sm flex items-center justify-center gap-2">
+                        آگے بڑھیں
+                    </button>`;
+                }
 
                 const cardHTML = `
-                    <div class="p-3 md:p-4 border border-gray-200 rounded-lg ${isSubmitted ? 'bg-slate-50' : 'bg-white'} shadow-sm flex flex-col hover:shadow-md transition mb-3 relative overflow-hidden">
-                        
+                    <div class="p-3 md:p-4 border border-gray-200 rounded-lg ${isLocked ? 'bg-slate-50' : 'bg-white'} shadow-sm flex flex-col hover:shadow-md transition mb-3 relative overflow-hidden">
                         <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 w-full">
-                            
-                            <h4 class="font-bold ${isSubmitted ? 'text-gray-500' : 'text-gray-800'} urdu-font text-lg xl:w-[25%]">${name}</h4>
+                            <h4 class="font-bold ${isLocked ? 'text-gray-500' : 'text-gray-800'} urdu-font text-lg xl:w-[25%]">${name}</h4>
                             
                             <div class="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-[75%] xl:justify-end">
-                                
-                                <!-- DATE BOX -->
                                 <input type="date" id="date-${name}" class="p-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:ring-2 focus:ring-teal-500 outline-none w-full sm:w-[145px] ${lockBgClass} font-medium" value="${defaultDate}" ${disableInputs}>
                                 
-                                <!-- STATUS DROPDOWN -->
                                 <select id="status-${name}" data-jamia="${name}" class="status-select p-2 border border-gray-300 rounded-md text-sm text-gray-700 focus:ring-2 focus:ring-teal-500 outline-none w-full sm:w-[130px] ${lockBgClass}" ${disableInputs}>
                                     <option value="" disabled ${!status ? 'selected' : ''}>Select Option</option>
                                     <option value="Jaiza" ${status==='Jaiza'?'selected':''}>Jaiza Form</option>
@@ -522,14 +577,13 @@
                                     <option value="Nahi Hua" ${status==='Nahi Hua'?'selected':''}>Nahi Hua</option>
                                 </select>
                                 
-                                <!-- STATS BOX -->
                                 <div class="w-full sm:w-auto min-w-[130px]">
-                                    ${(isSubmitted && status === 'Jaiza') ? `
+                                    ${(hasData && status === 'Jaiza') ? `
                                         <div class="border border-teal-200 bg-teal-50 px-2 py-1 rounded text-center leading-tight shadow-inner">
-                                            <span class="text-[10px] text-teal-600 font-bold urdu-font block">حاضر: ${totalHazir} | ${avgPercent}%</span>
+                                            <span class="text-[10px] text-teal-600 font-bold urdu-font block">حاضر: ${totalHazir} \vert{}${avgPercent}%</span>
                                             <span class="text-xs font-black text-teal-800 urdu-font block">${kaifiyat}</span>
                                         </div>
-                                    ` : (isSubmitted && status !== 'Jaiza') ? `
+                                    ` : (hasData && status !== 'Jaiza') ? `
                                         <div class="border border-blue-200 bg-blue-50 px-3 py-2 rounded text-center text-blue-700 font-bold text-sm urdu-font shadow-inner">
                                             ${status}
                                         </div>
@@ -539,29 +593,18 @@
                                         </div>
                                     `}
                                 </div>
-                                
-                                <!-- 🔒 ACTION BUTTON / LOCKED BADGE -->
-                                ${isSubmitted ? `
-                                    <span class="bg-gray-200 text-gray-500 border border-gray-300 px-5 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto text-center urdu-font cursor-not-allowed">
-                                        <i class="fas fa-lock"></i> لاک شدہ
-                                    </span>
-                                ` : `
-                                    <button data-jamia="${name}" class="action-btn bg-[#0f766e] hover:bg-teal-700 text-white px-5 py-2 rounded-md text-sm font-semibold transition whitespace-nowrap w-full sm:w-auto shadow-sm flex items-center justify-center gap-2">
-                                        آگے بڑھیں
-                                    </button>
-                                `}
+                                ${actionBtnsHTML}
                             </div>
                         </div>
 
-                        <!-- WAZAHAT (REASON) BOX -->
                         <div id="wazahat-container-${name}" class="${(status==='Visit' || status==='Nahi Hua') ? 'block' : 'hidden'} mt-4 w-full border-t border-red-100 pt-3">
                             <label class="block text-[11px] font-bold text-red-600 mb-1 urdu-font">رپورٹ نہ ہونے کی وجہ :</label>
-                            <input type="text" id="wazahat-${name}" class="w-full p-2.5 border border-red-300 rounded-lg text-sm outline-none bg-red-50 font-semibold text-red-800 urdu-font ${isSubmitted ? 'opacity-80 cursor-not-allowed' : 'focus:ring-2 focus:ring-red-500'}" placeholder="یہاں وضاحت لکھیں..." value="${reasonText}" ${disableInputs}>
+                            <input type="text" id="wazahat-${name}" class="w-full p-2.5 border border-red-300 rounded-lg text-sm outline-none bg-red-50 font-semibold text-red-800 urdu-font ${isLocked ? 'opacity-80 cursor-not-allowed' : 'focus:ring-2 focus:ring-red-500'}" placeholder="یہاں وضاحت لکھیں..." value="${reasonText}" ${disableInputs}>
                         </div>
                     </div>
                 `;
 
-                if (isSubmitted) {
+                if (isLocked) {
                     submittedHTML += cardHTML;
                 } else {
                     pendingHTML += cardHTML;
@@ -644,6 +687,15 @@
                         
                         const url = `shoba-qirat-jaiza-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthNameText)}&exactDate=${encodeURIComponent(dateSelect)}`;
                         window.location.href = url;
+                    }
+                });
+            });
+           // NAYA: Final Submit Button Click Event (Yeh bilkul alag rahega)
+            container.querySelectorAll('.final-lock-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const jamiaName = e.currentTarget.getAttribute('data-jamia');
+                    if(confirm(`کیا آپ واقعی ${jamiaName} کا فارم فائنل سبمٹ کرنا چاہتے ہیں؟ اس کے بعد کوئی تبدیلی نہیں کی جا سکے گی۔`)) {
+                        await finalSubmitJamia(jamiaName);
                     }
                 });
             });
