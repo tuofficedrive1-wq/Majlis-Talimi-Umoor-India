@@ -2877,9 +2877,6 @@ const renderReportSummary = (reports) => {
     let dataFound = false;
 
     // ----------------------------------------------------
-    // 📊 JAIZA SECTION
-    // ----------------------------------------------------
-    // ----------------------------------------------------
         // 📊 JAIZA SECTION
         // ----------------------------------------------------
         if (selectedSection === 'all' || selectedSection === 'jaiza') {
@@ -2888,38 +2885,63 @@ const renderReportSummary = (reports) => {
             let totalDone = 0, totalVisit = 0, totalNahiHua = 0, totalPending = 0;
 
             filteredUsers.forEach(user => {
-                const userReport = reports.find(r => r.userId === user.id);
-                const rJaizaData = userReport?.jaizaReport?.data || [];
-
-                // ✨ NAYA LOGIC: Assigned Jamiaat aur Report ki hui Jamiaat dono ko mila lein (Taake Inspectors skip na hon)
-                let combinedJamias = new Set();
-
-                // 1. User ki assigned jamiaat list se
-                (user.jamiaatList || []).forEach(jamia => {
-                    const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
-                    if (jName) combinedJamias.add(jName.trim());
+                const userJamias = user.jamiaatList || [];
+                
+                // ✨ NAYA LOGIC 1: User ki saari reports merge karein (Agar duplicate blank report ban gayi ho)
+                const userReportsArr = reports.filter(r => r.userId === user.id);
+                let rJaizaData = [];
+                let primaryReportId = null;
+                
+                userReportsArr.forEach(ur => {
+                    if (!primaryReportId) primaryReportId = ur.id;
+                    if (ur.jaizaReport && Array.isArray(ur.jaizaReport.data)) {
+                        rJaizaData.push(...ur.jaizaReport.data);
+                    }
                 });
 
-                // 2. Jo actual report aayi hai wahan se (Inspectors ke liye)
-                rJaizaData.forEach(item => {
-                    const jName = item.name || item.jamiaName;
-                    if (jName) combinedJamias.add(jName.trim());
-                });
-
-                combinedJamias.forEach((jamiaName) => {
+                userJamias.forEach((jamia) => {
                     totalJamiaatScope++;
-                    const cleanJ = jamiaName.toLowerCase();
+                    const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
+                    const jId = (typeof jamia === 'object' ? jamia.id : null);
+                    // Extra spaces khatam karne ke liye
+                    const cleanJ = jName.toLowerCase().replace(/\s+/g, ' '); 
 
-                    const entryIndex = rJaizaData.findIndex(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
+                    // ✨ NAYA LOGIC 2: Report mein Name aur ID dono se match karein
+                    const entryIndex = rJaizaData.findIndex(j => {
+                        const rName = (j.name || j.jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                        const rId = (j.jamiaId || '').trim();
+                        return rName === cleanJ || (jId && rId && rId === jId);
+                    });
                     
-                    if (userReport && entryIndex !== -1) {
-                        const item = rJaizaData[entryIndex];
-                        const perc = parseFloat(item.percentage) || 0;
-                        const typeLow = (item.type || '').toLowerCase();
-                        const statLow = (item.status || '').toLowerCase();
+                    let reportEntry = entryIndex !== -1 ? rJaizaData[entryIndex] : null;
+
+                    // ✨ NAYA LOGIC 3: Agar report missing hai toh Jaiza Forms collection me direct check karein (Fallback)
+                    if (!reportEntry && typeof fetchedJaizaForms !== 'undefined') {
+                        const directForm = fetchedJaizaForms.find(f => {
+                            const fName = (f.jamiaName || f.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                            const fId = (f.jamiaId || '').trim();
+                            return f.createdBy === user.id && (fName === cleanJ || (jId && fId === jId));
+                        });
+                        
+                        if (directForm) {
+                            reportEntry = {
+                                name: jName,
+                                percentage: directForm.percentage || directForm.classPercentage || 0,
+                                type: 'Jaiza Form',
+                                status: 'Done',
+                                date: directForm.date || directForm.timestamp || '-',
+                                wajah: 'Direct form found'
+                            };
+                        }
+                    }
+                    
+                    if (reportEntry) {
+                        const perc = parseFloat(reportEntry.percentage) || 0;
+                        const typeLow = (reportEntry.type || '').toLowerCase();
+                        const statLow = (reportEntry.status || '').toLowerCase();
 
                         let calculatedStatus = "Visit Only";
-                        if (perc > 0 || statLow === 'done') {
+                        if (perc > 0 || statLow === 'done' || typeLow === 'jaiza form') {
                             calculatedStatus = "Done";
                             totalDone++;
                         } else if (typeLow.includes('nahi hua') || statLow.includes('nahi hua')) {
@@ -2930,18 +2952,18 @@ const renderReportSummary = (reports) => {
                         }
 
                         jaizaEntries.push({
-                            ...item,
+                            ...reportEntry,
                             userName: user.name || user.email,
-                            jamiaNameFormatted: jamiaName, // Updated
+                            jamiaNameFormatted: jName,
                             calculatedStatus: calculatedStatus,
-                            reportId: userReport.id,
-                            index: entryIndex
+                            reportId: primaryReportId,
+                            index: entryIndex !== -1 ? entryIndex : 0
                         });
                     } else {
                         totalPending++;
                         jaizaEntries.push({
-                            name: jamiaName,
-                            jamiaNameFormatted: jamiaName, // Updated
+                            name: jName,
+                            jamiaNameFormatted: jName,
                             userName: user.name || user.email,
                             date: '-',
                             type: 'Report Missing',
@@ -2955,11 +2977,10 @@ const renderReportSummary = (reports) => {
                 });
             });
 
-            // Yahan se aage ka aapka original if (onlyPending) wala code shuru hoga...
-
-        if (onlyPending) {
-            jaizaEntries = jaizaEntries.filter(j => j.calculatedStatus === "Pending");
-        }
+            if (onlyPending) {
+                jaizaEntries = jaizaEntries.filter(j => j.calculatedStatus === "Pending");
+            }
+// Yahan se aage HTML print karne wala code waise hi rahega...
 
         if (jaizaEntries.length > 0 || !onlyPending) {
             let jaizaHtml = `
@@ -3053,29 +3074,33 @@ const renderReportSummary = (reports) => {
             let totalTestDone = 0, totalTestNahiHua = 0, totalTestPending = 0;
 
             filteredUsers.forEach(user => {
-                const userReport = reports.find(r => r.userId === user.id);
-                const rTestData = userReport?.monthlyTest?.data || [];
-
-                // ✨ NAYA LOGIC: Test ke liye bhi combined Jamiaat set banayen
-                let combinedJamias = new Set();
+                const userJamias = user.jamiaatList || [];
                 
-                (user.jamiaatList || []).forEach(jamia => {
-                    const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
-                    if (jName) combinedJamias.add(jName.trim());
+                // ✨ NAYA LOGIC: Saari Test Reports merge karein
+                const userReportsArr = reports.filter(r => r.userId === user.id);
+                let rTestData = [];
+                let primaryReportId = null;
+
+                userReportsArr.forEach(ur => {
+                    if (!primaryReportId) primaryReportId = ur.id;
+                    if (ur.monthlyTest && Array.isArray(ur.monthlyTest.data)) {
+                        rTestData.push(...ur.monthlyTest.data);
+                    }
                 });
 
-                rTestData.forEach(item => {
-                    const jName = item.name || item.jamiaName;
-                    if (jName) combinedJamias.add(jName.trim());
-                });
-
-                combinedJamias.forEach((jamiaName) => {
+                userJamias.forEach((jamia) => {
                     totalTestJamiaat++;
-                    const cleanJ = jamiaName.toLowerCase();
+                    const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
+                    const jId = (typeof jamia === 'object' ? jamia.id : null);
+                    const cleanJ = jName.toLowerCase().replace(/\s+/g, ' ');
 
-                    const entryIndex = rTestData.findIndex(t => (t.name || t.jamiaName || '').trim().toLowerCase() === cleanJ);
+                    const entryIndex = rTestData.findIndex(t => {
+                        const tName = (t.name || t.jamiaName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                        const tId = (t.jamiaId || '').trim();
+                        return tName === cleanJ || (jId && tId && tId === jId);
+                    });
 
-                    if (userReport && entryIndex !== -1) {
+                    if (entryIndex !== -1) {
                         const item = rTestData[entryIndex];
                         const statLow = (item.status || '').toLowerCase();
                         let calculatedStatus = "Done";
@@ -3090,16 +3115,16 @@ const renderReportSummary = (reports) => {
                         testEntries.push({
                             ...item,
                             userName: user.name || user.email,
-                            jamiaNameFormatted: jamiaName, // Updated
+                            jamiaNameFormatted: jName,
                             calculatedStatus: calculatedStatus,
-                            reportId: userReport.id,
+                            reportId: primaryReportId,
                             index: entryIndex
                         });
                     } else {
                         totalTestPending++;
                         testEntries.push({
-                            name: jamiaName,
-                            jamiaNameFormatted: jamiaName, // Updated
+                            name: jName,
+                            jamiaNameFormatted: jName,
                             userName: user.name || user.email,
                             status: 'Report Missing',
                             percentage: 0,
@@ -3112,11 +3137,10 @@ const renderReportSummary = (reports) => {
                 });
             });
 
-            // Yahan se aage ka if (onlyPending) wala code waise hi rahega...
-
-        if (onlyPending) {
-            testEntries = testEntries.filter(t => t.calculatedStatus === "Pending");
-        }
+            if (onlyPending) {
+                testEntries = testEntries.filter(t => t.calculatedStatus === "Pending");
+            }
+// Yahan se aage HTML print karne wala code waise hi rahega...
 
         if (testEntries.length > 0 || !onlyPending) {
             let testHtml = `
