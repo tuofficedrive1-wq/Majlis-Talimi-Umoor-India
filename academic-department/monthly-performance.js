@@ -639,11 +639,11 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
     try {
        const [calSnap, userSnap] = await Promise.all([
-    getDoc(doc(db, "settings", "academic_calendar")),
-    getDoc(doc(db, "users", currentUser.uid))
-]);
-
-        const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
+            getDoc(doc(db, "settings", "academic_calendar")),
+            getDoc(doc(db, "users", currentUser.uid))
+        ]);
+        
+        // monthlyTargets yahan se hata diya gaya hai, ab yeh niche loop me har Jamia ke liye alag fetch hoga
         
         const jamiaSelectElem = document.getElementById('report-jamia');
         const selectedJamia = jamiaSelectElem ? jamiaSelectElem.value : "all";
@@ -672,14 +672,14 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         let html = "";
 
-        for (let i = 0; i < filteredJamiaat.length; i++) {
+       for (let i = 0; i < filteredJamiaat.length; i++) {
             const jamiaName = filteredJamiaat[i];
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) continue;
-            
-            // YAHAN NAYA LINE ADD KAREIN: Har jamia ke liye uska specific target fetch hoga
+
+            // YAHAN NAYI LINE AAYEGI: Har Jamia ka apna specific target load hoga
             const monthlyTargets = await fetchTargetsForJamia(db, jamiaName);
-            
+
             const safeId = jamiaName.replace(/\s+/g, '');
             // ... (iske niche ka code same rahega)
             const publicPerfSnap = publicSnaps[i];
