@@ -2076,39 +2076,66 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
 async function fetchTargetsForJamia(db, jamiaName) {
     const cleanName = jamiaName.trim().toUpperCase().replace(/\s+/g, '_');
     
-    // 1. Pehle Jamia specific target check karein
-    let snap = await getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`));
-    if (snap.exists()) return snap.data().targets;
+    // Base object jisme hum sab merge karenge
+    let mergedTargets = {};
 
-    // 2. Jamia ka Region aur State pata karne ke liye master data check karein
+    // Helper function deep merge ke liye (taake mahine-war target mix ho sake)
+    const mergeIntoBase = (overrideTargets) => {
+        for (const subKey in overrideTargets) {
+            if (!mergedTargets[subKey]) mergedTargets[subKey] = {};
+            for (const month in overrideTargets[subKey]) {
+                // Agar target 0 se bada hai ya set kiya gaya hai, tabhi override karein
+                if (overrideTargets[subKey][month] !== undefined) {
+                    mergedTargets[subKey][month] = overrideTargets[subKey][month];
+                }
+            }
+        }
+    };
+
+    // 1. Sabse pehle Global (Default) target layein (Yeh hamara base banega)
+    let globalSnap = await getDoc(doc(db, "page_targets", "global_targets"));
+    if (globalSnap.exists()) {
+        mergeIntoBase(globalSnap.data().targets || {});
+    } else {
+        // Purana fallback
+        let oldGlobalSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+        if (oldGlobalSnap.exists()) {
+            mergeIntoBase(oldGlobalSnap.data().targets || {});
+        }
+    }
+
+    // 2. Jamia ka Region aur State pata karein
     const masterQuery = query(collection(db, "jamiaat_master"), where("jamiaName", "==", jamiaName.trim().toUpperCase()));
     const masterDocs = await getDocs(masterQuery);
     
     if (!masterDocs.empty) {
         const masterData = masterDocs.docs[0].data();
         
-        // 3. Region specific target check karein
-        if (masterData.region) {
-            const cleanRegion = masterData.region.trim().toUpperCase().replace(/\s+/g, '_');
-            snap = await getDoc(doc(db, "page_targets", `region_${cleanRegion}_targets`));
-            if (snap.exists()) return snap.data().targets;
-        }
-        
-        // 4. State specific target check karein
+        // 3. State specific target check karein aur Global ke upar overwrite karein
         if (masterData.state) {
             const cleanState = masterData.state.trim().toUpperCase().replace(/\s+/g, '_');
-            snap = await getDoc(doc(db, "page_targets", `state_${cleanState}_targets`));
-            if (snap.exists()) return snap.data().targets;
+            let stateSnap = await getDoc(doc(db, "page_targets", `state_${cleanState}_targets`));
+            if (stateSnap.exists()) {
+                mergeIntoBase(stateSnap.data().targets || {});
+            }
+        }
+        
+        // 4. Region specific target check karein aur usko overwrite karein
+        if (masterData.region) {
+            const cleanRegion = masterData.region.trim().toUpperCase().replace(/\s+/g, '_');
+            let regionSnap = await getDoc(doc(db, "page_targets", `region_${cleanRegion}_targets`));
+            if (regionSnap.exists()) {
+                mergeIntoBase(regionSnap.data().targets || {});
+            }
         }
     }
 
-    // 5. Agar upar kuch na mile, to Global (Default) target return karein
-    snap = await getDoc(doc(db, "page_targets", "global_targets"));
-    if (snap.exists()) return snap.data().targets;
-    
-    // 6. Purana fallback (agar old settings me data ho)
-    snap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-    if (snap.exists()) return snap.data().targets;
+    // 5. Aakhir me Jamia specific target check karein aur sabse upar overwrite karein
+    let jamiaSnap = await getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`));
+    if (jamiaSnap.exists()) {
+        mergeIntoBase(jamiaSnap.data().targets || {});
+    }
 
-    return {};
+    // Ab merged target wapas bhej dein jisme global + specific sab mixed hai
+    return mergedTargets;
 }
