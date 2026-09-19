@@ -528,6 +528,7 @@
             <option value="all">All Roles</option>
             <option value="standard">Standard (Zimmedar)</option>
             <option value="inspector">Inspectors</option>
+            <option value="shoba_qirat">Shoba Qirat</option> <!-- Ye line add karein -->
             <option value="admin_group">Admins</option>
         </select>
         
@@ -2878,65 +2879,83 @@ const renderReportSummary = (reports) => {
     // ----------------------------------------------------
     // 📊 JAIZA SECTION
     // ----------------------------------------------------
-    if (selectedSection === 'all' || selectedSection === 'jaiza') {
-        let jaizaEntries = [];
-        let totalJamiaatScope = 0;
-        let totalDone = 0, totalVisit = 0, totalNahiHua = 0, totalPending = 0;
+    // ----------------------------------------------------
+        // 📊 JAIZA SECTION
+        // ----------------------------------------------------
+        if (selectedSection === 'all' || selectedSection === 'jaiza') {
+            let jaizaEntries = [];
+            let totalJamiaatScope = 0;
+            let totalDone = 0, totalVisit = 0, totalNahiHua = 0, totalPending = 0;
 
-        filteredUsers.forEach(user => {
-            const userJamias = user.jamiaatList || [];
-            const userReport = reports.find(r => r.userId === user.id);
-            const rJaizaData = userReport?.jaizaReport?.data || [];
+            filteredUsers.forEach(user => {
+                const userReport = reports.find(r => r.userId === user.id);
+                const rJaizaData = userReport?.jaizaReport?.data || [];
 
-            userJamias.forEach((jamia) => {
-                totalJamiaatScope++;
-                const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
-                const cleanJ = jName.toLowerCase();
+                // ✨ NAYA LOGIC: Assigned Jamiaat aur Report ki hui Jamiaat dono ko mila lein (Taake Inspectors skip na hon)
+                let combinedJamias = new Set();
 
-                const entryIndex = rJaizaData.findIndex(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
-                
-                if (userReport && entryIndex !== -1) {
-                    const item = rJaizaData[entryIndex];
-                    const perc = parseFloat(item.percentage) || 0;
-                    const typeLow = (item.type || '').toLowerCase();
-                    const statLow = (item.status || '').toLowerCase();
+                // 1. User ki assigned jamiaat list se
+                (user.jamiaatList || []).forEach(jamia => {
+                    const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
+                    if (jName) combinedJamias.add(jName.trim());
+                });
 
-                    let calculatedStatus = "Visit Only";
-                    if (perc > 0 || statLow === 'done') {
-                        calculatedStatus = "Done";
-                        totalDone++;
-                    } else if (typeLow.includes('nahi hua') || statLow.includes('nahi hua')) {
-                        calculatedStatus = "Nahi Hua";
-                        totalNahiHua++;
+                // 2. Jo actual report aayi hai wahan se (Inspectors ke liye)
+                rJaizaData.forEach(item => {
+                    const jName = item.name || item.jamiaName;
+                    if (jName) combinedJamias.add(jName.trim());
+                });
+
+                combinedJamias.forEach((jamiaName) => {
+                    totalJamiaatScope++;
+                    const cleanJ = jamiaName.toLowerCase();
+
+                    const entryIndex = rJaizaData.findIndex(j => (j.name || j.jamiaName || '').trim().toLowerCase() === cleanJ);
+                    
+                    if (userReport && entryIndex !== -1) {
+                        const item = rJaizaData[entryIndex];
+                        const perc = parseFloat(item.percentage) || 0;
+                        const typeLow = (item.type || '').toLowerCase();
+                        const statLow = (item.status || '').toLowerCase();
+
+                        let calculatedStatus = "Visit Only";
+                        if (perc > 0 || statLow === 'done') {
+                            calculatedStatus = "Done";
+                            totalDone++;
+                        } else if (typeLow.includes('nahi hua') || statLow.includes('nahi hua')) {
+                            calculatedStatus = "Nahi Hua";
+                            totalNahiHua++;
+                        } else {
+                            totalVisit++;
+                        }
+
+                        jaizaEntries.push({
+                            ...item,
+                            userName: user.name || user.email,
+                            jamiaNameFormatted: jamiaName, // Updated
+                            calculatedStatus: calculatedStatus,
+                            reportId: userReport.id,
+                            index: entryIndex
+                        });
                     } else {
-                        totalVisit++;
+                        totalPending++;
+                        jaizaEntries.push({
+                            name: jamiaName,
+                            jamiaNameFormatted: jamiaName, // Updated
+                            userName: user.name || user.email,
+                            date: '-',
+                            type: 'Report Missing',
+                            wajah: 'Zimmedar ne report submit nahi ki',
+                            percentage: 0,
+                            calculatedStatus: "Pending",
+                            reportId: null,
+                            index: -1
+                        });
                     }
-
-                    jaizaEntries.push({
-                        ...item,
-                        userName: user.name || user.email,
-                        jamiaNameFormatted: jName,
-                        calculatedStatus: calculatedStatus,
-                        reportId: userReport.id,
-                        index: entryIndex
-                    });
-                } else {
-                    totalPending++;
-                    jaizaEntries.push({
-                        name: jName,
-                        jamiaNameFormatted: jName,
-                        userName: user.name || user.email,
-                        date: '-',
-                        type: 'Report Missing',
-                        wajah: 'Zimmedar ne report submit nahi ki',
-                        percentage: 0,
-                        calculatedStatus: "Pending",
-                        reportId: null,
-                        index: -1
-                    });
-                }
+                });
             });
-        });
+
+            // Yahan se aage ka aapka original if (onlyPending) wala code shuru hoga...
 
         if (onlyPending) {
             jaizaEntries = jaizaEntries.filter(j => j.calculatedStatus === "Pending");
@@ -3026,61 +3045,74 @@ const renderReportSummary = (reports) => {
     } else { jaizaSection.style.display = 'none'; }
 
     // ----------------------------------------------------
-    // 📊 TEST SECTION
-    // ----------------------------------------------------
-    if (selectedSection === 'all' || selectedSection === 'test') {
-        let testEntries = [];
-        let totalTestJamiaat = 0;
-        let totalTestDone = 0, totalTestNahiHua = 0, totalTestPending = 0;
+        // 📊 TEST SECTION
+        // ----------------------------------------------------
+        if (selectedSection === 'all' || selectedSection === 'test') {
+            let testEntries = [];
+            let totalTestJamiaat = 0;
+            let totalTestDone = 0, totalTestNahiHua = 0, totalTestPending = 0;
 
-        filteredUsers.forEach(user => {
-            const userJamias = user.jamiaatList || [];
-            const userReport = reports.find(r => r.userId === user.id);
-            const rTestData = userReport?.monthlyTest?.data || [];
+            filteredUsers.forEach(user => {
+                const userReport = reports.find(r => r.userId === user.id);
+                const rTestData = userReport?.monthlyTest?.data || [];
 
-            userJamias.forEach((jamia) => {
-                totalTestJamiaat++;
-                const jName = (typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia).trim();
-                const cleanJ = jName.toLowerCase();
+                // ✨ NAYA LOGIC: Test ke liye bhi combined Jamiaat set banayen
+                let combinedJamias = new Set();
+                
+                (user.jamiaatList || []).forEach(jamia => {
+                    const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
+                    if (jName) combinedJamias.add(jName.trim());
+                });
 
-                const entryIndex = rTestData.findIndex(t => (t.name || t.jamiaName || '').trim().toLowerCase() === cleanJ);
+                rTestData.forEach(item => {
+                    const jName = item.name || item.jamiaName;
+                    if (jName) combinedJamias.add(jName.trim());
+                });
 
-                if (userReport && entryIndex !== -1) {
-                    const item = rTestData[entryIndex];
-                    const statLow = (item.status || '').toLowerCase();
-                    let calculatedStatus = "Done";
+                combinedJamias.forEach((jamiaName) => {
+                    totalTestJamiaat++;
+                    const cleanJ = jamiaName.toLowerCase();
 
-                    if (statLow.includes('pending') || statLow.includes('nahi hua') || statLow.includes('nahi ban')) {
-                        calculatedStatus = "Nahi Hua";
-                        totalTestNahiHua++;
+                    const entryIndex = rTestData.findIndex(t => (t.name || t.jamiaName || '').trim().toLowerCase() === cleanJ);
+
+                    if (userReport && entryIndex !== -1) {
+                        const item = rTestData[entryIndex];
+                        const statLow = (item.status || '').toLowerCase();
+                        let calculatedStatus = "Done";
+
+                        if (statLow.includes('pending') || statLow.includes('nahi hua') || statLow.includes('nahi ban')) {
+                            calculatedStatus = "Nahi Hua";
+                            totalTestNahiHua++;
+                        } else {
+                            totalTestDone++;
+                        }
+
+                        testEntries.push({
+                            ...item,
+                            userName: user.name || user.email,
+                            jamiaNameFormatted: jamiaName, // Updated
+                            calculatedStatus: calculatedStatus,
+                            reportId: userReport.id,
+                            index: entryIndex
+                        });
                     } else {
-                        totalTestDone++;
+                        totalTestPending++;
+                        testEntries.push({
+                            name: jamiaName,
+                            jamiaNameFormatted: jamiaName, // Updated
+                            userName: user.name || user.email,
+                            status: 'Report Missing',
+                            percentage: 0,
+                            wajah: 'Zimmedar ne report submit nahi ki',
+                            calculatedStatus: "Pending",
+                            reportId: null,
+                            index: -1
+                        });
                     }
-
-                    testEntries.push({
-                        ...item,
-                        userName: user.name || user.email,
-                        jamiaNameFormatted: jName,
-                        calculatedStatus: calculatedStatus,
-                        reportId: userReport.id,
-                        index: entryIndex
-                    });
-                } else {
-                    totalTestPending++;
-                    testEntries.push({
-                        name: jName,
-                        jamiaNameFormatted: jName,
-                        userName: user.name || user.email,
-                        status: 'Report Missing',
-                        percentage: 0,
-                        wajah: 'Zimmedar ne report submit nahi ki',
-                        calculatedStatus: "Pending",
-                        reportId: null,
-                        index: -1
-                    });
-                }
+                });
             });
-        });
+
+            // Yahan se aage ka if (onlyPending) wala code waise hi rahega...
 
         if (onlyPending) {
             testEntries = testEntries.filter(t => t.calculatedStatus === "Pending");
