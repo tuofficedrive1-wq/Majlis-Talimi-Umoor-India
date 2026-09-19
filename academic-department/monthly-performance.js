@@ -2079,20 +2079,27 @@ async function fetchTargetsForJamia(db, jamiaName) {
     // Base object jisme hum sab merge karenge
     let mergedTargets = {};
 
-    // Helper function deep merge ke liye (taake mahine-war target mix ho sake)
+    // NAYA MERGE LOGIC: Sirf > 0 wali values ko override karenge
     const mergeIntoBase = (overrideTargets) => {
         for (const subKey in overrideTargets) {
             if (!mergedTargets[subKey]) mergedTargets[subKey] = {};
             for (const month in overrideTargets[subKey]) {
-                // Agar target 0 se bada hai ya set kiya gaya hai, tabhi override karein
-                if (overrideTargets[subKey][month] !== undefined) {
-                    mergedTargets[subKey][month] = overrideTargets[subKey][month];
+                const val = overrideTargets[subKey][month];
+                
+                // Agar target 0 se bada hai, tabhi overwrite karein (Yani State/Jamia me specially set kiya gaya hai)
+                if (val > 0) {
+                    mergedTargets[subKey][month] = val;
+                } 
+                // Agar 0 hai, aur Global me bhi pehle se kuch nahi tha, toh 0 set karein
+                else if (mergedTargets[subKey][month] === undefined) {
+                    mergedTargets[subKey][month] = 0;
                 }
+                // Agar 0 hai aur Global me pehle se value (jaise 29) maujood hai, toh Global wali hi bachegi!
             }
         }
     };
 
-    // 1. Sabse pehle Global (Default) target layein (Yeh hamara base banega)
+    // 1. Sabse pehle Global (Default) target layein
     let globalSnap = await getDoc(doc(db, "page_targets", "global_targets"));
     if (globalSnap.exists()) {
         mergeIntoBase(globalSnap.data().targets || {});
@@ -2111,7 +2118,7 @@ async function fetchTargetsForJamia(db, jamiaName) {
     if (!masterDocs.empty) {
         const masterData = masterDocs.docs[0].data();
         
-        // 3. State specific target check karein aur Global ke upar overwrite karein
+        // 3. State specific target check karein
         if (masterData.state) {
             const cleanState = masterData.state.trim().toUpperCase().replace(/\s+/g, '_');
             let stateSnap = await getDoc(doc(db, "page_targets", `state_${cleanState}_targets`));
@@ -2120,7 +2127,7 @@ async function fetchTargetsForJamia(db, jamiaName) {
             }
         }
         
-        // 4. Region specific target check karein aur usko overwrite karein
+        // 4. Region specific target check karein
         if (masterData.region) {
             const cleanRegion = masterData.region.trim().toUpperCase().replace(/\s+/g, '_');
             let regionSnap = await getDoc(doc(db, "page_targets", `region_${cleanRegion}_targets`));
@@ -2130,12 +2137,11 @@ async function fetchTargetsForJamia(db, jamiaName) {
         }
     }
 
-    // 5. Aakhir me Jamia specific target check karein aur sabse upar overwrite karein
+    // 5. Aakhir me Jamia specific target check karein
     let jamiaSnap = await getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`));
     if (jamiaSnap.exists()) {
         mergeIntoBase(jamiaSnap.data().targets || {});
     }
 
-    // Ab merged target wapas bhej dein jisme global + specific sab mixed hai
     return mergedTargets;
 }
