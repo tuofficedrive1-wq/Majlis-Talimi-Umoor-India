@@ -638,11 +638,10 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         </div>`;
 
     try {
-        const [targetSnap, calSnap, userSnap] = await Promise.all([
-            getDoc(doc(db, "settings", "monthly_page_targets")),
-            getDoc(doc(db, "settings", "academic_calendar")),
-            getDoc(doc(db, "users", currentUser.uid))
-        ]);
+       const [calSnap, userSnap] = await Promise.all([
+    getDoc(doc(db, "settings", "academic_calendar")),
+    getDoc(doc(db, "users", currentUser.uid))
+]);
 
         const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
         
@@ -677,8 +676,12 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             const jamiaName = filteredJamiaat[i];
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) continue;
-
+            
+            // YAHAN NAYA LINE ADD KAREIN: Har jamia ke liye uska specific target fetch hoga
+            const monthlyTargets = await fetchTargetsForJamia(db, jamiaName);
+            
             const safeId = jamiaName.replace(/\s+/g, '');
+            // ... (iske niche ka code same rahega)
             const publicPerfSnap = publicSnaps[i];
             let publicMonthData = null;
             if (publicPerfSnap.exists()) {
@@ -1656,8 +1659,11 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             }
         }
 
-        const targetSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
-        const monthlyTargets = targetSnap.exists() ? (targetSnap.data().targets || {}) : {};
+        // Har assigned jamia ka target pehle se nikal kar rakh lein
+            const jamiaTargetsMap = {};
+            for (const jName of assignedJamiaat) {
+                jamiaTargetsMap[jName] = await fetchTargetsForJamia(db, jName);
+            }
 
         const monthSelectElem = document.getElementById('summary-month-select');
         const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(currentSelectedMonth));
@@ -1682,9 +1688,13 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         });
         await Promise.all(publicDataPromises);
 
-        const getTargetValue = (period, monthKey) => {
+       const getTargetValue = (period, monthKey, jamiaName) => {
             let target = 0;
+            const monthlyTargets = jamiaTargetsMap[jamiaName] || {}; // Yahan map se target milega
+            
             const exactSubId = `${(period.className || "").trim()}_${(period.bookName || "").trim()}`.replace(/\s+/g, '_');
+            
+            // ... baqi ka function code same rahega ...
             if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][monthKey] !== undefined) {
                 target = parseInt(monthlyTargets[exactSubId][monthKey]) || 0;
             } else if (monthlyTargets) {
@@ -1743,7 +1753,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
 
                 jamia.teachers.forEach(teacher => {
                     (teacher.periods || []).filter(p => p.semester == semester).forEach(p => {
-                        const target = getTargetValue(p, targetMonthKey);
+                        const target = getTargetValue(p, targetMonthKey, jamia.jamiaName);
                         const achievedValue = getAchievedValue(p, targetMonthKey, jamia.jamiaName, teacher.name);
                         
                         const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
@@ -1901,7 +1911,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                     let monthDataHtml = ``;
 
                     semMonths.forEach(m => {
-                        const target = getTargetValue(period, m);
+                        const target = getTargetValue(period, m, jamiaName);
                         const achievedValue = getAchievedValue(period, m, jamiaName, teacher.name);
 
                         cumulativeTaught += achievedValue;
@@ -2062,3 +2072,43 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         console.error("Summary Render Error:", err);
     }
 };
+
+async function fetchTargetsForJamia(db, jamiaName) {
+    const cleanName = jamiaName.trim().toUpperCase().replace(/\s+/g, '_');
+    
+    // 1. Pehle Jamia specific target check karein
+    let snap = await getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`));
+    if (snap.exists()) return snap.data().targets;
+
+    // 2. Jamia ka Region aur State pata karne ke liye master data check karein
+    const masterQuery = query(collection(db, "jamiaat_master"), where("jamiaName", "==", jamiaName.trim().toUpperCase()));
+    const masterDocs = await getDocs(masterQuery);
+    
+    if (!masterDocs.empty) {
+        const masterData = masterDocs.docs[0].data();
+        
+        // 3. Region specific target check karein
+        if (masterData.region) {
+            const cleanRegion = masterData.region.trim().toUpperCase().replace(/\s+/g, '_');
+            snap = await getDoc(doc(db, "page_targets", `region_${cleanRegion}_targets`));
+            if (snap.exists()) return snap.data().targets;
+        }
+        
+        // 4. State specific target check karein
+        if (masterData.state) {
+            const cleanState = masterData.state.trim().toUpperCase().replace(/\s+/g, '_');
+            snap = await getDoc(doc(db, "page_targets", `state_${cleanState}_targets`));
+            if (snap.exists()) return snap.data().targets;
+        }
+    }
+
+    // 5. Agar upar kuch na mile, to Global (Default) target return karein
+    snap = await getDoc(doc(db, "page_targets", "global_targets"));
+    if (snap.exists()) return snap.data().targets;
+    
+    // 6. Purana fallback (agar old settings me data ho)
+    snap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+    if (snap.exists()) return snap.data().targets;
+
+    return {};
+}
