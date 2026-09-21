@@ -103,18 +103,30 @@ async function loadExcelData() {
   } catch(e) {}
 }
 
-// 🔹 3. SMART CLASS MATCHING LOGIC
+// 🔹 3. SMART CLASS MATCHING LOGIC (STRICTLY FROM ADMIN CONFIG)
 function cleanUrdu(str) {
   if(!str) return "";
   return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 }
 
+function checkClassMatch(class1, class2) {
+  let c1 = cleanUrdu(class1); let c2 = cleanUrdu(class2);
+  if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
+  if (window.academicConfigData && window.academicConfigData.classes) {
+      for (let c of window.academicConfigData.classes) {
+          let urdu = cleanUrdu(c.classNameUrdu); let eng = cleanUrdu(c.classNameEng);
+          let match1 = (c1 === urdu || c1 === eng || (urdu && c1.includes(urdu)) || (eng && c1.includes(eng)));
+          let match2 = (c2 === urdu || c2 === eng || (urdu && c2.includes(urdu)) || (eng && c2.includes(eng)));
+          if (match1 && match2) return true;
+      }
+  }
+  return false;
+}
+
 function findExactExcelClass(karkClass) {
   if(!karkClass) return null;
-  let c1 = cleanUrdu(karkClass);
   for (let exClass in window.excelSubjectsData) {
-      let c2 = cleanUrdu(exClass);
-      if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) {
+      if (checkClassMatch(karkClass, exClass)) {
           return exClass; // Excel ka exact name return karega
       }
   }
@@ -198,16 +210,20 @@ window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; 
   let sVal = p.subject || '';
 
-  // 🔹 Class Dropdown (STRICTLY FROM EXCEL) 🔹
+  // 🔹 Class Dropdown (Sirf Excel ki classes) 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
+  let classFound = false;
   for(let exClass in window.excelSubjectsData) {
       let selected = (exClass === cVal) ? 'selected' : '';
+      if (exClass === cVal) classFound = true;
       classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
   }
+  // Agar Setup me class thi, par Excel me match nahi hui to without warning dikhayein
+  if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
 
-  // 🔹 Subject Dropdown (STRICTLY FROM EXCEL, initially BLANK unless saved data exists) 🔹
+  // 🔹 Subject Dropdown (Hamesha shuru me BLANK rahega, lekin Excel ke options load honge) 🔹
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
-  if (cVal && window.excelSubjectsData[cVal]) {
+  if (classFound && window.excelSubjectsData[cVal]) {
       for(let exSubj in window.excelSubjectsData[cVal]) {
           let selected = (exSubj === sVal) ? 'selected' : '';
           subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
@@ -286,7 +302,7 @@ window.saveData = async function() {
     const periods = [];
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
       const c = r.querySelector('.class-select').value; const s = r.querySelector('.subj-select').value;
-      if(c && s) { // Khali subjects save nahi honge
+      if(c && s) { // Sirf wahi periods save honge jinka subject properly selected hoga
         periods.push({
           class: c, subject: s, total: r.querySelector('.total-inp').value, passed: r.querySelector('.passed-inp').value,
           percentage: r.children[4].children[0].value, kaifiyat: r.children[5].children[0].value
@@ -326,25 +342,20 @@ document.addEventListener('DOMContentLoaded', () => {
                   const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
                   
                   // 🔹 2. SIRF UNIQUE CLASSES NIKALEIN (SUBJECTS IGNORE KAREIN) 🔹
-                  // Kyunki hum subjects Excel se le rahe hain, isliye ek class ki sirf ek row banegi
                   const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className))];
 
                   uniqueClasses.forEach(karkClass => {
                       // Karkardagi ki class ko Excel ki class se match karein
                       let excelMatchedClass = findExactExcelClass(karkClass);
                       
-                      // Agar excelMatchedClass null hai, iska matlab Excel me yeh class nahi hai,
-                      // To hum isko UI me empty ('') set kar denge, taake user khud select kar le.
                       periodsForUI.push({
-                          class: excelMatchedClass || '', 
-                          subject: '', // 👈 SUBJECT HAMESHA BLANK RAHEGA
+                          class: excelMatchedClass || karkClass, // Match hui to Excel wali, warna purani name
+                          subject: '', // 👈 SUBJECT HAMESHA BLANK RAHEGA TAAKE USER KHUD SELECT KARE
                           total: '', passed: '', percentage: '', kaifiyat: ''
                       });
                   });
                   
-                  // Agar us teacher ki is semester me koi kitab na ho to blank row show hogi
                   if(periodsForUI.length === 0) periodsForUI = [{}];
-                  
                   window.addTeacherRow(t.name, periodsForUI);
               });
           } else {
