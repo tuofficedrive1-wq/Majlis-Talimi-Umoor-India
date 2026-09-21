@@ -103,7 +103,7 @@ async function loadExcelData() {
   } catch(e) {}
 }
 
-// 🔹 3. SMART CLASS MATCHING LOGIC (STRICTLY FROM ADMIN CONFIG)
+// 🔹 3. SMART CLASS MATCHING LOGIC
 function cleanUrdu(str) {
   if(!str) return "";
   return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -125,9 +125,11 @@ function checkClassMatch(class1, class2) {
 
 function findExactExcelClass(karkClass) {
   if(!karkClass) return null;
+  let c1 = cleanUrdu(karkClass);
   for (let exClass in window.excelSubjectsData) {
-      if (checkClassMatch(karkClass, exClass)) {
-          return exClass; // Excel ka exact name return karega
+      let c2 = cleanUrdu(exClass);
+      if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) {
+          return exClass; // Excel ka exact name
       }
   }
   return null;
@@ -210,7 +212,7 @@ window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; 
   let sVal = p.subject || '';
 
-  // 🔹 Class Dropdown (Sirf Excel ki classes) 🔹
+  // 🔹 Class Dropdown 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
   for(let exClass in window.excelSubjectsData) {
@@ -218,15 +220,20 @@ window.periodRowHTML = function(p={}) {
       if (exClass === cVal) classFound = true;
       classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
   }
-  // Agar Setup me class thi, par Excel me match nahi hui to without warning dikhayein
   if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
 
-  // 🔹 Subject Dropdown (Hamesha shuru me BLANK rahega, lekin Excel ke options load honge) 🔹
+  // 🔹 Subject Dropdown 🔹
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
   if (classFound && window.excelSubjectsData[cVal]) {
-      for(let exSubj in window.excelSubjectsData[cVal]) {
-          let selected = (exSubj === sVal) ? 'selected' : '';
-          subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
+      const subjects = Object.keys(window.excelSubjectsData[cVal]);
+      if(subjects.length === 0) {
+          // Warning indicator if database saved empty objects
+          subjOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل میں مضامین نہیں ملے (دوبارہ اپلوڈ کریں)</option>`;
+      } else {
+          subjects.forEach(exSubj => {
+              let selected = (exSubj === sVal) ? 'selected' : '';
+              subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
+          });
       }
   }
 
@@ -247,7 +254,12 @@ window.updateSubjects = function(sel) {
   const tr = sel.closest('tr'); const subSel = tr.querySelector('.subj-select'); const c = sel.value;
   subSel.innerHTML = '<option value="" selected>مضمون منتخب کریں</option>';
   if(c && window.excelSubjectsData[c]) {
-    Object.keys(window.excelSubjectsData[c]).forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
+      const subjects = Object.keys(window.excelSubjectsData[c]);
+      if(subjects.length === 0) {
+          subSel.innerHTML += `<option value="" disabled class="text-red-500 font-bold">ایکسل میں مضامین نہیں ملے (دوبارہ اپلوڈ کریں)</option>`;
+      } else {
+          subjects.forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
+      }
   }
   tr.querySelector('.total-inp').value = ''; tr.querySelector('.passed-inp').value = ''; window.calcRow(tr);
 };
@@ -302,7 +314,7 @@ window.saveData = async function() {
     const periods = [];
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
       const c = r.querySelector('.class-select').value; const s = r.querySelector('.subj-select').value;
-      if(c && s) { // Sirf wahi periods save honge jinka subject properly selected hoga
+      if(c && s && !c.includes('ایکسل میں نہیں')) { 
         periods.push({
           class: c, subject: s, total: r.querySelector('.total-inp').value, passed: r.querySelector('.passed-inp').value,
           percentage: r.children[4].children[0].value, kaifiyat: r.children[5].children[0].value
@@ -345,11 +357,10 @@ document.addEventListener('DOMContentLoaded', () => {
                   const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className))];
 
                   uniqueClasses.forEach(karkClass => {
-                      // Karkardagi ki class ko Excel ki class se match karein
                       let excelMatchedClass = findExactExcelClass(karkClass);
                       
                       periodsForUI.push({
-                          class: excelMatchedClass || karkClass, // Match hui to Excel wali, warna purani name
+                          class: excelMatchedClass || karkClass, 
                           subject: '', // 👈 SUBJECT HAMESHA BLANK RAHEGA TAAKE USER KHUD SELECT KARE
                           total: '', passed: '', percentage: '', kaifiyat: ''
                       });
