@@ -54,6 +54,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, query, where, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"; // 👈 NAYA IMPORT
 
 const firebaseConfig = {
   apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com",
@@ -61,6 +62,7 @@ const firebaseConfig = {
   appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
 };
 const app = initializeApp(firebaseConfig); 
+const auth = getAuth(app); // 👈 AUTH INITIALIZE
 const db = getFirestore(app);
 const params = new URLSearchParams(window.location.search);
 
@@ -71,7 +73,7 @@ const examYear = params.get('examYear') || '';
 window.excelSubjectsData = {}; 
 window.academicConfigData = null;
 
-// 🔹 1. Load Admin Academic Config (For Smart Class Matching)
+// 🔹 1. Load Admin Academic Config
 async function loadAcademicConfig() {
   try {
     const snap = await getDoc(doc(db, "settings", "academic_config"));
@@ -79,7 +81,7 @@ async function loadAcademicConfig() {
   } catch(e){}
 }
 
-// 🔹 2. Load Excel Data (Dropdowns ke liye)
+// 🔹 2. Load Excel Data
 async function loadExcelData() {
   const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
   const snap = await getDocs(q);
@@ -89,7 +91,7 @@ async function loadExcelData() {
   }
 }
 
-// 🔹 3. SMART MATCHING LOGIC (Setup ko Excel se milane ke liye)
+// 🔹 3. SMART MATCHING LOGIC
 function cleanUrdu(str) {
   if(!str) return "";
   return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -109,7 +111,6 @@ function checkClassMatch(class1, class2) {
   return false;
 }
 
-// Yahan hum exact Excel wala Class aur Subject Name wapas kar rahe hain
 function getExactExcelMapping(karkClass, karkSubj) {
   let cleanS = cleanUrdu(karkSubj);
   for (let exClass in window.excelSubjectsData) {
@@ -125,24 +126,24 @@ function getExactExcelMapping(karkClass, karkSubj) {
   return null;
 }
 
-// 🔹 4. Load Karkardagi Teachers (Setup Structure se)
+// 🔹 4. Load Karkardagi Teachers (FIXED ERROR HANDLING)
 async function loadKarkardagiTeachers() {
     let uid = params.get('uid');
     
-    // Agar URL mein UID na ho to Database me dhundo
-    if (!uid) {
-        const usersSnap = await getDocs(collection(db, "users"));
-        for (let uDoc of usersSnap.docs) {
-            const data = uDoc.data();
-            if(data.jamiaatList && data.jamiaatList.some(j => (j.name || j.jamiaName || j) === jamiaName)) {
-                uid = uDoc.id; break;
+    try {
+        if (!uid) {
+            // Yahan error aa raha tha, ab yeh successfully catch ho jayega agar permission block hui to
+            const usersSnap = await getDocs(collection(db, "users"));
+            for (let uDoc of usersSnap.docs) {
+                const data = uDoc.data();
+                if(data.jamiaatList && data.jamiaatList.some(j => (j.name || j.jamiaName || j) === jamiaName)) {
+                    uid = uDoc.id; break;
+                }
             }
         }
-    }
-    
-    if (!uid) return [];
+        
+        if (!uid) return [];
 
-    try {
         const userDoc = await getDoc(doc(db, "users", uid));
         if (userDoc.exists()) {
             const data = userDoc.data();
@@ -154,22 +155,30 @@ async function loadKarkardagiTeachers() {
                 if (jamiaData) return jamiaData.teachers || [];
             }
         }
-    } catch (e) { console.error("Karkardagi Load Error:", e); }
+    } catch (e) { 
+        console.error("Firebase Permission Error (Karkardagi):", e); 
+        // Alert show kar sakte hain, par page crash nahi hoga
+    }
     return [];
 }
 
 // 🔹 5. Load Already Saved Data
 async function loadSavedFirestoreData() {
   const q = query(collection(db, "asatiza_wise_results"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
-  const snap = await getDocs(q);
-  if (snap.empty) return false;
-  
-  let latestDoc = snap.docs[0];
-  snap.docs.forEach(d => { if (d.data().timestamp > latestDoc.data().timestamp) latestDoc = d; });
-  
-  document.getElementById('main-teacher-body').innerHTML = "";
-  latestDoc.data().data.forEach(t => window.addTeacherRow(t.teacher, t.periods));
-  return true;
+  try {
+      const snap = await getDocs(q);
+      if (snap.empty) return false;
+      
+      let latestDoc = snap.docs[0];
+      snap.docs.forEach(d => { if (d.data().timestamp > latestDoc.data().timestamp) latestDoc = d; });
+      
+      document.getElementById('main-teacher-body').innerHTML = "";
+      latestDoc.data().data.forEach(t => window.addTeacherRow(t.teacher, t.periods));
+      return true;
+  } catch(e) {
+      console.error("Saved Data Load Error:", e);
+      return false;
+  }
 }
 
 let teacherCount = 0;
@@ -182,7 +191,7 @@ window.addTeacherRow = function(name='', periods=null) {
   if(periods && periods.length > 0) {
       periods.forEach(p => { pHTML += window.periodRowHTML(p); });
   } else {
-      for(let i=0; i<1; i++) pHTML += window.periodRowHTML(); // Naye teacher ke liye 1 khali row
+      for(let i=0; i<1; i++) pHTML += window.periodRowHTML(); 
   }
 
   tr.innerHTML = `
@@ -206,7 +215,7 @@ window.addTeacherRow = function(name='', periods=null) {
 window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; let sVal = p.subject || '';
 
-  // Class Dropdown Generation (Sirf Excel ki classes)
+  // Class Dropdown 
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
   for(let c in window.excelSubjectsData) {
@@ -214,10 +223,9 @@ window.periodRowHTML = function(p={}) {
       if (c === cVal) classFound = true;
       classOpts += `<option value="${c}" ${selected}>${c}</option>`;
   }
-  // Agar Setup wali class Excel me na ho to usey rakhna hai taake nazar aaye
   if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-red-500">${cVal} (No Data)</option>`;
 
-  // Subject Dropdown Generation (Sirf Excel ke subjects)
+  // Subject Dropdown
   let subjOpts = '<option value="">مضمون</option>';
   let subjFound = false;
   if (classFound && window.excelSubjectsData[cVal]) {
@@ -227,7 +235,6 @@ window.periodRowHTML = function(p={}) {
           subjOpts += `<option value="${s}" ${selected}>${s}</option>`;
       }
   }
-  // Agar Setup wala subject na mile
   if (sVal && !subjFound) subjOpts += `<option value="${sVal}" selected class="text-red-500">${sVal} (No Data)</option>`;
 
   return `<tr>
@@ -318,66 +325,58 @@ window.saveData = async function() {
   } catch (e) { alert("Save error: " + e.message); }
 };
 
-document.addEventListener('DOMContentLoaded', async () => {
-  document.getElementById('jamiaName').value = jamiaName; document.getElementById('examType').value = examType; document.getElementById('examYear').value = examYear;
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('jamiaName').value = jamiaName; 
+  document.getElementById('examType').value = examType; 
+  document.getElementById('examYear').value = examYear;
   document.getElementById('jamia-name-head').innerText = decodeURIComponent(jamiaName);
   document.getElementById('display-type').innerText = decodeURIComponent(examType);
   document.getElementById('display-year').innerText = decodeURIComponent(examYear);
 
-  // 1. Initial Data Load
-  await loadAcademicConfig();
-  await loadExcelData();
-  const karkardagiTeachers = await loadKarkardagiTeachers();
+  // 👈 FIX: Auth load hone ka wait karein taake Session verify ho sake
+  onAuthStateChanged(auth, async (user) => {
+      await loadAcademicConfig();
+      await loadExcelData();
+      const karkardagiTeachers = await loadKarkardagiTeachers();
 
-  // 2. Check Saved Results
-  const savedDataExists = await loadSavedFirestoreData();
+      const savedDataExists = await loadSavedFirestoreData();
 
-  // 3. Agar saved result nahi hai, to Setup (Karkardagi) se Teachers load karo
-  if (!savedDataExists) {
-      if (karkardagiTeachers.length > 0) {
-          karkardagiTeachers.forEach(t => {
-              let periodsForUI = [];
-              (t.periods || []).forEach(p => {
-                  
-                  // Setup ko Excel se Smart Match karo
-                  let matchInfo = getExactExcelMapping(p.className, p.bookName);
-                  
-                  if (matchInfo) {
-                      // Agar match ho gaya to Excel ka exact naam aur data use karo
-                      periodsForUI.push({
-                          class: matchInfo.exClass,
-                          subject: matchInfo.exSubj,
-                          total: matchInfo.data.total,
-                          passed: matchInfo.data.passed,
-                          percentage: '',
-                          kaifiyat: ''
-                      });
-                  } else {
-                      // Agar Excel mein nahi mila, to Setup wala naam dikhao (taki user khud select kar le)
-                      periodsForUI.push({
-                          class: p.className,
-                          subject: p.bookName,
-                          total: '',
-                          passed: '',
-                          percentage: '',
-                          kaifiyat: ''
-                      });
-                  }
+      if (!savedDataExists) {
+          if (karkardagiTeachers.length > 0) {
+              karkardagiTeachers.forEach(t => {
+                  let periodsForUI = [];
+                  (t.periods || []).forEach(p => {
+                      let matchInfo = getExactExcelMapping(p.className, p.bookName);
+                      
+                      if (matchInfo) {
+                          periodsForUI.push({
+                              class: matchInfo.exClass,
+                              subject: matchInfo.exSubj,
+                              total: matchInfo.data.total,
+                              passed: matchInfo.data.passed,
+                              percentage: '', kaifiyat: ''
+                          });
+                      } else {
+                          periodsForUI.push({
+                              class: p.className, subject: p.bookName,
+                              total: '', passed: '', percentage: '', kaifiyat: ''
+                          });
+                      }
+                  });
+                  if(periodsForUI.length === 0) periodsForUI = [{}];
+                  window.addTeacherRow(t.name, periodsForUI);
               });
-              if(periodsForUI.length === 0) periodsForUI = [{}];
-              window.addTeacherRow(t.name, periodsForUI);
-          });
-      } else {
-          window.addTeacherRow(); // Agar setup me koi teacher nahi hai to khali row dedo
+          } else {
+              window.addTeacherRow(); 
+          }
       }
-  }
 
-  // 4. Page load hone par saari calculations trigger kardo
-  setTimeout(() => {
-      document.querySelectorAll('.total-inp').forEach(inp => {
-          if (inp.value) window.calcRow(inp.closest('tr'));
-      });
-  }, 800);
+      setTimeout(() => {
+          document.querySelectorAll('.total-inp').forEach(inp => {
+              if (inp.value) window.calcRow(inp.closest('tr'));
+          });
+      }, 800);
+  });
 });
 </script>
 </body>
