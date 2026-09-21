@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (COMPLETE FILE WITH DIRECT UPLOAD & REPORTS)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (NUMBER MAPPING & EXACT TOTAL COUNT)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -108,7 +108,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             <button id="tab-upload" class="flex-1 py-3 font-bold text-teal-600 hover:bg-white transition">📤 Upload Master Excel</button>
         </div>
 
-        <!-- Filters Section (For View) -->
+        <!-- Filters Section -->
         <div id="filter-section" class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
                 <div>
@@ -445,6 +445,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             data.forEach(d => {
                 const key = d[keyField] || 'Unknown';
                 if (!stats[key]) stats[key] = { h: 0, p: 0 };
+                // 🌟 FIX: Hazir Calculation directly uses total and ghaib properly in UI if needed, but here we calculate it from sum
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf) + num(d.mumtaz) + num(d.jayyidJidda) + num(d.jayyid) + num(d.maqbool) + num(d.majazZimni);
                 stats[key].h += h; stats[key].p += p;
@@ -492,28 +493,30 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (sr === 1) tbody.innerHTML = `<tr><td colspan="19" class="p-10 text-center text-red-500 font-bold urdu-font text-lg">کوئی ریکارڈ نہیں ملا</td></tr>`;
         }
         else if (layout === 'jamia') {
-            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
-            let jamiaStats = {}; let grandTotalHazir = 0; let grandTotalPass = 0;
+            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+            let jamiaStats = {}; let grandTotalStudents = 0; let grandTotalHazir = 0; let grandTotalPass = 0;
             data.forEach(d => {
-                if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { h: 0, p: 0, region: d.region || '-', user: d.userName || '-' };
+                if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { t: 0, h: 0, p: 0, region: d.region || '-', user: d.userName || '-' };
+                const t = num(d.total); // EXPLICIT TOTAL (Dakhla)
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                jamiaStats[d.jamia].h += h; jamiaStats[d.jamia].p += p;
-                grandTotalHazir += h; grandTotalPass += p;
+                jamiaStats[d.jamia].t += t; jamiaStats[d.jamia].h += h; jamiaStats[d.jamia].p += p;
+                grandTotalStudents += t; grandTotalHazir += h; grandTotalPass += p;
             });
             Object.entries(jamiaStats).map(([name, s]) => ({ name, s, per: s.h ? (s.p / s.h) * 100 : 0 })).sort((a, b) => b.per - a.per).forEach((item, i) => {
-                tbody.innerHTML += `<tr><td class="p-2 border">${i + 1}</td><td class="p-2 border font-bold">${item.s.region}</td><td class="p-2 border urdu-font">${item.s.user}</td><td class="p-2 border urdu-font font-bold">${item.name}</td><td class="p-2 border">${item.s.h}</td><td class="p-2 border text-green-700 font-bold">${item.s.p}</td><td class="p-2 border font-bold">${item.per.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(item.per, 'jamia')}">${getJamiaKefiyat(item.per, 'jamia')}</td></tr>`;
+                tbody.innerHTML += `<tr><td class="p-2 border">${i + 1}</td><td class="p-2 border font-bold">${item.s.region}</td><td class="p-2 border urdu-font">${item.s.user}</td><td class="p-2 border urdu-font font-bold">${item.name}</td><td class="p-2 border font-bold text-indigo-700">${item.s.t}</td><td class="p-2 border">${item.s.h}</td><td class="p-2 border text-green-700 font-bold">${item.s.p}</td><td class="p-2 border font-bold">${item.per.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(item.per, 'jamia')}">${getJamiaKefiyat(item.per, 'jamia')}</td></tr>`;
             });
             const grandPer = grandTotalHazir ? (grandTotalPass / grandTotalHazir) * 100 : 0;
-            tfoot.innerHTML = `<tr class="bg-gray-800 text-white font-bold text-center"><td colspan="4" class="p-3 border text-right urdu-font text-lg pr-5">کل میزان (Total):</td><td class="p-3 border text-lg">${grandTotalHazir}</td><td class="p-3 border text-green-400 text-lg">${grandTotalPass}</td><td class="p-3 border text-lg">${grandPer.toFixed(1)}%</td><td class="p-3 border urdu-font text-lg" style="color:${getKefiyatColor(grandPer, 'jamia')}">${getJamiaKefiyat(grandPer, 'jamia')}</td></tr>`;
+            tfoot.innerHTML = `<tr class="bg-gray-800 text-white font-bold text-center"><td colspan="4" class="p-3 border text-right urdu-font text-lg pr-5">کل میزان (Total):</td><td class="p-3 border text-indigo-300 text-lg">${grandTotalStudents}</td><td class="p-3 border text-lg">${grandTotalHazir}</td><td class="p-3 border text-green-400 text-lg">${grandTotalPass}</td><td class="p-3 border text-lg">${grandPer.toFixed(1)}%</td><td class="p-3 border urdu-font text-lg" style="color:${getKefiyatColor(grandPer, 'jamia')}">${getJamiaKefiyat(grandPer, 'jamia')}</td></tr>`;
         } 
         else if (layout === 'class') {
-            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
             data.forEach((d, i) => {
+                const t = num(d.total); // EXPLICIT TOTAL
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                 const per = h ? (p / h) * 100 : 0;
-                tbody.innerHTML += `<tr><td class="p-2 border">${i + 1}</td><td class="p-2 border font-bold">${d.region || '-'}</td><td class="p-2 border urdu-font">${d.userName || '-'}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td><td class="p-2 border">${h}</td><td class="p-2 border">${p}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'class')}">${getJamiaKefiyat(per, 'class')}</td></tr>`;
+                tbody.innerHTML += `<tr><td class="p-2 border">${i + 1}</td><td class="p-2 border font-bold">${d.region || '-'}</td><td class="p-2 border urdu-font">${d.userName || '-'}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td><td class="p-2 border text-indigo-700 font-bold">${t}</td><td class="p-2 border">${h}</td><td class="p-2 border">${p}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'class')}">${getJamiaKefiyat(per, 'class')}</td></tr>`;
             });
         }
         else if (layout === 'wazahat') {
@@ -564,7 +567,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     }
 
     // ==========================================
-    // 🚀 EXCEL DIRECT UPLOAD LOGIC
+    // 🚀 EXCEL DIRECT UPLOAD LOGIC (FIXED)
     // ==========================================
     let pendingUploadData = null; 
 
@@ -629,21 +632,29 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
-                    // 2. Result Sheet Data Collection
+                    // 2. Result Sheet Data Collection (NUMBER MAPPING RESTORED)
                     const resSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'result') || workbook.SheetNames[0];
                     const rawResultData = XLSX.utils.sheet_to_json(workbook.Sheets[resSheetName], { header: 1 });
                     
                     let resHdrIdx = -1, resColMap = {}, jamiaColIdx = -1, classColIdx = -1, kefiyatColIdx = -1;
 
-                    for (let i = 0; i < Math.min(15, rawResultData.length); i++) {
+                    for (let i = 0; i < Math.min(25, rawResultData.length); i++) {
                         let row = rawResultData[i];
                         if(!row) continue;
                         for (let c = 0; c < row.length; c++) {
                             let cell = String(row[c]).trim();
-                            if (/^(10|[1-9])$/.test(cell)) { resColMap[parseInt(cell)] = c; resHdrIdx = i; }
+                            
+                            // 🌟 MAP BY NUMBER HEADERS (1, 2, 3...)
+                            if (/^(10|[1-9])$/.test(cell)) { resColMap[parseInt(cell)] = c; }
+                            
                             if (cell === 'Jamia_tul_Madina' || cell.includes('جامعۃ المدینہ') || cell === 'جامعہ') jamiaColIdx = c;
                             if (cell === 'Class' || cell.includes('درجہ')) classColIdx = c;
                             if (cell.includes('کیفیت') || cell.includes('نتیجہ') || cell.includes('گریڈ')) kefiyatColIdx = c; 
+                        }
+                        // Stop looping when we found headers
+                        if (jamiaColIdx !== -1 && classColIdx !== -1 && Object.keys(resColMap).length > 0) {
+                            resHdrIdx = i;
+                            break;
                         }
                     }
                     
@@ -652,8 +663,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         for(let col = 4; col <= 8; col++) {
                             let testCell = String(rawResultData[15][col] || ''); 
                             if (testCell.includes('ممتاز') || testCell.includes('جید') || testCell.includes('مقبول') || testCell.includes('ناکام')) {
-                                kefiyatColIdx = col;
-                                break;
+                                kefiyatColIdx = col; break;
                             }
                         }
                     }
@@ -663,11 +673,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                     }
 
                     let multiJamiaClassData = {};
-                    let multiJamiaSubjectData = {}; // NEW: For Asatiza Dropdowns
+                    let multiJamiaSubjectData = {}; 
 
                     for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
                         let row = rawResultData[i];
-                        if (!row || row.length === 0) continue;
+                        if (!row || row.length === 0) continue; // Skip completely empty rows
                         
                         let jamiaName = String(row[jamiaColIdx] || '').trim();
                         let cName = String(row[classColIdx] || '').trim();
@@ -687,28 +697,34 @@ export async function initAdminResultAnalysis(db, containerId) {
                             multiJamiaSubjectData[jamiaName][cName] = {};
                         }
 
-                        let isGhaib = true;
+                        // 🌟 FIX: Always increment TOTAL for every student row. 
+                        multiJamiaClassData[jamiaName][cName].total++;
+
+                        let isGhaib = true; // Assume absent until marks found
+                        let isNakam = false;
                         
                         // Extract subject-wise marks
                         config.keys.forEach(mapNum => {
                             let resColIdx = resColMap[mapNum];
                             if (resColIdx === undefined) return;
                             
-                            let markCell = row[resColIdx];
-                            let cellStr = String(markCell || '').trim();
                             let subjConfig = config.subjects[mapNum];
                             let passMarks = subjConfig.pass;
-                            let subName = subjConfig.name;
+                            let subName = subjConfig.name; // Real name from Subj sheet
 
                             if (!multiJamiaSubjectData[jamiaName][cName][subName]) {
                                 multiJamiaSubjectData[jamiaName][cName][subName] = { total: 0, passed: 0 };
                             }
 
-                            let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellStr === 'A' || cellStr === '';
-                            let isTextNakam = cellStr === 'ناکام' || cellStr.toLowerCase() === 'fail' || cellStr === 'f';
+                            let markCell = row[resColIdx];
+                            let cellStr = String(markCell || '').trim();
+                            let cellLower = cellStr.toLowerCase();
+                            
+                            let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent' || cellStr === '';
+                            let isTextNakam = cellStr === 'ناکام' || cellLower === 'fail' || cellLower === 'f';
                             
                             if (!isTextGhaib) {
-                                isGhaib = false;
+                                isGhaib = false; // The student is present
                                 multiJamiaSubjectData[jamiaName][cName][subName].total++;
                                 
                                 let marks = cellStr.includes('+') ? (parseFloat(cellStr.split('+')[0]) + parseFloat(cellStr.split('+')[1])) : parseFloat(markCell);
@@ -721,15 +737,14 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         });
                         
-                        multiJamiaClassData[jamiaName][cName].total++;
-                        if (isGhaib) {
-                            multiJamiaClassData[jamiaName][cName].ghaib++;
-                            multiJamiaClassData[jamiaName][cName].total--; 
+                        // 🌟 FIX: Removed total-- from Ghaib logic. 
+                        // Total will remain the exact Enrolled number.
+                        if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || isGhaib) { 
+                            multiJamiaClassData[jamiaName][cName].ghaib++; 
                         } else {
-                            if (kefiyatVal.includes('ناکام') || kefiyatVal === 'F' || kefiyatVal.toLowerCase() === 'fail') {
+                            let kefLower = kefiyatVal.toLowerCase();
+                            if (kefiyatVal.includes('ناکام') || kefLower === 'f' || kefLower === 'fail') {
                                 multiJamiaClassData[jamiaName][cName].nakam++;
-                            } else if (kefiyatVal.includes('غائب') || kefiyatVal === 'A' || kefiyatVal === 'غ') { 
-                                multiJamiaClassData[jamiaName][cName].ghaib++; multiJamiaClassData[jamiaName][cName].total--; 
                             } else {
                                 multiJamiaClassData[jamiaName][cName].passed++;
                                 if (kefiyatVal.includes('الشرف') || kefiyatVal === 'A+') multiJamiaClassData[jamiaName][cName].mumtazSharf++;
@@ -755,7 +770,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let subsHtml = Object.keys(cData[cName]).map(sub => 
                                 `<span class="inline-block bg-teal-50 text-teal-800 border border-teal-200 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${cData[cName][sub].passed}/${cData[cName][sub].total})</span>`
                             ).join('');
-                            classesHtml += `<div class="p-3 bg-white border rounded-lg mb-2 shadow-sm"><strong class="urdu-font text-indigo-700">${cName}</strong><div class="mt-1 flex flex-wrap">${subsHtml}</div></div>`;
+                            // Adding Total Students enrolled preview
+                            let enrolled = multiJamiaClassData[jamiaName][cName].total;
+                            classesHtml += `<div class="p-3 bg-white border rounded-lg mb-2 shadow-sm"><strong class="urdu-font text-indigo-700">${cName} (کل: ${enrolled})</strong><div class="mt-1 flex flex-wrap">${subsHtml}</div></div>`;
                         });
 
                         previewHtml += `<div class="bg-gray-50 p-4 rounded-xl border mb-4">
