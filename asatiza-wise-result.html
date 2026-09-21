@@ -72,7 +72,7 @@ const examType = params.get('examType') || '';
 const examYear = params.get('examYear') || '';
 
 // 🔹 EXAM KE HISAAB SE SEMESTER NIKALNA 🔹
-let targetSemester = "1"; // Default
+let targetSemester = "1"; 
 const decodedExamType = decodeURIComponent(examType);
 if (decodedExamType.includes("ششماہی")) {
     targetSemester = "1";
@@ -81,8 +81,17 @@ if (decodedExamType.includes("ششماہی")) {
 }
 
 window.excelSubjectsData = {}; 
+window.academicConfigData = null;
 
-// 🔹 1. Load Excel Data
+// 🔹 1. Load Admin Academic Config
+async function loadAcademicConfig() {
+  try {
+    const snap = await getDoc(doc(db, "settings", "academic_config"));
+    if(snap.exists()) window.academicConfigData = snap.data();
+  } catch(e){}
+}
+
+// 🔹 2. Load Excel Data
 async function loadExcelData() {
   try {
       const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
@@ -91,10 +100,10 @@ async function loadExcelData() {
           let docData = snap.docs[0].data();
           window.excelSubjectsData = docData.classes || {};
       }
-  } catch(e) { console.error("Excel Data Load Error:", e); }
+  } catch(e) {}
 }
 
-// 🔹 2. SMART CLASS MATCHING LOGIC
+// 🔹 3. SMART CLASS MATCHING LOGIC
 function cleanUrdu(str) {
   if(!str) return "";
   return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -112,10 +121,9 @@ function findExactExcelClass(karkClass) {
   return null;
 }
 
-// 🔹 3. Load Karkardagi Teachers (Setup Structure se)
+// 🔹 4. Load Karkardagi Teachers
 async function loadKarkardagiTeachers(loggedInUser) {
     let uid = params.get('uid');
-    
     if (!uid && loggedInUser) uid = loggedInUser.uid;
     if (!uid) return [];
 
@@ -137,7 +145,7 @@ async function loadKarkardagiTeachers(loggedInUser) {
     return [];
 }
 
-// 🔹 4. Load Already Saved Data
+// 🔹 5. Load Already Saved Data
 async function loadSavedFirestoreData() {
   const q = query(collection(db, "asatiza_wise_results"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
   try {
@@ -187,22 +195,19 @@ window.addTeacherRow = function(name='', periods=null) {
 };
 
 window.periodRowHTML = function(p={}) {
-  let cVal = p.class || ''; let sVal = p.subject || '';
+  let cVal = p.class || ''; 
+  let sVal = p.subject || '';
 
-  // 🔹 Class Dropdown (Sirf Excel ki classes) 🔹
+  // 🔹 Class Dropdown (STRICTLY FROM EXCEL) 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
-  let classFound = false;
   for(let exClass in window.excelSubjectsData) {
       let selected = (exClass === cVal) ? 'selected' : '';
-      if (exClass === cVal) classFound = true;
       classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
   }
-  // Agar class exel me nahi mili
-  if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-red-500">${cVal} (ایکسل میں نہیں ہے)</option>`;
 
-  // 🔹 Subject Dropdown (Sirf Excel ke subjects, shuru me BLANK) 🔹
-  let subjOpts = '<option value="">مضمون منتخب کریں</option>';
-  if (classFound && window.excelSubjectsData[cVal]) {
+  // 🔹 Subject Dropdown (STRICTLY FROM EXCEL, initially BLANK unless saved data exists) 🔹
+  let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
+  if (cVal && window.excelSubjectsData[cVal]) {
       for(let exSubj in window.excelSubjectsData[cVal]) {
           let selected = (exSubj === sVal) ? 'selected' : '';
           subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
@@ -224,7 +229,7 @@ window.addPeriodRow = (id) => document.getElementById(`periods-${id}`).insertAdj
 
 window.updateSubjects = function(sel) {
   const tr = sel.closest('tr'); const subSel = tr.querySelector('.subj-select'); const c = sel.value;
-  subSel.innerHTML = '<option value="">مضمون منتخب کریں</option>';
+  subSel.innerHTML = '<option value="" selected>مضمون منتخب کریں</option>';
   if(c && window.excelSubjectsData[c]) {
     Object.keys(window.excelSubjectsData[c]).forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
   }
@@ -306,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('display-year').innerText = decodeURIComponent(examYear);
 
   onAuthStateChanged(auth, async (user) => {
+      await loadAcademicConfig();
       await loadExcelData();
       const karkardagiTeachers = await loadKarkardagiTeachers(user); 
 
@@ -320,20 +326,25 @@ document.addEventListener('DOMContentLoaded', () => {
                   const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
                   
                   // 🔹 2. SIRF UNIQUE CLASSES NIKALEIN (SUBJECTS IGNORE KAREIN) 🔹
+                  // Kyunki hum subjects Excel se le rahe hain, isliye ek class ki sirf ek row banegi
                   const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className))];
 
                   uniqueClasses.forEach(karkClass => {
                       // Karkardagi ki class ko Excel ki class se match karein
                       let excelMatchedClass = findExactExcelClass(karkClass);
                       
+                      // Agar excelMatchedClass null hai, iska matlab Excel me yeh class nahi hai,
+                      // To hum isko UI me empty ('') set kar denge, taake user khud select kar le.
                       periodsForUI.push({
-                          class: excelMatchedClass || karkClass, // Match hui to Excel wali, warna purani
+                          class: excelMatchedClass || '', 
                           subject: '', // 👈 SUBJECT HAMESHA BLANK RAHEGA
                           total: '', passed: '', percentage: '', kaifiyat: ''
                       });
                   });
                   
+                  // Agar us teacher ki is semester me koi kitab na ho to blank row show hogi
                   if(periodsForUI.length === 0) periodsForUI = [{}];
+                  
                   window.addTeacherRow(t.name, periodsForUI);
               });
           } else {
