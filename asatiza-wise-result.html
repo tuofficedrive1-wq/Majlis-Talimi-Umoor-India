@@ -91,31 +91,18 @@ async function loadAcademicConfig() {
   } catch(e){}
 }
 
-// 🔹 2. Load Excel Data (FIXED WITH DIRECT ID FETCH & ERROR HANDLING)
+// 🔹 2. Load Excel Data
 async function loadExcelData() {
   try {
-      // Direct ID se fetch karne ki koshish (Fastest & bypasses some rules)
-      const subjId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
-      const docRef = doc(db, "excel_subjects_data", subjId);
-      const snap = await getDoc(docRef);
-      
-      if (snap.exists()) {
-          window.excelSubjectsData = snap.data().classes || {};
-          return;
-      }
-
-      // Agar ID se nahi mila to Query se try karein
       const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
-      const qSnap = await getDocs(q);
-      
-      if(!qSnap.empty) {
-          window.excelSubjectsData = qSnap.docs[0].data().classes || {};
-      } else {
-          alert("⚠️ ایکسل کا ڈیٹا نہیں ملا!\nوجہ: آپ نے ایڈمن پینل سے اس امتحان کا رزلٹ اپلوڈ نہیں کیا۔\nبرائے مہربانی پہلے ایڈمن پینل میں جا کر ایکسل فائل دوبارہ اپلوڈ کریں۔");
+      const snap = await getDocs(q);
+      if(!snap.empty) {
+          window.excelSubjectsData = snap.docs[0].data().classes || {};
       }
   } catch(e) { 
       console.error("Excel Data Load Error:", e);
-      alert("⚠️ پرمیشن کا مسئلہ (Permission Denied)!\nڈیٹا بیس (Firebase Rules) میں 'excel_subjects_data' کو ریڈ کرنے کی اجازت نہیں ہے۔");
+      // Agar rules update na hon, to red alert dikhayega
+      alert("⚠️ فائر بیس رولز کا مسئلہ!\nڈیٹا بیس میں 'excel_subjects_data' کو ریڈ کرنے کی اجازت نہیں ہے۔ براہ کرم رولز اپڈیٹ کریں۔");
   }
 }
 
@@ -131,8 +118,13 @@ function checkClassMatch(class1, class2) {
   if (window.academicConfigData && window.academicConfigData.classes) {
       for (let c of window.academicConfigData.classes) {
           let urdu = cleanUrdu(c.classNameUrdu); let eng = cleanUrdu(c.classNameEng);
-          let match1 = (c1 === urdu || c1 === eng || (urdu && c1.includes(urdu)) || (eng && c1.includes(eng)));
-          let match2 = (c2 === urdu || c2 === eng || (urdu && c2.includes(urdu)) || (eng && c2.includes(eng)));
+          if (!urdu && !eng) continue;
+          let match1 = false;
+          if (urdu) match1 = (c1 === urdu || c1.includes(urdu));
+          if (eng && !match1) match1 = (c1 === eng || c1.includes(eng));
+          let match2 = false;
+          if (urdu) match2 = (c2 === urdu || c2.includes(urdu));
+          if (eng && !match2) match2 = (c2 === eng || c2.includes(eng));
           if (match1 && match2) return true;
       }
   }
@@ -141,10 +133,9 @@ function checkClassMatch(class1, class2) {
 
 function findExactExcelClass(karkClass) {
   if(!karkClass) return null;
-  let c1 = cleanUrdu(karkClass);
   for (let exClass in window.excelSubjectsData) {
-      let c2 = cleanUrdu(exClass);
-      if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) {
+      if (!exClass || exClass.trim() === '') continue;
+      if (checkClassMatch(karkClass, exClass)) {
           return exClass; // Excel ka exact name return karega
       }
   }
@@ -169,9 +160,7 @@ async function loadKarkardagiTeachers(loggedInUser) {
                 if (jamiaData) return jamiaData.teachers || [];
             }
         }
-    } catch (e) { 
-        console.error("Firebase Permission Error (Karkardagi):", e); 
-    }
+    } catch (e) {}
     return [];
 }
 
@@ -188,9 +177,7 @@ async function loadSavedFirestoreData() {
       document.getElementById('main-teacher-body').innerHTML = "";
       latestDoc.data().data.forEach(t => window.addTeacherRow(t.teacher, t.periods));
       return true;
-  } catch(e) {
-      return false;
-  }
+  } catch(e) { return false; }
 }
 
 let teacherCount = 0;
@@ -227,13 +214,12 @@ window.addTeacherRow = function(name='', periods=null) {
 window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; 
   let sVal = p.subject || '';
-
+  
   let hasExcelData = Object.keys(window.excelSubjectsData).length > 0;
 
   // 🔹 Class Dropdown 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
-  
   if (hasExcelData) {
       for(let exClass in window.excelSubjectsData) {
           let selected = (exClass === cVal) ? 'selected' : '';
@@ -244,15 +230,20 @@ window.periodRowHTML = function(p={}) {
       classOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل ڈیٹا اپلوڈ کریں</option>`;
   }
   
-  // Agar Karkardagi me class thi par Excel me nahi mili
+  // Agar setup wali class excel me nahi mili
   if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
 
   // 🔹 Subject Dropdown 🔹
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
   if (classFound && window.excelSubjectsData[cVal]) {
-      for(let exSubj in window.excelSubjectsData[cVal]) {
-          let selected = (exSubj === sVal) ? 'selected' : '';
-          subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
+      const subjects = Object.keys(window.excelSubjectsData[cVal]);
+      if(subjects.length === 0) {
+          subjOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل میں مضامین نہیں ملے</option>`;
+      } else {
+          subjects.forEach(exSubj => {
+              let selected = (exSubj === sVal) ? 'selected' : '';
+              subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
+          });
       }
   } else if (!hasExcelData) {
       subjOpts = `<option value="" disabled class="text-red-500 font-bold">ایکسل ڈیٹا موجود نہیں</option>`;
@@ -356,35 +347,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
   onAuthStateChanged(auth, async (user) => {
       await loadAcademicConfig();
-      await loadExcelData(); // 👈 Yahan data load hota hai
-      const karkardagiTeachers = await loadKarkardagiTeachers(user); 
+      await loadExcelData(); 
 
       const savedDataExists = await loadSavedFirestoreData();
+      if (savedDataExists) return; // Agar data pehle se saved hai to neeche wala code nahi chalega
 
-      if (!savedDataExists) {
-          if (karkardagiTeachers.length > 0) {
-              karkardagiTeachers.forEach(t => {
-                  let periodsForUI = [];
+      const karkardagiTeachers = await loadKarkardagiTeachers(user); 
+
+      if (karkardagiTeachers.length > 0) {
+          karkardagiTeachers.forEach(t => {
+              let periodsForUI = [];
+              
+              const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
+              
+              // Duplicate classes ko hatane ke liye
+              const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className || p.class || '').filter(c => c !== ''))];
+
+              uniqueClasses.forEach(karkClass => {
+                  let excelMatchedClass = findExactExcelClass(karkClass);
                   
-                  const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
-                  const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className))];
-
-                  uniqueClasses.forEach(karkClass => {
-                      let excelMatchedClass = findExactExcelClass(karkClass);
-                      
-                      periodsForUI.push({
-                          class: excelMatchedClass || karkClass, 
-                          subject: '', 
-                          total: '', passed: '', percentage: '', kaifiyat: ''
-                      });
+                  periodsForUI.push({
+                      class: excelMatchedClass || karkClass, 
+                      subject: '', // 👈 HAMESHA BLANK
+                      total: '', passed: '', percentage: '', kaifiyat: ''
                   });
-                  
-                  if(periodsForUI.length === 0) periodsForUI = [{}];
-                  window.addTeacherRow(t.name, periodsForUI);
               });
-          } else {
-              window.addTeacherRow(); 
-          }
+              
+              if(periodsForUI.length === 0) periodsForUI = [{}];
+              window.addTeacherRow(t.name, periodsForUI);
+          });
+      } else {
+          window.addTeacherRow(); 
       }
 
       setTimeout(() => {
