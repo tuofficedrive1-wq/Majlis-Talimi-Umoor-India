@@ -91,16 +91,32 @@ async function loadAcademicConfig() {
   } catch(e){}
 }
 
-// 🔹 2. Load Excel Data
+// 🔹 2. Load Excel Data (FIXED WITH DIRECT ID FETCH & ERROR HANDLING)
 async function loadExcelData() {
   try {
-      const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
-      const snap = await getDocs(q);
-      if(!snap.empty) {
-          let docData = snap.docs[0].data();
-          window.excelSubjectsData = docData.classes || {};
+      // Direct ID se fetch karne ki koshish (Fastest & bypasses some rules)
+      const subjId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
+      const docRef = doc(db, "excel_subjects_data", subjId);
+      const snap = await getDoc(docRef);
+      
+      if (snap.exists()) {
+          window.excelSubjectsData = snap.data().classes || {};
+          return;
       }
-  } catch(e) {}
+
+      // Agar ID se nahi mila to Query se try karein
+      const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
+      const qSnap = await getDocs(q);
+      
+      if(!qSnap.empty) {
+          window.excelSubjectsData = qSnap.docs[0].data().classes || {};
+      } else {
+          alert("⚠️ ایکسل کا ڈیٹا نہیں ملا!\nوجہ: آپ نے ایڈمن پینل سے اس امتحان کا رزلٹ اپلوڈ نہیں کیا۔\nبرائے مہربانی پہلے ایڈمن پینل میں جا کر ایکسل فائل دوبارہ اپلوڈ کریں۔");
+      }
+  } catch(e) { 
+      console.error("Excel Data Load Error:", e);
+      alert("⚠️ پرمیشن کا مسئلہ (Permission Denied)!\nڈیٹا بیس (Firebase Rules) میں 'excel_subjects_data' کو ریڈ کرنے کی اجازت نہیں ہے۔");
+  }
 }
 
 // 🔹 3. SMART CLASS MATCHING LOGIC
@@ -129,7 +145,7 @@ function findExactExcelClass(karkClass) {
   for (let exClass in window.excelSubjectsData) {
       let c2 = cleanUrdu(exClass);
       if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) {
-          return exClass; // Excel ka exact name
+          return exClass; // Excel ka exact name return karega
       }
   }
   return null;
@@ -212,29 +228,34 @@ window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; 
   let sVal = p.subject || '';
 
+  let hasExcelData = Object.keys(window.excelSubjectsData).length > 0;
+
   // 🔹 Class Dropdown 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
-  for(let exClass in window.excelSubjectsData) {
-      let selected = (exClass === cVal) ? 'selected' : '';
-      if (exClass === cVal) classFound = true;
-      classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
+  
+  if (hasExcelData) {
+      for(let exClass in window.excelSubjectsData) {
+          let selected = (exClass === cVal) ? 'selected' : '';
+          if (exClass === cVal) classFound = true;
+          classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
+      }
+  } else {
+      classOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل ڈیٹا اپلوڈ کریں</option>`;
   }
+  
+  // Agar Karkardagi me class thi par Excel me nahi mili
   if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
 
   // 🔹 Subject Dropdown 🔹
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
   if (classFound && window.excelSubjectsData[cVal]) {
-      const subjects = Object.keys(window.excelSubjectsData[cVal]);
-      if(subjects.length === 0) {
-          // Warning indicator if database saved empty objects
-          subjOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل میں مضامین نہیں ملے (دوبارہ اپلوڈ کریں)</option>`;
-      } else {
-          subjects.forEach(exSubj => {
-              let selected = (exSubj === sVal) ? 'selected' : '';
-              subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
-          });
+      for(let exSubj in window.excelSubjectsData[cVal]) {
+          let selected = (exSubj === sVal) ? 'selected' : '';
+          subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
       }
+  } else if (!hasExcelData) {
+      subjOpts = `<option value="" disabled class="text-red-500 font-bold">ایکسل ڈیٹا موجود نہیں</option>`;
   }
 
   return `<tr>
@@ -254,12 +275,7 @@ window.updateSubjects = function(sel) {
   const tr = sel.closest('tr'); const subSel = tr.querySelector('.subj-select'); const c = sel.value;
   subSel.innerHTML = '<option value="" selected>مضمون منتخب کریں</option>';
   if(c && window.excelSubjectsData[c]) {
-      const subjects = Object.keys(window.excelSubjectsData[c]);
-      if(subjects.length === 0) {
-          subSel.innerHTML += `<option value="" disabled class="text-red-500 font-bold">ایکسل میں مضامین نہیں ملے (دوبارہ اپلوڈ کریں)</option>`;
-      } else {
-          subjects.forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
-      }
+    Object.keys(window.excelSubjectsData[c]).forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
   }
   tr.querySelector('.total-inp').value = ''; tr.querySelector('.passed-inp').value = ''; window.calcRow(tr);
 };
@@ -314,7 +330,7 @@ window.saveData = async function() {
     const periods = [];
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
       const c = r.querySelector('.class-select').value; const s = r.querySelector('.subj-select').value;
-      if(c && s && !c.includes('ایکسل میں نہیں')) { 
+      if(c && s) { 
         periods.push({
           class: c, subject: s, total: r.querySelector('.total-inp').value, passed: r.querySelector('.passed-inp').value,
           percentage: r.children[4].children[0].value, kaifiyat: r.children[5].children[0].value
@@ -340,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   onAuthStateChanged(auth, async (user) => {
       await loadAcademicConfig();
-      await loadExcelData();
+      await loadExcelData(); // 👈 Yahan data load hota hai
       const karkardagiTeachers = await loadKarkardagiTeachers(user); 
 
       const savedDataExists = await loadSavedFirestoreData();
@@ -350,10 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
               karkardagiTeachers.forEach(t => {
                   let periodsForUI = [];
                   
-                  // 🔹 1. SIRF TARGET SEMESTER KI KITABEIN FILTER KAREIN 🔹
                   const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
-                  
-                  // 🔹 2. SIRF UNIQUE CLASSES NIKALEIN (SUBJECTS IGNORE KAREIN) 🔹
                   const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className))];
 
                   uniqueClasses.forEach(karkClass => {
@@ -361,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       
                       periodsForUI.push({
                           class: excelMatchedClass || karkClass, 
-                          subject: '', // 👈 SUBJECT HAMESHA BLANK RAHEGA TAAKE USER KHUD SELECT KARE
+                          subject: '', 
                           total: '', passed: '', percentage: '', kaifiyat: ''
                       });
                   });
