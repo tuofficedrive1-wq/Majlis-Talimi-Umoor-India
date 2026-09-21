@@ -70,6 +70,15 @@ const jamiaName = params.get('jamia') || 'Jamia';
 const examType = params.get('examType') || '';
 const examYear = params.get('examYear') || '';
 
+// 🔹 EXAM KE HISAAB SE SEMESTER NIKALNA 🔹
+let targetSemester = "1"; // Default
+const decodedExamType = decodeURIComponent(examType);
+if (decodedExamType.includes("ششماہی")) {
+    targetSemester = "1";
+} else if (decodedExamType.includes("سالانہ")) {
+    targetSemester = "2";
+}
+
 window.excelSubjectsData = {}; 
 window.academicConfigData = null;
 
@@ -128,17 +137,15 @@ function getExactExcelMapping(karkClass, karkSubj) {
   return null;
 }
 
-// 🔹 4. Load Karkardagi Teachers (FIXED ERROR HANDLING & PERMISSIONS)
+// 🔹 4. Load Karkardagi Teachers
 async function loadKarkardagiTeachers(loggedInUser) {
     let uid = params.get('uid');
     
-    // Agar URL me UID nahi hai, to currently logged in user ki ID use karo
     if (!uid && loggedInUser) {
         uid = loggedInUser.uid;
     }
 
     if (!uid) {
-        console.warn("User ID nahi mili. Data load nahi ho sakta.");
         return [];
     }
 
@@ -213,7 +220,7 @@ window.addTeacherRow = function(name='', periods=null) {
 window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; let sVal = p.subject || '';
 
-  // Class Dropdown 
+  // Class Dropdown (Sirf Excel ki classes hongi)
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
   for(let c in window.excelSubjectsData) {
@@ -221,6 +228,7 @@ window.periodRowHTML = function(p={}) {
       if (c === cVal) classFound = true;
       classOpts += `<option value="${c}" ${selected}>${c}</option>`;
   }
+  // Agar Setup me class thi, par Excel me nahi mili to (No Data) dikhaye
   if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-red-500">${cVal} (No Data)</option>`;
 
   // Subject Dropdown
@@ -307,7 +315,7 @@ window.saveData = async function() {
     const periods = [];
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
       const c = r.querySelector('.class-select').value; const s = r.querySelector('.subj-select').value;
-      if(c && s) {
+      if(c && s && !c.includes('(No Data)') && !s.includes('(No Data)')) {
         periods.push({
           class: c, subject: s, total: r.querySelector('.total-inp').value, passed: r.querySelector('.passed-inp').value,
           percentage: r.children[4].children[0].value, kaifiyat: r.children[5].children[0].value
@@ -331,11 +339,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('display-type').innerText = decodeURIComponent(examType);
   document.getElementById('display-year').innerText = decodeURIComponent(examYear);
 
-  // 👈 FIX: Auth load hone ka wait karein taake Session verify ho sake
   onAuthStateChanged(auth, async (user) => {
       await loadAcademicConfig();
       await loadExcelData();
-      const karkardagiTeachers = await loadKarkardagiTeachers(user); // Pura users check hat gaya
+      const karkardagiTeachers = await loadKarkardagiTeachers(user); 
 
       const savedDataExists = await loadSavedFirestoreData();
 
@@ -343,7 +350,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (karkardagiTeachers.length > 0) {
               karkardagiTeachers.forEach(t => {
                   let periodsForUI = [];
-                  (t.periods || []).forEach(p => {
+                  
+                  // 🔹 SIRF TARGET SEMESTER KI KITABEIN LOAD KAREIN 🔹
+                  const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
+
+                  filteredPeriods.forEach(p => {
                       let matchInfo = getExactExcelMapping(p.className, p.bookName);
                       
                       if (matchInfo) {
@@ -361,7 +372,10 @@ document.addEventListener('DOMContentLoaded', () => {
                           });
                       }
                   });
+                  
+                  // Agar us teacher ki is semester me koi kitab na ho to blank row show hogi
                   if(periodsForUI.length === 0) periodsForUI = [{}];
+                  
                   window.addTeacherRow(t.name, periodsForUI);
               });
           } else {
