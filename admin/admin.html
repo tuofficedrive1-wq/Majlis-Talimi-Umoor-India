@@ -848,9 +848,12 @@
         <h3 class="text-xl font-bold text-slate-800"><i class="fas fa-building text-teal-600 mr-2"></i> Master Jamiaat Directory</h3>
         <p class="text-sm text-gray-500 mt-1">Yahan sabhi Jamiaat ki mukammal maloomat (English/Urdu), aur unke assigned users (Role-wise) maujood hain.</p>
     </div>
-    <div class="flex gap-2">
+    <div class="flex gap-2 flex-wrap">
         <button onclick="window.renderManageJamiaList()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition"><i class="fas fa-sync-alt mr-1"></i> Refresh List</button>
         <button onclick="window.downloadManageJamiaExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition"><i class="fas fa-file-excel mr-1"></i> Download Excel</button>
+        
+        <!-- ✅ NAYA BUTTON: Database Theek Karne Ke Liye -->
+        <button onclick="window.fixAllOldJamiaData()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition"><i class="fas fa-magic mr-1"></i> Fix Old Data Case</button>
     </div>
 </div>
         
@@ -6853,6 +6856,109 @@ window.downloadManageJamiaExcel = () => {
     const fileName = `Master_Jamiaat_Directory_${dateStr}.xlsx`;
 
     XLSX.writeFile(wb, fileName);
+};
+
+        // ==========================================================
+// 🟢 DATABASE FIXER: Purane Chote Naamon Ko Capital Karne Ke Liye
+// ==========================================================
+window.fixAllOldJamiaData = async () => {
+    if(!confirm("Kya aap waqai purane data (chote huroof) ko CAPITAL me convert karna chahte hain? Is process mein 1-2 minute lag sakte hain.")) return;
+    
+    showLoader(true);
+    try {
+        // 1. Users Collection (Structure aur Assigned Jamias) ko theek karna
+        const usersSnap = await getDocs(collection(db, 'users'));
+        for (const docSnap of usersSnap.docs) {
+            const data = docSnap.data();
+            let needsUpdate = false;
+            
+            // Jamia List ko Capital karna
+            let updatedJamias = [];
+            if (Array.isArray(data.jamiaatList)) {
+                updatedJamias = data.jamiaatList.map(j => {
+                    if (typeof j === 'object') {
+                        if (j.name !== (j.name || '').toUpperCase()) {
+                            needsUpdate = true;
+                            return { ...j, name: (j.name || '').toUpperCase() };
+                        }
+                        return j;
+                    } else {
+                        if (j !== String(j).toUpperCase()) {
+                            needsUpdate = true;
+                            return String(j).toUpperCase();
+                        }
+                        return j;
+                    }
+                });
+            }
+
+            // Academic Structure (Periods) ko Capital karna
+            let updatedAcademic = data.academicYears ? JSON.parse(JSON.stringify(data.academicYears)) : {};
+            Object.keys(updatedAcademic).forEach(year => {
+                let structure = updatedAcademic[year].karkardagiStructure;
+                if (Array.isArray(structure)) {
+                    structure.forEach(j => {
+                        if (j.jamiaName && j.jamiaName !== j.jamiaName.toUpperCase()) {
+                            j.jamiaName = j.jamiaName.toUpperCase();
+                            needsUpdate = true;
+                        }
+                    });
+                }
+            });
+
+            if (needsUpdate) {
+                const userRef = doc(db, 'users', docSnap.id);
+                await updateDoc(userRef, { jamiaatList: updatedJamias, academicYears: updatedAcademic });
+            }
+        }
+
+        // 2. Helper Function: Doosri tables theek karne ke liye
+        const updateCollectionDocs = async (colName, fieldsToFix) => {
+            const snap = await getDocs(collection(db, colName));
+            for (const d of snap.docs) {
+                let data = d.data();
+                let updates = {};
+                fieldsToFix.forEach(field => {
+                    if (data[field] && typeof data[field] === 'string' && data[field] !== data[field].toUpperCase()) {
+                        updates[field] = data[field].toUpperCase();
+                    }
+                });
+                if (Object.keys(updates).length > 0) {
+                    await updateDoc(doc(db, colName, d.id), updates);
+                }
+            }
+        };
+
+        // Jaiza aur Tests table theek karna
+        await updateCollectionDocs('jaiza_forms', ['jamiaName', 'name']);
+        await updateCollectionDocs('monthly_test_sheets', ['jamiaName']);
+        
+        // 3. Monthly Reports (Andar ka data) theek karna
+        const reportsSnap = await getDocs(collection(db, 'monthly_reports'));
+        for (const d of reportsSnap.docs) {
+            let data = d.data();
+            let isModified = false;
+            ['jaizaReport', 'tadrisRecording', 'monthlyTest', 'karkardagiReport'].forEach(key => {
+                let arr = data[key]?.data;
+                if (Array.isArray(arr)) { 
+                    arr.forEach(item => { 
+                        if (item.name && item.name !== item.name.toUpperCase()) { item.name = item.name.toUpperCase(); isModified = true; }
+                        if (item.jamiaName && item.jamiaName !== item.jamiaName.toUpperCase()) { item.jamiaName = item.jamiaName.toUpperCase(); isModified = true; }
+                    });
+                }
+            });
+            if(isModified) {
+                await updateDoc(doc(db, 'monthly_reports', d.id), data);
+            }
+        }
+
+        showNotification("Mubarak ho! Saara purana data kamyabi se CAPITAL mein theek ho gaya hai.");
+    } catch(e) {
+        console.error(e);
+        alert("Error: " + e.message);
+    } finally {
+        showLoader(false);
+    }
 };
         
 // --- Init ---
