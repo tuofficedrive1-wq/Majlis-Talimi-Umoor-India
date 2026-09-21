@@ -12,6 +12,7 @@
     width:100%; border:1px solid #cbd5e1; text-align:center; padding:6px; border-radius:6px; font-size:0.95rem;
   }
   .inner-table input[readonly] { background-color: #f1f5f9; cursor: not-allowed; color: #475569; font-weight: bold; }
+  select { appearance: auto; -webkit-appearance: auto; -moz-appearance: auto; }
   </style>
 </head>
 <body class="bg-gray-100 p-2 sm:p-6">
@@ -80,17 +81,8 @@ if (decodedExamType.includes("ششماہی")) {
 }
 
 window.excelSubjectsData = {}; 
-window.academicConfigData = null;
 
-// 🔹 1. Load Admin Academic Config
-async function loadAcademicConfig() {
-  try {
-    const snap = await getDoc(doc(db, "settings", "academic_config"));
-    if(snap.exists()) window.academicConfigData = snap.data();
-  } catch(e){ console.error("Config Load Error:", e); }
-}
-
-// 🔹 2. Load Excel Data
+// 🔹 1. Load Excel Data
 async function loadExcelData() {
   try {
       const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
@@ -102,52 +94,30 @@ async function loadExcelData() {
   } catch(e) { console.error("Excel Data Load Error:", e); }
 }
 
-// 🔹 3. SMART MATCHING LOGIC
+// 🔹 2. SMART CLASS MATCHING LOGIC
 function cleanUrdu(str) {
   if(!str) return "";
   return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 }
 
-function checkClassMatch(class1, class2) {
-  let c1 = cleanUrdu(class1); let c2 = cleanUrdu(class2);
-  if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
-  if (window.academicConfigData && window.academicConfigData.classes) {
-      for (let c of window.academicConfigData.classes) {
-          let urdu = cleanUrdu(c.classNameUrdu); let eng = cleanUrdu(c.classNameEng);
-          let match1 = (c1 === urdu || c1 === eng || (urdu && c1.includes(urdu)) || (eng && c1.includes(eng)));
-          let match2 = (c2 === urdu || c2 === eng || (urdu && c2.includes(urdu)) || (eng && c2.includes(eng)));
-          if (match1 && match2) return true;
-      }
-  }
-  return false;
-}
-
-function getExactExcelMapping(karkClass, karkSubj) {
-  let cleanS = cleanUrdu(karkSubj);
+function findExactExcelClass(karkClass) {
+  if(!karkClass) return null;
+  let c1 = cleanUrdu(karkClass);
   for (let exClass in window.excelSubjectsData) {
-      if (checkClassMatch(karkClass, exClass)) {
-          for (let exSubj in window.excelSubjectsData[exClass]) {
-              let cleanExS = cleanUrdu(exSubj);
-              if (cleanExS === cleanS || cleanExS.includes(cleanS) || cleanS.includes(cleanExS)) {
-                  return { exClass: exClass, exSubj: exSubj, data: window.excelSubjectsData[exClass][exSubj] };
-              }
-          }
+      let c2 = cleanUrdu(exClass);
+      if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) {
+          return exClass; // Excel ka exact name return karega
       }
   }
   return null;
 }
 
-// 🔹 4. Load Karkardagi Teachers
+// 🔹 3. Load Karkardagi Teachers (Setup Structure se)
 async function loadKarkardagiTeachers(loggedInUser) {
     let uid = params.get('uid');
     
-    if (!uid && loggedInUser) {
-        uid = loggedInUser.uid;
-    }
-
-    if (!uid) {
-        return [];
-    }
+    if (!uid && loggedInUser) uid = loggedInUser.uid;
+    if (!uid) return [];
 
     try {
         const userDoc = await getDoc(doc(db, "users", uid));
@@ -167,7 +137,7 @@ async function loadKarkardagiTeachers(loggedInUser) {
     return [];
 }
 
-// 🔹 5. Load Already Saved Data
+// 🔹 4. Load Already Saved Data
 async function loadSavedFirestoreData() {
   const q = query(collection(db, "asatiza_wise_results"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
   try {
@@ -181,7 +151,6 @@ async function loadSavedFirestoreData() {
       latestDoc.data().data.forEach(t => window.addTeacherRow(t.teacher, t.periods));
       return true;
   } catch(e) {
-      console.error("Saved Data Load Error:", e);
       return false;
   }
 }
@@ -220,28 +189,25 @@ window.addTeacherRow = function(name='', periods=null) {
 window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; let sVal = p.subject || '';
 
-  // Class Dropdown (Sirf Excel ki classes hongi)
+  // 🔹 Class Dropdown (Sirf Excel ki classes) 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
-  for(let c in window.excelSubjectsData) {
-      let selected = (c === cVal) ? 'selected' : '';
-      if (c === cVal) classFound = true;
-      classOpts += `<option value="${c}" ${selected}>${c}</option>`;
+  for(let exClass in window.excelSubjectsData) {
+      let selected = (exClass === cVal) ? 'selected' : '';
+      if (exClass === cVal) classFound = true;
+      classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
   }
-  // Agar Setup me class thi, par Excel me nahi mili to (No Data) dikhaye
-  if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-red-500">${cVal} (No Data)</option>`;
+  // Agar class exel me nahi mili
+  if (cVal && !classFound) classOpts += `<option value="${cVal}" selected class="text-red-500">${cVal} (ایکسل میں نہیں ہے)</option>`;
 
-  // Subject Dropdown
-  let subjOpts = '<option value="">مضمون</option>';
-  let subjFound = false;
+  // 🔹 Subject Dropdown (Sirf Excel ke subjects, shuru me BLANK) 🔹
+  let subjOpts = '<option value="">مضمون منتخب کریں</option>';
   if (classFound && window.excelSubjectsData[cVal]) {
-      for(let s in window.excelSubjectsData[cVal]) {
-          let selected = (s === sVal) ? 'selected' : '';
-          if (s === sVal) subjFound = true;
-          subjOpts += `<option value="${s}" ${selected}>${s}</option>`;
+      for(let exSubj in window.excelSubjectsData[cVal]) {
+          let selected = (exSubj === sVal) ? 'selected' : '';
+          subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
       }
   }
-  if (sVal && !subjFound) subjOpts += `<option value="${sVal}" selected class="text-red-500">${sVal} (No Data)</option>`;
 
   return `<tr>
     <td><select class="class-select bg-white font-bold text-indigo-700" onchange="updateSubjects(this)">${classOpts}</select></td>
@@ -315,7 +281,7 @@ window.saveData = async function() {
     const periods = [];
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
       const c = r.querySelector('.class-select').value; const s = r.querySelector('.subj-select').value;
-      if(c && s && !c.includes('(No Data)') && !s.includes('(No Data)')) {
+      if(c && s) { // Khali subjects save nahi honge
         periods.push({
           class: c, subject: s, total: r.querySelector('.total-inp').value, passed: r.querySelector('.passed-inp').value,
           percentage: r.children[4].children[0].value, kaifiyat: r.children[5].children[0].value
@@ -340,7 +306,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('display-year').innerText = decodeURIComponent(examYear);
 
   onAuthStateChanged(auth, async (user) => {
-      await loadAcademicConfig();
       await loadExcelData();
       const karkardagiTeachers = await loadKarkardagiTeachers(user); 
 
@@ -351,31 +316,24 @@ document.addEventListener('DOMContentLoaded', () => {
               karkardagiTeachers.forEach(t => {
                   let periodsForUI = [];
                   
-                  // 🔹 SIRF TARGET SEMESTER KI KITABEIN LOAD KAREIN 🔹
+                  // 🔹 1. SIRF TARGET SEMESTER KI KITABEIN FILTER KAREIN 🔹
                   const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
+                  
+                  // 🔹 2. SIRF UNIQUE CLASSES NIKALEIN (SUBJECTS IGNORE KAREIN) 🔹
+                  const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className))];
 
-                  filteredPeriods.forEach(p => {
-                      let matchInfo = getExactExcelMapping(p.className, p.bookName);
+                  uniqueClasses.forEach(karkClass => {
+                      // Karkardagi ki class ko Excel ki class se match karein
+                      let excelMatchedClass = findExactExcelClass(karkClass);
                       
-                      if (matchInfo) {
-                          periodsForUI.push({
-                              class: matchInfo.exClass,
-                              subject: matchInfo.exSubj,
-                              total: matchInfo.data.total,
-                              passed: matchInfo.data.passed,
-                              percentage: '', kaifiyat: ''
-                          });
-                      } else {
-                          periodsForUI.push({
-                              class: p.className, subject: p.bookName,
-                              total: '', passed: '', percentage: '', kaifiyat: ''
-                          });
-                      }
+                      periodsForUI.push({
+                          class: excelMatchedClass || karkClass, // Match hui to Excel wali, warna purani
+                          subject: '', // 👈 SUBJECT HAMESHA BLANK RAHEGA
+                          total: '', passed: '', percentage: '', kaifiyat: ''
+                      });
                   });
                   
-                  // Agar us teacher ki is semester me koi kitab na ho to blank row show hogi
                   if(periodsForUI.length === 0) periodsForUI = [{}];
-                  
                   window.addTeacherRow(t.name, periodsForUI);
               });
           } else {
