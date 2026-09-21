@@ -54,7 +54,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, query, where, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"; // 👈 NAYA IMPORT
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"; 
 
 const firebaseConfig = {
   apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com",
@@ -62,7 +62,7 @@ const firebaseConfig = {
   appId: "1:449137002393:web:6a23721d00b1b0daeb3508"
 };
 const app = initializeApp(firebaseConfig); 
-const auth = getAuth(app); // 👈 AUTH INITIALIZE
+const auth = getAuth(app); 
 const db = getFirestore(app);
 const params = new URLSearchParams(window.location.search);
 
@@ -78,17 +78,19 @@ async function loadAcademicConfig() {
   try {
     const snap = await getDoc(doc(db, "settings", "academic_config"));
     if(snap.exists()) window.academicConfigData = snap.data();
-  } catch(e){}
+  } catch(e){ console.error("Config Load Error:", e); }
 }
 
 // 🔹 2. Load Excel Data
 async function loadExcelData() {
-  const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
-  const snap = await getDocs(q);
-  if(!snap.empty) {
-      let docData = snap.docs[0].data();
-      window.excelSubjectsData = docData.classes || {};
-  }
+  try {
+      const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
+      const snap = await getDocs(q);
+      if(!snap.empty) {
+          let docData = snap.docs[0].data();
+          window.excelSubjectsData = docData.classes || {};
+      }
+  } catch(e) { console.error("Excel Data Load Error:", e); }
 }
 
 // 🔹 3. SMART MATCHING LOGIC
@@ -126,24 +128,21 @@ function getExactExcelMapping(karkClass, karkSubj) {
   return null;
 }
 
-// 🔹 4. Load Karkardagi Teachers (FIXED ERROR HANDLING)
-async function loadKarkardagiTeachers() {
+// 🔹 4. Load Karkardagi Teachers (FIXED ERROR HANDLING & PERMISSIONS)
+async function loadKarkardagiTeachers(loggedInUser) {
     let uid = params.get('uid');
     
-    try {
-        if (!uid) {
-            // Yahan error aa raha tha, ab yeh successfully catch ho jayega agar permission block hui to
-            const usersSnap = await getDocs(collection(db, "users"));
-            for (let uDoc of usersSnap.docs) {
-                const data = uDoc.data();
-                if(data.jamiaatList && data.jamiaatList.some(j => (j.name || j.jamiaName || j) === jamiaName)) {
-                    uid = uDoc.id; break;
-                }
-            }
-        }
-        
-        if (!uid) return [];
+    // Agar URL me UID nahi hai, to currently logged in user ki ID use karo
+    if (!uid && loggedInUser) {
+        uid = loggedInUser.uid;
+    }
 
+    if (!uid) {
+        console.warn("User ID nahi mili. Data load nahi ho sakta.");
+        return [];
+    }
+
+    try {
         const userDoc = await getDoc(doc(db, "users", uid));
         if (userDoc.exists()) {
             const data = userDoc.data();
@@ -157,7 +156,6 @@ async function loadKarkardagiTeachers() {
         }
     } catch (e) { 
         console.error("Firebase Permission Error (Karkardagi):", e); 
-        // Alert show kar sakte hain, par page crash nahi hoga
     }
     return [];
 }
@@ -337,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
   onAuthStateChanged(auth, async (user) => {
       await loadAcademicConfig();
       await loadExcelData();
-      const karkardagiTeachers = await loadKarkardagiTeachers();
+      const karkardagiTeachers = await loadKarkardagiTeachers(user); // Pura users check hat gaya
 
       const savedDataExists = await loadSavedFirestoreData();
 
