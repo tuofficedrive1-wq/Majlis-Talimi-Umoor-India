@@ -1,7 +1,7 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH SMART AUTO-MATCH & PREVIEW)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (COMPLETE FILE WITH DIRECT UPLOAD & REPORTS)
 
 import {
-    collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc, getDoc
+    collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 🔹 HELPERS: Status & Colors
@@ -164,10 +164,10 @@ export async function initAdminResultAnalysis(db, containerId) {
             </table>
         </div>
 
-        <!-- 🚀 UPLOAD MASTER EXCEL VIEW -->
+        <!-- 🚀 UPLOAD MASTER EXCEL VIEW (Direct DB) -->
         <div id="upload-view" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-2xl border border-teal-100 shadow-sm">
-                <h3 class="text-xl font-bold text-slate-800 border-b pb-3 mb-4"><i class="fas fa-file-excel text-teal-600 mr-2"></i> Master Excel Upload (All Jamiaat)</h3>
+                <h3 class="text-xl font-bold text-slate-800 border-b pb-3 mb-4"><i class="fas fa-file-excel text-teal-600 mr-2"></i> Master Excel Upload (Direct to DB)</h3>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div>
@@ -186,38 +186,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <div class="mb-6">
                     <label class="block text-sm font-bold text-gray-700 mb-1">Upload Master Excel File</label>
                     <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-2 border border-teal-300 rounded-lg bg-teal-50 cursor-pointer focus:outline-none">
+                    <p class="text-xs text-gray-500 mt-2">نوٹ: ایکسل کا ڈیٹا جوں کا توں ڈیٹا بیس میں محفوظ ہو جائے گا جس سے اساتذہ کے فارم میں مضامین خود آ جائیں گے۔</p>
                 </div>
 
-               <!-- 🟢 SUBJECT MAPPING CONTAINER (NAYA) -->
-                <div id="mapping-container" class="hidden mt-6 p-6 border-2 border-teal-200 bg-teal-50 rounded-2xl shadow-sm">
-                    <h4 class="text-xl font-bold text-teal-800 mb-2"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
-                    <p class="text-sm text-teal-700 mb-4 urdu-font">ایکسل کے مضامین کو Academic Setup (ڈیٹا بیس) کے مضامین کے ساتھ میچ کریں۔ اگر کوئی مضمون لسٹ میں نہ ہو تو اسے 'Ignore' کر سکتے ہیں۔</p>
-                    
-                    <div class="max-h-[70vh] overflow-y-auto custom-scrollbar bg-white rounded-lg border border-teal-100 shadow-inner mb-6">
-                        <table class="w-full text-sm text-left">
-                            <thead class="bg-teal-700 text-white uppercase text-xs sticky top-0">
-                                <tr>
-                                    <th class="p-3 border-r text-center w-1/4">Class (درجہ)</th>
-                                    <th class="p-3 border-r text-center w-1/3">Excel Subject</th>
-                                    <th class="p-3">Database Subject (Academic Setup) Select Karein</th>
-                                </tr>
-                            </thead>
-                            <tbody id="mapping-table-body" class="divide-y divide-gray-200">
-                                <!-- Mapping rows yahan JS se aayengi -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <button id="btn-process-upload" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
-                        <i class="fas fa-cogs"></i> Mapping Save Karein اور Preview دیکھیں
-                    </button>
-                </div>
-
-                <!-- 🟢 PREVIEW CONTAINER (NAYA) -->
+                <!-- 🟢 PREVIEW CONTAINER -->
                 <div id="preview-container" class="hidden mt-6 p-6 border-2 border-indigo-200 bg-indigo-50 rounded-2xl shadow-sm">
                     <h4 class="text-xl font-bold text-indigo-800 mb-4"><i class="fas fa-search mr-2"></i> Data Preview (ڈیٹا کا جائزہ لیں)</h4>
-                    <p class="text-sm text-indigo-600 mb-4">ڈیٹا بیس میں محفوظ کرنے سے پہلے دیکھ لیں کہ کلاسز اور اساتذہ کی تفصیلات درست ہیں یا نہیں۔</p>
-                    
                     <div id="preview-content" class="space-y-4 mb-6 max-h-96 overflow-y-auto pr-2 custom-scrollbar"></div>
                     
                     <div class="flex flex-col sm:flex-row gap-4 mt-6">
@@ -334,23 +308,16 @@ export async function initAdminResultAnalysis(db, containerId) {
     
     const sortedYears = Array.from(availableYears).sort().reverse();
     
-    if (adminExamYearSelect) {
-        sortedYears.forEach(yearVal => {
-            const option = document.createElement('option');
-            option.value = yearVal; option.textContent = yearVal;
-            if (yearVal === currentAcademicYear) option.selected = true;
-            adminExamYearSelect.appendChild(option);
-        });
-    }
-    
-    if (uploadExamYearSelect) {
-        sortedYears.forEach(yearVal => {
-            const option = document.createElement('option');
-            option.value = yearVal; option.textContent = yearVal;
-            if (yearVal === currentAcademicYear) option.selected = true;
-            uploadExamYearSelect.appendChild(option);
-        });
-    }
+    [adminExamYearSelect, uploadExamYearSelect].forEach(select => {
+        if (select) {
+            sortedYears.forEach(yearVal => {
+                const option = document.createElement('option');
+                option.value = yearVal; option.textContent = yearVal;
+                if (yearVal === currentAcademicYear) option.selected = true;
+                select.appendChild(option);
+            });
+        }
+    });
 
     // Update Jamia Dropdown
     const updateJamiaList = () => {
@@ -596,118 +563,32 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     }
 
- 
     // ==========================================
-    // 🚀 EXCEL UPLOAD LOGIC & EVENT DELEGATION
+    // 🚀 EXCEL DIRECT UPLOAD LOGIC
     // ==========================================
-    let uploadedWorkbook = null;
-    let classSubjectMap = {}; 
     let pendingUploadData = null; 
-    let resultHeaderInfo = {};
 
-    // 🌟 URDU TEXT CLEANER 🌟
-    const cleanUrduStr = (str) => {
-        if (!str) return "";
-        return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    };
-
-    // 🌟 NAYA: DATABASE DRIVEN CLASS MATCHER (Admin Setup se) 🌟
-    const checkClassMatch = (class1, class2) => {
-        let c1 = cleanUrduStr(class1);
-        let c2 = cleanUrduStr(class2);
-        if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
-        
-        let configData = window.academicConfigData;
-        if (configData && configData.classes) {
-            for (let c of configData.classes) {
-                let urdu = cleanUrduStr(c.classNameUrdu);
-                let eng = cleanUrduStr(c.classNameEng);
-                
-                // Check karega ke Excel aur Teacher dono Setup ki aik hi class k hissay hain ya nahi
-                let match1 = (c1 === urdu || c1 === eng || (urdu && c1.includes(urdu)) || (eng && c1.includes(eng)));
-                let match2 = (c2 === urdu || c2 === eng || (urdu && c2.includes(urdu)) || (eng && c2.includes(eng)));
-                
-                if (match1 && match2) return true;
-            }
-        }
-        return false;
-    };
-
-    // 🌟 SMART TEACHER & COMBO SUBJECT FINDER 🌟
-    const getTeacherAndSubject = (jamiaName, className, comboSubjectsArray) => {
-        const usersList = window.allUsersData || [];
-        const cleanJamia = cleanUrduStr(jamiaName);
-
-        for (let u of usersList) {
-            if (!u.academicYears) continue;
-            let years = Object.keys(u.academicYears).sort().reverse();
-            if (years.length === 0) continue;
-            
-            let struct = u.academicYears[years[0]].karkardagiStructure || [];
-            let jData = struct.find(j => cleanUrduStr(j.jamiaName) === cleanJamia);
-            
-            if (jData && jData.teachers) {
-                for (let t of jData.teachers) {
-                    if (t.periods) {
-                        for (let p of t.periods) {
-                            let dbClass = String(p.className || '').trim();
-                            let dbBook = cleanUrduStr(p.bookName);
-                            
-                            // 🌟 NAYA: Admin Setup se English/Urdu Classes ko milayega
-                            if (checkClassMatch(className, dbClass)) {
-                                for(let comboSub of comboSubjectsArray) {
-                                    let cleanCombo = cleanUrduStr(comboSub);
-                                    if (dbBook === cleanCombo || cleanCombo.includes(dbBook) || dbBook.includes(cleanCombo)) {
-                                        return { teacher: t.name, exactSubject: p.bookName }; 
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return { teacher: "Na-Maloom", exactSubject: comboSubjectsArray[0] }; 
-    };
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
-        // 🌟 1. FILE SELECTION EVENT (Generate Mapping UI) 🌟
-        document.addEventListener('change', async (e) => {
+        // 🌟 FILE SELECTION EVENT 🌟
+        document.addEventListener('change', (e) => {
             if (e.target && e.target.id === 'result-excel-file') {
                 const file = e.target.files[0];
                 if (!file) return;
                 
-                const logs = document.getElementById('upload-logs');
-                if (logs) logs.classList.add('hidden');
+                document.getElementById('upload-logs')?.classList.add('hidden');
                 document.getElementById('preview-container')?.classList.add('hidden');
-                
-                const processBtn = document.getElementById('btn-process-upload');
-                if (processBtn) {
-                    processBtn.disabled = false;
-                    processBtn.innerHTML = '<i class="fas fa-cogs"></i> Mapping Save Karein اور Preview دیکھیں';
-                    processBtn.classList.remove('hidden');
-                }
-
-                // 🌟 FETCH ACADEMIC SETUP 🌟
-                window.academicConfigData = null; // 🌟 NAYA: Global Variable
-                try {
-                    const configSnap = await getDoc(doc(db, "settings", "academic_config"));
-                    if (configSnap.exists()) {
-                        window.academicConfigData = configSnap.data();
-                    }
-                } catch (err) {
-                    console.error("Failed to load academic setup:", err);
-                }
 
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     const data = new Uint8Array(evt.target.result);
-                    uploadedWorkbook = XLSX.read(data, {type: 'array'});
+                    const workbook = XLSX.read(data, {type: 'array'});
 
-                    const mapSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'subj') || uploadedWorkbook.SheetNames[1];
-                    const mapData = XLSX.utils.sheet_to_json(uploadedWorkbook.Sheets[mapSheetName], {header: 1});
-                    classSubjectMap = {};
+                    // 1. Map Sheet (Find Classes & Subjects)
+                    const mapSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'subj') || workbook.SheetNames[1];
+                    const mapData = XLSX.utils.sheet_to_json(workbook.Sheets[mapSheetName], {header: 1});
+                    let classSubjectMap = {};
                     let colNumberMap = {};
                     let headerRowIdx = -1;
 
@@ -724,37 +605,35 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                         let i = headerRowIdx + 1;
                         while (i < mapData.length) {
-                            let classRow = mapData[i];
-                            if (!classRow) { i++; continue; }
-                            let className = classRow[headers.indexOf('درجہ')];
+                            let className = mapData[i] ? mapData[i][headers.indexOf('درجہ')] : null;
                             if (className && className !== "ٹوٹل نمبر" && className !== "پاسنگ نمبر" && className !== "درجہ") {
                                 let currentClass = String(className).trim();
-                                classSubjectMap[currentClass] = { subjects: {}, mappingKeys: [] };
+                                classSubjectMap[currentClass] = { subjects: {}, keys: [] };
                                 
-                               let subRow = mapData[i] || [];
-                            let totalRow = mapData[i+1] || []; // 🌟 NAYA: Total Marks ki row add ki gayi
-                            let passRow = mapData[i+2] || [];
-                            Object.keys(colNumberMap).forEach(mapNum => {
-                                let colIdx = colNumberMap[mapNum];
-                                let subName = subRow[colIdx];
-                                if (subName && String(subName).trim() !== '') {
-                                    classSubjectMap[currentClass].subjects[mapNum] = {
-                                        name: String(subName).trim(),
-                                        total: parseFloat(totalRow[colIdx]) || 100, // 🌟 NAYA: Total Marks (Warna % NaN ho jati)
-                                        pass: parseFloat(passRow[colIdx]) || 40
-                                    };
-                                    classSubjectMap[currentClass].mappingKeys.push(parseInt(mapNum));
-                                }
-                            });
+                                let subRow = mapData[i] || [];
+                                let passRow = mapData[i+2] || []; // assuming row+2 is passing marks
+                                
+                                Object.keys(colNumberMap).forEach(mapNum => {
+                                    let colIdx = colNumberMap[mapNum];
+                                    let subName = subRow[colIdx];
+                                    if (subName && String(subName).trim() !== '') {
+                                        classSubjectMap[currentClass].subjects[mapNum] = {
+                                            name: String(subName).trim(),
+                                            pass: parseFloat(passRow[colIdx]) || 40
+                                        };
+                                        classSubjectMap[currentClass].keys.push(parseInt(mapNum));
+                                    }
+                                });
                                 i += 3;
                             } else { i++; }
                         }
                     }
 
-                    const resSheetName = uploadedWorkbook.SheetNames.find(n => n.toLowerCase() === 'result') || uploadedWorkbook.SheetNames[0];
-                    const rawResultData = XLSX.utils.sheet_to_json(uploadedWorkbook.Sheets[resSheetName], { header: 1 });
+                    // 2. Result Sheet Data Collection
+                    const resSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'result') || workbook.SheetNames[0];
+                    const rawResultData = XLSX.utils.sheet_to_json(workbook.Sheets[resSheetName], { header: 1 });
                     
-                   let resHdrIdx = -1, resColMap = {}, jamiaColIdx = -1, classColIdx = -1, kefiyatColIdx = -1;
+                    let resHdrIdx = -1, resColMap = {}, jamiaColIdx = -1, classColIdx = -1, kefiyatColIdx = -1;
 
                     for (let i = 0; i < Math.min(15, rawResultData.length); i++) {
                         let row = rawResultData[i];
@@ -764,13 +643,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                             if (/^(10|[1-9])$/.test(cell)) { resColMap[parseInt(cell)] = c; resHdrIdx = i; }
                             if (cell === 'Jamia_tul_Madina' || cell.includes('جامعۃ المدینہ') || cell === 'جامعہ') jamiaColIdx = c;
                             if (cell === 'Class' || cell.includes('درجہ')) classColIdx = c;
-                            
-                            // 🌟 WIDEN SEARCH: "کیفیت", "نتیجہ", "گریڈ" 
                             if (cell.includes('کیفیت') || cell.includes('نتیجہ') || cell.includes('گریڈ')) kefiyatColIdx = c; 
                         }
                     }
-
-                    // 🌟 SMART FALLBACK: Agar header me lafz na mile, to Column F (Index 5) ya aas paas check karein
+                    
+                    // Fallback for Kefiyat
                     if (kefiyatColIdx === -1 && rawResultData.length > 15) {
                         for(let col = 4; col <= 8; col++) {
                             let testCell = String(rawResultData[15][col] || ''); 
@@ -782,627 +659,186 @@ export async function initAdminResultAnalysis(db, containerId) {
                     }
 
                     if (resHdrIdx === -1 || jamiaColIdx === -1 || classColIdx === -1) {
-                        alert("Result sheet mein headers (1-10 numbers, Jamia, Class) nahi mile.");
-                        return;
+                        alert("Result sheet mein headers (1-10 numbers, Jamia, Class) nahi mile."); return;
                     }
 
-                    resultHeaderInfo = { resHdrIdx, resColMap, jamiaColIdx, classColIdx, kefiyatColIdx, rawResultData };
+                    let multiJamiaClassData = {};
+                    let multiJamiaSubjectData = {}; // NEW: For Asatiza Dropdowns
 
-                  // 🌟 1. BUILD DYNAMIC SUBJECT LIST FROM TEACHERS' PROFILES (STRUCTURE) 🌟
-                    let dynamicTeacherSubjects = {};
-                    const usersList = window.allUsersData || [];
-                    
-                    // 🌟 SEMESTER FILTER LOGIC (Sirf Selected Imtihan ke subjects aayenge) 🌟
-                    const selectedExamType = document.getElementById('upload-exam-type')?.value || "سالانہ امتحان";
-                    const isShashmahi = selectedExamType.includes("ششماہی");
-
-                    // Helper: Check karega ke subject is semester ka hai ya nahi
-                    const isMatchingSemester = (itemTerm) => {
-                        if (!itemTerm) return true; // Agar term na likhi ho to show karega (taake koi miss na ho)
-                        let termStr = String(itemTerm).toLowerCase();
-                        if (isShashmahi) {
-                            return termStr.includes("shashmahi") || termStr.includes("sem 1") || termStr.includes("term 1") || termStr.includes("ششماہی") || termStr === "1";
-                        } else {
-                            return termStr.includes("salana") || termStr.includes("sem 2") || termStr.includes("term 2") || termStr.includes("سالانہ") || termStr === "2";
-                        }
-                    };
-
-                    // 💡 NOTE: 'usersList' mein Inspectors aur Zimmedaran dono ka data shamil hai
-                    usersList.forEach(u => {
-                        if (!u.academicYears) return;
-                        Object.values(u.academicYears).forEach(yearData => {
-                            if (!yearData.karkardagiStructure) return;
-                            yearData.karkardagiStructure.forEach(jamia => {
-                                if (!jamia.teachers) return;
-                                jamia.teachers.forEach(t => {
-                                    if (!t.periods) return;
-                                    t.periods.forEach(p => {
-                                        // 🎯 FILTER: Agar book selected semester ki nahi hai, to usay chhor do
-                                        let periodTerm = p.term || p.examType || p.semester || p.type;
-                                        if (!isMatchingSemester(periodTerm)) return;
-                                        
-                                        let cName = cleanUrduStr(p.className);
-                                        let bName = String(p.bookName).trim();
-                                        if (!dynamicTeacherSubjects[cName]) dynamicTeacherSubjects[cName] = new Set();
-                                        if (bName) dynamicTeacherSubjects[cName].add(bName);
-                                    });
-                                });
-                            });
-                        });
-                    });
-
-                  // 🌟 2. GENERATE WIZARD DATA (Step-by-Step Logic) 🌟
-                    window.wizardSteps = []; 
-                    window.currentWizardStep = 0;
-                    
-                    window.userSubjectLinks = JSON.parse(localStorage.getItem('saved_subject_links')) || {}; 
-
-                    Object.keys(classSubjectMap).forEach(className => {
-                        let matchedActualSubjects = new Set();
+                    for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
+                        let row = rawResultData[i];
+                        if (!row || row.length === 0) continue;
                         
-                        Object.keys(dynamicTeacherSubjects).forEach(dbClass => {
-                            // 🌟 NAYA: Inspector k English names ko Excel ki Urdu classes se milayega
-                            if (checkClassMatch(className, dbClass)) {
-                                dynamicTeacherSubjects[dbClass].forEach(sub => matchedActualSubjects.add(sub));
-                            }
-                        });
+                        let jamiaName = String(row[jamiaColIdx] || '').trim();
+                        let cName = String(row[classColIdx] || '').trim();
+                        let kefiyatVal = kefiyatColIdx !== -1 ? String(row[kefiyatColIdx] || '').trim() : '';
+                        
+                        if (!jamiaName || !cName || jamiaName === 'undefined') continue;
+                        let config = classSubjectMap[cName];
+                        if (!config) continue; 
 
-                        let setupSubjects = new Set();
-                        if (window.academicConfigData && window.academicConfigData.classes) {
-                            // Database se match karke subjects nikalega
-                            let dbClassData = window.academicConfigData.classes.find(c => checkClassMatch(className, c.classNameUrdu) || checkClassMatch(className, c.classNameEng));
+                        if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
+                        if (!multiJamiaSubjectData[jamiaName]) multiJamiaSubjectData[jamiaName] = {};
+                        
+                        if (!multiJamiaClassData[jamiaName][cName]) {
+                            multiJamiaClassData[jamiaName][cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
+                        }
+                        if (!multiJamiaSubjectData[jamiaName][cName]) {
+                            multiJamiaSubjectData[jamiaName][cName] = {};
+                        }
+
+                        let isGhaib = true;
+                        
+                        // Extract subject-wise marks
+                        config.keys.forEach(mapNum => {
+                            let resColIdx = resColMap[mapNum];
+                            if (resColIdx === undefined) return;
                             
-                            if (dbClassData && dbClassData.subjects) {
-                                dbClassData.subjects.forEach(sub => {
-                                    let subTerm = sub.term || sub.semester || sub.examType || sub.type;
-                                    if (isMatchingSemester(subTerm)) {
-                                        let finalSubName = sub.urdu || sub.name || sub;
-                                        setupSubjects.add(finalSubName);
-                                    }
-                                });
+                            let markCell = row[resColIdx];
+                            let cellStr = String(markCell || '').trim();
+                            let subjConfig = config.subjects[mapNum];
+                            let passMarks = subjConfig.pass;
+                            let subName = subjConfig.name;
+
+                            if (!multiJamiaSubjectData[jamiaName][cName][subName]) {
+                                multiJamiaSubjectData[jamiaName][cName][subName] = { total: 0, passed: 0 };
                             }
-                        }
 
-                        let finalSubjectsList = new Set([...matchedActualSubjects, ...setupSubjects]);
-                        
-                        classSubjectMap[className].mappingKeys.forEach(mapNum => {
-                            let excelSubjName = classSubjectMap[className].subjects[mapNum].name;
-                            window.wizardSteps.push({
-                                className,
-                                mapNum,
-                                excelSubjName,
-                                excelClean: cleanUrduStr(excelSubjName),
-                                finalSubjectsList: Array.from(finalSubjectsList).sort(),
-                                matchedActualSubjects
-                            });
-                        });
-                    });
-
-                    // 🌟 3. WIZARD CARD RENDER FUNCTION (COMPACT & NORMAL FONT) 🌟
-                    window.renderWizardCard = () => {
-                        const step = window.wizardSteps[window.currentWizardStep];
-                        const total = window.wizardSteps.length;
-                        const progress = ((window.currentWizardStep + 1) / total) * 100;
-                        const selectedExamType = document.getElementById('upload-exam-type').value; // Exam name
-                        
-                        let optionsHtml = '';
-                        
-                        if (step.finalSubjectsList.length > 0) {
-                            step.finalSubjectsList.forEach(sub => {
-                                let isFromTeacher = step.matchedActualSubjects.has(sub);
-                                let label = isFromTeacher ? `<i class="fas fa-user-tie text-[10px] mr-1 opacity-60"></i> ${sub}` : `<i class="fas fa-cog text-[10px] mr-1 opacity-60"></i> ${sub}`;
+                            let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellStr === 'A' || cellStr === '';
+                            let isTextNakam = cellStr === 'ناکام' || cellStr.toLowerCase() === 'fail' || cellStr === 'f';
+                            
+                            if (!isTextGhaib) {
+                                isGhaib = false;
+                                multiJamiaSubjectData[jamiaName][cName][subName].total++;
                                 
-                                let subClean = cleanUrduStr(sub);
-                                let isChecked = '';
-                                let autoMatchClass = 'bg-white border-gray-200';
+                                let marks = cellStr.includes('+') ? (parseFloat(cellStr.split('+')[0]) + parseFloat(cellStr.split('+')[1])) : parseFloat(markCell);
                                 
-                                // 🌟 STRONG GLOBAL KEY: (Taake future uploads me bhi kaam aaye) 🌟
-                                let globalKey = `${cleanUrduStr(step.className)}_${cleanUrduStr(step.excelSubjName)}`;
-                                
-                                if (window.userSubjectLinks[globalKey]) {
-                                    if (window.userSubjectLinks[globalKey].dbSubj.includes(sub)) {
-                                        isChecked = 'checked';
-                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-sm';
-                                    }
-                                } else {
-                                    if (step.excelClean === subClean || step.excelClean.includes(subClean) || subClean.includes(step.excelClean)) {
-                                        isChecked = 'checked';
-                                        autoMatchClass = 'bg-teal-50 border-teal-500 shadow-sm';
-                                    }
+                                if (!isNaN(marks) && marks >= passMarks) {
+                                    multiJamiaSubjectData[jamiaName][cName][subName].passed++;
+                                } else if (isNaN(marks) && !isTextNakam) {
+                                    multiJamiaSubjectData[jamiaName][cName][subName].passed++;
                                 }
-
-                                optionsHtml += `
-                                    <label class="inline-flex items-center px-4 py-2 rounded-lg border-2 ${autoMatchClass} hover:bg-teal-50 cursor-pointer transition-all flex-shrink-0 has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:shadow-sm justify-center">
-                                        <input type="checkbox" value="${sub}" ${isChecked} class="wizard-checkbox w-4 h-4 text-teal-600 rounded border-gray-300 mr-2 focus:ring-teal-500">
-                                        <span class="urdu-font text-sm font-bold text-gray-700">${label}</span>
-                                    </label>
-                                `;
-                            });
-                        } else {
-                            optionsHtml = `<div class="text-red-500 font-bold p-3 bg-red-50 rounded-lg w-full text-center text-sm">کوئی مضمون نہیں ملا (No Subjects Found)</div>`;
-                        }
-
-                        let isLastStep = window.currentWizardStep === total - 1;
-                        let nextBtnHtml = isLastStep 
-                            ? `<button id="btn-process-upload" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition text-sm flex items-center gap-2">مکمل کریں اور Preview دیکھیں <i class="fas fa-check-circle"></i></button>`
-                            : `<button id="btn-wizard-next" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition text-sm flex items-center gap-2">اگلا مضمون <i class="fas fa-arrow-left"></i></button>`;
-
-                        let prevBtnHtml = window.currentWizardStep === 0 
-                            ? `<div></div>` 
-                            : `<button id="btn-wizard-prev" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 px-5 rounded-lg border transition flex items-center gap-2 text-sm"><i class="fas fa-arrow-right"></i> پیچھے</button>`;
-
-                        let html = `
-                            <div class="flex justify-between items-center mb-3">
-                                <h4 class="text-lg font-bold text-teal-800"><i class="fas fa-link mr-2"></i> Subjects Mapping (مضامین کو لنک کریں)</h4>
-                                <span class="bg-teal-100 text-teal-800 font-bold px-3 py-1 rounded-full text-xs">مضمون ${window.currentWizardStep + 1} از ${total}</span>
-                            </div>
-                            
-                            <div class="bg-white rounded-xl shadow-sm border border-teal-100 p-5">
-                                <div class="mb-5">
-                                    <div class="w-full bg-gray-100 rounded-full h-2">
-                                        <div class="bg-teal-500 h-2 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
-                                    </div>
-                                </div>
-
-                                <div class="text-center mb-5">
-                                    <div class="inline-block bg-indigo-50 border border-indigo-100 text-indigo-800 px-4 py-1 rounded-full font-bold urdu-font mb-2 text-xs shadow-sm">
-                                        درجہ: ${step.className}
-                                    </div>
-                                    <!-- 🌟 NAYA BADGE: Semester dikhane ke liye 🌟 -->
-                                    <div class="inline-block bg-purple-50 border border-purple-100 text-purple-800 px-4 py-1 rounded-full font-bold urdu-font mb-2 text-xs shadow-sm ml-2">
-                                        امتحان: ${selectedExamType}
-                                    </div>
-                                    <h3 class="text-2xl font-bold text-gray-900 urdu-font mb-1">${step.excelSubjName}</h3>
-                                    <p class="text-gray-500 text-xs">ایکسل کے اس مضمون کے لیے ڈیٹا بیس کے مضامین سیلیکٹ کریں (Combo بنانے کے لیے ایک سے زیادہ پر ٹک کر سکتے ہیں)</p>
-                                </div>
-
-                                <div class="flex flex-wrap justify-center gap-2.5 bg-gray-50 p-5 rounded-xl border border-gray-200 min-h-[140px]">
-                                    ${optionsHtml}
-                                </div>
-
-                                <div class="flex justify-between items-center mt-5 pt-4 border-t border-gray-100">
-                                    ${prevBtnHtml}
-                                    ${nextBtnHtml}
-                                </div>
-                            </div>
-                        `;
+                            }
+                        });
                         
-                        document.getElementById('mapping-container').innerHTML = html;
-                        document.getElementById('mapping-container').classList.remove('hidden');
-                    };
-                    
-                    // Card ko pehli dafa show karwane ki command
-                    window.renderWizardCard();
-                    }; // <--- 1. YAHAN READER.ONLOAD BAND HUA
-                reader.readAsArrayBuffer(file); // <--- 2. YAHAN FILE READ HOGI
-            } // <--- 3. YAHAN IF CONDITION BAND HUI
+                        multiJamiaClassData[jamiaName][cName].total++;
+                        if (isGhaib) {
+                            multiJamiaClassData[jamiaName][cName].ghaib++;
+                            multiJamiaClassData[jamiaName][cName].total--; 
+                        } else {
+                            if (kefiyatVal.includes('ناکام') || kefiyatVal === 'F' || kefiyatVal.toLowerCase() === 'fail') {
+                                multiJamiaClassData[jamiaName][cName].nakam++;
+                            } else if (kefiyatVal.includes('غائب') || kefiyatVal === 'A' || kefiyatVal === 'غ') { 
+                                multiJamiaClassData[jamiaName][cName].ghaib++; multiJamiaClassData[jamiaName][cName].total--; 
+                            } else {
+                                multiJamiaClassData[jamiaName][cName].passed++;
+                                if (kefiyatVal.includes('الشرف') || kefiyatVal === 'A+') multiJamiaClassData[jamiaName][cName].mumtazSharf++;
+                                else if (kefiyatVal.includes('ممتاز') || kefiyatVal === 'A') multiJamiaClassData[jamiaName][cName].mumtaz++;
+                                else if (kefiyatVal.includes('جید جدا') || kefiyatVal === 'B+') multiJamiaClassData[jamiaName][cName].jayyidJidda++;
+                                else if (kefiyatVal.includes('جید') || kefiyatVal === 'B') multiJamiaClassData[jamiaName][cName].jayyid++;
+                                else if (kefiyatVal.includes('ضمنی')) multiJamiaClassData[jamiaName][cName].majazZimni++;
+                                else multiJamiaClassData[jamiaName][cName].maqbool++;
+                            }
+                        }
+                    } 
+
+                    const examType = document.getElementById('upload-exam-type').value;
+                    const examYear = document.getElementById('upload-exam-year').value;
+                    pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaSubjectData };
+
+                    // 🌟 PREVIEW GENERATION 🌟
+                    let previewHtml = '';
+                    Object.keys(multiJamiaSubjectData).forEach(jamiaName => {
+                        let cData = multiJamiaSubjectData[jamiaName];
+                        let classesHtml = '';
+                        Object.keys(cData).forEach(cName => {
+                            let subsHtml = Object.keys(cData[cName]).map(sub => 
+                                `<span class="inline-block bg-teal-50 text-teal-800 border border-teal-200 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${cData[cName][sub].passed}/${cData[cName][sub].total})</span>`
+                            ).join('');
+                            classesHtml += `<div class="p-3 bg-white border rounded-lg mb-2 shadow-sm"><strong class="urdu-font text-indigo-700">${cName}</strong><div class="mt-1 flex flex-wrap">${subsHtml}</div></div>`;
+                        });
+
+                        previewHtml += `<div class="bg-gray-50 p-4 rounded-xl border mb-4">
+                            <h5 class="font-bold text-xl text-indigo-900 urdu-font mb-2">${jamiaName}</h5>
+                            ${classesHtml}
+                        </div>`;
+                    });
+
+                    document.getElementById('preview-content').innerHTML = previewHtml;
+                    document.getElementById('preview-container').classList.remove('hidden');
+                }; 
+                reader.readAsArrayBuffer(file); 
+            }
         });
 
-     // 🌟 3. CLICK EVENTS (Process with Mappings & Delete) 🌟
-        document.addEventListener('click', async (e) => {
-            
-            // 🌟 WIZARD SAVING LOGIC (Browser Memory Save) 🌟
-            const saveWizardSelection = () => {
-                if (window.wizardSteps && window.wizardSteps.length > 0) {
-                    let step = window.wizardSteps[window.currentWizardStep];
-                    
-                    // 🌟 NAYA STRONG KEY: Sirf class + subject name (Taake Excel k column change hone par bhi match ho)
-                    let globalKey = `${cleanUrduStr(step.className)}_${cleanUrduStr(step.excelSubjName)}`;
-                    
-                    let selected = Array.from(document.querySelectorAll('.wizard-checkbox:checked')).map(cb => cb.value);
-                    
-                    if (!window.userSubjectLinks) window.userSubjectLinks = {};
-                    window.userSubjectLinks[globalKey] = { dbSubj: selected, excelSubj: step.excelSubjName };
-                    
-                    // 🌟 PERMANENT SAVE (Browser LocalStorage) 🌟
-                    localStorage.setItem('saved_subject_links', JSON.stringify(window.userSubjectLinks));
-                }
-            };
-
-            // --- A. WIZARD NEXT BUTTON (Agla Mazmoon) ---
-            if (e.target.closest('#btn-wizard-next')) {
-                saveWizardSelection(); // Pehle wali selection save karo
-                window.currentWizardStep++; // Agle step par jao
-                window.renderWizardCard(); // Naya card show karo
-            }
-
-            // --- B. WIZARD PREV BUTTON (Peechay) ---
-            if (e.target.closest('#btn-wizard-prev')) {
-                saveWizardSelection(); // Majooda tabdeeli save karo
-                window.currentWizardStep--; // Peechle step par wapis jao
-                window.renderWizardCard(); // Purana card show karo
-            }
-
-            // --- C. PROCESS & PREVIEW BUTTON (Aakhri Step) ---
-            if (e.target.closest('#btn-process-upload')) {
-                saveWizardSelection(); // Aakhri step ki selection lazmi save karo
-                
-                const processBtn = e.target.closest('#btn-process-upload');
-                const examType = document.getElementById('upload-exam-type')?.value;
-                const examYear = document.getElementById('upload-exam-year')?.value;
-
-                // Aapka userSubjectLinks jo Wizard se save hua hai usko utha len
-                let userSubjectLinks = window.userSubjectLinks || {}; 
-
-                processBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating Preview...';
-                processBtn.disabled = true;
-
-               const { resHdrIdx, resColMap, jamiaColIdx, classColIdx, kefiyatColIdx, rawResultData } = resultHeaderInfo;
-
-                let multiJamiaClassData = {};
-                let multiJamiaAsatizaData = {};
-
-                for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
-                    let row = rawResultData[i];
-                    if (!row || row.length === 0) continue;
-                    
-                    let jamiaName = String(row[jamiaColIdx] || '').trim();
-                    let cName = String(row[classColIdx] || '').trim();
-                    // 🌟 NAYA: Excel cell se Kefiyat ka lafz (word) uthayega
-                    let kefiyatVal = kefiyatColIdx !== -1 ? String(row[kefiyatColIdx] || '').trim() : '';
-                    
-                    if (!jamiaName || !cName || jamiaName === 'undefined') continue;
-                    let config = classSubjectMap[cName];
-                    if (!config) continue; 
-
-                    if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
-                    if (!multiJamiaAsatizaData[jamiaName]) multiJamiaAsatizaData[jamiaName] = {};
-
-                    if (!multiJamiaClassData[jamiaName][cName]) {
-                        multiJamiaClassData[jamiaName][cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
-                    }
-
-                    let studentTotalMarks = 0;
-                    let studentObtainedMarks = 0;
-                    let isGhaib = true;
-                    let isNakam = false;
-                    let failedSubjectsCount = 0;
-
-                    config.mappingKeys.forEach(mapNum => {
-                        let resColIdx = resColMap[mapNum];
-                        if (resColIdx === undefined) return;
-                        
-                        let markCell = row[resColIdx];
-                        let cellStr = String(markCell || '').trim();
-                        
-                        let subjConfig = config.subjects[mapNum];
-                        let passMarks = subjConfig.pass;
-                        let totalMarks = subjConfig.total; // 🌟 NAYA
-                        
-                        let globalKey = `${cleanUrduStr(cName)}_${cleanUrduStr(subjConfig.name)}`;
-                        let linkedData = userSubjectLinks[globalKey];
-                        let comboSubjects = linkedData && linkedData.dbSubj && linkedData.dbSubj.length > 0 ? linkedData.dbSubj : [subjConfig.name]; 
-
-                        // 🌟 "ناکام یا غیر حاضر کے علاوہ سب پاس" LOGIC 🌟
-                        let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellStr === 'غیر حاضر' || cellStr === 'A' || cellStr === '';
-                        let isTextNakam = cellStr === 'ناکام' || cellStr.toLowerCase() === 'fail' || cellStr === 'f';
-                        
-                        let isSubjectPassed = false;
-
-                        if (isTextGhaib) {
-                            studentTotalMarks += totalMarks;
-                            failedSubjectsCount++; // Ghaib (Absent) fail mana jayega
-                        } else {
-                            isGhaib = false; // Student present hai
-                            studentTotalMarks += totalMarks;
-                            
-                            let marks = NaN;
-                            if (cellStr.includes('+')) {
-                                marks = parseFloat(cellStr.split('+')[0]) + parseFloat(cellStr.split('+')[1]);
-                            } else {
-                                marks = parseFloat(markCell);
-                            }
-                            
-                            if (!isNaN(marks)) {
-                                studentObtainedMarks += marks;
-                                if (marks >= passMarks) {
-                                    isSubjectPassed = true;
-                                } else {
-                                    failedSubjectsCount++;
-                                }
-                            } else {
-                                // Agar cell mein number nahi balkay sirf Text (Alfaz) likha hai
-                                if (isTextNakam) {
-                                    failedSubjectsCount++;
-                                } else {
-                                    isSubjectPassed = true; // 🌟 "ناکام کے علاوہ سب پاس ہیں" 🌟
-                                    studentObtainedMarks += passMarks; // Percentage maintain rakhne k liye passing marks de diye
-                                }
-                            }
-                        }
-
-                        if (linkedData) { 
-                            // 🌟 COMBO TEACHER MAPPING LOGIC 🌟
-                            let matchData = getTeacherAndSubject(jamiaName, cName, comboSubjects);
-                            let tName = matchData.teacher;
-                            let finalSubName = matchData.exactSubject; 
-
-                            if (tName === "Na-Maloom") tName = "Teacher Unassigned (Not Linked)";
-
-                            if (!multiJamiaAsatizaData[jamiaName][tName]) multiJamiaAsatizaData[jamiaName][tName] = {};
-                            if (!multiJamiaAsatizaData[jamiaName][tName][finalSubName]) {
-                                multiJamiaAsatizaData[jamiaName][tName][finalSubName] = { class: cName, subject: finalSubName, total: 0, passed: 0 };
-                            }
-                            multiJamiaAsatizaData[jamiaName][tName][finalSubName].total++;
-                            if (isSubjectPassed) {
-                                multiJamiaAsatizaData[jamiaName][tName][finalSubName].passed++;
-                            }
-                        }
-                    });
-
-                   // 🌟 Yahan config.mappingKeys ka loop khatam ho raha hai 🌟
-                    
-                    multiJamiaClassData[jamiaName][cName].total++;
-                    if (isGhaib) {
-                        multiJamiaClassData[jamiaName][cName].ghaib++;
-                        multiJamiaClassData[jamiaName][cName].total--; 
-                    } else {
-                        // 🌟 DIRECT EXCEL "KEFIYAT" LOGIC 🌟
-                        if (kefiyatColIdx !== -1 && kefiyatVal !== '') {
-                            
-                            if (kefiyatVal.includes('ناکام') || kefiyatVal.toLowerCase() === 'fail' || kefiyatVal === 'F') {
-                                multiJamiaClassData[jamiaName][cName].nakam++;
-                            } else if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || kefiyatVal.includes('غیر حاضر') || kefiyatVal === 'A') {
-                                multiJamiaClassData[jamiaName][cName].ghaib++;
-                                multiJamiaClassData[jamiaName][cName].total--;
-                            } else {
-                                multiJamiaClassData[jamiaName][cName].passed++;
-                                
-                                // Excel ke text ki bunyad par summary
-                                if (kefiyatVal.includes('ممتاز مع الشرف') || kefiyatVal.includes('الشرف') || kefiyatVal === 'A+') {
-                                    multiJamiaClassData[jamiaName][cName].mumtazSharf++;
-                                } else if (kefiyatVal.includes('ممتاز') || kefiyatVal === 'A') {
-                                    multiJamiaClassData[jamiaName][cName].mumtaz++;
-                                } else if (kefiyatVal.includes('جید جدا') || kefiyatVal === 'B+') {
-                                    multiJamiaClassData[jamiaName][cName].jayyidJidda++;
-                                } else if (kefiyatVal.includes('جید') || kefiyatVal === 'B') {
-                                    multiJamiaClassData[jamiaName][cName].jayyid++;
-                                } else if (kefiyatVal.includes('ضمنی') || kefiyatVal.includes('رعایتی')) {
-                                    multiJamiaClassData[jamiaName][cName].majazZimni++; // Sirf tab Zimni hoga jab excel me likha ho!
-                                } else {
-                                    multiJamiaClassData[jamiaName][cName].maqbool++; // Baqi sab Kamyab 'Maqbool' me jayenge
-                                }
-                            }
-                        } else {
-                            // 🌟 FALLBACK: Agar Excel me Kefiyat bilkul blank ho
-                            let percentage = studentTotalMarks > 0 ? (studentObtainedMarks / studentTotalMarks) * 100 : 0;
-                            if (failedSubjectsCount > 0) isNakam = true;
-                            
-                            if (isNakam) multiJamiaClassData[jamiaName][cName].nakam++;
-                            else {
-                                multiJamiaClassData[jamiaName][cName].passed++;
-                                if (percentage >= 85) multiJamiaClassData[jamiaName][cName].mumtazSharf++;
-                                else if (percentage >= 76) multiJamiaClassData[jamiaName][cName].mumtaz++;
-                                else if (percentage >= 70) multiJamiaClassData[jamiaName][cName].jayyidJidda++;
-                                else if (percentage >= 60) multiJamiaClassData[jamiaName][cName].jayyid++;
-                                else multiJamiaClassData[jamiaName][cName].maqbool++; // 🌟 BUG FIX: Zimni hata kar sab paas hone walon ko Maqbool me dal diya
-                            }
-                        }
-                    }
-                } // <--- For loop yahan close hoga // 🌟 Yahan 'for' loop band hoga (Error ka asal hal) 🌟
-
-                pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData };
-
-            
-
-               // 🌟 ADVANCED PREVIEW UI GENERATION 🌟
-                let previewHtml = '';
-                Object.keys(multiJamiaClassData).forEach(jamiaName => {
-                    const cData = multiJamiaClassData[jamiaName];
-                    const tData = JSON.parse(JSON.stringify(multiJamiaAsatizaData[jamiaName] || {}));
-                    
-                    let totalStudents = 0;
-                    let classesHtml = Object.keys(cData).map(c => {
-                        totalStudents += cData[c].total;
-                        return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs border">${c} (${cData[c].total} طلباء)</span>`;
-                    }).join(' ');
-
-                    let dbJamiaStruct = null;
-                    const usersList = window.allUsersData || [];
-                    for (let u of usersList) {
-                        if (!u.academicYears) continue;
-                        let years = Object.keys(u.academicYears).sort().reverse();
-                        if(years.length === 0) continue;
-                        let struct = u.academicYears[years[0]].karkardagiStructure || [];
-                        dbJamiaStruct = struct.find(j => (j.jamiaName||'').trim() === jamiaName);
-                        if (dbJamiaStruct) break;
-                    }
-
-                    let teachersHtml = '';
-
-                    if (dbJamiaStruct && dbJamiaStruct.teachers) {
-                        dbJamiaStruct.teachers.forEach(teacher => {
-                            let tName = teacher.name;
-                            let periods = teacher.periods || [];
-                            let totalPeriods = periods.length;
-                            let mappedCount = 0;
-                            
-                            let periodsHtml = periods.map(p => {
-                                let subData = tData[tName] ? tData[tName][p.bookName] : null;
-                                
-                                if (subData) {
-                                    mappedCount++;
-                                    return `<span class="inline-block bg-green-100 text-green-800 border border-green-300 px-2 py-1 rounded text-[11px] m-1 shadow-sm">✅ ${p.bookName} (${p.className}) - ${subData.passed}/${subData.total} Pass</span>`;
-                                } else {
-                                    return `<span class="inline-block bg-red-50 text-red-600 border border-red-200 px-2 py-1 rounded text-[11px] m-1 shadow-sm">❌ ${p.bookName} (${p.className}) - No Data</span>`;
-                                }
-                            }).join('');
-
-                            if (totalPeriods === 0) {
-                                periodsHtml = `<span class="text-xs text-gray-400 p-1">کوئی پیریڈ اسائن نہیں ہے۔ (No periods assigned)</span>`;
-                            }
-
-                            let tClass = "";
-                            if (totalPeriods === 0) {
-                                tClass = "bg-gray-50 border-gray-200";
-                            } else if (mappedCount === totalPeriods) {
-                                tClass = "bg-emerald-50 border-emerald-300";
-                            } else if (mappedCount > 0) {
-                                tClass = "bg-yellow-50 border-yellow-300";
-                            } else {
-                                tClass = "bg-red-50 border-red-200";
-                            }
-                            
-                            teachersHtml += `
-                                <div class="p-3 rounded-lg border mb-3 urdu-font shadow-sm ${tClass}">
-                                    <div class="flex justify-between items-center mb-2 border-b pb-2 border-gray-300">
-                                        <span class="font-bold text-gray-900 text-base">${tName}</span>
-                                        <span class="text-xs font-bold text-gray-700 bg-white px-3 py-1 rounded-full border shadow-sm">Periods Mapped: <span class="${mappedCount === totalPeriods ? 'text-green-600' : 'text-red-500'}">${mappedCount}/${totalPeriods}</span></span>
-                                    </div>
-                                    <div class="flex flex-wrap leading-relaxed">${periodsHtml}</div>
-                                </div>
-                            `;
-                            
-                            if (tData[tName]) delete tData[tName];
-                        });
-                    } else {
-                        teachersHtml += `<div class="text-xs text-red-500 mb-3 font-bold p-3 bg-red-50 rounded border border-red-200">⚠️ ڈیٹا بیس میں اس جامعہ کا اسٹرکچر نہیں ملا۔ نیچے صرف ایکسل کا ڈیٹا ہے۔</div>`;
-                    }
-
-                    Object.keys(tData).forEach(t => {
-                        let subjects = Object.keys(tData[t]).map(sub => `<span class="inline-block bg-white text-gray-700 border border-gray-300 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${tData[t][sub].passed}/${tData[t][sub].total} Pass)</span>`).join('');
-                        let tClass = t.includes("Unassigned") ? "text-red-700 bg-red-50 border-red-300" : "text-gray-800 bg-gray-50 border-gray-300";
-                        teachersHtml += `
-                            <div class="p-3 rounded-lg border mb-3 urdu-font shadow-sm ${tClass}">
-                                <div class="flex justify-between items-center mb-2 border-b pb-2 border-gray-300">
-                                    <span class="font-bold text-base">${t}</span>
-                                    <span class="text-[10px] font-bold uppercase tracking-wider bg-white px-2 py-0.5 rounded border text-red-500">Unmapped Data</span>
-                                </div>
-                                <div class="flex flex-wrap leading-relaxed">${subjects}</div>
-                            </div>
-                        `;
-                    });
-
-                    if(!teachersHtml) teachersHtml = '<span class="text-xs text-red-500 italic p-2 block">کوئی مضمون لنک نہیں کیا گیا۔</span>';
-
-                    previewHtml += `
-                        <div class="bg-white p-6 rounded-2xl border-2 border-indigo-100 shadow-md mb-6">
-                            <div class="flex justify-between items-center border-b-2 border-indigo-50 pb-3 mb-4">
-                                <h5 class="font-bold text-2xl text-indigo-900 urdu-font">${jamiaName}</h5>
-                                <span class="text-sm bg-indigo-100 text-indigo-800 px-3 py-1.5 rounded-lg font-bold border border-indigo-200 shadow-sm">کل طلباء: ${totalStudents}</span>
-                            </div>
-                            
-                            <div class="mb-6">
-                                <h6 class="font-bold text-[11px] text-gray-500 uppercase tracking-wider mb-3">Class-wise Summary (درجے):</h6>
-                                <div class="flex flex-wrap gap-2">${classesHtml}</div>
-                            </div>
-
-                            <div>
-                                <h6 class="font-bold text-[11px] text-gray-500 uppercase tracking-wider mb-3">Asatiza-wise Mapping Status (اساتذہ اور مضامین کی تفصیل):</h6>
-                                <div class="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                    ${teachersHtml}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                document.getElementById('preview-content').innerHTML = previewHtml;
-                document.getElementById('preview-container').classList.remove('hidden');
-                document.getElementById('mapping-container').classList.add('hidden');
-            }
-
-            // --- B. CANCEL PREVIEW BUTTON ---
+        // 🌟 CANCEL BUTTON 🌟
+        document.addEventListener('click', (e) => {
             if (e.target.closest('#btn-cancel-preview')) {
                 document.getElementById('preview-container').classList.add('hidden');
-                document.getElementById('mapping-container').classList.remove('hidden');
-                const processBtn = document.getElementById('btn-process-upload');
-                processBtn.disabled = false;
-                processBtn.innerHTML = '<i class="fas fa-cogs"></i> Mapping Save Karein اور Preview دیکھیں';
+                const fileInput = document.getElementById('result-excel-file');
+                if(fileInput) fileInput.value = ''; 
+                pendingUploadData = null;
             }
+        });
 
-            // --- C. CONFIRM & UPLOAD BUTTON ---
+        // 🌟 CONFIRM & UPLOAD BUTTON 🌟
+        document.addEventListener('click', async (e) => {
             if (e.target.closest('#btn-confirm-upload')) {
                 const confirmBtn = e.target.closest('#btn-confirm-upload');
-                const cancelBtn = document.getElementById('btn-cancel-preview');
-                const logs = document.getElementById('upload-logs');
-
-                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Uploading to Database...';
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Uploading...';
                 confirmBtn.disabled = true;
-                if(cancelBtn) cancelBtn.disabled = true;
 
                 try {
-                    const { examType, examYear, multiJamiaClassData, multiJamiaAsatizaData } = pendingUploadData;
+                    const { examType, examYear, multiJamiaClassData, multiJamiaSubjectData } = pendingUploadData;
 
                     for (const jamiaName of Object.keys(multiJamiaClassData)) {
-                        let contextUserName = "Admin", contextRegion = "N/A", ownerUserId = "admin";
-                        if (typeof getJamiaContext === 'function') {
-                            const context = getJamiaContext(jamiaName);
-                            contextUserName = context.userName;
-                            contextRegion = context.region;
-                            ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === contextUserName)?.id || "admin";
-                        }
+                        const context = getJamiaContext(jamiaName);
+                        const ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === context.userName)?.id || "admin";
 
+                        // 1. Save Class Wise Data
                         const cDataObj = multiJamiaClassData[jamiaName];
                         for (const cName in cDataObj) {
                             const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
                             await setDoc(doc(db, "class_wise_results", customId), {
-                                uid: ownerUserId, userId: ownerUserId, userName: contextUserName, region: contextRegion,
+                                uid: ownerUserId, userId: ownerUserId, userName: context.userName, region: context.region,
                                 jamia: jamiaName, examType: examType, examYear: examYear, darjah: cName,
                                 ...cDataObj[cName], timestamp: Date.now()
                             });
                         }
 
-                        const tDataArr = [];
-                        const aDataObj = multiJamiaAsatizaData[jamiaName];
-                        for (const tName in aDataObj) {
-                            const periods = [];
-                            for (const subjKey in aDataObj[tName]) {
-                                const sData = aDataObj[tName][subjKey];
-                                let perc = sData.total > 0 ? ((sData.passed / sData.total) * 100).toFixed(1) : 0;
-                                periods.push({
-                                    class: sData.class, subject: sData.subject, total: sData.total, passed: sData.passed,
-                                    percentage: `${perc}%`, kaifiyat: getJamiaKefiyat(`${perc}%`, 'teacher')
-                                });
-                            }
-                            tDataArr.push({ teacher: tName, periods: periods });
-                        }
-                        
-                        if (tDataArr.length > 0) {
-                            const asatizaId = `${jamiaName}_${examYear}_${examType}_asatiza`.replace(/\//g, '-').replace(/\s+/g, '_');
-                            await setDoc(doc(db, "asatiza_wise_results", asatizaId), {
-                                jamia: jamiaName, examType: examType, examYear: examYear, data: tDataArr, timestamp: Date.now()
-                            });
-                        }
+                        // 2. Save EXCEL SUBJECT DATA (For Asatiza form Dropdown!)
+                        const subDataObj = multiJamiaSubjectData[jamiaName];
+                        const subjId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
+                        await setDoc(doc(db, "excel_subjects_data", subjId), {
+                            jamia: jamiaName, examType: examType, examYear: examYear, classes: subDataObj, timestamp: Date.now()
+                        });
                     }
 
                     document.getElementById('preview-container').classList.add('hidden');
-                    
-                    if(logs) {
+                    const logs = document.getElementById('upload-logs');
+                    if (logs) {
                         logs.classList.remove('hidden');
                         logs.className = "mt-6 p-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center shadow-sm";
-                        logs.innerHTML = `
-                            <div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
+                        logs.innerHTML = `<div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
                             <h4 class="text-3xl font-bold text-emerald-800 urdu-font mb-2">الحمدللہ!</h4>
-                            <p class="text-emerald-700 font-bold text-lg mb-6">تمام جامعات کا رزلٹ کامیابی سے ڈیٹا بیس میں محفوظ ہو گیا ہے۔</p>
-                            <div class="flex flex-col sm:flex-row justify-center gap-4">
-                                <button id="jump-to-dashboard" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2">
-                                    <i class="fas fa-chart-pie"></i> Result Dashboard دیکھیں
-                                </button>
-                                <button id="jump-to-reports" type="button" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2">
-                                    <i class="fas fa-table"></i> Detailed Reports دیکھیں
-                                </button>
-                            </div>
-                        `;
+                            <p class="text-emerald-700 font-bold text-lg mb-6">تمام ڈیٹا کامیابی سے محفوظ ہو گیا ہے۔ اب اساتذہ کے فارم میں مضامین خود آ جائیں گے۔</p>
+                            <button id="jump-to-reports" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition mx-auto flex items-center justify-center gap-2">
+                                <i class="fas fa-table"></i> Detailed Reports دیکھیں
+                            </button>`;
                     }
                 } catch (error) {
-                    confirmBtn.innerHTML = '<i class="fas fa-times"></i> Error Uploading';
+                    confirmBtn.innerHTML = '<i class="fas fa-times"></i> Error';
                     alert("Error: " + error.message);
                 }
             }
-
-            // --- D. NAVIGATION BUTTONS FROM SUCCESS MESSAGE ---
-            if (e.target.closest('#jump-to-dashboard')) {
-                document.getElementById('tab-dashboard')?.click();
-                document.getElementById('admin-show-btn')?.click();
-            }
-
+            
+            // Jump to reports button
             if (e.target.closest('#jump-to-reports')) {
                 document.getElementById('tab-reports')?.click();
                 document.getElementById('admin-show-btn')?.click();
             }
 
-            // --- E. DELETE UPLOADED DATA LOGIC ---
+            // 🌟 DELETE UPLOADED DATA LOGIC 🌟
             if (e.target.closest('#btn-delete-result')) {
                 const delJamia = document.getElementById('delete-jamia-select')?.value;
                 const delYear = document.getElementById('upload-exam-year')?.value;
@@ -1451,6 +887,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
                     const classCount = await deleteDataFromColl("class_wise_results");
+                    await deleteDataFromColl("excel_subjects_data"); // Also clear dropdown data
 
                     if(logs) {
                         logs.innerHTML = `
