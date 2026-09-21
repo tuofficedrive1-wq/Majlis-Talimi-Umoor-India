@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (NUMBER MAPPING & EXACT TOTAL COUNT)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (EXACT ZIMMEDAR NAME & NUMBER MAPPING)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -62,6 +62,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     Object.values(masterJamiaDict).forEach(m => { if(m.region) regionSet.add(m.region); });
     const regions = [...regionSet].sort();
 
+    // 🌟 ZIMMEDAR PRIORITY FIX: Yahan standard user ko hamesha pehli priority di jayegi
     const getJamiaContext = (jamiaName, jamiaId = null) => {
         if (!jamiaName && !jamiaId) return { userName: 'Not Linked', region: 'N/A', display: '', english: '' };
         const target = String(jamiaName || '').trim().toLowerCase();
@@ -74,16 +75,24 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (foundKey) mData = masterJamiaDict[foundKey];
         }
 
-        const foundUser = allUsers.find(u => {
+        // Un sabhi users ko filter karein jin ki list me yeh Jamia hai
+        const linkedUsers = allUsers.filter(u => {
             const list = u.jamiaatList || [];
-            const hasJamia = list.some(j => {
+            return list.some(j => {
                 const jId = typeof j === 'object' ? j.id : null;
                 const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
                 const jTarget = String(name || '').trim().toLowerCase();
                 return jTarget === target || (mData && jTarget === String(mData.name || '').trim().toLowerCase());
             });
-            return hasJamia && (u.role !== 'inspector' && u.role !== 'education_office');
         });
+
+        // 1. Sabse pehle 'standard' role (Asal Zimmedar) ko dhoondo
+        let foundUser = linkedUsers.find(u => u.role === 'standard' || !u.role);
+        
+        // 2. Agar standard nahi mila, tab ja ke baqi ko check karega (par inspector, office, ya qirat wale ko ignore karega)
+        if (!foundUser) {
+            foundUser = linkedUsers.find(u => u.role !== 'inspector' && u.role !== 'education_office' && u.role !== 'shoba_qirat' && u.role !== 'qirat');
+        }
 
         const finalMasterName = mData ? (mData.name || jamiaName) : jamiaName;
         const finalUrduName = mData ? (mData.urduName || '') : '';
@@ -122,7 +131,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                     </div>
                 </div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label><select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Regions</option>${regions.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
-                <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label><select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Users</option>${allUsers.map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}</select></div>
+                <!-- 🌟 FIX: Yahan bhi sirf Standard user filter me aayenge -->
+                <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label><select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Users</option>${allUsers.filter(u => u.role === 'standard' || !u.role).map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label><select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font"><option value="all">All Jamiaat</option></select></div>
                 
                 <div id="dashboard-filters-div">
@@ -445,7 +455,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             data.forEach(d => {
                 const key = d[keyField] || 'Unknown';
                 if (!stats[key]) stats[key] = { h: 0, p: 0 };
-                // 🌟 FIX: Hazir Calculation directly uses total and ghaib properly in UI if needed, but here we calculate it from sum
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf) + num(d.mumtaz) + num(d.jayyidJidda) + num(d.jayyid) + num(d.maqbool) + num(d.majazZimni);
                 stats[key].h += h; stats[key].p += p;
@@ -497,7 +506,7 @@ export async function initAdminResultAnalysis(db, containerId) {
             let jamiaStats = {}; let grandTotalStudents = 0; let grandTotalHazir = 0; let grandTotalPass = 0;
             data.forEach(d => {
                 if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { t: 0, h: 0, p: 0, region: d.region || '-', user: d.userName || '-' };
-                const t = num(d.total); // EXPLICIT TOTAL (Dakhla)
+                const t = num(d.total); 
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                 jamiaStats[d.jamia].t += t; jamiaStats[d.jamia].h += h; jamiaStats[d.jamia].p += p;
@@ -512,7 +521,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         else if (layout === 'class') {
             thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
             data.forEach((d, i) => {
-                const t = num(d.total); // EXPLICIT TOTAL
+                const t = num(d.total);
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                 const per = h ? (p / h) * 100 : 0;
@@ -567,7 +576,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     }
 
     // ==========================================
-    // 🚀 EXCEL DIRECT UPLOAD LOGIC (FIXED)
+    // 🚀 EXCEL DIRECT UPLOAD LOGIC
     // ==========================================
     let pendingUploadData = null; 
 
@@ -614,7 +623,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 classSubjectMap[currentClass] = { subjects: {}, keys: [] };
                                 
                                 let subRow = mapData[i] || [];
-                                let passRow = mapData[i+2] || []; // assuming row+2 is passing marks
+                                let passRow = mapData[i+2] || []; 
                                 
                                 Object.keys(colNumberMap).forEach(mapNum => {
                                     let colIdx = colNumberMap[mapNum];
@@ -632,7 +641,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
-                    // 2. Result Sheet Data Collection (NUMBER MAPPING RESTORED)
+                    // 2. Result Sheet Data Collection
                     const resSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'result') || workbook.SheetNames[0];
                     const rawResultData = XLSX.utils.sheet_to_json(workbook.Sheets[resSheetName], { header: 1 });
                     
@@ -644,21 +653,17 @@ export async function initAdminResultAnalysis(db, containerId) {
                         for (let c = 0; c < row.length; c++) {
                             let cell = String(row[c]).trim();
                             
-                            // 🌟 MAP BY NUMBER HEADERS (1, 2, 3...)
                             if (/^(10|[1-9])$/.test(cell)) { resColMap[parseInt(cell)] = c; }
                             
                             if (cell === 'Jamia_tul_Madina' || cell.includes('جامعۃ المدینہ') || cell === 'جامعہ') jamiaColIdx = c;
                             if (cell === 'Class' || cell.includes('درجہ')) classColIdx = c;
                             if (cell.includes('کیفیت') || cell.includes('نتیجہ') || cell.includes('گریڈ')) kefiyatColIdx = c; 
                         }
-                        // Stop looping when we found headers
                         if (jamiaColIdx !== -1 && classColIdx !== -1 && Object.keys(resColMap).length > 0) {
-                            resHdrIdx = i;
-                            break;
+                            resHdrIdx = i; break;
                         }
                     }
                     
-                    // Fallback for Kefiyat
                     if (kefiyatColIdx === -1 && rawResultData.length > 15) {
                         for(let col = 4; col <= 8; col++) {
                             let testCell = String(rawResultData[15][col] || ''); 
@@ -677,7 +682,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
                         let row = rawResultData[i];
-                        if (!row || row.length === 0) continue; // Skip completely empty rows
+                        if (!row || row.length === 0) continue; 
                         
                         let jamiaName = String(row[jamiaColIdx] || '').trim();
                         let cName = String(row[classColIdx] || '').trim();
@@ -697,20 +702,18 @@ export async function initAdminResultAnalysis(db, containerId) {
                             multiJamiaSubjectData[jamiaName][cName] = {};
                         }
 
-                        // 🌟 FIX: Always increment TOTAL for every student row. 
                         multiJamiaClassData[jamiaName][cName].total++;
 
-                        let isGhaib = true; // Assume absent until marks found
+                        let isGhaib = true; 
                         let isNakam = false;
                         
-                        // Extract subject-wise marks
                         config.keys.forEach(mapNum => {
                             let resColIdx = resColMap[mapNum];
                             if (resColIdx === undefined) return;
                             
                             let subjConfig = config.subjects[mapNum];
                             let passMarks = subjConfig.pass;
-                            let subName = subjConfig.name; // Real name from Subj sheet
+                            let subName = subjConfig.name; 
 
                             if (!multiJamiaSubjectData[jamiaName][cName][subName]) {
                                 multiJamiaSubjectData[jamiaName][cName][subName] = { total: 0, passed: 0 };
@@ -724,7 +727,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let isTextNakam = cellStr === 'ناکام' || cellLower === 'fail' || cellLower === 'f';
                             
                             if (!isTextGhaib) {
-                                isGhaib = false; // The student is present
+                                isGhaib = false; 
                                 multiJamiaSubjectData[jamiaName][cName][subName].total++;
                                 
                                 let marks = cellStr.includes('+') ? (parseFloat(cellStr.split('+')[0]) + parseFloat(cellStr.split('+')[1])) : parseFloat(markCell);
@@ -737,8 +740,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         });
                         
-                        // 🌟 FIX: Removed total-- from Ghaib logic. 
-                        // Total will remain the exact Enrolled number.
                         if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || isGhaib) { 
                             multiJamiaClassData[jamiaName][cName].ghaib++; 
                         } else {
@@ -770,7 +771,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let subsHtml = Object.keys(cData[cName]).map(sub => 
                                 `<span class="inline-block bg-teal-50 text-teal-800 border border-teal-200 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${cData[cName][sub].passed}/${cData[cName][sub].total})</span>`
                             ).join('');
-                            // Adding Total Students enrolled preview
                             let enrolled = multiJamiaClassData[jamiaName][cName].total;
                             classesHtml += `<div class="p-3 bg-white border rounded-lg mb-2 shadow-sm"><strong class="urdu-font text-indigo-700">${cName} (کل: ${enrolled})</strong><div class="mt-1 flex flex-wrap">${subsHtml}</div></div>`;
                         });
@@ -823,7 +823,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             });
                         }
 
-                        // 2. Save EXCEL SUBJECT DATA (For Asatiza form Dropdown!)
+                        // 2. Save EXCEL SUBJECT DATA
                         const subDataObj = multiJamiaSubjectData[jamiaName];
                         const subjId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
                         await setDoc(doc(db, "excel_subjects_data", subjId), {
@@ -838,7 +838,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         logs.className = "mt-6 p-8 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center shadow-sm";
                         logs.innerHTML = `<div class="animate-bounce mb-4"><i class="fas fa-check-circle text-emerald-500 text-6xl"></i></div>
                             <h4 class="text-3xl font-bold text-emerald-800 urdu-font mb-2">الحمدللہ!</h4>
-                            <p class="text-emerald-700 font-bold text-lg mb-6">تمام ڈیٹا کامیابی سے محفوظ ہو گیا ہے۔ اب اساتذہ کے فارم میں مضامین خود آ جائیں گے۔</p>
+                            <p class="text-emerald-700 font-bold text-lg mb-6">تمام ڈیٹا کامیابی سے محفوظ ہو گیا ہے۔</p>
                             <button id="jump-to-reports" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition mx-auto flex items-center justify-center gap-2">
                                 <i class="fas fa-table"></i> Detailed Reports دیکھیں
                             </button>`;
@@ -849,7 +849,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 }
             }
             
-            // Jump to reports button
             if (e.target.closest('#jump-to-reports')) {
                 document.getElementById('tab-reports')?.click();
                 document.getElementById('admin-show-btn')?.click();
@@ -904,7 +903,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
                     const classCount = await deleteDataFromColl("class_wise_results");
-                    await deleteDataFromColl("excel_subjects_data"); // Also clear dropdown data
+                    await deleteDataFromColl("excel_subjects_data"); 
 
                     if(logs) {
                         logs.innerHTML = `
