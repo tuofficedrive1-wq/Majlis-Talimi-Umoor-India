@@ -58,23 +58,20 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     } catch (e) { console.error("Master list load error:", e); }
 
-    // ✅ NEW: Region ko theek format (Title Case) me lane ka function
     const formatRegion = (r) => {
         if (!r) return '';
         let formatted = String(r).trim().toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
-        if (formatted === 'Dehli') return 'Delhi'; // Spelling theek karne ke liye
+        if (formatted === 'Dehli') return 'Delhi'; 
         if (formatted === 'Bengalore') return 'Bangalore';
         return formatted;
     };
 
-    // ✅ NAYA LOGIC: Region ab sirf 'Master Jamia List' se load hoga taake koi extra/galat region na aaye
     let regionSet = new Set();
     Object.values(masterJamiaDict).forEach(m => { 
         if(m.region) regionSet.add(formatRegion(m.region)); 
     });
     const regions = [...regionSet].sort();
 
-    // 🌟 ZIMMEDAR PRIORITY FIX: Yahan standard user ko hamesha pehli priority di jayegi
     const getJamiaContext = (jamiaName, jamiaId = null) => {
         if (!jamiaName && !jamiaId) return { userName: 'Not Linked', region: 'N/A', display: '', english: '' };
         const target = String(jamiaName || '').trim().toLowerCase();
@@ -87,7 +84,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (foundKey) mData = masterJamiaDict[foundKey];
         }
 
-        // Un sabhi users ko filter karein jin ki list me yeh Jamia hai
         const linkedUsers = allUsers.filter(u => {
             const list = u.jamiaatList || [];
             return list.some(j => {
@@ -98,10 +94,8 @@ export async function initAdminResultAnalysis(db, containerId) {
             });
         });
 
-        // 1. Sabse pehle 'standard' role (Asal Zimmedar) ko dhoondo
         let foundUser = linkedUsers.find(u => u.role === 'standard' || !u.role);
         
-        // 2. Agar standard nahi mila, tab ja ke baqi ko check karega (par inspector, office, ya qirat wale ko ignore karega)
         if (!foundUser) {
             foundUser = linkedUsers.find(u => u.role !== 'inspector' && u.role !== 'education_office' && u.role !== 'shoba_qirat' && u.role !== 'qirat');
         }
@@ -111,7 +105,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         let finalRegion = mData ? (mData.region || '') : '';
         if (!finalRegion && foundUser) finalRegion = foundUser.region || '';
 
-       // 🌟 NAYA LOGIC: Jab bhi Excel upload hoga, Region format ho kar database me save hoga
         return {
             userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
             region: formatRegion(finalRegion) || 'N/A', 
@@ -144,7 +137,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     </div>
                 </div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label><select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Regions</option>${regions.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
-                <!-- 🌟 FIX: Yahan bhi sirf Standard user filter me aayenge -->
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label><select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Users</option>${allUsers.filter(u => u.role === 'standard' || !u.role).map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label><select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font"><option value="all">All Jamiaat</option></select></div>
                 
@@ -212,7 +204,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <p class="text-xs text-gray-500 mt-2">نوٹ: ایکسل کا ڈیٹا جوں کا توں ڈیٹا بیس میں محفوظ ہو جائے گا جس سے اساتذہ کے فارم میں مضامین خود آ جائیں گے۔</p>
                 </div>
 
-                <!-- 🟢 PREVIEW CONTAINER -->
                 <div id="preview-container" class="hidden mt-6 p-6 border-2 border-indigo-200 bg-indigo-50 rounded-2xl shadow-sm">
                     <h4 class="text-xl font-bold text-indigo-800 mb-4"><i class="fas fa-search mr-2"></i> Data Preview (ڈیٹا کا جائزہ لیں)</h4>
                     <div id="preview-content" class="space-y-4 mb-6 max-h-96 overflow-y-auto pr-2 custom-scrollbar"></div>
@@ -227,7 +218,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     </div>
                 </div>
 
-                <!-- 🗑️ DELETE DATA SECTION -->
                 <div class="mt-8 border-t border-gray-200 pt-6">
                     <h4 class="text-lg font-bold text-red-700 mb-3"><i class="fas fa-trash-alt mr-2"></i> Delete Old Uploaded Data</h4>
                     <div class="flex flex-col md:flex-row gap-4">
@@ -246,7 +236,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         </div>
     </div>`;
 
-    // 🌟 SAFE ELEMENTS FINDER 🌟
     const elements = {
         btnDashboard: document.getElementById("tab-dashboard"),
         btnReports: document.getElementById("tab-reports"),
@@ -264,7 +253,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         statsContainer: document.getElementById("stats-summary")
     };
 
-    // 🌟 ERROR-FREE TAB SWITCHING 🌟
     const switchTab = (activeBtn, activeView) => {
         [elements.btnDashboard, elements.btnReports, elements.btnUpload].forEach(btn => {
             if (btn) btn.classList.remove("active-sub-tab", "text-teal-600", "text-gray-600");
@@ -311,7 +299,6 @@ export async function initAdminResultAnalysis(db, containerId) {
     if (elements.btnReports) elements.btnReports.onclick = () => switchTab(elements.btnReports, elements.reportsView);
     if (elements.btnUpload) elements.btnUpload.onclick = () => switchTab(elements.btnUpload, elements.uploadView);
 
-    // Auto-Populate Exam Year
     const adminExamYearSelect = document.getElementById('admin-exam-year');
     const uploadExamYearSelect = document.getElementById('upload-exam-year');
     
@@ -342,7 +329,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         }
     });
 
-    // Update Jamia Dropdown
     const updateJamiaList = () => {
         const selUser = elements.userFilter.value;
         const selReg = elements.regionFilter.value;
@@ -352,7 +338,6 @@ export async function initAdminResultAnalysis(db, containerId) {
         if(delJamiaSelect) delJamiaSelect.innerHTML = '<option value="all">All Jamiaat (Poora Result Delete)</option>';
 
        let filteredUsers = allUsers;
-        // ✅ NAYA LOGIC: Match karte waqt User ke region ko bhi UPPERCASE man kar compare karega
         if (selReg !== "all") filteredUsers = filteredUsers.filter(u => String(u.region || '').trim().toUpperCase() === selReg);
         if (selUser !== "all") filteredUsers = filteredUsers.filter(u => (u.name || u.email) === selUser);
 
@@ -383,7 +368,6 @@ export async function initAdminResultAnalysis(db, containerId) {
     if (elements.userFilter) elements.userFilter.onchange = updateJamiaList;
     updateJamiaList(); 
 
-    // Show Analysis Button
     const showBtn = document.getElementById("admin-show-btn");
     if (showBtn) {
         showBtn.onclick = async () => {
@@ -516,30 +500,84 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (sr === 1) tbody.innerHTML = `<tr><td colspan="19" class="p-10 text-center text-red-500 font-bold urdu-font text-lg">کوئی ریکارڈ نہیں ملا</td></tr>`;
         }
         else if (layout === 'jamia') {
-            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
-            let jamiaStats = {}; let grandTotalStudents = 0; let grandTotalHazir = 0; let grandTotalPass = 0;
+            // 🌟 NAYA: Ghaib (غیر حاضر) aur Nakam (ناکام) columns ka izafa 
+            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border bg-blue-50 text-blue-800">حاضر</th><th class="p-2 border bg-gray-100 text-gray-700">غیر حاضر</th><th class="p-2 border bg-green-50 text-green-700">کامیاب</th><th class="p-2 border bg-red-50 text-red-700">ناکام</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+            let jamiaStats = {}; let grandTotalStudents = 0; let grandTotalHazir = 0; let grandTotalGhaib = 0; let grandTotalPass = 0; let grandTotalNakam = 0;
             data.forEach(d => {
-                if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { t: 0, h: 0, p: 0, region: d.region || '-', user: d.userName || '-' };
+                if (!jamiaStats[d.jamia]) jamiaStats[d.jamia] = { t: 0, h: 0, g: 0, p: 0, n: 0, region: d.region || '-', user: d.userName || '-' };
                 const t = num(d.total); 
+                const g = num(d.ghaib);
+                const n = num(d.nakam);
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
-                jamiaStats[d.jamia].t += t; jamiaStats[d.jamia].h += h; jamiaStats[d.jamia].p += p;
-                grandTotalStudents += t; grandTotalHazir += h; grandTotalPass += p;
+                
+                jamiaStats[d.jamia].t += t; 
+                jamiaStats[d.jamia].h += h; 
+                jamiaStats[d.jamia].g += g; 
+                jamiaStats[d.jamia].p += p; 
+                jamiaStats[d.jamia].n += n;
+                
+                grandTotalStudents += t; 
+                grandTotalHazir += h; 
+                grandTotalGhaib += g; 
+                grandTotalPass += p; 
+                grandTotalNakam += n;
             });
             Object.entries(jamiaStats).map(([name, s]) => ({ name, s, per: s.h ? (s.p / s.h) * 100 : 0 })).sort((a, b) => b.per - a.per).forEach((item, i) => {
-                tbody.innerHTML += `<tr><td class="p-2 border">${i + 1}</td><td class="p-2 border font-bold">${item.s.region}</td><td class="p-2 border urdu-font">${item.s.user}</td><td class="p-2 border urdu-font font-bold">${item.name}</td><td class="p-2 border font-bold text-indigo-700">${item.s.t}</td><td class="p-2 border">${item.s.h}</td><td class="p-2 border text-green-700 font-bold">${item.s.p}</td><td class="p-2 border font-bold">${item.per.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(item.per, 'jamia')}">${getJamiaKefiyat(item.per, 'jamia')}</td></tr>`;
+                // 🌟 NAYA: Display values updated with the new variables
+                tbody.innerHTML += `<tr>
+                    <td class="p-2 border">${i + 1}</td>
+                    <td class="p-2 border font-bold">${item.s.region}</td>
+                    <td class="p-2 border urdu-font">${item.s.user}</td>
+                    <td class="p-2 border urdu-font font-bold">${item.name}</td>
+                    <td class="p-2 border font-bold text-indigo-700">${item.s.t}</td>
+                    <td class="p-2 border font-bold text-blue-700 bg-blue-50/50">${item.s.h}</td>
+                    <td class="p-2 border font-bold text-gray-500 bg-gray-50/50">${item.s.g}</td>
+                    <td class="p-2 border text-green-700 font-bold bg-green-50/50">${item.s.p}</td>
+                    <td class="p-2 border text-red-600 font-bold bg-red-50/50">${item.s.n}</td>
+                    <td class="p-2 border font-bold">${item.per.toFixed(1)}%</td>
+                    <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(item.per, 'jamia')}">${getJamiaKefiyat(item.per, 'jamia')}</td>
+                </tr>`;
             });
             const grandPer = grandTotalHazir ? (grandTotalPass / grandTotalHazir) * 100 : 0;
-            tfoot.innerHTML = `<tr class="bg-gray-800 text-white font-bold text-center"><td colspan="4" class="p-3 border text-right urdu-font text-lg pr-5">کل میزان (Total):</td><td class="p-3 border text-indigo-300 text-lg">${grandTotalStudents}</td><td class="p-3 border text-lg">${grandTotalHazir}</td><td class="p-3 border text-green-400 text-lg">${grandTotalPass}</td><td class="p-3 border text-lg">${grandPer.toFixed(1)}%</td><td class="p-3 border urdu-font text-lg" style="color:${getKefiyatColor(grandPer, 'jamia')}">${getJamiaKefiyat(grandPer, 'jamia')}</td></tr>`;
+            // 🌟 NAYA: Foot display updated
+            tfoot.innerHTML = `<tr class="bg-gray-800 text-white font-bold text-center">
+                <td colspan="4" class="p-3 border text-right urdu-font text-lg pr-5">کل میزان (Total):</td>
+                <td class="p-3 border text-indigo-300 text-lg">${grandTotalStudents}</td>
+                <td class="p-3 border text-blue-300 text-lg">${grandTotalHazir}</td>
+                <td class="p-3 border text-gray-400 text-lg">${grandTotalGhaib}</td>
+                <td class="p-3 border text-green-400 text-lg">${grandTotalPass}</td>
+                <td class="p-3 border text-red-400 text-lg">${grandTotalNakam}</td>
+                <td class="p-3 border text-lg">${grandPer.toFixed(1)}%</td>
+                <td class="p-3 border urdu-font text-lg" style="color:${getKefiyatColor(grandPer, 'jamia')}">${getJamiaKefiyat(grandPer, 'jamia')}</td>
+            </tr>`;
         } 
         else if (layout === 'class') {
-            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border">حاضر</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
+            // 🌟 NAYA: Ghaib (غیر حاضر) aur Nakam (ناکام) columns ka izafa
+            thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border bg-blue-50 text-blue-800">حاضر</th><th class="p-2 border bg-gray-100 text-gray-700">غیر حاضر</th><th class="p-2 border bg-green-50 text-green-700">کامیاب</th><th class="p-2 border bg-red-50 text-red-700">ناکام</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
             data.forEach((d, i) => {
                 const t = num(d.total);
+                const g = num(d.ghaib);
+                const n = num(d.nakam);
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                 const per = h ? (p / h) * 100 : 0;
-                tbody.innerHTML += `<tr><td class="p-2 border">${i + 1}</td><td class="p-2 border font-bold">${d.region || '-'}</td><td class="p-2 border urdu-font">${d.userName || '-'}</td><td class="p-2 border urdu-font">${d.jamia}</td><td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td><td class="p-2 border text-indigo-700 font-bold">${t}</td><td class="p-2 border">${h}</td><td class="p-2 border">${p}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'class')}">${getJamiaKefiyat(per, 'class')}</td></tr>`;
+                
+                // 🌟 NAYA: Rows updated
+                tbody.innerHTML += `<tr>
+                    <td class="p-2 border">${i + 1}</td>
+                    <td class="p-2 border font-bold">${d.region || '-'}</td>
+                    <td class="p-2 border urdu-font">${d.userName || '-'}</td>
+                    <td class="p-2 border urdu-font">${d.jamia}</td>
+                    <td class="p-2 border urdu-font font-bold">${d.darjah || d.class}</td>
+                    <td class="p-2 border text-indigo-700 font-bold">${t}</td>
+                    <td class="p-2 border font-bold text-blue-700 bg-blue-50/50">${h}</td>
+                    <td class="p-2 border font-bold text-gray-500 bg-gray-50/50">${g}</td>
+                    <td class="p-2 border font-bold text-green-700 bg-green-50/50">${p}</td>
+                    <td class="p-2 border font-bold text-red-600 bg-red-50/50">${n}</td>
+                    <td class="p-2 border font-bold">${per.toFixed(1)}%</td>
+                    <td class="p-2 border urdu-font font-bold" style="color:${getKefiyatColor(per, 'class')}">${getJamiaKefiyat(per, 'class')}</td>
+                </tr>`;
             });
         }
         else if (layout === 'wazahat') {
@@ -597,7 +635,6 @@ export async function initAdminResultAnalysis(db, containerId) {
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
-        // 🌟 FILE SELECTION EVENT 🌟
         document.addEventListener('change', (e) => {
             if (e.target && e.target.id === 'result-excel-file') {
                 const file = e.target.files[0];
@@ -611,7 +648,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const data = new Uint8Array(evt.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
 
-                    // 1. Map Sheet (Find Classes & Subjects)
                     const mapSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'subj') || workbook.SheetNames[1];
                     const mapData = XLSX.utils.sheet_to_json(workbook.Sheets[mapSheetName], {header: 1});
                     let classSubjectMap = {};
@@ -655,7 +691,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
-                    // 2. Result Sheet Data Collection
                     const resSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'result') || workbook.SheetNames[0];
                     const rawResultData = XLSX.utils.sheet_to_json(workbook.Sheets[resSheetName], { header: 1 });
                     
@@ -720,6 +755,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                         let isGhaib = true; 
                         let isNakam = false;
+                        let hasAnyGhaib = false; // 🌟 NAYA: Check if ANY single subject has 'غ'
                         
                         config.keys.forEach(mapNum => {
                             let resColIdx = resColMap[mapNum];
@@ -740,6 +776,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent' || cellStr === '';
                             let isTextNakam = cellStr === 'ناکام' || cellLower === 'fail' || cellLower === 'f';
                             
+                            // 🌟 NAYA LOGIC: Agar student kisi bhi subject me directly 'غ' ya absent hai
+                            if (cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent') {
+                                hasAnyGhaib = true;
+                            }
+
                             if (!isTextGhaib) {
                                 isGhaib = false; 
                                 multiJamiaSubjectData[jamiaName][cName][subName].total++;
@@ -754,7 +795,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         });
                         
-                        if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || isGhaib) { 
+                        // 🌟 NAYA LOGIC APPLIED: Agar 'hasAnyGhaib' true hai, to directly ghaib me dalo (Class & Jamia report ke liye)
+                        if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || isGhaib || hasAnyGhaib) { 
                             multiJamiaClassData[jamiaName][cName].ghaib++; 
                         } else {
                             let kefLower = kefiyatVal.toLowerCase();
@@ -776,7 +818,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const examYear = document.getElementById('upload-exam-year').value;
                     pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaSubjectData };
 
-                    // 🌟 PREVIEW GENERATION 🌟
                     let previewHtml = '';
                     Object.keys(multiJamiaSubjectData).forEach(jamiaName => {
                         let cData = multiJamiaSubjectData[jamiaName];
@@ -802,7 +843,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             }
         });
 
-        // 🌟 CANCEL BUTTON 🌟
         document.addEventListener('click', (e) => {
             if (e.target.closest('#btn-cancel-preview')) {
                 document.getElementById('preview-container').classList.add('hidden');
@@ -812,7 +852,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             }
         });
 
-        // 🌟 CONFIRM & UPLOAD BUTTON 🌟
         document.addEventListener('click', async (e) => {
             if (e.target.closest('#btn-confirm-upload')) {
                 const confirmBtn = e.target.closest('#btn-confirm-upload');
@@ -826,7 +865,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                         const context = getJamiaContext(jamiaName);
                         const ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === context.userName)?.id || "admin";
 
-                        // 1. Save Class Wise Data
                         const cDataObj = multiJamiaClassData[jamiaName];
                         for (const cName in cDataObj) {
                             const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
@@ -837,7 +875,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             });
                         }
 
-                        // 2. Save EXCEL SUBJECT DATA
                         const subDataObj = multiJamiaSubjectData[jamiaName];
                         const subjId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
                         await setDoc(doc(db, "excel_subjects_data", subjId), {
@@ -868,7 +905,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 document.getElementById('admin-show-btn')?.click();
             }
 
-            // 🌟 DELETE UPLOADED DATA LOGIC 🌟
             if (e.target.closest('#btn-delete-result')) {
                 const delJamia = document.getElementById('delete-jamia-select')?.value;
                 const delYear = document.getElementById('upload-exam-year')?.value;
