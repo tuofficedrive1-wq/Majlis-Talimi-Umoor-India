@@ -58,8 +58,20 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
     } catch (e) { console.error("Master list load error:", e); }
 
-    let regionSet = new Set(allUsers.map(u => u.region).filter(r => r));
-    Object.values(masterJamiaDict).forEach(m => { if(m.region) regionSet.add(m.region); });
+    // ✅ NEW: Region ko theek format (Title Case) me lane ka function
+    const formatRegion = (r) => {
+        if (!r) return '';
+        let formatted = String(r).trim().toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
+        if (formatted === 'Dehli') return 'Delhi'; // Spelling theek karne ke liye
+        if (formatted === 'Bengalore') return 'Bangalore';
+        return formatted;
+    };
+
+    // ✅ NAYA LOGIC: Region ab sirf 'Master Jamia List' se load hoga taake koi extra/galat region na aaye
+    let regionSet = new Set();
+    Object.values(masterJamiaDict).forEach(m => { 
+        if(m.region) regionSet.add(formatRegion(m.region)); 
+    });
     const regions = [...regionSet].sort();
 
     // 🌟 ZIMMEDAR PRIORITY FIX: Yahan standard user ko hamesha pehli priority di jayegi
@@ -99,9 +111,10 @@ export async function initAdminResultAnalysis(db, containerId) {
         let finalRegion = mData ? (mData.region || '') : '';
         if (!finalRegion && foundUser) finalRegion = foundUser.region || '';
 
+       // 🌟 NAYA LOGIC: Jab bhi Excel upload hoga, Region format ho kar database me save hoga
         return {
             userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
-            region: finalRegion || 'N/A',
+            region: formatRegion(finalRegion) || 'N/A', 
             display: finalUrduName || finalMasterName,
             english: finalMasterName
         };
@@ -338,8 +351,8 @@ export async function initAdminResultAnalysis(db, containerId) {
         if(elements.jamiaSelect) elements.jamiaSelect.innerHTML = '<option value="all">All Jamiaat</option>';
         if(delJamiaSelect) delJamiaSelect.innerHTML = '<option value="all">All Jamiaat (Poora Result Delete)</option>';
 
-        let filteredUsers = allUsers;
-        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => u.region === selReg);
+       let filteredUsers = allUsers;
+        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => formatRegion(u.region) === selReg); // ✅ Dropdown match theek kar diya
         if (selUser !== "all") filteredUsers = filteredUsers.filter(u => (u.name || u.email) === selUser);
 
         let jamiaSet = new Set();
