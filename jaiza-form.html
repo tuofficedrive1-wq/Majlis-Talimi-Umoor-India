@@ -434,6 +434,8 @@ let classCount  = 0;
 let isFormDirty = false; // Ye track karega ki user ne kuch likha hai ya nahi
 
 // className -> [{teacherName, bookName}, ...]
+let globalMonthDetails = null; // <-- NAYA
+let currentSem = "1";          // <-- NAYA
 let teachingMap = {};
 let classList   = [];
 
@@ -495,6 +497,26 @@ const loadTeachingStructure = async (user) => {
   const { academicYear } = info;
 
   try {
+    // --- NAYA CODE: Admin Setup se Month Details fetch karna ---
+    try {
+      const configSnap = await getDoc(doc(db, "settings", "academic_config"));
+      if (configSnap.exists()) {
+        globalMonthDetails = configSnap.data().monthDetails;
+      }
+    } catch(e) { console.log("Config load error:", e); }
+
+    // Is mahine (jo URL me hai) ka semester pata lagana
+    if (globalMonthDetails) {
+      const mData = globalMonthDetails[info.monthNum];
+      if (mData) {
+        const s1 = parseInt(mData.sem1) || 0;
+        const s2 = parseInt(mData.sem2) || 0;
+        // Jis sem ke din is mahine me zyada hain, wo active hoga
+        currentSem = (s2 > s1) ? "2" : "1";
+      }
+    }
+    // -----------------------------------------------------------
+
     // users collection se academicYears + karkardagiStructure lena
     const userDocRef  = doc(db, "users", user.uid);
     const userDocSnap = await getDoc(userDocRef);
@@ -529,10 +551,14 @@ const loadTeachingStructure = async (user) => {
       (t.periods || []).forEach(p => {
         const className = p.className || p.class || p.darja || "";
         const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
+        const dbSem     = String(p.semester || p.sem || ""); // <-- NAYA: Semester ki field nikalna
+
         if (!className || !teacherName || !bookName) return;
 
         if (!teachingMap[className]) teachingMap[className] = [];
-        teachingMap[className].push({ teacherName, bookName });
+        
+        // NAYA: dbSem ko bhi map me store kar rahe hain taake filter me kaam aaye
+        teachingMap[className].push({ teacherName, bookName, dbSem });
       });
     });
 
@@ -769,12 +795,23 @@ const createBookCard = (card) => {
     });
   };
 
-  const fillBooksForTeacher = () => {
+const fillBooksForTeacher = () => {
     const cls   = classSelect.value;
     const tName = teacherSelect.value;
     bookSelect.innerHTML = '<option value="">کتاب منتخب کریں</option>';
     if (!cls || !teachingMap[cls] || !tName) return;
-    const recs    = teachingMap[cls].filter(r=>r.teacherName===tName);
+    
+    // NAYA CODE: Sirf un kitabon ko filter karna jo is month ke semester ki hain
+    const recs = teachingMap[cls].filter(r => {
+        if (r.teacherName !== tName) return false;
+        
+        // Agar database me kitab ke sath semester likha hi nahi hai, to usko show karo
+        if (!r.dbSem) return true; 
+        
+        // Agar likha hai, to check karo ke usi semester ki ho jo auto-detect hua hai
+        return r.dbSem === currentSem;
+    });
+    
     const bookSet = new Set(recs.map(r=>r.bookName));
     bookSet.forEach(b => {
       const opt = document.createElement("option");
