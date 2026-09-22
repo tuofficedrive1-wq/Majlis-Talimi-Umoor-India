@@ -352,7 +352,8 @@ export async function initAdminResultAnalysis(db, containerId) {
         if(delJamiaSelect) delJamiaSelect.innerHTML = '<option value="all">All Jamiaat (Poora Result Delete)</option>';
 
        let filteredUsers = allUsers;
-        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => formatRegion(u.region) === selReg); // ✅ Dropdown match theek kar diya
+        // ✅ NAYA LOGIC: Match karte waqt User ke region ko bhi UPPERCASE man kar compare karega
+        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => String(u.region || '').trim().toUpperCase() === selReg);
         if (selUser !== "all") filteredUsers = filteredUsers.filter(u => (u.name || u.email) === selUser);
 
         let jamiaSet = new Set();
