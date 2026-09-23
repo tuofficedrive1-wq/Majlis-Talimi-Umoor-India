@@ -536,6 +536,10 @@
             <option value="all">All Regions</option>
         </select>
 
+        <select id="admin-state-filter-select" class="p-1.5 border border-slate-300 rounded-md bg-slate-50 text-xs outline-none focus:ring-2 focus:ring-teal-500 max-w-[130px] urdu-font">
+            <option value="all">All States</option>
+        </select>
+
         <select id="admin-user-filter-select" class="p-1.5 border border-slate-300 rounded-md bg-slate-50 text-xs outline-none focus:ring-2 focus:ring-teal-500 max-w-[150px] urdu-font">
             <option value="all">All Users</option>
         </select>
@@ -1684,11 +1688,30 @@ window.switchReportsHubView = (viewId) => {
 
             const roleFilterSelect = document.getElementById('admin-role-filter-select');
             const regionFilterSelect = document.getElementById('admin-region-filter-select');
+            const stateFilterSelect = document.getElementById('admin-state-filter-select'); // ✨ NAYA STATE FILTER
             const userFilterSelect = document.getElementById('admin-user-filter-select');
+
+            // ✨ NAYA LOGIC: Database se Jamia Master List laana aur States nikalna
+            const loadStatesFromMaster = async () => {
+                try {
+                    const snap = await getDocs(collection(db, 'jamiaat_master'));
+                    window.globalJamiaMasterData = snap.docs.map(doc => doc.data());
+                    const states = [...new Set(window.globalJamiaMasterData.map(j => j.state).filter(Boolean))].sort();
+                    
+                    if (stateFilterSelect) {
+                        stateFilterSelect.innerHTML = '<option value="all">All States</option>' + 
+                            states.map(s => `<option value="${s}">${s}</option>`).join('');
+                    }
+                } catch (error) {
+                    console.error("Error loading states:", error);
+                }
+            };
+            loadStatesFromMaster();
 
             const applyGlobalFilters = () => {
                 const roleVal = roleFilterSelect ? roleFilterSelect.value : 'all';
                 const regionVal = regionFilterSelect ? regionFilterSelect.value : 'all';
+                const stateVal = stateFilterSelect ? stateFilterSelect.value : 'all'; // ✨ STATE VALUE
                 
                 let filteredUsers = (allUsersData || []).filter(u => {
                     let matchRole = (roleVal === 'all') || 
@@ -1697,7 +1720,19 @@ window.switchReportsHubView = (viewId) => {
                          roleVal === 'standard' ? (u.role === 'standard' || !u.role) : u.role === roleVal);
                     
                     let matchRegion = (regionVal === 'all') || (u.region === regionVal);
-                    return matchRole && matchRegion;
+                    
+                    // ✨ NAYA LOGIC: State filter match karna
+                    let matchState = true;
+                    if (stateVal !== 'all') {
+                        const userJamias = u.jamiaatList || [];
+                        matchState = userJamias.some(jamia => {
+                            const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
+                            const masterJ = window.globalJamiaMasterData?.find(j => (j.name || '').trim().toLowerCase() === (jName || '').trim().toLowerCase());
+                            return masterJ && masterJ.state === stateVal;
+                        });
+                    }
+
+                    return matchRole && matchRegion && matchState;
                 });
 
                 const dropdownIds = ['admin-user-filter-select'];
@@ -1718,6 +1753,7 @@ window.switchReportsHubView = (viewId) => {
 
             if (roleFilterSelect) roleFilterSelect.addEventListener('change', applyGlobalFilters);
             if (regionFilterSelect) regionFilterSelect.addEventListener('change', applyGlobalFilters);
+            if (stateFilterSelect) stateFilterSelect.addEventListener('change', applyGlobalFilters); // ✨ STATE EVENT LISTENER
             
             const userSearchInput = document.getElementById('user-search-input');
             if(userSearchInput) {
@@ -2808,6 +2844,7 @@ const attachSortingListeners = () => {
 // =========================================================================
 const renderReportSummary = (reports) => {
     const selectedUserId = document.getElementById('admin-user-filter-select').value;
+    const selectedState = document.getElementById('admin-state-filter-select')?.value
     const selectedRegion = document.getElementById('admin-region-filter-select').value;
     const selectedRole = document.getElementById('admin-role-filter-select')?.value || 'all'; 
     
@@ -5314,8 +5351,13 @@ const handleAnalysisExcelDownload = async () => {
             });
         }
 
-      else if (reportType === 'kkd') {
+    else if (reportType === 'kkd') {
             fileName = `KKd_Report_${monthName}_${yearVal}.xlsx`;
+
+            // --- 🟢 MASTER FILTERS KI VALUES ---
+            const selectedRole = document.getElementById('admin-role-filter-select')?.value || 'all';
+            const selectedRegion = document.getElementById('admin-region-filter-select')?.value || 'all';
+            const selectedUserId = document.getElementById('admin-user-filter-select')?.value || 'all';
 
             const filteredReports = fetchedAdminReports.filter(r => 
                 r.month === monthName && r.year === parseInt(yearVal)
@@ -5324,14 +5366,26 @@ const handleAnalysisExcelDownload = async () => {
             let count = 1;
             
             filteredReports.forEach(report => {
-                const kkdData = report.karkardagiReport?.data || [];
                 const user = allUsersData.find(u => u.id === report.userId);
-                const zimmedarName = user ? (user.name || user.email) : 'Unknown';
-                const region = user ? (user.region || '-') : '-';
+                if (!user) return;
+
+                // --- 🟢 MASTER FILTERS APPLY KARNA ---
+                let matchRole = (selectedRole === 'all') || 
+                    (selectedRole === 'admin_group' ? ['admin', 'tadrisi_course_management', 'recording_mufattish'].includes(user.role) :
+                     selectedRole === 'inspector' ? ['inspector', 'education_office'].includes(user.role) :
+                     selectedRole === 'standard' ? (user.role === 'standard' || !user.role) : user.role === selectedRole);
+                     
+                let matchRegion = (selectedRegion === 'all') || (user.region === selectedRegion);
+                let matchUser = (selectedUserId === 'all') || (user.id === selectedUserId);
+
+                if (!(matchRole && matchRegion && matchUser)) return;
+
+                const kkdData = report.karkardagiReport?.data || [];
+                const zimmedarName = user.name || user.email || 'Unknown';
+                const region = user.region || '-';
                 
-                // Teacher ka code lene ke liye structure fetch karein
                 const activeYearKey = report.academicYear; 
-                const structure = (user && user.academicYears && user.academicYears[activeYearKey]) 
+                const structure = (user.academicYears && user.academicYears[activeYearKey]) 
                                   ? user.academicYears[activeYearKey].karkardagiStructure 
                                   : [];
 
@@ -5341,7 +5395,6 @@ const handleAnalysisExcelDownload = async () => {
                         const jamiaStruct = structure.find(j => j.jamiaName === (item.jamiaName || item.jamiaId));
                         if (jamiaStruct) {
                             const teacherStruct = jamiaStruct.teachers?.find(t => t.id === item.teacherId);
-                            // Setup mein se code utha lein
                             if (teacherStruct) teacherAjeerCode = teacherStruct.loginCode || '-';
                         }
                     }
@@ -5353,7 +5406,7 @@ const handleAnalysisExcelDownload = async () => {
                         "Zimmedar": zimmedarName,
                         "Class": item.className || item.class || '-', 
                         "Teacher Name": item.teacherName || '-',
-                        "Ajeer Code": teacherAjeerCode, // ✨ NAYA COLUMN
+                        "Ajeer Code": teacherAjeerCode, // ✨ NAYA EXCEL COLUMN
                         "Kitab (Book)": item.bookName || '-',
                         "Monthly Target": item.monthlyTarget || 0,
                         "Pages Taught": item.pagesTaught || 0,
@@ -5824,6 +5877,11 @@ const renderKKdAnalysisTable = () => {
     const monthName = document.getElementById('admin-month-select').value;
     const yearVal = parseInt(document.getElementById('admin-year-select').value);
 
+    // --- 🟢 MASTER FILTERS KI VALUES NIKALNA ---
+    const selectedRole = document.getElementById('admin-role-filter-select')?.value || 'all';
+    const selectedRegion = document.getElementById('admin-region-filter-select')?.value || 'all';
+    const selectedUserId = document.getElementById('admin-user-filter-select')?.value || 'all';
+
     const monthsMap = {
         "January": 0, "February": 1, "March": 2, "April": 3, "May": 4, "June": 5,
         "July": 6, "August": 7, "September": 8, "October": 9, "November": 10, "December": 11
@@ -5844,30 +5902,42 @@ const renderKKdAnalysisTable = () => {
     let allEntries = [];
 
     filteredReports.forEach(report => {
-        const kkdData = report.karkardagiReport?.data || [];
         const user = allUsersData.find(u => u.id === report.userId);
-        const zimmedarName = user ? (user.name || user.email) : 'Unknown';
-        const region = user ? (user.region || '-') : '-';
+        if (!user) return; // User na mile to skip karein
+
+        // --- 🟢 MASTER FILTERS APPLY KARNA ---
+        let matchRole = (selectedRole === 'all') || 
+            (selectedRole === 'admin_group' ? ['admin', 'tadrisi_course_management', 'recording_mufattish'].includes(user.role) :
+             selectedRole === 'inspector' ? ['inspector', 'education_office'].includes(user.role) :
+             selectedRole === 'standard' ? (user.role === 'standard' || !user.role) : user.role === selectedRole);
+             
+        let matchRegion = (selectedRegion === 'all') || (user.region === selectedRegion);
+        let matchUser = (selectedUserId === 'all') || (user.id === selectedUserId);
+
+        // Agar ye 3 master filter pass nahi hote, toh is report ko skip kar do
+        if (!(matchRole && matchRegion && matchUser)) return;
+
+        const kkdData = report.karkardagiReport?.data || [];
+        const zimmedarName = user.name || user.email || 'Unknown';
+        const region = user.region || '-';
         
         const activeYearKey = report.academicYear; 
-        const structure = (user && user.academicYears && user.academicYears[activeYearKey]) 
+        const structure = (user.academicYears && user.academicYears[activeYearKey]) 
                           ? user.academicYears[activeYearKey].karkardagiStructure 
                           : [];
 
         kkdData.forEach(item => {
             let finalClassName = item.className || item.class || '-';
-            let teacherAjeerCode = '-'; // ✨ NAYA: Teacher ka Ajeer (Login) Code yahan store hoga
+            let teacherAjeerCode = '-'; 
 
-            // ✨ NAYA LOGIC: Setup Structure se Teacher ka apna code nikalna
+            // Setup Structure se Teacher ka apna code nikalna
             if (structure.length > 0) {
                 const jamiaStruct = structure.find(j => j.jamiaName === (item.jamiaName || item.jamiaId));
                 if (jamiaStruct) {
                     const teacherStruct = jamiaStruct.teachers?.find(t => t.id === item.teacherId);
                     if (teacherStruct) {
-                        // Karkardagi setup mein ye 'loginCode' ke naam se save hota hai
-                        teacherAjeerCode = teacherStruct.loginCode || '-';
+                        teacherAjeerCode = teacherStruct.loginCode || '-'; // ✨ Teacher Ajeer Code
                         
-                        // Class name fallback
                         if ((!finalClassName || finalClassName === '-') && item.periodId) {
                             const periodStruct = teacherStruct.periods?.find(p => p.id === item.periodId);
                             if (periodStruct) finalClassName = periodStruct.className;
@@ -5913,7 +5983,7 @@ const renderKKdAnalysisTable = () => {
                 jamiaName: item.jamiaName || item.jamiaId || 'Unknown',
                 region: region,
                 zimmedar: zimmedarName,
-                ajeerCode: teacherAjeerCode, // ✨ UPDATE: Teacher ka code row array mein bheja gaya
+                ajeerCode: teacherAjeerCode, 
                 className: finalClassName,
                 kaifiyat: calculatedKaifiyat,
                 colorClass: colorClass,       
@@ -5929,7 +5999,7 @@ const renderKKdAnalysisTable = () => {
     allEntries.sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
 
     if (allEntries.length === 0) {
-        container.innerHTML = `<p class="text-center text-gray-500 py-10">Reports mili hain lekin unme KKd ka data khali hai.</p>`;
+        container.innerHTML = `<p class="text-center text-gray-500 py-10">Is filter ke hisab se KKd ka koi data nahi mila.</p>`;
         return;
     }
 
@@ -5985,7 +6055,6 @@ const renderKKdAnalysisTable = () => {
         </div>
     `;
 
-    // Search bar ke liye JavaScript logic
     window.filterKkdByAjeer = () => {
         const searchInput = document.getElementById('kkd-ajeer-search');
         if (!searchInput) return;
