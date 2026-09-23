@@ -2310,6 +2310,16 @@ if (newJamiaIndex !== -1) {
                
         const renderAllJamiaStructureList = () => {
             const container = document.getElementById('analysis-report-container');
+            
+            // 🟢 Mahine ke hisab se Semester nikalne ka logic
+            const monthName = document.getElementById('admin-month-select').value;
+            const monthsMap = {
+                "January": 0, "February": 1, "March": 2, "April": 3, "May": 4, "June": 5,
+                "July": 6, "August": 7, "September": 8, "October": 9, "November": 10, "December": 11
+            };
+            const currentMonthNum = monthsMap[monthName];
+            const currentSemester = (currentMonthNum >= 3 && currentMonthNum <= 7) ? "1" : "2";
+
             let structureRows = [];
 
             allUsersData.forEach(user => {
@@ -2322,6 +2332,7 @@ if (newJamiaIndex !== -1) {
                 if (!currentYearKey) return; 
 
                 const structure = academicYears[currentYearKey].karkardagiStructure || [];
+                const region = user.region || '-'; // ✨ Region ko safely define kar liya
 
                 structure.forEach(jamia => {
                     const jamiaName = jamia.jamiaName || 'Unknown Jamia';
@@ -2329,24 +2340,28 @@ if (newJamiaIndex !== -1) {
                     
                     if (teachers.length === 0) {
                         structureRows.push({
-                            zimmedar: user.name || user.email, region: user.region || '-', jamia: jamiaName,
-                            teacher: '<span class="text-red-400 text-xs">No Teachers</span>', class: '-', book: '-'
+                            zimmedar: user.name || user.email, region: region, jamia: jamiaName,
+                            ajeerCode: '-', teacher: '<span class="text-red-400 text-xs">No Teachers</span>', class: '-', book: '-'
                         });
                     } else {
                         teachers.forEach(teacher => {
                             const teacherName = teacher.name || 'Unknown Teacher';
+                            const ajeerCode = teacher.loginCode || '-'; // ✨ Setup Structure se Teacher ka apna Code
                             const periods = Array.isArray(teacher.periods) ? teacher.periods : [];
 
-                            if (periods.length === 0) {
+                            // ✨ NAYA LOGIC: Sirf select kiye gaye mahine wale semester ki kitabein filter karna
+                            const semPeriods = periods.filter(period => period.semester === currentSemester);
+
+                            if (semPeriods.length === 0) {
                                 structureRows.push({
-                                    zimmedar: user.name || user.email, region: user.region || '-', jamia: jamiaName,
-                                    teacher: teacherName, class: '-', book: '<span class="text-orange-400 text-xs">No Books Assigned</span>'
+                                    zimmedar: user.name || user.email, region: region, jamia: jamiaName,
+                                    ajeerCode: ajeerCode, teacher: teacherName, class: '-', book: `<span class="text-orange-400 text-xs">Sem ${currentSemester} ki koi kitab nahi</span>`
                                 });
                             } else {
-                                periods.forEach(period => {
+                                semPeriods.forEach(period => {
                                     structureRows.push({
-                                        zimmedar: user.name || user.email, region: user.region || '-', jamia: jamiaName,
-                                        teacher: teacherName, class: period.className || '-', book: period.bookName || '-'
+                                        zimmedar: user.name || user.email, region: region, jamia: jamiaName,
+                                        ajeerCode: ajeerCode, teacher: teacherName, class: period.className || '-', book: period.bookName || '-'
                                     });
                                 });
                             }
@@ -2365,12 +2380,16 @@ if (newJamiaIndex !== -1) {
 
             let rowsHtml = '';
             structureRows.forEach((row, index) => {
+                // ✨ Search ke liye Jamia, Teacher aur Ajeer Code ko ek jagah jor liya
+                const searchString = `${row.jamia} ${row.teacher} ${row.ajeerCode}`.toLowerCase();
+
                 rowsHtml += `
-                    <tr class="border-b hover:bg-gray-50 text-sm">
-                        <td class="p-3 text-gray-500 border-r text-center">${index + 1}</td>
+                    <tr class="border-b hover:bg-gray-50 text-sm structure-row" data-search="${searchString}">
+                        <td class="p-3 text-gray-500 border-r text-center structure-index">${index + 1}</td>
                         <td class="p-3 urdu-font text-gray-700 border-r">${row.region}</td>
                         <td class="p-3 urdu-font font-bold text-teal-800 border-r">${row.jamia}</td>
                         <td class="p-3 urdu-font font-semibold text-gray-700 border-r">${row.zimmedar}</td>
+                        <td class="p-3 font-mono font-bold text-indigo-700 border-r text-center bg-gray-50">${row.ajeerCode}</td>
                         <td class="p-3 urdu-font text-blue-700 border-r">${row.teacher}</td>
                         <td class="p-3 urdu-font text-center font-bold bg-gray-50 border-r">${row.class}</td>
                         <td class="p-3 urdu-font text-purple-700">${row.book}</td>
@@ -2380,30 +2399,62 @@ if (newJamiaIndex !== -1) {
 
             container.innerHTML = `
                 <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                    <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                        <h4 class="font-bold text-lg text-gray-700">All Jamia Structure List</h4>
-                        <p class="text-sm text-gray-500">Total Rows: <b>${structureRows.length}</b></p>
+                    <div class="p-4 border-b bg-gray-50 flex flex-wrap justify-between items-center gap-4">
+                        <div>
+                            <h4 class="font-bold text-lg text-gray-700">All Jamia Structure List <span class="text-teal-600">(Sem ${currentSemester})</span></h4>
+                            <p class="text-sm text-gray-500">Total Rows: <b id="structure-record-count">${structureRows.length}</b></p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <!-- ✨ NAYA SEARCH BOX JO 3 CHEEZON SE FILTER KAREGA -->
+                            <input type="text" id="structure-search" onkeyup="window.filterStructureTable()" placeholder="Search Ajeer, Teacher, Jamia..." class="p-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 min-w-[250px]">
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm border-collapse">
+                        <table class="w-full text-sm border-collapse" id="structure-analysis-table">
                             <thead class="bg-gray-800 text-white uppercase text-xs">
                                 <tr>
                                     <th class="p-3 w-12 border-r border-gray-600">#</th>
                                     <th class="p-3 text-left border-r border-gray-600">Region</th>
                                     <th class="p-3 text-left border-r border-gray-600">Jamia Name</th>
                                     <th class="p-3 text-left border-r border-gray-600">Zimmedar</th>
+                                    <th class="p-3 text-center border-r border-gray-600">Ajeer Code</th>
                                     <th class="p-3 text-left border-r border-gray-600">Teacher</th>
                                     <th class="p-3 text-center border-r border-gray-600">Class</th>
                                     <th class="p-3 text-left">Book (Kitab)</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
-                                ${rowsHtml || '<tr><td colspan="7" class="p-6 text-center text-gray-500">No structure data found.</td></tr>'}
+                                ${rowsHtml || '<tr><td colspan="8" class="p-6 text-center text-gray-500">No structure data found.</td></tr>'}
                             </tbody>
                         </table>
                     </div>
                 </div>
             `;
+
+            // ✨ NAYA LOGIC: JavaScript filter function jo input par trigger hoga
+            window.filterStructureTable = () => {
+                const searchInput = document.getElementById('structure-search');
+                if (!searchInput) return;
+                
+                const term = searchInput.value.trim().toLowerCase();
+                const rows = document.querySelectorAll('.structure-row');
+                let visibleCount = 0;
+                
+                rows.forEach(row => {
+                    const searchData = (row.dataset.search || '').toLowerCase();
+                    if (searchData.includes(term)) {
+                        row.style.display = '';
+                        visibleCount++;
+                        const indexCell = row.querySelector('.structure-index');
+                        if (indexCell) indexCell.textContent = visibleCount;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+                
+                const countEl = document.getElementById('structure-record-count');
+                if (countEl) countEl.textContent = visibleCount;
+            };
         };
 
         const renderUserTeachersTable = async () => {
@@ -5304,52 +5355,6 @@ const handleAnalysisExcelDownload = async () => {
         }
 
         else if (reportType === 'structure-list') {
-            fileName = `Structure_List_All_Jamia.xlsx`;
-            let count = 1;
-
-            allUsersData.forEach(user => {
-                if (user.id === ADMIN_UID) return;
-                
-                const academicYears = user.academicYears || {};
-                const yearKeys = Object.keys(academicYears).sort().reverse();
-                const currentYearKey = yearKeys[0];
-                if (!currentYearKey) return;
-
-                const structure = academicYears[currentYearKey].karkardagiStructure || [];
-
-                structure.forEach(jamia => {
-                    const teachers = Array.isArray(jamia.teachers) ? jamia.teachers : [];
-                    if (teachers.length === 0) {
-                        excelRows.push({
-                            "Sr No": count++, "Region": user.region || '-', "Jamia Name": jamia.jamiaName || 'Unknown',
-                            "Zimmedar": user.name || '-', "Teacher": "No Teachers", "Class": "-", "Book": "-"
-                        });
-                    } else {
-                        teachers.forEach(teacher => {
-                            const periods = Array.isArray(teacher.periods) ? teacher.periods : [];
-                            if (periods.length === 0) {
-                                excelRows.push({
-                                    "Sr No": count++, "Region": user.region || '-', "Jamia Name": jamia.jamiaName || 'Unknown',
-                                    "Zimmedar": user.name || '-', "Teacher": teacher.name || 'Unknown', "Class": "-", "Book": "No Books"
-                                });
-                            } else {
-                                periods.forEach(period => {
-                                    excelRows.push({
-                                        "Sr No": count++,
-                                        "Region": user.region || '-',
-                                        "Jamia Name": jamia.jamiaName || 'Unknown',
-                                        "Zimmedar": user.name || '-',
-                                        "Teacher": teacher.name || 'Unknown',
-                                        "Class": period.className || '-',
-                                        "Book": period.bookName || '-'
-                                    });
-                                });
-                            }
-                        });
-                    }
-                });
-            });
-        }
 
     else if (reportType === 'kkd') {
             fileName = `KKd_Report_${monthName}_${yearVal}.xlsx`;
