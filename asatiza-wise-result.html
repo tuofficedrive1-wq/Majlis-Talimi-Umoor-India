@@ -230,13 +230,15 @@ window.periodRowHTML = function(p={}) {
       classOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل ڈیٹا اپلوڈ کریں</option>`;
   }
   
-  if (cVal && !classFound && cVal !== 'دیگر (Other)') classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
+  let isCustomClass = cVal && !classFound && cVal !== 'دیگر (Other)';
+  if (isCustomClass) classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
   
-  // 🟢 "Other" Option in Class
-  classOpts += `<option value="دیگر (Other)" ${cVal === 'دیگر (Other)' ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
+  let isOtherClassSel = cVal === 'دیگر (Other)';
+  classOpts += `<option value="دیگر (Other)" ${isOtherClassSel ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
 
   // 🔹 Subject Dropdown 🔹
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
+  let subjFound = false;
   if (classFound && window.excelSubjectsData[cVal]) {
       const subjects = Object.keys(window.excelSubjectsData[cVal]);
       if(subjects.length === 0) {
@@ -244,6 +246,7 @@ window.periodRowHTML = function(p={}) {
       } else {
           subjects.forEach(exSubj => {
               let selected = (exSubj === sVal) ? 'selected' : '';
+              if (exSubj === sVal) subjFound = true;
               subjOpts += `<option value="${exSubj}" ${selected}>${exSubj}</option>`;
           });
       }
@@ -251,20 +254,32 @@ window.periodRowHTML = function(p={}) {
       subjOpts = `<option value="" disabled class="text-red-500 font-bold">ایکسل ڈیٹا موجود نہیں</option>`;
   }
 
-  if (sVal && !window.excelSubjectsData[cVal]?.[sVal] && sVal !== 'دیگر (Other)') {
+  let isCustomSubj = sVal && !subjFound && sVal !== 'دیگر (Other)';
+  if (isCustomSubj) {
       subjOpts += `<option value="${sVal}" selected class="text-gray-500 font-bold">${sVal}</option>`;
   }
   
-  // 🟢 "Other" Option in Subject
-  subjOpts += `<option value="دیگر (Other)" ${sVal === 'دیگر (Other)' ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
+  let isOtherSubjSel = sVal === 'دیگر (Other)';
+  subjOpts += `<option value="دیگر (Other)" ${isOtherSubjSel ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
+
+  // 🔹 Manual/Readonly State check 🔹
+  let isManualMode = isOtherClassSel || isOtherSubjSel || isCustomClass || isCustomSubj;
+  let readonlyAttr = isManualMode ? '' : 'readonly';
+  let bgClass = isManualMode ? 'bg-white' : 'bg-gray-100';
 
   return `<tr>
-    <td><select class="class-select bg-white font-bold text-indigo-700" onchange="updateSubjects(this)">${classOpts}</select></td>
-    <td><select class="subj-select bg-white font-bold text-indigo-700" onchange="fillMarks(this)">${subjOpts}</select></td>
-    <td><input type='number' value='${p.total||""}' class="total-inp font-bold bg-white" oninput="calcRow(this.closest('tr'))"></td>
-    <td><input type='number' value='${p.passed||""}' class="passed-inp font-bold bg-white" oninput="calcRow(this.closest('tr'))"></td>
-    <td><input readonly value='${p.percentage||""}' class="font-bold"></td>
-    <td><input readonly value='${p.kaifiyat||""}' class="font-bold"></td>
+    <td>
+       <select class="class-select bg-white font-bold text-indigo-700" onchange="updateSubjects(this)">${classOpts}</select>
+       <input type="text" class="class-other-input ${isOtherClassSel ? '' : 'hidden'} mt-2 w-full p-1.5 border border-blue-300 rounded text-sm text-center font-bold text-blue-800 bg-blue-50 placeholder-blue-400 outline-none" placeholder="کلاس کا نام لکھیں">
+    </td>
+    <td>
+       <select class="subj-select bg-white font-bold text-indigo-700" onchange="fillMarks(this)">${subjOpts}</select>
+       <input type="text" class="subj-other-input ${isOtherSubjSel ? '' : 'hidden'} mt-2 w-full p-1.5 border border-blue-300 rounded text-sm text-center font-bold text-blue-800 bg-blue-50 placeholder-blue-400 outline-none" placeholder="مضمون کا نام لکھیں">
+    </td>
+    <td><input type='text' inputmode='numeric' value='${p.total||""}' class="total-inp font-bold ${bgClass}" ${readonlyAttr} oninput="this.value=this.value.replace(/[^0-9]/g,''); calcRow(this.closest('tr'))"></td>
+    <td><input type='text' inputmode='numeric' value='${p.passed||""}' class="passed-inp font-bold ${bgClass}" ${readonlyAttr} oninput="this.value=this.value.replace(/[^0-9]/g,''); calcRow(this.closest('tr'))"></td>
+    <td><input readonly value='${p.percentage||""}' class="font-bold bg-gray-100 text-center"></td>
+    <td><input readonly value='${p.kaifiyat||""}' class="font-bold bg-gray-100 text-center"></td>
     <td style="text-align:center"><button onclick="removePeriodRow(this)" style="color:#dc2626;font-weight:bold" title="Delete Period">🗑</button></td>
   </tr>`;
 };
@@ -274,7 +289,16 @@ window.addPeriodRow = (id) => document.getElementById(`periods-${id}`).insertAdj
 window.updateSubjects = function(sel) {
   const tr = sel.closest('tr'); 
   const subSel = tr.querySelector('.subj-select'); 
+  const classOtherInp = tr.querySelector('.class-other-input');
   const c = sel.value;
+  
+  // Custom Class input box hide/show logic
+  if(c === 'دیگر (Other)') {
+      classOtherInp.classList.remove('hidden');
+  } else {
+      classOtherInp.classList.add('hidden');
+      classOtherInp.value = '';
+  }
   
   subSel.innerHTML = '<option value="" selected>مضمون منتخب کریں</option>';
   
@@ -282,12 +306,13 @@ window.updateSubjects = function(sel) {
     Object.keys(window.excelSubjectsData[c]).forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
   }
   
-  // 🟢 Har bar class select karne par Subject list ke end me 'Other' add hoga
   subSel.innerHTML += `<option value="دیگر (Other)" class="text-blue-600 font-bold">دیگر (Other)</option>`;
 
   tr.querySelector('.total-inp').value = ''; 
   tr.querySelector('.passed-inp').value = ''; 
-  window.calcRow(tr);
+  
+  // Fillmarks function ko trigger karein taake state update ho jaye
+  window.fillMarks(subSel);
 };
 
 window.fillMarks = function(sel) {
@@ -295,18 +320,45 @@ window.fillMarks = function(sel) {
   const c = tr.querySelector('.class-select').value; 
   const s = sel.value;
   
-  // 🟢 Agar 'Other' select kiya gaya hai, to inputs ko blank kar dein
+  const subjOtherInp = tr.querySelector('.subj-other-input');
+  const totalInp = tr.querySelector('.total-inp');
+  const passedInp = tr.querySelector('.passed-inp');
+
+  // Custom Subject input box hide/show logic
+  if(s === 'دیگر (Other)') {
+      subjOtherInp.classList.remove('hidden');
+  } else {
+      subjOtherInp.classList.add('hidden');
+      subjOtherInp.value = '';
+  }
+  
+  // Agar 'Other' select ho toh fields manually open karden (Readonly hata den)
   if(s === 'دیگر (Other)' || c === 'دیگر (Other)') {
-     tr.querySelector('.total-inp').value = ''; 
-     tr.querySelector('.passed-inp').value = '';
+     totalInp.value = ''; passedInp.value = '';
+     totalInp.removeAttribute('readonly'); passedInp.removeAttribute('readonly');
+     totalInp.classList.replace('bg-gray-100', 'bg-white');
+     passedInp.classList.replace('bg-gray-100', 'bg-white');
   } 
+  // Agar Excel se match ho jaye toh fields ko lock (readonly) karden
   else if(c && s && window.excelSubjectsData[c] && window.excelSubjectsData[c][s]) {
     const data = window.excelSubjectsData[c][s];
-    tr.querySelector('.total-inp').value = data.total; 
-    tr.querySelector('.passed-inp').value = data.passed;
-  } else { 
-    tr.querySelector('.total-inp').value = ''; 
-    tr.querySelector('.passed-inp').value = ''; 
+    totalInp.value = data.total; passedInp.value = data.passed;
+    totalInp.setAttribute('readonly', true); passedInp.setAttribute('readonly', true);
+    totalInp.classList.replace('bg-white', 'bg-gray-100');
+    passedInp.classList.replace('bg-white', 'bg-gray-100');
+  } 
+  // Default state (Empty selection)
+  else { 
+    totalInp.value = ''; passedInp.value = ''; 
+    if(!c || !s || c === '' || s === '') {
+        totalInp.setAttribute('readonly', true); passedInp.setAttribute('readonly', true);
+        totalInp.classList.replace('bg-white', 'bg-gray-100');
+        passedInp.classList.replace('bg-white', 'bg-gray-100');
+    } else {
+        totalInp.removeAttribute('readonly'); passedInp.removeAttribute('readonly');
+        totalInp.classList.replace('bg-gray-100', 'bg-white');
+        passedInp.classList.replace('bg-gray-100', 'bg-white');
+    }
   }
   
   window.calcRow(tr);
@@ -352,11 +404,26 @@ window.saveData = async function() {
     if(!tName) return;
     const periods = [];
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
-      const c = r.querySelector('.class-select').value; const s = r.querySelector('.subj-select').value;
+      let c = r.querySelector('.class-select').value; 
+      let s = r.querySelector('.subj-select').value;
+      
+      // Agar "Other" select kiya gaya hai, toh type kiye gaye custom naam ko uthayen
+      if (c === 'دیگر (Other)') {
+          const cOther = r.querySelector('.class-other-input')?.value.trim();
+          if (cOther) c = cOther;
+      }
+      if (s === 'دیگر (Other)') {
+          const sOther = r.querySelector('.subj-other-input')?.value.trim();
+          if (sOther) s = sOther;
+      }
+
       if(c && s) { 
         periods.push({
-          class: c, subject: s, total: r.querySelector('.total-inp').value, passed: r.querySelector('.passed-inp').value,
-          percentage: r.children[4].children[0].value, kaifiyat: r.children[5].children[0].value
+          class: c, subject: s, 
+          total: r.querySelector('.total-inp').value, 
+          passed: r.querySelector('.passed-inp').value,
+          percentage: r.children[4].children[0].value, 
+          kaifiyat: r.children[5].children[0].value
         });
       }
     });
