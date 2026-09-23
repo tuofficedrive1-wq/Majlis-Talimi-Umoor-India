@@ -5314,7 +5314,7 @@ const handleAnalysisExcelDownload = async () => {
             });
         }
 
-        else if (reportType === 'kkd') {
+      else if (reportType === 'kkd') {
             fileName = `KKd_Report_${monthName}_${yearVal}.xlsx`;
 
             const filteredReports = fetchedAdminReports.filter(r => 
@@ -5328,8 +5328,24 @@ const handleAnalysisExcelDownload = async () => {
                 const user = allUsersData.find(u => u.id === report.userId);
                 const zimmedarName = user ? (user.name || user.email) : 'Unknown';
                 const region = user ? (user.region || '-') : '-';
+                
+                // Teacher ka code lene ke liye structure fetch karein
+                const activeYearKey = report.academicYear; 
+                const structure = (user && user.academicYears && user.academicYears[activeYearKey]) 
+                                  ? user.academicYears[activeYearKey].karkardagiStructure 
+                                  : [];
 
                 kkdData.forEach(item => {
+                    let teacherAjeerCode = '-';
+                    if (structure.length > 0) {
+                        const jamiaStruct = structure.find(j => j.jamiaName === (item.jamiaName || item.jamiaId));
+                        if (jamiaStruct) {
+                            const teacherStruct = jamiaStruct.teachers?.find(t => t.id === item.teacherId);
+                            // Setup mein se code utha lein
+                            if (teacherStruct) teacherAjeerCode = teacherStruct.loginCode || '-';
+                        }
+                    }
+
                     excelRows.push({
                         "Sr No": count++,
                         "Jamia Name": item.jamiaName || item.jamiaId || 'Unknown',
@@ -5337,6 +5353,7 @@ const handleAnalysisExcelDownload = async () => {
                         "Zimmedar": zimmedarName,
                         "Class": item.className || item.class || '-', 
                         "Teacher Name": item.teacherName || '-',
+                        "Ajeer Code": teacherAjeerCode, // ✨ NAYA COLUMN
                         "Kitab (Book)": item.bookName || '-',
                         "Monthly Target": item.monthlyTarget || 0,
                         "Pages Taught": item.pagesTaught || 0,
@@ -5831,7 +5848,6 @@ const renderKKdAnalysisTable = () => {
         const user = allUsersData.find(u => u.id === report.userId);
         const zimmedarName = user ? (user.name || user.email) : 'Unknown';
         const region = user ? (user.region || '-') : '-';
-        const ajeerCode = user ? (user.ajeerCode || '-') : '-'; // ✨ NAYA: Ajeer Code Yahan Se Aayega
         
         const activeYearKey = report.academicYear; 
         const structure = (user && user.academicYears && user.academicYears[activeYearKey]) 
@@ -5840,13 +5856,22 @@ const renderKKdAnalysisTable = () => {
 
         kkdData.forEach(item => {
             let finalClassName = item.className || item.class || '-';
-            if ((!finalClassName || finalClassName === '-') && item.periodId && structure.length > 0) {
+            let teacherAjeerCode = '-'; // ✨ NAYA: Teacher ka Ajeer (Login) Code yahan store hoga
+
+            // ✨ NAYA LOGIC: Setup Structure se Teacher ka apna code nikalna
+            if (structure.length > 0) {
                 const jamiaStruct = structure.find(j => j.jamiaName === (item.jamiaName || item.jamiaId));
                 if (jamiaStruct) {
                     const teacherStruct = jamiaStruct.teachers?.find(t => t.id === item.teacherId);
                     if (teacherStruct) {
-                        const periodStruct = teacherStruct.periods?.find(p => p.id === item.periodId);
-                        if (periodStruct) finalClassName = periodStruct.className;
+                        // Karkardagi setup mein ye 'loginCode' ke naam se save hota hai
+                        teacherAjeerCode = teacherStruct.loginCode || '-';
+                        
+                        // Class name fallback
+                        if ((!finalClassName || finalClassName === '-') && item.periodId) {
+                            const periodStruct = teacherStruct.periods?.find(p => p.id === item.periodId);
+                            if (periodStruct) finalClassName = periodStruct.className;
+                        }
                     }
                 }
             }
@@ -5888,7 +5913,7 @@ const renderKKdAnalysisTable = () => {
                 jamiaName: item.jamiaName || item.jamiaId || 'Unknown',
                 region: region,
                 zimmedar: zimmedarName,
-                ajeerCode: ajeerCode, // ✨ NAYA: Entry Mein Ajeer Code Shamil Kar Diya
+                ajeerCode: teacherAjeerCode, // ✨ UPDATE: Teacher ka code row array mein bheja gaya
                 className: finalClassName,
                 kaifiyat: calculatedKaifiyat,
                 colorClass: colorClass,       
@@ -5914,7 +5939,7 @@ const renderKKdAnalysisTable = () => {
                 <td class="p-3 text-gray-500 border-r text-center kkd-index">${count++}</td>
                 <td class="p-3 font-bold text-teal-800 border-r urdu-font">${row.jamiaName}</td>
                 <td class="p-3 text-gray-600 border-r urdu-font">${row.region}</td>
-                <td class="p-3 text-center border-r font-medium text-gray-700">${row.ajeerCode}</td> <!-- ✨ NAYA: Column Display -->
+                <td class="p-3 text-center border-r font-medium text-gray-700 font-mono">${row.ajeerCode}</td>
                 <td class="p-3 text-center font-bold bg-gray-50 border-r urdu-font text-indigo-700">${row.className}</td>
                 <td class="p-3 text-gray-800 border-r urdu-font">${row.teacherName}</td>
                 <td class="p-3 text-blue-700 border-r font-semibold urdu-font">${row.bookName}</td>
@@ -5931,7 +5956,6 @@ const renderKKdAnalysisTable = () => {
             <div class="p-4 border-b bg-gray-50 flex flex-wrap justify-between items-center gap-4">
                 <h4 class="font-bold text-lg text-gray-700">Talimi Karkardagi Report (KKd) Analysis</h4>
                 <div class="flex items-center gap-3">
-                    <!-- ✨ NAYA: Search Box Aur Filter Yahan Lagaya Gaya Hai -->
                     <input type="text" id="kkd-ajeer-search" onkeyup="window.filterKkdByAjeer()" placeholder="Search by Ajeer Code..." class="p-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500 min-w-[200px]">
                     <p class="text-sm text-gray-500">Total Records: <b id="kkd-record-count">${allEntries.length}</b></p>
                 </div>
@@ -5961,7 +5985,7 @@ const renderKKdAnalysisTable = () => {
         </div>
     `;
 
-    // ✨ NAYA: Javascript logic Ajeer Code search apply karne ke liye
+    // Search bar ke liye JavaScript logic
     window.filterKkdByAjeer = () => {
         const searchInput = document.getElementById('kkd-ajeer-search');
         if (!searchInput) return;
