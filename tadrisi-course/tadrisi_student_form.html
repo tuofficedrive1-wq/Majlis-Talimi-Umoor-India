@@ -66,7 +66,8 @@
         
         <div class="bg-teal-700 text-white p-5 rounded-b-3xl shadow-lg text-center relative z-10">
             <h1 class="text-2xl font-bold pt-2">تدریسی کورس معلومات فارم</h1>
-            <p class="text-teal-100 text-xs mt-1">براہ کرم اپنی تفصیلات درست پُر کریں۔</p>
+            <!-- NAYA: Yahan academic year show hoga -->
+            <p class="text-teal-100 text-sm mt-1">تعلیمی سال: <span id="display-year" class="font-bold font-sans">2026</span></p>
         </div>
 
         <div class="flex-1 p-6">
@@ -162,12 +163,32 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // NAYA: getDocs ko import kiya gaya hai taake saal fetch kar sakein
+        import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508", measurementId: "G-1PHNJQWNPZ" };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+
+        // NAYA: Current Academic Year set karne ka logic
+        let currentAcademicYear = "2026";
+
+        async function fetchCurrentYear() {
+            try {
+                const snap = await getDocs(collection(db, 'tadrisi_years'));
+                let years = snap.docs.map(d => d.data().year);
+                if (years.length > 0) {
+                    // Sab se latest saal nikalenge
+                    currentAcademicYear = years.sort()[years.length - 1]; 
+                }
+                document.getElementById('display-year').innerText = currentAcademicYear;
+            } catch (e) {
+                console.error("Year fetch error", e);
+            }
+        }
+        // Page load hone par saal fetch hoga
+        fetchCurrentYear();
 
         // --- 1. Jamia Logic (Dropdown + Other) ---
         window.toggleJamiaInput = () => {
@@ -187,7 +208,6 @@
         const jamiaParam = urlParams.get('jamia');
         if(jamiaParam) {
             const select = document.getElementById('jamia-select');
-            // Check if jamia exists in dropdown
             let exists = false;
             for(let i=0; i<select.options.length; i++){
                 if(select.options[i].value === jamiaParam){
@@ -202,7 +222,7 @@
                 document.getElementById('jamia-custom').value = jamiaParam;
                 document.getElementById('jamia-custom').readOnly = true;
             } else {
-                select.disabled = true; // Lock dropdown if pre-filled from list
+                select.disabled = true; 
             }
         }
 
@@ -218,7 +238,6 @@
                 reader.onload = function(e) {
                     photoPreview.src = e.target.result;
                     photoBase64 = e.target.result;
-                    // Hide error if present
                     document.getElementById('photo-error').style.display = 'none';
                     document.getElementById('photo-container').style.borderColor = '#e2e8f0';
                 }
@@ -246,7 +265,6 @@
         document.getElementById('student-entry-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // Check Image
             if (!photoBase64) {
                 alert("تصویر اپلوڈ کرنا لازمی ہے!");
                 document.getElementById('photo-error').style.display = 'block';
@@ -255,14 +273,12 @@
                 return;
             }
 
-            // Check Mobile
             const mobile = document.getElementById('mobile').value.trim();
             if (mobile.length !== 10) {
                 alert("موبائل نمبر 10 ہندسوں کا ہونا چاہیے۔");
                 return;
             }
 
-            // Check Jamia
             let jamiaValue = document.getElementById('jamia-select').value;
             if (jamiaValue === 'other') {
                 jamiaValue = document.getElementById('jamia-custom').value.trim();
@@ -278,7 +294,6 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...';
 
             try {
-                // Resize image (Simple compression)
                 let finalPhoto = photoBase64; 
 
                 await addDoc(collection(db, 'tadrisi_students'), {
@@ -290,6 +305,7 @@
                     city: document.getElementById('city').value.trim(),
                     photoBase64: finalPhoto,
                     groupId: null, 
+                    academicYear: currentAcademicYear, // NAYA: Saal ab is tarah save hoga
                     createdAt: new Date()
                 });
 
@@ -312,9 +328,7 @@
             photoBase64 = null;
             document.getElementById('jamia-custom-div').classList.add('hidden');
             
-            // Check URL again for Jamia
             if(jamiaParam) {
-                // (Logic resets to URL param if exists)
                 window.location.reload(); 
             } else {
                 document.getElementById('success-msg').classList.add('hidden');
