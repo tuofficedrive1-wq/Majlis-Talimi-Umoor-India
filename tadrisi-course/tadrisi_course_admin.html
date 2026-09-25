@@ -39,14 +39,25 @@
     <div id="loader" class="fixed inset-0 bg-white bg-opacity-90 flex justify-center items-center z-50"><div class="text-center"><div class="border-4 border-t-teal-600 rounded-full w-12 h-12 animate-spin mx-auto mb-2"></div><p class="text-sm font-bold text-teal-800">Loading...</p></div></div>
 
     <header class="bg-white text-gray-800 p-4 shadow-sm sticky top-0 z-40 border-b border-gray-200 no-print">
-        <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold text-teal-800 flex items-center gap-2"><i class="fas fa-user-graduate"></i> Tadrisi Admin</h1>
-            <div class="flex gap-2">
-                <button onclick="fixGroupCounts()" class="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-4 py-2 rounded font-bold border border-yellow-300">Fix Counts</button>
-                <button id="logout-btn" class="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded font-bold border border-red-300">Logout</button>
+    <div class="container mx-auto flex justify-between items-center">
+        <h1 class="text-xl font-bold text-teal-800 flex items-center gap-2"><i class="fas fa-user-graduate"></i> Tadrisi Admin</h1>
+        <div class="flex gap-2 items-center">
+            
+            <!-- NAYA: Saal ka dropdown aur Add button -->
+            <div class="flex items-center border border-teal-300 rounded overflow-hidden shadow-sm">
+                <select id="global-year" onchange="changeAcademicYear()" class="p-2 font-bold bg-teal-50 text-teal-800 outline-none cursor-pointer">
+                    <option value="2026">2026</option>
+                </select>
+                <button onclick="addNewYear()" class="bg-teal-600 text-white px-3 py-2 hover:bg-teal-700" title="Add New Year">
+                    <i class="fas fa-plus"></i>
+                </button>
             </div>
+
+            <button onclick="fixGroupCounts()" class="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-4 py-2 rounded font-bold border border-yellow-300">Fix Counts</button>
+            <button id="logout-btn" class="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded font-bold border border-red-300">Logout</button>
         </div>
-    </header>
+    </div>
+</header>
 
     <main class="container mx-auto p-4 max-w-[98%]">
         
@@ -338,7 +349,14 @@
         document.getElementById('logout-btn').addEventListener('click',()=>signOut(auth));
         window.switchTab=(t)=>{ document.querySelectorAll('.tab-content').forEach(e=>e.classList.add('hidden')); document.querySelectorAll('.tab-btn').forEach(e=>e.classList.remove('active')); document.getElementById(`view-${t}`).classList.remove('hidden'); document.getElementById(`tab-${t}`).classList.add('active'); };
 
-        async function initData() { await fetchMufattishList(); await fetchGroupsList(); await fetchAllStudents(); await fetchHistoryList(); generateLink(); }
+        async function initData() { 
+    await fetchYears(); // NAYA: Sab se pehle saal fetch honge
+    await fetchMufattishList(); 
+    await fetchGroupsList(); 
+    await fetchAllStudents(); 
+    await fetchHistoryList(); 
+    generateLink(); 
+}
         async function fetchMufattishList() { const s=await getDocs(query(collection(db,'users'),where('role','==','tadrisi_course_mufattish'))); allMufattish=s.docs.map(d=>({id:d.id,...d.data()})); const o='<option value="">-- Select --</option>'+allMufattish.map(m=>`<option value="${m.id}">${m.name}</option>`).join(''); ['mufattish-r1','mufattish-r2','mufattish-r3','mufattish-r4'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML=o;}); }
         async function fetchGroupsList() { const s=await getDocs(query(collection(db,'tadrisi_groups'))); allGroups=s.docs.map(d=>({id:d.id,...d.data()})); allGroups.sort((a,b)=>a.groupName.localeCompare(b.groupName,undefined,{numeric:true})); document.getElementById('groups-list-container').innerHTML=allGroups.map(g=>`<div class="bg-white p-4 shadow border rounded"><h4 class="font-bold text-teal-800 text-lg">${g.groupName}</h4><span class="text-sm bg-gray-100 px-2 rounded">Students: ${g.totalStudents||0}</span><button onclick="deleteGroup('${g.id}')" class="float-right text-red-400 text-sm"><i class="fas fa-trash"></i></button></div>`).join(''); populateGroupDropdowns(); }
         async function fetchHistoryList() { try{ const s=await getDocs(query(collection(db,'tadrisi_history'))); const o='<option value="">-- History --</option>'+s.docs.map(d=>`<option value="${d.id}">${d.id.replace('_',' - ')}</option>`).join(''); document.getElementById('history-select').innerHTML=o; }catch(e){} }
@@ -350,6 +368,68 @@
         window.filterStudentsTable = () => { const j = document.getElementById('student-filter-jamia').value; const g = document.getElementById('student-filter-group').value; const t = document.getElementById('search-input').value.toLowerCase(); filteredList = allStudents.filter(s => { const mj = j==='all' || s.jamia===j; const mg = g==='all' || (g==='unassigned'?!s.groupId:s.groupId===g) || (!g); const mt = !t || (s.name && s.name.toLowerCase().includes(t)) || (s.regNo && s.regNo.includes(t)); return mj && mg && mt; }); currentPage=1; renderStudentsTable(); };
         function populateJamiaFilter() { const jSet = new Set(allStudents.map(s => s.jamia).filter(j=>j)); const f = document.getElementById('student-filter-jamia'); f.innerHTML='<option value="all">All Jamiaat</option>'; jSet.forEach(j => f.innerHTML += `<option value="${j}">${j}</option>`); }
 
+        window.currentAcademicYear = "2026"; 
+
+// 1. Database se saal (years) fetch karke dropdown me dikhana
+async function fetchYears() {
+    try {
+        const snap = await getDocs(collection(db, 'tadrisi_years'));
+        let years = snap.docs.map(d => d.data().year);
+        
+        // Agar database me koi saal nahi hai, to 2026 ko default man lein
+        if(years.length === 0) {
+            years = ["2026"];
+        }
+        
+        // Dropdown options update karna
+        const select = document.getElementById('global-year');
+        select.innerHTML = years.sort().map(y => `<option value="${y}">${y}</option>`).join('');
+        
+        // Dropdown me selected year set karna
+        if(years.includes(window.currentAcademicYear)) {
+            select.value = window.currentAcademicYear;
+        } else {
+            window.currentAcademicYear = years[years.length - 1]; // Latest saal select karein
+            select.value = window.currentAcademicYear;
+        }
+    } catch(e) {
+        console.error("Years fetch error:", e);
+    }
+}
+
+// 2. Naya saal add karne ka function (+) button ke liye
+window.addNewYear = async () => {
+    const newYear = prompt("Naya saal darj karein (Misal ke tor par: 2027):");
+    
+    if(!newYear || newYear.trim() === "") return;
+    
+    showLoader(true);
+    try {
+        // Firebase me 'tadrisi_years' collection me naya saal save karein
+        await setDoc(doc(db, 'tadrisi_years', newYear.trim()), { year: newYear.trim() });
+        showToast(`Saal ${newYear} kamyabi se add ho gaya!`);
+        
+        await fetchYears(); // Dropdown ko dobara update karein
+        document.getElementById('global-year').value = newYear.trim(); // Naye saal ko select kar lein
+        await changeAcademicYear(); // Naye saal ka (khali) data load karein
+    } catch(e) {
+        showToast("Saal add karne me masla aaya", "error");
+        console.error(e);
+    } finally {
+        showLoader(false);
+    }
+};
+
+// 3. Jab Dropdown se saal change ho to data reload ho
+window.changeAcademicYear = async () => {
+    window.currentAcademicYear = document.getElementById('global-year').value;
+    showToast(`Loading data for ${window.currentAcademicYear}...`);
+    showLoader(true);
+    await fetchGroupsList(); 
+    await fetchAllStudents();
+    showLoader(false);
+};
+        
         function renderStudentsTable() {
     const tb = document.getElementById('students-master-tbody'); 
     tb.innerHTML = '';
