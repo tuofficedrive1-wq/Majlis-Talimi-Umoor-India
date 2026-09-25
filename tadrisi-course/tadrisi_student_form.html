@@ -66,8 +66,7 @@
         
         <div class="bg-teal-700 text-white p-5 rounded-b-3xl shadow-lg text-center relative z-10">
             <h1 class="text-2xl font-bold pt-2">تدریسی کورس معلومات فارم</h1>
-            <!-- NAYA: Yahan academic year show hoga -->
-            <p class="text-teal-100 text-sm mt-1">تعلیمی سال: <span id="display-year" class="font-bold font-sans">2026</span></p>
+            <p class="text-teal-100 text-sm mt-1">تعلیمی سال: <span id="display-year" class="font-bold font-sans"></span></p>
         </div>
 
         <div class="flex-1 p-6">
@@ -163,7 +162,6 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // NAYA: getDocs ko import kiya gaya hai taake saal fetch kar sakein
         import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508", measurementId: "G-1PHNJQWNPZ" };
@@ -171,26 +169,35 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // NAYA: Current Academic Year set karne ka logic
+        // NAYA: URL se Parameters (Jamia aur Year) nikalne ki logic
+        const urlParams = new URLSearchParams(window.location.search);
+        const jamiaParam = urlParams.get('jamia');
+        const yearParam = urlParams.get('year'); 
+        
         let currentAcademicYear = "2026";
 
         async function fetchCurrentYear() {
-            try {
-                const snap = await getDocs(collection(db, 'tadrisi_years'));
-                let years = snap.docs.map(d => d.data().year);
-                if (years.length > 0) {
-                    // Sab se latest saal nikalenge
-                    currentAcademicYear = years.sort()[years.length - 1]; 
-                }
+            if (yearParam) {
+                // Agar URL (Link) mein saal diya gaya hai toh wahi use karein
+                currentAcademicYear = yearParam;
                 document.getElementById('display-year').innerText = currentAcademicYear;
-            } catch (e) {
-                console.error("Year fetch error", e);
+            } else {
+                // Agar URL mein saal nahi hai toh Firebase Database se latest saal uthayein
+                try {
+                    const snap = await getDocs(collection(db, 'tadrisi_years'));
+                    let years = snap.docs.map(d => d.data().year);
+                    if (years.length > 0) {
+                        currentAcademicYear = years.sort()[years.length - 1]; 
+                    }
+                    document.getElementById('display-year').innerText = currentAcademicYear;
+                } catch (e) {
+                    console.error("Year fetch error", e);
+                }
             }
         }
-        // Page load hone par saal fetch hoga
+        
         fetchCurrentYear();
 
-        // --- 1. Jamia Logic (Dropdown + Other) ---
         window.toggleJamiaInput = () => {
             const select = document.getElementById('jamia-select');
             const customDiv = document.getElementById('jamia-custom-div');
@@ -203,9 +210,6 @@
             }
         };
 
-        // Check URL for Jamia
-        const urlParams = new URLSearchParams(window.location.search);
-        const jamiaParam = urlParams.get('jamia');
         if(jamiaParam) {
             const select = document.getElementById('jamia-select');
             let exists = false;
@@ -226,7 +230,6 @@
             }
         }
 
-        // --- 2. Image Logic ---
         const photoInput = document.getElementById('photo-input');
         const photoPreview = document.getElementById('photo-preview');
         let photoBase64 = null;
@@ -245,7 +248,6 @@
             }
         });
 
-        // --- 3. Phone Validation ---
         window.validatePhone = (input) => {
             const errorMsg = document.getElementById('phone-error');
             if (input.value.length > 10) input.value = input.value.slice(0, 10);
@@ -261,7 +263,6 @@
             }
         };
 
-        // --- 4. Submit Logic ---
         document.getElementById('student-entry-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -305,7 +306,7 @@
                     city: document.getElementById('city').value.trim(),
                     photoBase64: finalPhoto,
                     groupId: null, 
-                    academicYear: currentAcademicYear, // NAYA: Saal ab is tarah save hoga
+                    academicYear: currentAcademicYear, // NAYA: URL wala saal database me save hoga
                     createdAt: new Date()
                 });
 
@@ -328,7 +329,8 @@
             photoBase64 = null;
             document.getElementById('jamia-custom-div').classList.add('hidden');
             
-            if(jamiaParam) {
+            // NAYA: Agar URL me jamia ya year ho toh bas page reload karein taake woh values wapis aa jayein
+            if(jamiaParam || yearParam) {
                 window.location.reload(); 
             } else {
                 document.getElementById('success-msg').classList.add('hidden');
