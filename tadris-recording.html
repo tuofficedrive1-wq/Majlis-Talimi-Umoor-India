@@ -821,40 +821,59 @@
     // ============================
     function renderSavedTable() {
       const tbody = document.getElementById("saved-table-body");
+     // --- FILTERS AND CASCADING DROPDOWNS ---
       const jamiaFilterSelect = document.getElementById("filter-jamia");
-      
-      if (!tbody) return;
-      tbody.innerHTML = "";
+      const teacherFilterSelect = document.getElementById("filter-teacher");
+      const classFilterSelect = document.getElementById("filter-class");
+      const kitabFilterSelect = document.getElementById("filter-kitab");
 
-      let sourceData = [];
-      if (allReports && allReports.length > 0) { sourceData = allReports; } 
-      else if (currentReport && currentReport.tadrisRecording) { sourceData = [currentReport]; }
-
-      let allRecordings = [];
-     // Purani line ko is se replace karein:
-      sourceData.forEach(report => {
-        if (report.tadrisRecording && Array.isArray(report.tadrisRecording.data)) {
-          const entries = report.tadrisRecording.data.map(item => ({ 
-              ...item, 
-              reportMonth: report.month || "Unknown",
-              reportId: report.id // ✨ NAYA: Report ID add kiya
-          }));
-          allRecordings = allRecordings.concat(entries);
-        }
-      });
-
-     // --- FILTERS ---
-      const filterJamia = jamiaFilterSelect ? jamiaFilterSelect.value : "";
-      
-      // ✨ NAYA: Teeno Dropdowns ki values directly nikalein (toLowerCase ki zarurat nahi)
-      const filterTeacher = document.getElementById("filter-teacher") ? document.getElementById("filter-teacher").value : "";
-      const filterClass = document.getElementById("filter-class") ? document.getElementById("filter-class").value : "";
-      const filterKitab = document.getElementById("filter-kitab") ? document.getElementById("filter-kitab").value : "";
+      // Pehle mojooda selections read karein
+      let filterJamia = jamiaFilterSelect ? jamiaFilterSelect.value : "";
+      let filterTeacher = teacherFilterSelect ? teacherFilterSelect.value : "";
+      let filterClass = classFilterSelect ? classFilterSelect.value : "";
+      let filterKitab = kitabFilterSelect ? kitabFilterSelect.value : "";
       
       const filterStatus = document.getElementById("filter-status") ? document.getElementById("filter-status").value : "";
       const filterMonthView = document.getElementById("filter-month-view") ? document.getElementById("filter-month-view").value : "current";
-      const currentMonthVal = document.getElementById("month-input") ? document.getElementById("month-input").value : "";
-      
+      const currentMonthVal = document.getElementById("month-input") ? document.getElementById("month-input").value : ""; 
+
+      // ✨ 1. CASCADING LOGIC (Options Filter Karna) ✨
+      const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))];
+      // Sirf select kiye gaye Jamia ke teachers
+      const uniqueTeachers = [...new Set(allRecordings.filter(r => !filterJamia || r.jamiaName === filterJamia).map(r => r.teacherName))];
+      // Sirf select kiye gaye Jamia aur Teacher ki Classes
+      const uniqueClasses = [...new Set(allRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher)).map(r => r.className))];
+      // Sirf select kiye gaye Jamia, Teacher aur Class ki Kitabein
+      const uniqueKitabs = [...new Set(allRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher) && (!filterClass || r.className === filterClass)).map(r => r.kitabName))];
+
+      // Helper: Dropdown ko update karein aur invalid selection reset karein
+      const updateDropdown = (selectEl, values, currentVal, defaultLabel) => {
+          if(!selectEl) return currentVal;
+          selectEl.innerHTML = `<option value="">-- Sab ${defaultLabel} --</option>`;
+          values.sort().forEach(val => {
+              if(val) {
+                  const opt = document.createElement("option");
+                  opt.value = val;
+                  opt.textContent = val;
+                  if(val === currentVal) opt.selected = true;
+                  selectEl.appendChild(opt);
+              }
+          });
+          // Agar Jamia badalne par purana Teacher/Class list me nahi raha, toh usay reset kar dein
+          if (currentVal && !values.includes(currentVal)) {
+              selectEl.value = "";
+              return "";
+          }
+          return currentVal;
+      };
+
+      // ✨ 2. DROPDOWNS ME DATA BHAREIN ✨
+      filterJamia = updateDropdown(jamiaFilterSelect, uniqueJamias, filterJamia, "Jamiaat");
+      filterTeacher = updateDropdown(teacherFilterSelect, uniqueTeachers, filterTeacher, "Teacher");
+      filterClass = updateDropdown(classFilterSelect, uniqueClasses, filterClass, "Class");
+      filterKitab = updateDropdown(kitabFilterSelect, uniqueKitabs, filterKitab, "Kitab");
+
+      // Date Range Logic
       const dateRangeInput = document.getElementById("filter-date-range");
       let filterDateFrom = ""; let filterDateTo = "";
       if (dateRangeInput && dateRangeInput.value) {
@@ -863,15 +882,12 @@
           filterDateTo = parts[1] || parts[0]; 
       }
 
-     let filtered = allRecordings.filter(rec => {
+      // ✨ 3. TABLE KE LIYE DATA FILTER KAREIN ✨
+      let filtered = allRecordings.filter(rec => {
         const jMatch = !filterJamia || rec.jamiaName === filterJamia;
-        
-        // ✨ NAYA: Dropdown select ke mutabiq exact match lagayein
         const tMatch = !filterTeacher || rec.teacherName === filterTeacher;
         const cMatch = !filterClass || rec.className === filterClass;
         const kMatch = !filterKitab || rec.kitabName === filterKitab;
-        
-        // ... (Baqi purana date aur status wala code wese hi rahega) ...
         
         let dMatch = true;
         if (filterDateFrom) dMatch = dMatch && (rec.date >= filterDateFrom);
@@ -889,7 +905,6 @@
             mMatch = rec.date.startsWith(currentMonthVal);
         }
 
-        // ✨ NAYA: Yahan cMatch aur kMatch ko shamil karein
         return jMatch && tMatch && cMatch && kMatch && dMatch && sMatch && mMatch;
       });
 
