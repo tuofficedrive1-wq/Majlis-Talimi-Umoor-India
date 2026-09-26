@@ -245,8 +245,17 @@
         </div>
       </div>
 
-      <!-- ✨ NAYA: STATUS FILTER SHAMIL KIYA GAYA ✨ -->
-      <div id="saved-filters" class="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+      <!-- ✨ NAYA: STATUS AUR MONTH FILTER SHAMIL KIYA GAYA ✨ -->
+      <div id="saved-filters" class="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+        <!-- Naya Month Filter -->
+        <div>
+          <label class="block text-[11px] font-bold text-gray-600 mb-1">Records</label>
+          <select id="filter-month-view" class="w-full p-2 border border-teal-300 rounded-lg text-sm bg-teal-50 focus:ring-teal-500">
+            <option value="current">Sirf is mahine ke</option>
+            <option value="all">Sabhi mahino ke</option>
+          </select>
+        </div>
+        <!-- Baqi purane filters wese hi rahenge -->
         <div>
           <label class="block text-[11px] font-bold text-gray-600 mb-1">Jamia</label>
           <select id="filter-jamia" class="w-full p-2 border border-gray-300 rounded-lg text-sm urdu-font focus:ring-teal-500">
@@ -263,7 +272,7 @@
         </div>
         <div>
           <label class="block text-[11px] font-bold text-gray-600 mb-1">Status</label>
-          <select id="filter-status" class="w-full p-2 border border-teal-300 rounded-lg text-sm font-bold text-teal-800 bg-teal-50 focus:ring-teal-500">
+          <select id="filter-status" class="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 bg-white focus:ring-teal-500">
             <option value="">All Status</option>
             <option value="pending">Pending (Baqaya)</option>
             <option value="checked">Checked (Mukammal)</option>
@@ -801,9 +810,14 @@
       else if (currentReport && currentReport.tadrisRecording) { sourceData = [currentReport]; }
 
       let allRecordings = [];
+     // Purani line ko is se replace karein:
       sourceData.forEach(report => {
         if (report.tadrisRecording && Array.isArray(report.tadrisRecording.data)) {
-          const entries = report.tadrisRecording.data.map(item => ({ ...item, reportMonth: report.month || "Unknown" }));
+          const entries = report.tadrisRecording.data.map(item => ({ 
+              ...item, 
+              reportMonth: report.month || "Unknown",
+              reportId: report.id // ✨ NAYA: Report ID add kiya
+          }));
           allRecordings = allRecordings.concat(entries);
         }
       });
@@ -811,7 +825,21 @@
       // --- FILTERS ---
       const filterJamia = jamiaFilterSelect ? jamiaFilterSelect.value : "";
       const filterTeacher = document.getElementById("filter-teacher") ? document.getElementById("filter-teacher").value.toLowerCase() : "";
+    // Is jagah par jahan filter variables define hain:
       const filterStatus = document.getElementById("filter-status") ? document.getElementById("filter-status").value : "";
+      
+      // ✨ NAYA: Month view filter variables
+      const filterMonthView = document.getElementById("filter-month-view") ? document.getElementById("filter-month-view").value : "current";
+      const currentMonthVal = document.getElementById("month-input") ? document.getElementById("month-input").value : ""; 
+
+      // Niche filter return statement se pehle ye lagayein:
+      let mMatch = true;
+      if (filterMonthView === "current" && currentMonthVal) {
+          mMatch = rec.date.startsWith(currentMonthVal);
+      }
+
+      // Return ko update karein:
+      return jMatch && tMatch && dMatch && sMatch && mMatch;
       
       const dateRangeInput = document.getElementById("filter-date-range");
       let filterDateFrom = ""; let filterDateTo = "";
@@ -936,6 +964,12 @@
         let tPerc = (rec.performanceScore && rec.performanceScore.percentage) ? rec.performanceScore.percentage : 0;
         let finalGradeForPdf = gText || (isRejected ? 'Mustarad' : '-');
         let recStatus = rec.status || "Pending";
+
+        // Row HTML banate waqt PDF Button ke liye (Kaifiyat ke baad):
+                        const isDownloaded = rec.isDownloaded === true;
+                        const btnBg = isDownloaded ? "bg-green-50 text-green-700 hover:bg-green-600 border-green-200" : "bg-blue-50 text-blue-600 hover:bg-blue-600 border-blue-200";
+                        const btnIcon = isDownloaded ? "fa-check-circle" : "fa-file-pdf";
+                        const btnTitle = isDownloaded ? "Downloaded" : "Download PDF";
 
         const tr = document.createElement("tr");
         tr.className = rowClass;
@@ -1232,10 +1266,29 @@
         docPdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
 
         const safeName = `${teacherName.replace(/\s+/g,'_')}_${date}`;
-        docPdf.save(`Tadris_Report_${safeName}.pdf`);
+      docPdf.save(`Tadris_Report_${safeName}.pdf`);
         
         document.body.removeChild(tempDiv);
         showNotification("PDF download ho gaya!");
+
+        // ✨ NAYA: Firebase me Download Status update karein ✨
+        const recId = btn.dataset.recId;
+        const reportId = btn.dataset.reportId;
+        if (recId && reportId) {
+            const targetReport = allReports.find(r => r.id === reportId);
+            if (targetReport && targetReport.tadrisRecording) {
+                const dataArray = targetReport.tadrisRecording.data;
+                const recIndex = dataArray.findIndex(r => r.id === recId);
+                
+                if (recIndex !== -1 && !dataArray[recIndex].isDownloaded) {
+                    dataArray[recIndex].isDownloaded = true;
+                    // updateDoc pehle se hi file me import hai
+                    const reportRef = doc(db, "monthly_reports", reportId);
+                    await updateDoc(reportRef, { "tadrisRecording.data": dataArray });
+                    // Snapshot khud table re-render kar dega
+                }
+            }
+        }
 
       } catch (err) {
         console.error("PDF Error:", err);
@@ -1301,7 +1354,7 @@
     // FILTERS ACTIVATION CODE
     // ============================
     // Isse filters type karte hi chalne lagenge
-    const filterIds = ['filter-jamia', 'filter-teacher', 'filter-date-range', 'filter-status']; // filter-status add kiya gaya hai
+    const filterIds = ['filter-jamia', 'filter-teacher', 'filter-date-range', 'filter-status', 'filter-month-view'];
     filterIds.forEach(id => {
         const el = document.getElementById(id);
         if(el) {
