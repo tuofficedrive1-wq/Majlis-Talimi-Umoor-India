@@ -99,7 +99,8 @@
                     </div>
                     <div class="flex-[2] w-full flex">
                         <input type="text" id="shareable-link" class="w-full p-2.5 border border-r-0 rounded-l-lg bg-gray-50 text-sm text-gray-600 outline-none" readonly>
-                        <button onclick="copyLink()" class="bg-teal-600 text-white px-5 py-2.5 rounded-r-lg font-bold text-sm hover:bg-teal-700 transition-colors shadow-sm"><i class="fas fa-copy mr-1"></i> Copy Link</button>
+                        <button onclick="copyLink()" class="bg-teal-600 text-white px-4 py-2.5 font-bold text-sm hover:bg-teal-700 transition-colors border-r border-teal-500 shadow-sm"><i class="fas fa-copy"></i> Copy</button>
+                        <button id="link-status-btn" onclick="toggleFormStatus()" class="bg-green-600 text-white px-4 py-2.5 rounded-r-lg font-bold text-sm hover:bg-green-700 transition-colors shadow-sm w-32"><i class="fas fa-toggle-on mr-1"></i> Link On</button>
                     </div>
                 </div>
 
@@ -415,13 +416,14 @@ onAuthStateChanged(auth, async (u) => {
         };
 
         async function initData() { 
-            await fetchYears();
-            await fetchMufattishList(); 
-            await fetchGroupsList(); 
-            await fetchAllStudents(); 
-            await fetchHistoryList(); 
-            generateLink(); 
-        }
+    await fetchYears();
+    await fetchMufattishList(); 
+    await fetchGroupsList(); 
+    await fetchAllStudents(); 
+    await fetchHistoryList(); 
+    await fetchFormStatus(); // <-- Ye nayi line add karein
+    generateLink(); 
+}
         
         async function fetchMufattishList() { const s=await getDocs(query(collection(db,'users'),where('role','==','tadrisi_course_mufattish'))); allMufattish=s.docs.map(d=>({id:d.id,...d.data()})); const o='<option value="">-- Select --</option>'+allMufattish.map(m=>`<option value="${m.id}">${m.name}</option>`).join(''); ['mufattish-r1','mufattish-r2','mufattish-r3','mufattish-r4'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML=o;}); }
         
@@ -1031,6 +1033,51 @@ onAuthStateChanged(auth, async (u) => {
             const url = `https://wa.me/${mobile}?text=${msg}`;
             window.open(url, "wa_share");
         };
+
+        window.isLinkFormActive = true;
+
+// Database se form ka current status check karne ke liye
+window.fetchFormStatus = async () => {
+    try {
+        const docSnap = await getDoc(doc(db, 'tadrisi_config', 'link_status'));
+        if (docSnap.exists()) {
+            window.isLinkFormActive = docSnap.data().isActive;
+            updateLinkButtonUI();
+        } else {
+            // Agar pehli baar check kar rahe hain to default True save karein
+            await setDoc(doc(db, 'tadrisi_config', 'link_status'), { isActive: true });
+        }
+    } catch(e) { console.error("Status fetch error:", e); }
+};
+
+// Button ka color aur text change karne ke liye
+window.updateLinkButtonUI = () => {
+    const btn = document.getElementById('link-status-btn');
+    if (window.isLinkFormActive) {
+        btn.innerHTML = '<i class="fas fa-toggle-on mr-1"></i> Link On';
+        btn.className = 'bg-green-600 text-white px-4 py-2.5 rounded-r-lg font-bold text-sm hover:bg-green-700 transition-colors shadow-sm w-32';
+    } else {
+        btn.innerHTML = '<i class="fas fa-power-off mr-1"></i> Link Off';
+        btn.className = 'bg-red-600 text-white px-4 py-2.5 rounded-r-lg font-bold text-sm hover:bg-red-700 transition-colors shadow-sm w-32';
+    }
+};
+
+// Button dabane par form on/off toggle karne ke liye
+window.toggleFormStatus = async () => {
+    showLoader(true);
+    try {
+        const newState = !window.isLinkFormActive;
+        await setDoc(doc(db, 'tadrisi_config', 'link_status'), { isActive: newState });
+        window.isLinkFormActive = newState;
+        updateLinkButtonUI();
+        showToast(newState ? 'Link form ab chalu hai!' : 'Link form band kar diya gaya hai!', newState ? 'success' : 'error');
+    } catch (e) {
+        showToast('Status update karne mein masla aaya', 'error');
+    } finally {
+        showLoader(false);
+    }
+};
+        
     </script>
 </body>
 </html>
