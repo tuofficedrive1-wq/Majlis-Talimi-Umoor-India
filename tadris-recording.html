@@ -840,7 +840,7 @@
         }
       });
 
-      // --- CASCADING FILTERS LOGIC ---
+     // --- CASCADING FILTERS LOGIC ---
       const jamiaFilterSelect = document.getElementById("filter-jamia");
       const teacherFilterSelect = document.getElementById("filter-teacher");
       const classFilterSelect = document.getElementById("filter-class");
@@ -855,10 +855,40 @@
       const filterMonthView = document.getElementById("filter-month-view") ? document.getElementById("filter-month-view").value : "current";
       const currentMonthVal = document.getElementById("month-input") ? document.getElementById("month-input").value : ""; 
 
-      const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))];
-      const uniqueTeachers = [...new Set(allRecordings.filter(r => !filterJamia || r.jamiaName === filterJamia).map(r => r.teacherName))];
-      const uniqueClasses = [...new Set(allRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher)).map(r => r.className))];
-      const uniqueKitabs = [...new Set(allRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher) && (!filterClass || r.className === filterClass)).map(r => r.kitabName))];
+      const dateRangeInput = document.getElementById("filter-date-range");
+      let filterDateFrom = ""; let filterDateTo = "";
+      if (dateRangeInput && dateRangeInput.value) {
+          const parts = dateRangeInput.value.split(" to ");
+          filterDateFrom = parts[0]; 
+          filterDateTo = parts[1] || parts[0]; 
+      }
+
+      // ✨ STEP 1: Pehle Month, Date aur Status ke hisaab se Base Data alag karein ✨
+      let baseFilteredRecordings = allRecordings.filter(rec => {
+        let dMatch = true;
+        if (filterDateFrom) dMatch = dMatch && (rec.date >= filterDateFrom);
+        if (filterDateTo) dMatch = dMatch && (rec.date <= filterDateTo);
+        
+        const isRejected = rec.status === "Rejected";
+        const isChecked = rec.status === "Checked" || (!isRejected && rec.tasurat && rec.tasurat.trim() !== "");
+        let sMatch = true;
+        if (filterStatus === "checked") sMatch = isChecked;
+        if (filterStatus === "pending") sMatch = !isChecked && !isRejected;
+        if (filterStatus === "rejected") sMatch = isRejected;
+
+        let mMatch = true;
+        if (filterMonthView === "current" && currentMonthVal) {
+            mMatch = rec.date.startsWith(currentMonthVal);
+        }
+
+        return dMatch && sMatch && mMatch;
+      });
+
+      // ✨ STEP 2: Ab Dropdowns ko 'baseFilteredRecordings' (Filtered Data) se banayein ✨
+      const uniqueJamias = [...new Set(baseFilteredRecordings.map(r => r.jamiaName))];
+      const uniqueTeachers = [...new Set(baseFilteredRecordings.filter(r => !filterJamia || r.jamiaName === filterJamia).map(r => r.teacherName))];
+      const uniqueClasses = [...new Set(baseFilteredRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher)).map(r => r.className))];
+      const uniqueKitabs = [...new Set(baseFilteredRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher) && (!filterClass || r.className === filterClass)).map(r => r.kitabName))];
 
       const updateDropdown = (selectEl, values, currentVal, defaultLabel) => {
           if(!selectEl) return currentVal;
@@ -884,37 +914,14 @@
       filterClass = updateDropdown(classFilterSelect, uniqueClasses, filterClass, "Class");
       filterKitab = updateDropdown(kitabFilterSelect, uniqueKitabs, filterKitab, "Kitab");
 
-      const dateRangeInput = document.getElementById("filter-date-range");
-      let filterDateFrom = ""; let filterDateTo = "";
-      if (dateRangeInput && dateRangeInput.value) {
-          const parts = dateRangeInput.value.split(" to ");
-          filterDateFrom = parts[0]; 
-          filterDateTo = parts[1] || parts[0]; 
-      }
-
-      let filtered = allRecordings.filter(rec => {
+      // ✨ STEP 3: Final Table Filter (Sirf Dropdowns apply karein) ✨
+      let filtered = baseFilteredRecordings.filter(rec => {
         const jMatch = !filterJamia || rec.jamiaName === filterJamia;
         const tMatch = !filterTeacher || rec.teacherName === filterTeacher;
         const cMatch = !filterClass || rec.className === filterClass;
         const kMatch = !filterKitab || rec.kitabName === filterKitab;
         
-        let dMatch = true;
-        if (filterDateFrom) dMatch = dMatch && (rec.date >= filterDateFrom);
-        if (filterDateTo) dMatch = dMatch && (rec.date <= filterDateTo);
-        
-        const isRejected = rec.status === "Rejected";
-        const isChecked = rec.status === "Checked" || (!isRejected && rec.tasurat && rec.tasurat.trim() !== "");
-        let sMatch = true;
-        if (filterStatus === "checked") sMatch = isChecked;
-        if (filterStatus === "pending") sMatch = !isChecked && !isRejected;
-        if (filterStatus === "rejected") sMatch = isRejected;
-
-        let mMatch = true;
-        if (filterMonthView === "current" && currentMonthVal) {
-            mMatch = rec.date.startsWith(currentMonthVal);
-        }
-
-        return jMatch && tMatch && cMatch && kMatch && dMatch && sMatch && mMatch;
+        return jMatch && tMatch && cMatch && kMatch;
       });
 
       // --- STATS CALCULATION ---
