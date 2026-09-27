@@ -821,13 +821,31 @@
     // ============================
     function renderSavedTable() {
       const tbody = document.getElementById("saved-table-body");
-    // --- CASCADING FILTERS LOGIC ---
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      let sourceData = [];
+      if (allReports && allReports.length > 0) { sourceData = allReports; } 
+      else if (currentReport && currentReport.tadrisRecording) { sourceData = [currentReport]; }
+
+      let allRecordings = [];
+      sourceData.forEach(report => {
+        if (report.tadrisRecording && Array.isArray(report.tadrisRecording.data)) {
+          const entries = report.tadrisRecording.data.map(item => ({ 
+              ...item, 
+              reportMonth: report.month || "Unknown",
+              reportId: report.id
+          }));
+          allRecordings = allRecordings.concat(entries);
+        }
+      });
+
+      // --- CASCADING FILTERS LOGIC ---
       const jamiaFilterSelect = document.getElementById("filter-jamia");
       const teacherFilterSelect = document.getElementById("filter-teacher");
       const classFilterSelect = document.getElementById("filter-class");
       const kitabFilterSelect = document.getElementById("filter-kitab");
 
-      // Pehle mojooda selections read karein
       let filterJamia = jamiaFilterSelect ? jamiaFilterSelect.value : "";
       let filterTeacher = teacherFilterSelect ? teacherFilterSelect.value : "";
       let filterClass = classFilterSelect ? classFilterSelect.value : "";
@@ -837,16 +855,11 @@
       const filterMonthView = document.getElementById("filter-month-view") ? document.getElementById("filter-month-view").value : "current";
       const currentMonthVal = document.getElementById("month-input") ? document.getElementById("month-input").value : ""; 
 
-      // ✨ 1. CASCADING LOGIC (Options Filter Karna) ✨
       const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))];
-      // Sirf select kiye gaye Jamia ke teachers
       const uniqueTeachers = [...new Set(allRecordings.filter(r => !filterJamia || r.jamiaName === filterJamia).map(r => r.teacherName))];
-      // Sirf select kiye gaye Jamia aur Teacher ki Classes
       const uniqueClasses = [...new Set(allRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher)).map(r => r.className))];
-      // Sirf select kiye gaye Jamia, Teacher aur Class ki Kitabein
       const uniqueKitabs = [...new Set(allRecordings.filter(r => (!filterJamia || r.jamiaName === filterJamia) && (!filterTeacher || r.teacherName === filterTeacher) && (!filterClass || r.className === filterClass)).map(r => r.kitabName))];
 
-      // Helper: Dropdown ko update karein aur invalid selection reset karein
       const updateDropdown = (selectEl, values, currentVal, defaultLabel) => {
           if(!selectEl) return currentVal;
           selectEl.innerHTML = `<option value="">-- Sab ${defaultLabel} --</option>`;
@@ -859,7 +872,6 @@
                   selectEl.appendChild(opt);
               }
           });
-          // Agar parent filter badalne par purana selection list me nahi raha, toh usay reset kar dein
           if (currentVal && !values.includes(currentVal)) {
               selectEl.value = "";
               return "";
@@ -867,13 +879,11 @@
           return currentVal;
       };
 
-      // ✨ 2. DROPDOWNS ME DATA BHAREIN ✨
       filterJamia = updateDropdown(jamiaFilterSelect, uniqueJamias, filterJamia, "Jamiaat");
       filterTeacher = updateDropdown(teacherFilterSelect, uniqueTeachers, filterTeacher, "Teacher");
       filterClass = updateDropdown(classFilterSelect, uniqueClasses, filterClass, "Class");
       filterKitab = updateDropdown(kitabFilterSelect, uniqueKitabs, filterKitab, "Kitab");
 
-      // Date Range Logic
       const dateRangeInput = document.getElementById("filter-date-range");
       let filterDateFrom = ""; let filterDateTo = "";
       if (dateRangeInput && dateRangeInput.value) {
@@ -882,7 +892,6 @@
           filterDateTo = parts[1] || parts[0]; 
       }
 
-      // ✨ 3. TABLE KE LIYE DATA FILTER KAREIN ✨
       let filtered = allRecordings.filter(rec => {
         const jMatch = !filterJamia || rec.jamiaName === filterJamia;
         const tMatch = !filterTeacher || rec.teacherName === filterTeacher;
@@ -929,70 +938,13 @@
           };
           return getSortVal(a) - getSortVal(b);
       });
-      
-    
 
-      // --- STATS CALCULATION ---
-      let total = filtered.length, checked = 0, pending = 0, rejected = 0;
-      filtered.forEach(r => {
-          const isR = r.status === "Rejected";
-          const isC = r.status === "Checked" || (!isR && r.tasurat && r.tasurat.trim() !== "");
-          if (isR) rejected++; else if (isC) checked++; else pending++;
-      });
-      document.getElementById('zim-stat-total').innerText = total;
-      document.getElementById('zim-stat-checked').innerText = checked;
-      document.getElementById('zim-stat-pending').innerText = pending;
-      document.getElementById('zim-stat-rejected').innerText = rejected;
-
-      // --- SORTING (Pending > Rejected > Checked) ---
-      filtered.sort((a, b) => {
-          const getSortVal = (r) => {
-              if (r.status === "Rejected") return 1;
-              if (r.status === "Checked" || (r.tasurat && r.tasurat.trim() !== "")) return 2;
-              return 0; // Pending
-          };
-          return getSortVal(a) - getSortVal(b);
-      });
-
-      // --- POPULATE JAMIA DROPDOWN ---
-      if(jamiaFilterSelect && jamiaFilterSelect.options.length <= 1) {
-          const uniqueJamias = [...new Set(allRecordings.map(r => r.jamiaName))].sort();
-          uniqueJamias.forEach(j => {
-              if(j) { const opt = document.createElement("option"); opt.value = j; opt.textContent = j; jamiaFilterSelect.appendChild(opt); }
-          });
-      }
-
-            // ✨ NAYA: Teacher, Class, aur Kitab ke dropdowns auto-populate karein
-      const teacherFilterSelect = document.getElementById("filter-teacher");
-      if(teacherFilterSelect && teacherFilterSelect.options.length <= 1) {
-          const uniqueTeachers = [...new Set(allRecordings.map(r => r.teacherName))].sort();
-          uniqueTeachers.forEach(t => {
-              if(t) { const opt = document.createElement("option"); opt.value = t; opt.textContent = t; teacherFilterSelect.appendChild(opt); }
-          });
-      }
-
-      const classFilterSelect = document.getElementById("filter-class");
-      if(classFilterSelect && classFilterSelect.options.length <= 1) {
-          const uniqueClasses = [...new Set(allRecordings.map(r => r.className))].sort();
-          uniqueClasses.forEach(c => {
-              if(c) { const opt = document.createElement("option"); opt.value = c; opt.textContent = c; classFilterSelect.appendChild(opt); }
-          });
-      }
-
-      const kitabFilterSelect = document.getElementById("filter-kitab");
-      if(kitabFilterSelect && kitabFilterSelect.options.length <= 1) {
-          const uniqueKitabs = [...new Set(allRecordings.map(r => r.kitabName))].sort();
-          uniqueKitabs.forEach(k => {
-              if(k) { const opt = document.createElement("option"); opt.value = k; opt.textContent = k; kitabFilterSelect.appendChild(opt); }
-          });
-      }
-      
       if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-gray-500 text-sm">Koi recording nahi mili.</td></tr>`;
         return;
       }
 
-     // --- RENDER ROWS (Compact Design) ---
+      // --- RENDER ROWS (Compact Design) ---
       filtered.forEach((rec, index) => { 
         const isRejected = rec.status === "Rejected";
         const isChecked = rec.status === "Checked" || (!isRejected && rec.tasurat && rec.tasurat.trim() !== "");
@@ -1010,7 +962,6 @@
             ? `<button type="button" class="mt-1 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white px-2 py-1 rounded text-[10px] font-bold transition border border-teal-200" onclick="openAudioPlayer('${rec.url}', '${encodeURIComponent(rec.teacherName)}', '${encodeURIComponent(rec.className + ' - ' + rec.kitabName)}')"><i class="fas fa-play"></i> Play</button>`
             : `<span class="text-gray-400 text-[10px] italic mt-1 block">No Audio</span>`;
         
-        // STATUS & BADGES
         let statusBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-[10px] font-bold border border-yellow-200 uppercase">Pending</span>`;
         if (isRejected) statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold border border-red-200 uppercase">Rejected</span>`;
         else if (isChecked) statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold border border-green-200 uppercase">Checked</span>`;
@@ -1022,10 +973,7 @@
                 : `<div class="mt-1"><span class="bg-red-100 text-red-700 px-1 py-0.5 rounded text-[9px] font-bold border border-red-300 animate-pulse"><i class="fas fa-phone-alt"></i> Call Alert</span></div>`;
         }
 
-        // ✨ ERROR FIX: gText ko pehle hi bahar define kar diya gaya hai ✨
         let gText = "";
-
-        // KAIFIYAT
         let kaifiyatHtml = `<span class="text-gray-400 text-xs">-</span>`;
         if (isRejected) {
             kaifiyatHtml = `<span class="text-red-600 font-bold text-xs urdu-font bg-red-100 px-2 py-1 rounded border border-red-200">Mustarad</span>`;
@@ -1033,7 +981,6 @@
         else if (isChecked && rec.performanceScore && rec.performanceScore.percentage) {
             let m = parseInt(rec.performanceScore.majmui);
             let bClass = "", pColor = "";
-
             if (m === 10) { gText = "Mumtaz"; bClass = "bg-green-800 text-white border-green-900"; pColor = "text-green-800"; } 
             else if (m === 8) { gText = "Behtar"; bClass = "bg-blue-100 text-blue-700 border-blue-200"; pColor = "text-blue-700"; } 
             else if (m === 6) { gText = "Munasib"; bClass = "bg-orange-100 text-orange-700 border-orange-200"; pColor = "text-orange-700"; } 
@@ -1049,17 +996,15 @@
             }
         }
 
-        // ✨ NAYA: PDF ke liye Score aur Grade (ab error nahi aayega) ✨
         let tScore = (rec.performanceScore && rec.performanceScore.totalScore) ? rec.performanceScore.totalScore : 0;
         let tPerc = (rec.performanceScore && rec.performanceScore.percentage) ? rec.performanceScore.percentage : 0;
         let finalGradeForPdf = gText || (isRejected ? 'Mustarad' : '-');
         let recStatus = rec.status || "Pending";
 
-        // Row HTML banate waqt PDF Button ke liye (Kaifiyat ke baad):
-                        const isDownloaded = rec.isDownloaded === true;
-                        const btnBg = isDownloaded ? "bg-green-50 text-green-700 hover:bg-green-600 border-green-200" : "bg-blue-50 text-blue-600 hover:bg-blue-600 border-blue-200";
-                        const btnIcon = isDownloaded ? "fa-check-circle" : "fa-file-pdf";
-                        const btnTitle = isDownloaded ? "Downloaded" : "Download PDF";
+        const isDownloaded = rec.isDownloaded === true;
+        const btnBg = isDownloaded ? "bg-green-50 text-green-700 hover:bg-green-600 border-green-200" : "bg-blue-50 text-blue-600 hover:bg-blue-600 border-blue-200";
+        const btnIcon = isDownloaded ? "fa-check-circle" : "fa-file-pdf";
+        const btnTitle = isDownloaded ? "Downloaded" : "Download PDF";
 
         const tr = document.createElement("tr");
         tr.className = rowClass;
@@ -1075,8 +1020,6 @@
                 <span class="text-[10px] text-gray-600 block">${date}</span>
                 ${audioLink}
             </td>
-            
-            <!-- Compact Comments Section -->
             <td class="border-r border-gray-100 p-2">
                 <div class="text-[11px] leading-tight mb-1">
                     <span class="font-bold text-gray-500">Mufattish:</span> 
@@ -1093,12 +1036,10 @@
                     </button>
                 </div>
             </td>
-
             <td class="border-r border-gray-100 p-2 text-center">
                 <div class="flex flex-col items-center justify-center gap-1">${statusBadge}${attentionBadge}</div>
             </td>
             <td class="border-r border-gray-100 p-2 text-center">${kaifiyatHtml}</td>
-            
             <td class="p-2 text-center">
                 <div class="flex items-center justify-center gap-1">
                     <button type="button" class="download-tadris-pdf-btn ${btnBg} hover:text-white border px-2 py-1 rounded transition"
