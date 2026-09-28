@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jamia Entry Test Marks</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: 'Jameel Noori Nastaleeq'; src: url('https://cdn.jsdelivr.net/gh/font-to-width/jameel-noori-nastaleeq-regular@1.1/jameel-noori-nastaleeq-regular.woff2') format('woff2'); }
+body { font-family: 'Poppins', sans-serif; background: #f8fafc; }
+.urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif; line-height: 1.8; font-size: 1.1rem; }
+th, td { padding: 10px 8px; }
+</style>
+</head>
+<body class="text-gray-800">
+
+<div id="toast" class="hidden fixed top-5 right-5 text-white py-3 px-6 rounded-lg shadow-lg z-50 font-bold"></div>
+
+<!-- Login -->
+<div id="login" class="min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border-t-4 border-teal-600">
+    <h1 class="text-2xl font-bold text-teal-800 mb-1">Tadrisi Entry Test</h1>
+    <p class="text-sm text-gray-500 mb-6">Apne Jamia ka code darj karein</p>
+    <input id="code" inputmode="numeric" maxlength="12" placeholder="Jamia Code" autocomplete="off"
+      class="w-full p-3 border-2 rounded-lg text-center text-2xl font-mono tracking-widest outline-none focus:border-teal-500"
+      onkeydown="if(event.key==='Enter')login()">
+    <button id="login-btn" onclick="login()" class="w-full mt-4 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-lg font-bold text-lg">Login</button>
+    <p id="err" class="text-red-600 text-sm mt-3 min-h-[1.25rem]"></p>
+  </div>
+</div>
+
+<!-- Marks entry -->
+<div id="app" class="hidden max-w-5xl mx-auto p-4 pb-28">
+  <div class="bg-white rounded-xl shadow-sm border-l-4 border-teal-600 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 id="jamia-name" class="urdu-font text-2xl font-bold text-teal-800"></h2>
+      <p class="text-sm text-gray-500">Entry Test (Written) &middot; <span id="year"></span> &middot; <span id="progress" class="font-bold text-teal-700"></span></p>
+    </div>
+    <button onclick="location.reload()" class="bg-red-50 text-red-700 border border-red-300 px-4 py-2 rounded-lg font-bold">Logout</button>
+  </div>
+
+  <div id="closed-note" class="hidden bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg p-3 mb-4 font-bold">Marks entry abhi band hai. Aap sirf list dekh sakte hain.</div>
+
+  <div class="bg-white rounded-xl shadow-sm border overflow-x-auto">
+    <table class="w-full text-left min-w-[640px]">
+      <thead class="bg-gray-50 text-gray-600 text-sm font-bold uppercase border-b-2">
+        <tr><th class="w-10">#</th><th>Code</th><th>Name / Father</th><th>Mansab</th><th>City</th><th class="w-32 text-center">Marks (0-100)</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div id="save-bar" class="fixed bottom-0 inset-x-0 bg-white border-t shadow-2xl p-3 flex justify-center">
+    <button id="save-btn" onclick="saveAll()" class="bg-teal-600 hover:bg-teal-700 text-white px-10 py-3 rounded-lg font-bold text-lg shadow">Save Marks</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getFirestore, collection, query, where, getDocs, doc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const app = initializeApp({ apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508" });
+const db = getFirestore(app);
+const PASS_MARK = 70;
+let students = [], isOpen = false, jamiaCode = '';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast = (m, bad) => { const e = $('toast'); e.textContent = m; e.className = `fixed top-5 right-5 text-white py-3 px-6 rounded-lg shadow-lg z-50 font-bold ${bad ? 'bg-red-500' : 'bg-teal-600'}`; setTimeout(() => e.classList.add('hidden'), 2500); };
+
+window.login = async () => {
+  const c = $('code').value.trim();
+  $('err').textContent = '';
+  if (!c) return;
+  $('login-btn').disabled = true;
+  try {
+    const cd = await getDoc(doc(db, 'tadrisi_jamia_codes', c));
+    if (!cd.exists()) { $('err').textContent = 'Code galat hai.'; return; }
+    const cfg = await getDoc(doc(db, 'tadrisi_config', 'entry_test'));
+    if (!cfg.exists() || !cfg.data().academicYear) { $('err').textContent = 'Entry abhi shuru nahi hui.'; return; }
+    const jamia = cd.data().jamia, year = cfg.data().academicYear;
+    isOpen = cfg.data().isOpen === true; jamiaCode = c;
+    const snap = await getDocs(query(collection(db, 'tadrisi_students'), where('jamia', '==', jamia), where('academicYear', '==', year)));
+    students = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    $('jamia-name').textContent = jamia; $('year').textContent = year;
+    $('closed-note').classList.toggle('hidden', isOpen);
+    $('save-bar').classList.toggle('hidden', !isOpen);
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    render();
+  } catch (e) { console.error(e); $('err').textContent = 'Connection ya permission ka masla hai.'; }
+  finally { $('login-btn').disabled = false; }
+};
+
+function render() {
+  $('tbody').innerHTML = students.length ? students.map((s, i) => {
+    const locked = !isOpen || s.entryBy === 'admin'; // admin ne jo marks daale wo jamia badal nahi sakta
+    return `<tr class="border-b hover:bg-teal-50">
+      <td class="text-gray-500 font-semibold">${i + 1}</td>
+      <td class="font-mono font-bold text-teal-700">${esc(s.trackingCode || '-')}</td>
+      <td class="urdu-font font-bold text-lg">${esc(s.name)}<br><span class="text-sm text-gray-500 font-normal">${esc(s.fatherName)}</span></td>
+      <td class="urdu-font">${esc(s.mansab || 'طالب علم')}</td>
+      <td class="urdu-font">${esc(s.city || '-')}</td>
+      <td class="text-center"><input type="number" min="0" max="100" data-id="${s.id}" value="${s.entryMarks ?? ''}" ${locked ? 'disabled' : ''}
+        oninput="this.dataset.dirty=1" class="w-24 border-2 rounded p-2 text-center font-bold text-lg outline-none focus:border-teal-500 ${locked ? 'bg-gray-100 text-gray-500' : ''}">
+        ${s.entryBy === 'admin' ? '<div class="text-xs text-gray-400 mt-1">Admin locked</div>' : ''}</td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="text-center p-8 text-gray-400">Is Jamia ka koi student nahi mila.</td></tr>';
+  progress();
+}
+function progress() { $('progress').textContent = `Marks entered: ${students.filter(s => s.entryMarks != null).length} / ${students.length}`; }
+
+window.saveAll = async () => {
+  const inputs = [...document.querySelectorAll('#tbody input[data-dirty="1"]')];
+  if (!inputs.length) return toast('Koi tabdeeli nahi hai');
+  const updates = [];
+  for (const inp of inputs) {
+    const m = inp.value === '' ? null : Number(inp.value);
+    if (m !== null && (isNaN(m) || m < 0 || m > 100)) { inp.focus(); return toast('Marks 0 se 100 ke beech hon', true); }
+    updates.push({ id: inp.dataset.id, m });
+  }
+  $('save-btn').disabled = true;
+  try {
+    for (let i = 0; i < updates.length; i += 400) {
+      const b = writeBatch(db);
+      updates.slice(i, i + 400).forEach(u => b.update(doc(db, 'tadrisi_students', u.id), { entryMarks: u.m, entryStatus: u.m === null ? null : (u.m >= PASS_MARK ? 'pass' : 'fail'), entryBy: 'jamia', entryAt: Date.now() }));
+      await b.commit();
+    }
+    updates.forEach(u => { const s = students.find(x => x.id === u.id); if (s) { s.entryMarks = u.m; s.entryBy = 'jamia'; } });
+    inputs.forEach(i => delete i.dataset.dirty);
+    progress(); toast(`${updates.length} students ke marks save ho gaye`);
+  } catch (e) { console.error(e); toast('Save nahi hua, dobara koshish karein', true); }
+  finally { $('save-btn').disabled = false; }
+};
+</script>
+</body>
+</html>
