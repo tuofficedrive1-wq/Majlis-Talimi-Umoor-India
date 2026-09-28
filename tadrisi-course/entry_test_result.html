@@ -45,7 +45,7 @@ th, td { padding: 10px 8px; }
   <div class="bg-white rounded-xl shadow-sm border overflow-x-auto">
     <table class="w-full text-left min-w-[640px]">
       <thead class="bg-gray-50 text-gray-600 text-sm font-bold uppercase border-b-2">
-        <tr><th class="w-10">#</th><th>Code</th><th>Name / Father</th><th>Mansab</th><th>City</th><th class="w-32 text-center">Marks (0-100)</th></tr>
+        <tr><th class="w-10">#</th><th>Code</th><th>Name / Father</th><th>Mansab</th><th>City</th><th class="w-32 text-center" id="mh">Marks (0-100)</th></tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -63,7 +63,7 @@ import { getFirestore, collection, query, where, getDocs, doc, getDoc, writeBatc
 const app = initializeApp({ apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508" });
 const db = getFirestore(app);
 const PASS_MARK = 70;
-let students = [], isOpen = false, jamiaCode = '';
+let students = [], isOpen = false, jamiaCode = '', round = 1, MF = 'entryMarks', BF = 'entryBy', TF = 'entryAt';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -81,10 +81,14 @@ window.login = async () => {
     if (!cfg.exists() || !cfg.data().academicYear) { $('err').textContent = 'Entry abhi shuru nahi hui.'; return; }
     const jamia = cd.data().jamia, year = cfg.data().academicYear;
     isOpen = cfg.data().isOpen === true; jamiaCode = c;
+    round = cfg.data().round === 2 ? 2 : 1; MF = round === 2 ? 'entryMarks2' : 'entryMarks'; BF = round === 2 ? 'entryBy2' : 'entryBy'; TF = round === 2 ? 'entryAt2' : 'entryAt';
+    const rdate = round === 2 ? cfg.data().round2Date : cfg.data().round1Date;
     if (!isOpen) { $('err').textContent = 'Marks entry abhi band hai. Admin se rabta karein.'; return; }
     const snap = await getDocs(query(collection(db, 'tadrisi_students'), where('jamia', '==', jamia), where('academicYear', '==', year)));
     students = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    $('jamia-name').textContent = jamia; $('year').textContent = year;
+    if (round === 2) students = students.filter(s => !(s.entryMarks >= PASS_MARK)); // Test 1 me pass wale Test 2 nahi dete
+    $('jamia-name').textContent = jamia; $('year').textContent = `${year} · Test ${round}${rdate ? ' (' + rdate + ')' : ''}`;
+    $('mh').textContent = `Test ${round} Marks (0-100)`;
     $('closed-note').classList.toggle('hidden', isOpen);
     $('save-bar').classList.toggle('hidden', !isOpen);
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
@@ -95,20 +99,20 @@ window.login = async () => {
 
 function render() {
   $('tbody').innerHTML = students.length ? students.map((s, i) => {
-    const locked = !isOpen || s.entryBy === 'admin'; // admin ne jo marks daale wo jamia badal nahi sakta
+    const locked = !isOpen || s[BF] === 'admin'; // admin ne jo marks daale wo jamia badal nahi sakta
     return `<tr class="border-b hover:bg-teal-50">
       <td class="text-gray-500 font-semibold">${i + 1}</td>
       <td class="font-mono font-bold text-teal-700">${esc(s.trackingCode || '-')}</td>
       <td class="urdu-font font-bold text-lg">${esc(s.name)}<br><span class="text-sm text-gray-500 font-normal">${esc(s.fatherName)}</span></td>
       <td class="urdu-font">${esc(s.mansab || 'طالب علم')}</td>
       <td class="urdu-font">${esc(s.city || '-')}</td>
-      <td class="text-center"><input type="number" min="0" max="100" data-id="${s.id}" value="${s.entryMarks ?? ''}" ${locked ? 'disabled' : ''}
+      <td class="text-center"><input type="number" min="0" max="100" data-id="${s.id}" value="${s[MF] ?? ''}" ${locked ? 'disabled' : ''}
         oninput="this.dataset.dirty=1" class="w-24 border-2 rounded p-2 text-center font-bold text-lg outline-none focus:border-teal-500 ${locked ? 'bg-gray-100 text-gray-500' : ''}">
-        ${s.entryBy === 'admin' ? '<div class="text-xs text-gray-400 mt-1">Admin locked</div>' : ''}</td></tr>`;
+        ${s[BF] === 'admin' ? '<div class="text-xs text-gray-400 mt-1">Admin locked</div>' : ''}</td></tr>`;
   }).join('') : '<tr><td colspan="6" class="text-center p-8 text-gray-400">Is Jamia ka koi student nahi mila.</td></tr>';
   progress();
 }
-function progress() { $('progress').textContent = `Marks entered: ${students.filter(s => s.entryMarks != null).length} / ${students.length}`; }
+function progress() { $('progress').textContent = `Marks entered: ${students.filter(s => s[MF] != null).length} / ${students.length}`; }
 
 window.saveAll = async () => {
   const inputs = [...document.querySelectorAll('#tbody input[data-dirty="1"]')];
@@ -123,10 +127,10 @@ window.saveAll = async () => {
   try {
     for (let i = 0; i < updates.length; i += 400) {
       const b = writeBatch(db);
-      updates.slice(i, i + 400).forEach(u => b.update(doc(db, 'tadrisi_students', u.id), { entryMarks: u.m, entryStatus: u.m === null ? null : (u.m >= PASS_MARK ? 'pass' : 'fail'), entryBy: 'jamia', entryAt: Date.now() }));
+      updates.slice(i, i + 400).forEach(u => b.update(doc(db, 'tadrisi_students', u.id), { [MF]: u.m, [BF]: 'jamia', [TF]: Date.now() }));
       await b.commit();
     }
-    updates.forEach(u => { const s = students.find(x => x.id === u.id); if (s) { s.entryMarks = u.m; s.entryBy = 'jamia'; } });
+    updates.forEach(u => { const s = students.find(x => x.id === u.id); if (s) { s[MF] = u.m; s[BF] = 'jamia'; } });
     inputs.forEach(i => delete i.dataset.dirty);
     progress(); toast(`${updates.length} students ke marks save ho gaye`);
   } catch (e) { console.error(e); toast('Save nahi hua, dobara koshish karein', true); }
