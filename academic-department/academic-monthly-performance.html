@@ -267,33 +267,24 @@
 
     try {
         const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+        let calData = null; // Naya variable
+        
         if (calSnap.exists()) {
-            gActiveYear = calSnap.data().activeYear || "2026-2027";
+            calData = calSnap.data();
+            gActiveYear = calData.activeYear || "2026-2027";
         }
 
         const userRef = doc(db, "users", inspectorId);
         const userSnap = await getDoc(userRef);
 
-        if (!userSnap.exists()) throw new Error("Admin data No mila.");
-
-        gUserData = userSnap.data();
-        const structure = gUserData.academicYears?.[gActiveYear]?.karkardagiStructure || [];
-        
-        gJamiaIndex = structure.findIndex(j => j.jamiaName === urlJamiaName);
-        if (gJamiaIndex === -1) throw new Error(`Jamia No mila.`);
-
-        const jamiaTeachers = structure[gJamiaIndex].teachers || [];
-        gTeacherIndex = jamiaTeachers.findIndex(t => t.loginCode.trim().toLowerCase() === enteredCode.toLowerCase());
-
-        if (gTeacherIndex === -1) throw new Error("Ajeer Code galat hai.");
-
-        gTeacherData = jamiaTeachers[gTeacherIndex];
+        // ... (User aur teacher data nikalne ka code same rahega) ...
 
         displayTeacherName.innerText = gTeacherData.name;
         loginContainer.classList.add('hidden');
         mainFormContainer.classList.remove('hidden');
         
-        renderPeriodsUI(gTeacherData);
+        // Yahan calData pass karein
+        renderPeriodsUI(gTeacherData, calData); 
 
     } catch (error) {
         console.error(error);
@@ -305,24 +296,52 @@
     }
 };
 
-       async function renderPeriodsUI(teacherData) {
-            periodContainer.innerHTML = ''; 
-            const periods = teacherData.periods || [];
+       async function renderPeriodsUI(teacherData, calData) { // calData parameter add kiya
+    periodContainer.innerHTML = ''; 
+    let periods = teacherData.periods || [];
 
-            if (periods.length === 0) {
-                periodContainer.innerHTML = `
-                <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                    <p class="font-bold text-xs">Aapki koi class assign No hai.</p>
-                </div>`;
-                btnSave.classList.add('hidden');
-                return;
-            }
+            // ==========================================
+    // NAYA LOGIC: Month ke hisab se Semester Filter
+    // ==========================================
+    const shortMonthKey = dbMonthKey.toLowerCase().trim();
+    let activeSemester = null;
 
-            let formHasLockedField = false;
+    // Calendar se check karein is mahine me konsa semester chal raha hai
+    if (calData && calData.months && calData.months[shortMonthKey]) {
+        const s1Days = parseInt(calData.months[shortMonthKey].s1) || 0;
+        const s2Days = parseInt(calData.months[shortMonthKey].s2) || 0;
+        
+        if (s1Days > 0 && s2Days === 0) activeSemester = 1;
+        else if (s2Days > 0 && s1Days === 0) activeSemester = 2;
+        // Agar dono me > 0 hai (yani dono semester us month me mix hain) toh null rahega aur dono dikhayega
+    }
+
+    // Agar active semester mil gaya hai, toh sirf usi semester ki books filter karein
+    if (activeSemester !== null) {
+        periods = periods.filter(p => {
+            // Database me book ke sath semester property check karein
+            const pSem = p.semester || p.sem || p.term; 
             
-            // Dono keys nikalenge safety ke liye
-            const shortMonthKey = dbMonthKey.toLowerCase().trim(); // e.g., "may"
-            const fullMonthUrlKey = urlMonthIndex ? urlMonthIndex.toLowerCase().trim() : shortMonthKey; // e.g., "2026-05"
+            // Agar book me semester ki detail save hai, tabhi filter apply hoga
+            if (pSem) {
+                return String(pSem) === String(activeSemester);
+            }
+            return true; // Agar property miss hai toh default show kardein taake data hide na ho
+        });
+    }
+    // ==========================================
+
+    if (periods.length === 0) {
+        periodContainer.innerHTML = `
+        <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <p class="font-bold text-xs">Is mahine/semester ke liye aapki koi class assign nahi hai.</p>
+        </div>`;
+        btnSave.classList.add('hidden');
+        return;
+    }
+
+    let formHasLockedField = false;
+    const fullMonthUrlKey = urlMonthIndex ? urlMonthIndex.toLowerCase().trim() : shortMonthKey;
 
             // --- LIVE SUBMISSION FALLBACK FETCH ---
             let publicTeacherData = null;
