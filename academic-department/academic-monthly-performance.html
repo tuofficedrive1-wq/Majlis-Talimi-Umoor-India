@@ -107,7 +107,7 @@
                         </div>
                 </div>
 
-                <!-- DEENI KAAM SECTION (Hidden by default) -->
+                <!-- DEENI KAAM SECTION -->
                 <div id="deeni-kaam-container" class="hidden app-card p-4 mt-4 border-t-4 border-indigo-600">
                     <h3 class="font-black text-slate-700 flex items-center text-sm border-b pb-3 mb-3">
                         <span class="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mr-2 text-xs"><i class="fas fa-mosque"></i></span>
@@ -115,7 +115,6 @@
                     </h3>
                     
                     <div class="space-y-4">
-                        <!-- Q1 -->
                         <div class="flex justify-between items-center border-b border-slate-100 pb-2">
                             <span class="text-xs font-bold text-slate-700">1. Zohar Dars</span>
                             <div class="flex gap-4">
@@ -128,7 +127,6 @@
                             </div>
                         </div>
 
-                        <!-- Q2 -->
                         <div class="flex justify-between items-center border-b border-slate-100 pb-2">
                             <span class="text-xs font-bold text-slate-700">2. Haftawar Ijtima</span>
                             <div class="flex gap-4">
@@ -141,7 +139,6 @@
                             </div>
                         </div>
 
-                        <!-- Q3 -->
                         <div class="flex justify-between items-center border-b border-slate-100 pb-2">
                             <span class="text-xs font-bold text-slate-700">3. Haftawar Madani Muzakarah</span>
                             <div class="flex gap-4">
@@ -154,7 +151,6 @@
                             </div>
                         </div>
 
-                        <!-- Q4 -->
                         <div class="flex justify-between items-center border-b border-slate-100 pb-2">
                             <span class="text-xs font-bold text-slate-700">4. Naik Amaal</span>
                             <div class="flex gap-4">
@@ -167,7 +163,6 @@
                             </div>
                         </div>
 
-                        <!-- Q5 -->
                         <div class="flex justify-between items-center">
                             <span class="text-xs font-bold text-slate-700">5. Madani Qafilah</span>
                             <div class="flex gap-4">
@@ -192,6 +187,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+        // ==========================================
+        // FIREBASE CONFIGURATION
+        // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
             authDomain: "data-f15ab.firebaseapp.com",
@@ -205,6 +203,9 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
+        // ==========================================
+        // URL PARAMETERS FETCH
+        // ==========================================
         const urlParams = new URLSearchParams(window.location.search);
         const urlJamiaName = urlParams.get('jamiaName');
         const urlMonthIndex = urlParams.get('monthIndex'); 
@@ -234,21 +235,20 @@
         const btnSave = document.getElementById('btn-save');
 
         let gActiveYear = "2026-2027";
-        let gUserData = null;
         let gTeacherData = null;
-        let gJamiaIndex = -1;
-        let gTeacherIndex = -1;
-        let gJamiaId = ""; 
+        let gJamiaId = "001"; 
 
         if (urlJamiaName) displayJamia.innerText = urlJamiaName;
         if (dbMonthKey) displayMonth.innerText = dbMonthKey;
 
-        // Jamia Name me se digits nikal kar Doc ID banana (Jaise "DEMO 001" -> "001")
         if (urlJamiaName) {
             const match = urlJamiaName.match(/\d+/);
             gJamiaId = match ? match[0] : "001"; 
         }
 
+        // ==========================================
+        // TEACHER VERIFICATION & FETCHING LOGIC
+        // ==========================================
         btnVerify.onclick = async () => {
             const enteredCode = loginCodeInput.value.trim();
             
@@ -258,7 +258,7 @@
             }
 
             if (!inspectorId || !urlJamiaName || !dbMonthKey) {
-                alert("URL me Parameters missing hain. Naya link generate karein.");
+                alert("URL me Parameters missing hain. Inspector Dashboard se naya link generate karein.");
                 return;
             }
 
@@ -267,6 +267,7 @@
             document.getElementById('btn-verify-icon').className = "spinner";
 
             try {
+                // 1. Calendar Check
                 const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
                 let calData = null; 
                 
@@ -275,32 +276,45 @@
                     gActiveYear = calData.activeYear || "2026-2027";
                 }
 
+                // 2. Inspector ka data fetch karein
                 const userRef = doc(db, "users", inspectorId);
                 const userSnap = await getDoc(userRef);
 
-                // =========================================================
-                // YAHAN AAPKA TEACHER DATA NIKALNE WALA ASAL CODE AAYEGA
-                // =========================================================
-                // ... (User aur teacher data nikalne ka code same rahega) ...
+                gTeacherData = null; 
 
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    const academicYears = userData.academicYears || {};
+                    const currentYearData = academicYears[gActiveYear] || {};
+                    const structure = currentYearData.karkardagiStructure || [];
 
-                // =========================================================
-                // ERROR FIX (Check karein ki teacher mila ya nahi)
-                // =========================================================
+                    // Jamia Find karein
+                    const jamiaData = structure.find(j => j.jamiaName === urlJamiaName);
+
+                    if (jamiaData && jamiaData.teachers) {
+                        // Teacher Find Karein "loginCode" ya "id" ki madad se
+                        gTeacherData = jamiaData.teachers.find(t => 
+                            String(t.loginCode) === enteredCode || 
+                            String(t.id) === enteredCode
+                        );
+                    }
+                }
+
+                // 3. Teacher verify check
                 if (gTeacherData && gTeacherData.name) {
                     displayTeacherName.innerText = gTeacherData.name;
                     loginContainer.classList.add('hidden');
                     mainFormContainer.classList.remove('hidden');
                     
-                    // Yahan calData pass karein
+                    // Render UI
                     renderPeriodsUI(gTeacherData, calData); 
                 } else {
-                    alert("Ajeer Code is Jamia/Inspector k record mein nahi mila! Kripya sahi code enter karein ya database check karein.");
+                    alert("Ajeer Code is Jamia k record mein nahi mila! Kripya sahi code enter karein ya Admin se contact karein.");
                 }
 
             } catch (error) {
                 console.error(error);
-                alert(error.message);
+                alert("Database se connect karne me masla aaya: " + error.message);
             } finally {
                 btnVerify.disabled = false;
                 document.getElementById('btn-verify-text').innerText = "Verify & Open Form";
@@ -308,13 +322,13 @@
             }
         };
 
+        // ==========================================
+        // RENDER PERIODS UI
+        // ==========================================
         async function renderPeriodsUI(teacherData, calData) {
             periodContainer.innerHTML = ''; 
             let periods = teacherData.periods || [];
 
-            // ==========================================
-            // LOGIC: Month ke hisab se Semester Filter
-            // ==========================================
             const shortMonthKey = dbMonthKey.toLowerCase().trim();
             let activeSemester = null;
 
@@ -335,7 +349,6 @@
                     return true;
                 });
             }
-            // ==========================================
 
             if (periods.length === 0) {
                 periodContainer.innerHTML = `
@@ -349,7 +362,7 @@
             let formHasLockedField = false;
             const fullMonthUrlKey = urlMonthIndex ? urlMonthIndex.toLowerCase().trim() : shortMonthKey;
 
-            // --- LIVE SUBMISSION FALLBACK FETCH ---
+            // Fallback: Agar Inspector ne submit kiya hua hai
             let publicTeacherData = null;
             try {
                 const perfDocRef = doc(db, "academic_performance", gJamiaId);
@@ -361,11 +374,10 @@
                     publicTeacherData = (monthData.teachers || []).find(t => t.name.toLowerCase() === teacherData.name.toLowerCase());
                 }
             } catch (e) {
-                console.log("Public performance read fallback active", e);
+                console.log("Read fallback active", e);
             }
 
             periods.forEach((p, idx) => {
-                // --- MULTI-FORMAT LOCK CHECKING ---
                 let isLockedByInspector = false;
                 
                 if (p.locked) {
@@ -424,7 +436,6 @@
                 periodContainer.appendChild(row);
             });
 
-            // --- UI BUTTON & BANNER TOGGLE ---
             if (formHasLockedField) {
                 btnSave.style.setProperty('display', 'none', 'important');
                 btnSave.classList.add('hidden');
@@ -444,6 +455,9 @@
             }
         }
 
+        // ==========================================
+        // FORM SUBMISSION & SAVE LOGIC
+        // ==========================================
         let currentFormStep = 1;
 
         performanceForm.onsubmit = async (e) => {
@@ -451,9 +465,6 @@
 
             if (btnSave.classList.contains('hidden')) return;
 
-            // ==========================================
-            // STEP 1: Pehle Books ke Pages Check karein
-            // ==========================================
             if (currentFormStep === 1) {
                 const inputs = document.querySelectorAll('.achieved-input');
                 let isValid = true;
@@ -480,9 +491,6 @@
                 return; 
             }
 
-            // ==========================================
-            // STEP 2: Deeni Kaam Check karke Firebase me save karein
-            // ==========================================
             if (currentFormStep === 2) {
                 const qZohar = document.querySelector('input[name="dk_zohar"]:checked')?.value;
                 const qIjtima = document.querySelector('input[name="dk_ijtima"]:checked')?.value;
