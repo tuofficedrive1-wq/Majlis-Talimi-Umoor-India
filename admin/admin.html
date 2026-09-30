@@ -710,7 +710,15 @@
                                 <div><label class="block text-sm font-medium text-slate-700 mb-1">Purana User</label><select id="tt-old-user" class="w-full p-2 border border-slate-300 rounded-lg urdu-font bg-white"></select></div>
                                 <div><label class="block text-sm font-medium text-slate-700 mb-1">Purana Jamia</label><select id="tt-old-jamia" class="w-full p-2 border border-slate-300 rounded-lg urdu-font bg-white" disabled></select></div>
                             </div>
-                            <div class="mt-2"><label class="block text-sm font-medium text-slate-700 mb-1">Teacher Select Karein</label><select id="tt-teacher" class="w-full p-2 border border-slate-300 rounded-lg urdu-font bg-white" disabled></select></div>
+                           <div class="mt-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Teacher Select Karein</label>
+                                <select id="tt-teacher" class="w-full p-2 border border-slate-300 rounded-lg urdu-font bg-white" disabled></select>
+                            </div>
+                            <!-- NAYA SECTION PERIODS KE LIYE -->
+                            <div id="tt-periods-container" class="mt-3 hidden bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <label class="block text-sm font-bold text-slate-700 mb-2">Kaun se Periods transfer karne hain?</label>
+                                <div id="tt-periods-list" class="space-y-2"></div>
+                            </div>
                         </div>
                         <div class="space-y-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100 mt-4">
                             <h4 class="font-semibold text-blue-700 border-b pb-2">2. Kahan Bhejna Hai? (Destination)</h4>
@@ -2094,7 +2102,15 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
         return;
     }
 
-    if(confirm(`Kya aap waqai is teacher ko ${oldJamia} se nikal kar ${newJamia} mein transfer karna chahte hain?`)) {
+    // Checkboxes se selected periods nikalna
+    const selectedCheckboxes = document.querySelectorAll('.transfer-period-cb:checked');
+    if (selectedCheckboxes.length === 0) {
+        alert("Barahe karam transfer karne ke liye kam az kam ek period select karein.");
+        return;
+    }
+    const periodsToTransferIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+
+    if(confirm(`Kya aap waqai in selected periods ko ${oldJamia} se nikal kar ${newJamia} mein transfer karna chahte hain?`)) {
         showLoader(true);
         try {
             // 1. Global variables se User Data uthana
@@ -2103,67 +2119,101 @@ if (downloadImageBtn) downloadImageBtn.addEventListener('click', handleImageDown
             
             if (!oldU || !newU) throw new Error("User data nahi mila.");
 
-           // 2. Dono users ka active Academic Year nikalna
-const oldYears = Object.keys(oldU.academicYears || {}).sort().reverse();
+            // 2. Dono users ka active Academic Year nikalna
+            const oldYears = Object.keys(oldU.academicYears || {}).sort().reverse();
 
-if (oldYears.length === 0) {
-    throw new Error("Purane user ka Academic Year structure nahi mila.");
-}
+            if (oldYears.length === 0) {
+                throw new Error("Purane user ka Academic Year structure nahi mila.");
+            }
 
-const oldActiveYear = oldYears[0];
+            const oldActiveYear = oldYears[0];
 
-// 3. Database mein bhejne ke liye data ki copy banana
-let oldAcademicYears = JSON.parse(JSON.stringify(oldU.academicYears));
-let newAcademicYears = newU.academicYears ? JSON.parse(JSON.stringify(newU.academicYears)) : {};
+            // 3. Database mein bhejne ke liye data ki copy banana
+            let oldAcademicYears = JSON.parse(JSON.stringify(oldU.academicYears));
+            let newAcademicYears = newU.academicYears ? JSON.parse(JSON.stringify(newU.academicYears)) : {};
 
-// Naye user ka active year nikalna (agar nahi hai to purane wala set kar dein)
-const newYears = Object.keys(newAcademicYears).sort().reverse();
-const newActiveYear = newYears.length > 0 ? newYears[0] : oldActiveYear;
+            // Naye user ka active year nikalna (agar nahi hai to purane wala set kar dein)
+            const newYears = Object.keys(newAcademicYears).sort().reverse();
+            const newActiveYear = newYears.length > 0 ? newYears[0] : oldActiveYear;
 
-if (!newAcademicYears[newActiveYear]) {
-    newAcademicYears[newActiveYear] = { karkardagiStructure: [] };
-}
+            if (!newAcademicYears[newActiveYear]) {
+                newAcademicYears[newActiveYear] = { karkardagiStructure: [] };
+            }
 
-// 👉 YEH LINE ADD KAREIN JO MISS HO GAYI THI 👈
-let teacherToTransfer = null;
+            let teacherToTransferData = []; // Jo periods transfer ho rahe hain
+            let originalTeacherName = "";
+            let originalTeacherCode = "";
 
-// 4. Purane user ke Jamia se teacher ko nikalna (Remove)
-let oldStructure = oldAcademicYears[oldActiveYear].karkardagiStructure || [];
-let oldJamiaIndex = oldStructure.findIndex(j => j.jamiaName === oldJamia);
+            // 4. Purane user ke Jamia se periods nikalna (Split Logic)
+            let oldStructure = oldAcademicYears[oldActiveYear].karkardagiStructure || [];
+            let oldJamiaIndex = oldStructure.findIndex(j => j.jamiaName === oldJamia);
             
             if (oldJamiaIndex !== -1) {
                 let teachersArr = oldStructure[oldJamiaIndex].teachers || [];
                 let teacherIndex = teachersArr.findIndex(t => t.id === teacherId);
                 
                 if (teacherIndex !== -1) {
-                    teacherToTransfer = teachersArr.splice(teacherIndex, 1)[0]; // Teacher ko array se nikal liya
+                    let originalTeacher = teachersArr[teacherIndex];
+                    originalTeacherName = originalTeacher.name;
+                    originalTeacherCode = originalTeacher.loginCode;
+                    
+                    // Jo periods transfer karne hain, unhe alag kar lo
+                    teacherToTransferData = originalTeacher.periods.filter(p => periodsToTransferIds.includes(p.id));
+                    
+                    // Purane teacher ke paas sirf wo periods chhod do jo transfer NAHI hue
+                    originalTeacher.periods = originalTeacher.periods.filter(p => !periodsToTransferIds.includes(p.id));
+                    
+                    // Agar purane teacher ke paas 0 periods bache hain, to teacher ko hi array se nikal do
+                    if (originalTeacher.periods.length === 0) {
+                        teachersArr.splice(teacherIndex, 1);
+                    }
                 }
             }
 
-            if (!teacherToTransfer) {
-                throw new Error("Purane Jamia mein teacher nahi mila.");
+            if (teacherToTransferData.length === 0) {
+                throw new Error("Purane Jamia mein selected periods nahi mile.");
             }
 
-            // 5. Naye user ke Jamia mein teacher ko add karna
-if (!newAcademicYears[newActiveYear].karkardagiStructure) {
-    newAcademicYears[newActiveYear].karkardagiStructure = [];
-}
+            // 5. Naye user ke Jamia mein teacher aur periods ko add karna
+            if (!newAcademicYears[newActiveYear].karkardagiStructure) {
+                newAcademicYears[newActiveYear].karkardagiStructure = [];
+            }
 
-let newStructure = newAcademicYears[newActiveYear].karkardagiStructure;
-let newJamiaIndex = newStructure.findIndex(j => j.jamiaName === newJamia);
+            let newStructure = newAcademicYears[newActiveYear].karkardagiStructure;
+            let newJamiaIndex = newStructure.findIndex(j => j.jamiaName === newJamia);
 
-if (newJamiaIndex !== -1) {
-    if (!newStructure[newJamiaIndex].teachers) {
-        newStructure[newJamiaIndex].teachers = [];
-    }
-    newStructure[newJamiaIndex].teachers.push(teacherToTransfer); // Teacher naye Jamia mein add
-} else {
-    // Agar Naye user ka Jamia structure nahi tha, to naya bana dein
-    newStructure.push({
-        jamiaName: newJamia,
-        teachers: [teacherToTransfer]
-    });
-}
+            if (newJamiaIndex !== -1) {
+                if (!newStructure[newJamiaIndex].teachers) {
+                    newStructure[newJamiaIndex].teachers = [];
+                }
+                
+                // Check karein kya naye jamia mein ye teacher (Ajeer Code ki base par) pehle se maujood hai?
+                let existingNewTeacher = newStructure[newJamiaIndex].teachers.find(t => t.loginCode === originalTeacherCode);
+                
+                if (existingNewTeacher) {
+                    // Agar pehle se hai, to naye periods usme push kar dein
+                    existingNewTeacher.periods.push(...teacherToTransferData);
+                } else {
+                    // Agar nahi hai, to teacher ki copy banayein aur periods daal dein
+                    newStructure[newJamiaIndex].teachers.push({
+                        id: teacherId, 
+                        name: originalTeacherName,
+                        loginCode: originalTeacherCode,
+                        periods: teacherToTransferData
+                    });
+                }
+            } else {
+                // Agar Naye user ka Jamia structure nahi tha, to naya bana dein
+                newStructure.push({
+                    jamiaName: newJamia,
+                    teachers: [{
+                        id: teacherId,
+                        name: originalTeacherName,
+                        loginCode: originalTeacherCode,
+                        periods: teacherToTransferData
+                    }]
+                });
+            }
 
             // 6. Firebase Batch Update (Dono users ek sath update honge)
             const batch = writeBatch(db);
@@ -2175,11 +2225,15 @@ if (newJamiaIndex !== -1) {
 
             await batch.commit();
 
-            showNotification("Teacher successfully transfer ho gaya!");
+            showNotification("Teacher ke selected periods successfully transfer ho gaye!");
             
             // UI aur Dropdowns ko refresh karna
             if(typeof initTeacherTransferTab === 'function') initTeacherTransferTab();
             if(typeof fetchAndRenderAdminUsers === 'function') fetchAndRenderAdminUsers(false);
+            
+            // UI elements reset karna
+            document.getElementById('tt-periods-container').classList.add('hidden');
+            document.getElementById('tt-periods-list').innerHTML = '';
             
         } catch (err) {
             console.error("Teacher Transfer Error: ", err);
@@ -2190,6 +2244,35 @@ if (newJamiaIndex !== -1) {
     }
 });
         };
+
+        document.getElementById('tt-teacher').addEventListener('change', (e) => {
+    const teacherId = e.target.value;
+    const oldUserId = document.getElementById('tt-old-user').value;
+    const oldJamia = document.getElementById('tt-old-jamia').value;
+    const periodsContainer = document.getElementById('tt-periods-container');
+    const periodsList = document.getElementById('tt-periods-list');
+
+    if (!teacherId) {
+        periodsContainer.classList.add('hidden');
+        return;
+    }
+
+    const structure = getStructure(oldUserId); // Aapka existing function
+    const jamia = structure.find(j => j.jamiaName === oldJamia);
+    const teacher = jamia.teachers.find(t => t.id === teacherId);
+
+    if (teacher && teacher.periods.length > 0) {
+        periodsList.innerHTML = teacher.periods.map(p => `
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" value="${p.id}" class="transfer-period-cb w-4 h-4 text-indigo-600">
+                <span class="urdu-font text-sm">${p.bookName} (${p.className})</span>
+            </label>
+        `).join('');
+        periodsContainer.classList.remove('hidden');
+    } else {
+        periodsList.innerHTML = '<p class="text-sm text-red-500">Koi period nahi mila.</p>';
+    }
+});
 
         const renderAllUsersJaizaTable = () => {
             const container = document.getElementById('analysis-report-container');
