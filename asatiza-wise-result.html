@@ -13,13 +13,18 @@
   }
   .inner-table input[readonly] { background-color: #f1f5f9; cursor: not-allowed; color: #475569; font-weight: bold; }
   select { appearance: auto; -webkit-appearance: auto; -moz-appearance: auto; }
+  .locked-input { cursor: not-allowed; opacity: 0.7; pointer-events: none; }
   </style>
 </head>
 <body class="bg-gray-100 p-2 sm:p-6">
 
 <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden border-t-4 border-teal-700">
   <div class="bg-white p-4 flex justify-between items-center border-b">
-    <h1 class="text-xl font-bold text-teal-800">اساتذہ وائز رزلٹ</h1>
+    <div class="flex items-center gap-4">
+      <h1 class="text-xl font-bold text-teal-800">اساتذہ وائز رزلٹ</h1>
+      <!-- Admin Controls Container -->
+      <div id="admin-controls"></div> 
+    </div>
     <div id="jamia-name-head" class="text-teal-600 font-bold border-b-2 border-teal-600"></div>
   </div>
 
@@ -29,6 +34,11 @@
     <div class="flex flex-wrap gap-4 mb-6 bg-teal-50 p-4 rounded-lg border border-teal-100 shadow-sm">
       <div><label class="block text-[10px] font-bold text-teal-600 mb-1">امتحان</label><div id="display-type" class="p-2 bg-white border rounded font-bold text-gray-700 min-w-[120px]">---</div></div>
       <div><label class="block text-[10px] font-bold text-teal-600 mb-1">تعلیمی سال</label><div id="display-year" class="p-2 bg-white border rounded font-bold text-gray-700 min-w-[120px]">---</div></div>
+    </div>
+    
+    <!-- Locked Warning Message Box -->
+    <div id="locked-warning" style="display:none;" class="bg-red-100 text-red-700 p-3 text-center font-bold mb-4 border border-red-300 rounded-lg">
+      یہ فارم مقفل (Locked) ہو چکا ہے۔ اب اس میں مزید تبدیلی نہیں کی جا سکتی۔
     </div>
 
     <div class="overflow-x-auto">
@@ -45,7 +55,7 @@
       </table>
     </div>
 
-    <div class="mt-6 flex items-center justify-between">
+    <div id="action-buttons" class="mt-6 flex items-center justify-between">
       <button onclick="addTeacherRow()" class="w-44 bg-slate-800 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-slate-700">+ مزید استاذ</button>
       <button onclick="saveData()" class="w-44 bg-teal-600 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-teal-700">محفوظ کریں</button>
     </div>
@@ -54,7 +64,8 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, query, where, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+// ✅ updateDoc import add kiya gaya hai
+import { getFirestore, collection, addDoc, getDocs, query, where, getDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"; 
 
 const firebaseConfig = {
@@ -70,6 +81,11 @@ const params = new URLSearchParams(window.location.search);
 const jamiaName = params.get('jamia') || 'Jamia';
 const examType = params.get('examType') || '';
 const examYear = params.get('examYear') || '';
+
+// ✅ URL se role nikalna
+const userRole = params.get('role') || 'user';
+let currentDocId = null;
+let isLocked = false;
 
 // 🔹 EXAM KE HISAAB SE SEMESTER NIKALNA 🔹
 let targetSemester = "1"; 
@@ -101,7 +117,6 @@ async function loadExcelData() {
       }
   } catch(e) { 
       console.error("Excel Data Load Error:", e);
-      // Agar rules update na hon, to red alert dikhayega
       alert("⚠️ فائر بیس رولز کا مسئلہ!\nڈیٹا بیس میں 'excel_subjects_data' کو ریڈ کرنے کی اجازت نہیں ہے۔ براہ کرم رولز اپڈیٹ کریں۔");
   }
 }
@@ -136,7 +151,7 @@ function findExactExcelClass(karkClass) {
   for (let exClass in window.excelSubjectsData) {
       if (!exClass || exClass.trim() === '') continue;
       if (checkClassMatch(karkClass, exClass)) {
-          return exClass; // Excel ka exact name return karega
+          return exClass; 
       }
   }
   return null;
@@ -174,13 +189,14 @@ async function loadSavedFirestoreData() {
       let latestDoc = snap.docs[0];
       snap.docs.forEach(d => { if (d.data().timestamp > latestDoc.data().timestamp) latestDoc = d; });
       
+      // ✅ Lock/Unlock Data Load karna
+      currentDocId = latestDoc.id;
+      isLocked = latestDoc.data().isLocked || false;
+
       document.getElementById('main-teacher-body').innerHTML = "";
       
       latestDoc.data().data.forEach(t => {
-          // Pehle row add hogi
           window.addTeacherRow(t.teacher, t.periods);
-          
-          // 🟢 YEH LINE ADD KI GAYI HAI: Data load hone ke baad Total khud calculate hoga
           updateTotal(teacherCount); 
       });
       return true;
@@ -205,14 +221,14 @@ window.addTeacherRow = function(name='', periods=null) {
     <td class='border p-2'>
       <div class='flex gap-2'>
           <input value='${name}' placeholder='نام استاد' class='w-full p-2 border rounded font-bold text-indigo-900'>
-          <button onclick='this.closest("tr").remove()' class='text-red-600' title="Delete Teacher">🗑</button>
+          <button onclick='this.closest("tr").remove()' class='text-red-600 btn-delete' title="Delete Teacher">🗑</button>
       </div>
     </td>
     <td class='border p-2'>
       <table class='w-full inner-table'><thead class="bg-gray-100 text-[11px]"><tr>
         <th class="w-32">کلاس</th><th>مضمون</th><th class="w-16">کل</th><th class="w-16">کامیاب</th><th class="w-20">فیصد</th><th class="w-24">کیفیت</th><th class="w-10">حذف</th>
       </tr></thead><tbody id='periods-${teacherCount}'>${pHTML}</tbody></table>
-      <button onclick='addPeriodRow(${teacherCount})' class='text-teal-600 text-xs mt-2 font-bold bg-teal-50 px-3 py-1 rounded border border-teal-200'>+ مزید مضمون</button>
+      <button onclick='addPeriodRow(${teacherCount})' class='text-teal-600 text-xs mt-2 font-bold bg-teal-50 px-3 py-1 rounded border border-teal-200 btn-add-period'>+ مزید مضمون</button>
     </td>
     <td class='border p-2 text-center'><div id='total-${teacherCount}' class='font-bold text-teal-700 text-lg'>0%</div></td>`;
   tbody.appendChild(tr);
@@ -221,10 +237,8 @@ window.addTeacherRow = function(name='', periods=null) {
 window.periodRowHTML = function(p={}) {
   let cVal = p.class || ''; 
   let sVal = p.subject || '';
-  
   let hasExcelData = Object.keys(window.excelSubjectsData).length > 0;
 
-  // 🔹 Class Dropdown 🔹
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
   if (hasExcelData) {
@@ -243,7 +257,6 @@ window.periodRowHTML = function(p={}) {
   let isOtherClassSel = cVal === 'دیگر (Other)';
   classOpts += `<option value="دیگر (Other)" ${isOtherClassSel ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
 
-  // 🔹 Subject Dropdown 🔹
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
   let subjFound = false;
   if (classFound && window.excelSubjectsData[cVal]) {
@@ -269,7 +282,6 @@ window.periodRowHTML = function(p={}) {
   let isOtherSubjSel = sVal === 'دیگر (Other)';
   subjOpts += `<option value="دیگر (Other)" ${isOtherSubjSel ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
 
-  // 🔹 Manual/Readonly State check 🔹
   let isManualMode = isOtherClassSel || isOtherSubjSel || isCustomClass || isCustomSubj;
   let readonlyAttr = isManualMode ? '' : 'readonly';
   let bgClass = isManualMode ? 'bg-white' : 'bg-gray-100';
@@ -287,7 +299,7 @@ window.periodRowHTML = function(p={}) {
     <td><input type='text' inputmode='numeric' value='${p.passed||""}' class="passed-inp font-bold ${bgClass}" ${readonlyAttr} oninput="this.value=this.value.replace(/[^0-9]/g,''); calcRow(this.closest('tr'))"></td>
     <td><input readonly value='${p.percentage||""}' class="font-bold bg-gray-100 text-center"></td>
     <td><input readonly value='${p.kaifiyat||""}' class="font-bold bg-gray-100 text-center"></td>
-    <td style="text-align:center"><button onclick="removePeriodRow(this)" style="color:#dc2626;font-weight:bold" title="Delete Period">🗑</button></td>
+    <td style="text-align:center"><button onclick="removePeriodRow(this)" class="btn-delete" style="color:#dc2626;font-weight:bold" title="Delete Period">🗑</button></td>
   </tr>`;
 };
 
@@ -299,7 +311,6 @@ window.updateSubjects = function(sel) {
   const classOtherInp = tr.querySelector('.class-other-input');
   const c = sel.value;
   
-  // Custom Class input box hide/show logic
   if(c === 'دیگر (Other)') {
       classOtherInp.classList.remove('hidden');
   } else {
@@ -314,11 +325,8 @@ window.updateSubjects = function(sel) {
   }
   
   subSel.innerHTML += `<option value="دیگر (Other)" class="text-blue-600 font-bold">دیگر (Other)</option>`;
-
   tr.querySelector('.total-inp').value = ''; 
   tr.querySelector('.passed-inp').value = ''; 
-  
-  // Fillmarks function ko trigger karein taake state update ho jaye
   window.fillMarks(subSel);
 };
 
@@ -326,12 +334,10 @@ window.fillMarks = function(sel) {
   const tr = sel.closest('tr'); 
   const c = tr.querySelector('.class-select').value; 
   const s = sel.value;
-  
   const subjOtherInp = tr.querySelector('.subj-other-input');
   const totalInp = tr.querySelector('.total-inp');
   const passedInp = tr.querySelector('.passed-inp');
 
-  // Custom Subject input box hide/show logic
   if(s === 'دیگر (Other)') {
       subjOtherInp.classList.remove('hidden');
   } else {
@@ -339,23 +345,18 @@ window.fillMarks = function(sel) {
       subjOtherInp.value = '';
   }
   
-  // Agar 'Other' select ho toh fields manually open karden (Readonly hata den)
   if(s === 'دیگر (Other)' || c === 'دیگر (Other)') {
      totalInp.value = ''; passedInp.value = '';
      totalInp.removeAttribute('readonly'); passedInp.removeAttribute('readonly');
      totalInp.classList.replace('bg-gray-100', 'bg-white');
      passedInp.classList.replace('bg-gray-100', 'bg-white');
-  } 
-  // Agar Excel se match ho jaye toh fields ko lock (readonly) karden
-  else if(c && s && window.excelSubjectsData[c] && window.excelSubjectsData[c][s]) {
+  } else if(c && s && window.excelSubjectsData[c] && window.excelSubjectsData[c][s]) {
     const data = window.excelSubjectsData[c][s];
     totalInp.value = data.total; passedInp.value = data.passed;
     totalInp.setAttribute('readonly', true); passedInp.setAttribute('readonly', true);
     totalInp.classList.replace('bg-white', 'bg-gray-100');
     passedInp.classList.replace('bg-white', 'bg-gray-100');
-  } 
-  // Default state (Empty selection)
-  else { 
+  } else { 
     totalInp.value = ''; passedInp.value = ''; 
     if(!c || !s || c === '' || s === '') {
         totalInp.setAttribute('readonly', true); passedInp.setAttribute('readonly', true);
@@ -367,7 +368,6 @@ window.fillMarks = function(sel) {
         passedInp.classList.replace('bg-gray-100', 'bg-white');
     }
   }
-  
   window.calcRow(tr);
 };
 
@@ -405,6 +405,12 @@ window.removePeriodRow = (btn) => {
 };
 
 window.saveData = async function() {
+  // ✅ Check if form is locked
+  if (isLocked) {
+      alert("یہ فارم مقفل (Locked) ہے۔ آپ اس میں تبدیلی محفوظ نہیں کر سکتے۔");
+      return;
+  }
+
   const allTeachers = [];
   document.querySelectorAll(".border-b.hover\\:bg-gray-50").forEach(tr => {
     const tName = tr.querySelector('input[placeholder="نام استاد"]')?.value;
@@ -413,8 +419,6 @@ window.saveData = async function() {
     tr.querySelectorAll('.inner-table tbody tr').forEach(r => {
       let c = r.querySelector('.class-select').value; 
       let s = r.querySelector('.subj-select').value;
-      
-      // Agar "Other" select kiya gaya hai, toh type kiye gaye custom naam ko uthayen
       if (c === 'دیگر (Other)') {
           const cOther = r.querySelector('.class-other-input')?.value.trim();
           if (cOther) c = cOther;
@@ -423,7 +427,6 @@ window.saveData = async function() {
           const sOther = r.querySelector('.subj-other-input')?.value.trim();
           if (sOther) s = sOther;
       }
-
       if(c && s) { 
         periods.push({
           class: c, subject: s, 
@@ -438,10 +441,66 @@ window.saveData = async function() {
   });
 
   try {
-    await addDoc(collection(db, "asatiza_wise_results"), { jamia: jamiaName, examType, examYear, data: allTeachers, timestamp: Date.now() });
+    // ✅ Save karte waqt isLocked property ko bhi shamil karein
+    await addDoc(collection(db, "asatiza_wise_results"), { jamia: jamiaName, examType, examYear, data: allTeachers, timestamp: Date.now(), isLocked: isLocked });
     alert("الحمدللہ! رزلٹ کامیابی سے محفوظ ہو گیا ہے۔ ✅");
+    location.reload();
   } catch (e) { alert("Save error: " + e.message); }
 };
+
+// ✅ LOCK/UNLOCK FUNCTION LOGIC
+window.toggleLock = async function() {
+    if (!currentDocId) {
+        alert("پہلے کم از کم ایک بار ڈیٹا محفوظ (Save) کریں، اس کے بعد ہی آپ اسے لاک کر سکتے ہیں۔");
+        return;
+    }
+    
+    const newLockStatus = !isLocked;
+    const confirmMsg = newLockStatus ? "کیا آپ واقعی اس فارم کو لاک (Lock) کرنا چاہتے ہیں؟" : "کیا آپ اس فارم کو انلاک (Unlock) کرنا چاہتے ہیں؟";
+    
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        await updateDoc(doc(db, "asatiza_wise_results", currentDocId), {
+            isLocked: newLockStatus
+        });
+        alert(newLockStatus ? "فارم کامیابی کے ساتھ لاک ہو گیا ہے! 🔒" : "فارم اب انلاک کر دیا گیا ہے! 🔓");
+        location.reload(); // Refresh to apply changes dynamically
+    } catch(e) {
+        alert("Error updating lock status: " + e.message);
+    }
+};
+
+// ✅ Lock UI aur Admin controls handle karne ka function
+function applyLockAndAdminState() {
+    const adminControls = document.getElementById('admin-controls');
+    const lockedWarning = document.getElementById('locked-warning');
+    const actionButtons = document.getElementById('action-buttons');
+    
+    // Agar role admin hai to Lock/Unlock ka button dikhao
+    if (userRole === 'admin') {
+        const btnText = isLocked ? "🔒 Unlock Form" : "🔓 Lock Form";
+        const btnClass = isLocked ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700";
+        adminControls.innerHTML = `<button onclick="toggleLock()" class="${btnClass} text-white px-4 py-1.5 rounded-lg font-bold text-sm shadow-md transition">${btnText}</button>`;
+    }
+
+    // Agar form locked hai, to saare inputs aur buttons disable kardo
+    if (isLocked) {
+        lockedWarning.style.display = 'block'; // Red warning message
+        actionButtons.style.display = 'none';  // Save/Add buttons chhupa do
+        
+        // Saari inputs ko read-only/disabled banao
+        document.querySelectorAll('input, select').forEach(el => {
+            el.setAttribute('disabled', 'true');
+            el.classList.add('locked-input');
+        });
+
+        // Add Period aur Delete buttons ko chhupa do
+        document.querySelectorAll('.btn-delete, .btn-add-period').forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('jamiaName').value = jamiaName; 
@@ -456,25 +515,25 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadExcelData(); 
 
       const savedDataExists = await loadSavedFirestoreData();
-      if (savedDataExists) return; // Agar data pehle se saved hai to neeche wala code nahi chalega
+      
+      // Data load hone ke baad lock state aur admin status apply karna
+      applyLockAndAdminState();
+
+      if (savedDataExists) return; 
 
       const karkardagiTeachers = await loadKarkardagiTeachers(user); 
 
       if (karkardagiTeachers.length > 0) {
           karkardagiTeachers.forEach(t => {
               let periodsForUI = [];
-              
               const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
-              
-              // Duplicate classes ko hatane ke liye
               const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className || p.class || '').filter(c => c !== ''))];
 
               uniqueClasses.forEach(karkClass => {
                   let excelMatchedClass = findExactExcelClass(karkClass);
-                  
                   periodsForUI.push({
                       class: excelMatchedClass || karkClass, 
-                      subject: '', // 👈 HAMESHA BLANK
+                      subject: '', 
                       total: '', passed: '', percentage: '', kaifiyat: ''
                   });
               });
@@ -490,6 +549,8 @@ document.addEventListener('DOMContentLoaded', () => {
           document.querySelectorAll('.total-inp').forEach(inp => {
               if (inp.value) window.calcRow(inp.closest('tr'));
           });
+          // Ek baar wapas state enforce karo taake newly added default rows bhi lock ho jayein
+          applyLockAndAdminState();
       }, 800);
   });
 });
