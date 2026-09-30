@@ -317,49 +317,71 @@
         const teacherNameDisplayWrapper = document.getElementById('teacher-name-display-wrapper');
         const teacherNameDisplay        = document.getElementById('teacher-name-display');
 
-        async function verifyTeacherByCode() {
-    const code = document.getElementById('teacher-code-input').value.trim();
-    if (code.length !== 5) return;
-
-    let mergedPeriods = [];
-    let teacherName = "";
-
-    // Maan lein aapne users collection ko fetch kar liya hai
-    const usersSnap = await db.collection('users').get();
-    
-    usersSnap.forEach(userDoc => {
-        const userData = userDoc.data();
-        const structure = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
-        
-        structure.forEach(jamia => {
-            jamia.teachers?.forEach(teacher => {
-                if (String(teacher.loginCode) === code) {
-                    teacherName = teacher.name;
-                    // Har period ke andar hum metadata attach kar denge taake submit karte waqt pata ho
-                    teacher.periods.forEach(p => {
-                        mergedPeriods.push({
-                            ...p,
-                            originalJamiaName: jamia.jamiaName,
-                            originalZimmedarId: userDoc.id,
-                            originalTeacherId: teacher.id
-                        });
-                    });
-                }
-            });
-        });
-    });
-
-    if (mergedPeriods.length === 0) {
-        alert("Is code ka koi data nahi mila.");
+        function verifyTeacherByCode() {
+    if (!currentJamiaData || !Array.isArray(currentJamiaData.teachers)) {
+        alert('جامعہ کا ڈیٹا ابھی لوڈ نہیں ہوا، تھوڑی دیر بعد دوبارہ کوشش کریں۔');
         return;
     }
 
-    // UI par show karein
-    document.getElementById('teacher-name-display').textContent = teacherName;
+    const codeError = document.getElementById('teacher-code-error');
+    const codeInput = document.getElementById('teacher-code-input');
+    const verifyBtn = document.getElementById('verify-code-btn');
+    const teacherNameDisplayWrapper = document.getElementById('teacher-name-display-wrapper');
+    const teacherNameDisplay = document.getElementById('teacher-name-display');
+
+    codeError.classList.add('hidden');
+    codeError.textContent = '';
+
+    const code = (codeInput.value || '').trim();
+
+    if (!code) {
+        codeError.textContent = 'براہ کرم اپنا اجیر کوڈ درج کریں۔';
+        codeError.classList.remove('hidden');
+        return;
+    }
+
+    const teachers = currentJamiaData.teachers || [];
     
-    // Ab 'mergedPeriods' ko periods-list mein render karein.
-    // HTML generate karte waqt data-attributes mein hidden info zaroor daalein
-    renderMergedPeriods(mergedPeriods); 
+    // 🌟 NAYA: 5-digit strict check hata diya gaya hai. Ab code ki length ka issue nahi aayega.
+    const teacher = teachers.find(t => String(t.loginCode).trim() === code);
+
+    if (!teacher) {
+        codeError.textContent = 'اجیر کوڈ درست نہیں ہے، دوبارہ چیک کریں۔';
+        codeError.classList.remove('hidden');
+        return;
+    }
+
+    // ✅ Teacher mil gaya
+    selectedTeacherData = teacher;
+
+    const teacherSelect = document.getElementById('teacher-select');
+    if (teacherSelect) {
+        teacherSelect.value = teacher.id;
+        teacherSelect.disabled = true;
+    }
+
+    codeInput.disabled = true;
+    verifyBtn.disabled = true;
+
+    teacherNameDisplay.textContent = teacher.name || '';
+    teacherNameDisplayWrapper.classList.remove('hidden');
+
+    // FORM LOAD
+    loadTeacherPeriods(
+        teacher.id,
+        currentJamiaData.teachers,
+        currentJamiaName,
+        currentMonthIndex,
+        currentReportYear
+    );
+
+    // USER UPDATE OVERLAY
+    loadTeacherUserUpdates(
+        currentJamiaName,
+        teacher.id,
+        currentMonthIndex,
+        currentReportYear
+    );
 }
 
 function renderMergedPeriods(periods) {
@@ -502,56 +524,64 @@ function renderMergedPeriods(periods) {
         }
     }
 
-    // ===== PERIODS (cards) + existing submission check =====
-    function loadTeacherPeriods(teacherId, allTeachers, jamiaName, monthIndex, year) {
-        const periodsList      = document.getElementById('periods-list');
-        const periodsSection   = document.getElementById('periods-section');
-        const submitButtonArea = document.getElementById('submit-button-area');
-        const formMessage      = document.getElementById('form-message');
+   function loadTeacherPeriods(teacherId, allTeachers, jamiaName, monthIndex, year) {
+    const periodsList      = document.getElementById('periods-list');
+    const periodsSection   = document.getElementById('periods-section');
+    const submitButtonArea = document.getElementById('submit-button-area');
+    const formMessage      = document.getElementById('form-message');
 
-        // Reset
-        formLocked = false;
-        if (formMessage) {
-            formMessage.classList.add('hidden');
-            formMessage.textContent = '';
+    // Reset
+    formLocked = false;
+    if (formMessage) {
+        formMessage.classList.add('hidden');
+        formMessage.textContent = '';
+    }
+
+    periodsList.innerHTML = '';
+
+    const teacher = allTeachers.find(t => t.id === teacherId);
+
+    if (!teacher || !Array.isArray(teacher.periods) || teacher.periods.length === 0) {
+        periodsList.innerHTML = '<p class="text-center py-4 text-gray-500 text-sm sm:text-base">اس استاد کے لیے کوئی پیریڈ سیٹ نہیں ہے۔</p>';
+        periodsSection.classList.remove('hidden');
+        submitButtonArea.classList.add('hidden');
+        return;
+    }
+
+    selectedTeacherData = teacher;
+
+    // 🌟 NAYA LOGIC: Sahi Semester Detection
+    const mIndex = parseInt(monthIndex, 10);
+    let isSem1 = true;
+
+    if (globalAcademicConfig && globalAcademicConfig.monthDetails && globalAcademicConfig.monthDetails[mIndex]) {
+        const detail = globalAcademicConfig.monthDetails[mIndex];
+        // Agar Sem 2 ki days > 0 hain aur Sem 1 zero hai, to Semester 2 chal raha hai
+        if ((detail.sem2 || 0) > 0 && (detail.sem1 || 0) === 0) {
+            isSem1 = false;
+        } else {
+            isSem1 = true;
         }
+    } else {
+        // Fallback (April=3 se August=7 tak Sem 1)
+        isSem1 = (mIndex >= 3 && mIndex <= 7); 
+    }
 
-        periodsList.innerHTML = '';
+    const activePeriods = teacher.periods.filter(p => {
+        if (p.status === 'transferred') return false;
+        const pSem = p.semester || "1";
+        return (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
+    });
 
-        const teacher = allTeachers.find(t => t.id === teacherId);
+    if (activePeriods.length === 0) {
+        periodsList.innerHTML = '<p class="text-center py-4 text-gray-500 text-sm sm:text-base">اس سمسٹر میں آپ کی کوئی فعال (Active) کتاب باقی نہیں ہے۔</p>';
+        periodsSection.classList.remove('hidden');
+        submitButtonArea.classList.add('hidden');
+        return;
+    }
 
-        if (!teacher || !Array.isArray(teacher.periods) || teacher.periods.length === 0) {
-            periodsList.innerHTML =
-                '<p class="text-center py-4 text-gray-500 text-sm sm:text-base">اس استاد کے لیے کوئی پیریڈ سیٹ نہیں ہے۔</p>';
-            periodsSection.classList.remove('hidden');
-            submitButtonArea.classList.add('hidden');
-            return;
-        }
-
-        selectedTeacherData = teacher;
-
-        // --- NAYA LOGIC: Transferred kitabo ko hide karein ---
-     const mIndex = parseInt(monthIndex, 10);
-// --- AUTO DETECT FROM ADMIN DATA ---
-let isSem1 = true; // Default assumption
-
-// YAHAN UPDATE KIYA HAI: Ab ye global config se check karega
-if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
-    isSem1 = true;
-} else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
-    isSem1 = false;
-} else {
-    // Agar database me setting na mile to purana ahtiyati (fallback) tareeqa
-    isSem1 = (mIndex >= 3 && mIndex <= 6); 
-}
-
-const activePeriods = teacher.periods.filter(p => {
-    if (p.status === 'transferred') return false;
-    const pSem = p.semester || "1";
-    return (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
-});
-
-        if (activePeriods.length === 0) {
+    activePeriods.forEach(period => {
+        // ... (Iske aage ka `activePeriods.forEach` aur HTML card wala code pehle jaisa hi rahega)
             periodsList.innerHTML =
                 '<p class="text-center py-4 text-gray-500 text-sm sm:text-base">آپ کے پیریڈز ٹرانسفر ہو چکے ہیں، کوئی فعال (Active) کتاب باقی نہیں ہے۔</p>';
             periodsSection.classList.remove('hidden');
@@ -1174,52 +1204,61 @@ function escapeHtml(str) {
     });
     // --- SHOW PROFILE (FIXED: Fetches Admin Saved Reports + Teacher Submissions) ---
     async function renderTeacherSemesterProfile(jamiaName, teacherId, currentYear) {
-        const profileView = document.getElementById('teacher-profile-view');
-        const tableContainer = profileView.querySelector('.overflow-x-auto');
-        
-        // URL se Params uthayen
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentActiveYear = urlParams.get('activeYear');
-        const userId = urlParams.get('userId'); // Admin ka UID zaroori hai reports fetch karne ke liye
+    const profileView = document.getElementById('teacher-profile-view');
+    const tableContainer = profileView.querySelector('.overflow-x-auto');
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentActiveYear = urlParams.get('activeYear');
+    const userId = urlParams.get('userId'); 
 
-        tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
-        profileView.classList.remove('hidden');
+    tableContainer.innerHTML = '<p class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> پروفائل لوڈ ہو رہی ہے...</p>';
+    profileView.classList.remove('hidden');
 
-        try {
-            const mIndex = parseInt(currentMonthIndex, 10);
-let semMonths = [];
-let semTotalDays = 0;
-let isSem1 = true;
+    try {
+        const mIndex = parseInt(currentMonthIndex, 10);
+        let semMonths = [];
+        let semTotalDays = 0;
+        let isSem1 = true;
 
-// --- AUTO DETECT FROM ADMIN DATA ---
-// YAHAN BHI UPDATE KIYA HAI
-if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
-    isSem1 = true;
-    semMonths = globalAcademicConfig.sem1Months; 
-    semTotalDays = parseInt(globalAcademicConfig.sem1TotalDays || 0, 10);
-} else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
-    isSem1 = false;
-    semMonths = globalAcademicConfig.sem2Months; 
-    semTotalDays = parseInt(globalAcademicConfig.sem2TotalDays || 0, 10);
-} else {
-    // Fallback logic
-    isSem1 = (mIndex >= 3 && mIndex <= 6);
-    if (isSem1) {
-        semMonths = [3, 4, 5, 6]; 
-        semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10); // currentYearData backup ke tor pe
-    } else {
-        semMonths = [7, 8, 9, 10, 11, 0, 1, 2]; 
-        semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
-    }
-}
-
-            // Cutoff: Aage ke mahine nahi dikhane (optional, agar poora sem dikhana ho to ye hata dein)
-            const cutoffIndex = semMonths.indexOf(mIndex);
-            if (cutoffIndex !== -1) {
-                semMonths = semMonths.slice(0, cutoffIndex + 1);
+        // 🌟 NAYA LOGIC: Sahi Profile Semester Detection
+        if (globalAcademicConfig && globalAcademicConfig.monthDetails) {
+            const detail = globalAcademicConfig.monthDetails[mIndex];
+            if (detail && (detail.sem2 || 0) > 0 && (detail.sem1 || 0) === 0) {
+                isSem1 = false;
+            } else {
+                isSem1 = true;
             }
 
-            // --- DATA FETCHING ---
+            // Get months for this semester
+            semMonths = Object.keys(globalAcademicConfig.monthDetails)
+                .filter(idx => isSem1 ? globalAcademicConfig.monthDetails[idx].sem1 > 0 : globalAcademicConfig.monthDetails[idx].sem2 > 0)
+                .map(Number)
+                .sort((a, b) => {
+                    const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+                    return order.indexOf(a) - order.indexOf(b);
+                });
+                
+            semTotalDays = parseInt(isSem1 ? globalAcademicConfig.sem1TotalDays : globalAcademicConfig.sem2TotalDays) || 0;
+
+        } else {
+            // Fallback
+            isSem1 = (mIndex >= 3 && mIndex <= 7);
+            if (isSem1) {
+                semMonths = [3, 4, 5, 6, 7]; 
+                semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
+            } else {
+                semMonths = [8, 9, 10, 11, 0, 1, 2]; 
+                semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
+            }
+        }
+
+        // Cutoff: Sirf mojooda mahine tak ka data dikhaye
+        const cutoffIndex = semMonths.indexOf(mIndex);
+        if (cutoffIndex !== -1) {
+            semMonths = semMonths.slice(0, cutoffIndex + 1);
+        }
+
+                  // --- DATA FETCHING ---
             const smartMap = {}; 
 
             // STEP A: Fetch Teacher Submissions (Raw Input)
