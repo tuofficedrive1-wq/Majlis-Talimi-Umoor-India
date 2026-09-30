@@ -317,73 +317,103 @@
         const teacherNameDisplayWrapper = document.getElementById('teacher-name-display-wrapper');
         const teacherNameDisplay        = document.getElementById('teacher-name-display');
 
-        function verifyTeacherByCode() {
-            if (!currentJamiaData || !Array.isArray(currentJamiaData.teachers)) {
-                alert('جامعہ کا ڈیٹا ابھی لوڈ نہیں ہوا، تھوڑی دیر بعد دوبارہ کوشش کریں۔');
-                return;
-            }
+        async function verifyTeacherByCode() {
+    const code = document.getElementById('teacher-code-input').value.trim();
+    if (code.length !== 5) return;
 
-            codeError.classList.add('hidden');
-            codeError.textContent = '';
+    let mergedPeriods = [];
+    let teacherName = "";
 
-            const code = (codeInput.value || '').trim();
+    // Maan lein aapne users collection ko fetch kar liya hai
+    const usersSnap = await db.collection('users').get();
+    
+    usersSnap.forEach(userDoc => {
+        const userData = userDoc.data();
+        const structure = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
+        
+        structure.forEach(jamia => {
+            jamia.teachers?.forEach(teacher => {
+                if (String(teacher.loginCode) === code) {
+                    teacherName = teacher.name;
+                    // Har period ke andar hum metadata attach kar denge taake submit karte waqt pata ho
+                    teacher.periods.forEach(p => {
+                        mergedPeriods.push({
+                            ...p,
+                            originalJamiaName: jamia.jamiaName,
+                            originalZimmedarId: userDoc.id,
+                            originalTeacherId: teacher.id
+                        });
+                    });
+                }
+            });
+        });
+    });
 
-            if (!code) {
-                codeError.textContent = 'براہ کرم اپنا اجیر کوڈ درج کریں۔';
-                codeError.classList.remove('hidden');
-                return;
-            }
+    if (mergedPeriods.length === 0) {
+        alert("Is code ka koi data nahi mila.");
+        return;
+    }
 
-            if (code.length !== 5) {
-                codeError.textContent = 'براہ کرم ۵ اعداد پر مشتمل درست اجیر کوڈ درج کریں۔';
-                codeError.classList.remove('hidden');
-                return;
-            }
+    // UI par show karein
+    document.getElementById('teacher-name-display').textContent = teacherName;
+    
+    // Ab 'mergedPeriods' ko periods-list mein render karein.
+    // HTML generate karte waqt data-attributes mein hidden info zaroor daalein
+    renderMergedPeriods(mergedPeriods); 
+}
 
-            const teachers = currentJamiaData.teachers || [];
+function renderMergedPeriods(periods) {
+    const periodsList = document.getElementById('periods-list');
+    periodsList.innerHTML = '';
+    
+    periods.forEach(period => {
+        // Naye data attributes add kiye hain: data-original-jamia aur data-original-zimmedar
+        periodsList.innerHTML += `
+            <div class="bg-gray-50 border p-3 rounded">
+                <div class="font-bold">Book: ${period.bookName} (${period.className})</div>
+                <div class="text-xs text-blue-500">Jamia: ${period.originalJamiaName}</div>
+                
+                <input type="number" 
+                       data-period-id="${period.id}"
+                       data-original-jamia="${period.originalJamiaName}"
+                       data-original-teacher-id="${period.originalTeacherId}"
+                       data-zimmedar-id="${period.originalZimmedarId}"
+                       class="pages-taught-input w-full p-2 mt-2 border rounded" placeholder="Pages Taught">
+                <!-- Baqi inputs last ibarat waghera -->
+            </div>
+        `;
+    });
+}
+        async function submitReport() {
+    const inputs = document.querySelectorAll('.pages-taught-input');
+    const submissionBatch = [];
 
-            // loginCode se match
-            const teacher = teachers.find(t => String(t.loginCode) === code);
-
-            if (!teacher) {
-                codeError.textContent = 'اجیر کوڈ درست نہیں ہے، دوبارہ چیک کریں۔';
-                codeError.classList.remove('hidden');
-                return;
-            }
-
-            // ✅ Teacher mil gaya
-            selectedTeacherData = teacher;
-
-            const teacherSelect = document.getElementById('teacher-select');
-            if (teacherSelect) {
-                teacherSelect.value = teacher.id;
-                teacherSelect.disabled = true;
-            }
-
-            codeInput.disabled = true;
-            verifyBtn.disabled = true;
-
-            teacherNameDisplay.textContent = teacher.name || '';
-            teacherNameDisplayWrapper.classList.remove('hidden');
-
-            // FORM LOAD
-            loadTeacherPeriods(
-                teacher.id,
-                currentJamiaData.teachers,
-                currentJamiaName,
-                currentMonthIndex,
-                currentReportYear
-            );
-
-            // USER UPDATE OVERLAY
-            loadTeacherUserUpdates(
-                currentJamiaName,
-                teacher.id,
-                currentMonthIndex,
-                currentReportYear
-            );
-
+    inputs.forEach(input => {
+        const pagesTaught = parseInt(input.value, 10);
+        if (pagesTaught > 0) {
+            submissionBatch.push({
+                // Yahan se har period apne asal maalik ke paas jayega
+                jamiaId: input.dataset.originalJamia, 
+                teacherId: input.dataset.originalTeacherId,
+                periodId: input.dataset.periodId,
+                zimmedarId: input.dataset.zimmedarId, // Agar routing ke liye chahiye
+                pagesTaught: pagesTaught,
+                // ... baqi data (last ibarat, deeni kaam etc)
+            });
         }
+    });
+
+    // Firebase batch write logic ...
+    const batch = db.batch();
+    const submissionsRef = db.collection('teacher_submissions');
+
+    submissionBatch.forEach(data => {
+        const docRef = submissionsRef.doc();
+        batch.set(docRef, data);
+    });
+
+    await batch.commit();
+}
 
         if (verifyBtn) {
             verifyBtn.addEventListener('click', verifyTeacherByCode);
