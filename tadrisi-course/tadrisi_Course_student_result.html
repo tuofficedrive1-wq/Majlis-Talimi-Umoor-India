@@ -72,7 +72,7 @@ const NOPHOTO = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="htt
 const B = {
   pass: ['Pass', 'bg-green-100 text-green-700'], fail: ['Fail', 'bg-red-100 text-red-700'], pending: ['Result tayyar nahi', 'bg-gray-100 text-gray-500']
 };
-const badge = k => `<span class="px-3 py-1 rounded-full text-sm font-bold ${B[k][1]}">${B[k][0]}</span>`;
+const badge = k => { const v = B[k] || B.pending; return `<span class="px-3 py-1 rounded-full text-sm font-bold ${v[1]}">${v[0]}</span>`; };
 const tile = (title, date, body) => `<div class="border rounded-xl p-3"><div class="flex justify-between items-center mb-2"><b>${title}</b><span class="text-xs text-gray-500">${fmt(date)}</span></div>${body}</div>`;
 const soon = t => `<div class="text-gray-400 text-sm">${t || 'Result abhi jari nahi hua'}</div>`;
 const marksRow = e => `<div class="flex justify-between items-center"><span class="text-2xl font-bold">${e.marks ?? '-'}<span class="text-sm text-gray-400 font-normal"> / 100</span></span>${badge(e.status)}</div>`;
@@ -102,23 +102,27 @@ function render(c) {
   $('c-photo').src = c.photo || NOPHOTO;
   $('c-upd').textContent = c.updatedAt ? new Date(c.updatedAt).toLocaleString('en-GB') : '-';
 
+  // Purane format ke (ya adhoore) cards crash na karein - sirf valid object ko hi "entry" maano,
+  // warna "abhi jari nahi hua" dikha do (admin ko "Update Result Cards" dobara chalana hoga)
+  const entry = (c.entry && typeof c.entry === 'object' && c.entry.status) ? c.entry : null;
+
   // Headline: final result ho to wo, warna entry test (jo bhi test decisive hai)
   let h = ['Result abhi jari nahi hua', 'bg-gray-100 text-gray-500'];
   if (c.final && c.final.status !== 'pending') h = c.final.status === 'pass'
     ? [`Tadrisi Test: PASS${c.final.quality ? ' (' + c.final.quality + ')' : ''}`, 'bg-green-100 text-green-800']
     : ['Tadrisi Test: FAIL', 'bg-red-100 text-red-800'];
-  else if (c.entry) {
-    const tag = c.entry.test === 2 ? ' (Test 2)' : '';
-    h = c.entry.status === 'pass' ? [`Entry Test: PASS${tag}`, 'bg-green-100 text-green-800']
-      : c.entry.status === 'fail' ? [`Entry Test: FAIL${tag}`, 'bg-red-100 text-red-800']
+  else if (entry) {
+    const tag = entry.test === 2 ? ' (Test 2)' : '';
+    h = entry.status === 'pass' ? [`Entry Test: PASS${tag}`, 'bg-green-100 text-green-800']
+      : entry.status === 'fail' ? [`Entry Test: FAIL${tag}`, 'bg-red-100 text-red-800']
       : [`Entry Test${tag}: Result tayyar nahi`, 'bg-gray-100 text-gray-500'];
   }
   $('headline').textContent = h[0]; $('headline').className = `mx-4 mb-4 text-center rounded-xl py-3 px-2 font-bold text-lg ${h[1]}`;
 
   // Sirf ek Entry Test tile - jo test abhi decisive hai usi ka naam/date/marks
-  const eTitle = c.entry && c.entry.test === 2 ? 'Entry Test 2' : 'Entry Test';
-  const eBody = !c.entry ? soon() : c.entry.status === 'pending' ? soon() : marksRow(c.entry);
-  let t = tile(eTitle, c.entry ? c.entry.date : '', eBody);
+  const eTitle = entry && entry.test === 2 ? 'Entry Test 2' : 'Entry Test';
+  const eBody = !entry ? soon() : entry.status === 'pending' ? soon() : marksRow(entry);
+  let t = tile(eTitle, entry ? entry.date : '', eBody);
 
   let fb = soon();
   if (c.pf && !c.final) fb = soon('Is test me aapka result mojood nahi');
