@@ -1273,15 +1273,39 @@ window.toggleFormStatus = async () => {
             if (p.show_final && s.groupId) c.final = finalOf(s);
             return c;
         }
-        window.syncResultCards = async () => {
-            const list = entryList.filter(s => s.trackingCode);
-            if (!list.length) return showToast('Is year me koi student nahi', 'error');
-            showLoader(true);
-            try {
-                for (let i = 0; i < list.length; i += 40) { const b = writeBatch(db); list.slice(i, i + 40).forEach(s => b.set(doc(db,'tadrisi_result_cards',cardId(s.trackingCode)), buildCard(s))); await b.commit(); }
-                showToast(`${list.length} result cards update ho gaye`);
-            } catch(e) { console.error(e); showToast('Cards update nahi hue', 'error'); } finally { showLoader(false); }
-        };
+       window.syncResultCards = async () => {
+    const list = entryList.filter(s => s.trackingCode);
+    if (!list.length) return showToast('Is year me koi student nahi', 'error');
+    
+    // Loading screen wale text element ko pakadna
+    const loaderP = document.querySelector('#loader p');
+    showLoader(true);
+    if(loaderP) loaderP.textContent = `0 / ${list.length} Cards Update ho rahe hain...`;
+    
+    try {
+        let done = 0;
+        // Batch size 40 se 20 kar diya taake large photos (Base64) ki wajah se process fail/hang na ho
+        const BATCH_SIZE = 20; 
+        for (let i = 0; i < list.length; i += BATCH_SIZE) { 
+            const b = writeBatch(db); 
+            const chunk = list.slice(i, i + BATCH_SIZE);
+            chunk.forEach(s => b.set(doc(db,'tadrisi_result_cards', cardId(s.trackingCode)), buildCard(s))); 
+            
+            await b.commit(); // Firebase par data save ho raha hai
+            
+            done += chunk.length;
+            // Har 20 students ke baad screen par text update hoga
+            if(loaderP) loaderP.textContent = `${done} / ${list.length} Cards Update ho gaye...`;
+        }
+        showToast(`${list.length} Result Cards kamyabi se update ho gaye!`);
+    } catch(e) { 
+        console.error("Sync Error:", e); 
+        showToast('Update fail! Firebase limit ya internet ka masla hai.', 'error'); 
+    } finally { 
+        showLoader(false); 
+        if(loaderP) loaderP.textContent = 'Loading...'; // Text ko wapas reset karna
+    }
+};
         window.copyStudentLink = () => navigator.clipboard.writeText(new URL('student_result.html', location.href).href).then(() => showToast('Student link copied'));
 
         // ---------- Jamia codes ----------
