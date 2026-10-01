@@ -217,9 +217,9 @@
                         <button onclick="assignPassToGroup()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-bold">Assign</button>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse min-w-[1050px]">
+                        <table class="w-full text-left border-collapse min-w-[900px]">
                             <thead class="bg-gray-50 text-gray-600 text-sm font-bold uppercase border-b-2 border-gray-200"><tr>
-                                <th class="w-10"></th><th class="w-10">#</th><th>Code</th><th>Name / Father</th><th>Jamia</th><th class="w-28">Test 1<div id="th-d1" class="text-[10px] font-normal normal-case"></div></th><th class="w-28">Test 2<div id="th-d2" class="text-[10px] font-normal normal-case"></div></th><th>Result</th><th>Entered By</th><th>Group</th>
+                                <th class="w-10"></th><th class="w-10">#</th><th>Code</th><th>Name / Father</th><th>Jamia</th><th class="w-36">Marks <span class="text-[10px] font-normal normal-case text-gray-400">(jo test due hai wohi khulta hai)</span></th><th>Result</th><th>Entered By</th><th>Group</th>
                             </tr></thead>
                             <tbody id="entry-tbody"></tbody>
                         </table>
@@ -1161,27 +1161,31 @@ window.toggleFormStatus = async () => {
 };
         
 
-        // ================= ENTRY TEST (2 tests) + STUDENT RESULT CARDS =================
+        // ================= ENTRY TEST (2 tests, single active field) + STUDENT RESULT CARDS =================
         const PASS_MARK = 70;
         let entryList = [], jamiaCodes = {}, entryJamias = [], entCfg = {}, pubFlags = {};
         const PUBS = {show_entry1:'Entry Test 1', show_entry2:'Entry Test 2', show_final:'Tadrisi Final Test'};
-        // Kisi bhi test me 70+ = pass. Test 1 me fail aur Test 2 baqi = 'retake'
-        const entResult = (s, cfg = entCfg) => {
-            const m1 = s.entryMarks ?? null, m2 = s.entryMarks2 ?? null;
-            if (m1 !== null && m1 >= PASS_MARK) return 'pass';
-            if (m2 !== null) return m2 >= PASS_MARK ? 'pass' : 'fail';
-            if (m1 !== null) return cfg.round2Date ? 'retake' : 'fail';
-            return 'pending';
-        };
         const escH = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        const entBadge = k => ({
-            pass: '<span class="px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-700">Pass</span>',
-            fail: '<span class="px-3 py-1 rounded-full text-sm font-bold bg-red-100 text-red-700">Fail</span>',
-            retake: '<span class="px-3 py-1 rounded-full text-sm font-bold bg-orange-100 text-orange-700">Test 2 baqi</span>',
-            pending: '<span class="px-3 py-1 rounded-full text-sm font-bold bg-gray-100 text-gray-500">Pending</span>'
-        })[k];
+
+        // Har student ke liye SIRF WOHI test tay karta hai jo abhi "due" hai -
+        // pehle me 70+ aaya to bas wohi final hai; fail hua (ya diya hi nahi aur round 2 chal raha hai)
+        // to dusra test due hai. Dono kabhi saath me active nahi hote.
+        function activeEntry(s, cfg = entCfg) {
+            const m1 = s.entryMarks ?? null, m2 = s.entryMarks2 ?? null;
+            if (m1 !== null && m1 >= PASS_MARK) return {test:1, marks:m1, status:'pass'};
+            if (m2 !== null) return {test:2, marks:m2, status: m2 >= PASS_MARK ? 'pass' : 'fail'};
+            if (m1 !== null) return cfg.round2Date ? {test:2, marks:null, status:'pending'} : {test:1, marks:m1, status:'fail'};
+            if (cfg.round === 2 && cfg.round2Date) return {test:2, marks:null, status:'pending'};
+            return {test:1, marks:null, status:'pending'};
+        }
+        const bucketOf = s => { const ae = activeEntry(s); return ae.status !== 'pending' ? ae.status : (ae.test === 2 ? 'retake' : 'pending'); };
+        const entBadge = (ae) => ae.status === 'pass' ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-700">Pass</span>'
+            : ae.status === 'fail' ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-red-100 text-red-700">Fail</span>'
+            : ae.test === 2 ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-orange-100 text-orange-700">Test 2 Baqi</span>'
+            : '<span class="px-3 py-1 rounded-full text-sm font-bold bg-gray-100 text-gray-500">Pending</span>';
+        // Doosre (ghair-active) test ka purana number, sirf reference ke liye - chhota link, is par click karke theek kiya ja sakta hai
+        const otherRef = (s, ae) => ae.test === 1 ? (s.entryMarks2 != null ? `T2: ${s.entryMarks2}` : null) : (s.entryMarks != null ? `T1: ${s.entryMarks}${s.entryMarks < PASS_MARK ? ' (Fail)' : ''}` : null);
         const byLbl = s => [s.entryBy && 'T1: ' + (s.entryBy === 'admin' ? 'Admin' : 'Jamia'), s.entryBy2 && 'T2: ' + (s.entryBy2 === 'admin' ? 'Admin' : 'Jamia')].filter(Boolean).join(' · ') || '-';
-        const setHdr = () => { document.getElementById('th-d1').textContent = entCfg.round1Date || ''; document.getElementById('th-d2').textContent = entCfg.round2Date || ''; };
 
         window.loadEntryTab = async () => {
             showLoader(true);
@@ -1199,7 +1203,6 @@ window.toggleFormStatus = async () => {
                 document.getElementById('cfg-d1').value = entCfg.round1Date || '';
                 document.getElementById('cfg-d2').value = entCfg.round2Date || '';
                 document.getElementById('cfg-round').value = entCfg.round === 2 ? '2' : '1';
-                setHdr();
                 entryJamias = [...new Set(entryList.map(s => s.jamia).filter(Boolean))];
                 const fj = document.getElementById('entry-filter-jamia'), cur = fj.value;
                 fj.innerHTML = '<option value="all">All Jamiaat</option>' + entryJamias.map(j => `<option value="${escH(j)}">${escH(j)}</option>`).join('');
@@ -1215,7 +1218,7 @@ window.toggleFormStatus = async () => {
             try {
                 const data = {round1Date:d1, round2Date:d2, round, academicYear:window.currentAcademicYear};
                 await setDoc(doc(db,'tadrisi_config','entry_test'), data, {merge:true});
-                Object.assign(entCfg, data); setHdr(); renderEntry(); renderJamiaCodes(); showToast('Schedule save ho gaya');
+                Object.assign(entCfg, data); renderEntry(); renderJamiaCodes(); showToast('Schedule save ho gaya');
             } catch(e) { showToast('Save nahi hua', 'error'); }
         };
 
@@ -1254,15 +1257,14 @@ window.toggleFormStatus = async () => {
             const quality = status !== 'pass' ? '' : pct >= 90 ? 'ممتاز' : pct >= 80 ? 'بہتر' : 'مناسب';
             return {subjects:sub, total, pct:Math.round(pct * 10) / 10, status, quality, remarks:String(s.final_remarks || '')};
         };
-        // Card me sirf wahi result jata hai jo admin ne ON kiya ho
+        // Card me sirf EK hi entry-test result jata hai - jo test us student ke liye decisive/active hai,
+        // aur sirf tab jab admin ne usi test ka publish toggle ON kiya ho. Doosra test card me bilkul nahi aata.
         function buildCard(s) {
-            const p = pubFlags, m1 = s.entryMarks ?? null, m2 = s.entryMarks2 ?? null;
-            const tile = (m, date) => ({date: date || '', marks: m, status: m === null ? 'pending' : (m >= PASS_MARK ? 'pass' : 'fail')});
+            const p = pubFlags, ae = activeEntry(s);
             const c = {code:s.trackingCode, academicYear:s.academicYear || window.currentAcademicYear, name:s.name || '', fatherName:s.fatherName || '', mobile:String(s.mobile || ''), jamia:s.jamia || '', photo:s.photoBase64 || '',
-                d1:entCfg.round1Date || '', d2:entCfg.round2Date || '', e1:null, e2:null, entry:null, final:null, pf:p.show_final === true, updatedAt:Date.now()};
-            if (p.show_entry1) c.e1 = tile(m1, entCfg.round1Date);
-            if (p.show_entry2 && entCfg.round2Date) c.e2 = (m1 !== null && m1 >= PASS_MARK) ? {na:true} : tile(m2, entCfg.round2Date);
-            if (p.show_entry1 || p.show_entry2) c.entry = entResult({entryMarks:m1, entryMarks2:p.show_entry2 ? m2 : null});
+                entry:null, final:null, pf:p.show_final === true, updatedAt:Date.now()};
+            const toggleOn = ae.test === 2 ? p.show_entry2 : p.show_entry1;
+            if (toggleOn) c.entry = {test:ae.test, date:(ae.test === 2 ? entCfg.round2Date : entCfg.round1Date) || '', marks:ae.marks, status:ae.status};
             if (p.show_final && s.groupId) c.final = finalOf(s);
             return c;
         }
@@ -1275,16 +1277,16 @@ window.toggleFormStatus = async () => {
                 showToast(`${list.length} result cards update ho gaye`);
             } catch(e) { console.error(e); showToast('Cards update nahi hue', 'error'); } finally { showLoader(false); }
         };
-        window.copyStudentLink = () => navigator.clipboard.writeText(new URL('tadrisi_Course_student_result.html', location.href).href).then(() => showToast('Student link copied'));
+        window.copyStudentLink = () => navigator.clipboard.writeText(new URL('student_result.html', location.href).href).then(() => showToast('Student link copied'));
 
         // ---------- Jamia codes ----------
         function renderJamiaCodes() {
-            const box = document.getElementById('jamia-codes-list'), r2 = entCfg.round === 2, mf = r2 ? 'entryMarks2' : 'entryMarks';
+            const box = document.getElementById('jamia-codes-list');
             if (!entryJamias.length) { box.innerHTML = '<p class="text-gray-400">Is year me koi student nahi.</p>'; return; }
             box.innerHTML = entryJamias.map((j, i) => {
-                const l = entryList.filter(s => s.jamia === j && (!r2 || !(s.entryMarks >= PASS_MARK))), done = l.filter(s => s[mf] != null).length, c = jamiaCodes[j];
+                const l = entryList.filter(s => s.jamia === j), pending = l.filter(s => activeEntry(s).status === 'pending').length, done = l.length - pending, c = jamiaCodes[j];
                 return `<div class="border rounded-lg p-3 bg-amber-50/50 flex items-center justify-between gap-2">
-                    <div class="min-w-0"><div class="urdu-font font-bold text-lg truncate">${escH(j)}</div><div class="text-xs text-gray-500">Test ${r2 ? 2 : 1} marks: ${done} / ${l.length}</div></div>
+                    <div class="min-w-0"><div class="urdu-font font-bold text-lg truncate">${escH(j)}</div><div class="text-xs text-gray-500">Marks diye: ${done} / ${l.length}</div></div>
                     <div class="text-right shrink-0">
                         <div class="font-mono font-bold text-xl tracking-widest text-teal-700">${c || '—'}</div>
                         <button onclick="copyJamiaCode(${i})" class="text-xs text-blue-600 font-bold mr-2">Copy</button>
@@ -1308,34 +1310,38 @@ window.toggleFormStatus = async () => {
         window.copyJamiaCode = (i) => { const c = jamiaCodes[entryJamias[i]]; if (c) navigator.clipboard.writeText(c).then(() => showToast('Code copied')); };
         window.copyJamiaLoginLink = () => navigator.clipboard.writeText(new URL('entry_test_result.html', location.href).href).then(() => showToast('Jamia login link copied'));
 
-        // ---------- Result sheet ----------
+        // ---------- Result sheet (ek hi Marks column, jo test due hai wohi khulta hai) ----------
         function entStats() {
             const j = document.getElementById('entry-filter-jamia').value, c = {pass:0, fail:0, retake:0, pending:0};
-            const l = entryList.filter(s => j === 'all' || s.jamia === j); l.forEach(s => c[entResult(s)]++);
+            const l = entryList.filter(s => j === 'all' || s.jamia === j); l.forEach(s => c[bucketOf(s)]++);
             document.getElementById('ent-total').textContent = l.length;
             ['pass','fail','retake','pending'].forEach(k => document.getElementById('ent-' + k).textContent = c[k]);
         }
         window.renderEntry = () => {
             const j = document.getElementById('entry-filter-jamia').value, st = document.getElementById('entry-filter-status').value, t = document.getElementById('entry-search').value.toLowerCase().trim();
-            const rows = entryList.filter(s => (j === 'all' || s.jamia === j) && (st === 'all' || entResult(s) === st) && (!t || (s.name||'').toLowerCase().includes(t) || (s.trackingCode||'').toLowerCase().includes(t)));
+            const rows = entryList.filter(s => (j === 'all' || s.jamia === j) && (st === 'all' || bucketOf(s) === st) && (!t || (s.name||'').toLowerCase().includes(t) || (s.trackingCode||'').toLowerCase().includes(t)));
             entStats();
-            const inp = (s, v, r) => `<input type="number" min="0" max="100" value="${v ?? ''}" ${r === 2 && !entCfg.round2Date && v == null ? 'disabled' : ''} onchange="saveEntryMarks('${s.id}', this.value, ${r})" class="w-20 border-2 border-gray-300 rounded p-2 text-center font-bold focus:border-teal-500 outline-none disabled:bg-gray-100">`;
             document.getElementById('entry-tbody').innerHTML = rows.length ? rows.map((s, i) => {
-                const g = allGroups.find(x => x.id === s.groupId), el = entResult(s) === 'pass' && !s.groupId;
+                const ae = activeEntry(s), g = allGroups.find(x => x.id === s.groupId), el = ae.status === 'pass' && !s.groupId;
+                const ref = otherRef(s, ae), dateLbl = ae.test === 2 ? entCfg.round2Date : entCfg.round1Date, curVal = ae.test === 2 ? s.entryMarks2 : s.entryMarks;
                 return `<tr class="border-b border-gray-100 hover:bg-teal-50 align-middle">
                     <td class="text-center"><input type="checkbox" class="ent-chk w-4 h-4" value="${s.id}" data-el="${el ? 1 : 0}"></td>
                     <td class="text-gray-500 font-semibold">${i + 1}</td>
                     <td class="font-mono font-bold text-teal-700">${escH(s.trackingCode || '-')}</td>
                     <td class="urdu-font font-bold text-lg">${escH(s.name)}<br><span class="text-sm text-gray-500 font-normal">${escH(s.fatherName)}</span></td>
                     <td class="urdu-font text-lg">${escH(s.jamia || '-')}</td>
-                    <td>${inp(s, s.entryMarks, 1)}</td><td>${inp(s, s.entryMarks2, 2)}</td>
-                    <td id="eb-${s.id}">${entBadge(entResult(s))}</td>
+                    <td>
+                        <div class="text-[10px] font-bold ${ae.test === 2 ? 'text-orange-500' : 'text-gray-400'} mb-0.5">Test ${ae.test}${ae.test === 2 ? ' (Retake)' : ''}${dateLbl ? ' · ' + dateLbl : ''}</div>
+                        <input type="number" min="0" max="100" value="${curVal ?? ''}" onchange="saveEntryMarks('${s.id}', this.value, ${ae.test})" class="w-20 border-2 border-gray-300 rounded p-2 text-center font-bold focus:border-teal-500 outline-none">
+                        ${ref ? `<button onclick="editOther('${s.id}', ${ae.test === 1 ? 2 : 1})" class="block text-[10px] text-gray-400 underline mt-0.5">${ref}</button>` : ''}
+                    </td>
+                    <td id="eb-${s.id}">${entBadge(ae)}</td>
                     <td id="eby-${s.id}" class="text-xs text-gray-500">${byLbl(s)}</td>
                     <td class="text-sm">${g ? escH(g.groupName) : '<span class="text-gray-400">—</span>'}</td></tr>`;
-            }).join('') : '<tr><td colspan="10" class="text-center p-8 text-gray-400">No students.</td></tr>';
+            }).join('') : '<tr><td colspan="9" class="text-center p-8 text-gray-400">No students.</td></tr>';
         };
 
-        // Admin kisi bhi student ke kisi bhi test ke marks update kar sakta hai
+        // Admin kisi bhi student ke kisi bhi test ke marks update kar sakta hai (chahe wo abhi active na ho, correction ke liye)
         window.saveEntryMarks = async (id, val, r) => {
             const s = entryList.find(x => x.id === id); if (!s) return;
             const m = val === '' ? null : Number(val), f = r === 2 ? {m:'entryMarks2', b:'entryBy2', t:'entryAt2'} : {m:'entryMarks', b:'entryBy', t:'entryAt'};
@@ -1343,10 +1349,16 @@ window.toggleFormStatus = async () => {
             try {
                 await updateDoc(doc(db,'tadrisi_students',id), {[f.m]:m, [f.b]:'admin', [f.t]:Date.now()});
                 s[f.m] = m; s[f.b] = 'admin';
-                document.getElementById('eb-' + id).innerHTML = entBadge(entResult(s));
-                document.getElementById('eby-' + id).textContent = byLbl(s);
-                entStats(); renderJamiaCodes(); showToast('Saved');
+                renderEntry(); renderJamiaCodes(); showToast('Saved');
             } catch(e) { showToast('Save nahi hua', 'error'); }
+        };
+        // Doosre (ghair-active) test ka number theek karne ke liye chhota shortcut
+        window.editOther = (id, r) => {
+            const s = entryList.find(x => x.id === id); if (!s) return;
+            const cur = r === 2 ? s.entryMarks2 : s.entryMarks;
+            const v = prompt(`Test ${r} ke marks (0-100, khali chhodne se hat jayenge):`, cur ?? '');
+            if (v === null) return;
+            saveEntryMarks(id, v.trim(), r);
         };
 
         window.selectEligible = () => document.querySelectorAll('.ent-chk').forEach(c => c.checked = c.dataset.el === '1');
@@ -1354,7 +1366,7 @@ window.toggleFormStatus = async () => {
         window.assignPassToGroup = async () => {
             const gid = document.getElementById('entry-assign-group').value;
             if (!gid) return showToast('Group select karein', 'error');
-            const list = [...document.querySelectorAll('.ent-chk:checked')].map(c => entryList.find(x => x.id === c.value)).filter(s => s && entResult(s) === 'pass' && !s.groupId);
+            const list = [...document.querySelectorAll('.ent-chk:checked')].map(c => entryList.find(x => x.id === c.value)).filter(s => s && activeEntry(s).status === 'pass' && !s.groupId);
             if (!list.length) return showToast('Koi Pass (unassigned) student select nahi hai', 'error');
             if (!confirm(`${list.length} pass students ko group me assign karein?`)) return;
             showLoader(true);
@@ -1369,9 +1381,9 @@ window.toggleFormStatus = async () => {
 
         window.exportEntryResult = () => {
             if (!entryList.length) return showToast('Data nahi hai', 'error');
-            const lbl = {pass:'Pass', fail:'Fail', retake:'Test 2 baqi', pending:'Pending'};
+            const lbl = {pass:'Pass', fail:'Fail', retake:'Test 2 Baqi', pending:'Pending'};
             const row = (s, i) => ({'S.No':i+1, 'Tracking Code':s.trackingCode||'-', 'Name':s.name||'-', 'Father':s.fatherName||'-', 'Mobile':s.mobile||'-', 'Jamia':s.jamia||'-',
-                ['Test 1 (' + (entCfg.round1Date || '-') + ')']:s.entryMarks ?? '', ['Test 2 (' + (entCfg.round2Date || '-') + ')']:s.entryMarks2 ?? '', 'Result':lbl[entResult(s)]});
+                ['Test 1 (' + (entCfg.round1Date || '-') + ')']:s.entryMarks ?? '', ['Test 2 (' + (entCfg.round2Date || '-') + ')']:s.entryMarks2 ?? '', 'Result':lbl[bucketOf(s)]});
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(entryList.map(row)), 'All');
             entryJamias.forEach((j, k) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(entryList.filter(s => s.jamia === j).map(row)), (j.replace(/[:\\\/?*\[\]]/g,'').slice(0,25) || 'Jamia') + '_' + (k+1)));
