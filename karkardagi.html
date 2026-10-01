@@ -904,22 +904,64 @@ const getMonthsForSemester = (semester) => {
             });
         };
 
-        // Teacher Portal link copy karna
-const handleCreatePortalLink = (jamiaName) => {
+        // Teacher Portal: is Jamia ke asatiza ke liye user accounts banana (ajeer code = username)
+const TEACHER_EMAIL_DOMAIN = '@teacher.mtu.local';
+const handleCreatePortalLink = async (jamiaName) => {
     if (!currentUser || !activeYear) {
         showNotification("Pehele login ho kar year select karein.", true);
         return;
     }
+    const jamia = (allAcademicYearsData[activeYear]?.karkardagiStructure || []).find(j => j.jamiaName === jamiaName);
+    const teachers = (jamia?.teachers || []).filter(t => t.loginCode);
+    if (!teachers.length) { showNotification("Is jamia mein koi ustaad (ajeer code ke saath) nahi.", true); return; }
+    if (!confirm(`${jamiaName}: ${teachers.length} asatiza ke portal accounts banaye jayein?\n\nUsername = ajeer code\nShuru ka password = Mtu@<ajeer code>\n(Pehli dafa login par ustaad naya password banayega)`)) return;
+
+    let created = 0, existing = 0, failed = 0;
+    try {
+        const { getAuth: getAuth2, createUserWithEmailAndPassword, signOut: signOut2 } =
+            await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+        // alag (secondary) app taake zimmedar ka apna login na tootay
+        const app2 = initializeApp(firebaseConfig, 'teacher-create-' + Date.now());
+        const auth2 = getAuth2(app2);
+        const db2 = getFirestore(app2);
+        for (const t of teachers) {
+            const code = String(t.loginCode).trim();
+            try {
+                const cred = await createUserWithEmailAndPassword(auth2, code + TEACHER_EMAIL_DOMAIN, 'Mtu@' + code);
+                const profile = {
+                    role: 'teacher',
+                    name: t.name || '',
+                    email: code + TEACHER_EMAIL_DOMAIN,
+                    isActive: true,
+                    jamiaatList: [],
+                    ajeerCode: code,
+                    zimmedarId: currentUser.uid,
+                    jamiaName: jamiaName,
+                    teacherId: t.id || '',
+                    mustChangePw: true,
+                    createdAt: new Date().toISOString()
+                };
+                try {
+                    await setDoc(doc(db2, 'users', cred.user.uid), profile);   // naye user ke apne session se
+                } catch (e1) {
+                    await setDoc(doc(db, 'users', cred.user.uid), profile);    // fallback: zimmedar ke session se
+                }
+                await signOut2(auth2);
+                created++;
+            } catch (e) {
+                if (e.code === 'auth/email-already-in-use') existing++;
+                else { failed++; console.error(code, e); }
+            }
+            showNotification(`Accounts: ${created} naye, ${existing} pehle se, ${failed} fail...`);
+        }
+    } catch (err) {
+        console.error(err);
+        showNotification("Accounts banane mein error: " + err.message, true);
+        return;
+    }
     const baseUrl = window.location.href.replace(/[^\/?#]+(\?.*)?$/, "");
-    const params = new URLSearchParams({
-        jamiaId: jamiaName,
-        userId: currentUser.uid,
-        activeYear: activeYear
-    });
-    const link = `${baseUrl}teacher-portal.html?${params.toString()}`;
-    navigator.clipboard.writeText(link).then(() => {
-        showNotification(`Teacher Portal link copied: ${jamiaName}`);
-    }).catch(() => showNotification("Link copy nahi hua.", true));
+    try { await navigator.clipboard.writeText(`${baseUrl}index.html`); } catch (e) {}
+    showNotification(`${jamiaName}: ${created} naye accounts bane, ${existing} pehle se maujood, ${failed} fail. Login link copy ho gaya.`, failed > 0);
 };
 
         // Jamia ke liye reporting link copy karna (PROJECT PATH THEEK KIYA)
