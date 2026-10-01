@@ -6,11 +6,11 @@
 <title>Student Result Card</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 @font-face { font-family: 'Jameel Noori Nastaleeq'; src: url('https://cdn.jsdelivr.net/gh/font-to-width/jameel-noori-nastaleeq-regular@1.1/jameel-noori-nastaleeq-regular.woff2') format('woff2'); }
 body { font-family: 'Poppins', sans-serif; background: #f1f5f9; }
 .urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif; line-height: 1.8; }
-@media print { .no-print { display: none !important; } body { background: #fff; } }
 </style>
 </head>
 <body class="text-gray-800">
@@ -30,7 +30,7 @@ body { font-family: 'Poppins', sans-serif; background: #f1f5f9; }
 
 <!-- Result card -->
 <div id="card" class="hidden max-w-xl mx-auto p-4">
-  <div class="bg-white rounded-2xl shadow-xl overflow-hidden border">
+  <div id="resultCardInner" class="bg-white rounded-2xl shadow-xl overflow-hidden border">
     <div class="bg-gradient-to-r from-teal-700 to-teal-500 text-white p-4 text-center">
       <div class="urdu-font text-2xl font-bold">تدریسی کورس</div>
       <div class="text-sm opacity-90">Result Card &middot; <span id="c-year"></span></div>
@@ -50,7 +50,7 @@ body { font-family: 'Poppins', sans-serif; background: #f1f5f9; }
     <div class="bg-gray-50 border-t text-center text-xs text-gray-400 p-2">Last updated: <span id="c-upd"></span></div>
   </div>
   <div class="flex gap-2 mt-4 no-print">
-    <button onclick="window.print()" class="flex-1 bg-teal-600 text-white py-3 rounded-lg font-bold">Print / Save PDF</button>
+    <button id="dl-btn" onclick="downloadImage()" class="flex-1 bg-teal-600 text-white py-3 rounded-lg font-bold">Download Image</button>
     <button onclick="location.reload()" class="flex-1 bg-white border border-gray-300 py-3 rounded-lg font-bold">Back</button>
   </div>
 </div>
@@ -70,13 +70,14 @@ const mask = m => (MASK_MOBILE && m && m.length > 6) ? m.slice(0, 4) + '****' + 
 const NOPHOTO = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="150"><rect width="120" height="150" fill="#e2e8f0"/><circle cx="60" cy="55" r="24" fill="#94a3b8"/><rect x="24" y="90" width="72" height="50" rx="24" fill="#94a3b8"/></svg>');
 
 const B = {
-  pass: ['Pass', 'bg-green-100 text-green-700'], fail: ['Fail', 'bg-red-100 text-red-700'],
-  retake: ['Fail - Test 2 de sakte hain', 'bg-orange-100 text-orange-700'], pending: ['Result tayyar nahi', 'bg-gray-100 text-gray-500']
+  pass: ['Pass', 'bg-green-100 text-green-700'], fail: ['Fail', 'bg-red-100 text-red-700'], pending: ['Result tayyar nahi', 'bg-gray-100 text-gray-500']
 };
 const badge = k => `<span class="px-3 py-1 rounded-full text-sm font-bold ${B[k][1]}">${B[k][0]}</span>`;
 const tile = (title, date, body) => `<div class="border rounded-xl p-3"><div class="flex justify-between items-center mb-2"><b>${title}</b><span class="text-xs text-gray-500">${fmt(date)}</span></div>${body}</div>`;
 const soon = t => `<div class="text-gray-400 text-sm">${t || 'Result abhi jari nahi hua'}</div>`;
 const marksRow = e => `<div class="flex justify-between items-center"><span class="text-2xl font-bold">${e.marks ?? '-'}<span class="text-sm text-gray-400 font-normal"> / 100</span></span>${badge(e.status)}</div>`;
+
+let lastCode = '';
 
 window.showResult = async () => {
   const raw = $('code').value.trim();
@@ -91,32 +92,34 @@ window.showResult = async () => {
   finally { $('go').disabled = false; }
 };
 
+// Entry test ka SIRF EK result tile dikhta hai - jo test student ke liye decisive hai.
+// Pass ho gaya to sirf us test ka result; fail hoker dusre me pass/fail hua to sirf dusre ka - pehla kabhi saath nahi dikhta.
 function render(c) {
+  lastCode = c.code || '';
   $('c-year').textContent = c.academicYear || '';
   $('c-name').textContent = c.name; $('c-father').textContent = c.fatherName;
   $('c-mobile').textContent = mask(c.mobile); $('c-jamia').textContent = c.jamia; $('c-code').textContent = c.code;
   $('c-photo').src = c.photo || NOPHOTO;
   $('c-upd').textContent = c.updatedAt ? new Date(c.updatedAt).toLocaleString('en-GB') : '-';
 
-  // Headline: final result ho to wo, warna entry test
+  // Headline: final result ho to wo, warna entry test (jo bhi test decisive hai)
   let h = ['Result abhi jari nahi hua', 'bg-gray-100 text-gray-500'];
   if (c.final && c.final.status !== 'pending') h = c.final.status === 'pass'
     ? [`Tadrisi Test: PASS${c.final.quality ? ' (' + c.final.quality + ')' : ''}`, 'bg-green-100 text-green-800']
     : ['Tadrisi Test: FAIL', 'bg-red-100 text-red-800'];
-  else if (c.entry) h = {
-    pass: ['Entry Test: PASS', 'bg-green-100 text-green-800'], fail: ['Entry Test: FAIL', 'bg-red-100 text-red-800'],
-    retake: ['Entry Test 1 me Fail - Test 2 de sakte hain', 'bg-orange-100 text-orange-800'], pending: ['Entry Test: Result tayyar nahi', 'bg-gray-100 text-gray-500']
-  }[c.entry];
+  else if (c.entry) {
+    const tag = c.entry.test === 2 ? ' (Test 2)' : '';
+    h = c.entry.status === 'pass' ? [`Entry Test: PASS${tag}`, 'bg-green-100 text-green-800']
+      : c.entry.status === 'fail' ? [`Entry Test: FAIL${tag}`, 'bg-red-100 text-red-800']
+      : [`Entry Test${tag}: Result tayyar nahi`, 'bg-gray-100 text-gray-500'];
+  }
   $('headline').textContent = h[0]; $('headline').className = `mx-4 mb-4 text-center rounded-xl py-3 px-2 font-bold text-lg ${h[1]}`;
 
-  let t = tile('Entry Test 1', c.d1, c.e1 ? marksRow(c.e1) : soon());
-  if (c.d2) {
-    let body = soon();
-    if (c.e2 && c.e2.na) body = '<div class="text-green-700 text-sm font-semibold">Zaroorat nahi - Test 1 me pass</div>';
-    else if (c.e2) body = marksRow(c.e2);
-    else if (c.e1 && c.e1.status === 'fail') body = '<div class="text-orange-700 text-sm font-semibold">Aap Test 2 me baith sakte hain</div>';
-    t += tile('Entry Test 2', c.d2, body);
-  }
+  // Sirf ek Entry Test tile - jo test abhi decisive hai usi ka naam/date/marks
+  const eTitle = c.entry && c.entry.test === 2 ? 'Entry Test 2' : 'Entry Test';
+  const eBody = !c.entry ? soon() : c.entry.status === 'pending' ? soon() : marksRow(c.entry);
+  let t = tile(eTitle, c.entry ? c.entry.date : '', eBody);
+
   let fb = soon();
   if (c.pf && !c.final) fb = soon('Is test me aapka result mojood nahi');
   if (c.final) {
@@ -131,6 +134,20 @@ function render(c) {
   $('tiles').innerHTML = t;
   $('login').classList.add('hidden'); $('card').classList.remove('hidden');
 }
+
+window.downloadImage = async () => {
+  const el = $('resultCardInner'), btn = $('dl-btn');
+  if (!el || typeof html2canvas === 'undefined') return;
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Taiyar ho raha hai...';
+  try {
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    const a = document.createElement('a');
+    a.download = `Result_${lastCode || 'card'}.png`;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  } catch (e) { console.error(e); alert('Image download nahi hui, dobara koshish karein.'); }
+  finally { btn.disabled = false; btn.textContent = old; }
+};
 </script>
 </body>
 </html>
