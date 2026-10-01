@@ -498,13 +498,16 @@ onAuthStateChanged(auth, async (u) => {
         };
 
         async function initData() { 
-    await fetchYears();
-    await fetchMufattishList(); 
-    await fetchGroupsList(); 
-    await fetchAllStudents(); 
-    await fetchHistoryList(); 
-    await fetchFormStatus(); // <-- Ye nayi line add karein
-    generateLink(); 
+    await fetchYears(); // Pehle sahi (sabse naya) saal tay karo, baaki sab usi par depend karte hain
+    generateLink();
+    // Ab baaki sab ek saath (parallel) load karo - alag alag karke intezar karne se kaafi waqt bachta hai
+    await Promise.all([
+        fetchMufattishList(),
+        fetchGroupsList(),
+        fetchAllStudents(),
+        fetchHistoryList(),
+        fetchFormStatus()
+    ]);
 }
         
         async function fetchMufattishList() { const s=await getDocs(query(collection(db,'users'),where('role','==','tadrisi_course_mufattish'))); allMufattish=s.docs.map(d=>({id:d.id,...d.data()})); const o='<option value="">-- Select --</option>'+allMufattish.map(m=>`<option value="${m.id}">${m.name}</option>`).join(''); ['mufattish-r1','mufattish-r2','mufattish-r3','mufattish-r4'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML=o;}); }
@@ -570,17 +573,19 @@ onAuthStateChanged(auth, async (u) => {
         
         function populateJamiaFilter() { const jSet = new Set(allStudents.map(s => s.jamia).filter(j=>j)); const f = document.getElementById('student-filter-jamia'); f.innerHTML='<option value="all">All Jamiaat</option>'; jSet.forEach(j => f.innerHTML += `<option value="${j}">${j}</option>`); }
 
-        window.currentAcademicYear = "2026"; 
+        window.currentAcademicYear = String(new Date().getFullYear()); // sirf ek safety-net default, fetchYears() isay turant sahi kar deta hai
 
         async function fetchYears() {
             try {
                 const snap = await getDocs(collection(db, 'tadrisi_years'));
                 let years = snap.docs.map(d => d.data().year);
-                if(years.length === 0) { years = ["2026"]; }
+                if(years.length === 0) { years = [window.currentAcademicYear]; }
+                years.sort();
                 const select = document.getElementById('global-year');
-                select.innerHTML = years.sort().map(y => `<option value="${y}">${y}</option>`).join('');
-                if(years.includes(window.currentAcademicYear)) { select.value = window.currentAcademicYear; } 
-                else { window.currentAcademicYear = years[years.length - 1]; select.value = window.currentAcademicYear; }
+                select.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+                // Hamesha sabse naya (last) saal hi default load hoga - login par purana saal nahi dikhega
+                window.currentAcademicYear = years[years.length - 1];
+                select.value = window.currentAcademicYear;
             } catch(e) { console.error("Years fetch error:", e); }
         }
 
