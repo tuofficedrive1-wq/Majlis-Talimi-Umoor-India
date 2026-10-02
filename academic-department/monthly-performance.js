@@ -1339,7 +1339,8 @@ const getSafeId = (name) => name ? name.replace(/\s+/g, '') : 'id';
 
 window.copyTeacherFormLink = async (jamiaName) => {
     try {
-        const monthIdx = document.getElementById('report-month').value;
+        // FIX: currentSelectedMonth global variable ka use karein
+        const monthIdx = currentSelectedMonth; 
         const baseUrl = window.location.origin + window.location.pathname.replace('academic-inspector.html', '');
         const inspectorId = gCurrentUser ? gCurrentUser.uid : 'anonymous';
         const calSnap = await getDoc(doc(gDb, "settings", "academic_calendar"));
