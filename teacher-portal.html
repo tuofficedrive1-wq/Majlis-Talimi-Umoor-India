@@ -61,6 +61,22 @@ td.l{text-align:right}
 .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:8px 18px;border-radius:12px;z-index:20;font-size:16px;max-width:90%;text-align:center}
 #login{padding:36px 20px;text-align:center}#login .logo{width:84px;height:84px;border-radius:24px;background:var(--g);color:var(--gold);font-size:38px;display:flex;align-items:center;justify-content:center;margin:16px auto}
 .err{color:var(--red);font-size:15px;min-height:24px;margin-top:6px}
+table.sem th,table.sem td{white-space:nowrap;font-size:14px}
+table.sem td.stk,table.sem th.stk{position:sticky;right:0;background:#fffdf7;z-index:2}
+table.sem th.stk{background:#efe8d3}
+table.sem .tot{background:#eef4f9}
+.lockcard{border-color:#e3b7b2;background:#fff7f6}
+.ok{color:#1b7a46;font-weight:700}.warnc{color:#b7791f;font-weight:700}
+#clk{font-size:13px;opacity:.95;margin-top:2px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mbtn{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 8px;text-align:center;font:inherit;font-size:18px;color:var(--g);font-weight:700}
+.mbtn i{display:block;font-size:30px;color:var(--gold);margin-bottom:4px}
+.back{background:#fff;color:var(--g);border:1px solid var(--line);border-radius:12px;padding:2px 14px;font:inherit;font-size:15px;margin-bottom:10px}
+.chk{display:inline-block;font-size:13px;padding:0 9px;border-radius:99px;margin:2px 0 2px 4px;line-height:1.7}
+.chk.y{background:#e3efe9;color:var(--g)}.chk.n{background:#f6dedb;color:var(--red)}
+.avatar{width:92px;height:92px;border-radius:50%;background:var(--g);color:var(--gold);font-size:44px;display:flex;align-items:center;justify-content:center;margin:4px auto 6px;overflow:hidden;border:3px solid var(--gold)}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.big{font:700 30px/1.2 system-ui}
 </style>
 </head>
 <body>
@@ -77,10 +93,28 @@ const fmtD=iso=>{if(!iso)return'';const d=new Date(iso);return isNaN(d)?esc(iso)
 const fmtDT=iso=>{if(!iso)return'';const d=new Date(iso);return isNaN(d)?'':d.toLocaleDateString('ur-PK',{day:'numeric',month:'short',year:'numeric'})+' • '+d.toLocaleTimeString('ur-PK',{hour:'2-digit',minute:'2-digit'})};
 const ayOf=(y,m)=>m>=3?`${y}-${y+1}`:`${y-1}-${y}`;
 const idxOf=(y,m)=>y*12+m;
+const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const fmtYmd=x=>x?fmtD(x+'T00:00:00'):'';
 
 let CODE=null,IDX=null,U=null,CFG=null,J=null,T=null,tab='home',C={};
-const now=new Date();
-let ctx={y:now.getFullYear(),m:now.getMonth()};
+/* ===== سرور کا وقت (فون کی گھڑی پر بھروسا نہیں) — بھارت IST ===== */
+let OFF=0,CLK_OK=false;const IST=19800000;
+const NOWMS=()=>Date.now()+OFF;
+const WALL=()=>new Date(NOWMS()+IST);               // UTC fields = IST wall clock
+const wY=()=>WALL().getUTCFullYear(),wM=()=>WALL().getUTCMonth();
+const ymdW=()=>{const d=WALL();return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0')};
+const iso=()=>new Date(NOWMS()).toISOString();
+async function syncClock(){
+  try{const t0=Date.now(),r=await fetch(location.pathname+'?_='+t0,{method:'HEAD',cache:'no-store'}),h=r.headers.get('date');
+    if(h){const sv=new Date(h).getTime();if(!isNaN(sv)){OFF=sv-(t0+Date.now())/2;CLK_OK=true;return}}}catch(e){}
+  try{const ref=db.collection('teacher_clock').doc(auth.currentUser.uid);await ref.set({t:firebase.firestore.FieldValue.serverTimestamp()});
+    const d=await ref.get();OFF=d.data().t.toMillis()-Date.now();CLK_OK=true}catch(e){}
+}
+function tickClock(){const e=document.getElementById('clk');if(!e)return;const d=new Date(NOWMS());
+  e.innerHTML='<i class="far fa-clock"></i> '+d.toLocaleDateString('ur-PK',{timeZone:'Asia/Kolkata',weekday:'long',day:'numeric',month:'long',year:'numeric'})+' • <span dir="ltr">'+d.toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+'</span>'+(CLK_OK?'':' ⚠️')}
+setInterval(tickClock,1000);setInterval(()=>{if(auth.currentUser)syncClock()},600000);
+let ctx={y:2000,m:0};
+const curAY=()=>(CFG&&CFG.activeYear)||ayOf(ctx.y,ctx.m);
 let rec={mr:null,chunks:[],blob:null,t:0,iv:null};
 
 /* ================= LOGIN (Firebase Auth user, role = teacher) ================= */
@@ -148,12 +182,13 @@ async function enter(user){
     U=(await db.collection('users').doc(IDX.userId).get()).data();
     try{CFG=(await db.collection('settings').doc('academic_config').get()).data()||{}}catch(e){CFG={}}
   }catch(e){return loginView('ڈیٹا لوڈ نہیں ہوا: '+e.message)}
+  await syncClock();initCtx();
   if(ME.mustChangePw)return forceChangeView();
   finish();
 }
 function finish(){setTeacher();shell()}
 function setTeacher(){
-  const ay=ayOf(ctx.y,ctx.m);
+  const ay=curAY();
   const st=U.academicYears?.[ay]?.karkardagiStructure||[];
   J=st.find(x=>x.jamiaName===IDX.jamiaName)||st.find(x=>(x.teachers||[]).some(t=>String(t.loginCode)===CODE))||null;
   T=J?((J.teachers||[]).find(t=>t.id===IDX.teacherId)||(J.teachers||[]).find(t=>String(t.loginCode)===CODE)||null):null;
@@ -167,18 +202,30 @@ function semMonthList(ay,m){
 }
 
 /* ================= SHELL ================= */
-function monthOpts(){
-  let o='';for(let i=0;i<14;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1),y=d.getFullYear(),m=d.getMonth();
-    o+=`<option value="${y}-${m}" ${y===ctx.y&&m===ctx.m?'selected':''}>${MONTHS[m]} ${y}</option>`}return o;
+function monthList(){
+  const c=CFG||{};
+  let ms=[...(c.sem1Months||[]),...(c.sem2Months||[])].map(Number);
+  if(!ms.length)ms=[3,4,5,6,7,8,9,10,11,0,1,2];
+  const ay=c.activeYear||ayOf(wY(),wM()),[a,b]=String(ay).split('-').map(Number);
+  let l=ms.map(m=>({m,y:m>=3?a:b})).sort((x,y)=>idxOf(x.y,x.m)-idxOf(y.y,y.m));
+  const cur=idxOf(wY(),wM()),up=l.filter(x=>idxOf(x.y,x.m)<=cur);
+  return up.length?up:l;
 }
+function initCtx(){
+  const l=monthList(),c=l.find(x=>x.y===wY()&&x.m===wM())||l[l.length-1];
+  ctx={y:c.y,m:c.m};
+}
+function monthOpts(){return monthList().map(x=>`<option value="${x.y}-${x.m}" ${x.y===ctx.y&&x.m===ctx.m?'selected':''}>${MONTHS[x.m]} ${x.y}</option>`).join('')}
 function shell(){
-  app.innerHTML=`<div class="hdr"><button class="out" onclick="logout()">خروج</button><small>السلام علیکم</small><h1>${esc(IDX.name||T?.name||'')}</h1><small>${esc(IDX.jamiaName)}</small>
+  app.innerHTML=`<div class="hdr"><button class="out" onclick="logout()">خروج</button><small>السلام علیکم</small><h1>${esc(IDX.name||T?.name||'')}</h1><small>${esc(IDX.jamiaName)}</small><small id="clk"></small>
   <select id="msel" onchange="chMonth(this.value)">${monthOpts()}</select></div><main id="v"></main>
-  <nav class="tabs">${[['home','fa-house','ہوم'],['kark','fa-clipboard-list','کارکردگی'],['rec','fa-microphone','ریکارڈنگ'],['waz','fa-comment-dots','وضاحت']].map(t=>`<button data-t="${t[0]}" onclick="go('${t[0]}')"><i class="fas ${t[1]}"></i>${t[2]}</button>`).join('')}</nav>`;
-  go('home');
+  <nav class="tabs">${[['home','fa-house','ہوم'],['kark','fa-clipboard-list','کارکردگی'],['rec','fa-microphone','ریکارڈنگ'],['waz','fa-comment-dots','وضاحت'],['more','fa-bars','مزید']].map(t=>`<button data-t="${t[0]}" onclick="go('${t[0]}')"><i class="fas ${t[1]}"></i>${t[2]}</button>`).join('')}</nav>`;
+  tickClock();go('home');
 }
 function chMonth(v){const [y,m]=v.split('-').map(Number);ctx={y,m};setTeacher();go(tab)}
-function go(t){tab=t;document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));scrollTo(0,0);({home:vHome,kark:vKark,rec:vRec,waz:vWaz})[t]()}
+const SUB={res:'نتائج',jai:'ماہانہ جائزہ',dee:'دینی کام',pro:'پروفائل'};
+function go(t){tab=t;const hl=SUB[t]?'more':t;document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===hl));scrollTo(0,0);({home:vHome,kark:vKark,rec:vRec,waz:vWaz,more:vMore,res:vRes,jai:vJai,dee:vDee,pro:vPro})[t]()}
+const backBar=()=>`<button class="back" onclick="go('more')"><i class="fas fa-arrow-right"></i> مزید</button>`;
 const V=h=>$('#v').innerHTML=h;
 const loading=()=>V('<p class="center muted"><i class="fas fa-spinner fa-spin"></i></p>');
 const monthLabel=()=>`${MONTHS[ctx.m]} ${ctx.y}`;
@@ -211,12 +258,69 @@ function prevOf(subs,pid){
 }
 function cumOf(subs,pid){
   const cur=idxOf(ctx.y,ctx.m);let sum=0;
-  semMonthList(ayOf(ctx.y,ctx.m),ctx.m).forEach(x=>{if(idxOf(x.y,x.m)<=cur){const r=monthRows(subs,x.y,x.m)[pid];if(r)sum+=(+r.pagesTaught||0)}});
+  semMonthList(curAY(),ctx.m).forEach(x=>{if(idxOf(x.y,x.m)<=cur){const r=monthRows(subs,x.y,x.m)[pid];if(r)sum+=(+r.pagesTaught||0)}});
   return sum;
 }
 
 /* ================= KARKARDAGI VIEW ================= */
 const DEENI=[['zoharDars','ظہر درس'],['haftawarIjtima','ہفتہ وار اجتماع'],['madaniMuzakarah','ہفتہ وار مدنی مذاکرہ'],['naikAmaal','نیک اعمال'],['madaniQafilah','مدنی قافلہ']];
+const REQ='karkardagi_unlock_requests';
+const reqId=()=>`${T.id}_${ctx.y}_${ctx.m}`;
+async function getAdminKark(list){
+  C.adm=C.adm||{};const out={};
+  await Promise.all(list.map(async x=>{
+    const id=`${IDX.userId}_${curAY()}_${x.y}_${x.m}`;
+    if(!(id in C.adm)){try{const d=await db.collection('monthly_reports').doc(id).get();C.adm[id]=d.exists?(d.data().karkardagiReport?.data||[]):[]}catch(e){C.adm[id]=[]}}
+    C.adm[id].filter(i=>i.teacherId===T.id&&(!i.jamiaName||i.jamiaName===J.jamiaName)).forEach(i=>{(out[i.periodId]=out[i.periodId]||{})[x.y+'_'+x.m]=parseInt(i.pagesTaught||0,10)});
+  }));
+  return out;
+}
+async function semTable(subs){
+  const sem=semOf(ctx.m),cur=idxOf(ctx.y,ctx.m);
+  const list=semMonthList(curAY(),ctx.m).filter(x=>idxOf(x.y,x.m)<=cur);
+  const per=(T.periods||[]).filter(p=>p.status!=='transferred'&&String(p.semester||'1')===sem);
+  if(!per.length||!list.length)return '';
+  const adm=await getAdminKark(list),rm={};list.forEach(x=>rm[x.y+'_'+x.m]=monthRows(subs,x.y,x.m));
+  let h=`<div class="card"><h3>سمسٹر ${sem} — مجموعی کارکردگی</h3><div class="tw"><table class="sem"><tr><th class="stk" rowspan="2">کتاب / کلاس</th>${list.map(x=>`<th rowspan="2">${MONTHS[x.m]}<br><span class="muted">پڑھایا</span></th>`).join('')}<th colspan="4" class="tot">مجموعی</th></tr>
+  <tr><th class="tot">کل صفحات</th><th class="tot">اب تک پڑھایا</th><th class="tot" style="color:var(--red)">بقیہ</th><th class="tot">فیصد</th></tr>`;
+  per.forEach(p=>{
+    const total=parseInt(p.totalPages||0,10);let sum=0;
+    const cells=list.map(x=>{const k=x.y+'_'+x.m,a=adm[p.id]&&adm[p.id][k],r=rm[k][p.id],v=a!==undefined?a:(r?(parseInt(r.pagesTaught||0,10)||0):0);sum+=v;return `<td ${a!==undefined?'style="background:#eaf6ee"':''}><b>${v>0?v:'-'}</b></td>`}).join('');
+    const rem=total-sum,pct=total>0?Math.min(100,Math.round(sum/total*100)):null;
+    const rc=rem<=0?'ok':(total&&rem<total*0.2)?'warnc':'';
+    h+=`<tr><td class="stk l">${esc(p.bookName)}<br><span class="muted">${esc(p.className)}</span></td>${cells}<td class="tot" dir="ltr">${total||'-'}</td><td class="tot" dir="ltr"><b>${sum}</b></td><td class="tot ${rc}" dir="ltr">${total?rem:'-'}</td><td class="tot" dir="ltr"><b>${pct===null?'-':pct+'%'}</b></td></tr>`;
+  });
+  return h+`</table></div><div class="muted" style="margin-top:6px">ہرا خانہ = ذمہ دار/دفتر کی تصدیق شدہ رپورٹ</div></div>`;
+}
+const dlText=()=>{const n=new Date(ctx.y,ctx.m+1,1);return `1 ${MONTHS[n.getMonth()]} ${n.getFullYear()}`};
+const lastDayN=()=>new Date(ctx.y,ctx.m+1,0).getDate();
+const winText=()=>{const n=new Date(ctx.y,ctx.m+1,1);return `${lastDayN()} ${MONTHS[ctx.m]} اور 1 ${MONTHS[n.getMonth()]}`};
+async function gateState(){
+  const nowW=WALL().getTime(),start=Date.UTC(ctx.y,ctx.m+1,0,0,0,0),dl=Date.UTC(ctx.y,ctx.m+1,1,23,59,59);
+  if(!CLK_OK)return {open:false,early:true,html:`<div class="card lockcard"><h3><i class="fas fa-triangle-exclamation"></i> سرور کا وقت نہیں مل سکا</h3><p class="muted" style="margin:0">انٹرنیٹ چیک کر کے صفحہ دوبارہ کھولیں۔ وقت کی تصدیق کے بغیر رپورٹ نہیں بھری جا سکتی۔</p></div>`};
+  if(nowW>=start&&nowW<=dl)return {open:true,note:`یہ رپورٹ صرف ${winText()} کو بھری جا سکتی ہے — آج کھلی ہے`};
+  if(nowW<start)return {open:false,early:true,html:`<div class="card lockcard"><h3><i class="fas fa-hourglass-half"></i> ابھی رپورٹ کھلی نہیں</h3><p class="muted" style="margin:0">${monthLabel()} کی رپورٹ ${winText()} کو بھری جا سکتی ہے۔ ${lastDayN()} ${MONTHS[ctx.m]} کو واپس آئیں۔</p></div>`};
+  let rq=null;
+  try{const d=await db.collection(REQ).doc(reqId()).get();if(d.exists)rq=d.data()}catch(e){}
+  const today=ymdW();
+  if(rq&&rq.status==='approved'&&rq.openFrom&&rq.openTo&&today>=rq.openFrom&&today<=rq.openTo)
+    return {open:true,note:`ذمہ دار نے ${fmtYmd(rq.openFrom)} سے ${fmtYmd(rq.openTo)} تک رپورٹ کھول دی ہے`};
+  const form=`<label>وضاحت — رپورٹ وقت پر کیوں نہیں بھری؟</label><textarea id="ur" placeholder="یہاں وجہ لکھیں..."></textarea><button class="btn alt" id="urb" onclick="sendUnlockReq()">ذمہ دار کو درخواست بھیجیں</button>`;
+  let body='';
+  if(rq&&rq.status==='pending')body=`<div class="box me"><small>میری درخواست • ${fmtDT(rq.requestedAt)} • <b>زیرِ غور</b></small>${esc(rq.reason)}</div><p class="muted">ذمہ دار کے منظور کرنے کا انتظار ہے۔</p>`;
+  else if(rq&&rq.status==='approved')body=`<div class="box zim"><small>منظور ہوئی تھی: ${fmtYmd(rq.openFrom)} تا ${fmtYmd(rq.openTo)} — یہ مدت ختم ہو چکی</small>${esc(rq.zimmedarNote||'')}</div>${form}`;
+  else if(rq&&rq.status==='rejected')body=`<div class="box zim"><small>پچھلی درخواست مسترد ہوئی</small>${esc(rq.zimmedarNote||'کوئی نوٹ نہیں')}</div>${form}`;
+  else body=form;
+  return {open:false,html:`<div class="card lockcard"><h3><i class="fas fa-lock"></i> اس ماہ کی رپورٹ لاک ہے</h3><p class="muted" style="margin:0">رپورٹ صرف ${winText()} کو کھلتی ہے، وہ وقت گزر چکا۔ اب بھرنے کے لیے ذمہ دار کی اجازت چاہیے۔</p>${body}</div>`};
+}
+async function sendUnlockReq(){
+  const reason=$('#ur').value.trim();if(reason.length<5)return toast('وضاحت لکھیں');
+  $('#urb').disabled=true;
+  try{
+    await db.collection(REQ).doc(reqId()).set({teacherId:T.id,teacherName:T.name,ajeerCode:CODE,zimmedarId:IDX.userId,jamiaName:J.jamiaName,month:ctx.m,year:ctx.y,monthLabel:monthLabel(),reason,status:'pending',requestedAt:iso(),openFrom:null,openTo:null,zimmedarNote:'',decidedAt:null});
+    toast('درخواست ذمہ دار کو بھیج دی گئی');vKark();
+  }catch(e){toast('خرابی: '+e.message);$('#urb').disabled=false}
+}
 async function vKark(){
   if(!T)return noTeacher();
   loading();
@@ -226,19 +330,22 @@ async function vKark(){
   const open=active.filter(p=>!rows[p.id]);
   const filledIds=Object.keys(rows);
   const deeniOld=subs.find(s=>s.role!=='user_update'&&+s.submissionMonth===ctx.m&&+s.submissionYear===ctx.y&&s.deeniKaam)?.deeniKaam||null;
+  const g=open.length?await gateState():{open:true};
   let html=`<div class="card"><h3>${monthLabel()} — ماہانہ کارکردگی</h3>
-    <span class="pill ${open.length?(filledIds.length?'wait':'no'):''}">${!active.length&&!filledIds.length?'کوئی کتاب نہیں':open.length?(filledIds.length?'کچھ باقی ہے':'ابھی جمع نہیں ہوئی'):'مکمل جمع ہو چکی — لاک'}</span></div>`;
-
+    <span class="pill ${open.length?(g.open?(filledIds.length?'wait':'no'):(g.early?'wait':'no')):''}">${!active.length&&!filledIds.length?'کوئی کتاب نہیں':open.length?(g.open?(filledIds.length?'کچھ باقی ہے':'ابھی جمع نہیں ہوئی'):(g.early?'ابھی کھلی نہیں':'مدت ختم — لاک')):'مکمل جمع ہو چکی — لاک'}</span>
+    ${open.length&&g.open&&g.note?`<div class="muted" style="margin-top:4px"><i class="fas fa-clock"></i> ${g.note}</div>`:''}</div>`;
   if(filledIds.length){
-    html+=`<div class="card"><h3><i class="fas fa-lock" style="font-size:14px"></i> جمع شدہ رپورٹ</h3><div class="tw"><table>
-      <tr><th>کلاس / کتاب</th><th>صفحات</th><th>اب تک / کل</th><th>آخری عبارت</th><th>صفحہ نمبر</th></tr>
-      ${filledIds.map(pid=>{const r=rows[pid],p=metaOf(pid),tot=p.totalPages;
+    html+=`<div class="card"><h3><i class="fas fa-lock" style="font-size:14px"></i> ${monthLabel()} کی جمع شدہ رپورٹ</h3><div class="tw"><table>
+      <tr><th>کلاس / کتاب</th><th>اس ماہ پڑھایا</th><th>آخری عبارت</th><th>صفحہ نمبر</th></tr>
+      ${filledIds.map(pid=>{const r=rows[pid],p=metaOf(pid);
         return `<tr><td class="l">${esc(r.className||p.className)}<br><span class="muted">${esc(r.bookName||p.bookName)}</span>${r.updated?'<br><span class="pill wait">ذمہ دار نے اپ ڈیٹ کیا</span>':''}</td>
-        <td dir="ltr">${esc(r.pagesTaught)}</td><td dir="ltr">${cumOf(subs,pid)}${tot?' / '+esc(tot):''}</td><td class="l">${esc(r.lastIbarat)}</td><td dir="ltr">${esc(r.lastPageNo)}</td></tr>`}).join('')}
+        <td dir="ltr"><b>${esc(r.pagesTaught)}</b></td><td class="l">${esc(r.lastIbarat)}</td><td dir="ltr">${esc(r.lastPageNo)}</td></tr>`}).join('')}
       </table></div>
       ${deeniOld?`<div class="muted" style="margin-top:8px">دینی کام: ${DEENI.map(d=>`${d[1]}: <b>${esc(deeniOld[d[0]]||'-')}</b>`).join(' • ')}</div>`:''}</div>`;
   }
-  if(open.length){
+  html+=await semTable(subs);
+  if(open.length&&!g.open)html+=g.html;
+  if(open.length&&g.open){
     html+=`<div class="sec">باقی کتب — رپورٹ بھریں</div>`+open.map(p=>{
       const pv=prevOf(subs,p.id);
       return `<div class="card" data-pid="${esc(p.id)}"><b>${esc(p.className)} — ${esc(p.bookName)}</b>
@@ -257,12 +364,13 @@ async function vKark(){
   V(html);
 }
 async function saveKark(){
+  const g=await gateState();if(!g.open){toast('اس مہینے کی رپورٹ لاک ہے');return vKark()}
   const subs=await getSubs(),rows=monthRows(subs,ctx.y,ctx.m);
   const cards=[...document.querySelectorAll('[data-pid]')];
   const deeniOld=subs.find(s=>s.role!=='user_update'&&+s.submissionMonth===ctx.m&&+s.submissionYear===ctx.y&&s.deeniKaam)?.deeniKaam||null;
   let deeni=deeniOld;
   if(!deeni){deeni={};for(const d of DEENI){const v=document.querySelector(`input[name="d_${d[0]}"]:checked`)?.value;if(!v)return toast(`"${d[1]}" کا جواب منتخب کریں`);deeni[d[0]]=v}}
-  const batch=db.batch(),ay=ayOf(ctx.y,ctx.m);
+  const batch=db.batch(),ay=curAY();
   for(const c of cards){
     const p=metaOf(c.dataset.pid),pg=c.querySelector('.pg').value,ib=c.querySelector('.ib').value.trim(),pn=c.querySelector('.pn').value.trim();
     if(pg===''||+pg<0||!ib||!pn)return toast(`${p.bookName||'ہر کتاب'}: تینوں خانے بھریں`);
@@ -277,7 +385,7 @@ async function saveKark(){
 /* ================= RECORDINGS ================= */
 async function getRecs(){
   const key=`recs_${ctx.y}_${ctx.m}`;if(C[key])return C[key];
-  const ay=ayOf(ctx.y,ctx.m),ids=[`${IDX.userId}_${ay}_${ctx.y}_${ctx.m}`,`${IDX.userId}_${ctx.y}_${ctx.m}`],out=[];
+  const ay=curAY(),ids=[`${IDX.userId}_${ay}_${ctx.y}_${ctx.m}`,`${IDX.userId}_${ctx.y}_${ctx.m}`],out=[];
   for(const id of ids){
     try{const d=await db.collection('monthly_reports').doc(id).get();
       if(d.exists)(d.data().tadrisRecording?.data||[]).forEach(e=>{if((e.teacherName||'').trim()===(T.name||'').trim())out.push({...e,_doc:id})})}catch(e){}
@@ -290,7 +398,7 @@ async function vRec(){
   const sem=semOf(ctx.m),per=(T.periods||[]).filter(p=>p.status!=='transferred'&&String(p.semester||'1')===sem);
   const opts=per.map(p=>`<option value="${esc(p.className)}|${esc(p.bookName)}">${esc(p.className)} - ${esc(p.bookName)}</option>`).join('');
   const mm=String(ctx.m+1).padStart(2,'0'),last=new Date(ctx.y,ctx.m+1,0).getDate();
-  const today=now.getFullYear()===ctx.y&&now.getMonth()===ctx.m?now.toISOString().slice(0,10):`${ctx.y}-${mm}-01`;
+  const today=wY()===ctx.y&&wM()===ctx.m?ymdW():`${ctx.y}-${mm}-01`;
   V(`<div class="card"><h3>نئی ریکارڈنگ — ${monthLabel()}</h3>
    <label>کلاس اور کتاب</label><select id="rc"><option value="">منتخب کریں</option>${opts}</select>
    <label>تاریخ</label><input type="date" id="rd" value="${today}" min="${ctx.y}-${mm}-01" max="${ctx.y}-${mm}-${last}">
@@ -321,7 +429,7 @@ async function addComment(docId,recId){
     await db.runTransaction(async tx=>{
       const ref=db.collection('monthly_reports').doc(docId),s=await tx.get(ref),arr=(s.data().tadrisRecording?.data||[]).slice();
       const i=arr.findIndex(x=>x.id===recId);if(i<0)throw new Error('ریکارڈنگ نہیں ملی');
-      arr[i]={...arr[i],teacherComments:[...(arr[i].teacherComments||[]),{text,date:new Date().toISOString()}]};
+      arr[i]={...arr[i],teacherComments:[...(arr[i].teacherComments||[]),{text,date:iso()}]};
       tx.update(ref,{'tadrisRecording.data':arr});
     });
     C[`recs_${ctx.y}_${ctx.m}`]=null;toast('تبصرہ شامل ہو گیا');vRec();
@@ -349,9 +457,9 @@ async function saveRec(){
     const name=`Rec_${Date.now()}.${f?f.name.split('.').pop():'webm'}`,ref=st.ref().child('recordings/teachers/'+name);
     await ref.put(file);const url=await ref.getDownloadURL();
     const [className,kitabName]=cv.split('|'),dur=f?'--:--':Math.floor(rec.t/60)+':'+String(rec.t%60).padStart(2,'0');
-    const entry={id:String(Date.now()),jamiaName:J.jamiaName,zimmedarName:U.name||'',teacherName:T.name,className,kitabName,date:dt,url,fileName:name,duration:dur,uploadedBy:'TeacherPortal',createdAt:new Date().toISOString()};
+    const entry={id:String(Date.now()),jamiaName:J.jamiaName,zimmedarName:U.name||'',teacherName:T.name,className,kitabName,date:dt,url,fileName:name,duration:dur,uploadedBy:'TeacherPortal',createdAt:iso()};
     const pn=$('#rp').value.trim(),mk=$('#rm').value.trim();if(pn)entry.pageNumber=pn;if(mk)entry.maktaba=mk;
-    const ay=ayOf(ctx.y,ctx.m),withY=`${IDX.userId}_${ay}_${ctx.y}_${ctx.m}`,simple=`${IDX.userId}_${ctx.y}_${ctx.m}`;
+    const ay=curAY(),withY=`${IDX.userId}_${ay}_${ctx.y}_${ctx.m}`,simple=`${IDX.userId}_${ctx.y}_${ctx.m}`;
     let docId=withY;
     if(!(await db.collection('monthly_reports').doc(withY).get()).exists&&(await db.collection('monthly_reports').doc(simple).get()).exists)docId=simple;
     await db.collection('monthly_reports').doc(docId).set({userId:IDX.userId,year:ctx.y,academicYear:ay,monthNum:ctx.m,tadrisRecording:{data:firebase.firestore.FieldValue.arrayUnion(entry)}},{merge:true});
@@ -404,13 +512,13 @@ async function vWaz(){
 async function saveReqWaz(id){
   const text=document.getElementById('w_'+id).value.trim();if(!text)return toast('وضاحت لکھیں');
   const r=C.waz.reqs.find(x=>x.id===id);
-  try{await db.collection('mahana_wazahat_records').add({jamia:r.jamia||J.jamiaName,teacherName:T.name,ajeerCode:CODE,month:r.month||'',subjectsDetails:r.data||[],wazahat:text,linkId:id,type:r.type||'',timestamp:new Date().toISOString()});
+  try{await db.collection('mahana_wazahat_records').add({jamia:r.jamia||J.jamiaName,teacherName:T.name,ajeerCode:CODE,month:r.month||'',subjectsDetails:r.data||[],wazahat:text,linkId:id,type:r.type||'',timestamp:iso()});
     C.waz=null;toast('وضاحت جمع ہو گئی');vWaz()}catch(e){toast('خرابی: '+e.message)}
 }
 async function saveWaz(){
   const sub=$('#ws').value.trim(),t=$('#wt').value.trim();if(!sub||!t)return toast('موضوع اور وضاحت دونوں لکھیں');
   $('#wb').disabled=true;
-  try{await db.collection('mahana_wazahat_records').add({jamia:J.jamiaName,teacherName:T.name,ajeerCode:CODE,month:monthLabel(),subject:sub,subjectsDetails:[],wazahat:t,linkId:'teacher-portal',timestamp:new Date().toISOString()});
+  try{await db.collection('mahana_wazahat_records').add({jamia:J.jamiaName,teacherName:T.name,ajeerCode:CODE,month:monthLabel(),subject:sub,subjectsDetails:[],wazahat:t,linkId:'teacher-portal',timestamp:iso()});
     C.waz=null;toast('وضاحت جمع ہو گئی');vWaz()}catch(e){toast('خرابی: '+e.message);$('#wb').disabled=false}
 }
 
@@ -422,10 +530,11 @@ async function vHome(){
   const sem=semOf(ctx.m),active=(T.periods||[]).filter(p=>p.status!=='transferred'&&String(p.semester||'1')===sem);
   const rows=monthRows(subs,ctx.y,ctx.m),open=active.filter(p=>!rows[p.id]);
   const pend=w.reqs.filter(r=>!w.ans[r.id]).length,tas=recs.filter(e=>e.tasurat);
-  const status=open.length?(Object.keys(rows).length?'کچھ باقی':'جمع نہیں ہوئی'):'جمع ہو چکی';
+  const g=open.length?await gateState():{open:true};
+  const status=open.length?(g.open?(Object.keys(rows).length?'کچھ باقی':'جمع نہیں ہوئی'):(g.early?`${lastDayN()} ${MONTHS[ctx.m]} کو کھلے گی`:'لاک ہو چکی')):'جمع ہو چکی';
   V(`<div class="card"><h3>${monthLabel()}</h3>
    <p style="margin:0">ماہانہ کارکردگی: <span class="pill ${open.length?'no':''}">${status}</span></p>
-   ${open.length?`<button class="btn" onclick="go('kark')">رپورٹ بھریں (${open.length} کتب باقی)</button>`:''}</div>
+   ${open.length&&!g.early?`<button class="btn" onclick="go('kark')">${g.open?`رپورٹ بھریں (${open.length} کتب باقی)`:'مدت ختم — درخواست بھیجیں / دیکھیں'}</button>`:''}</div>
    <div class="grid"><div class="stat"><b>${recs.length}</b><span>اس ماہ ریکارڈنگ</span></div>
    <div class="stat"><b>${tas.length}</b><span>مفتش کے تاثرات</span></div>
    <div class="stat"><b style="${pend?'color:var(--red)':''}">${pend}</b><span>وضاحت باقی</span></div>
@@ -434,6 +543,122 @@ async function vHome(){
    ${tas[0]?`<div class="card" style="margin-top:12px"><h3>تازہ تاثر</h3><div class="muted">${esc(tas[0].className)} — ${esc(tas[0].kitabName)} • ${fmtD(tas[0].date)}</div><div class="box muf"><small>${fmtD(tas[0].tasuratDate)}</small>${esc(tas[0].tasurat)}</div></div>`:''}
    <button class="btn" style="background:#fff;color:var(--g);border:1px solid var(--line);font-size:16px" onclick="changePw()"><i class="fas fa-key"></i> پاس ورڈ تبدیل کریں</button>`);
 }
+
+/* ================= مزید ================= */
+const nn=x=>String(x||'').replace(/\s+/g,' ').trim();
+function vMore(){
+  V(`<div class="mgrid">
+   <button class="mbtn" onclick="go('res')"><i class="fas fa-square-poll-vertical"></i>نتائج</button>
+   <button class="mbtn" onclick="go('jai')"><i class="fas fa-magnifying-glass-chart"></i>ماہانہ جائزہ</button>
+   <button class="mbtn" onclick="go('dee')"><i class="fas fa-mosque"></i>دینی کام</button>
+   <button class="mbtn" onclick="go('pro')"><i class="fas fa-id-card"></i>پروفائل</button></div>`);
+}
+
+/* ================= نتائج (سمسٹر وار — اساتذہ وائز رزلٹ سے) ================= */
+const semNo=t=>/سالانہ/.test(t||'')?2:1;
+async function getRes(){
+  if(C.res)return C.res;
+  const latest={},out=[];
+  try{
+    const s=await db.collection('asatiza_wise_results').where('jamia','==',J.jamiaName).get();
+    s.docs.forEach(d=>{const x=d.data();if(!x.examType)return;const k=(x.examYear||'')+'|'+x.examType;if(!latest[k]||(x.timestamp||0)>(latest[k].timestamp||0))latest[k]=x});
+    Object.values(latest).forEach(x=>{const me=(x.data||[]).find(t=>nn(t.teacher)===nn(T.name));if(me&&(me.periods||[]).length)out.push({year:x.examYear||'',type:x.examType,periods:me.periods})});
+  }catch(e){C.resErr=e.message}
+  out.sort((a,b)=>String(b.year).localeCompare(String(a.year))||semNo(a.type)-semNo(b.type));
+  return C.res=out;
+}
+async function vRes(){
+  if(!T)return noTeacher();
+  loading();const r=await getRes();
+  V(backBar()+`<div class="sec" style="margin-top:0">میرے نتائج — سمسٹر وار</div>`+(r.map(x=>{
+    const ps=x.periods,vals=ps.map(p=>parseFloat(p.percentage)).filter(v=>!isNaN(v)),avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length):null;
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.year)} — سمسٹر ${semNo(x.type)}</b><span class="pill">${esc(x.type)}</span></div>
+     <div class="tw"><table><tr><th>کلاس</th><th>مضمون</th><th>کل</th><th>کامیاب</th><th>فیصد</th><th>کیفیت</th></tr>
+     ${ps.map(p=>`<tr><td class="l">${esc(p.class)}</td><td class="l">${esc(p.subject)}</td><td dir="ltr">${esc(p.total)}</td><td dir="ltr">${esc(p.passed)}</td><td dir="ltr"><b>${esc(p.percentage)}${String(p.percentage).includes('%')?'':'%'}</b></td><td>${esc(p.kaifiyat)}</td></tr>`).join('')}</table></div>
+     ${avg!==null?`<div class="center" style="margin-top:8px">مجموعی اوسط: <span class="big" style="color:var(--g)" dir="ltr">${avg.toFixed(1)}%</span></div>`:''}</div>`}).join('')||`<p class="center muted">ابھی آپ کا کوئی نتیجہ درج نہیں ہوا۔${C.resErr?'<br><small>'+esc(C.resErr)+'</small>':''}</p>`));
+}
+
+/* ================= ماہانہ جائزہ (جائزہ فارم سے) ================= */
+const JCHK=[['sabaqSunana','سبق سننا'],['sabaqParhana','سبق پڑھانا'],['waqtIstemal','وائٹ بورڈ کا استعمال'],['tiyari','پیشگی تیاری کرنے والے'],['takrar','تکرار کرانے والے'],['nizam','درجہ کا نظم و نسق']];
+async function getJaiza(){
+  const key=`jai_${ctx.y}_${ctx.m}`;if(C[key])return C[key];
+  const mk=`${ctx.y}-${String(ctx.m+1).padStart(2,'0')}`,out=[],jn=nn(J.jamiaName).toLowerCase();
+  try{
+    const s=await db.collection('jaiza_forms').where('createdBy','==',IDX.userId).where('monthKey','==',mk).get();
+    s.docs.forEach(d=>{const x=d.data();
+      if(nn(x.jamiaName||x.name).toLowerCase()!==jn&&nn(x.jamiaId).toLowerCase()!==jn)return;
+      (x.books||[]).filter(b=>nn(b.teacherName)===nn(T.name)).forEach(b=>out.push({cls:x.className,tot:x.totalStudents,pres:x.presentStudents,cp:x.classPercentage,grade:x.grade,b}))});
+  }catch(e){C.jaiErr=e.message}
+  return C[key]=out;
+}
+async function vJai(){
+  if(!T)return noTeacher();
+  loading();const r=await getJaiza();
+  V(backBar()+`<div class="sec" style="margin-top:0">${monthLabel()} — تعلیمی جائزہ</div>`+(r.map(x=>{
+    const b=x.b,pc=b.percentage;
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(x.cls)} — ${esc(b.bookName)}</b>${pc!=null?`<span class="big" style="color:var(--g)" dir="ltr">${esc(pc)}%</span>`:''}</div>
+     <div class="muted">حاضری: ${esc(x.pres??'-')} / ${esc(x.tot??'-')} طلبہ${x.grade&&x.grade!=='-'?` • درجہ کی کیفیت: ${esc(x.grade)}`:''}</div>
+     <div style="margin-top:6px">${JCHK.map(c=>`<span class="chk ${b.checks&&b.checks[c[0]]?'y':'n'}">${b.checks&&b.checks[c[0]]?'✔':'✘'} ${c[1]}</span>`).join('')}</div>
+     ${b.weakness?`<div class="box muf"><small>جائزہ میں نشاندہی کردہ کمزوری</small>${esc(b.weakness)}</div>`:''}
+     ${(b.questions||[]).length?`<div class="tw"><table><tr><th>#</th><th>سوال</th><th>درست جواب دینے والے طلبہ</th></tr>${b.questions.map(q=>`<tr><td>${esc(q.index)}</td><td class="l">${esc(q.text)}</td><td dir="ltr">${esc(q.correctStudents)}</td></tr>`).join('')}</table></div>`:''}</div>`}).join('')||`<p class="center muted">اس مہینے آپ کی کسی کتاب کا جائزہ درج نہیں ہوا۔<br><small>اوپر سے دوسرا مہینہ منتخب کر کے دیکھیں۔</small>${C.jaiErr?'<br><small>'+esc(C.jaiErr)+'</small>':''}</p>`));
+}
+
+/* ================= دینی کام ================= */
+async function vDee(){
+  if(!T)return noTeacher();
+  loading();const subs=await getSubs();
+  const cur=idxOf(wY(),wM()),ml=monthList().filter(x=>idxOf(x.y,x.m)<=cur).reverse();
+  const rows=ml.map(x=>({x,d:subs.find(s=>s.role!=='user_update'&&+s.submissionMonth===x.m&&+s.submissionYear===x.y&&s.deeniKaam)?.deeniKaam||null}));
+  const got=rows.filter(r=>r.d);
+  const cell=v=>v==='ہاں'?'<td class="ok">✔</td>':v==='نہیں'?'<td style="color:var(--red);font-weight:700">✘</td>':'<td class="muted">-</td>';
+  let tot=0,yes=0;
+  const sum=DEENI.map(d=>{const y=got.filter(r=>r.d[d[0]]==='ہاں').length;tot+=got.length;yes+=y;return `<div class="stat"><b style="font-size:22px">${got.length?Math.round(y/got.length*100):0}%</b><span>${d[1]}<br>${y}/${got.length} ماہ</span></div>`}).join('');
+  V(backBar()+`<div class="sec" style="margin-top:0">دینی کام کی رپورٹ — ${esc(curAY())}</div>
+   ${got.length?`<div class="card center"><span class="muted">مجموعی کارکردگی</span><div class="big" style="color:var(--g)" dir="ltr">${tot?Math.round(yes/tot*100):0}%</div></div><div class="grid">${sum}</div>`:''}
+   <div class="card"><h3>ماہ وار تفصیل</h3><div class="tw"><table class="sem"><tr><th class="stk">مہینہ</th>${DEENI.map(d=>`<th>${d[1]}</th>`).join('')}</tr>
+   ${rows.map(r=>`<tr><td class="stk l">${MONTHS[r.x.m]} ${r.x.y}</td>${DEENI.map(d=>r.d?cell(r.d[d[0]]):'<td class="muted">-</td>').join('')}</tr>`).join('')}</table></div>
+   <div class="muted" style="margin-top:6px">"-" = اس مہینے کی رپورٹ جمع نہیں ہوئی</div></div>`);
+}
+
+/* ================= پروفائل ================= */
+async function vPro(){
+  if(!T)return noTeacher();
+  const per=(T.periods||[]).filter(p=>p.status!=='transferred');
+  const subs=await getSubs(),months=new Set(subs.filter(s=>s.role!=='user_update').map(s=>s.submissionYear+'-'+s.submissionMonth)).size;
+  const f=(id,l,v,ph='',t='text')=>`<label>${l}</label><input id="${id}" type="${t}" value="${esc(v||'')}" placeholder="${ph}" ${t==='tel'?'dir="ltr"':''}>`;
+  V(backBar()+`<div class="card center"><div class="avatar" id="av">${ME.photoURL?`<img src="${esc(ME.photoURL)}">`:esc((T.name||'').trim().slice(0,1))}</div>
+   <input type="file" id="pf" accept="image/*" style="display:none" onchange="pickPhoto(this)">
+   <button class="btn sm alt" onclick="document.getElementById('pf').click()"><i class="fas fa-camera"></i> تصویر بدلیں</button>
+   <h3 style="margin:8px 0 0;font-size:21px">${esc(T.name)}</h3>
+   <div class="muted">اجیر کوڈ: <b dir="ltr">${esc(CODE)}</b></div><div class="muted">${esc(J.jamiaName)}</div>
+   <div class="muted">ذمہ دار: ${esc(U?.name||'-')} • تعلیمی سال: ${esc(curAY())}</div></div>
+   <div class="grid"><div class="stat"><b>${per.length}</b><span>میری کتب</span></div><div class="stat"><b>${months}</b><span>جمع شدہ ماہانہ رپورٹس</span></div></div>
+   <div class="card"><h3>ذاتی معلومات</h3>
+   ${f('p_ph','موبائل نمبر',ME.phone,'03XXXXXXXXX','tel')}${f('p_wa','واٹس ایپ نمبر',ME.whatsapp,'','tel')}${f('p_q','تعلیمی قابلیت',ME.qualification,'مثلاً: درسِ نظامی / فاضل')}${f('p_ad','پتہ / شہر',ME.address)}${f('p_jd','تقرری کی تاریخ',ME.joinDate,'','date')}
+   <button class="btn" id="psv" onclick="saveProfile()">محفوظ کریں</button></div>
+   <div class="card"><h3>میری کتب</h3><div class="tw"><table><tr><th>کلاس</th><th>کتاب</th><th>سمسٹر</th><th>کل صفحات</th></tr>
+   ${per.map(p=>`<tr><td class="l">${esc(p.className)}</td><td class="l">${esc(p.bookName)}</td><td>${esc(p.semester||'1')}</td><td dir="ltr">${esc(p.totalPages||'-')}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">کوئی کتاب مقرر نہیں</td></tr>'}</table></div></div>
+   <button class="btn" style="background:#fff;color:var(--g);border:1px solid var(--line)" onclick="changePw()"><i class="fas fa-key"></i> پاس ورڈ تبدیل کریں</button>
+   <button class="btn" style="background:var(--red)" onclick="logout()"><i class="fas fa-right-from-bracket"></i> خروج</button>`);
+}
+async function saveProfile(){
+  const d={phone:$('#p_ph').value.trim(),whatsapp:$('#p_wa').value.trim(),qualification:$('#p_q').value.trim(),address:$('#p_ad').value.trim(),joinDate:$('#p_jd').value,profileUpdatedAt:iso()};
+  $('#psv').disabled=true;
+  try{await db.collection('users').doc(auth.currentUser.uid).update(d);Object.assign(ME,d);toast('پروفائل محفوظ ہو گئی')}catch(e){toast('خرابی: '+e.message)}
+  $('#psv').disabled=false;
+}
+async function pickPhoto(inp){
+  const f=inp.files[0];if(!f)return;toast('تصویر اپلوڈ ہو رہی ہے...');
+  try{
+    const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(f)});
+    const sc=Math.min(1,420/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    const blob=await new Promise(ok=>cv.toBlob(ok,'image/jpeg',0.82));
+    const ref=st.ref().child('teacher_profiles/'+auth.currentUser.uid+'.jpg');await ref.put(blob);
+    const url=await ref.getDownloadURL()+'';await db.collection('users').doc(auth.currentUser.uid).update({photoURL:url});ME.photoURL=url;toast('تصویر محفوظ ہو گئی');vPro();
+  }catch(e){toast('تصویر نہیں لگی: '+e.message)}
+}
+
 boot();
 </script>
 </body>
