@@ -668,7 +668,15 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             const jamiaDocId = match ? match[0] : "001";
             return getDoc(doc(db, "academic_performance", jamiaDocId));
         });
-        const publicSnaps = await Promise.all(publicDataPromises);
+        
+        // SPEED BOOSTER: Sabhi Jamia ke targets ek hi baar parallel mangwa lein (Loop ke bahar)
+        const targetPromises = filteredJamiaat.map(jamiaName => fetchTargetsForJamia(db, jamiaName));
+
+        // Dono data (Public + Targets) ko ek sath database se nikal lein
+        const [publicSnaps, allJamiaTargets] = await Promise.all([
+            Promise.all(publicDataPromises),
+            Promise.all(targetPromises)
+        ]);
 
         let html = "";
 
@@ -677,8 +685,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             const jamiaData = karkardagi.find(j => j.jamiaName === jamiaName);
             if (!jamiaData) continue;
 
-            // YAHAN NAYI LINE AAYEGI: Har Jamia ka apna specific target load hoga
-            const monthlyTargets = await fetchTargetsForJamia(db, jamiaName);
+            // Ab database ka wait nahi karna padega, data already aa chuka hai
+            const monthlyTargets = allJamiaTargets[i];
 
             const safeId = jamiaName.replace(/\s+/g, '');
             // ... (iske niche ka code same rahega)
@@ -1660,11 +1668,13 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             }
         }
 
-        // Har assigned jamia ka target pehle se nikal kar rakh lein
+        // Har assigned jamia ka target pehle se nikal kar rakh lein (SPEED OPTIMIZED)
             const jamiaTargetsMap = {};
-            for (const jName of assignedJamiaat) {
+            const jamiaTargetPromises = assignedJamiaat.map(async (jName) => {
                 jamiaTargetsMap[jName] = await fetchTargetsForJamia(db, jName);
-            }
+            });
+            // Loop me rukne ke bajaye sabko ek sath fetch karein
+            await Promise.all(jamiaTargetPromises);
 
         const monthSelectElem = document.getElementById('summary-month-select');
         const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(currentSelectedMonth));
