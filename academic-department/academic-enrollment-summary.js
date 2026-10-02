@@ -456,7 +456,7 @@ window.updateDynamicFields = () => {
                     <label class="text-xs font-bold text-slate-500 mb-1">Class</label>
                     <select id="dyn-classLevel" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none">
                         <option value="">— Select —</option>
-                        ${makeOpts(['8th','10th','12th'], isSameType ? r.classLevel : '')}
+                        ${makeOpts(['5th','8th','10th','12th'], isSameType ? r.classLevel : '')}
                     </select>
                 </div>
                 <div><label class="text-xs font-bold text-slate-500 mb-1">Languages (Comma , se alag karein)</label><input type="text" id="dyn-langs" value="${isSameType ? (r.languages||[]).join(', ') : ''}" placeholder="Urdu, English..." class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"></div>
