@@ -476,6 +476,33 @@
                     loader.classList.add('hidden');
                 }
             };
+           // NAYA LOGIC: Form Unlock karne ka function
+            const unlockJamiaForm = async (jamiaName) => {
+                if (!currentUser) return;
+                loader.classList.remove('hidden');
+                try {
+                    const currentReportInfo = getReportingMonthYearFromInput(entryMonthSelector.value);
+                    const { monthNum, yearNum } = currentReportInfo;
+                    const currentAcademicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+                    const reportId = `${currentUser.uid}_${currentAcademicYear}_${yearNum}_${monthNum}`; 
+                    
+                    const reportRef = doc(db, 'monthly_reports', reportId);
+                    const docSnap = await getDoc(reportRef);
+                    
+                    if (docSnap.exists() && docSnap.data().jaizaReport?.data) {
+                        let jaizaData = docSnap.data().jaizaReport.data;
+                        // isLocked ko false kar rahe hain taake form wapas open ho jaye
+                        jaizaData = jaizaData.map(j => (j.name === jamiaName ? { ...j, isLocked: false } : j));
+                        await updateDoc(reportRef, { "jaizaReport.data": jaizaData });
+                        showNotification(`"${jamiaName}" ان لاک ہو گیا ہے، اب آپ تبدیلیاں کر سکتے ہیں۔`);
+                    }
+                } catch(err) {
+                    console.error(err);
+                    showNotification("Error: ان لاک نہیں ہو سکا۔", true);
+                } finally {
+                    loader.classList.add('hidden');
+                }
+            };
             const container = document.getElementById('jaiza-list-container');
             if (!container) return;
 
@@ -538,13 +565,32 @@
                 const disableInputs = isLocked ? 'disabled' : '';
                 const lockBgClass = isLocked ? 'bg-gray-100 cursor-not-allowed opacity-80' : 'bg-white';
 
-                // NAYA: Action Buttons (Submit, Edit ya Aage Badhein)
+               // NAYA: Action Buttons (Submit, Edit, View ya Unlock)
                 let actionBtnsHTML = '';
                 if (isLocked) {
-                    actionBtnsHTML = `
-                    <span class="bg-gray-200 text-gray-500 border border-gray-300 px-5 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto text-center urdu-font cursor-not-allowed">
-                        <i class="fas fa-lock"></i> لاک شدہ
-                    </span>`;
+                    // Agar report status Jaiza hai
+                    if (status === 'Jaiza') {
+                        actionBtnsHTML = `
+                        <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <button data-jamia="${name}" class="view-form-btn bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-300 px-4 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-1 transition">
+                                <i class="fas fa-eye"></i> دیکھیں
+                            </button>
+                            <button data-jamia="${name}" class="unlock-form-btn bg-red-50 hover:bg-red-100 text-red-600 border border-red-300 px-4 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-1 transition" title="فارم ان لاک کریں">
+                                <i class="fas fa-unlock-alt"></i> ان لاک
+                            </button>
+                        </div>`;
+                    } else {
+                        // Agar Visit ya Nahi Hua ka status hai, usay bhi unlock karne ka option dena hoga
+                        actionBtnsHTML = `
+                        <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <span class="bg-gray-200 text-gray-500 border border-gray-300 px-4 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-1 cursor-not-allowed">
+                                <i class="fas fa-lock"></i> لاک
+                            </span>
+                            <button data-jamia="${name}" class="unlock-form-btn bg-red-50 hover:bg-red-100 text-red-600 border border-red-300 px-4 py-2 rounded-md text-sm font-bold shadow-sm flex items-center justify-center gap-1 transition" title="سٹیٹس تبدیل کرنے کے لیے ان لاک کریں">
+                                <i class="fas fa-unlock-alt"></i> ان لاک
+                            </button>
+                        </div>`;
+                    }
                 } else if (hasDraft) {
                     actionBtnsHTML = `
                     <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -690,12 +736,29 @@
                     }
                 });
             });
-           // NAYA: Final Submit Button Click Event (Yeh bilkul alag rahega)
-            container.querySelectorAll('.final-lock-btn').forEach(btn => {
+           // NAYA: View Form Button Click Event (Locked form dekhne ke liye)
+            container.querySelectorAll('.view-form-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const jamiaName = e.currentTarget.getAttribute('data-jamia');
+                    const dateSelect = document.getElementById(`date-${jamiaName}`).value;
+                    const monthInput = document.getElementById('entry-month-selector').value; 
+                    let monthNameText = "موجودہ ماہ";
+                    if(monthInput) {
+                        const dateObj = new Date(monthInput + "-01");
+                        monthNameText = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+                    }
+                    
+                    // Naya parameter '&viewOnly=true' pass kar rahe hain
+                    const url = `shoba-qirat-jaiza-form.html?jamia=${encodeURIComponent(jamiaName)}&month=${encodeURIComponent(monthNameText)}&exactDate=${encodeURIComponent(dateSelect)}&viewOnly=true`;
+                    window.location.href = url;
+                });
+            });
+           // NAYA: Unlock Button Click Event
+            container.querySelectorAll('.unlock-form-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const jamiaName = e.currentTarget.getAttribute('data-jamia');
-                    if(confirm(`کیا آپ واقعی ${jamiaName} کا فارم فائنل سبمٹ کرنا چاہتے ہیں؟ اس کے بعد کوئی تبدیلی نہیں کی جا سکے گی۔`)) {
-                        await finalSubmitJamia(jamiaName);
+                    if(confirm(`کیا آپ واقعی ${jamiaName} کی رپورٹ ان لاک کرنا چاہتے ہیں؟ اس سے فارم دوبارہ ڈرافٹ موڈ میں آ جائے گا اور آپ تبدیلیاں کر سکیں گے۔`)) {
+                        await unlockJamiaForm(jamiaName);
                     }
                 });
             });
