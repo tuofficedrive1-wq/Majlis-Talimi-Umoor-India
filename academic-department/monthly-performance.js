@@ -769,11 +769,16 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         }
                     }
                                         
-                    let achievedValue = 0;
+                    // FIX: Default value 0 ki jagah blank string ('') kar di gayi hai
+                    let achievedValue = ''; 
+                    let isDataPresent = false;
+                    
                     if (p.achieved && p.achieved[currentYearMonthPrefix] !== undefined) {
                         achievedValue = p.achieved[currentYearMonthPrefix];
+                        isDataPresent = true;
                     } else if (p.achieved && p.achieved[targetMonthKey] !== undefined) {
                         achievedValue = p.achieved[targetMonthKey];
+                        isDataPresent = true;
                     } else if (publicTeacher && publicTeacher.periods_detail) {
                         const matchedPeriodKey = Object.keys(publicTeacher.periods_detail).find(key => {
                             const detail = publicTeacher.periods_detail[key];
@@ -781,19 +786,23 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                         });
                         if (matchedPeriodKey) {
                             achievedValue = publicTeacher.periods_detail[matchedPeriodKey].page_to || 0;
+                            isDataPresent = true;
                         }
                     }
 
                     totalTeacherTarget += target;
-                    totalTeacherAchieved += achievedValue;
+                    // Agar koi data present hai tabhi calculate hoga
+                    const numAchieved = isDataPresent ? (parseInt(achievedValue) || 0) : 0;
+                    totalTeacherAchieved += numAchieved;
+                    
                     if (pIdx === 0) firstPeriodSemester = p.semester;
 
-                    const percentage = target > 0 ? Math.round((achievedValue / target) * 100) : 0;
+                    const percentage = target > 0 ? Math.round((numAchieved / target) * 100) : 0;
                     const result = calculateKaifiyatAndStyle(percentage, targetMonthKey, p.semester);
 
                     const teacherRowId = `row-${safeId}-${teacher.id}`;
 
-                    // NAYA TABLE ROW DESIGN (No vertical borders, simple bottom border)
+                    // NAYA TABLE ROW DESIGN
                     html += `
                         <tr class="hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 ${teacherRowId}">
                             <td class="px-3 py-2.5 md:px-4 md:py-3 font-medium text-slate-800 whitespace-normal min-w-[120px] md:min-w-[150px]">${pIdx === 0 ? teacher.name : ''}</td>
@@ -802,13 +811,14 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
                             <td class="px-3 py-2.5 md:px-4 md:py-3 text-center">${p.totalPages}</td>
                             <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-indigo-500 bg-indigo-50/30 rounded-md">${target}</td>
                             <td class="px-2 py-2 md:px-3 md:py-2 text-center">
-                                <input type="number" value="${achievedValue}" disabled 
+                                <!-- NAYA FIX: Agar data present hai toh value aaye, warna blank (-) -->
+                                <input type="number" value="${isDataPresent ? achievedValue : ''}" disabled placeholder="-" 
                                        data-tid="${teacher.id}" data-pid="${p.id}"
                                        class="achieved-input-${safeId} w-12 md:w-16 p-1 md:p-1.5 border border-transparent rounded-md text-center bg-transparent mx-auto block text-xs md:text-sm font-bold focus:ring-1 focus:ring-indigo-300 transition-all outline-none"
                                        oninput="updateRowStatusLive(this, ${target}, '${targetMonthKey}', '${p.semester}')">
                             </td>
                             <td class="px-3 py-2.5 md:px-4 md:py-3 text-center font-bold text-slate-600 perc-cell text-[10px] md:text-sm">${percentage}%</td>
-                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center italic status-cell text-[10px] md:text-sm ${result.colorClass}">${result.kaifiyat}</td>
+                            <td class="px-3 py-2.5 md:px-4 md:py-3 text-center italic status-cell text-[10px] md:text-sm ${result.colorClass}">${isDataPresent ? result.kaifiyat : '-'}</td>
                             ${pIdx === 0 ? `
                             <td class="px-2 py-2 md:px-3 text-center align-middle" rowspan="${totalPeriodsCount + 1}">
                                 <div class="flex flex-col gap-1.5 items-center justify-center">
@@ -1491,18 +1501,21 @@ export const handleDashboardMonthChange = (newMonth, assignedJamiaat, db, curren
 };
 
 window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
-    if (!confirm(`Reset data for ${teacherName}?`)) return;
+    if (!confirm(`Kya aap waqai ${teacherName} ka data is mahine ke liye reset karna chahte hain?`)) return;
 
     try {
         const databaseInstance = gDb;
         const userInstance = gCurrentUser;
         if (!databaseInstance || !userInstance) return alert("Session missing.");
 
-        const monthSelect = document.getElementById('report-month');
-        const activeMonthKey = (monthSelect && monthSelect.value) ? monthSelect.value : (currentSelectedMonth || "apr");
+        // FIX 1: Hamesha current active mahina lein
+        const activeMonthKey = currentSelectedMonth; 
         const calSnap = await getDoc(doc(databaseInstance, "settings", "academic_calendar"));
-        const activeYear = calSnap.exists() ? calSnap.data().activeYear : "2026-2027";
-        const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(activeMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(activeMonthKey) + 1) : monthNames.indexOf(activeMonthKey) + 1}`;
+        const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
+        
+        // Format "2026-10" banane ke liye
+        const mIdx = monthNames.indexOf(activeMonthKey) + 1;
+        const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${mIdx < 10 ? '0' + mIdx : mIdx}`;
 
         const userRef = doc(databaseInstance, "users", userInstance.uid);
         const userSnap = await getDoc(userRef);
@@ -1511,17 +1524,25 @@ window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
         let structure = academicYears[activeYear]?.karkardagiStructure || [];
         let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
+        // FIX 2: Admin ke pas se teacher ka lock aur data hatayein
         if (jamiaData) {
             const teacher = jamiaData.teachers.find(t => t.id === teacherId);
             if (teacher && teacher.periods) {
                 teacher.periods.forEach(p => {
-                    if (p.achieved) { delete p.achieved[activeMonthKey]; delete p.achieved[currentYearMonthPrefix]; }
-                    if (p.locked) { delete p.locked[activeMonthKey]; delete p.locked[currentYearMonthPrefix]; }
+                    if (p.achieved) {
+                        delete p.achieved[activeMonthKey];
+                        delete p.achieved[currentYearMonthPrefix];
+                    }
+                    if (p.locked) {
+                        delete p.locked[activeMonthKey];
+                        delete p.locked[currentYearMonthPrefix];
+                    }
                 });
             }
         }
         await updateDoc(userRef, { academicYears: academicYears });
 
+        // FIX 3: Teacher ka submit kiya hua public data delete karein (Taaki form unlock ho jaye)
         const match = jamiaName.match(/\d+/);
         const jamiaDocId = match ? match[0] : "001";
         const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
@@ -1529,15 +1550,26 @@ window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
 
         if (perfSnap.exists()) {
             let currentPerfData = perfSnap.data();
+            let isPublicModified = false;
+
             [activeMonthKey, currentYearMonthPrefix].forEach(mKey => {
                 if (currentPerfData[mKey] && currentPerfData[mKey].teachers) {
+                    const originalLen = currentPerfData[mKey].teachers.length;
+                    // Teacher ko list se nikal dein
                     currentPerfData[mKey].teachers = currentPerfData[mKey].teachers.filter(t => t.name.toLowerCase() !== teacherName.toLowerCase());
+                    if (currentPerfData[mKey].teachers.length !== originalLen) {
+                        isPublicModified = true;
+                    }
                 }
             });
-            await setDoc(perfDocRef, currentPerfData, { merge: true });
+            
+            // Agar data me koi change hua hai to strongly overwrite karein
+            if (isPublicModified) {
+                await setDoc(perfDocRef, currentPerfData, { merge: true });
+            }
         }
 
-        alert("Reset Done!");
+        alert("✅ Reset Done! Data successfully clear ho gaya hai aur teacher ka form unlock ho gaya hai.");
         loadPerformanceTable(gAssignedJamiaat, databaseInstance, userInstance);
 
     } catch (err) {
