@@ -294,39 +294,59 @@
             } else { alert("Please log in first."); }
         });
 
-        // 2. Load Existing Forms (Firebase or Local)
+       // 2. Load Existing Forms (Firebase or Local)
         async function loadExistingDataOrCreateNew() {
             try {
+                // NAYA: URL se exactDate aur viewOnly nikalna
+                const urlExactDate = urlParams.get('exactDate');
+                const isViewOnly = urlParams.get('viewOnly') === 'true';
+                
                 // A. Check Firebase
                 const q = query(collection(db, "monthly_reports"), where("userId", "==", currentUserId), where("academicYear", "==", activeAcademicYear));
                 const snap = await getDocs(q);
                 let firebaseInstances = [];
+                
                 snap.forEach(doc => {
                     const data = doc.data();
+                    // Sirf selected mahine ka document check karein
                     if (data.month === paramMonth || data.monthKey === paramMonth) {
                         if (data.jaizaReport && data.jaizaReport.data) {
                             const entriesForJamia = data.jaizaReport.data.filter(j => j.name === paramJamia);
+                            
                             entriesForJamia.forEach(entry => {
-                                if(entry.details && entry.students) firebaseInstances.push(entry);
+                                // AGAR URL mein exactDate hai (jaise view ya edit mode me), to sirf wahi entries laao jo us date par submit hui hain
+                                if (urlExactDate) {
+                                    if (entry.submittedAt === urlExactDate && entry.details && entry.students) {
+                                        firebaseInstances.push(entry);
+                                    }
+                                } 
+                                // AGAR exactDate nahi hai (jaise pehli dafa naya form kholte waqt), to bas latest draft/entry laao
+                                else {
+                                    if (entry.details && entry.students) firebaseInstances.push(entry);
+                                }
                             });
                         }
                     }
                 });
 
-                // B. Check Local Draft
+                // B. Check Local Draft (Sirf tab agar naya form ban raha ho ya Edit mode ho. View mode me local draft ignore hoga)
                 const draftDataStr = localStorage.getItem(getLocalSaveKey());
-                let draftInstances = draftDataStr ? JSON.parse(draftDataStr) : [];
+                let draftInstances = (!isViewOnly && draftDataStr) ? JSON.parse(draftDataStr) : [];
 
                 // C. Render
                 if (firebaseInstances.length > 0) {
+                    // Firebase se data mil gaya
                     firebaseInstances.forEach(inst => createJaizaInstance(inst.details.class, inst.details.teacher, inst.details.book, inst.students));
                 } else if (draftInstances.length > 0) {
+                    // Firebase me nahi mila, par mobile/PC me purana draft pada tha
                     draftInstances.forEach(inst => createJaizaInstance(inst.class, inst.teacher, inst.book, inst.students));
                 } else {
+                    // Kuch nahi mila to naya khali form banao
                     createJaizaInstance(initialClass, initialTeacher, initialBook, null);
                 }
+
                 // === NAYA LOGIC: Agar URL me viewOnly=true hai to Form lock kar dein ===
-                if (viewOnly) {
+                if (isViewOnly) {
                     document.getElementById('btn-save-data').style.display = 'none'; // Save button hide kar den
                     
                     // Ek Top Notice dikhayen aur wapas Dashboard jaane ka button dein
