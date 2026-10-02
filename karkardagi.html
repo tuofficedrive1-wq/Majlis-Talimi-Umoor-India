@@ -964,6 +964,93 @@ const handleCreatePortalLink = async (jamiaName) => {
     showNotification(`${jamiaName}: ${created} naye accounts bane, ${existing} pehle se maujood, ${failed} fail. Login link copy ho gaya.`, failed > 0);
 };
 
+        // ===== Asatiza ki "report kholne ki darkhwast" (zimmedar side) =====
+const UNLOCK_COL = 'karkardagi_unlock_requests';
+const URDU_M = ['جنوری','فروری','مارچ','اپریل','مئی','جون','جولائی','اگست','ستمبر','اکتوبر','نومبر','دسمبر'];
+const ymdLocal = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtShort = v => { if (!v) return ''; const d = new Date(String(v).length === 10 ? v + 'T00:00:00' : v); return isNaN(d) ? escH(v) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
+window.__unlockReqs = [];
+
+function ensureReqUI() {
+    if (document.getElementById('req-fab')) return;
+    const fab = document.createElement('button');
+    fab.id = 'req-fab';
+    fab.type = 'button';
+    fab.className = 'fixed bottom-5 left-5 z-50 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-full shadow-lg flex items-center gap-2';
+    fab.innerHTML = '<i class="fas fa-unlock-keyhole"></i> Teacher Requests <span id="req-badge" class="bg-red-600 text-white rounded-full px-2 text-xs hidden">0</span>';
+    fab.onclick = () => { renderReqModal(); document.getElementById('req-modal').classList.remove('hidden'); };
+    document.body.appendChild(fab);
+    const modal = document.createElement('div');
+    modal.id = 'req-modal';
+    modal.className = 'hidden fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-3';
+    modal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-4" dir="rtl">' +
+        '<div class="flex justify-between items-center mb-3"><h3 class="text-lg font-bold">اساتذہ کی رپورٹ کھولنے کی درخواستیں</h3>' +
+        '<button type="button" id="req-close" class="text-2xl leading-none px-2">&times;</button></div><div id="req-body"></div></div>';
+    document.body.appendChild(modal);
+    document.getElementById('req-close').onclick = () => modal.classList.add('hidden');
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+}
+
+async function refreshReqBadge() {
+    if (!currentUser) return;
+    ensureReqUI();
+    try {
+        const snap = await getDocs(query(collection(db, UNLOCK_COL), where('zimmedarId', '==', currentUser.uid)));
+        window.__unlockReqs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const n = window.__unlockReqs.filter(r => r.status === 'pending').length;
+        const b = document.getElementById('req-badge');
+        b.textContent = n; b.classList.toggle('hidden', n === 0);
+        if (!document.getElementById('req-modal').classList.contains('hidden')) renderReqModal();
+    } catch (e) { console.warn('Requests load error', e); }
+}
+
+function renderReqModal() {
+    const list = window.__unlockReqs || [];
+    const pend = list.filter(r => r.status === 'pending').sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
+    const done = list.filter(r => r.status !== 'pending').sort((a, b) => (b.decidedAt || '').localeCompare(a.decidedAt || '')).slice(0, 15);
+    const today = new Date(), plus2 = new Date(Date.now() + 2 * 86400000);
+    let h = pend.length ? '' : '<p class="text-center text-gray-500 py-4">کوئی نئی درخواست نہیں</p>';
+    pend.forEach((r, i) => {
+        h += '<div class="border rounded-lg p-3 mb-3 bg-amber-50">' +
+            '<div class="font-bold">' + escH(r.teacherName) + ' — ' + escH(r.jamiaName) + '</div>' +
+            '<div class="text-sm text-gray-600">' + escH(r.monthLabel || (URDU_M[r.month] + ' ' + r.year)) + ' کی کارکردگی رپورٹ • درخواست: ' + fmtShort(r.requestedAt) + '</div>' +
+            '<div class="bg-white border rounded p-2 my-2 text-sm">' + escH(r.reason) + '</div>' +
+            '<div class="grid grid-cols-2 gap-2"><div><label class="text-xs text-gray-600">کب سے کھولیں</label><input type="date" id="rq-from-' + i + '" value="' + ymdLocal(today) + '" class="w-full border rounded p-1.5"></div>' +
+            '<div><label class="text-xs text-gray-600">کب تک کھلی رہے</label><input type="date" id="rq-to-' + i + '" value="' + ymdLocal(plus2) + '" class="w-full border rounded p-1.5"></div></div>' +
+            '<input id="rq-note-' + i + '" placeholder="نوٹ (اختیاری)" class="w-full border rounded p-2 mt-2 text-sm">' +
+            '<div class="flex gap-2 mt-2"><button type="button" class="flex-1 bg-green-600 text-white rounded py-1.5 font-bold" onclick="decideUnlock(' + i + ',true)">منظور کریں</button>' +
+            '<button type="button" class="flex-1 bg-red-600 text-white rounded py-1.5 font-bold" onclick="decideUnlock(' + i + ',false)">مسترد کریں</button></div></div>';
+    });
+    window.__pendList = pend;
+    if (done.length) {
+        h += '<h4 class="font-bold mt-4 mb-2 text-gray-700">پچھلے فیصلے</h4>' + done.map(r =>
+            '<div class="border-b py-2 text-sm"><b>' + escH(r.teacherName) + '</b> — ' + escH(r.monthLabel || '') + ' • ' +
+            (r.status === 'approved' ? '<span class="text-green-700">منظور: ' + fmtShort(r.openFrom) + ' تا ' + fmtShort(r.openTo) + '</span>' : '<span class="text-red-700">مسترد</span>') +
+            (r.zimmedarNote ? '<div class="text-gray-500">' + escH(r.zimmedarNote) + '</div>' : '') + '</div>').join('');
+    }
+    document.getElementById('req-body').innerHTML = h;
+}
+
+window.decideUnlock = async (i, approve) => {
+    const r = (window.__pendList || [])[i];
+    if (!r) return;
+    const note = (document.getElementById('rq-note-' + i)?.value || '').trim();
+    const upd = { status: approve ? 'approved' : 'rejected', zimmedarNote: note, decidedAt: new Date().toISOString() };
+    if (approve) {
+        const from = document.getElementById('rq-from-' + i).value, to = document.getElementById('rq-to-' + i).value;
+        if (!from || !to || to < from) { showNotification('تاریخیں درست منتخب کریں (آخری تاریخ شروع سے پہلے نہیں ہو سکتی)', true); return; }
+        upd.openFrom = from; upd.openTo = to;
+    }
+    try {
+        await updateDoc(doc(db, UNLOCK_COL, r.id), upd);
+        showNotification(approve ? 'رپورٹ ' + fmtShort(upd.openFrom) + ' تا ' + fmtShort(upd.openTo) + ' کے لیے کھول دی گئی' : 'درخواست مسترد کر دی گئی');
+        await refreshReqBadge();
+    } catch (e) { console.error(e); showNotification('خرابی: ' + e.message, true); }
+};
+setTimeout(refreshReqBadge, 4000);
+setInterval(refreshReqBadge, 60000);
+
         // Jamia ke liye reporting link copy karna (PROJECT PATH THEEK KIYA)
 const handleCreateReportLink = (jamiaName) => {
     if (!currentUser || !activeYear || !currentReportPeriod) {
