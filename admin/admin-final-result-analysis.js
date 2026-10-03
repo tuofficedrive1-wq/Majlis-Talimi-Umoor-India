@@ -1,4 +1,4 @@
-// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (EXACT ZIMMEDAR NAME & NUMBER MAPPING)
+// ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH STATE FILTER & STATE SUMMARY)
 
 import {
     collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
@@ -66,14 +66,31 @@ export async function initAdminResultAnalysis(db, containerId) {
         return formatted;
     };
 
+    // 🌟 NAYA: State format helper
+    const formatState = (s) => {
+        if (!s) return '';
+        return String(s).trim().toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
+    };
+
     let regionSet = new Set();
+    let stateSet = new Set();
+    
     Object.values(masterJamiaDict).forEach(m => { 
         if(m.region) regionSet.add(formatRegion(m.region)); 
+        if(m.state) stateSet.add(formatState(m.state)); 
     });
+    
+    // Check users for any missing states/regions
+    allUsers.forEach(u => {
+        if(u.region) regionSet.add(formatRegion(u.region));
+        if(u.state) stateSet.add(formatState(u.state));
+    });
+
     const regions = [...regionSet].sort();
+    const states = [...stateSet].sort();
 
     const getJamiaContext = (jamiaName, jamiaId = null) => {
-        if (!jamiaName && !jamiaId) return { userName: 'Not Linked', region: 'N/A', display: '', english: '' };
+        if (!jamiaName && !jamiaId) return { userName: 'Not Linked', state: 'N/A', region: 'N/A', display: '', english: '' };
         const target = String(jamiaName || '').trim().toLowerCase();
         let mData = null;
 
@@ -95,18 +112,20 @@ export async function initAdminResultAnalysis(db, containerId) {
         });
 
         let foundUser = linkedUsers.find(u => u.role === 'standard' || !u.role);
-        
-        if (!foundUser) {
-            foundUser = linkedUsers.find(u => u.role !== 'inspector' && u.role !== 'education_office' && u.role !== 'shoba_qirat' && u.role !== 'qirat');
-        }
+        if (!foundUser) foundUser = linkedUsers.find(u => u.role !== 'inspector' && u.role !== 'education_office' && u.role !== 'shoba_qirat' && u.role !== 'qirat');
 
         const finalMasterName = mData ? (mData.name || jamiaName) : jamiaName;
         const finalUrduName = mData ? (mData.urduName || '') : '';
+        
         let finalRegion = mData ? (mData.region || '') : '';
+        let finalState = mData ? (mData.state || '') : '';
+        
         if (!finalRegion && foundUser) finalRegion = foundUser.region || '';
+        if (!finalState && foundUser) finalState = foundUser.state || '';
 
         return {
             userName: foundUser ? (foundUser.name || foundUser.email) : 'Not Linked',
+            state: formatState(finalState) || 'N/A',
             region: formatRegion(finalRegion) || 'N/A', 
             display: finalUrduName || finalMasterName,
             english: finalMasterName
@@ -114,6 +133,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     };
 
     // 🌟 HTML UI RENDER 🌟
+    // Note: Grid changed to lg:grid-cols-7 to fit State
     container.innerHTML = `
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg border">
         <!-- 3 Tabs -->
@@ -125,7 +145,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
         <!-- Filters Section -->
         <div id="filter-section" class="bg-indigo-50 p-5 rounded-xl border border-indigo-100 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-4">
                 <div>
                     <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Exam & Year</label>
                     <div class="flex gap-1">
@@ -136,6 +156,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                         <select id="admin-exam-year" class="w-full p-2 border rounded-lg text-sm"></select>
                     </div>
                 </div>
+                <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">State</label><select id="admin-state-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All States</option>${states.map(s => `<option value="${s}">${s}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Region</label><select id="admin-region-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Regions</option>${regions.map(r => `<option value="${r}">${r}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">User Filter</label><select id="admin-user-filter" class="w-full p-2 border rounded-lg text-sm"><option value="all">All Users</option>${allUsers.filter(u => u.role === 'standard' || !u.role).map(u => `<option value="${u.name || u.email}">${u.name || u.email}</option>`).join('')}</select></div>
                 <div><label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Select Jamia</label><select id="admin-jamia-select" class="w-full p-2 border rounded-lg text-sm urdu-font"><option value="all">All Jamiaat</option></select></div>
@@ -143,6 +164,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <div id="dashboard-filters-div">
                     <label class="block text-[10px] font-bold text-indigo-600 mb-1 uppercase">Dashboard Type</label>
                     <select id="dashboard-result-type" class="w-full p-2 border rounded-lg text-sm font-bold">
+                        <option value="state-wise">🗺️ State Summary</option>
                         <option value="region-wise">🌍 Region Summary</option>
                         <option value="user-wise">👨‍💼 User Summary</option>
                         <option value="submission-status">📋 Submission Status</option>
@@ -245,6 +267,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         uploadView: document.getElementById("upload-view"),
         filterSection: document.getElementById("filter-section"),
         exportBtn: document.getElementById("admin-export-btn"),
+        stateFilter: document.getElementById("admin-state-filter"),
         regionFilter: document.getElementById("admin-region-filter"),
         userFilter: document.getElementById("admin-user-filter"),
         jamiaSelect: document.getElementById("admin-jamia-select"),
@@ -330,6 +353,7 @@ export async function initAdminResultAnalysis(db, containerId) {
     });
 
     const updateJamiaList = () => {
+        const selState = elements.stateFilter ? elements.stateFilter.value : 'all';
         const selUser = elements.userFilter.value;
         const selReg = elements.regionFilter.value;
         const delJamiaSelect = document.getElementById('delete-jamia-select');
@@ -337,15 +361,31 @@ export async function initAdminResultAnalysis(db, containerId) {
         if(elements.jamiaSelect) elements.jamiaSelect.innerHTML = '<option value="all">All Jamiaat</option>';
         if(delJamiaSelect) delJamiaSelect.innerHTML = '<option value="all">All Jamiaat (Poora Result Delete)</option>';
 
-       let filteredUsers = allUsers;
-        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => String(u.region || '').trim().toUpperCase() === selReg);
+        let filteredUsers = allUsers;
+        
+        // Fix: Added toUpperCase() logic correctly for Region match
+        if (selReg !== "all") filteredUsers = filteredUsers.filter(u => String(u.region || '').trim().toUpperCase() === selReg.toUpperCase());
         if (selUser !== "all") filteredUsers = filteredUsers.filter(u => (u.name || u.email) === selUser);
 
         let jamiaSet = new Set();
         filteredUsers.forEach(u => {
             (u.jamiaatList || []).forEach(j => {
                 const name = typeof j === 'object' ? (j.name || j.jamiaName) : j;
-                if (name) jamiaSet.add(String(name).trim()); 
+                if (name) {
+                    let jNameStr = String(name).trim();
+                    let mData = masterJamiaDict[jNameStr.toLowerCase()];
+                    if (!mData) {
+                        let foundKey = Object.keys(masterJamiaDict).find(k => k === jNameStr.toLowerCase() || k.replace(/\s+/g, '') === jNameStr.toLowerCase().replace(/\s+/g, ''));
+                        if (foundKey) mData = masterJamiaDict[foundKey];
+                    }
+                    
+                    let jState = mData ? formatState(mData.state) : (u.state ? formatState(u.state) : '');
+                    
+                    // State Filter Check
+                    if (selState === "all" || jState === selState) {
+                        jamiaSet.add(jNameStr);
+                    }
+                }
             });
         });
 
@@ -354,6 +394,15 @@ export async function initAdminResultAnalysis(db, containerId) {
             if(delJamiaSelect) delJamiaSelect.innerHTML += `<option value="${j}">${j}</option>`;
         });
     };
+
+    // Events for Cascading Dropdowns
+    if (elements.stateFilter) {
+        elements.stateFilter.onchange = () => {
+            elements.regionFilter.value = 'all';
+            elements.userFilter.value = 'all';
+            updateJamiaList();
+        };
+    }
 
     if (elements.regionFilter) {
         elements.regionFilter.onchange = () => {
@@ -373,6 +422,8 @@ export async function initAdminResultAnalysis(db, containerId) {
         showBtn.onclick = async () => {
             const examType = document.getElementById("admin-exam-type").value;
             const examYear = document.getElementById("admin-exam-year").value;
+            
+            const selState = elements.stateFilter ? elements.stateFilter.value : 'all';
             const selRegion = elements.regionFilter.value;
             const selUser = elements.userFilter.value;
             const selJamia = elements.jamiaSelect.value.toLowerCase();
@@ -404,7 +455,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                     if (layout === 'ibtidaiya') d.jamiaName = context.display;
                     else d.jamia = context.display;
 
-                    if ((selRegion === "all" || context.region === selRegion) && 
+                    // Filtering Logic Check (State added)
+                    if ((selState === "all" || context.state === selState) &&
+                        (selRegion === "all" || context.region === selRegion) && 
                         (selUser === "all" || context.userName === selUser) && 
                         (selJamia === "all" || context.english.toLowerCase().includes(selJamia) || context.display.toLowerCase().includes(selJamia) || currentJamia.toLowerCase().includes(selJamia))) {
                         
@@ -447,9 +500,10 @@ export async function initAdminResultAnalysis(db, containerId) {
         view.innerHTML = "";
         const num = (v) => parseInt(v) || 0;
 
-        if (type === 'region-wise' || type === 'user-wise') {
+        if (type === 'state-wise' || type === 'region-wise' || type === 'user-wise') {
             let stats = {};
-            const keyField = type === 'region-wise' ? 'region' : 'userName';
+            const keyField = type === 'state-wise' ? 'state' : (type === 'region-wise' ? 'region' : 'userName');
+            
             data.forEach(d => {
                 const key = d[keyField] || 'Unknown';
                 if (!stats[key]) stats[key] = { h: 0, p: 0 };
@@ -500,7 +554,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (sr === 1) tbody.innerHTML = `<tr><td colspan="19" class="p-10 text-center text-red-500 font-bold urdu-font text-lg">کوئی ریکارڈ نہیں ملا</td></tr>`;
         }
         else if (layout === 'jamia') {
-            // 🌟 NAYA: Ghaib (غیر حاضر) aur Nakam (ناکام) columns ka izafa 
             thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border bg-blue-50 text-blue-800">حاضر</th><th class="p-2 border bg-gray-100 text-gray-700">غیر حاضر</th><th class="p-2 border bg-green-50 text-green-700">کامیاب</th><th class="p-2 border bg-red-50 text-red-700">ناکام</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
             let jamiaStats = {}; let grandTotalStudents = 0; let grandTotalHazir = 0; let grandTotalGhaib = 0; let grandTotalPass = 0; let grandTotalNakam = 0;
             data.forEach(d => {
@@ -524,7 +577,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 grandTotalNakam += n;
             });
             Object.entries(jamiaStats).map(([name, s]) => ({ name, s, per: s.h ? (s.p / s.h) * 100 : 0 })).sort((a, b) => b.per - a.per).forEach((item, i) => {
-                // 🌟 NAYA: Display values updated with the new variables
                 tbody.innerHTML += `<tr>
                     <td class="p-2 border">${i + 1}</td>
                     <td class="p-2 border font-bold">${item.s.region}</td>
@@ -540,7 +592,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 </tr>`;
             });
             const grandPer = grandTotalHazir ? (grandTotalPass / grandTotalHazir) * 100 : 0;
-            // 🌟 NAYA: Foot display updated
             tfoot.innerHTML = `<tr class="bg-gray-800 text-white font-bold text-center">
                 <td colspan="4" class="p-3 border text-right urdu-font text-lg pr-5">کل میزان (Total):</td>
                 <td class="p-3 border text-indigo-300 text-lg">${grandTotalStudents}</td>
@@ -553,7 +604,6 @@ export async function initAdminResultAnalysis(db, containerId) {
             </tr>`;
         } 
         else if (layout === 'class') {
-            // 🌟 NAYA: Ghaib (غیر حاضر) aur Nakam (ناکام) columns ka izafa
             thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">درجہ</th><th class="p-2 border">کل طلباء</th><th class="p-2 border bg-blue-50 text-blue-800">حاضر</th><th class="p-2 border bg-gray-100 text-gray-700">غیر حاضر</th><th class="p-2 border bg-green-50 text-green-700">کامیاب</th><th class="p-2 border bg-red-50 text-red-700">ناکام</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th>`;
             data.forEach((d, i) => {
                 const t = num(d.total);
@@ -563,7 +613,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const p = num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool);
                 const per = h ? (p / h) * 100 : 0;
                 
-                // 🌟 NAYA: Rows updated
                 tbody.innerHTML += `<tr>
                     <td class="p-2 border">${i + 1}</td>
                     <td class="p-2 border font-bold">${d.region || '-'}</td>
@@ -755,7 +804,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                         let isGhaib = true; 
                         let isNakam = false;
-                        let hasAnyGhaib = false; // 🌟 NAYA: Check if ANY single subject has 'غ'
+                        let hasAnyGhaib = false; 
                         
                         config.keys.forEach(mapNum => {
                             let resColIdx = resColMap[mapNum];
@@ -776,7 +825,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent' || cellStr === '';
                             let isTextNakam = cellStr === 'ناکام' || cellLower === 'fail' || cellLower === 'f';
                             
-                            // 🌟 NAYA LOGIC: Agar student kisi bhi subject me directly 'غ' ya absent hai
                             if (cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent') {
                                 hasAnyGhaib = true;
                             }
@@ -795,7 +843,6 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                         });
                         
-                        // 🌟 NAYA LOGIC APPLIED: Agar 'hasAnyGhaib' true hai, to directly ghaib me dalo (Class & Jamia report ke liye)
                         if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || isGhaib || hasAnyGhaib) { 
                             multiJamiaClassData[jamiaName][cName].ghaib++; 
                         } else {
