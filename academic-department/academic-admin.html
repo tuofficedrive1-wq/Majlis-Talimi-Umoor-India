@@ -283,12 +283,14 @@
 
         <main class="flex-1 overflow-y-auto p-4 md:p-6">
             <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200 mb-6 animate-hubFadeUp flex flex-wrap gap-3 items-center">
-                <select id="master-filter-state" class="p-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-teal-500 font-semibold text-gray-700 min-w-[130px]">
-                    <option value="all">All States</option>
-                </select>
+                
                 
                 <select id="master-filter-region" class="p-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-teal-500 font-semibold text-gray-700 min-w-[130px]">
                     <option value="all">All Regions</option>
+                </select>
+                
+                <select id="master-filter-state" class="p-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-teal-500 font-semibold text-gray-700 min-w-[130px]">
+                    <option value="all">All States</option>
                 </select>
                 
                 <select id="master-filter-user" class="p-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-teal-500 font-semibold text-gray-700 min-w-[150px]">
@@ -760,6 +762,13 @@
     let currentId = null;
     let tempJamias = [];
     let masterJamiaat = []; 
+    // jamiaat_master (admin.html wali master list) se State/Region/Name ko ek jaisa banata hai
+    const normKey = (v) => String(v || '').trim().toUpperCase();
+    const findMasterJamia = (name) => {
+        const k = normKey(typeof name === 'object' && name ? (name.name || name.jamiaName) : name).replace(/\s+/g, ' ');
+        if (!k) return null;
+        return (masterJamiaat || []).find(m => normKey(m.jamiaName).replace(/\s+/g, ' ') === k) || null;
+    };
     let currentTargetDocId = "global_targets"; 
     let hasFetchedReports = false; 
     let isFetchingReports = false; 
@@ -1548,7 +1557,10 @@
 
     const initMasterSystem = () => {
         onSnapshot(jamiaDirectoryRef, (snap) => {
-            masterJamiaat = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            masterJamiaat = snap.docs.map(doc => {
+                const d = doc.data();
+                return { id: doc.id, ...d, jamiaName: d.jamiaName || d.name || '', state: normKey(d.state), region: normKey(d.region) };
+            });
             renderMasterJamiaat();
             renderPendingJamiaat();
             if (window.populateMasterFilters) window.populateMasterFilters();
@@ -1610,7 +1622,7 @@
                 if (ins.jamiaatList && Array.isArray(ins.jamiaatList)) {
                     ins.jamiaatList.forEach(jamia => {
                         const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
-                        const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jName);
+                        const mJamia = findMasterJamia(jName);
                         if (selState !== 'all' && (!mJamia || mJamia.state !== selState)) return;
                         if (selRegion !== 'all' && (!mJamia || mJamia.region !== selRegion)) return;
 
@@ -1749,7 +1761,7 @@
             if (!ins.jamiaatList || !Array.isArray(ins.jamiaatList)) return;
             ins.jamiaatList.forEach(jamia => {
                 const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
-                const mJamia = (masterJamiaat || []).find(m => m.jamiaName === jName);
+                const mJamia = findMasterJamia(jName);
                 const region = (mJamia && mJamia.region) ? mJamia.region : 'Unassigned';
 
                 if (!regionStats[region]) regionStats[region] = { total: 0, submitted: 0 };
@@ -1970,7 +1982,7 @@
                 if (!ins.jamiaatList || ins.jamiaatList.length === 0) return false;
                 return ins.jamiaatList.some(jamia => {
                     const jName = typeof jamia === 'object' ? (jamia.name || jamia.jamiaName) : jamia;
-                    const matchJamia = jamiaList.find(m => m.jamiaName === jName);
+                    const matchJamia = findMasterJamia(jName);
                     if (!matchJamia) return false;
                     let matchesRegion = (activeRegion === 'all' || matchJamia.region === activeRegion);
                     let matchesState = (activeState === 'all' || matchJamia.state === activeState);
