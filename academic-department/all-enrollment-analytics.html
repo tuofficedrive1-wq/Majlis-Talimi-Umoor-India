@@ -134,6 +134,8 @@
                 </div>
             </div>
 
+            <div id="state-missing-note" class="hidden mb-6 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-xs leading-relaxed"></div>
+
             <!-- Data Table -->
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-3">
@@ -213,19 +215,45 @@
 
                 // State/Region ka source: jamiaat_master (admin.html wali Master Jamiaat Directory)
                 const norm = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, ' ');
-                const masterByName = {};
+                const loose = (v) => norm(v).replace(/[^A-Z0-9\u0600-\u06FF]/g, ''); // space/punctuation ka farq ignore
+                const masterByKey = {}, masterById = {}, masterList = [];
                 try {
                     const masterSnap = await getDocs(collection(db, "jamiaat_master"));
                     masterSnap.forEach(d => {
                         const m = d.data();
-                        const key = norm(m.jamiaName || m.name);
-                        if (key) masterByName[key] = { state: norm(m.state), region: norm(m.region) };
+                        const info = { state: norm(m.state), region: norm(m.region) };
+                        masterById[d.id] = info;
+                        [m.name, m.jamiaName, m.urduName].forEach(n => {
+                            if (!n) return;
+                            masterByKey[norm(n)] = info;
+                            masterByKey[loose(n)] = info;
+                            masterList.push({ key: loose(n), info });
+                        });
                     });
                 } catch (e) { console.error("jamiaat_master load error:", e); }
 
+                // User ki jamiaatList se jamia ka id (name -> id), taake id se master dhoondh sakein
+                const idByUserJamia = {};
+                Object.entries(usersMap).forEach(([uid, u]) => {
+                    (u.jamiaatList || []).forEach(j => {
+                        if (j && typeof j === 'object' && j.id) idByUserJamia[loose(j.name || j.jamiaName)] = j.id;
+                    });
+                });
+
+                const findMaster = (name) => {
+                    if (!name) return null;
+                    const k = loose(name);
+                    return masterByKey[norm(name)] || masterByKey[k]
+                        || (idByUserJamia[k] && masterById[idByUserJamia[k]])
+                        || (masterList.find(x => k.length > 5 && x.key.length > 5 && (x.key.includes(k) || k.includes(x.key))) || {}).info
+                        || null;
+                };
+
+                const unmatched = new Set();
                 masterData = records.map(r => {
                     const inspector = usersMap[r.inspectorId] || {};
-                    const m = masterByName[norm(r.jamiaName)] || {};
+                    const m = findMaster(r.jamiaName) || {};
+                    if (r.jamiaName && !m.state) unmatched.add(r.jamiaName);
                     
                     return {
                         ...r,
@@ -238,6 +266,17 @@
                         medium: r.medium || '—'
                     };
                 });
+
+                // Jo jamia master list mein state ke saath nahi mili, unki list dikhayein
+                const note = document.getElementById('state-missing-note');
+                if (note) {
+                    if (unmatched.size) {
+                        note.innerHTML = '<b>Master list mein State nahi mili:</b> ' + [...unmatched].sort().join(', ') +
+                            '<br>Admin &rarr; Master Jamiaat Directory mein in jamiaat ka naam aur State check karein.';
+                        note.classList.remove('hidden');
+                    } else note.classList.add('hidden');
+                }
+                if (unmatched.size) console.warn("State missing for:", [...unmatched]);
 
                 filteredData = masterData;
                 populateDropdowns(masterData);
