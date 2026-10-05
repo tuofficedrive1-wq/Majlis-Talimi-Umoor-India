@@ -211,13 +211,26 @@
                     usersMap[d.id] = d.data();
                 });
 
+                // State/Region ka source: jamiaat_master (admin.html wali Master Jamiaat Directory)
+                const norm = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, ' ');
+                const masterByName = {};
+                try {
+                    const masterSnap = await getDocs(collection(db, "jamiaat_master"));
+                    masterSnap.forEach(d => {
+                        const m = d.data();
+                        const key = norm(m.jamiaName || m.name);
+                        if (key) masterByName[key] = { state: norm(m.state), region: norm(m.region) };
+                    });
+                } catch (e) { console.error("jamiaat_master load error:", e); }
+
                 masterData = records.map(r => {
                     const inspector = usersMap[r.inspectorId] || {};
+                    const m = masterByName[norm(r.jamiaName)] || {};
                     
                     return {
                         ...r,
-                        region: r.region || inspector.region || '—',
-                        state: r.state || inspector.state || '—',
+                        region: m.region || norm(r.region || inspector.region) || '—',
+                        state: m.state || norm(r.state || inspector.state) || '—',
                         jamiaName: r.jamiaName || '—',
                         jmClass: r.jmClass || '—', 
                         classDegree: r.classLevel || r.schoolClass || r.degree || '—', 
@@ -238,27 +251,37 @@
             }
         }
 
-        function populateDropdowns(data) {
-            const regions = [...new Set(data.map(item => item.region).filter(x => x && x !== '—'))].sort();
-            const states = [...new Set(data.map(item => item.state).filter(x => x && x !== '—'))].sort();
-            const jamias = [...new Set(data.map(item => item.jamiaName).filter(x => x && x !== '—'))].sort();
+        const uniq = (arr) => [...new Set(arr.filter(x => x && x !== '—'))].sort();
+        const fillSelect = (id, label, values, selected) => {
+            const el = document.getElementById(id);
+            el.innerHTML = `<option value="">${label}</option>` + values.map(v => `<option value="${v}">${v}</option>`).join('');
+            el.value = selected || '';
+        };
 
-            document.getElementById('filter-region').innerHTML = '<option value="">All Regions</option>' + regions.map(r => `<option value="${r}">${r}</option>`).join('');
-            document.getElementById('filter-state').innerHTML = '<option value="">All States</option>' + states.map(s => `<option value="${s}">${s}</option>`).join('');
-            document.getElementById('filter-jamia').innerHTML = '<option value="">All Jamias</option>' + jamias.map(j => `<option value="${j}">${j}</option>`).join('');
+        function populateDropdowns(data) {
+            fillSelect('filter-region', 'All Regions', uniq(data.map(i => i.region)), '');
+            fillSelect('filter-state', 'All States', uniq(data.map(i => i.state)), '');
+            fillSelect('filter-jamia', 'All Jamias', uniq(data.map(i => i.jamiaName)), '');
         }
 
+        // Region -> State -> Jamia: har dropdown apne se pehle wale ke hisab se limit hota hai
         window.applyFilters = function() {
             const reg = document.getElementById('filter-region').value;
-            const st = document.getElementById('filter-state').value;
-            const jm = document.getElementById('filter-jamia').value;
+            let st = document.getElementById('filter-state').value;
+            let jm = document.getElementById('filter-jamia').value;
 
-            filteredData = masterData.filter(item => {
-                return (!reg || item.region === reg) &&
-                       (!st || item.state === st) &&
-                       (!jm || item.jamiaName === jm);
-            });
+            const byRegion = masterData.filter(i => !reg || i.region === reg);
+            const states = uniq(byRegion.map(i => i.state));
+            if (st && !states.includes(st)) st = '';
 
+            const byState = byRegion.filter(i => !st || i.state === st);
+            const jamias = uniq(byState.map(i => i.jamiaName));
+            if (jm && !jamias.includes(jm)) jm = '';
+
+            fillSelect('filter-state', 'All States', states, st);
+            fillSelect('filter-jamia', 'All Jamias', jamias, jm);
+
+            filteredData = byState.filter(i => !jm || i.jamiaName === jm);
             renderTable(filteredData);
         }
 
