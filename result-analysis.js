@@ -268,22 +268,25 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             const snapshot = await getDocs(q);
             let latestDataMap = new Map();
 
-            snapshot.forEach(docSnap => {
-                const d = docSnap.data();
-                d.docId = docSnap.id;
+                snapshot.forEach(docSnap => {
+    const d = docSnap.data();
+    d.docId = docSnap.id;
 
-                if (userJamiaatNames.includes(d.jamia) && (!jamiaFilter || d.jamia === jamiaFilter)) {
-                    if (!d.uid || d.uid === user.uid) { 
-                        let uniqueKey = layoutLevel === 'teacher' 
-                            ? `${d.jamia}_${d.teacher}_${d.subject}_${d.darjah}` 
-                            : `${d.jamia}_${d.darjah}`;
+    if (!userJamiaatNames.includes(d.jamia)) return;
+    if (jamiaFilter && d.jamia !== jamiaFilter) return;
+    if (d.uid && d.uid !== user.uid) return;
 
-                        if (!latestDataMap.has(uniqueKey)) {
-                            latestDataMap.set(uniqueKey, d);
-                        }
-                    }
-                }
-            });
+    let uniqueKey;
+    if (layoutLevel === 'teacher' || layoutLevel === 'wazahat') {
+        // asatiza_wise_results: khali docs skip, har jamia ka sabse naya bhara hua doc
+        if (!Array.isArray(d.data) || d.data.length === 0) return;
+        uniqueKey = d.jamia;
+    } else {
+        uniqueKey = `${d.jamia}_${d.darjah}`;
+    }
+
+    if (!latestDataMap.has(uniqueKey)) latestDataMap.set(uniqueKey, d);
+});
 
             let rowsHtml = "";
             let totals = { kul: 0, hazir: 0, passed: 0, zimni: 0, nakam: 0 };
