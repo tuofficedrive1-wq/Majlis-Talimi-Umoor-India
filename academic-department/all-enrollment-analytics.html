@@ -186,6 +186,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -196,6 +197,12 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
+        // Same site par pehle se login session ho to wahi use hoga (jamiaat_master padhne ke liye zaroori ho sakta hai)
+        const authReady = new Promise(res => {
+            const un = onAuthStateChanged(auth, u => { un(); res(u); });
+            setTimeout(() => res(auth.currentUser), 4000);
+        });
 
         let masterData = [];
         let filteredData = [];
@@ -217,20 +224,30 @@
                 const norm = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, ' ');
                 const loose = (v) => norm(v).replace(/[^A-Z0-9\u0600-\u06FF]/g, ''); // space/punctuation ka farq ignore
                 const masterByKey = {}, masterById = {}, masterList = [];
+                let masterError = '', masterDocs = 0, masterWithState = 0;
+                const loggedIn = await authReady;
                 try {
                     const masterSnap = await getDocs(collection(db, "jamiaat_master"));
                     masterSnap.forEach(d => {
                         const m = d.data();
-                        const info = { state: norm(m.state), region: norm(m.region) };
+                        masterDocs++;
+                        // State kisi bhi common field naam mein ho sakti hai
+                        const stRaw = m.state ?? m.State ?? m.stateName ?? m.riyasat ?? m.province ?? '';
+                        const rgRaw = m.region ?? m.Region ?? m.ilaqa ?? '';
+                        const info = { state: norm(stRaw), region: norm(rgRaw) };
+                        if (info.state) masterWithState++;
                         masterById[d.id] = info;
-                        [m.name, m.jamiaName, m.urduName].forEach(n => {
+                        [m.name, m.jamiaName, m.urduName, m.englishName].forEach(n => {
                             if (!n) return;
                             masterByKey[norm(n)] = info;
                             masterByKey[loose(n)] = info;
                             masterList.push({ key: loose(n), info });
                         });
                     });
-                } catch (e) { console.error("jamiaat_master load error:", e); }
+                } catch (e) {
+                    console.error("jamiaat_master load error:", e);
+                    masterError = (e && (e.code || e.message)) || String(e);
+                }
 
                 // User ki jamiaatList se jamia ka id (name -> id), taake id se master dhoondh sakein
                 const idByUserJamia = {};
@@ -270,11 +287,18 @@
                 // Jo jamia master list mein state ke saath nahi mili, unki list dikhayein
                 const note = document.getElementById('state-missing-note');
                 if (note) {
-                    if (unmatched.size) {
-                        note.innerHTML = '<b>Master list mein State nahi mili:</b> ' + [...unmatched].sort().join(', ') +
-                            '<br>Admin &rarr; Master Jamiaat Directory mein in jamiaat ka naam aur State check karein.';
-                        note.classList.remove('hidden');
-                    } else note.classList.add('hidden');
+                    let msg = '';
+                    if (masterError) {
+                        msg = '<b>Master list load nahi hui:</b> ' + masterError +
+                            (/permission/i.test(masterError) ? '<br>Pehle Academic Admin mein login karein (usi browser mein), phir ye page refresh karein. Phir bhi aaye to Firestore rules mein <code>jamiaat_master</code> ki read permission check karein.' : '');
+                    } else if (!masterDocs) {
+                        msg = '<b>jamiaat_master khali hai</b> (0 documents mile).';
+                    } else if (unmatched.size) {
+                        msg = '<b>Master list mein State nahi mili:</b> ' + [...unmatched].sort().join(', ') +
+                            '<br>Master mein ' + masterDocs + ' jamiaat hain, jin mein se ' + masterWithState + ' ki State set hai. Admin &rarr; Master Jamiaat Directory mein in jamiaat ka naam aur State check karein.';
+                    }
+                    if (msg) { note.innerHTML = msg + (loggedIn ? '' : '<br><i>(Is page par login session nahi mila.)</i>'); note.classList.remove('hidden'); }
+                    else note.classList.add('hidden');
                 }
                 if (unmatched.size) console.warn("State missing for:", [...unmatched]);
 
