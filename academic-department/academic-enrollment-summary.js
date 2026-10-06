@@ -26,12 +26,24 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
             });
         }
 
+        // State: jamiaat_master (admin.html wali master list) se jamia ke naam ke hisab se
+        try {
+            const nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9\u0600-\u06FF]/g, '');
+            const stateByName = {};
+            (await getDocs(collection(db, "jamiaat_master"))).forEach(d => {
+                const m = d.data(), st = String(m.state || '').trim().toUpperCase();
+                [m.name, m.jamiaName, m.urduName].forEach(n => { if (n && st) stateByName[nk(n)] = st; });
+            });
+            _allRecords.forEach(r => { r._state = stateByName[nk(r.jamiaName)] || String(r.state || '').trim().toUpperCase() || ''; });
+        } catch (e) { console.warn("jamiaat_master load nahi hui:", e); }
+
         if (_allRecords.length === 0) {
             container.innerHTML = '<div class="p-8 text-center text-slate-400 font-medium">Abhi tak kisi Jamia ka koi student data submit nahi hua.</div>';
             return;
         }
 
         const uniqueJamias = [...new Set(_allRecords.map(r => r.jamiaName).filter(Boolean))].sort();
+        const uniqueStates = [...new Set(_allRecords.map(r => r._state).filter(Boolean))].sort();
         const uniqueClasses = [...new Set(_allRecords.map(r => r.jmClass).filter(Boolean))].sort();
         const uniqueAdmissions = [...new Set(_allRecords.map(r => r.admissionType).filter(Boolean))].sort();
         const totalTotal = _allRecords.length;
@@ -62,7 +74,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
         </div>
         <!-- Filters & Search Section -->
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div>
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Student Search</label>
             <div class="relative">
@@ -70,6 +82,13 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                 <input type="text" id="filter-search" onkeyup="window.applyEnrollmentFilters()" placeholder="Student ka naam type karein..." 
                     class="w-full pl-9 p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
             </div>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">State Filter</label>
+            <select id="filter-state" onchange="window.applyEnrollmentFilters()" class="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none">
+                <option value="">All States</option>
+                ${uniqueStates.map(st => `<option value="${st}">${st}</option>`).join('')}
+            </select>
         </div>
         <div>
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Jamia Filter</label>
@@ -112,6 +131,7 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
                 <table class="w-full text-left border-collapse whitespace-nowrap">
                     <thead class="sticky top-0 bg-slate-100 shadow-sm z-10">
                         <tr class="text-slate-600 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                            <th class="p-3">State</th>
                             <th class="p-3">Jamia</th>
                             <th class="p-3">Student Name</th>
                             <th class="p-3">Father's Name</th>
@@ -166,7 +186,7 @@ window.renderEnrollmentTableRows = (records) => {
     if(countEl) countEl.textContent = records.length;
 
     if (records.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="p-8 text-center text-slate-400 font-medium">Koi record nahi mila.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="p-8 text-center text-slate-400 font-medium">Koi record nahi mila.</td></tr>';
         return;
     }
 
@@ -181,6 +201,7 @@ window.renderEnrollmentTableRows = (records) => {
 
         html += `
             <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-3 font-semibold text-slate-500 text-xs">${escapeHtml(r._state || '—')}</td>
                 <td class="p-3 font-semibold text-slate-700">${escapeHtml(r.jamiaName || '—')}</td>
                 <td class="p-3 font-bold text-indigo-700">${escapeHtml(r.studentName || '—')}</td>
                 <td class="p-3">${escapeHtml(r.fatherName || '—')}</td>
@@ -201,16 +222,25 @@ window.renderEnrollmentTableRows = (records) => {
 
 window.applyEnrollmentFilters = () => {
     const searchTerm = document.getElementById('filter-search').value.toLowerCase();
-    const jamiaFilter = document.getElementById('filter-jamia').value;
+    const stateFilter = document.getElementById('filter-state')?.value || '';
+    let jamiaFilter = document.getElementById('filter-jamia').value;
     const classFilter = document.getElementById('filter-class').value;
     const admFilter = document.getElementById('filter-adm').value;
 
+    // State chunne par Jamia ki list sirf usi state ki jamiaat tak limit ho jati hai
+    const jamiaSel = document.getElementById('filter-jamia');
+    const jamiaInState = [...new Set(_allRecords.filter(r => !stateFilter || r._state === stateFilter).map(r => r.jamiaName).filter(Boolean))].sort();
+    if (jamiaFilter && !jamiaInState.includes(jamiaFilter)) jamiaFilter = '';
+    jamiaSel.innerHTML = '<option value="">All Jamiaat</option>' + jamiaInState.map(j => `<option value="${escapeHtml(j)}">${escapeHtml(j)}</option>`).join('');
+    jamiaSel.value = jamiaFilter;
+
     const filtered = _allRecords.filter(r => {
         const matchesSearch = (r.studentName || '').toLowerCase().includes(searchTerm) || (r.fatherName || '').toLowerCase().includes(searchTerm);
+        const matchesState = stateFilter === "" || r._state === stateFilter;
         const matchesJamia = jamiaFilter === "" || r.jamiaName === jamiaFilter;
         const matchesClass = classFilter === "" || r.jmClass === classFilter;
         const matchesAdm = admFilter === "" || r.admissionType === admFilter;
-        return matchesSearch && matchesJamia && matchesClass && matchesAdm;
+        return matchesSearch && matchesState && matchesJamia && matchesClass && matchesAdm;
     });
 
     window._currentFilteredRecords = filtered; 
@@ -230,6 +260,7 @@ window.downloadEnrollmentCSV = () => {
     
     const headers = [
         "Sr.", 
+        "State", 
         "Jamia", 
         "Student's Name", 
         "Father's Name", 
@@ -271,6 +302,7 @@ window.downloadEnrollmentCSV = () => {
         
         return [
             index + 1,
+            escapeCSV(e._state),
             escapeCSV(e.jamiaName),
             escapeCSV(e.studentName),
             escapeCSV(e.fatherName),
