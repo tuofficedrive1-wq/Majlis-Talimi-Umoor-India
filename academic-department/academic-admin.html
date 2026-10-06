@@ -257,6 +257,7 @@
                 <div class="space-y-1">
                    <button class="tab-btn" data-tab="inspectors"><i class="fas fa-user-tie"></i> Manage Inspectors</button>
                     <button class="tab-btn" data-tab="jamia-directory"><i class="fas fa-building"></i> Jamia Directory</button>
+                    <button class="tab-btn" data-tab="master-jamiaat"><i class="fas fa-table-list"></i> Master Jamiaat</button>
                     <button class="tab-btn" data-tab="teacher-details"><i class="fas fa-chalkboard-user"></i> Teacher Detail</button>
                 </div>
             </div>
@@ -455,6 +456,39 @@
                             </thead>
                             <tbody id="teacher-list-body" class="divide-y text-sm text-gray-700">
                             </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-master-jamiaat" class="tab-content hidden">
+                <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+                    <div class="p-4 bg-gray-50 border-b flex flex-wrap gap-3 justify-between items-center">
+                        <div>
+                            <h2 class="font-bold text-gray-700"><i class="fas fa-building text-teal-600 mr-2"></i>Master Jamiaat Directory</h2>
+                            <p class="text-xs text-gray-500 mt-0.5">Admin panel ki master list (read-only). State/Region yahin se sab filters mein aati hai. <span id="mj-count" class="font-bold text-teal-700"></span></p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <input type="text" id="mj-search" placeholder="Search jamia / user..." class="border rounded-lg px-3 py-2 text-sm">
+                            <select id="mj-region" class="border rounded-lg px-3 py-2 text-sm bg-white"><option value="">All Regions</option></select>
+                            <select id="mj-state" class="border rounded-lg px-3 py-2 text-sm bg-white"><option value="">All States</option></select>
+                            <button id="mj-refresh" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
+                            <button id="mj-csv" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold"><i class="fas fa-file-csv mr-1"></i> CSV</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="text-[11px] font-bold uppercase border-b sticky top-0">
+                                <tr>
+                                    <th class="px-3 py-3 text-center w-10">Sr</th>
+                                    <th class="px-3 py-3">Region</th>
+                                    <th class="px-3 py-3">State</th>
+                                    <th class="px-3 py-3">Jamia (English)</th>
+                                    <th class="px-3 py-3 text-right">Jamia (Urdu)</th>
+                                    <th class="px-3 py-3 min-w-[220px]">Assigned Roles &amp; Users</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mj-tbody" class="divide-y"><tr><td colspan="6" class="p-6 text-center text-gray-400">Tab khulne par load hoga...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -1048,6 +1082,100 @@
         }
     };
 
+    // ===== Master Jamiaat tab (admin.html wali master list ka read-only view) =====
+    let mjUsers = null;
+    const mjEsc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const mjLoose = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9\u0600-\u06FF]/g, '');
+    let mjRows = [];
+
+    async function mjLoadUsers(force) {
+        if (mjUsers && !force) return;
+        try {
+            const snap = await getDocs(collection(db, "users"));
+            mjUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+            console.warn("All users load nahi hue, sirf inspectors dikhaye:", e);
+            mjUsers = inspectors.slice();
+        }
+    }
+
+    function mjBuildRows() {
+        const map = new Map();
+        (masterJamiaat || []).forEach(m => {
+            const name = (m.jamiaName || '').trim();
+            if (!name) return;
+            map.set(mjLoose(name), { name, urdu: m.urduName || '', region: m.region || '', state: m.state || '', roles: {}, inMaster: true });
+        });
+        (mjUsers || []).forEach(u => {
+            if (u.role === 'admin') return;
+            const role = String(u.role || 'standard').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const uReg = String(u.region || '').trim().toUpperCase();
+            (u.jamiaatList || []).forEach(j => {
+                const jn = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                if (!jn || jn === 'undefined') return;
+                const k = mjLoose(jn);
+                let row = map.get(k);
+                if (!row) { row = { name: String(jn).trim(), urdu: '', region: '', state: '', roles: {}, inMaster: false }; map.set(k, row); }
+                if (!row.region && uReg) row.region = uReg;
+                (row.roles[role] = row.roles[role] || []);
+                const who = u.name || u.email || u.id;
+                if (!row.roles[role].includes(who)) row.roles[role].push(who);
+            });
+        });
+        mjRows = [...map.values()].sort((a, b) =>
+            (a.region || 'ZZZ').localeCompare(b.region || 'ZZZ') || (a.state || 'ZZZ').localeCompare(b.state || 'ZZZ') || a.name.localeCompare(b.name));
+    }
+
+    window.renderMasterJamiaatTable = function () {
+        const tbody = document.getElementById('mj-tbody');
+        if (!tbody) return;
+        mjBuildRows();
+        const rSel = document.getElementById('mj-region'), sSel = document.getElementById('mj-state');
+        let reg = rSel.value, st = sSel.value;
+        const q = document.getElementById('mj-search').value.trim().toLowerCase();
+        const uniq = a => [...new Set(a.filter(Boolean))].sort();
+        const fill = (el, label, vals, cur) => { el.innerHTML = `<option value="">${label}</option>` + vals.map(v => `<option value="${mjEsc(v)}">${mjEsc(v)}</option>`).join(''); el.value = vals.includes(cur) ? cur : ''; };
+        fill(rSel, 'All Regions', uniq(mjRows.map(r => r.region)), reg); reg = rSel.value;
+        fill(sSel, 'All States', uniq(mjRows.filter(r => !reg || r.region === reg).map(r => r.state)), st); st = sSel.value;
+
+        const rows = mjRows.filter(r => (!reg || r.region === reg) && (!st || r.state === st) &&
+            (!q || (r.name + ' ' + r.urdu + ' ' + Object.values(r.roles).flat().join(' ')).toLowerCase().includes(q)));
+        document.getElementById('mj-count').textContent = `(${rows.length} / ${mjRows.length} jamiaat)`;
+        window.__mjVisible = rows;
+        if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-gray-400">Koi jamia nahi mili.</td></tr>'; return; }
+        tbody.innerHTML = rows.map((r, i) => {
+            const roles = Object.keys(r.roles).sort((a, b) => a.toLowerCase() === 'standard' ? -1 : b.toLowerCase() === 'standard' ? 1 : a.localeCompare(b))
+                .map(role => `<div class="mb-1"><span class="px-2 py-0.5 rounded text-[9px] font-black uppercase border ${role.toLowerCase().includes('inspector') ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200'}">${mjEsc(role)}</span> <span class="text-xs text-gray-600">${r.roles[role].map(mjEsc).join(', ')}</span></div>`).join('') || '<span class="text-xs text-gray-400">—</span>';
+            return `<tr class="${r.inMaster ? '' : 'bg-amber-50'}">
+                <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+                <td class="px-3 py-2 font-semibold">${mjEsc(r.region) || '<span class="text-gray-400">—</span>'}</td>
+                <td class="px-3 py-2 font-semibold">${mjEsc(r.state) || '<span class="text-amber-600 text-xs">State set nahi</span>'}</td>
+                <td class="px-3 py-2 font-bold">${mjEsc(r.name)}${r.inMaster ? '' : ' <span class="text-[10px] text-amber-600">(master mein nahi)</span>'}</td>
+                <td class="px-3 py-2 text-right" dir="rtl" style="font-family:'Jameel Noori Nastaleeq','Noto Nastaliq Urdu',serif">${mjEsc(r.urdu)}</td>
+                <td class="px-3 py-2">${roles}</td></tr>`;
+        }).join('');
+    };
+
+    window.openMasterJamiaatTab = async (force) => {
+        await mjLoadUsers(force);
+        window.renderMasterJamiaatTable();
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        ['mj-region', 'mj-state'].forEach(id => document.getElementById(id)?.addEventListener('change', () => window.renderMasterJamiaatTable()));
+        document.getElementById('mj-search')?.addEventListener('input', () => window.renderMasterJamiaatTable());
+        document.getElementById('mj-refresh')?.addEventListener('click', () => window.openMasterJamiaatTab(true));
+        document.getElementById('mj-csv')?.addEventListener('click', () => {
+            const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+            const lines = [['Region', 'State', 'Jamia (English)', 'Jamia (Urdu)', 'Assigned Users'].map(q).join(',')];
+            (window.__mjVisible || []).forEach(r => lines.push([r.region, r.state, r.name, r.urdu,
+                Object.entries(r.roles).map(([k, v]) => k + ': ' + v.join(' / ')).join(' | ')].map(q).join(',')));
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }));
+            a.download = 'master-jamiaat.csv'; a.click();
+        });
+    });
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
@@ -1062,6 +1190,9 @@
 
             if(btn.dataset.tab === 'teacher-details') {
                 renderTeacherTable();
+            }
+            if(btn.dataset.tab === 'master-jamiaat') {
+                window.openMasterJamiaatTab();
             }
             if(btn.dataset.tab === 'report-hub') {
                 if (!hasFetchedReports && typeof fetchAndRenderAcademicReports === 'function') {
@@ -1563,6 +1694,7 @@
             });
             renderMasterJamiaat();
             renderPendingJamiaat();
+            if (mjUsers && document.getElementById('tab-master-jamiaat')?.classList.contains('block')) window.renderMasterJamiaatTable();
             if (window.populateMasterFilters) window.populateMasterFilters();
             const container = document.getElementById('monthly-targets-container');
             if (container && container.innerHTML.trim() !== "") {
