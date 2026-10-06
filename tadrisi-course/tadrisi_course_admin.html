@@ -1273,37 +1273,84 @@ window.toggleFormStatus = async () => {
             if (p.show_final && s.groupId) c.final = finalOf(s);
             return c;
         }
-       window.syncResultCards = async () => {
-    const list = entryList.filter(s => s.trackingCode);
-    if (!list.length) return showToast('Is year me koi student nahi', 'error');
-    
-    // Loading screen wale text element ko pakadna
+      window.syncResultCards = async () => {
+    // 1. Sirf un students ko filter karein jinke paas trackingCode hai AUR unme koi data (marks) fill hua hai
+    const list = entryList.filter(s => {
+        if (!s.trackingCode) return false;
+        const hasEntry = s.entryMarks != null || s.entryMarks2 != null;
+        const hasFinal = s.groupId && (s.marks_r1 || s.marks_r2 || s.marks_r3 || s.marks_r4 || s.grace_marks || s.final_remarks);
+        return hasEntry || hasFinal;
+    });
+
+    if (!list.length) return showToast('Update karne ke liye koi fill kiya hua naya data nahi hai', 'error');
+
     const loaderP = document.querySelector('#loader p');
     showLoader(true);
-    if(loaderP) loaderP.textContent = `0 / ${list.length} Cards Update ho rahe hain...`;
-    
+    if(loaderP) loaderP.textContent = 'Existing cards check ho rahe hain...';
+
     try {
+        const cardsToUpdate = [];
+
+        // 2. Database se check karein ke kya waqai data change hua hai (taake dobara same update na ho)
+        // Hum 50 students ka batch banakar check karenge taake speed tez rahe
+        for (let i = 0; i < list.length; i += 50) {
+            const chunk = list.slice(i, i + 50);
+            const promises = chunk.map(async (s) => {
+                const cId = cardId(s.trackingCode);
+                const newCard = buildCard(s);
+                
+                try {
+                    const snap = await getDoc(doc(db, 'tadrisi_result_cards', cId));
+                    let isChanged = true;
+                    
+                    if (snap.exists()) {
+                        const oldData = { ...snap.data(), updatedAt: null };
+                        const newData = { ...newCard, updatedAt: null };
+                        // Agar purana aur naya data same hai (updatedAt ko chor kar), to update skip kar dein
+                        if (JSON.stringify(oldData) === JSON.stringify(newData)) {
+                            isChanged = false;
+                        }
+                    }
+                    
+                    if (isChanged) {
+                        cardsToUpdate.push({ id: cId, data: newCard });
+                    }
+                } catch(err) {
+                    // Agar read fail ho (internet issue etc), to safe side pe update me daal dein
+                    cardsToUpdate.push({ id: cId, data: newCard });
+                }
+            });
+            await Promise.all(promises);
+        }
+
+        // Agar kisi bhi student ka data change nahi hua, to process yahin rok dein
+        if (cardsToUpdate.length === 0) {
+            showToast('Sabhi cards pehle se updated hain! Koi naya data nahi mila.');
+            showLoader(false);
+            return;
+        }
+
+        if(loaderP) loaderP.textContent = `0 / ${cardsToUpdate.length} Cards Update ho rahe hain...`;
+
         let done = 0;
-        // Batch size 40 se 20 kar diya taake large photos (Base64) ki wajah se process fail/hang na ho
         const BATCH_SIZE = 20; 
-        for (let i = 0; i < list.length; i += BATCH_SIZE) { 
+        for (let i = 0; i < cardsToUpdate.length; i += BATCH_SIZE) { 
             const b = writeBatch(db); 
-            const chunk = list.slice(i, i + BATCH_SIZE);
-            chunk.forEach(s => b.set(doc(db,'tadrisi_result_cards', cardId(s.trackingCode)), buildCard(s))); 
+            const chunk = cardsToUpdate.slice(i, i + BATCH_SIZE);
+            chunk.forEach(c => b.set(doc(db, 'tadrisi_result_cards', c.id), c.data)); 
             
-            await b.commit(); // Firebase par data save ho raha hai
+            await b.commit(); 
             
             done += chunk.length;
-            // Har 20 students ke baad screen par text update hoga
-            if(loaderP) loaderP.textContent = `${done} / ${list.length} Cards Update ho gaye...`;
+            if(loaderP) loaderP.textContent = `${done} / ${cardsToUpdate.length} Cards Update ho gaye...`;
         }
-        showToast(`${list.length} Result Cards kamyabi se update ho gaye!`);
+        showToast(`${cardsToUpdate.length} Naye/Changed Result Cards update ho gaye!`);
     } catch(e) { 
         console.error("Sync Error:", e); 
         showToast('Update fail! Firebase limit ya internet ka masla hai.', 'error'); 
     } finally { 
         showLoader(false); 
-        if(loaderP) loaderP.textContent = 'Loading...'; // Text ko wapas reset karna
+        if(loaderP) loaderP.textContent = 'Loading...'; 
     }
 };
         window.copyStudentLink = () => navigator.clipboard.writeText(new URL('student_result.html', location.href).href).then(() => showToast('Student link copied'));
