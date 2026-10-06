@@ -202,7 +202,7 @@
                         <div class="bg-gray-50 rounded-lg p-3 border"><div class="text-xs text-gray-500 font-bold">TOTAL</div><div id="ent-total" class="text-2xl font-bold">0</div></div>
                         <div class="bg-green-50 rounded-lg p-3 border border-green-200"><div class="text-xs text-green-700 font-bold">PASS</div><div id="ent-pass" class="text-2xl font-bold text-green-700">0</div></div>
                         <div class="bg-red-50 rounded-lg p-3 border border-red-200"><div class="text-xs text-red-700 font-bold">FAIL</div><div id="ent-fail" class="text-2xl font-bold text-red-700">0</div></div>
-                        <div class="bg-orange-50 rounded-lg p-3 border border-orange-200"><div class="text-xs text-orange-700 font-bold">TEST 2 BAQI</div><div id="ent-retake" class="text-2xl font-bold text-orange-700">0</div></div>
+                        <div class="bg-orange-50 rounded-lg p-3 border border-orange-200"><div class="text-xs text-orange-700 font-bold">ABSENT</div><div id="ent-absent" class="text-2xl font-bold text-orange-700">0</div></div>
                         <div class="bg-yellow-50 rounded-lg p-3 border border-yellow-200"><div class="text-xs text-yellow-700 font-bold">PENDING</div><div id="ent-pending" class="text-2xl font-bold text-yellow-700">0</div></div>
                     </div>
                     <div class="flex flex-wrap gap-3 mb-4">
@@ -1172,24 +1172,38 @@ window.toggleFormStatus = async () => {
         const PUBS = {show_entry1:'Entry Test 1', show_entry2:'Entry Test 2', show_final:'Tadrisi Final Test'};
         const escH = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-        // Har test ka result khud se mukammal/final banta hai, dusre test se uska koi talluq nahi.
-        // Test 1 abhi bhi "chal raha" hai (cfg.round===1) to fail bhi Test 1 ka hi final result hai -
-        // Test 2 ka box tabhi khulta hai jab admin khud round ko "2" par switch kare (Test 2 ki
-        // alag list banane wala qadam), sirf Test 2 ki date set karne se nahi.
+        // Logic Update: 'A' means Absent. Absent is treated as not passed (eligible for Test 2).
         function activeEntry(s, cfg = entCfg) {
             const m1 = s.entryMarks ?? null, m2 = s.entryMarks2 ?? null;
-            if (m1 !== null && m1 >= PASS_MARK) return {test:1, marks:m1, status:'pass'};
-            if (m2 !== null) return {test:2, marks:m2, status: m2 >= PASS_MARK ? 'pass' : 'fail'};
-            if (cfg.round === 2 && cfg.round2Date) return {test:2, marks:null, status:'pending'}; // admin ne Test 2 khud shuru kiya
-            return {test:1, marks:m1, status: m1 !== null ? 'fail' : 'pending'}; // warna Test 1 ka hi result final hai
+            
+            // Agar Test 1 mein pass hai, to Test 1 hi final hai (chahe round 2 chal raha ho)
+            if (m1 !== null && m1 !== 'A' && Number(m1) >= PASS_MARK) return {test:1, marks:m1, status:'pass'};
+            
+            // Agar round 2 chal raha hai aur Test 1 mein pass nahi hai (Fail ya Absent)
+            if (cfg.round === 2) {
+                 if (m2 !== null) {
+                     if (m2 === 'A') return {test:2, marks:'A', status:'absent'};
+                     return {test:2, marks:m2, status: Number(m2) >= PASS_MARK ? 'pass' : 'fail'};
+                 }
+                 return {test:2, marks:null, status:'pending'};
+            }
+            
+            // Round 1 chal raha hai
+            if (m1 !== null) {
+                if (m1 === 'A') return {test:1, marks:'A', status:'absent'};
+                return {test:1, marks:m1, status: Number(m1) >= PASS_MARK ? 'pass' : 'fail'};
+            }
+            
+            return {test:1, marks:null, status:'pending'};
         }
-        const bucketOf = s => { const ae = activeEntry(s); return ae.status !== 'pending' ? ae.status : (ae.test === 2 ? 'retake' : 'pending'); };
+        
+        const bucketOf = s => { const ae = activeEntry(s); return ae.status; };
+        
         const entBadge = (ae) => ae.status === 'pass' ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-700">Pass</span>'
             : ae.status === 'fail' ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-red-100 text-red-700">Fail</span>'
-            : ae.test === 2 ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-orange-100 text-orange-700">Test 2 Baqi</span>'
+            : ae.status === 'absent' ? '<span class="px-3 py-1 rounded-full text-sm font-bold bg-orange-100 text-orange-700">Absent</span>'
             : '<span class="px-3 py-1 rounded-full text-sm font-bold bg-gray-100 text-gray-500">Pending</span>';
-        // Doosre (ghair-active) test ka purana number, sirf reference ke liye - chhota link, is par click karke theek kiya ja sakta hai
-        const otherRef = (s, ae) => ae.test === 1 ? (s.entryMarks2 != null ? `T2: ${s.entryMarks2}` : null) : (s.entryMarks != null ? `T1: ${s.entryMarks}${s.entryMarks < PASS_MARK ? ' (Fail)' : ''}` : null);
+            
         const byLbl = s => [s.entryBy && 'T1: ' + (s.entryBy === 'admin' ? 'Admin' : 'Jamia'), s.entryBy2 && 'T2: ' + (s.entryBy2 === 'admin' ? 'Admin' : 'Jamia')].filter(Boolean).join(' · ') || '-';
 
         window.loadEntryTab = async () => {
@@ -1213,6 +1227,15 @@ window.toggleFormStatus = async () => {
                 fj.innerHTML = '<option value="all">All Jamiaat</option>' + entryJamias.map(j => `<option value="${escH(j)}">${escH(j)}</option>`).join('');
                 if (entryJamias.includes(cur)) fj.value = cur;
                 document.getElementById('entry-assign-group').innerHTML = '<option value="">-- Group --</option>' + allGroups.map(g => `<option value="${g.id}">${escH(g.groupName)}</option>`).join('');
+                
+                // Filter status dropdown update karna
+                const fst = document.getElementById('entry-filter-status');
+                if(fst) {
+                    const stVal = fst.value;
+                    fst.innerHTML = '<option value="all">All Status</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="absent">Absent</option><option value="pending">Pending</option>';
+                    fst.value = stVal || 'all';
+                }
+                
                 updateEntryBtn(); updatePubBtns(); renderJamiaCodes(); renderEntry();
             } catch(e) { console.error(e); showToast('Entry data load nahi hua', 'error'); } finally { showLoader(false); }
         };
@@ -1241,8 +1264,6 @@ window.toggleFormStatus = async () => {
             } catch(e) { showToast('Status update nahi hua', 'error'); }
         };
 
-        // ---------- Student result portal ----------
-        const cardId = c => String(c).trim().replace(/\//g, '-');
         function updatePubBtns() {
             Object.keys(PUBS).forEach(k => { const b = document.getElementById('pub-' + k), on = pubFlags[k] === true;
                 b.textContent = `${PUBS[k]}: ${on ? 'ON' : 'OFF'}`; b.className = `${on ? 'bg-green-600' : 'bg-gray-400'} text-white px-4 py-2 rounded-lg font-bold shadow-sm`; });
@@ -1254,6 +1275,7 @@ window.toggleFormStatus = async () => {
                 pubFlags[k] = n; updatePubBtns(); await syncResultCards();
             } catch(e) { showToast('Update nahi hua', 'error'); }
         };
+
         const finalOf = s => {
             const gm = (r, k) => Number(r && r[k]) || 0, gr = s.grace_marks || {};
             const sub = [1,2,3,4,5].map(i => [1,2,3,4].reduce((a, r) => a + gm(s['marks_r' + r], 'm' + i), 0) + (Number(gr['m' + i]) || 0));
@@ -1262,8 +1284,7 @@ window.toggleFormStatus = async () => {
             const quality = status !== 'pass' ? '' : pct >= 90 ? 'ممتاز' : pct >= 80 ? 'بہتر' : 'مناسب';
             return {subjects:sub, total, pct:Math.round(pct * 10) / 10, status, quality, remarks:String(s.final_remarks || '')};
         };
-        // Card me sirf EK hi entry-test result jata hai - jo test us student ke liye decisive/active hai,
-        // aur sirf tab jab admin ne usi test ka publish toggle ON kiya ho. Doosra test card me bilkul nahi aata.
+
         function buildCard(s) {
             const p = pubFlags, ae = activeEntry(s);
             const c = {code:s.trackingCode, academicYear:s.academicYear || window.currentAcademicYear, name:s.name || '', fatherName:s.fatherName || '', mobile:String(s.mobile || ''), jamia:s.jamia || '', photo:s.photoBase64 || '',
@@ -1273,108 +1294,9 @@ window.toggleFormStatus = async () => {
             if (p.show_final && s.groupId) c.final = finalOf(s);
             return c;
         }
-      window.syncResultCards = async () => {
-    // 1. Filter students with data
-    const list = entryList.filter(s => {
-        if (!s.trackingCode) return false;
-        const hasEntry = s.entryMarks != null || s.entryMarks2 != null;
-        const hasFinal = s.groupId && (s.marks_r1 || s.marks_r2 || s.marks_r3 || s.marks_r4 || s.grace_marks || s.final_remarks);
-        return hasEntry || hasFinal;
-    });
 
-    if (!list.length) return showToast('Update karne ke liye koi fill kiya hua data nahi hai', 'error');
-
-    const loaderP = document.querySelector('#loader p');
-    showLoader(true);
-    if(loaderP) loaderP.textContent = 'Existing cards check ho rahe hain...';
-
-    // Advanced Deep Compare Function: Ye ensure karega ke property ki tarteeb (order) ki wajah se mismatch na ho
-    const isDataEqual = (obj1, obj2) => {
-        if (obj1 === obj2) return true;
-        if (obj1 == null && obj2 == null) return true;
-        if (typeof obj1 !== 'object' || typeof obj2 !== 'object') return false;
-        if (obj1 == null || obj2 == null) return false;
-        
-        const keys1 = Object.keys(obj1).filter(k => k !== 'updatedAt' && obj1[k] !== undefined);
-        const keys2 = Object.keys(obj2).filter(k => k !== 'updatedAt' && obj2[k] !== undefined);
-        
-        const allKeys = new Set([...keys1, ...keys2]);
-        for (let key of allKeys) {
-            let v1 = obj1[key] === undefined ? null : obj1[key];
-            let v2 = obj2[key] === undefined ? null : obj2[key];
-            
-            if (typeof v1 === 'object' && typeof v2 === 'object') {
-                if (!isDataEqual(v1, v2)) return false;
-            } else if (v1 !== v2) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    try {
-        const cardsToUpdate = [];
-
-        // 2. Database se check karein (Sirf farq wale select honge)
-        for (let i = 0; i < list.length; i += 50) {
-            const chunk = list.slice(i, i + 50);
-            const promises = chunk.map(async (s) => {
-                const cId = cardId(s.trackingCode);
-                const newCard = buildCard(s);
-                
-                try {
-                    const snap = await getDoc(doc(db, 'tadrisi_result_cards', cId));
-                    let isChanged = true;
-                    
-                    if (snap.exists()) {
-                        // Data compare karna
-                        if (isDataEqual(snap.data(), newCard)) {
-                            isChanged = false; // Agar same hai to skip!
-                        }
-                    }
-                    
-                    if (isChanged) {
-                        cardsToUpdate.push({ id: cId, data: newCard });
-                    }
-                } catch(err) {
-                    cardsToUpdate.push({ id: cId, data: newCard });
-                }
-            });
-            await Promise.all(promises);
-        }
-
-        if (cardsToUpdate.length === 0) {
-            showToast('Sabhi cards pehle se updated hain! Koi naya change nahi mila.');
-            showLoader(false);
-            return;
-        }
-
-        if(loaderP) loaderP.textContent = `0 / ${cardsToUpdate.length} Cards Update ho rahe hain...`;
-
-        let done = 0;
-        const BATCH_SIZE = 20; 
-        for (let i = 0; i < cardsToUpdate.length; i += BATCH_SIZE) { 
-            const b = writeBatch(db); 
-            const chunk = cardsToUpdate.slice(i, i + BATCH_SIZE);
-            chunk.forEach(c => b.set(doc(db, 'tadrisi_result_cards', c.id), c.data)); 
-            
-            await b.commit(); 
-            
-            done += chunk.length;
-            if(loaderP) loaderP.textContent = `${done} / ${cardsToUpdate.length} Cards Update ho gaye...`;
-        }
-        showToast(`${cardsToUpdate.length} Cards kamyabi se update ho gaye!`);
-    } catch(e) { 
-        console.error("Sync Error:", e); 
-        showToast('Update fail! Firebase limit ya internet ka masla hai.', 'error'); 
-    } finally { 
-        showLoader(false); 
-        if(loaderP) loaderP.textContent = 'Loading...'; 
-    }
-};
         window.copyStudentLink = () => navigator.clipboard.writeText(new URL('student_result.html', location.href).href).then(() => showToast('Student link copied'));
 
-        // ---------- Jamia codes ----------
         function renderJamiaCodes() {
             const box = document.getElementById('jamia-codes-list');
             if (!entryJamias.length) { box.innerHTML = '<p class="text-gray-400">Is year me koi student nahi.</p>'; return; }
@@ -1405,65 +1327,93 @@ window.toggleFormStatus = async () => {
         window.copyJamiaCode = (i) => { const c = jamiaCodes[entryJamias[i]]; if (c) navigator.clipboard.writeText(c).then(() => showToast('Code copied')); };
         window.copyJamiaLoginLink = () => navigator.clipboard.writeText(new URL('entry_test_result.html', location.href).href).then(() => showToast('Jamia login link copied'));
 
-        // ---------- Result sheet (ek hi Marks column, jo test due hai wohi khulta hai) ----------
         function entStats() {
-            const j = document.getElementById('entry-filter-jamia').value, c = {pass:0, fail:0, retake:0, pending:0};
-            const l = entryList.filter(s => j === 'all' || s.jamia === j); l.forEach(s => c[bucketOf(s)]++);
+            const j = document.getElementById('entry-filter-jamia').value, c = {pass:0, fail:0, absent:0, pending:0};
+            // Test 1 me round 1 ke students total, Test 2 me fail/absent wale show honge + Test 1 pass (agar Test 1 Pass filter nahi laga)
+            let l = entryList;
+            if (entCfg.round === 2) {
+                // Test 2 filter: Sirf wo log aayenge jo Test 1 me fail ya absent the. (Pass walo ko yahan se hata dein taake total me na aayen)
+                 l = entryList.filter(s => {
+                     const m1 = s.entryMarks ?? null;
+                     return !(m1 !== null && m1 !== 'A' && Number(m1) >= PASS_MARK);
+                 });
+            }
+            
+            l = l.filter(s => j === 'all' || s.jamia === j);
+            l.forEach(s => c[bucketOf(s)]++);
+            
             document.getElementById('ent-total').textContent = l.length;
-            ['pass','fail','retake','pending'].forEach(k => document.getElementById('ent-' + k).textContent = c[k]);
+            ['pass','fail','absent','pending'].forEach(k => {
+                let el = document.getElementById('ent-' + k);
+                if(el) el.textContent = c[k];
+            });
         }
-       window.renderEntry = () => {
-    const j = document.getElementById('entry-filter-jamia').value, 
-          st = document.getElementById('entry-filter-status').value, 
-          t = document.getElementById('entry-search').value.toLowerCase().trim();
-    
-    // Filter list: Agar Test 2 chal raha hai (round === 2), to Test 1 me Pass walo ko list se hide kar dein
-    const rows = entryList.filter(s => {
-        if (entCfg.round === 2) {
-            const m1 = s.entryMarks ?? null;
-            if (m1 !== null && m1 >= PASS_MARK) return false; 
-        }
-        return (j === 'all' || s.jamia === j) && 
-               (st === 'all' || bucketOf(s) === st) && 
-               (!t || (s.name||'').toLowerCase().includes(t) || (s.trackingCode||'').toLowerCase().includes(t));
-    });
-    
-    entStats();
-    
-    document.getElementById('entry-tbody').innerHTML = rows.length ? rows.map((s, i) => {
-        const ae = activeEntry(s), g = allGroups.find(x => x.id === s.groupId), el = ae.status === 'pass' && !s.groupId;
-        
-        // Dono test ki values
-        const m1Val = s.entryMarks ?? '';
-        const m2Val = s.entryMarks2 ?? '';
-        const isT2Active = entCfg.round === 2;
 
-        return `<tr class="border-b border-gray-100 hover:bg-teal-50 align-middle">
-            <td class="text-center"><input type="checkbox" class="ent-chk w-4 h-4" value="${s.id}" data-el="${el ? 1 : 0}"></td>
-            <td class="text-gray-500 font-semibold">${i + 1}</td>
-            <td class="font-mono font-bold text-teal-700">${escH(s.trackingCode || '-')}</td>
-            <td class="urdu-font font-bold text-lg">${escH(s.name)}<br><span class="text-sm text-gray-500 font-normal">${escH(s.fatherName)}</span></td>
-            <td class="urdu-font text-lg">${escH(s.jamia || '-')}</td>
+       window.renderEntry = () => {
+            const j = document.getElementById('entry-filter-jamia').value, 
+                  st = document.getElementById('entry-filter-status').value, 
+                  t = document.getElementById('entry-search').value.toLowerCase().trim();
             
-            <td class="text-center border-l border-gray-200">
-                <input type="number" min="0" max="100" value="${m1Val}" onchange="saveEntryMarks('${s.id}', this.value, 1)" class="w-16 border-2 border-gray-300 rounded p-1 text-center font-bold focus:border-teal-500 outline-none ${m1Val !== '' && m1Val < PASS_MARK ? 'bg-red-50 text-red-700' : ''}" placeholder="T1">
-            </td>
-            <td class="text-center border-r border-gray-200">
-                <input type="number" min="0" max="100" value="${m2Val}" onchange="saveEntryMarks('${s.id}', this.value, 2)" class="w-16 border-2 border-gray-300 rounded p-1 text-center font-bold focus:border-teal-500 outline-none ${m2Val !== '' && m2Val < PASS_MARK ? 'bg-red-50 text-red-700' : ''}" placeholder="T2" ${(!isT2Active && m2Val === '') ? 'disabled title="Test 2 abhi open nahi hai"' : ''}>
-            </td>
+            // Filter logic:
+            // Agar Test 1 hai: Sab aayenge
+            // Agar Test 2 hai: Test 1 mein pass hone wale list se hide ho jayenge
+            const rows = entryList.filter(s => {
+                if (entCfg.round === 2) {
+                    const m1 = s.entryMarks ?? null;
+                    if (m1 !== null && m1 !== 'A' && Number(m1) >= PASS_MARK) return false; // Hide Test 1 Pass
+                }
+                return (j === 'all' || s.jamia === j) && 
+                       (st === 'all' || bucketOf(s) === st) && 
+                       (!t || (s.name||'').toLowerCase().includes(t) || (s.trackingCode||'').toLowerCase().includes(t));
+            });
             
-            <td id="eb-${s.id}" class="pl-2">${entBadge(ae)}</td>
-            <td id="eby-${s.id}" class="text-xs text-gray-500">${byLbl(s)}</td>
-            <td class="text-sm">${g ? escH(g.groupName) : '<span class="text-gray-400">—</span>'}</td>
-        </tr>`;
-    }).join('') : '<tr><td colspan="10" class="text-center p-8 text-gray-400">No students.</td></tr>';
-};
+            entStats();
+            
+            document.getElementById('entry-tbody').innerHTML = rows.length ? rows.map((s, i) => {
+                const ae = activeEntry(s), g = allGroups.find(x => x.id === s.groupId), el = ae.status === 'pass' && !s.groupId;
+                
+                const m1Val = s.entryMarks ?? '';
+                const m2Val = s.entryMarks2 ?? '';
+                const isT2Active = entCfg.round === 2;
+        
+                return `<tr class="border-b border-gray-100 hover:bg-teal-50 align-middle">
+                    <td class="text-center"><input type="checkbox" class="ent-chk w-4 h-4" value="${s.id}" data-el="${el ? 1 : 0}"></td>
+                    <td class="text-gray-500 font-semibold">${i + 1}</td>
+                    <td class="font-mono font-bold text-teal-700">${escH(s.trackingCode || '-')}</td>
+                    <td class="urdu-font font-bold text-lg">${escH(s.name)}<br><span class="text-sm text-gray-500 font-normal">${escH(s.fatherName)}</span></td>
+                    <td class="urdu-font text-lg">${escH(s.jamia || '-')}</td>
+                    
+                    <td class="text-center border-l border-gray-200">
+                        <input type="text" value="${m1Val}" onchange="saveEntryMarks('${s.id}', this.value, 1)" class="w-16 border-2 border-gray-300 rounded p-1 text-center font-bold uppercase focus:border-teal-500 outline-none ${(m1Val !== '' && m1Val !== 'A' && m1Val < PASS_MARK) || m1Val === 'A' ? 'bg-red-50 text-red-700' : ''}" placeholder="T1">
+                    </td>
+                    <td class="text-center border-r border-gray-200">
+                        <input type="text" value="${m2Val}" onchange="saveEntryMarks('${s.id}', this.value, 2)" class="w-16 border-2 border-gray-300 rounded p-1 text-center font-bold uppercase focus:border-teal-500 outline-none ${(m2Val !== '' && m2Val !== 'A' && m2Val < PASS_MARK) || m2Val === 'A' ? 'bg-red-50 text-red-700' : ''}" placeholder="T2" ${(!isT2Active && m2Val === '') ? 'disabled title="Test 2 abhi open nahi hai"' : ''}>
+                    </td>
+                    
+                    <td id="eb-${s.id}" class="pl-2">${entBadge(ae)}</td>
+                    <td id="eby-${s.id}" class="text-xs text-gray-500">${byLbl(s)}</td>
+                    <td class="text-sm">${g ? escH(g.groupName) : '<span class="text-gray-400">—</span>'}</td>
+                </tr>`;
+            }).join('') : '<tr><td colspan="10" class="text-center p-8 text-gray-400">No students.</td></tr>';
+        };
 
         // Admin kisi bhi student ke kisi bhi test ke marks update kar sakta hai (chahe wo abhi active na ho, correction ke liye)
-        window.saveEntryMarks = async (id, val, r) => {
+       window.saveEntryMarks = async (id, val, r) => {
             const s = entryList.find(x => x.id === id); if (!s) return;
-            const m = val === '' ? null : Number(val), f = r === 2 ? {m:'entryMarks2', b:'entryBy2', t:'entryAt2'} : {m:'entryMarks', b:'entryBy', t:'entryAt'};
-            if (m !== null && (isNaN(m) || m < 0 || m > 100)) { showToast('Marks 0 se 100 ke beech hon', 'error'); return renderEntry(); }
+            val = val.trim().toUpperCase();
+            
+            let m;
+            if (val === '') m = null;
+            else if (val === 'A') m = 'A';
+            else {
+                m = Number(val);
+                if (isNaN(m) || m < 0 || m > 100) { 
+                    showToast('Marks 0 se 100 ke beech hon ya A likhen', 'error'); 
+                    return renderEntry(); 
+                }
+            }
+            
+            const f = r === 2 ? {m:'entryMarks2', b:'entryBy2', t:'entryAt2'} : {m:'entryMarks', b:'entryBy', t:'entryAt'};
             try {
                 await updateDoc(doc(db,'tadrisi_students',id), {[f.m]:m, [f.b]:'admin', [f.t]:Date.now()});
                 s[f.m] = m; s[f.b] = 'admin';
