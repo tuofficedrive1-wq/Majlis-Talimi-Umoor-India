@@ -189,26 +189,38 @@ async function loadKarkardagiTeachers(loggedInUser) {
 
 // 🔹 5. Load Already Saved Data
 async function loadSavedFirestoreData() {
-  const q = query(collection(db, "asatiza_wise_results"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
   try {
-      const snap = await getDocs(q);
-      if (snap.empty) return false;
-      
-      let latestDoc = snap.docs[0];
-      snap.docs.forEach(d => { if (d.data().timestamp > latestDoc.data().timestamp) latestDoc = d; });
-      
-      // ✅ Lock/Unlock Data Load karna
-      currentDocId = latestDoc.id;
-      isLocked = latestDoc.data().isLocked || false;
+    // sirf jamia se query, baqi filter JS me
+    const q = query(collection(db, "asatiza_wise_results"), where("jamia", "==", jamiaName));
+    const snap = await getDocs(q);
 
-      document.getElementById('main-teacher-body').innerHTML = "";
-      
-      latestDoc.data().data.forEach(t => {
-          window.addTeacherRow(t.teacher, t.periods);
-          updateTotal(teacherCount); 
-      });
-      return true;
-  } catch(e) { return false; }
+    console.log("Total docs (jamia only):", snap.size);
+    snap.docs.forEach(d => {
+      const x = d.data();
+      console.log(d.id, x.timestamp, (x.data || []).length, x.examType, x.examYear);
+    });
+
+    const norm = s => cleanUrdu(String(s || '')).replace(/[–—−]/g, '-').replace(/\s/g, '');
+    const matches = snap.docs.filter(d => {
+      const x = d.data();
+      return norm(x.examType) === norm(examType) && norm(x.examYear) === norm(examYear);
+    }).sort((a, b) => (b.data().timestamp || 0) - (a.data().timestamp || 0));
+
+    const latestDoc = matches.find(d => (d.data().data || []).length > 0);
+    if (!latestDoc) return false;
+
+    currentDocId = latestDoc.id;
+    isLocked = latestDoc.data().isLocked || false;
+    document.getElementById('main-teacher-body').innerHTML = "";
+    latestDoc.data().data.forEach(t => {
+      window.addTeacherRow(t.teacher, t.periods);
+      updateTotal(teacherCount);
+    });
+    return true;
+  } catch (e) {
+    console.error("Load error:", e);
+    return false;
+  }
 }
 
 let teacherCount = 0;
