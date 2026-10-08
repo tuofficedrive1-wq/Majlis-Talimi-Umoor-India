@@ -1041,7 +1041,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             
                             if (/^(10|[1-9])$/.test(cell)) { resColMap[parseInt(cell)] = c; }
                             
-                            if (cell === 'Jamia_tul_Madina' || cell.includes('جامعۃ المدینہ') || cell === 'جامعہ') jamiaColIdx = c;
+                            if (jamiaColIdx === -1 && (cell === 'Jamia_tul_Madina' || cell === 'جامعۃ المدینہ' || cell === 'جامعہ')) jamiaColIdx = c;
                             if (cell === 'Class' || cell.includes('درجہ')) classColIdx = c;
                             if (cell.includes('کیفیت') || cell.includes('نتیجہ') || cell.includes('گریڈ')) kefiyatColIdx = c; 
                         }
