@@ -98,19 +98,25 @@ const computeClassSummary = (cls) => {
 // Column ke naam se roll/name/father/kefiyat wagera khud pehchanta hai
 const detectRoles = (columns) => {
     const find = (re, not) => { const c = columns.find(c => re.test(c.label) && !(not && not.test(c.label))); return c ? c.key : ''; };
-    const roles = {
-        roll: find(/رول|roll|رقم|سیریل|s\.?\s?no|sr\.?/i),
-        father: find(/والد|ولدیت|father/i),
-        name: find(/نام|name/i, /والد|ولدیت|father|جامع|کتاب|مضمون/i),
+    return {
+        roll: find(/رول|roll/i),
+        admission: find(/داخل|admission/i),
+        name: find(/نام/, /والد|ولدیت|جامع/),
+        nameEn: find(/^\s*(student'?s?\s*)?name\s*$/i),
+        father: find(/والد|ولدیت/),
+        fatherEn: find(/father/i),
+        dob: find(/پیدائش|birth|dob/i),
+        region: find(/ریجن|region/i),
         total: find(/حاصل|حصل|مجموع|obtained/i),
-        kefiyat: find(/کیفیت/i),
-        grade: find(/گریڈ|grade/i),
+        maxTotal: find(/کل نمبر|max/i),
         percent: find(/فیصد|percent|%/i),
+        kefiyat: find(/کیفیت/),
+        grade: find(/گریڈ|grade/i),
+        jamiaUr: ''
     };
-    return roles;
 };
 
-const ROLE_LABELS = { roll: 'Roll No.', name: 'Student Name', father: 'Walid ka Naam', kefiyat: 'Kefiyat', grade: 'Grade', total: 'Hasil Marks', percent: 'Percentage' };
+const ROLE_LABELS = { roll: 'Roll No.', admission: 'Dakhila No.', name: 'Naam (Urdu)', nameEn: 'Name (English)', father: 'Walid (Urdu)', fatherEn: 'Father (English)', jamiaUr: 'Jamia ka naam (Urdu)', dob: 'Tareekh Paidaish', region: 'Region', kefiyat: 'Kefiyat', grade: 'Grade', total: 'Hasil Marks', maxTotal: 'Kul Marks', percent: 'Percentage' };
 
 export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
@@ -865,7 +871,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                     <div><label class="block text-[11px] font-bold text-gray-600 mb-1">Shoba</label><input data-pdfh="shoba" value="${esc(ph.shoba)}" class="w-full p-1.5 border rounded urdu-font"></div>
                     <div><label class="block text-[11px] font-bold text-gray-600 mb-1">Idara ka naam</label><input data-pdfh="idara" value="${esc(ph.idara)}" class="w-full p-1.5 border rounded urdu-font"></div>
                 </div></div>`;
-            document.getElementById('preview-content').innerHTML = pdfBox + mapping + body;
+            const hidden = (p.pdfHeader && p.pdfHeader.hidden) || [];
+            const colBox = firstCls ? `<div class="bg-white border border-teal-200 rounded-xl p-4 mb-4">
+                <p class="font-bold text-teal-800 text-sm mb-1">📑 Class Result PDF me kaun se columns dikhayein</p>
+                <p class="text-xs text-gray-500 mb-2">Jin par tick hoga wo PDF table me aayenge (marks wale columns hamesha aayenge). Report card me Urdu aur English dono naam khud aayenge.</p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">${roleCols.map(c => `<label class="text-xs urdu-font flex items-center gap-1"><input type="checkbox" data-pdfcol="${c.key}" ${hidden.includes(c.key) ? '' : 'checked'}> ${esc(c.label)}</label>`).join('')}</div></div>` : '';
+            document.getElementById('preview-content').innerHTML = pdfBox + colBox + mapping + body;
         };
 
         const openEditor = () => {
@@ -904,11 +915,17 @@ export async function initAdminResultAnalysis(db, containerId) {
                 document.querySelectorAll(`input[data-edit="cell"][data-ji="${t.dataset.ji}"]`).forEach(inp => { if (inp.dataset.k === (j.classes[+inp.dataset.ci]?.roles?.jamia)) inp.value = j.name; });
             }
             else if (t.dataset.edit === 'class') j.classes[+t.dataset.ci].name = t.value.trim();
-            else if (t.dataset.edit === 'cell') j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = coerceCell(t.value);
+            else if (t.dataset.edit === 'cell') j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = t.value;
         });
 
         document.addEventListener('change', (e) => {
-            const t = e.target; if (!t || !t.dataset || !t.dataset.role || !pendingUploadData) return;
+            const t = e.target; if (!t || !t.dataset || !pendingUploadData) return;
+            if (t.dataset.pdfcol) {
+                const ph = pendingUploadData.pdfHeader = pendingUploadData.pdfHeader || {}; ph.hidden = (ph.hidden || []).filter(k => k !== t.dataset.pdfcol);
+                if (!t.checked) ph.hidden.push(t.dataset.pdfcol);
+                return;
+            }
+            if (!t.dataset.role) return;
             pendingUploadData.jamiaat.forEach(j => j.classes.forEach(c => { c.roles[t.dataset.role] = t.value; if (t.dataset.role === 'kefiyat' && t.value) c.summaryKey = t.value; }));
         });
 
@@ -965,7 +982,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const data = new Uint8Array(evt.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
 
-                    const mapSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'subj') || workbook.SheetNames[1];
+                    const mapSheetName = workbook.SheetNames.find(n => /^sub/i.test(n.trim())) || workbook.SheetNames[1];
                     const mapData = XLSX.utils.sheet_to_json(workbook.Sheets[mapSheetName], {header: 1});
                     let classSubjectMap = {};
                     let colNumberMap = {};
@@ -1010,8 +1027,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
 
-                    const resSheetName = workbook.SheetNames.find(n => n.toLowerCase() === 'result') || workbook.SheetNames[0];
+                    const resSheetName = workbook.SheetNames.find(n => /result/i.test(n)) || workbook.SheetNames[0];
                     const rawResultData = XLSX.utils.sheet_to_json(workbook.Sheets[resSheetName], { header: 1 });
+                    const fmtResultData = XLSX.utils.sheet_to_json(workbook.Sheets[resSheetName], { header: 1, raw: false });
                     
                     let resHdrIdx = -1, resColMap = {}, jamiaColIdx = -1, classColIdx = -1, kefiyatColIdx = -1;
 
@@ -1032,6 +1050,15 @@ export async function initAdminResultAnalysis(db, containerId) {
                         }
                     }
                     
+                    // Agar Class (English) aur درجہ (Urdu) dono hon to wo column lein jis ki values Subj sheet se match karein
+                    if (resHdrIdx !== -1) {
+                        const cands = [];
+                        (rawResultData[resHdrIdx] || []).forEach((cell, c) => { const t = String(cell).trim(); if (t === 'Class' || t.includes('درجہ')) cands.push(c); });
+                        let best = -1, bestN = -1;
+                        cands.forEach(c => { let n = 0; for (let r = resHdrIdx + 1; r < Math.min(rawResultData.length, resHdrIdx + 60); r++) { if (classSubjectMap[String((rawResultData[r] || [])[c] ?? '').trim()]) n++; } if (n > bestN) { bestN = n; best = c; } });
+                        if (best !== -1 && bestN > 0) classColIdx = best;
+                    }
+
                     if (kefiyatColIdx === -1 && rawResultData.length > 15) {
                         for(let col = 4; col <= 8; col++) {
                             let testCell = String(rawResultData[15][col] || ''); 
@@ -1064,13 +1091,18 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
                             cols.push({ key: 'c' + c, idx: c, label, isSubj: subjCols.has(c) });
                         }
-                        return cols;
+                        return cols.filter(c => !/^\s*class\s*$/i.test(c.label) && !/^\s*درجہ\s*$/.test(c.label));
                     };
                     const globalCols = buildCols();
                     const colRoles = detectRoles(globalCols.filter(c => !c.isSubj));
                     const summaryKey = kefiyatColIdx !== -1 ? 'c' + kefiyatColIdx : (colRoles.kefiyat || '');
                     if (!colRoles.kefiyat && kefiyatColIdx !== -1) colRoles.kefiyat = 'c' + kefiyatColIdx;
                     colRoles.jamia = 'c' + jamiaColIdx;
+                    {
+                        const sample = rawResultData.slice(resHdrIdx + 1, resHdrIdx + 20).filter(r => r);
+                        const jUr = globalCols.find(c => !c.isSubj && c.idx !== jamiaColIdx && !/رینک|rank/i.test(c.label) && sample.some(r => /جامع/.test(String(r[c.idx] ?? ''))));
+                        if (jUr) { colRoles.jamiaUr = jUr.key; if (!jUr.label) jUr.label = 'جامعہ (اردو)'; }
+                    }
                     if (!colRoles.name) {
                         const cand = globalCols.find(c => !c.isSubj && c.key !== colRoles.roll && c.key !== colRoles.father && c.key !== colRoles.kefiyat
                             && rawResultData.slice(resHdrIdx + 1, resHdrIdx + 6).some(r => r && isNaN(parseFloat(r[c.idx])) && String(r[c.idx] ?? '').trim() !== ''));
@@ -1094,7 +1126,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                             jm.classes[cName] = { name: cName, origName: cName, subjects: config.subjects, keys: config.keys, colMap, roles: { ...colRoles }, summaryKey, course: '', students: [] };
                         }
                         const st = {};
-                        globalCols.forEach(c => { const v = row[c.idx]; st[c.key] = (v === undefined || v === null) ? '' : v; });
+                        globalCols.forEach(c => {
+                            let v = row[c.idx];
+                            if (!c.isSubj) { const f = (fmtResultData[i] || [])[c.idx]; if (f !== undefined && f !== null) v = f; }
+                            st[c.key] = (v === undefined || v === null) ? '' : v;
+                        });
                         jm.classes[cName].students.push(st);
                     }
 
@@ -1115,7 +1151,7 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     const examType = document.getElementById('upload-exam-type').value;
                     const examYear = document.getElementById('upload-exam-year').value;
-                    pendingUploadData = { mode: 'upload', examType, examYear, jamiaat, pdfHeader: { title: `نتیجہ ${examType} ${examYear}`, shoba: 'شعبۃ الامتحان والتسجیل', idara: 'جامعات المدینہ للبنین دعوت اسلامی ہند' } };
+                    pendingUploadData = { mode: 'upload', examType, examYear, jamiaat, pdfHeader: { title: `نتیجہ ${examType} ${examYear}`, shoba: 'شعبۃ الامتحان والتسجیل', idara: 'جامعات المدینہ للبنین دعوت اسلامی ہند', hidden: [colRoles.nameEn, colRoles.fatherEn, colRoles.jamiaUr ? colRoles.jamia : ''].filter(Boolean) } };
                     openEditor();
                 }; 
                 reader.readAsArrayBuffer(file); 
