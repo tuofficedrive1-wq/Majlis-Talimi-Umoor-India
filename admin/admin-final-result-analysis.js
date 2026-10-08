@@ -779,8 +779,15 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const subjAgg = {};
                 let order = 0;
                 for (const c of j.classes) {
-                    const oldClassId = sanitizeId(`${origOwner}_${j.origName}_${examYear}_${examType}_${c.origName}`);
-                    const newClassId = sanitizeId(`${ownerUserId}_${j.name}_${examYear}_${examType}_${c.name}`);
+    // 🌟 SMART SAVE LOGIC 🌟
+    // Agar mode edit hai, aur is class me (ya iske jamia ke naam me) koi tabdeeli nahi hui, to ise Firebase par dobara save na karein!
+    if (p.mode === 'edit' && !c.isEdited && !j.isEdited && !c.deleted) {
+        continue; // Isko skip kar ke agli class par jao (Time bachega)
+    }
+
+    const oldClassId = sanitizeId(`${origOwner}_${j.origName}_${examYear}_${examType}_${c.origName}`);
+    const newClassId = sanitizeId(`${ownerUserId}_${j.name}_${examYear}_${examType}_${c.name}`);
+    // ...
                     const oldStudId = sanitizeId(`${j.origName}_${examYear}_${examType}_${c.origName}`);
                     const newStudId = sanitizeId(`${j.name}_${examYear}_${examType}_${c.name}`);
                     if (c.deleted || oldClassId !== newClassId) {
@@ -915,7 +922,19 @@ export async function initAdminResultAnalysis(db, containerId) {
                 document.querySelectorAll(`input[data-edit="cell"][data-ji="${t.dataset.ji}"]`).forEach(inp => { if (inp.dataset.k === (j.classes[+inp.dataset.ci]?.roles?.jamia)) inp.value = j.name; });
             }
             else if (t.dataset.edit === 'class') j.classes[+t.dataset.ci].name = t.value.trim();
-            else if (t.dataset.edit === 'cell') j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = t.value;
+           else if (t.dataset.edit === 'cell') {
+    j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = t.value;
+    // NAYI LINE: Code ko bata diya ke is class me editing hui hai
+    j.classes[+t.dataset.ci].isEdited = true; 
+}
+else if (t.dataset.edit === 'class') {
+    j.classes[+t.dataset.ci].name = t.value.trim();
+    j.classes[+t.dataset.ci].isEdited = true;
+}
+else if (t.dataset.edit === 'jamia') {
+    j.name = t.value.trim();
+    j.isEdited = true; // Agar Jamia ka naam badla to sab update karna hoga
+    // (Baqi purana code same rahega)
         });
 
         document.addEventListener('change', (e) => {
