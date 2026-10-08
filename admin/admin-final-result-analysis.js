@@ -41,6 +41,77 @@ const getKefiyatColor = (p, level = 'teacher') => {
     }
 };
 
+
+// 🔹 STUDENT-WISE FULL DATA HELPERS
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const sanitizeId = (s) => String(s).replace(/\//g, '-').replace(/\s+/g, '_');
+
+const parseMarks = (cell) => {
+    const s = String(cell ?? '').trim();
+    if (s.includes('+')) {
+        const parts = s.split('+').map(parseFloat);
+        return parts.every(n => !isNaN(n)) ? parts.reduce((a, b) => a + b, 0) : NaN;
+    }
+    return parseFloat(s);
+};
+
+// Students ke data se class summary + subject stats banata hai (pehle wali logic hi hai)
+const computeClassSummary = (cls) => {
+    const s = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
+    const subj = {};
+    const kKey = cls.summaryKey || (cls.roles && cls.roles.kefiyat);
+    (cls.students || []).forEach(st => {
+        s.total++;
+        let isGhaib = true, hasAnyGhaib = false;
+        (cls.keys || []).forEach(num => {
+            const sc = cls.subjects[num]; const key = cls.colMap[num];
+            if (!sc || !key) return;
+            if (!subj[sc.name]) subj[sc.name] = { total: 0, passed: 0 };
+            const cellStr = String(st[key] ?? '').trim(); const low = cellStr.toLowerCase();
+            const isAbs = cellStr === 'غ' || cellStr === 'غائب' || low === 'a' || low === 'absent';
+            const isTextGhaib = isAbs || cellStr === '';
+            const isTextNakam = cellStr === 'ناکام' || low === 'fail' || low === 'f';
+            if (isAbs) hasAnyGhaib = true;
+            if (!isTextGhaib) {
+                isGhaib = false; subj[sc.name].total++;
+                const m = parseMarks(st[key]);
+                if (!isNaN(m) && m >= sc.pass) subj[sc.name].passed++;
+                else if (isNaN(m) && !isTextNakam) subj[sc.name].passed++;
+            }
+        });
+        const kef = kKey ? String(st[kKey] ?? '').trim() : ''; const kl = kef.toLowerCase();
+        if (kef.includes('غائب') || kef === 'غ' || isGhaib || hasAnyGhaib) s.ghaib++;
+        else if (kef.includes('ناکام') || kl === 'f' || kl === 'fail') s.nakam++;
+        else {
+            s.passed++;
+            if (kef.includes('الشرف') || kef === 'A+') s.mumtazSharf++;
+            else if (kef.includes('ممتاز') || kef === 'A') s.mumtaz++;
+            else if (kef.includes('جید جدا') || kef === 'B+') s.jayyidJidda++;
+            else if (kef.includes('جید') || kef === 'B') s.jayyid++;
+            else if (kef.includes('ضمنی')) s.majazZimni++;
+            else s.maqbool++;
+        }
+    });
+    return { summary: s, subj };
+};
+
+// Column ke naam se roll/name/father/kefiyat wagera khud pehchanta hai
+const detectRoles = (columns) => {
+    const find = (re, not) => { const c = columns.find(c => re.test(c.label) && !(not && not.test(c.label))); return c ? c.key : ''; };
+    const roles = {
+        roll: find(/رول|roll|رقم|سیریل|s\.?\s?no|sr\.?/i),
+        father: find(/والد|ولدیت|father/i),
+        name: find(/نام|name/i, /والد|ولدیت|father|جامع|کتاب|مضمون/i),
+        total: find(/حاصل|حصل|مجموع|obtained/i),
+        kefiyat: find(/کیفیت/i),
+        grade: find(/گریڈ|grade/i),
+        percent: find(/فیصد|percent|%/i),
+    };
+    return roles;
+};
+
+const ROLE_LABELS = { roll: 'Roll No.', name: 'Student Name', father: 'Walid ka Naam', kefiyat: 'Kefiyat', grade: 'Grade', total: 'Hasil Marks', percent: 'Percentage' };
+
 export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -223,12 +294,13 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <div class="mb-6">
                     <label class="block text-sm font-bold text-gray-700 mb-1">Upload Master Excel File</label>
                     <input type="file" id="result-excel-file" accept=".xlsx, .xls" class="w-full p-2 border border-teal-300 rounded-lg bg-teal-50 cursor-pointer focus:outline-none">
+                    <button id="btn-load-saved" class="mt-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-bold py-2 px-4 rounded-lg text-sm border border-indigo-200 transition">✏️ Saved Student Data Edit karein (upar select kiya hua Exam & Year)</button>
                     <p class="text-xs text-gray-500 mt-2">نوٹ: ایکسل کا ڈیٹا جوں کا توں ڈیٹا بیس میں محفوظ ہو جائے گا جس سے اساتذہ کے فارم میں مضامین خود آ جائیں گے۔</p>
                 </div>
 
                 <div id="preview-container" class="hidden mt-6 p-6 border-2 border-indigo-200 bg-indigo-50 rounded-2xl shadow-sm">
-                    <h4 class="text-xl font-bold text-indigo-800 mb-4"><i class="fas fa-search mr-2"></i> Data Preview (ڈیٹا کا جائزہ لیں)</h4>
-                    <div id="preview-content" class="space-y-4 mb-6 max-h-96 overflow-y-auto pr-2 custom-scrollbar"></div>
+                    <h4 class="text-xl font-bold text-indigo-800 mb-4"><i class="fas fa-table mr-2"></i> <span id="editor-title">Student Data (ضرورت ہو تو ایڈٹ کریں)</span></h4>
+                    <div id="preview-content" class="space-y-4 mb-6 max-h-[34rem] overflow-y-auto pr-2 custom-scrollbar"></div>
                     
                     <div class="flex flex-col sm:flex-row gap-4 mt-6">
                         <button id="btn-cancel-preview" class="w-full sm:w-1/3 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold py-3 px-4 rounded-xl shadow-sm transition flex justify-center items-center gap-2">
@@ -684,6 +756,202 @@ export async function initAdminResultAnalysis(db, containerId) {
     if (!window.adminResultAnalysisInitialized) {
         window.adminResultAnalysisInitialized = true;
 
+        // =====================================================
+        // 📝 STUDENT DATA EDITOR + SAVE (full data, jaisa ka taisa)
+        // =====================================================
+        const getOwnerId = (jamiaName) => {
+            const ctx = getJamiaContext(jamiaName);
+            return (window.allUsersData || []).find(u => (u.name || u.email) === ctx.userName)?.id || "admin";
+        };
+
+        const saveAllResultData = async (p) => {
+            const { examType, examYear } = p;
+            for (const j of p.jamiaat) {
+                const context = getJamiaContext(j.name);
+                const ownerUserId = getOwnerId(j.name);
+                const origOwner = getOwnerId(j.origName);
+                const subjAgg = {};
+                let order = 0;
+                for (const c of j.classes) {
+                    const oldClassId = sanitizeId(`${origOwner}_${j.origName}_${examYear}_${examType}_${c.origName}`);
+                    const newClassId = sanitizeId(`${ownerUserId}_${j.name}_${examYear}_${examType}_${c.name}`);
+                    const oldStudId = sanitizeId(`${j.origName}_${examYear}_${examType}_${c.origName}`);
+                    const newStudId = sanitizeId(`${j.name}_${examYear}_${examType}_${c.name}`);
+                    if (c.deleted || oldClassId !== newClassId) {
+                        await deleteDoc(doc(db, "class_wise_results", oldClassId));
+                        await deleteDoc(doc(db, "student_results", oldStudId));
+                    }
+                    if (c.deleted) continue;
+
+                    const { summary, subj } = computeClassSummary(c);
+                    subjAgg[c.name] = subj;
+
+                    await setDoc(doc(db, "class_wise_results", newClassId), {
+                        uid: ownerUserId, userId: ownerUserId, userName: context.userName, region: context.region,
+                        jamia: j.name, examType, examYear, darjah: c.name, ...summary, timestamp: Date.now()
+                    });
+                    await setDoc(doc(db, "student_results", newStudId), {
+                        jamia: j.name, examType, examYear, darjah: c.name, order: order++,
+                        userId: ownerUserId, pdfHeader: p.pdfHeader || {}, course: c.course || '', summaryKey: c.summaryKey || '', columns: c.columns, roles: c.roles, subjects: c.subjects,
+                        keys: c.keys, colMap: c.colMap, students: c.students, studentCount: c.students.length,
+                        timestamp: Date.now()
+                    });
+                }
+                if (j.origName !== j.name) {
+                    await deleteDoc(doc(db, "excel_subjects_data", sanitizeId(`${j.origName}_${examYear}_${examType}`)));
+                }
+                if (Object.keys(subjAgg).length > 0) {
+                    await setDoc(doc(db, "excel_subjects_data", sanitizeId(`${j.name}_${examYear}_${examType}`)), {
+                        jamia: j.name, examType, examYear, classes: subjAgg, timestamp: Date.now()
+                    });
+                }
+            }
+        };
+
+        const coerceCell = (v) => {
+            const t = String(v).trim();
+            return (t !== '' && /^-?\d+(\.\d+)?$/.test(t)) ? Number(t) : v;
+        };
+
+        const renderClassTable = (ji, ci) => {
+            const holder = document.getElementById(`tbl-${ji}-${ci}`);
+            const c = pendingUploadData?.jamiaat[ji]?.classes[ci];
+            if (!holder || !c) return;
+            const head = c.columns.map(col => `<th class="p-2 border bg-gray-800 text-white text-xs urdu-font whitespace-nowrap ${col.isSubj ? 'bg-teal-700' : ''}">${esc(col.label)}</th>`).join('');
+            const rows = c.students.map((st, r) => `<tr>
+                <td class="p-1 border text-xs text-gray-400">${r + 1}</td>
+                ${c.columns.map(col => `<td class="p-0 border"><input data-edit="cell" data-ji="${ji}" data-ci="${ci}" data-r="${r}" data-k="${col.key}" value="${esc(st[col.key])}" class="urdu-font text-center text-sm p-1 w-full min-w-[64px] ${col.key === c.roles.name || col.key === c.roles.father ? 'min-w-[130px]' : ''} bg-transparent focus:bg-yellow-50 outline-none"></td>`).join('')}
+                <td class="p-1 border"><button data-act="del-row" data-ji="${ji}" data-ci="${ci}" data-r="${r}" class="text-red-500 hover:text-red-700 text-xs" title="Student delete">✖</button></td></tr>`).join('');
+            holder.innerHTML = `<table class="border-collapse text-center w-max min-w-full"><thead><tr><th class="p-2 border bg-gray-800 text-white text-xs">#</th>${head}<th class="p-2 border bg-gray-800"></th></tr></thead><tbody>${rows}</tbody></table>
+                <button data-act="add-row" data-ji="${ji}" data-ci="${ci}" class="mt-2 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">➕ Student add karein</button>`;
+            holder.dataset.rendered = '1';
+        };
+
+        const renderEditor = () => {
+            const p = pendingUploadData; if (!p) return;
+            const firstCls = p.jamiaat[0]?.classes[0];
+            const roleCols = firstCls ? firstCls.columns.filter(c => !c.isSubj) : [];
+            const mapping = firstCls ? `<div class="bg-white border border-indigo-200 rounded-xl p-4 mb-4">
+                <p class="font-bold text-indigo-800 text-sm mb-1">🔗 Column Mapping (report card aur table isi se banega)</p>
+                <p class="text-xs text-gray-500 mb-3">Agar koi column galat pehchana gaya ho to yahan se theek kar dein.</p>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    ${Object.keys(ROLE_LABELS).map(role => `<div><label class="block text-[11px] font-bold text-gray-600 mb-1">${ROLE_LABELS[role]}</label>
+                        <select data-role="${role}" class="w-full p-1.5 border rounded text-sm urdu-font"><option value="">— nahi hai —</option>
+                        ${roleCols.map(c => `<option value="${c.key}" ${firstCls.roles[role] === c.key ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></div>`).join('')}
+                </div></div>` : '';
+            const body = p.jamiaat.map((j, ji) => `
+                <div class="bg-gray-50 p-4 rounded-xl border mb-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <label class="text-xs font-bold text-gray-500">Jamia:</label>
+                        <input data-edit="jamia" data-ji="${ji}" value="${esc(j.name)}" class="flex-1 p-2 border rounded-lg urdu-font font-bold text-indigo-900 text-lg">
+                    </div>
+                    ${j.classes.map((c, ci) => c.deleted ? '' : `
+                    <details data-ji="${ji}" data-ci="${ci}" class="bg-white border rounded-lg mb-2 shadow-sm">
+                        <summary class="p-3 cursor-pointer flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-bold text-gray-500">Class:</span>
+                            <input data-edit="class" data-ji="${ji}" data-ci="${ci}" value="${esc(c.name)}" class="p-1 border rounded urdu-font font-bold text-indigo-700 w-48">
+                            <span class="text-xs text-gray-500">(${c.students.length} students)</span>
+                            <input data-edit="course" data-ji="${ji}" data-ci="${ci}" value="${esc(c.course || '')}" placeholder="PDF me upar-left course (jaise: حفظ وناظرہ کورس)" class="p-1 border rounded urdu-font text-sm w-64">
+                            <button data-act="del-class" data-ji="${ji}" data-ci="${ci}" class="ml-auto text-xs text-red-600 border border-red-200 rounded px-2 py-1 hover:bg-red-50">🗑 Class hatayein</button>
+                        </summary>
+                        <div class="p-2 overflow-x-auto" id="tbl-${ji}-${ci}"><p class="text-xs text-gray-400 p-2">Table kholne ke liye click karein…</p></div>
+                    </details>`).join('')}
+                </div>`).join('');
+            const ph = p.pdfHeader || {};
+            const pdfBox = `<div class="bg-white border border-teal-200 rounded-xl p-4 mb-4">
+                <p class="font-bold text-teal-800 text-sm mb-2">🖨️ PDF ka Header (result ke upar ye likha aayega)</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div><label class="block text-[11px] font-bold text-gray-600 mb-1">Title (jaise: نتیجہ ششماہی امتحان 1446ھ/2026ء)</label><input data-pdfh="title" value="${esc(ph.title)}" class="w-full p-1.5 border rounded urdu-font"></div>
+                    <div><label class="block text-[11px] font-bold text-gray-600 mb-1">Shoba</label><input data-pdfh="shoba" value="${esc(ph.shoba)}" class="w-full p-1.5 border rounded urdu-font"></div>
+                    <div><label class="block text-[11px] font-bold text-gray-600 mb-1">Idara ka naam</label><input data-pdfh="idara" value="${esc(ph.idara)}" class="w-full p-1.5 border rounded urdu-font"></div>
+                </div></div>`;
+            document.getElementById('preview-content').innerHTML = pdfBox + mapping + body;
+        };
+
+        const openEditor = () => {
+            const p = pendingUploadData;
+            document.getElementById('editor-title').textContent = p.mode === 'edit'
+                ? `Saved Data Edit — ${p.examType} ${p.examYear}` : 'Student Data (ضرورت ہو تو ایڈٹ کریں، پھر Upload کریں)';
+            const btn = document.getElementById('btn-confirm-upload');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = p.mode === 'edit'
+                    ? '<i class="fas fa-save"></i> Save Changes'
+                    : '<i class="fas fa-cloud-upload-alt"></i> Confirm & Upload to Database';
+            }
+            renderEditor();
+            document.getElementById('preview-container').classList.remove('hidden');
+        };
+
+        // Lazy table render
+        document.addEventListener('toggle', (e) => {
+            const d = e.target;
+            if (d && d.tagName === 'DETAILS' && d.open && d.dataset.ji !== undefined) {
+                const holder = document.getElementById(`tbl-${d.dataset.ji}-${d.dataset.ci}`);
+                if (holder && !holder.dataset.rendered) renderClassTable(+d.dataset.ji, +d.dataset.ci);
+            }
+        }, true);
+
+        document.addEventListener('input', (e) => {
+            const t = e.target; if (!t || !t.dataset || !pendingUploadData) return;
+            if (t.dataset.pdfh) { pendingUploadData.pdfHeader = pendingUploadData.pdfHeader || {}; pendingUploadData.pdfHeader[t.dataset.pdfh] = t.value; return; }
+            if (!t.dataset.edit) return;
+            const j = pendingUploadData.jamiaat[+t.dataset.ji];
+            if (t.dataset.edit === 'course') j.classes[+t.dataset.ci].course = t.value;
+            else if (t.dataset.edit === 'jamia') {
+                j.name = t.value.trim();
+                j.classes.forEach(c => { const jk = c.roles && c.roles.jamia; if (jk) c.students.forEach(st => { st[jk] = j.name; }); });
+                document.querySelectorAll(`input[data-edit="cell"][data-ji="${t.dataset.ji}"]`).forEach(inp => { if (inp.dataset.k === (j.classes[+inp.dataset.ci]?.roles?.jamia)) inp.value = j.name; });
+            }
+            else if (t.dataset.edit === 'class') j.classes[+t.dataset.ci].name = t.value.trim();
+            else if (t.dataset.edit === 'cell') j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = coerceCell(t.value);
+        });
+
+        document.addEventListener('change', (e) => {
+            const t = e.target; if (!t || !t.dataset || !t.dataset.role || !pendingUploadData) return;
+            pendingUploadData.jamiaat.forEach(j => j.classes.forEach(c => { c.roles[t.dataset.role] = t.value; if (t.dataset.role === 'kefiyat' && t.value) c.summaryKey = t.value; }));
+        });
+
+        document.addEventListener('click', (e) => {
+            const inSummary = e.target.closest('summary');
+            if (inSummary && e.target.closest('input, button')) e.preventDefault();
+            const b = e.target.closest('[data-act]');
+            if (!b || !pendingUploadData) return;
+            const ji = +b.dataset.ji, ci = +b.dataset.ci;
+            const c = pendingUploadData.jamiaat[ji].classes[ci];
+            if (b.dataset.act === 'del-row') {
+                if (!confirm('Is student ko hatayein?')) return;
+                c.students.splice(+b.dataset.r, 1); renderClassTable(ji, ci);
+            } else if (b.dataset.act === 'add-row') {
+                const st = {}; c.columns.forEach(col => st[col.key] = ''); c.students.push(st); renderClassTable(ji, ci);
+            } else if (b.dataset.act === 'del-class') {
+                if (!confirm(`"${c.name}" poori class hata dein? (Save par database se bhi delete hogi)`)) return;
+                c.deleted = true; renderEditor();
+            }
+        });
+
+        document.addEventListener('click', async (e) => {
+            if (!e.target.closest('#btn-load-saved')) return;
+            const examType = document.getElementById('upload-exam-type').value;
+            const examYear = document.getElementById('upload-exam-year').value;
+            try {
+                const snap = await getDocs(query(collection(db, 'student_results'), where('examType', '==', examType), where('examYear', '==', examYear)));
+                if (snap.empty) { alert('Is Exam & Year ka koi saved student data nahi mila. Pehle Excel upload karein.'); return; }
+                const grouped = {};
+                snap.docs.map(d => d.data()).sort((a, b) => (a.order || 0) - (b.order || 0)).forEach(d => {
+                    if (!grouped[d.jamia]) grouped[d.jamia] = { name: d.jamia, origName: d.jamia, classes: [] };
+                    grouped[d.jamia].classes.push({
+                        name: d.darjah, origName: d.darjah, subjects: d.subjects || {}, keys: d.keys || [], colMap: d.colMap || {},
+                        roles: d.roles || {}, columns: d.columns || [], students: d.students || [], summaryKey: d.summaryKey || '', course: d.course || ''
+                    });
+                });
+                const firstDoc = snap.docs.map(d => d.data())[0] || {};
+                pendingUploadData = { mode: 'edit', examType, examYear, jamiaat: Object.values(grouped), pdfHeader: firstDoc.pdfHeader || { title: `نتیجہ ${examType} ${examYear}`, shoba: 'شعبۃ الامتحان والتسجیل', idara: 'جامعات المدینہ للبنین دعوت اسلامی ہند' } };
+                document.getElementById('upload-logs')?.classList.add('hidden');
+                openEditor();
+            } catch (err) { alert('Load error: ' + err.message); }
+        });
+
         document.addEventListener('change', (e) => {
             if (e.target && e.target.id === 'result-excel-file') {
                 const file = e.target.files[0];
@@ -723,6 +991,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 
                                 let subRow = mapData[i] || [];
                                 let passRow = mapData[i+2] || []; 
+                                let totRow = mapData[i+1] || [];
                                 
                                 Object.keys(colNumberMap).forEach(mapNum => {
                                     let colIdx = colNumberMap[mapNum];
@@ -730,7 +999,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                                     if (subName && String(subName).trim() !== '') {
                                         classSubjectMap[currentClass].subjects[mapNum] = {
                                             name: String(subName).trim(),
-                                            pass: parseFloat(passRow[colIdx]) || 40
+                                            pass: parseFloat(passRow[colIdx]) || 40,
+                                            max: parseFloat(totRow[colIdx]) || 0
                                         };
                                         classSubjectMap[currentClass].keys.push(parseInt(mapNum));
                                     }
@@ -775,116 +1045,78 @@ export async function initAdminResultAnalysis(db, containerId) {
                         alert("Result sheet mein headers (1-10 numbers, Jamia, Class) nahi mile."); return;
                     }
 
-                    let multiJamiaClassData = {};
-                    let multiJamiaSubjectData = {}; 
+                    const buildCols = () => {
+                        const hdr = rawResultData[resHdrIdx] || [];
+                        const subjCols = new Set(Object.values(resColMap));
+                        let maxLen = 0;
+                        rawResultData.forEach(r => { if (r && r.length > maxLen) maxLen = r.length; });
+                        const cols = [];
+                        for (let c = 0; c < maxLen; c++) {
+                            if (c === classColIdx) continue;
+                            let label = '';
+                            const labelRows = [resHdrIdx, resHdrIdx - 1, resHdrIdx - 2, resHdrIdx + 1, resHdrIdx + 2];
+                            for (const ri of labelRows) {
+                                if (label) break;
+                                const r = rawResultData[ri]; if (!r) continue;
+                                if (ri > resHdrIdx && classSubjectMap[String(r[classColIdx] ?? '').trim()]) continue; // data row hai
+                                const t = String(r[c] ?? '').trim();
+                                if (t && !/^(10|[1-9])$/.test(t)) label = t;
+                            }
+                            cols.push({ key: 'c' + c, idx: c, label, isSubj: subjCols.has(c) });
+                        }
+                        return cols;
+                    };
+                    const globalCols = buildCols();
+                    const colRoles = detectRoles(globalCols.filter(c => !c.isSubj));
+                    const summaryKey = kefiyatColIdx !== -1 ? 'c' + kefiyatColIdx : (colRoles.kefiyat || '');
+                    if (!colRoles.kefiyat && kefiyatColIdx !== -1) colRoles.kefiyat = 'c' + kefiyatColIdx;
+                    colRoles.jamia = 'c' + jamiaColIdx;
+                    if (!colRoles.name) {
+                        const cand = globalCols.find(c => !c.isSubj && c.key !== colRoles.roll && c.key !== colRoles.father && c.key !== colRoles.kefiyat
+                            && rawResultData.slice(resHdrIdx + 1, resHdrIdx + 6).some(r => r && isNaN(parseFloat(r[c.idx])) && String(r[c.idx] ?? '').trim() !== ''));
+                        if (cand) colRoles.name = cand.key;
+                    }
 
+                    const jamiaMap = {};
                     for (let i = resHdrIdx + 1; i < rawResultData.length; i++) {
-                        let row = rawResultData[i];
-                        if (!row || row.length === 0) continue; 
-                        
-                        let jamiaName = String(row[jamiaColIdx] || '').trim();
-                        let cName = String(row[classColIdx] || '').trim();
-                        let kefiyatVal = kefiyatColIdx !== -1 ? String(row[kefiyatColIdx] || '').trim() : '';
-                        
+                        const row = rawResultData[i];
+                        if (!row || row.length === 0) continue;
+                        const jamiaName = String(row[jamiaColIdx] || '').trim();
+                        const cName = String(row[classColIdx] || '').trim();
                         if (!jamiaName || !cName || jamiaName === 'undefined') continue;
-                        let config = classSubjectMap[cName];
-                        if (!config) continue; 
-
-                        if (!multiJamiaClassData[jamiaName]) multiJamiaClassData[jamiaName] = {};
-                        if (!multiJamiaSubjectData[jamiaName]) multiJamiaSubjectData[jamiaName] = {};
-                        
-                        if (!multiJamiaClassData[jamiaName][cName]) {
-                            multiJamiaClassData[jamiaName][cName] = { mumtazSharf: 0, mumtaz: 0, jayyidJidda: 0, jayyid: 0, maqbool: 0, majazZimni: 0, nakam: 0, ghaib: 0, total: 0, passed: 0 };
+                        const config = classSubjectMap[cName];
+                        if (!config) continue;
+                        if (!jamiaMap[jamiaName]) jamiaMap[jamiaName] = { name: jamiaName, origName: jamiaName, classes: {} };
+                        const jm = jamiaMap[jamiaName];
+                        if (!jm.classes[cName]) {
+                            const colMap = {};
+                            config.keys.forEach(n => { if (resColMap[n] !== undefined) colMap[n] = 'c' + resColMap[n]; });
+                            jm.classes[cName] = { name: cName, origName: cName, subjects: config.subjects, keys: config.keys, colMap, roles: { ...colRoles }, summaryKey, course: '', students: [] };
                         }
-                        if (!multiJamiaSubjectData[jamiaName][cName]) {
-                            multiJamiaSubjectData[jamiaName][cName] = {};
-                        }
+                        const st = {};
+                        globalCols.forEach(c => { const v = row[c.idx]; st[c.key] = (v === undefined || v === null) ? '' : v; });
+                        jm.classes[cName].students.push(st);
+                    }
 
-                        multiJamiaClassData[jamiaName][cName].total++;
-
-                        let isGhaib = true; 
-                        let isNakam = false;
-                        let hasAnyGhaib = false; 
-                        
-                        config.keys.forEach(mapNum => {
-                            let resColIdx = resColMap[mapNum];
-                            if (resColIdx === undefined) return;
-                            
-                            let subjConfig = config.subjects[mapNum];
-                            let passMarks = subjConfig.pass;
-                            let subName = subjConfig.name; 
-
-                            if (!multiJamiaSubjectData[jamiaName][cName][subName]) {
-                                multiJamiaSubjectData[jamiaName][cName][subName] = { total: 0, passed: 0 };
-                            }
-
-                            let markCell = row[resColIdx];
-                            let cellStr = String(markCell || '').trim();
-                            let cellLower = cellStr.toLowerCase();
-                            
-                            let isTextGhaib = cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent' || cellStr === '';
-                            let isTextNakam = cellStr === 'ناکام' || cellLower === 'fail' || cellLower === 'f';
-                            
-                            if (cellStr === 'غ' || cellStr === 'غائب' || cellLower === 'a' || cellLower === 'absent') {
-                                hasAnyGhaib = true;
-                            }
-
-                            if (!isTextGhaib) {
-                                isGhaib = false; 
-                                multiJamiaSubjectData[jamiaName][cName][subName].total++;
-                                
-                                let marks = cellStr.includes('+') ? (parseFloat(cellStr.split('+')[0]) + parseFloat(cellStr.split('+')[1])) : parseFloat(markCell);
-                                
-                                if (!isNaN(marks) && marks >= passMarks) {
-                                    multiJamiaSubjectData[jamiaName][cName][subName].passed++;
-                                } else if (isNaN(marks) && !isTextNakam) {
-                                    multiJamiaSubjectData[jamiaName][cName][subName].passed++;
-                                }
-                            }
+                    // Har class ke columns: subject columns sirf us class ke mazameen ke, baqi jin me label ya data ho
+                    const jamiaat = Object.values(jamiaMap).map(jm => {
+                        const classes = Object.values(jm.classes).map(cl => {
+                            const subjKeyToNum = {}; Object.keys(cl.colMap).forEach(n => subjKeyToNum[cl.colMap[n]] = n);
+                            cl.columns = globalCols.filter(c => {
+                                if (c.isSubj) return subjKeyToNum[c.key] !== undefined;
+                                return c.label || cl.students.some(s => String(s[c.key] ?? '').trim() !== '');
+                            }).map(c => ({ key: c.key, label: c.isSubj ? cl.subjects[subjKeyToNum[c.key]].name : (c.label || ('Col ' + (c.idx + 1))), isSubj: c.isSubj, num: c.isSubj ? Number(subjKeyToNum[c.key]) : null }));
+                            return cl;
                         });
-                        
-                        if (kefiyatVal.includes('غائب') || kefiyatVal === 'غ' || isGhaib || hasAnyGhaib) { 
-                            multiJamiaClassData[jamiaName][cName].ghaib++; 
-                        } else {
-                            let kefLower = kefiyatVal.toLowerCase();
-                            if (kefiyatVal.includes('ناکام') || kefLower === 'f' || kefLower === 'fail') {
-                                multiJamiaClassData[jamiaName][cName].nakam++;
-                            } else {
-                                multiJamiaClassData[jamiaName][cName].passed++;
-                                if (kefiyatVal.includes('الشرف') || kefiyatVal === 'A+') multiJamiaClassData[jamiaName][cName].mumtazSharf++;
-                                else if (kefiyatVal.includes('ممتاز') || kefiyatVal === 'A') multiJamiaClassData[jamiaName][cName].mumtaz++;
-                                else if (kefiyatVal.includes('جید جدا') || kefiyatVal === 'B+') multiJamiaClassData[jamiaName][cName].jayyidJidda++;
-                                else if (kefiyatVal.includes('جید') || kefiyatVal === 'B') multiJamiaClassData[jamiaName][cName].jayyid++;
-                                else if (kefiyatVal.includes('ضمنی')) multiJamiaClassData[jamiaName][cName].majazZimni++;
-                                else multiJamiaClassData[jamiaName][cName].maqbool++;
-                            }
-                        }
-                    } 
+                        return { name: jm.name, origName: jm.origName, classes };
+                    });
+
+                    if (jamiaat.length === 0) { alert("Koi student record nahi mila. Class ke naam Subj sheet se match hone chahiye."); return; }
 
                     const examType = document.getElementById('upload-exam-type').value;
                     const examYear = document.getElementById('upload-exam-year').value;
-                    pendingUploadData = { examType, examYear, multiJamiaClassData, multiJamiaSubjectData };
-
-                    let previewHtml = '';
-                    Object.keys(multiJamiaSubjectData).forEach(jamiaName => {
-                        let cData = multiJamiaSubjectData[jamiaName];
-                        let classesHtml = '';
-                        Object.keys(cData).forEach(cName => {
-                            let subsHtml = Object.keys(cData[cName]).map(sub => 
-                                `<span class="inline-block bg-teal-50 text-teal-800 border border-teal-200 px-2 py-1 rounded text-[11px] m-1 shadow-sm">${sub} (${cData[cName][sub].passed}/${cData[cName][sub].total})</span>`
-                            ).join('');
-                            let enrolled = multiJamiaClassData[jamiaName][cName].total;
-                            classesHtml += `<div class="p-3 bg-white border rounded-lg mb-2 shadow-sm"><strong class="urdu-font text-indigo-700">${cName} (کل: ${enrolled})</strong><div class="mt-1 flex flex-wrap">${subsHtml}</div></div>`;
-                        });
-
-                        previewHtml += `<div class="bg-gray-50 p-4 rounded-xl border mb-4">
-                            <h5 class="font-bold text-xl text-indigo-900 urdu-font mb-2">${jamiaName}</h5>
-                            ${classesHtml}
-                        </div>`;
-                    });
-
-                    document.getElementById('preview-content').innerHTML = previewHtml;
-                    document.getElementById('preview-container').classList.remove('hidden');
+                    pendingUploadData = { mode: 'upload', examType, examYear, jamiaat, pdfHeader: { title: `نتیجہ ${examType} ${examYear}`, shoba: 'شعبۃ الامتحان والتسجیل', idara: 'جامعات المدینہ للبنین دعوت اسلامی ہند' } };
+                    openEditor();
                 }; 
                 reader.readAsArrayBuffer(file); 
             }
@@ -906,28 +1138,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                 confirmBtn.disabled = true;
 
                 try {
-                    const { examType, examYear, multiJamiaClassData, multiJamiaSubjectData } = pendingUploadData;
+                    await saveAllResultData(pendingUploadData);
 
-                    for (const jamiaName of Object.keys(multiJamiaClassData)) {
-                        const context = getJamiaContext(jamiaName);
-                        const ownerUserId = (window.allUsersData || []).find(u => (u.name || u.email) === context.userName)?.id || "admin";
-
-                        const cDataObj = multiJamiaClassData[jamiaName];
-                        for (const cName in cDataObj) {
-                            const customId = `${ownerUserId}_${jamiaName}_${examYear}_${examType}_${cName}`.replace(/\//g, '-').replace(/\s+/g, '_');
-                            await setDoc(doc(db, "class_wise_results", customId), {
-                                uid: ownerUserId, userId: ownerUserId, userName: context.userName, region: context.region,
-                                jamia: jamiaName, examType: examType, examYear: examYear, darjah: cName,
-                                ...cDataObj[cName], timestamp: Date.now()
-                            });
-                        }
-
-                        const subDataObj = multiJamiaSubjectData[jamiaName];
-                        const subjId = `${jamiaName}_${examYear}_${examType}`.replace(/\//g, '-').replace(/\s+/g, '_');
-                        await setDoc(doc(db, "excel_subjects_data", subjId), {
-                            jamia: jamiaName, examType: examType, examYear: examYear, classes: subDataObj, timestamp: Date.now()
-                        });
-                    }
 
                     document.getElementById('preview-container').classList.add('hidden');
                     const logs = document.getElementById('upload-logs');
@@ -942,7 +1154,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                             </button>`;
                     }
                 } catch (error) {
-                    confirmBtn.innerHTML = '<i class="fas fa-times"></i> Error';
+                    confirmBtn.innerHTML = '<i class="fas fa-times"></i> Error - dobara try karein'; confirmBtn.disabled = false;
                     alert("Error: " + error.message);
                 }
             }
@@ -1001,6 +1213,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                     const asatizaCount = await deleteDataFromColl("asatiza_wise_results");
                     const classCount = await deleteDataFromColl("class_wise_results");
                     await deleteDataFromColl("excel_subjects_data"); 
+                    await deleteDataFromColl("student_results");
 
                     if(logs) {
                         logs.innerHTML = `
