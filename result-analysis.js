@@ -801,36 +801,6 @@ window.generateTop3Poster = async (topData, year, exam) => {
     }
 };
 
-// 🌟 NAYA: Wazahat Delete/Reset karne ka function
-window.deleteWazahat = async (docId, keyToDelete, isLegacy) => {
-    if (!confirm('Kya aap waqai is wazahat ko delete kar ke form ko wapas reset karna chahte hain?')) return;
-
-    try {
-        // Firestore se deleteField import karein
-        const { updateDoc, doc, deleteField } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const docRef = doc(window.db, "asatiza_wise_results", docId);
-        
-        const updatePath = {};
-        
-        if (isLegacy) {
-            // Agar purane system ki wazahat hai
-            updatePath[`wazahat`] = deleteField();
-        } else {
-            // Naye map system ki wazahat (sirf specific subject ki wazahat udayega)
-            updatePath[`wazahat_map.${keyToDelete}`] = deleteField();
-            updatePath[`zimmedar_comments.${keyToDelete}`] = deleteField();
-        }
-
-        await updateDoc(docRef, updatePath);
-        alert("Wazahat delete ho gayi aur form reset ho gaya!");
-        
-        // Table ko automatically refresh karein
-        if (window.fetchResultData) await window.fetchResultData();
-    } catch (err) {
-        alert("Galti: " + err.message);
-    }
-};
-
 // --- APPRECIATION LETTER FUNCTION ---
 window.generateAppreciationLetter = async (teacherName, jamiaName, examType, examYear) => {
     // State Name Popup
@@ -960,5 +930,35 @@ window.generateAppreciationLetter = async (teacherName, jamiaName, examType, exa
     } else {
         alert("html2canvas library load nahi hui hai.");
         document.body.removeChild(letterDiv);
+    }
+};
+
+// 🌟 NAYA: Wazahat Delete/Reset karne ka function
+window.deleteWazahat = async (docId, keyToDelete, isLegacy) => {
+    if (!confirm('Kya aap waqai is wazahat ko delete kar ke form ko wapas reset karna chahte hain?')) return;
+
+    try {
+        // Firestore se deleteField import karein
+        const { updateDoc, doc, deleteField } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const docRef = doc(window.db, "asatiza_wise_results", docId);
+        
+        const updatePath = {};
+        
+        if (isLegacy) {
+            // Agar purane system ki wazahat hai
+            updatePath[`wazahat`] = deleteField();
+        } else {
+            // Naye map system ki wazahat (sirf specific subject ki wazahat udayega)
+            updatePath[`wazahat_map.${keyToDelete}`] = deleteField();
+            updatePath[`zimmedar_comments.${keyToDelete}`] = deleteField();
+        }
+
+        await updateDoc(docRef, updatePath);
+        alert("Wazahat delete ho gayi aur form reset ho gaya!");
+        
+        // Table ko automatically refresh karein
+        if (window.fetchResultData) await window.fetchResultData();
+    } catch (err) {
+        alert("Galti: " + err.message);
     }
 };
