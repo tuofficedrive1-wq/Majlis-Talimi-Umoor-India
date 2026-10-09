@@ -707,20 +707,46 @@ export async function initAdminResultAnalysis(db, containerId) {
                 </tr>`;
             });
         }
-        else if (layout === 'wazahat') {
+       else if (layout === 'wazahat') {
             let totalPending = 0; let totalSubmitted = 0; let wazahatRows = ""; let latestMap = new Map();
+            let userStats = {}; // 🌟 NAYA: User-wise summary ke liye
+
             data.forEach((d) => {
+                const userName = d.userName || "Unknown";
                 (d.data || []).forEach((tEntry) => {
                     (tEntry.periods || []).forEach((p) => {
                         const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
                         if (sPer < 70) {
                             const subjectKey = (p.subject || "").replace(/\./g, '_');
                             const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
+                            
                             if (!latestMap.has(uniqueId)) {
                                 const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
-                                if (hasWazahat) totalSubmitted++; else totalPending++;
-                                const tComment = hasWazahat ? `<div class="text-sm urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>` : '<span class="text-red-500 font-bold italic">Pending...</span>';
+                                
+                                // User Stats Update
+                                if (!userStats[userName]) userStats[userName] = { total: 0, submitted: 0, pending: 0 };
+                                userStats[userName].total++;
+
+                                let tComment = "";
+                                if (hasWazahat) {
+                                    totalSubmitted++;
+                                    userStats[userName].submitted++;
+                                    // 🌟 NAYA: Reset/Delete Button Add Kiya Hai
+                                    tComment = `
+                                        <div class="flex flex-col gap-2">
+                                            <div class="text-sm urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>
+                                            <button class="wazahat-delete-btn self-end text-[11px] bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded border border-red-200 transition" data-docid="${d.id}" data-subjkey="${subjectKey}">
+                                                <i class="fas fa-trash-alt"></i> Reset
+                                            </button>
+                                        </div>`;
+                                } else {
+                                    totalPending++;
+                                    userStats[userName].pending++;
+                                    tComment = '<span class="text-red-500 font-bold italic">Pending...</span>';
+                                }
+
                                 const zComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) ? `<div class="text-sm urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` : '<span class="text-gray-400 italic text-xs">Nahi likha</span>';
+                                
                                 wazahatRows += `<tr class="border-b hover:bg-gray-50 text-center"><td class="p-2 border urdu-font font-bold text-gray-800">${d.jamia}</td><td class="p-2 border urdu-font font-bold text-blue-800">${tEntry.teacher || "-"}</td><td class="p-2 border"><div class="font-bold urdu-font text-[13px]">${p.subject || '-'}</div><div class="text-[10px] font-bold text-red-600">${p.class || '-'}</div></td><td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td><td class="p-3 border bg-red-50/30 min-w-[200px] text-right">${tComment}</td><td class="p-3 border bg-blue-50/30 min-w-[200px] text-right">${zComment}</td></tr>`;
                                 latestMap.set(uniqueId, true);
                             }
@@ -728,13 +754,37 @@ export async function initAdminResultAnalysis(db, containerId) {
                     });
                 });
             });
+
+            // 🌟 NAYA: User-wise Summary HTML Generate
+            let userSummaryHtml = `<div class="bg-slate-100 p-4 border-b border-slate-300">
+                <h4 class="text-slate-800 font-bold text-sm mb-3"><i class="fas fa-users mr-1"></i> User-wise Summary:</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">`;
+            
+            Object.keys(userStats).sort().forEach(uName => {
+                const st = userStats[uName];
+                userSummaryHtml += `
+                <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-sm">
+                    <div class="font-bold text-indigo-700 urdu-font border-b pb-1 mb-2">${uName}</div>
+                    <div class="flex justify-between text-xs mb-1"><span>Kul Kamzor:</span> <span class="font-bold text-slate-700">${st.total}</span></div>
+                    <div class="flex justify-between text-xs mb-1"><span>Wazahat Aagayi:</span> <span class="font-bold text-green-600">${st.submitted}</span></div>
+                    <div class="flex justify-between text-xs"><span>Pending:</span> <span class="font-bold text-red-500">${st.pending}</span></div>
+                </div>`;
+            });
+            userSummaryHtml += `</div></div>`;
+
             const summaryHeader = `<div class="bg-[#1e293b] text-white p-3 rounded-t-2xl text-center font-bold text-sm border-b border-slate-700">Kul Kamzor Results: <span class="text-yellow-400 mx-1">${totalPending + totalSubmitted}</span> | Wazahat Aa Gayi: <span class="text-green-400 mx-1">${totalSubmitted}</span> | Baqi (Pending): <span class="text-red-400 mx-1">${totalPending}</span></div>`;
+            
             thead.innerHTML = `<tr class="bg-slate-900 text-white text-[13px] font-bold urdu-font"><th class="p-3 border border-slate-700">جامعہ</th><th class="p-3 border border-slate-700">استاد</th><th class="p-3 border border-slate-700">مضمون/درجہ</th><th class="p-3 border border-slate-700 w-16">فیصد</th><th class="p-3 border border-slate-700 w-24">کیفیت</th><th class="p-3 border border-slate-700 bg-red-900/40">وضاحت (Teacher)</th><th class="p-3 border border-slate-700 bg-blue-900/40">تبصرہ (Zimmedar)</th></tr>`;
+            
             const tableContainer = document.getElementById("reports-view");
-            const existingSummary = tableContainer.querySelector('.summary-bar-wazahat');
-            if (existingSummary) existingSummary.remove();
-            const summaryDiv = document.createElement('div'); summaryDiv.className = 'summary-bar-wazahat'; summaryDiv.innerHTML = summaryHeader;
+            const existingSummaries = tableContainer.querySelectorAll('.summary-bar-wazahat');
+            existingSummaries.forEach(el => el.remove());
+            
+            const summaryDiv = document.createElement('div'); 
+            summaryDiv.className = 'summary-bar-wazahat'; 
+            summaryDiv.innerHTML = summaryHeader + (Object.keys(userStats).length > 0 ? userSummaryHtml : '');
             tableContainer.prepend(summaryDiv);
+            
             tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
         }
         else {
@@ -1281,6 +1331,39 @@ export async function initAdminResultAnalysis(db, containerId) {
                 } catch(err) {
                     if(logs) logs.innerHTML = `<span class="text-red-600 font-bold">❌ Error: ${err.message}</span>`;
                 }
+            }
+        });
+        // 🌟 NAYA: Wazahat Delete/Reset karne ka function
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.wazahat-delete-btn');
+            if (!btn) return;
+            
+            if (!confirm('Kya aap waqai is wazahat ko delete kar ke form ko wapas reset karna chahte hain?')) return;
+            
+            const docId = btn.dataset.docid;
+            const subjKey = btn.dataset.subjkey;
+            
+            const btnOriginalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reseting...';
+            btn.disabled = true;
+
+            try {
+                // Firebase se updateDoc aur deleteField laa rahe hain taake exact word delete ho
+                const { updateDoc, deleteField } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                
+                await updateDoc(doc(db, "asatiza_wise_results", docId), {
+                    [`wazahat_map.${subjKey}`]: deleteField(),
+                    [`zimmedar_comments.${subjKey}`]: deleteField()
+                });
+
+                // Delete hone ke baad automatically list dobara refresh hogi
+                const showBtn = document.getElementById('admin-show-btn');
+                if(showBtn) showBtn.click();
+                
+            } catch (err) {
+                alert('Error resetting wazahat: ' + err.message);
+                btn.innerHTML = btnOriginalText;
+                btn.disabled = false;
             }
         });
     }
