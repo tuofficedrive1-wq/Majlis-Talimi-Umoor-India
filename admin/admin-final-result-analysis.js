@@ -934,8 +934,7 @@ else if (t.dataset.edit === 'class') {
 else if (t.dataset.edit === 'jamia') {
     j.name = t.value.trim();
     j.isEdited = true; // Agar Jamia ka naam badla to sab update karna hoga
-    // (Baqi purana code same rahega)
-        });
+   
 
         document.addEventListener('change', (e) => {
             const t = e.target; if (!t || !t.dataset || !pendingUploadData) return;
