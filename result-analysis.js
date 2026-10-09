@@ -521,31 +521,46 @@ else if (layoutLevel === 'wazahat') {
                         const darjah = (p.class || p.darjah || '-').trim();
                         
                         let finalWazahatText = "";
+                        let keyToDelete = subjectKey; 
+                        let isLegacy = false;
                         
                         // --- SMART SEARCH START ---
                         if (d.wazahat_map) {
-                            // 1. Nayi key check karein (Standard underscore key)
-                            finalWazahatText = d.wazahat_map[subjectKey] || d.wazahat_map[rawSubject];
-
-                            // 2. Agar nahi mila, toh poore map mein 'Deep Search' karein
-                            if (!finalWazahatText) {
+                            if (d.wazahat_map[subjectKey]) {
+                                finalWazahatText = d.wazahat_map[subjectKey];
+                                keyToDelete = subjectKey;
+                            } else if (d.wazahat_map[rawSubject]) {
+                                finalWazahatText = d.wazahat_map[rawSubject];
+                                keyToDelete = rawSubject;
+                            } else {
                                 for (let key in d.wazahat_map) {
-                                    // Agar purani key mein sirf subject ka naam tha (chahe class na ho)
                                     if (key.includes(subjectKey) || subjectKey.includes(key)) {
                                         finalWazahatText = d.wazahat_map[key];
+                                        keyToDelete = key;
                                         break;
                                     }
                                 }
                             }
                         }
                         
-                        // 3. Purana single field 'wazahat' check karein
+                        // Purana single field 'wazahat' check karein
                         if (!finalWazahatText && d.wazahat) {
                             finalWazahatText = d.wazahat;
+                            isLegacy = true;
                         }
                         // --- SMART SEARCH END ---
 
                         const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
+                        
+                        // 🌟 NAYA: Reset/Delete Button Add Kiya Hai
+                        const specificWazahat = hasWazahat 
+                            ? `<div class="flex flex-col gap-1">
+                                 <div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">${finalWazahatText}</div>
+                                 <button onclick="deleteWazahat('${d.docId}', '${keyToDelete}', ${isLegacy})" class="self-end text-[11px] bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded border border-red-200 transition shadow-sm mt-1">
+                                     <i class="fas fa-trash-alt"></i> Reset
+                                 </button>
+                               </div>`
+                            : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
                         const specificWazahat = hasWazahat 
                             ? `<div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">${finalWazahatText}</div>`
                             : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
@@ -786,6 +801,36 @@ window.generateTop3Poster = async (topData, year, exam) => {
         link.href = canvas.toDataURL("image/png");
         link.click();
         document.body.removeChild(posterDiv);
+    }
+};
+
+// 🌟 NAYA: Wazahat Delete/Reset karne ka function
+window.deleteWazahat = async (docId, keyToDelete, isLegacy) => {
+    if (!confirm('Kya aap waqai is wazahat ko delete kar ke form ko wapas reset karna chahte hain?')) return;
+
+    try {
+        // Firestore se deleteField import karein
+        const { updateDoc, doc, deleteField } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const docRef = doc(window.db, "asatiza_wise_results", docId);
+        
+        const updatePath = {};
+        
+        if (isLegacy) {
+            // Agar purane system ki wazahat hai
+            updatePath[`wazahat`] = deleteField();
+        } else {
+            // Naye map system ki wazahat (sirf specific subject ki wazahat udayega)
+            updatePath[`wazahat_map.${keyToDelete}`] = deleteField();
+            updatePath[`zimmedar_comments.${keyToDelete}`] = deleteField();
+        }
+
+        await updateDoc(docRef, updatePath);
+        alert("Wazahat delete ho gayi aur form reset ho gaya!");
+        
+        // Table ko automatically refresh karein
+        if (window.fetchResultData) await window.fetchResultData();
+    } catch (err) {
+        alert("Galti: " + err.message);
     }
 };
 
