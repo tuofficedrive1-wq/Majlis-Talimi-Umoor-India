@@ -561,9 +561,6 @@ else if (layoutLevel === 'wazahat') {
                                  </button>
                                </div>`
                             : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
-                        const specificWazahat = hasWazahat 
-                            ? `<div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">${finalWazahatText}</div>`
-                            : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
 
                         let zimmedarComment = "";
                         if (d.zimmedar_comments) {
