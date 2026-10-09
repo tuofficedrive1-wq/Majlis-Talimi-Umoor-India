@@ -517,8 +517,9 @@ else if (layoutLevel === 'wazahat') {
                     
                     if (percVal < 70) {
                         const rawSubject = (p.subject || '-').trim();
-                        const subjectKey = rawSubject.replace(/\./g, '_');
                         const darjah = (p.class || p.darjah || '-').trim();
+                        // Unique key banane ke liye Subject aur Darjah dono ko mila dein
+                        const subjectKey = (rawSubject + "_" + darjah).replace(/[\.\s]/g, '_');
                         
                         let finalWazahatText = "";
                         let keyToDelete = subjectKey; 
