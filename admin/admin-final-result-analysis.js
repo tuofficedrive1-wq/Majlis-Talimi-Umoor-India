@@ -915,25 +915,26 @@ export async function initAdminResultAnalysis(db, containerId) {
             if (t.dataset.pdfh) { pendingUploadData.pdfHeader = pendingUploadData.pdfHeader || {}; pendingUploadData.pdfHeader[t.dataset.pdfh] = t.value; return; }
             if (!t.dataset.edit) return;
             const j = pendingUploadData.jamiaat[+t.dataset.ji];
-            if (t.dataset.edit === 'course') j.classes[+t.dataset.ci].course = t.value;
+            
+            if (t.dataset.edit === 'course') {
+                j.classes[+t.dataset.ci].course = t.value;
+                j.classes[+t.dataset.ci].isEdited = true;
+            }
             else if (t.dataset.edit === 'jamia') {
                 j.name = t.value.trim();
+                j.isEdited = true; // 🌟 SMART SAVE: Jamia ka naam badla
                 j.classes.forEach(c => { const jk = c.roles && c.roles.jamia; if (jk) c.students.forEach(st => { st[jk] = j.name; }); });
                 document.querySelectorAll(`input[data-edit="cell"][data-ji="${t.dataset.ji}"]`).forEach(inp => { if (inp.dataset.k === (j.classes[+inp.dataset.ci]?.roles?.jamia)) inp.value = j.name; });
             }
-            else if (t.dataset.edit === 'class') j.classes[+t.dataset.ci].name = t.value.trim();
-           else if (t.dataset.edit === 'cell') {
-    j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = t.value;
-    // NAYI LINE: Code ko bata diya ke is class me editing hui hai
-    j.classes[+t.dataset.ci].isEdited = true; 
-}
-else if (t.dataset.edit === 'class') {
-    j.classes[+t.dataset.ci].name = t.value.trim();
-    j.classes[+t.dataset.ci].isEdited = true;
-}
-else if (t.dataset.edit === 'jamia') {
-    j.name = t.value.trim();
-    j.isEdited = true; // Agar Jamia ka naam badla to sab update karna hoga
+            else if (t.dataset.edit === 'class') {
+                j.classes[+t.dataset.ci].name = t.value.trim();
+                j.classes[+t.dataset.ci].isEdited = true; // 🌟 SMART SAVE: Class ka naam badla
+            }
+            else if (t.dataset.edit === 'cell') {
+                j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = t.value;
+                j.classes[+t.dataset.ci].isEdited = true; // 🌟 SMART SAVE: Number badla
+            }
+        });
    
 
         document.addEventListener('change', (e) => {
