@@ -326,21 +326,34 @@
             }
         };
 
-        const checkExistingWazahat = async (docId, subjectKey) => {
+        const docId = urlParams.get('id');
+        const rawSubject = urlParams.get('subject') || '-';
+        const rawTeacher = urlParams.get('teacher') || '-';
+        
+        // 1. Purana Key (Purani wazahat check karne ke liye)
+        const subjectKey = rawSubject.replace(/\./g, '_');
+        
+        // 2. Naya "Bulletproof" Key (Faltu spaces hata kar aur Teacher ka naam mila kar)
+        const normalize = (str) => String(str || "").replace(/[\s_.-]/g, '').trim().toLowerCase();
+        const safeKey = `${normalize(rawSubject)}_${normalize(rawTeacher)}`;
+
+        const checkExistingWazahat = async (docId, subjectKey, safeKey) => {
             try {
                 const docRef = doc(db, "asatiza_wise_results", docId);
                 const docSnap = await getDoc(docRef);
 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    const existingText = data.wazahat_map ? data.wazahat_map[subjectKey] : null;
+                    // Nayi aur purani dono keys mein check karega taake purani wazahat bhi ghum na ho
+                    const existingText = data.wazahat_map ? (data.wazahat_map[safeKey] || data.wazahat_map[subjectKey]) : null;
 
                     if (existingText) {
                         wForm.classList.add('hidden');
                         
                         let dateText = "";
-                        if (data.wazahat_date_map && data.wazahat_date_map[subjectKey]) {
-                            const dObj = new Date(data.wazahat_date_map[subjectKey]);
+                        const dateVal = data.wazahat_date_map ? (data.wazahat_date_map[safeKey] || data.wazahat_date_map[subjectKey]) : null;
+                        if (dateVal) {
+                            const dObj = new Date(dateVal);
                             const fDate = dObj.toLocaleDateString('ur-PK') + " - " + dObj.toLocaleTimeString('ur-PK', {hour: '2-digit', minute:'2-digit'});
                             dateText = `Date: ${fDate}`;
                         }
@@ -358,11 +371,9 @@
         };
 
         fillData();
-        const docId = urlParams.get('id');
-        const subjectKey = decodeURIComponent(urlParams.get('subject') || '-').replace(/\./g, '_');
         
-        if (docId && subjectKey !== '-') {
-            checkExistingWazahat(docId, subjectKey);
+        if (docId && rawSubject !== '-') {
+            checkExistingWazahat(docId, subjectKey, safeKey);
         }
 
         wForm.addEventListener('submit', async (e) => {
@@ -377,9 +388,11 @@
             try {
                 const now = new Date();
                 const docRef = doc(db, "asatiza_wise_results", docId);
+                
+                // 🌟 NAYA: Data ab bilkul SAFE KEY ke sath bina spaces ke save hoga
                 await updateDoc(docRef, {
-                    [`wazahat_map.${subjectKey}`]: text,
-                    [`wazahat_date_map.${subjectKey}`]: now.toISOString(),
+                    [`wazahat_map.${safeKey}`]: text,
+                    [`wazahat_date_map.${safeKey}`]: now.toISOString(),
                     wazahat_status: "Submitted"
                 });
 
