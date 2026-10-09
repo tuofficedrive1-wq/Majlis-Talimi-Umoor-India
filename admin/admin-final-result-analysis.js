@@ -755,21 +755,48 @@ export async function initAdminResultAnalysis(db, containerId) {
                 });
             });
 
-            // 🌟 NAYA: User-wise Summary HTML Generate
+            // 🌟 NAYA: User-wise Summary HTML Generate (With Rank & Percentage)
             let userSummaryHtml = `<div class="bg-slate-100 p-4 border-b border-slate-300">
-                <h4 class="text-slate-800 font-bold text-sm mb-3"><i class="fas fa-users mr-1"></i> User-wise Summary:</h4>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">`;
+                <h4 class="text-slate-800 font-bold text-sm mb-3"><i class="fas fa-trophy text-yellow-600 mr-1"></i> User-wise Summary (Ranking):</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">`;
             
-            Object.keys(userStats).sort().forEach(uName => {
-                const st = userStats[uName];
+            // 1. Data ko array mein badal kar percentage nikalna
+            let userStatsArray = Object.keys(userStats).map(uName => {
+                let st = userStats[uName];
+                let percent = st.total > 0 ? (st.submitted / st.total) * 100 : 0;
+                return { name: uName, total: st.total, submitted: st.submitted, pending: st.pending, percent: percent };
+            });
+
+            // 2. Percentage ke hisaab se Sort karna (Sabse zyada percent wala #1 par)
+            userStatsArray.sort((a, b) => b.percent - a.percent);
+
+            // 3. Card generate karna (Rank aur Percent progress bar ke sath)
+            userStatsArray.forEach((user, index) => {
+                let rank = index + 1;
+                // Top 3 ke liye alag colors (Gold, Silver, Bronze)
+                let rankColor = rank === 1 ? 'bg-yellow-500' : (rank === 2 ? 'bg-gray-400' : (rank === 3 ? 'bg-orange-400' : 'bg-indigo-500'));
+                
                 userSummaryHtml += `
-                <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-sm">
-                    <div class="font-bold text-indigo-700 urdu-font border-b pb-1 mb-2">${uName}</div>
-                    <div class="flex justify-between text-xs mb-1"><span>Kul Kamzor:</span> <span class="font-bold text-slate-700">${st.total}</span></div>
-                    <div class="flex justify-between text-xs mb-1"><span>Wazahat Aagayi:</span> <span class="font-bold text-green-600">${st.submitted}</span></div>
-                    <div class="flex justify-between text-xs"><span>Pending:</span> <span class="font-bold text-red-500">${st.pending}</span></div>
+                <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-sm relative overflow-hidden transition-all hover:shadow-md">
+                    <!-- Rank Badge -->
+                    <div class="absolute top-0 right-0 ${rankColor} text-white text-[11px] font-black px-2 py-1 rounded-bl-lg shadow-sm">
+                        #${rank}
+                    </div>
+                    
+                    <div class="font-bold text-indigo-700 urdu-font border-b pb-1 mb-2 pr-8">${user.name}</div>
+                    
+                    <div class="flex justify-between text-xs mb-1"><span>Kul Kamzor:</span> <span class="font-bold text-slate-700">${user.total}</span></div>
+                    <div class="flex justify-between text-xs mb-1"><span>Wazahat Aagayi:</span> <span class="font-bold text-green-600">${user.submitted}</span></div>
+                    <div class="flex justify-between text-xs mb-3"><span>Pending:</span> <span class="font-bold text-red-500">${user.pending}</span></div>
+                    
+                    <!-- Progress Bar -->
+                    <div class="w-full bg-gray-100 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-200">
+                        <div class="bg-emerald-500 h-1.5 rounded-full transition-all duration-1000" style="width: ${user.percent}%"></div>
+                    </div>
+                    <div class="text-[10px] text-right font-bold text-gray-500">${user.percent.toFixed(1)}% Completed</div>
                 </div>`;
             });
+            
             userSummaryHtml += `</div></div>`;
 
             const summaryHeader = `<div class="bg-[#1e293b] text-white p-3 rounded-t-2xl text-center font-bold text-sm border-b border-slate-700">Kul Kamzor Results: <span class="text-yellow-400 mx-1">${totalPending + totalSubmitted}</span> | Wazahat Aa Gayi: <span class="text-green-400 mx-1">${totalSubmitted}</span> | Baqi (Pending): <span class="text-red-400 mx-1">${totalPending}</span></div>`;
