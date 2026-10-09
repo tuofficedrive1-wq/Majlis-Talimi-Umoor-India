@@ -524,20 +524,40 @@ else if (layoutLevel === 'wazahat') {
                         let keyToDelete = subjectKey; 
                         let isLegacy = false;
                         
-                        // --- SMART SEARCH START ---
+                        // --- BULLETPROOF SMART SEARCH START ---
                         if (d.wazahat_map) {
+                            // Helper: Faltu spaces aur symbols hata kar completely saaf karke match karne ke liye
+                            const normalize = (str) => String(str || "").replace(/[\s_.-]/g, '').trim().toLowerCase();
+                            const normSubj = normalize(rawSubject);
+                            const normTeacher = normalize(tEntry.teacher);
+
+                            // 1. Direct match (Pehli koshish)
                             if (d.wazahat_map[subjectKey]) {
                                 finalWazahatText = d.wazahat_map[subjectKey];
                                 keyToDelete = subjectKey;
-                            } else if (d.wazahat_map[rawSubject]) {
+                            } 
+                            else if (d.wazahat_map[rawSubject]) {
                                 finalWazahatText = d.wazahat_map[rawSubject];
                                 keyToDelete = rawSubject;
-                            } else {
+                            } 
+                            else {
+                                // 2. Fuzzy Match (Agar spaces ya format thoda alag ho gaya ho)
                                 for (let key in d.wazahat_map) {
-                                    if (key.includes(subjectKey) || subjectKey.includes(key)) {
-                                        finalWazahatText = d.wazahat_map[key];
-                                        keyToDelete = key;
-                                        break;
+                                    let normKey = normalize(key);
+                                    
+                                    // Agar database ki key mein subject ka naam chhupa hai (Bina spaces ke)
+                                    if (normKey === normSubj || normKey.includes(normSubj) || normSubj.includes(normKey)) {
+                                        
+                                        // Extra Check: Agar key mein teacher ka naam bhi hai, to usay match karein
+                                        if (normKey.includes(normTeacher) || normKey === normSubj) {
+                                            finalWazahatText = d.wazahat_map[key];
+                                            keyToDelete = key;
+                                            break;
+                                        } else {
+                                            // Fallback: Agar upar match na ho, to ye final option hai
+                                            finalWazahatText = d.wazahat_map[key];
+                                            keyToDelete = key;
+                                        }
                                     }
                                 }
                             }
@@ -548,11 +568,11 @@ else if (layoutLevel === 'wazahat') {
                             finalWazahatText = d.wazahat;
                             isLegacy = true;
                         }
-                        // --- SMART SEARCH END ---
+                        // --- BULLETPROOF SMART SEARCH END ---
 
                         const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
                         
-                        // 🌟 NAYA: Reset/Delete Button Add Kiya Hai
+                        // 🌟 Reset/Delete Button (Waisa hi rahega)
                         const specificWazahat = hasWazahat 
                             ? `<div class="flex flex-col gap-1">
                                  <div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">${finalWazahatText}</div>
