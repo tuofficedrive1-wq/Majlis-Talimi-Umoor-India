@@ -898,6 +898,142 @@ export async function initAdminResultAnalysis(db, containerId) {
             }
         };
 
+        // 🌟 NAYA: Real-time Auto Recalculation Logic
+const autoRecalculate = (pData) => {
+    if (!pData || !pData.jamiaat) return;
+
+    let allStudents = [];
+
+    // Hissa 1: Total, Percentage, Grade, aur Kefiyat calculate karna
+    pData.jamiaat.forEach((j, ji) => {
+        j.classes.forEach((c, ci) => {
+            if (c.deleted) return;
+
+            // Excel wale rank columns ko naam se detect karna
+            const getColKey = (regex) => {
+                const col = c.columns.find(col => regex.test(col.label));
+                return col ? col.key : null;
+            };
+            
+            const rankKeys = {
+                rankA: getColKey(/ہند جامعات/),
+                rankB: getColKey(/ہند درجات/),
+                rankC: getColKey(/اپنے جامعہ/),
+                rankD: getColKey(/اپنے درجہ/)
+            };
+
+            c.students.forEach((st, r) => {
+                let totalObtained = 0;
+                let classTotalMax = 0;
+                let isGhaib = false;
+                let isFail = false;
+
+                // Har mazmoon (subject) ke number check karna (Fail/Ghaib)
+                c.keys.forEach(subNum => {
+                    let colKey = c.colMap[subNum];
+                    let subInfo = c.subjects[subNum];
+                    if (!colKey || !subInfo) return;
+
+                    classTotalMax += (subInfo.max || 100);
+                    let marksStr = String(st[colKey] || '').trim().toLowerCase();
+                    let passMarks = subInfo.pass || 40;
+
+                    if (marksStr === 'غ' || marksStr === 'absent' || marksStr === 'a') {
+                        isGhaib = true;
+                    } else if (marksStr === 'ناکام' || marksStr === 'f' || marksStr === 'fail') {
+                        isFail = true;
+                    } else {
+                        let numVal = parseFloat(marksStr);
+                        if (!isNaN(numVal)) {
+                            totalObtained += numVal;
+                            if (numVal < passMarks) isFail = true;
+                        }
+                    }
+                });
+
+                // Percentage nikalna
+                let percent = classTotalMax > 0 ? (totalObtained / classTotalMax) * 100 : 0;
+                let kefiyat = "";
+                let grade = "";
+
+                // Grade aur Kefiyat ka Excel jaisa Logic
+                if (isGhaib) {
+                    kefiyat = "غیر حاضر"; grade = "G";
+                } else if (isFail) {
+                    kefiyat = "ناکام"; grade = "F";
+                } else {
+                    if (percent >= 85) { kefiyat = "ممتاز مع الشرف"; grade = "A+"; }
+                    else if (percent >= 70) { kefiyat = "ممتاز"; grade = "A"; }
+                    else if (percent >= 60) { kefiyat = "جيد جدا"; grade = "B"; }
+                    else if (percent >= 50) { kefiyat = "جيد"; grade = "C"; }
+                    else { kefiyat = "مقبول"; grade = "D"; }
+                }
+
+                // Data update karna
+                if (c.roles.total) st[c.roles.total] = totalObtained;
+                if (c.roles.percent) st[c.roles.percent] = percent.toFixed(1) + '%';
+                if (c.roles.kefiyat) st[c.roles.kefiyat] = kefiyat;
+                if (c.roles.grade) st[c.roles.grade] = grade;
+
+                // Rank array ke liye data jama karna
+                allStudents.push({
+                    stObj: st, jamia: j.name, darjah: c.name, score: totalObtained, isValid: !isGhaib && !isFail,
+                    ji, ci, r, rankKeys, roles: c.roles
+                });
+            });
+        });
+    });
+
+    // Hissa 2: Dense Rank (Excel ke UNIQUE + FILTER jaisa Logic)
+    const getDenseRank = (list, myScore) => {
+        let uniqueHigherScores = new Set();
+        list.forEach(s => {
+            if (s.isValid && s.score > myScore) uniqueHigherScores.add(s.score);
+        });
+        return uniqueHigherScores.size + 1;
+    };
+
+    // Hissa 3: Rank apply karna aur Live UI update karna
+    allStudents.forEach(s => {
+        let rA = "", rB = "", rC = "", rD = "";
+        
+        if (s.isValid) {
+            // A: All India Rank
+            rA = getDenseRank(allStudents, s.score);
+            // B: All India Darjah Rank
+            rB = getDenseRank(allStudents.filter(x => x.darjah === s.darjah), s.score);
+            // C: Apne Jamia me Rank
+            rC = getDenseRank(allStudents.filter(x => x.jamia === s.jamia), s.score);
+            // D: Apne Jamia aur Apne Darjah me Rank
+            rD = getDenseRank(allStudents.filter(x => x.jamia === s.jamia && x.darjah === s.darjah), s.score);
+        } else {
+             // Agar Ghaib ya Fail hai to rank khali aayegi
+             rA = "-"; rB = "-"; rC = "-"; rD = "-";
+        }
+
+        if (s.rankKeys.rankA) s.stObj[s.rankKeys.rankA] = rA;
+        if (s.rankKeys.rankB) s.stObj[s.rankKeys.rankB] = rB;
+        if (s.rankKeys.rankC) s.stObj[s.rankKeys.rankC] = rC;
+        if (s.rankKeys.rankD) s.stObj[s.rankKeys.rankD] = rD;
+
+        // JS Inputs ko dynamically update karna bina type kiye huye cursor hataye
+        const updateField = (colKey, val) => {
+            if (!colKey) return;
+            let inp = document.querySelector(`input[data-edit="cell"][data-ji="${s.ji}"][data-ci="${s.ci}"][data-r="${s.r}"][data-k="${colKey}"]`);
+            if (inp && inp.value !== String(val)) inp.value = val;
+        };
+
+        updateField(s.roles.total, s.stObj[s.roles.total]);
+        updateField(s.roles.percent, s.stObj[s.roles.percent]);
+        updateField(s.roles.kefiyat, s.stObj[s.roles.kefiyat]);
+        updateField(s.roles.grade, s.stObj[s.roles.grade]);
+        updateField(s.rankKeys.rankA, rA);
+        updateField(s.rankKeys.rankB, rB);
+        updateField(s.rankKeys.rankC, rC);
+        updateField(s.rankKeys.rankD, rD);
+    });
+};
+
         const coerceCell = (v) => {
             const t = String(v).trim();
             return (t !== '' && /^-?\d+(\.\d+)?$/.test(t)) ? Number(t) : v;
@@ -1010,6 +1146,9 @@ export async function initAdminResultAnalysis(db, containerId) {
             else if (t.dataset.edit === 'cell') {
                 j.classes[+t.dataset.ci].students[+t.dataset.r][t.dataset.k] = t.value;
                 j.classes[+t.dataset.ci].isEdited = true; // 🌟 SMART SAVE: Number badla
+                
+                // YAHAN FUNCTION CALL KAREIN TAAKE AUTO CALCULATION HO:
+                autoRecalculate(pendingUploadData);
             }
         });
    
