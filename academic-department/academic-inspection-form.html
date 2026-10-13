@@ -672,25 +672,157 @@ document.addEventListener('input', function (event) {
     }
 }, false);
 
-// 2. PERFECTED PDF DOWNLOAD LOGIC
+// 2. PERFECTED PDF DOWNLOAD LOGIC (IRCTC TICKET STYLE)
 document.getElementById('download-pdf-btn').addEventListener('click', async () => {
-    // Screen ko top par le jayein
-    window.scrollTo(0, 0);
+    // 1. Data Extract Karein (Live form se data nikalna)
+    const jamiaTitleElem = document.getElementById('jamia-title');
+    const jamiaTitleText = jamiaTitleElem ? jamiaTitleElem.innerText.replace(/
+/g, ' - ') : 'Jamia Inspection';
+    const totalClasses = document.getElementById('total-classes-count').innerText;
+    const totalBooks = document.getElementById('total-books-count').innerText;
+    const overallScore = document.getElementById('jamia-total-percent').innerText.replace(/
+/g, ' ');
 
-    // Target the main container
-    const element = document.querySelector('.max-w-4xl'); 
-    
-    // Buttons hide karein taake form clean lage
-    const buttonsToHide = document.querySelectorAll('#add-class-btn, .btn-icon-danger, .icon-remove, #final-save-btn, #download-pdf-btn');
-    buttonsToHide.forEach(btn => btn.style.display = 'none');
-    
-    // Italic text (instructions) bhi hide kar dein
-    document.querySelectorAll('p.italic').forEach(p => p.style.display = 'none');
+    let classesHtml = '';
+    document.querySelectorAll('.class-card').forEach(card => {
+        const classSelect = card.querySelector('.class-select');
+        const className = classSelect.options[classSelect.selectedIndex]?.text || 'N/A';
+        if (className === 'Select Class' || !className) return; // Skip empty class
 
-    // Data lock karein (inputs, textareas, selects) taake PDF me print ho jaye
-    element.querySelectorAll('input').forEach(input => {
-        input.setAttribute('value', input.value);
+        const classScore = card.querySelector('.class-avg').innerText;
+        const totalSt = card.querySelector('.total-students').value || 0;
+        const presSt = card.querySelector('.present-students').value || 0;
+        const remarks = card.querySelector('.class-remark').value || '';
+
+        let booksHtml = '';
+        card.querySelectorAll('.book-row').forEach(row => {
+            const teacherSelect = row.querySelector('.teacher-select');
+            const teacher = teacherSelect.options[teacherSelect.selectedIndex]?.text || '-';
+            
+            const bookSelect = row.querySelector('.book-select');
+            const subject = bookSelect.options[bookSelect.selectedIndex]?.text || '-';
+            
+            const score = row.querySelector('.book-percent').innerText.replace(/
+/g, ' ');
+
+            let qsHtml = '';
+            row.querySelectorAll('.q-score-input').forEach(qInput => {
+                const parentDiv = qInput.closest('.flex');
+                const textInput = parentDiv.querySelector('input[type="text"]');
+                const spanText = parentDiv.querySelector('span');
+                let qText = textInput ? textInput.value : (spanText ? spanText.innerText : '');
+                if (qText) {
+                    qsHtml += `<div style="font-size: 10px; margin-bottom: 2px;">• ${qText}: <strong>${qInput.value || 0}</strong></div>`;
+                }
+            });
+
+            booksHtml += `
+                <tr style="border-bottom: 1px solid #e2e8f0; page-break-inside: avoid;">
+                    <td style="padding: 8px 6px; font-size: 11px; vertical-align: top;">${teacher}</td>
+                    <td style="padding: 8px 6px; font-size: 11px; vertical-align: top; font-weight: bold;">${subject}</td>
+                    <td style="padding: 8px 6px; font-size: 11px; vertical-align: top; color: #4f46e5; font-weight: bold;">${score}</td>
+                    <td style="padding: 8px 6px; vertical-align: top;">${qsHtml}</td>
+                </tr>
+            `;
+        });
+
+        // Ek class ka compact table design (Ticket Style)
+        classesHtml += `
+            <div style="border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 15px; padding: 12px; page-break-inside: avoid; background-color: #f8fafc;">
+                <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #334155; padding-bottom: 8px; margin-bottom: 10px;">
+                    <h3 style="margin: 0; font-size: 14px; font-weight: 800; color: #1e293b; text-transform: uppercase;">CLASS: ${className}</h3>
+                    <span style="font-weight: 800; font-size: 13px; color: #059669;">Score: ${classScore}</span>
+                </div>
+                <div style="font-size: 11px; margin-bottom: 10px; color: #475569; font-weight: 600;">
+                    <span style="display:inline-block; margin-right:15px;">Total Students: <span style="color:#000;">${totalSt}</span></span>
+                    <span>Present Students: <span style="color:#000;">${presSt}</span></span>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; text-align: left; background: #fff; border: 1px solid #e2e8f0;">
+                    <thead>
+                        <tr style="background-color: #e2e8f0; color: #334155;">
+                            <th style="padding: 6px; font-size: 10px; text-transform: uppercase; width: 25%;">Teacher</th>
+                            <th style="padding: 6px; font-size: 10px; text-transform: uppercase; width: 25%;">Subject</th>
+                            <th style="padding: 6px; font-size: 10px; text-transform: uppercase; width: 15%;">Score</th>
+                            <th style="padding: 6px; font-size: 10px; text-transform: uppercase; width: 35%;">Questions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${booksHtml || '<tr><td colspan="4" style="text-align:center; padding:10px; font-size:11px;">No subjects added</td></tr>'}
+                    </tbody>
+                </table>
+                ${remarks ? `<div style="margin-top: 10px; font-size: 11px; background: #fff; padding: 8px; border-left: 3px solid #f59e0b; border-radius: 4px;"><strong>Remarks:</strong> ${remarks}</div>` : ''}
+            </div>
+        `;
     });
+
+    // 2. Main Ticket Template (Pure A4 Optimized HTML)
+    const printTemplate = `
+        <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #0f172a; background: #fff; width: 100%; box-sizing: border-box;">
+            
+            <!-- Ticket Header -->
+            <div style="border: 2px solid #1e293b; border-radius: 6px; padding: 15px; margin-bottom: 20px; background: #fff; display: flex; flex-direction: column;">
+                <div style="text-align: center; border-bottom: 1px dashed #cbd5e1; padding-bottom: 10px; margin-bottom: 15px;">
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 900; text-transform: uppercase; color: #1e293b; letter-spacing: 1px;">Academic Quality Report</h1>
+                    <h2 style="margin: 5px 0 0 0; font-size: 14px; font-weight: 600; color: #64748b;">${jamiaTitleText}</h2>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; gap: 30px;">
+                        <div>
+                            <div style="font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold;">Classes</div>
+                            <div style="font-size: 18px; font-weight: 900;">${totalClasses}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold;">Books</div>
+                            <div style="font-size: 18px; font-weight: 900;">${totalBooks}</div>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: bold;">Overall Performance</div>
+                        <div style="font-size: 20px; font-weight: 900; color: #4f46e5;">${overallScore}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Classes Data -->
+            ${classesHtml}
+
+            <!-- Footer -->
+            <div style="text-align: center; margin-top: 20px; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+                Report Generated by Jamia Inspection System on ${new Date().toLocaleString()}
+            </div>
+        </div>
+    `;
+
+    // 3. Temporary Container mein daal kar PDF Generate karna
+    const container = document.createElement('div');
+    container.innerHTML = printTemplate;
+    
+    // UI Loading state
+    const btn = document.getElementById('download-pdf-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    btn.disabled = true;
+
+    // A4 PDF Settings - Strictly fitted
+    const opt = {
+        margin:       [10, 10, 10, 10], // Safe print margins
+        filename:     `Inspection_Report_${jamiaName || 'Jamia'}.pdf`,
+        image:        { type: 'jpeg', quality: 1 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false }, 
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    try {
+        await html2pdf().set(opt).from(container).save();
+    } catch (error) {
+        console.error("PDF generation failed:", error);
+        alert("Error downloading PDF.");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+});
     element.querySelectorAll('textarea').forEach(ta => {
         ta.innerHTML = ta.value; 
     });
