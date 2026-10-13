@@ -1069,21 +1069,24 @@
 
             window.previousMonthStudents = []; 
 
-            // 🟢 NAYA LOGIC: Hamesha pehle pichle mahine ki list nikal lein
-            if (!isViewMode) {
-                try {
-                    const prevMonthKey = window.getPreviousMonth(monthKey);
-                    const prevDocId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${prevMonthKey}_${cleanClass.replace(/\s/g, '_')}`;
+            // 🟢 FIX 1: Har mode me pichle mahino (up to 6 months back) se students ki list nikal lein
+            try {
+                let tempMonth = monthKey;
+                for (let i = 0; i < 6; i++) {
+                    tempMonth = window.getPreviousMonth(tempMonth);
+                    if (!tempMonth) break;
+                    const prevDocId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${tempMonth}_${cleanClass.replace(/\s/g, '_')}`;
                     const prevSnap = await getDoc(doc(db, "monthly_test_sheets", prevDocId));
 
                     if (prevSnap.exists()) {
                         const prevData = prevSnap.data();
                         if (prevData.students && prevData.students.length > 0) {
                             window.previousMonthStudents = prevData.students.map(s => s.name);
+                            break; // Jaise hi aakhri saved list mil jaye, loop rok dein
                         }
                     }
-                } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
-            }
+                }
+            } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
 
             try {
                 const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
@@ -1106,37 +1109,27 @@
                     
                     document.getElementById('students-body').innerHTML = ''; 
                     
-                    // 🟢 NAYA LOGIC: Agar current mahine me students hain to unhe dikhayein
+                    // Agar current mahine me students hain to unhe dikhayein
                     if (data.students && data.students.length > 0) {
                         data.students.forEach(s => addStudentRow(s.name, s.marks)); 
-                    } else {
-                        // Agar current mahine ka format save ho gaya tha lekin bachay nahi the
-                        // To pichle mahine wale bachay automatically add kar dein
+                    } else if (!isViewMode || isEditingMode) {
+                        // Agar current mahine me sirf subjects save hue the aur students khali the
                         if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
                             window.previousMonthStudents.forEach(stdName => {
                                 addStudentRow(stdName, {}); 
                             });
-                            window.previousMonthStudents = []; // Clear kar dein
+                            window.previousMonthStudents = [];
                         }
                     }
                 } 
                 else {
-                    if (isViewMode) {
+                    if (isViewMode && !isEditingMode) {
                         resultArea.classList.remove('hidden');
                         document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
                     }
                 }
 
-                if (isViewMode) {
-                    const headerTitle = document.querySelector('h1');
-                    if(headerTitle && !document.getElementById('edit-mode-btn')) {
-                        const badge = document.getElementById('view-badge');
-                        if(!badge) headerTitle.innerHTML += ` <span id="view-badge" class="text-xl bg-yellow-200 text-yellow-800 px-2 py-1 rounded ml-2 align-middle">View Only</span>`;
-                        headerTitle.innerHTML += `
-                            <button id="edit-mode-btn" onclick="enableEditMode()" class="ml-4 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow align-middle">
-                                <i class="fas fa-edit"></i> Enable Editing
-                            </button>`;
-                    }
+                if (isViewMode && !isEditingMode) {
                     ['step-heading', 'step-instruction', 'class-select'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
                     const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
                     const saveBtn = document.querySelector('button[onclick="saveResult()"]');
@@ -2290,6 +2283,13 @@
                 generateBtn.classList.add('bg-orange-600', 'hover:bg-orange-700');
             }
 
+            // 🟢 FIX 2: Agar table khali hai aur subjects pehle se bane hain, to Enable Editing karte hi students load kar dein
+            const tbody = document.getElementById('students-body');
+            if (tbody && tbody.rows.length === 0 && finalSubjectsList.length > 0 && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+                window.previousMonthStudents.forEach(stdName => addStudentRow(stdName, {}));
+                window.previousMonthStudents = [];
+            }
+
             document.querySelectorAll('.view-mode-input').forEach(inp => {
                 inp.disabled = false;
                 inp.style.backgroundColor = ''; 
@@ -2307,6 +2307,69 @@
             if(headerTrash) headerTrash.style.display = '';
 
             if (!skipAlert) alert("Editing Enabled!");
+        };
+
+        window.updateSheetColumns = async () => {
+            const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
+            if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length > 3) {
+                alert("Maximum 3 subjects select kar sakte hain."); return;
+            }
+            
+            const currentRows = document.querySelectorAll('#students-body tr');
+            currentSheetData = []; 
+            currentRows.forEach(row => {
+                const name = row.querySelector('.std-name').value.trim();
+                if(!name) return;
+                const marks = {};
+                row.querySelectorAll('.mark-input').forEach(inp => {
+                    const val = inp.value.trim().toUpperCase();
+                    marks[inp.dataset.sub] = val;
+                });
+                currentSheetData.push({ name, marks });
+            });
+
+            // 🟢 FIX 3: Agar table abhi khali hai to pichle mahine ke students ko currentSheetData me daal dein
+            if (currentSheetData.length === 0 && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+                window.previousMonthStudents.forEach(stdName => {
+                    currentSheetData.push({ name: stdName, marks: {} });
+                });
+                window.previousMonthStudents = [];
+            }
+
+            const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
+            
+            checkedBoxes.forEach(cb => {
+                const sub = cb.value;
+                const wrapper = cb.closest('div');
+                const input = wrapper ? wrapper.querySelector('.eng-name-input') : null; 
+                const engName = (input && input.value.trim()) ? input.value.trim() : (subjectTranslationMap[sub] || sub);
+                subjectTranslationMap[sub] = engName;
+            });
+
+            finalSubjectsList = [...selected3];
+            if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
+            if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
+            if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer');
+
+            totalMax = 0;
+            finalSubjectsList.forEach(sub => {
+                const subLower = sub.toLowerCase();
+                if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25; else totalMax += 100;
+            });
+
+            renderTableHeaders();
+            document.getElementById('result-area').classList.remove('hidden');
+            const tbody = document.getElementById('students-body');
+            tbody.innerHTML = '';
+            
+            if (currentSheetData.length > 0) {
+                currentSheetData.forEach((std) => {
+                    addStudentRow(std.name, std.marks);
+                });
+            }
+
+            await saveResult(true); 
+            alert("Subjects Updated! Students aur columns sync ho gaye hain.");
         };
 
         window.updateSheetColumns = async () => {
@@ -2502,62 +2565,7 @@
     }
 };
 
-        window.updateSheetColumns = async () => {
-            const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-            if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length > 3) {
-                alert("Maximum 3 subjects select kar sakte hain."); return;
-            }
-            
-            const currentRows = document.querySelectorAll('#students-body tr');
-            currentSheetData = []; 
-            currentRows.forEach(row => {
-                const name = row.querySelector('.std-name').value.trim();
-                if(!name) return;
-                const marks = {};
-                row.querySelectorAll('.mark-input').forEach(inp => {
-                    const val = inp.value.trim().toUpperCase();
-                    marks[inp.dataset.sub] = val;
-                });
-                currentSheetData.push({ name, marks });
-            });
-
-            const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
-            
-            subjectTranslationMap = {}; 
-            checkedBoxes.forEach(cb => {
-                const sub = cb.value;
-                const wrapper = cb.closest('div');
-                const input = wrapper.querySelector('.eng-name-input'); 
-                const engName = (input && input.value.trim()) ? input.value.trim() : sub;
-                subjectTranslationMap[sub] = engName;
-            });
-
-            finalSubjectsList = [...selected3];
-            if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
-            if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
-            if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer'); // Fixed Line
-
-            totalMax = 0;
-            finalSubjectsList.forEach(sub => {
-                const subLower = sub.toLowerCase();
-                if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25; else totalMax += 100;
-            });
-
-            renderTableHeaders();
-            const tbody = document.getElementById('students-body');
-            tbody.innerHTML = '';
-            
-            if (currentSheetData.length > 0) {
-                currentSheetData.forEach((std, index) => {
-                    addStudentRow(std.name, std.marks);
-                });
-            }
-
-            await saveResult(true); 
-            alert("Subjects Updated! Columns me Computer aur dynamic values sync ho gayi hain.");
-        };
-
-        window.downloadExcel = async () => {
+                window.downloadExcel = async () => {
     const btn = document.getElementById('btn-export-excel');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
