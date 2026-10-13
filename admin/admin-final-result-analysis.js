@@ -1152,7 +1152,108 @@ const autoRecalculate = (pData) => {
             }
         });
    
+// 🌟 NAYA: Excel se 1 ya kayi Students ek saath Copy-Paste karne ka Logic
+        document.addEventListener('paste', (e) => {
+            const t = e.target;
+            if (!t || !t.dataset || t.dataset.edit !== 'cell' || !pendingUploadData) return;
 
+            const clipText = (e.clipboardData || window.clipboardData)?.getData('text');
+            if (!clipText) return;
+
+            // Agar sirf ek single word/number hai (bina Tab ya Enter ke), toh normal paste hone dein
+            if (!clipText.includes('\t') && !clipText.includes('\n')) return;
+
+            e.preventDefault(); // Sara data ek hi box mein jane se rokein
+
+            const ji = +t.dataset.ji;
+            const ci = +t.dataset.ci;
+            const startR = +t.dataset.r;
+            const startKey = t.dataset.k;
+            const c = pendingUploadData.jamiaat[ji]?.classes[ci];
+            if (!c) return;
+
+            // Excel ki lines ko alag karein (aakhri khali line hata kar)
+            const rows = clipText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            if (rows.length > 0 && rows[rows.length - 1].trim() === '') rows.pop();
+            if (rows.length === 0) return;
+
+            const startColPos = c.columns.findIndex(col => col.key === startKey);
+            if (startColPos === -1) return;
+            const startExcelIdx = parseInt(startKey.replace('c', ''), 10);
+
+            // Excel ke original column index ka map banayein
+            const colByExcelIdx = {};
+            let maxExcelIdx = 0;
+            c.columns.forEach(col => {
+                const idx = parseInt(col.key.replace('c', ''), 10);
+                if (!isNaN(idx)) {
+                    colByExcelIdx[idx] = col.key;
+                    if (idx > maxExcelIdx) maxExcelIdx = idx;
+                }
+            });
+
+            const sampleSt = c.students[0] || {};
+
+            rows.forEach((rowStr, rOffset) => {
+                const cells = rowStr.split('\t');
+                const targetR = startR + rOffset;
+
+                // Agar niche rows kam hain toh naye students ke liye rows khud banayein
+                while (c.students.length <= targetR) {
+                    const newSt = {};
+                    c.columns.forEach(col => newSt[col.key] = '');
+                    ['jamia', 'jamiaUr', 'region', 'maxTotal'].forEach(rKey => {
+                        const colKey = c.roles && c.roles[rKey];
+                        if (colKey && sampleSt[colKey] !== undefined) newSt[colKey] = sampleSt[colKey];
+                    });
+                    c.students.push(newSt);
+                }
+
+                const st = c.students[targetR];
+
+                // Check karein ki user ne Excel se poori line (Col A se) copy ki hai ya kuch chune huye columns
+                const isFullExcelRow = cells.length >= maxExcelIdx;
+                const effExcelStart = isFullExcelRow ? 0 : startExcelIdx;
+                const effColPosStart = isFullExcelRow ? 0 : startColPos;
+
+                // Check karein ki beech mein khali subject columns (Master Excel wale) hain ya nahi
+                let skippedIdxs = [];
+                if (!isNaN(effExcelStart)) {
+                    for (let i = 0; i < cells.length; i++) {
+                        const exIdx = effExcelStart + i;
+                        if (exIdx <= maxExcelIdx && !colByExcelIdx[exIdx]) skippedIdxs.push(i);
+                    }
+                }
+                const useMasterExcelMap = isFullExcelRow || 
+                    (effColPosStart + cells.length > c.columns.length) ||
+                    (skippedIdxs.length > 0 && skippedIdxs.every(i => cells[i].trim() === '' || cells[i].trim() === c.name));
+
+                // Har cell ka data sahi column mein daalein
+                cells.forEach((val, cOffset) => {
+                    const cleanVal = val.trim();
+                    if (useMasterExcelMap && !isNaN(effExcelStart)) {
+                        const targetKey = colByExcelIdx[effExcelStart + cOffset];
+                        if (targetKey) st[targetKey] = cleanVal;
+                    } else {
+                        const targetCol = c.columns[effColPosStart + cOffset];
+                        if (targetCol) st[targetCol.key] = cleanVal;
+                    }
+                });
+            });
+
+            c.isEdited = true;
+            renderClassTable(ji, ci);
+
+            // Summary header mein students ki nayi ginti update karein
+            const detailsEl = document.querySelector(`details[data-ji="${ji}"][data-ci="${ci}"] summary span:nth-of-type(2)`);
+            if (detailsEl) detailsEl.textContent = `(${c.students.length} students)`;
+
+            // Total, Percentage, Kefiyat, Grade aur Rank turant auto-calculate karein
+            if (typeof autoRecalculate === 'function') {
+                autoRecalculate(pendingUploadData);
+            }
+        });
+        
         document.addEventListener('change', (e) => {
             const t = e.target; if (!t || !t.dataset || !pendingUploadData) return;
             if (t.dataset.pdfcol) {
@@ -1175,7 +1276,21 @@ const autoRecalculate = (pData) => {
                 if (!confirm('Is student ko hatayein?')) return;
                 c.students.splice(+b.dataset.r, 1); renderClassTable(ji, ci);
             } else if (b.dataset.act === 'add-row') {
-                const st = {}; c.columns.forEach(col => st[col.key] = ''); c.students.push(st); renderClassTable(ji, ci);
+                const st = {};
+                const sample = c.students[0] || {};
+                c.columns.forEach(col => st[col.key] = '');
+                // Jamia, Region aur Max Total pehle student se auto-fill karein
+                ['jamia', 'jamiaUr', 'region', 'maxTotal'].forEach(rKey => {
+                    const colKey = c.roles && c.roles[rKey];
+                    if (colKey && sample[colKey] !== undefined) st[colKey] = sample[colKey];
+                });
+                c.students.push(st);
+                c.isEdited = true;
+                renderClassTable(ji, ci);
+                // Nayi row ke pehle cell par cursor focus karein taake seedha Ctrl+V kar sakein
+                const lastR = c.students.length - 1;
+                const firstInp = document.querySelector(`input[data-edit="cell"][data-ji="${ji}"][data-ci="${ci}"][data-r="${lastR}"]`);
+                if (firstInp) firstInp.focus();
             } else if (b.dataset.act === 'del-class') {
                 if (!confirm(`"${c.name}" poori class hata dein? (Save par database se bhi delete hogi)`)) return;
                 c.deleted = true; renderEditor();
