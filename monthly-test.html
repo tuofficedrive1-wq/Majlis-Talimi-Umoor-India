@@ -451,30 +451,94 @@
             return monthNum >= 3 ? `${yearNum}-${yearNum+1}` : `${yearNum-1}-${yearNum}`;
         }
 
+       let currentActiveSem = 'sem1'; // 'sem1' ya 'sem2'
+        let subjectSemesterMap = {};   // Subject kis semester ka hai uska map
+
+        // Semester value ko normalize karne ke liye helper ('1', 'sem1', '1st' -> 'sem1')
+        function normalizeSem(val) {
+            if (!val) return 'both';
+            const s = String(val).toLowerCase().trim();
+            if (s === '1' || s === 'sem1' || s === 'sem 1' || s.includes('1st') || s.includes('first') || s.includes('اول')) return 'sem1';
+            if (s === '2' || s === 'sem2' || s === 'sem 2' || s.includes('2nd') || s.includes('second') || s.includes('دوم')) return 'sem2';
+            return 'both';
+        }
+
+        // Month aur Admin Config ke hisab se chal raha Semester pata lagana
+        function detectRunningSemester(mKey, monthDetails = {}) {
+            if (!mKey) return 'sem1';
+            const parts = mKey.split('-');
+            const monthNum = parseInt(parts[1], 10); // 1 to 12
+            const monthIdx = monthNum - 1;           // 0 to 11 (Admin config index)
+
+            // 1. Pehle Admin ke monthDetails (working days) se check karein
+            if (monthDetails && monthDetails[monthIdx]) {
+                const s1Days = parseInt(monthDetails[monthIdx].sem1) || 0;
+                const s2Days = parseInt(monthDetails[monthIdx].sem2) || 0;
+                if (s1Days > 0 && s2Days === 0) return 'sem1';
+                if (s2Days > 0 && s1Days === 0) return 'sem2';
+                if (s1Days > 0 && s2Days > 0) return s1Days >= s2Days ? 'sem1' : 'sem2';
+            }
+
+            // 2. Fallback: April (4) se September (9) = Sem 1, October se March = Sem 2
+            return (monthNum >= 4 && monthNum <= 9) ? 'sem1' : 'sem2';
+        }
+
         async function loadTeachingData() {
             try {
+                let configMonthDetails = {};
+                subjectSemesterMap = {};
+
                 try {
                     const configDoc = await getDoc(doc(db, "settings", "academic_config"));
                     if (configDoc.exists()) {
-                        const configData = configDoc.exists() ? configDoc.data() : {};
+                        const configData = configDoc.data() || {};
+                        configMonthDetails = configData.monthDetails || {};
                         const adminClasses = configData.classes || [];
                         
                         subjectTranslationMap = {};
                         
                         adminClasses.forEach(c => {
+                            const cUrdu = (c.classNameUrdu || '').trim();
+                            const cEng = (c.classNameEng || '').trim();
+
                             if (Array.isArray(c.subjects)) {
                                 c.subjects.forEach(s => {
-                                    if (s.urdu && s.eng) {
-                                        subjectTranslationMap[s.urdu.trim()] = s.eng.trim();
+                                    const sUrdu = (s.urdu || '').trim();
+                                    const sEng = (s.eng || '').trim();
+                                    const sSem = normalizeSem(s.sem || s.semester);
+
+                                    if (sUrdu && sEng) {
+                                        subjectTranslationMap[sUrdu] = sEng;
                                     }
+
+                                    // Class-wise aur Global subject semester map banayein
+                                    [sUrdu, sEng].forEach(subName => {
+                                        if (!subName) return;
+                                        if (cUrdu) subjectSemesterMap[`${cUrdu}__${subName}`] = sSem;
+                                        if (cEng) subjectSemesterMap[`${cEng}__${subName}`] = sSem;
+                                        // Global fallback agar class name me thoda farq ho
+                                        if (!subjectSemesterMap[subName] || subjectSemesterMap[subName] === 'both') {
+                                            subjectSemesterMap[subName] = sSem;
+                                        } else if (subjectSemesterMap[subName] !== sSem) {
+                                            // Agar ek hi kitab alag semester me bhi ho
+                                            subjectSemesterMap[subName] = 'both';
+                                        }
+                                    });
                                 });
                             }
                         });
-                        console.log("Admin Subject Names Auto-Loaded:", subjectTranslationMap);
+                        console.log("Admin Subject Names & Semesters Auto-Loaded");
                     }
                 } catch (err) {
                     console.warn("Admin academic_config load nahi ho saki (Using Fallbacks):", err);
                 }
+
+                // Abhi kaunsa semester chal raha hai ('sem1' ya 'sem2')
+                currentActiveSem = detectRunningSemester(monthKey, configMonthDetails);
+
+                // Header mein Month ke sath Semester bhi dikha dein
+                const semLabel = currentActiveSem === 'sem1' ? '1st Semester' : '2nd Semester';
+                document.getElementById('display-month').textContent = `Month: ${monthKey} (${semLabel})`;
 
                 const acYear = getAcademicYear(monthKey);
                 const userDoc = await getDoc(doc(db, "users", adminUid));
@@ -498,9 +562,26 @@
                     jamiaStruct.teachers.forEach(t => {
                         if (Array.isArray(t.periods)) {
                             t.periods.forEach(p => {
-                                const cName = p.className || p.class || p.darja;
-                                const bName = p.bookName || p.book || p.kitab || p.subject;
-                                if (cName && bName) {
+                                const cName = (p.className || p.class || p.darja || '').trim();
+                                const bName = (p.bookName || p.book || p.kitab || p.subject || '').trim();
+                                if (!cName || !bName) return;
+
+                                const cleanClass = cName.split('_')[0].trim();
+
+                                // 1. Check karein agar period ke andar khud semester save hai
+                                const periodSem = normalizeSem(p.sem || p.semester);
+
+                                // 2. Check karein Admin Academic Config mein is kitab ka semester kya hai
+                                const configSem = subjectSemesterMap[`${cleanClass}__${bName}`] 
+                                               || subjectSemesterMap[`${cName}__${bName}`] 
+                                               || subjectSemesterMap[bName] 
+                                               || 'both';
+
+                                // Final semester तय karein
+                                const effectiveSem = (periodSem !== 'both') ? periodSem : configSem;
+
+                                // Sirf tabhi add karein jab ye kitab chal rahe semester ki ho (ya 'both' ho)
+                                if (effectiveSem === 'both' || effectiveSem === currentActiveSem) {
                                     if (!classBooksMap[cName]) classBooksMap[cName] = new Set();
                                     classBooksMap[cName].add(bName);
                                 }
