@@ -442,6 +442,44 @@
     else { m = m - 1; }
     return `${y}-${m < 10 ? '0' + m : m}`;
 };
+
+        // Smart Document ID Finder (Purane aur Naye dono formats ko check karega)
+window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
+    const jClean = jamia.trim().replace(/\s+/g, '_');
+    const jOld = jamia.replace(/\s/g, '_');
+    
+    const fullCls = rawCls.trim().replace(/\s+/g, '_');
+    const baseCls = rawCls.split('_')[0].trim().replace(/\s+/g, '_');
+    const oldBaseCls = rawCls.split('_')[0].replace(/\s/g, '_');
+
+    // Priority: 1. Full Class Name (Section ke sath), 2. Clean Base Class, 3. Old Format
+    const ids = [
+        `${uid}_${jClean}_${mKey}_${fullCls}`,
+        `${uid}_${jOld}_${mKey}_${oldBaseCls}`,
+        `${uid}_${jClean}_${mKey}_${baseCls}`
+    ];
+    return [...new Set(ids)]; // Duplicate IDs hata dega
+};
+
+// Firebase se sahi document dhoondhne ka function
+window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
+    const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
+    let fallbackSnap = null;
+
+    for (const id of possibleIds) {
+        const snap = await getDoc(doc(db, "monthly_test_sheets", id));
+        if (snap.exists()) {
+            const data = snap.data();
+            // Agar is document me students hain, to turant yahi return karein
+            if (data.students && data.students.length > 0) {
+                return { snap, docId: id };
+            }
+            if (!fallbackSnap) fallbackSnap = { snap, docId: id };
+        }
+    }
+    return fallbackSnap || { snap: null, docId: possibleIds[0] };
+};
+        
         
         function getAcademicYear(key) {
             if (!key) return null;
@@ -917,8 +955,8 @@
     }
     
     const cleanClass = rawClass.split('_')[0]; 
-    const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`; 
-    const selectedClass = rawClass; 
+    const { docId } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, rawClass);
+const selectedClass = rawClass;
     const students = [];
 
     if (rows.length > 0) {
@@ -1048,105 +1086,117 @@
 };
 
         window.checkExistingForClass = async (clsName) => {
-            const cleanClass = clsName.split('_')[0]; 
-            const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const resultArea = document.getElementById('result-area');
-            const studentsBody = document.getElementById('students-body');
-            const classSelect = document.getElementById('class-select');
-            const selectionArea = document.getElementById('subject-selection-area'); 
+    const resultArea = document.getElementById('result-area');
+    const studentsBody = document.getElementById('students-body');
+    const classSelect = document.getElementById('class-select');
+    const selectionArea = document.getElementById('subject-selection-area'); 
 
-            finalSubjectsList = [];
-            studentsBody.innerHTML = '';
-            resultArea.classList.add('hidden'); 
-            document.getElementById('table-head').innerHTML = '';
+    finalSubjectsList = [];
+    studentsBody.innerHTML = '';
+    resultArea.classList.add('hidden'); 
+    document.getElementById('table-head').innerHTML = '';
+    
+    const checkboxesList = document.querySelectorAll('.subject-checkbox');
+    checkboxesList.forEach(chk => { chk.checked = false; });
+    classSelect.disabled = false; 
+
+    const params = new URLSearchParams(window.location.search);
+    const isViewMode = params.get('mode') === 'view';
+
+    window.previousMonthStudents = []; 
+
+    // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna (Smart Search)
+    try {
+        let tempMonth = monthKey;
+        for (let i = 0; i < 6; i++) {
+            tempMonth = window.getPreviousMonth(tempMonth);
+            if (!tempMonth) break;
             
-            const checkboxesList = document.querySelectorAll('.subject-checkbox');
-            checkboxesList.forEach(chk => { chk.checked = false; });
-            classSelect.disabled = false; 
-
-            const params = new URLSearchParams(window.location.search);
-            const isViewMode = params.get('mode') === 'view';
-
-            window.previousMonthStudents = []; 
-
-            // 🟢 FIX 1: Har mode me pichle mahino (up to 6 months back) se students ki list nikal lein
-            try {
-                let tempMonth = monthKey;
-                for (let i = 0; i < 6; i++) {
-                    tempMonth = window.getPreviousMonth(tempMonth);
-                    if (!tempMonth) break;
-                    const prevDocId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${tempMonth}_${cleanClass.replace(/\s/g, '_')}`;
-                    const prevSnap = await getDoc(doc(db, "monthly_test_sheets", prevDocId));
-
-                    if (prevSnap.exists()) {
-                        const prevData = prevSnap.data();
-                        if (prevData.students && prevData.students.length > 0) {
-                            window.previousMonthStudents = prevData.students.map(s => s.name);
-                            break; // Jaise hi aakhri saved list mil jaye, loop rok dein
-                        }
-                    }
+            const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
+            if (prevSnap && prevSnap.exists()) {
+                const prevData = prevSnap.data();
+                if (prevData.students && prevData.students.length > 0) {
+                    window.previousMonthStudents = prevData.students.map(s => s.name);
+                    break; 
                 }
-            } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
+            }
+        }
+    } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
 
-            try {
-                const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
-                if (snap.exists()) {
-                    const data = snap.data(); 
-                    if (data.subjectMap) subjectTranslationMap = { ...subjectTranslationMap, ...data.subjectMap };
-                    
-                    const savedVariableSubjects = data.subjects ? data.subjects.filter(s => s !== 'English' && s !== 'Maths' && s !== 'Computer') : [];
-                    checkboxesList.forEach(chk => { if (savedVariableSubjects.includes(chk.value)) chk.checked = true; });
-                    
-                    finalSubjectsList = data.subjects || [];
-                    totalMax = 0;
-                    finalSubjectsList.forEach(sub => {
-                        if (sub.toLowerCase() === 'english' || sub.toLowerCase() === 'maths' || sub.toLowerCase() === 'computer') totalMax += 25; else totalMax += 100;
+    // 2. Current (Ya Pichle खोले gaye) mahine ka data load karna
+    try {
+        const { snap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
+        
+        if (snap && snap.exists()) {
+            const data = snap.data(); 
+            if (data.subjectMap) subjectTranslationMap = { ...subjectTranslationMap, ...data.subjectMap };
+            
+            // Checkboxes ko saved subjects ke hisab se tick karna
+            const savedVariableSubjects = data.subjects ? data.subjects.filter(s => !['english', 'maths', 'computer'].includes(s.toLowerCase())) : [];
+            checkboxesList.forEach(chk => { 
+                if (savedVariableSubjects.includes(chk.value)) chk.checked = true; 
+            });
+
+            // English, Maths, Computer ke checkboxes bhi sync karein
+            if (document.getElementById('include-english')) {
+                document.getElementById('include-english').checked = data.subjects?.some(s => s.toLowerCase() === 'english') ?? true;
+            }
+            if (document.getElementById('include-maths')) {
+                document.getElementById('include-maths').checked = data.subjects?.some(s => s.toLowerCase() === 'maths') ?? true;
+            }
+            if (document.getElementById('include-computer')) {
+                document.getElementById('include-computer').checked = data.subjects?.some(s => s.toLowerCase() === 'computer') ?? false;
+            }
+            
+            finalSubjectsList = data.subjects || [];
+            totalMax = 0;
+            finalSubjectsList.forEach(sub => {
+                if (['english', 'maths', 'computer'].includes(sub.toLowerCase())) totalMax += 25; 
+                else totalMax += 100;
+            });
+            
+            renderTableHeaders(); 
+            resultArea.classList.remove('hidden'); 
+            selectionArea.classList.add('hidden'); 
+            
+            document.getElementById('students-body').innerHTML = ''; 
+            
+            if (data.students && data.students.length > 0) {
+                data.students.forEach(s => addStudentRow(s.name, s.marks || {})); 
+            } else if (!isViewMode || isEditingMode) {
+                if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+                    window.previousMonthStudents.forEach(stdName => {
+                        addStudentRow(stdName, {}); 
                     });
-                    
-                    renderTableHeaders(); 
-                    resultArea.classList.remove('hidden'); 
-                    selectionArea.classList.add('hidden'); 
-                    
-                    document.getElementById('students-body').innerHTML = ''; 
-                    
-                    // Agar current mahine me students hain to unhe dikhayein
-                    if (data.students && data.students.length > 0) {
-                        data.students.forEach(s => addStudentRow(s.name, s.marks)); 
-                    } else if (!isViewMode || isEditingMode) {
-                        // Agar current mahine me sirf subjects save hue the aur students khali the
-                        if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                            window.previousMonthStudents.forEach(stdName => {
-                                addStudentRow(stdName, {}); 
-                            });
-                            window.previousMonthStudents = [];
-                        }
-                    }
-                } 
-                else {
-                    if (isViewMode && !isEditingMode) {
-                        resultArea.classList.remove('hidden');
-                        document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
-                    }
+                    window.previousMonthStudents = [];
                 }
+            }
+        } 
+        else {
+            if (isViewMode && !isEditingMode) {
+                resultArea.classList.remove('hidden');
+                document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
+            }
+        }
 
-                if (isViewMode && !isEditingMode) {
-                    ['step-heading', 'step-instruction', 'class-select'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
-                    const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
-                    const saveBtn = document.querySelector('button[onclick="saveResult()"]');
-                    if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
-                    if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
-                    document.querySelectorAll('#students-body input').forEach(inp => {
-                        inp.disabled = true; inp.classList.add('view-mode-input');
-                        inp.style.backgroundColor = 'transparent'; inp.style.border = 'none'; inp.style.textAlign = 'center';
-                        inp.style.fontWeight = 'bold'; inp.style.color = '#1f2937'; 
-                    });
-                    document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
-                    const headerTrash = document.querySelector('#table-head th:last-child');
-                    if(headerTrash) headerTrash.style.display = 'none';
-                }
-                if (typeof isEditingMode !== 'undefined' && isEditingMode) enableEditMode(true); 
-            } catch(e) { console.log("New sheet or error loading:", e); }
-        };
+        if (isViewMode && !isEditingMode) {
+            ['step-heading', 'step-instruction', 'class-select'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); });
+            const addBtn = document.querySelector('button[onclick="addStudentRow()"]');
+            const saveBtn = document.querySelector('button[onclick="saveResult()"]');
+            if(addBtn) { addBtn.style.display = 'none'; addBtn.classList.add('hidden-in-view'); }
+            if(saveBtn) { saveBtn.style.display = 'none'; saveBtn.classList.add('hidden-in-view'); }
+            document.querySelectorAll('#students-body input').forEach(inp => {
+                inp.disabled = true; inp.classList.add('view-mode-input');
+                inp.style.backgroundColor = 'transparent'; inp.style.border = 'none'; inp.style.textAlign = 'center';
+                inp.style.fontWeight = 'bold'; inp.style.color = '#1f2937'; 
+            });
+            document.querySelectorAll('.no-print').forEach(btn => btn.style.display = 'none');
+            const headerTrash = document.querySelector('#table-head th:last-child');
+            if(headerTrash) headerTrash.style.display = 'none';
+        }
+        if (typeof isEditingMode !== 'undefined' && isEditingMode) enableEditMode(true); 
+    } catch(e) { console.log("New sheet or error loading:", e); }
+};
 
         window.toggleSummary = async () => {
             const entryArea = document.getElementById('data-entry-area');
@@ -1464,7 +1514,7 @@
             btn.innerText = `Reading: ${clsName}...`;
             const cleanClass = clsName.split('_')[0]; 
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+            const { snap: docSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
 
             if (!docSnap.exists()) continue;
 
@@ -1938,7 +1988,7 @@
             if(rawClass) {
                 const cleanClass = rawClass.split('_')[0]; 
                 const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-                const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+                const { snap: docSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
                 if (docSnap.exists()) {
                     dbSubjectMap = docSnap.data().subjectMap || {};
                 }
@@ -2372,61 +2422,7 @@
             alert("Subjects Updated! Students aur columns sync ho gaye hain.");
         };
 
-        window.updateSheetColumns = async () => {
-            const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-            if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length > 3) {
-                alert("Maximum 3 subjects select kar sakte hain."); return;
-            }
-            
-            const currentRows = document.querySelectorAll('#students-body tr');
-            currentSheetData = []; 
-            currentRows.forEach(row => {
-                const name = row.querySelector('.std-name').value.trim();
-                if(!name) return;
-                const marks = {};
-                row.querySelectorAll('.mark-input').forEach(inp => {
-                    const val = inp.value.trim().toUpperCase();
-                    marks[inp.dataset.sub] = val;
-                });
-                currentSheetData.push({ name, marks });
-            });
-
-            const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
-            
-            subjectTranslationMap = {}; 
-            checkedBoxes.forEach(cb => {
-                const sub = cb.value;
-                const wrapper = cb.closest('div');
-                const input = wrapper.querySelector('.eng-name-input'); 
-                const engName = (input && input.value.trim()) ? input.value.trim() : sub;
-                subjectTranslationMap[sub] = engName;
-            });
-
-            finalSubjectsList = [...selected3];
-            if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
-            if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
-            if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer'); // Fixed Line
-
-            totalMax = 0;
-            finalSubjectsList.forEach(sub => {
-                const subLower = sub.toLowerCase();
-                if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25; else totalMax += 100;
-            });
-
-            renderTableHeaders();
-            const tbody = document.getElementById('students-body');
-            tbody.innerHTML = '';
-            
-            if (currentSheetData.length > 0) {
-                currentSheetData.forEach((std, index) => {
-                    addStudentRow(std.name, std.marks);
-                });
-            }
-
-            await saveResult(true); 
-            alert("Subjects Updated! Columns me Computer aur dynamic values sync ho gayi hain.");
-        };
-
+        
         window.addCustomSubject = () => {
             const input = document.getElementById('custom-sub-input');
             const name = input.value.trim();
@@ -2578,7 +2574,7 @@
         for (const clsName of allClasses) {
             const cleanClass = clsName.split('_')[0];
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const docSnap = await getDoc(doc(db, "monthly_test_sheets", docId));
+            const { snap: docSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
 
             if (docSnap.exists()) {
                 const data = docSnap.data();
