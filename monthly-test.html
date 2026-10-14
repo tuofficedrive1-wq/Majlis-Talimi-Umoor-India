@@ -364,7 +364,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+       import { getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
@@ -443,7 +443,18 @@
     return `${y}-${m < 10 ? '0' + m : m}`;
 };
 
-        // Smart Document ID Finder (Purane aur Naye dono formats ko check karega)
+        // Urdu/Arabic text ko normalize karne ka function (spelling mismatch rokne ke liye)
+window.normalizeClassText = (str) => {
+    if (!str) return '';
+    return str.trim()
+        .replace(/\s+/g, '_')
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/[ةۀھ]/g, 'ہ')
+        .replace(/[ىئ]/g, 'ی')
+        .replace(/[\u064B-\u065F\u0670]/g, ''); // Khadi zabar, zer, pesh wagaira hatana
+};
+
+// Smart Document ID Finder (Sabhi possible Urdu/English variations ke sath)
 window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
     const jClean = jamia.trim().replace(/\s+/g, '_');
     const jOld = jamia.replace(/\s/g, '_');
@@ -452,31 +463,74 @@ window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
     const baseCls = rawCls.split('_')[0].trim().replace(/\s+/g, '_');
     const oldBaseCls = rawCls.split('_')[0].replace(/\s/g, '_');
 
-    // Priority: 1. Full Class Name (Section ke sath), 2. Clean Base Class, 3. Old Format
-    const ids = [
-        `${uid}_${jClean}_${mKey}_${fullCls}`,
-        `${uid}_${jOld}_${mKey}_${oldBaseCls}`,
-        `${uid}_${jClean}_${mKey}_${baseCls}`
-    ];
-    return [...new Set(ids)]; // Duplicate IDs hata dega
+    // Urdu/Arabic alternate spellings (ہ <-> ۃ aur ی <-> ى)
+    const normBase = window.normalizeClassText(baseCls);
+    const altTa = baseCls.replace(/ہ/g, 'ۃ');
+    const altHa = baseCls.replace(/ۃ/g, 'ہ');
+    const altYa = baseCls.replace(/ی/g, 'ى').replace(/[\u0670]/g, '');
+    const altKhadi = baseCls.replace(/ى/g, 'ٰى');
+
+    const clsVariations = [fullCls, oldBaseCls, baseCls, normBase, altTa, altHa, altYa, altKhadi];
+    const ids = [];
+
+    clsVariations.forEach(c => {
+        if (c) {
+            ids.push(`${uid}_${jClean}_${mKey}_${c}`);
+            ids.push(`${uid}_${jOld}_${mKey}_${c}`);
+        }
+    });
+
+    return [...new Set(ids)];
 };
 
-// Firebase se sahi document dhoondhne ka function
+// Firebase se 100% sahi document dhoondhne ka function (Direct ID + Query Fallback)
 window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
     const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
     let fallbackSnap = null;
 
+    // Step 1: Pehle direct IDs check karein
     for (const id of possibleIds) {
         const snap = await getDoc(doc(db, "monthly_test_sheets", id));
         if (snap.exists()) {
             const data = snap.data();
-            // Agar is document me students hain, to turant yahi return karein
             if (data.students && data.students.length > 0) {
                 return { snap, docId: id };
             }
             if (!fallbackSnap) fallbackSnap = { snap, docId: id };
         }
     }
+
+    // Step 2: Agar direct ID se na mile, to us Jamia + Month ke saare docs me dhoondhein
+    try {
+        const q = query(
+            collection(db, "monthly_test_sheets"),
+            where("adminUid", "==", uid),
+            where("month", "==", mKey)
+        );
+        const qSnap = await getDocs(q);
+        const targetNorm = window.normalizeClassText(rawCls.split('_')[0]);
+        const targetJamia = jamia.trim().toLowerCase();
+
+        let matchedDoc = null;
+        qSnap.forEach(d => {
+            const data = d.data();
+            const docJamia = (data.jamiaName || '').trim().toLowerCase();
+            const docClsNorm = window.normalizeClassText((data.class || '').split('_')[0]);
+
+            if (docJamia === targetJamia && docClsNorm === targetNorm) {
+                if (data.students && data.students.length > 0) {
+                    matchedDoc = { snap: d, docId: d.id };
+                } else if (!matchedDoc && !fallbackSnap) {
+                    fallbackSnap = { snap: d, docId: d.id };
+                }
+            }
+        });
+
+        if (matchedDoc) return matchedDoc;
+    } catch (err) {
+        console.warn("Query fallback warning:", err);
+    }
+
     return fallbackSnap || { snap: null, docId: possibleIds[0] };
 };
         
@@ -718,13 +772,16 @@ window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
             }
         };
 
-       window.generateSheet = () => {
+      window.generateSheet = () => {
     const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-    if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length !== 3) {
-        if (!confirm(`Apne sirf ${checkedBoxes.length} kitabein select ki hain. Kya aap aage badhna chahte hain?`)) return;
+    // Strict 3 Subject Check (English, Maths, Computer ke alawa)
+    if (checkedBoxes.length !== 3) {
+        alert("3 subj select kijiye! (English aur Maths ke ilawa kam se kam 3 kitabein select karna zaruri hai).");
+        return;
     }
     const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
     finalSubjectsList = [...selected3];
+    
 
     checkedBoxes.forEach(cb => {
         const sub = cb.value;
@@ -998,8 +1055,8 @@ const selectedClass = rawClass;
                 sStudents = students;
                 sSubjects = finalSubjectsList;
             } else {
-                const sheetSnap = await getDoc(doc(db, "monthly_test_sheets", sheetId));
-                if (sheetSnap.exists()) {
+                const { snap: sheetSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, cls);
+if (sheetSnap && sheetSnap.exists()) {
                     const sData = sheetSnap.data();
                     sStudents = sData.students || [];
                     sSubjects = sData.subjects || [];
@@ -1133,6 +1190,26 @@ const selectedClass = rawClass;
             
             // Checkboxes ko saved subjects ke hisab se tick karna
             const savedVariableSubjects = data.subjects ? data.subjects.filter(s => !['english', 'maths', 'computer'].includes(s.toLowerCase())) : [];
+const existingChkValues = Array.from(checkboxesList).map(c => c.value);
+
+// Agar koi custom subject save tha jo default list me nahi hai, to uska checkbox bhi bana dein
+const container = document.getElementById('checkbox-container');
+savedVariableSubjects.forEach(savedSub => {
+    if (!existingChkValues.includes(savedSub) && container) {
+        const wrapper = document.createElement('div');
+        wrapper.className = "bg-white border rounded shadow-sm p-3 hover:shadow-md transition flex items-center justify-between";
+        wrapper.innerHTML = `
+            <span class="font-bold text-teal-700 urdu-font text-xl">${savedSub} <small class="text-xs text-orange-500">(Custom)</small></span>
+            <input type="checkbox" value="${savedSub}" class="subject-checkbox w-5 h-5 text-teal-600 cursor-pointer" checked onchange="toggleSubjectInput(this)">
+        `;
+        container.appendChild(wrapper);
+    }
+});
+
+document.querySelectorAll('.subject-checkbox').forEach(chk => { 
+    if (savedVariableSubjects.includes(chk.value)) chk.checked = true; 
+});
+            
             checkboxesList.forEach(chk => { 
                 if (savedVariableSubjects.includes(chk.value)) chk.checked = true; 
             });
@@ -1238,8 +1315,9 @@ const selectedClass = rawClass;
         for (const clsName of allClasses) {
             const cleanClass = clsName.split('_')[0];
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const snap = await getDoc(doc(db, "monthly_test_sheets", docId));
-            if (!snap.exists()) continue;
+            const { snap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
+if (!snap || !snap.exists()) continue;
+            
             
             const data = snap.data();
             const students = data.students || [];
@@ -1514,9 +1592,8 @@ const selectedClass = rawClass;
             btn.innerText = `Reading: ${clsName}...`;
             const cleanClass = clsName.split('_')[0]; 
             const docId = `${adminUid}_${jamiaName.replace(/\s/g, '_')}_${monthKey}_${cleanClass.replace(/\s/g, '_')}`;
-            const { snap: docSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
-
-            if (!docSnap.exists()) continue;
+            const { snap: docSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, rawClass);
+if (docSnap && docSnap.exists()) {
 
             const data = docSnap.data();
             const students = data.students || [];
@@ -2359,68 +2436,72 @@ const selectedClass = rawClass;
             if (!skipAlert) alert("Editing Enabled!");
         };
 
-        window.updateSheetColumns = async () => {
-            const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
-            if (document.querySelectorAll('.subject-checkbox').length > 0 && checkedBoxes.length > 3) {
-                alert("Maximum 3 subjects select kar sakte hain."); return;
-            }
-            
-            const currentRows = document.querySelectorAll('#students-body tr');
-            currentSheetData = []; 
-            currentRows.forEach(row => {
-                const name = row.querySelector('.std-name').value.trim();
-                if(!name) return;
-                const marks = {};
-                row.querySelectorAll('.mark-input').forEach(inp => {
-                    const val = inp.value.trim().toUpperCase();
-                    marks[inp.dataset.sub] = val;
-                });
-                currentSheetData.push({ name, marks });
-            });
+       window.updateSheetColumns = async () => {
+    const checkedBoxes = document.querySelectorAll('.subject-checkbox:checked');
+    
+    // 🔴 STRICT VALIDATION: English/Maths ke ilawa exact 3 subjects laazmi hain
+    if (checkedBoxes.length !== 3) {
+        alert("3 subj select kijiye! (English aur Maths ke ilawa 3 kitabein select karna zaruri hai).");
+        return;
+    }
+    
+    const currentRows = document.querySelectorAll('#students-body tr');
+    currentSheetData = []; 
+    currentRows.forEach(row => {
+        const name = row.querySelector('.std-name').value.trim();
+        if(!name) return;
+        const marks = {};
+        row.querySelectorAll('.mark-input').forEach(inp => {
+            const val = inp.value.trim().toUpperCase();
+            marks[inp.dataset.sub] = val;
+        });
+        currentSheetData.push({ name, marks });
+    });
 
-            // 🟢 FIX 3: Agar table abhi khali hai to pichle mahine ke students ko currentSheetData me daal dein
-            if (currentSheetData.length === 0 && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                window.previousMonthStudents.forEach(stdName => {
-                    currentSheetData.push({ name: stdName, marks: {} });
-                });
-                window.previousMonthStudents = [];
-            }
+    // Agar table abhi khali hai to pichle mahine ke students ko currentSheetData me daal dein
+    if (currentSheetData.length === 0 && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+        window.previousMonthStudents.forEach(stdName => {
+            currentSheetData.push({ name: stdName, marks: {} });
+        });
+        window.previousMonthStudents = [];
+    }
 
-            const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
-            
-            checkedBoxes.forEach(cb => {
-                const sub = cb.value;
-                const wrapper = cb.closest('div');
-                const input = wrapper ? wrapper.querySelector('.eng-name-input') : null; 
-                const engName = (input && input.value.trim()) ? input.value.trim() : (subjectTranslationMap[sub] || sub);
-                subjectTranslationMap[sub] = engName;
-            });
+    const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
+    
+    checkedBoxes.forEach(cb => {
+        const sub = cb.value;
+        const wrapper = cb.closest('div');
+        const input = wrapper ? wrapper.querySelector('.eng-name-input') : null; 
+        const engName = (input && input.value.trim()) ? input.value.trim() : (subjectTranslationMap[sub] || sub);
+        subjectTranslationMap[sub] = engName;
+    });
 
-            finalSubjectsList = [...selected3];
-            if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
-            if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
-            if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer');
+    finalSubjectsList = [...selected3];
+    if (document.getElementById('include-english')?.checked) finalSubjectsList.push('English');
+    if (document.getElementById('include-maths')?.checked) finalSubjectsList.push('Maths');
+    if (document.getElementById('include-computer')?.checked) finalSubjectsList.push('Computer');
 
-            totalMax = 0;
-            finalSubjectsList.forEach(sub => {
-                const subLower = sub.toLowerCase();
-                if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25; else totalMax += 100;
-            });
+    totalMax = 0;
+    finalSubjectsList.forEach(sub => {
+        const subLower = sub.toLowerCase();
+        if (subLower === 'english' || subLower === 'maths' || subLower === 'computer') totalMax += 25; 
+        else totalMax += 100;
+    });
 
-            renderTableHeaders();
-            document.getElementById('result-area').classList.remove('hidden');
-            const tbody = document.getElementById('students-body');
-            tbody.innerHTML = '';
-            
-            if (currentSheetData.length > 0) {
-                currentSheetData.forEach((std) => {
-                    addStudentRow(std.name, std.marks);
-                });
-            }
+    renderTableHeaders();
+    document.getElementById('result-area').classList.remove('hidden');
+    const tbody = document.getElementById('students-body');
+    tbody.innerHTML = '';
+    
+    if (currentSheetData.length > 0) {
+        currentSheetData.forEach((std) => {
+            addStudentRow(std.name, std.marks);
+        });
+    }
 
-            await saveResult(true); 
-            alert("Subjects Updated! Students aur columns sync ho gaye hain.");
-        };
+    await saveResult(true); 
+    alert("Subjects Updated! Students aur columns sync ho gaye hain.");
+};
 
         
         window.addCustomSubject = () => {
