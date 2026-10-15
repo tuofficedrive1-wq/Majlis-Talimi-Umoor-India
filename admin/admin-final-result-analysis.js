@@ -582,19 +582,65 @@ export async function initAdminResultAnalysis(db, containerId) {
             let stats = {};
             const keyField = type === 'state-wise' ? 'state' : (type === 'region-wise' ? 'region' : 'userName');
             
+            // 1. Data Jama Karein
             data.forEach(d => {
                 const key = d[keyField] || 'Unknown';
                 if (!stats[key]) stats[key] = { h: 0, p: 0 };
                 const h = Math.max(0, (num(d.mumtazSharf)+num(d.mumtaz)+num(d.jayyidJidda)+num(d.jayyid)+num(d.maqbool)+num(d.majazZimni)+num(d.nakam)+num(d.ghaib)) - num(d.ghaib));
                 const p = num(d.mumtazSharf) + num(d.mumtaz) + num(d.jayyidJidda) + num(d.jayyid) + num(d.maqbool) + num(d.majazZimni);
-                stats[key].h += h; stats[key].p += p;
+                stats[key].h += h; 
+                stats[key].p += p;
             });
-            let rows = Object.entries(stats).map(([k, s]) => {
-                const per = s.h ? (s.p/s.h)*100 : 0;
-                return `<tr><td class="p-2 border font-bold text-right">${k}</td><td class="p-2 border">${s.h}</td><td class="p-2 border text-green-600 font-bold">${s.p}</td><td class="p-2 border font-bold">${per.toFixed(1)}%</td></tr>`;
+
+            // 2. Array banayein aur Percentage nikaalein
+            let statsArray = Object.keys(stats).map(k => {
+                let s = stats[k];
+                let per = s.h ? (s.p / s.h) * 100 : 0;
+                return { name: k, h: s.h, p: s.p, per: per };
+            });
+
+            // 3. Percentage ke hisaab se SORT (Rank) karein (Highest % sabse upar)
+            statsArray.sort((a, b) => b.per - a.per);
+
+            // Column Header dynamically set karein
+            let colTitle = type === 'state-wise' ? 'State' : (type === 'region-wise' ? 'Region' : 'User');
+
+            // 4. Rows generate karein with Sr. No
+            let rows = statsArray.map((item, index) => {
+                let rank = index + 1;
+                // Top 3 ke liye thoda special design/icon
+                let rankBadge = rank === 1 ? '🥇 1' : (rank === 2 ? '🥈 2' : (rank === 3 ? '🥉 3' : rank));
+
+                return `<tr class="border-b hover:bg-gray-50">
+                    <td class="p-2 border font-bold text-gray-700 bg-gray-100">${rankBadge}</td>
+                    <td class="p-2 border font-bold text-left urdu-font text-indigo-700">${item.name}</td>
+                    <td class="p-2 border text-blue-600 font-bold">${item.h}</td>
+                    <td class="p-2 border text-green-600 font-bold">${item.p}</td>
+                    <td class="p-2 border font-bold ${item.per >= 50 ? 'text-green-700' : 'text-red-500'}">${item.per.toFixed(1)}%</td>
+                </tr>`;
             }).join('');
-            view.innerHTML = `<div class="bg-white p-5 rounded-xl border shadow-sm max-w-2xl mx-auto overflow-hidden"><table class="w-full text-sm text-center"><thead class="bg-gray-100"><tr><th class="p-2 border">Category</th><th class="p-2 border">Hazir</th><th class="p-2 border">Pass</th><th class="p-2 border">%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+            // 5. Table me Sr. No. column add karke render karein
+            view.innerHTML = `
+            <div class="bg-white p-5 rounded-xl border shadow-sm max-w-3xl mx-auto overflow-hidden">
+                <h4 class="text-center font-bold text-indigo-800 mb-4 text-lg border-b pb-2">
+                    <i class="fas fa-chart-bar mr-2"></i> ${colTitle} Wise Performance Ranking
+                </h4>
+                <table class="w-full text-sm text-center">
+                    <thead class="bg-gray-800 text-white">
+                        <tr>
+                            <th class="p-2 border border-gray-700 w-16">Sr.</th>
+                            <th class="p-2 border border-gray-700 text-left pl-3">${colTitle} Name</th>
+                            <th class="p-2 border border-gray-700">Hazir</th>
+                            <th class="p-2 border border-gray-700">Pass</th>
+                            <th class="p-2 border border-gray-700">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
         } else {
+            // Yahan se purana Submission Status wala code same rahega...
             let submissionHtml = users.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => {
                 const userJamiaat = u.jamiaatList || [];
                 if (userJamiaat.length === 0) return "";
