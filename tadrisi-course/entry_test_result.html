@@ -164,18 +164,24 @@ window.saveAll = async () => {
   }
   $('save-btn').disabled = true;
   try {
-    for (let i = 0; i < dirty.length; i += 400) {
+    // Firestore rules me har update par get() chalta hai aur ek batch me total 20 get() ki hadd hai.
+    // Isliye chhote batch (8) me save karte hain; jo chunk save ho gaya woh turant "saved" mark ho jata hai.
+    const CHUNK = 8;
+    let done = 0;
+    for (let i = 0; i < dirty.length; i += CHUNK) {
+      const part = dirty.slice(i, i + CHUNK);
       const b = writeBatch(db);
-      dirty.slice(i, i + 400).forEach(s => {
+      part.forEach(s => {
         const v = s._draft, m = (v === '' || v == null) ? null : Number(v);
         b.update(doc(db, 'tadrisi_students', s.id), { [MF]: m, [BF]: 'jamia', [TF]: Date.now() });
       });
       await b.commit();
+      part.forEach(s => { const v = s._draft, m = (v === '' || v == null) ? null : Number(v); s[MF] = m; s[BF] = 'jamia'; delete s._draft; delete s._dirty; });
+      done += part.length;
     }
-    dirty.forEach(s => { const v = s._draft, m = (v === '' || v == null) ? null : Number(v); s[MF] = m; delete s._draft; delete s._dirty; });
     renderList();
-    toast(`${dirty.length} students ke marks save ho gaye`);
-  } catch (e) { console.error(e); toast('Save nahi hua, dobara koshish karein', true); }
+    toast(`${done} students ke marks save ho gaye`);
+  } catch (e) { console.error(e); renderList(); toast('Kuch marks save nahi hue (jo save hue woh safe hain). Dobara Save dabayein.', true); }
   finally { $('save-btn').disabled = false; }
 };
 </script>
