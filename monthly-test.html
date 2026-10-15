@@ -327,83 +327,57 @@
         };
 
         // Smart Document ID Finder
-        window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
-            const jClean = jamia.trim().replace(/\s+/g, '_');
-            const jOld = jamia.replace(/\s/g, '_');
-            
-            const fullCls = rawCls.trim().replace(/\s+/g, '_');
-            const baseCls = rawCls.split('_')[0].trim().replace(/\s+/g, '_');
-            const oldBaseCls = rawCls.split('_')[0].replace(/\s/g, '_');
-
-            const normBase = window.normalizeClassText(baseCls);
-            const altTa = baseCls.replace(/ہ/g, 'ۃ');
-            const altHa = baseCls.replace(/ۃ/g, 'ہ');
-            const altYa = baseCls.replace(/ی/g, 'ى').replace(/[\u0670]/g, '');
-            const altKhadi = baseCls.replace(/ى/g, 'ٰى');
-
-            const clsVariations = [fullCls, oldBaseCls, baseCls, normBase, altTa, altHa, altYa, altKhadi];
-            const ids = [];
-
-            clsVariations.forEach(c => {
-                if (c) {
-                    ids.push(`${uid}_${jClean}_${mKey}_${c}`);
-                    ids.push(`${uid}_${jOld}_${mKey}_${c}`);
-                }
-            });
-
-            return [...new Set(ids)];
-        };
+       window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
+    const jClean = jamia.trim().replace(/\s+/g, '_');
+    const jOld = jamia.replace(/\s/g, '_');
+    
+    const fullCls = rawCls.trim().replace(/\s+/g, '_');
+    const normFull = window.normalizeClassText(rawCls);
+    
+    const ids = [];
+    [fullCls, normFull].forEach(c => {
+        if (c) {
+            ids.push(`${uid}_${jClean}_${mKey}_${c}`);
+            ids.push(`${uid}_${jOld}_${mKey}_${c}`);
+        }
+    });
+    return [...new Set(ids)];
+};
 
         // Firebase se 100% sahi document dhoondhne ka function (Direct ID + Query Fallback)
-        window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
-            const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
-            let fallbackSnap = null;
+       window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
+    const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
 
-            for (const id of possibleIds) {
-                try {
-                    const snap = await getDoc(doc(db, "monthly_test_sheets", id));
-                    if (snap.exists()) {
-                        const data = snap.data();
-                        if (data.students && data.students.length > 0) {
-                            return { snap, docId: id };
-                        }
-                        if (!fallbackSnap) fallbackSnap = { snap, docId: id };
-                    }
-                } catch (e) { console.warn(e); }
+    // 1. Pehle direct ID se data dhoondein
+    for (const id of possibleIds) {
+        try {
+            const snap = await getDoc(doc(db, "monthly_test_sheets", id));
+            if (snap.exists() && snap.data().students && snap.data().students.length > 0) {
+                return { snap, docId: id };
             }
+        } catch (e) { console.warn(e); }
+    }
 
-            try {
-                const q = query(
-                    collection(db, "monthly_test_sheets"),
-                    where("adminUid", "==", uid),
-                    where("month", "==", mKey)
-                );
-                const qSnap = await getDocs(q);
-                const targetNorm = window.normalizeClassText(rawCls.split('_')[0]);
-                const targetJamia = jamia.trim().toLowerCase();
+    // 2. Exact match Query se dhoondein (Base name ki bajaye Pura naam match karein)
+    try {
+        const q = query(
+            collection(db, "monthly_test_sheets"),
+            where("adminUid", "==", uid),
+            where("month", "==", mKey),
+            where("class", "==", rawCls) // Yeh line wrong overwriting ko rokegi
+        );
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+            const d = qSnap.docs[0];
+            return { snap: d, docId: d.id };
+        }
+    } catch (err) {
+        console.warn("Query fallback warning:", err);
+    }
 
-                let matchedDoc = null;
-                qSnap.forEach(d => {
-                    const data = d.data();
-                    const docJamia = (data.jamiaName || '').trim().toLowerCase();
-                    const docClsNorm = window.normalizeClassText((data.class || '').split('_')[0]);
-
-                    if (docJamia === targetJamia && docClsNorm === targetNorm) {
-                        if (data.students && data.students.length > 0) {
-                            matchedDoc = { snap: d, docId: d.id };
-                        } else if (!matchedDoc && !fallbackSnap) {
-                            fallbackSnap = { snap: d, docId: d.id };
-                        }
-                    }
-                });
-
-                if (matchedDoc) return matchedDoc;
-            } catch (err) {
-                console.warn("Query fallback warning:", err);
-            }
-
-            return fallbackSnap || { snap: null, docId: possibleIds[0] };
-        };
+    // 3. Naya result save karne ke liye nayi ID bhejein
+    return { snap: null, docId: possibleIds[0] };
+};
         
         function getAcademicYear(key) {
             if (!key) return null;
