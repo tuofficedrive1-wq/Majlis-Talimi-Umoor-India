@@ -269,24 +269,70 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
             let latestDataMap = new Map();
 
                 snapshot.forEach(docSnap => {
-    const d = docSnap.data();
-    d.docId = docSnap.id;
+                const d = docSnap.data();
+                d.docId = docSnap.id;
 
-    if (!userJamiaatNames.includes(d.jamia)) return;
-    if (jamiaFilter && d.jamia !== jamiaFilter) return;
-    if (d.uid && d.uid !== user.uid) return;
+                if (!userJamiaatNames.includes(d.jamia)) return;
+                if (jamiaFilter && d.jamia !== jamiaFilter) return;
+                if (d.uid && d.uid !== user.uid) return;
 
-    let uniqueKey;
-    if (layoutLevel === 'teacher' || layoutLevel === 'wazahat') {
-        // asatiza_wise_results: khali docs skip, har jamia ka sabse naya bhara hua doc
-        if (!Array.isArray(d.data) || d.data.length === 0) return;
-        uniqueKey = d.jamia;
-    } else {
-        uniqueKey = `${d.jamia}_${d.darjah}`;
-    }
+                let uniqueKey;
+                if (layoutLevel === 'teacher' || layoutLevel === 'wazahat') {
+                    // asatiza_wise_results: khali docs skip, har jamia ka sabse naya bhara hua doc
+                    if (!Array.isArray(d.data) || d.data.length === 0) return;
+                    uniqueKey = d.jamia;
+                } else {
+                    uniqueKey = `${d.jamia}_${d.darjah}`;
+                }
 
-    if (!latestDataMap.has(uniqueKey)) latestDataMap.set(uniqueKey, d);
-});
+                if (!latestDataMap.has(uniqueKey)) {
+                    d.keyDocMap = {};
+                    if (d.wazahat_map) {
+                        for (let k in d.wazahat_map) d.keyDocMap[k] = d.docId;
+                    }
+                    latestDataMap.set(uniqueKey, d);
+                } else {
+                    // Agar usi Jamia ka koi doosra document bhi maujood ho, to uski wazahat_map aur comments ko merge kar lein
+                    const target = latestDataMap.get(uniqueKey);
+                    if (!target.keyDocMap) target.keyDocMap = {};
+
+                    if (d.wazahat_map) {
+                        if (!target.wazahat_map) target.wazahat_map = {};
+                        for (let k in d.wazahat_map) {
+                            if (!target.wazahat_map[k]) {
+                                target.wazahat_map[k] = d.wazahat_map[k];
+                                target.keyDocMap[k] = d.docId;
+                            }
+                        }
+                    }
+                    if (d.wazahat_date_map) {
+                        target.wazahat_date_map = { ...d.wazahat_date_map, ...(target.wazahat_date_map || {}) };
+                    }
+                    if (d.zimmedar_comments) {
+                        target.zimmedar_comments = { ...d.zimmedar_comments, ...(target.zimmedar_comments || {}) };
+                    }
+                    if (d.wazahat && !target.wazahat) {
+                        target.wazahat = d.wazahat;
+                        target.keyDocMap['_legacy_'] = d.docId;
+                    }
+                }
+            });
+
+            // Multiple documents se aane wali wazahats ko latest document me sync kar dein taake Firestore me bhi data update rahe
+            if (layoutLevel === 'wazahat' || layoutLevel === 'teacher') {
+                for (let [jKey, docData] of latestDataMap.entries()) {
+                    if (docData.keyDocMap && Object.values(docData.keyDocMap).some(id => id !== docData.docId)) {
+                        try {
+                            const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                            await updateDoc(doc(window.db, "asatiza_wise_results", docData.docId), {
+                                wazahat_map: docData.wazahat_map || {},
+                                wazahat_date_map: docData.wazahat_date_map || {},
+                                wazahat_status: "Submitted"
+                            });
+                        } catch(e) { console.warn("Wazahat sync warning:", e); }
+                    }
+                }
+            }
 
             let rowsHtml = "";
             let totals = { kul: 0, hazir: 0, passed: 0, zimni: 0, nakam: 0 };
@@ -524,14 +570,29 @@ else if (layoutLevel === 'wazahat') {
                         let finalWazahatText = "";
                         let keyToDelete = subjectKey; 
                         let isLegacy = false;
+                        let wazahatDate = "";
                         
-                        // --- BULLETPROOF SMART SEARCH START ---
-                        if (d.wazahat_map) {
-                            // Helper: Faltu spaces aur symbols hata kar completely saaf karke match karne ke liye
-                            const normalize = (str) => String(str || "").replace(/[\s_.-]/g, '').trim().toLowerCase();
-                            const normSubj = normalize(rawSubject);
-                            const normTeacher = normalize(tEntry.teacher);
+                        // Helper: Faltu spaces, symbols aur Urdu variations ko normalize karne ke liye
+                        const cleanUrduText = (str) => {
+                            if (!str) return "";
+                            return String(str)
+                                .toLowerCase()
+                                .replace(/[\s_.\-()]/g, '')
+                                .replace(/[أإآ]/g, 'ا')
+                                .replace(/[ةۀھ]/g, 'ہ')
+                                .replace(/[ىئ]/g, 'ی')
+                                .replace(/[\u064B-\u065F\u0670]/g, '')
+                                .replace(/ء/g, '')
+                                .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                                .trim();
+                        };
 
+                        const normSubj = cleanUrduText(rawSubject);
+                        const normTeacher = cleanUrduText(tEntry.teacher);
+                        const normDarjah = cleanUrduText(darjah);
+
+                        // --- BULLETPROOF SMART SEARCH START ---
+                        if (d.wazahat_map && typeof d.wazahat_map === 'object') {
                             // 1. Direct match (Pehli koshish)
                             if (d.wazahat_map[subjectKey]) {
                                 finalWazahatText = d.wazahat_map[subjectKey];
@@ -541,27 +602,41 @@ else if (layoutLevel === 'wazahat') {
                                 finalWazahatText = d.wazahat_map[rawSubject];
                                 keyToDelete = rawSubject;
                             } 
+                            else if (d.wazahat_map[rawSubject.replace(/\./g, '_')]) {
+                                finalWazahatText = d.wazahat_map[rawSubject.replace(/\./g, '_')];
+                                keyToDelete = rawSubject.replace(/\./g, '_');
+                            }
                             else {
-                                // 2. Fuzzy Match (Agar spaces ya format thoda alag ho gaya ho)
+                                // 2. Smart Urdu Fuzzy Match
                                 for (let key in d.wazahat_map) {
-                                    let normKey = normalize(key);
-                                    
-                                    // Agar database ki key mein subject ka naam chhupa hai (Bina spaces ke)
-                                    if (normKey === normSubj || normKey.includes(normSubj) || normSubj.includes(normKey)) {
-                                        
-                                        // Extra Check: Agar key mein teacher ka naam bhi hai, to usay match karein
-                                        if (normKey.includes(normTeacher) || normKey === normSubj) {
-                                            finalWazahatText = d.wazahat_map[key];
+                                    const val = d.wazahat_map[key];
+                                    if (!val) continue;
+                                    const normKey = cleanUrduText(key);
+
+                                    // Check if key matches subject
+                                    const subjMatch = (normKey === normSubj) || 
+                                                      (normSubj.length >= 3 && normKey.includes(normSubj)) || 
+                                                      (normKey.length >= 3 && normSubj.includes(normKey));
+
+                                    if (subjMatch) {
+                                        // Agar key me teacher ya darjah bhi hai to usay tarjeeh dein
+                                        if ((normTeacher && normKey.includes(normTeacher)) || 
+                                            (normDarjah && normKey.includes(normDarjah)) || 
+                                            normKey === normSubj) {
+                                            finalWazahatText = val;
                                             keyToDelete = key;
                                             break;
                                         } else {
-                                            // Fallback: Agar upar match na ho, to ye final option hai
-                                            finalWazahatText = d.wazahat_map[key];
+                                            finalWazahatText = val;
                                             keyToDelete = key;
                                         }
                                     }
                                 }
                             }
+                        }
+
+                        if (d.wazahat_date_map) {
+                            wazahatDate = d.wazahat_date_map[keyToDelete] || d.wazahat_date_map[subjectKey] || d.wazahat_date_map[rawSubject] || "";
                         }
                         
                         // Purana single field 'wazahat' check karein
@@ -572,16 +647,28 @@ else if (layoutLevel === 'wazahat') {
                         // --- BULLETPROOF SMART SEARCH END ---
 
                         const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
+                        const docToDeleteFrom = (d.keyDocMap && d.keyDocMap[keyToDelete]) ? d.keyDocMap[keyToDelete] : d.docId;
                         
+                        let formattedDateStr = "";
+                        if (wazahatDate) {
+                            try {
+                                const dObj = new Date(wazahatDate);
+                                formattedDateStr = `<div class="text-[10px] text-gray-500 mt-1 font-sans text-left" dir="ltr"><i class="far fa-clock mr-1"></i>${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</div>`;
+                            } catch(e) {}
+                        }
+
                         // 🌟 Reset/Delete Button (Waisa hi rahega)
                         const specificWazahat = hasWazahat 
                             ? `<div class="flex flex-col gap-1">
-                                 <div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">${finalWazahatText}</div>
-                                 <button onclick="deleteWazahat('${d.docId}', '${keyToDelete}', ${isLegacy})" class="self-end text-[11px] bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded border border-red-200 transition shadow-sm mt-1">
+                                 <div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">
+                                    ${finalWazahatText}
+                                    ${formattedDateStr}
+                                 </div>
+                                 <button onclick="deleteWazahat('${docToDeleteFrom}', '${keyToDelete}', ${isLegacy})" class="self-end text-[11px] bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded border border-red-200 transition shadow-sm mt-1">
                                      <i class="fas fa-trash-alt"></i> Reset
                                  </button>
                                </div>`
-                            : `<span class="text-red-500 font-bold italic animate-pulse">...Pending</span>`;
+                            : `<span class="text-red-500 font-bold italic animate-pulse">Pending...</span>`;
 
                         let zimmedarComment = "";
                         if (d.zimmedar_comments) {
