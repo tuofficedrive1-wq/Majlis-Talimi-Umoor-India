@@ -326,6 +326,74 @@
                 .replace(/[\u064B-\u065F\u0670]/g, '');
         };
 
+        // Jamia match verification function
+        window.isSameJamia = (j1, j2) => {
+            if (!j1 || !j2) return false;
+            const s1 = String(j1).trim().toLowerCase();
+            const s2 = String(j2).trim().toLowerCase();
+            if (s1 === s2) return true;
+            
+            const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
+            const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
+            if (clean1 === clean2) return true;
+
+            const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia)[\s_-]*/gi, '').trim();
+            const core1 = strip(clean1);
+            const core2 = strip(clean2);
+            if (core1 && core2 && core1 === core2) return true;
+
+            return false;
+        };
+
+        // Class match verification function
+        window.isSameClass = (c1, c2) => {
+            if (!c1 || !c2) return false;
+            const s1 = String(c1).trim().toLowerCase();
+            const s2 = String(c2).trim().toLowerCase();
+            if (s1 === s2) return true;
+
+            const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
+            const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
+            if (clean1 === clean2) return true;
+
+            const n1 = window.normalizeClassText(c1);
+            const n2 = window.normalizeClassText(c2);
+            if (n1 && n2 && n1 === n2) return true;
+
+            return false;
+        };
+
+        // Purani list na milne par popup message dikhane ka function
+        window.showNoStudentsPopup = () => {
+            const existing = document.getElementById('no-students-modal');
+            if (existing) existing.remove();
+
+            const message = "طلبہ کی پرانی لسٹ نہیں مل سکی برائے کرم طلبہ کی حاضری والے سوفٹ وئر سے فائل ڈاؤنلوڈ کرکے یہاں لسٹ کاپی کرکے ایڈ کر دیں۔ (CSV File)";
+
+            const modalHtml = `
+                <div id="no-students-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 p-4 print:hidden" style="direction: rtl;">
+                    <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center border-t-4 border-amber-500 transform transition-all">
+                        <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-3 urdu-font text-center" style="font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', Tahoma, sans-serif;">توجہ فرمائیں</h3>
+                        <p class="text-base sm:text-lg text-gray-700 leading-relaxed font-semibold urdu-font mb-6 text-center" style="font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', Tahoma, sans-serif; line-height: 2;">
+                            ${message}
+                        </p>
+                        <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                            <button type="button" onclick="document.getElementById('no-students-modal').remove(); if(typeof pasteFromExcel === 'function') pasteFromExcel();" class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-md transition flex items-center justify-center gap-2">
+                                <i class="fas fa-paste"></i> طلبہ لسٹ پیسٹ کریں (Paste List)
+                            </button>
+                            <button type="button" onclick="document.getElementById('no-students-modal').remove();" class="w-full sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-800 px-5 py-2.5 rounded-xl font-bold transition">
+                                ٹھیک ہے (OK)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        };
+
         // Smart Document ID Finder
        window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
     const jClean = jamia.trim().replace(/\s+/g, '_');
@@ -344,38 +412,51 @@
     return [...new Set(ids)];
 };
 
-        // Firebase se 100% sahi document dhoondhne ka function (Direct ID + Query Fallback)
+        // Firebase se 100% sahi document dhoondhne ka function (Direct ID + Query Fallback - Jamia aur Class dono filter ke sath)
        window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
     const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
 
-    // 1. Pehle direct ID se data dhoondein
+    // 1. Pehle direct ID se data dhoondein aur verify karein ke jamia aur class wahi hain
     for (const id of possibleIds) {
         try {
             const snap = await getDoc(doc(db, "monthly_test_sheets", id));
-            if (snap.exists() && snap.data().students && snap.data().students.length > 0) {
-                return { snap, docId: id };
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                const dJamia = data.jamiaName || data.jamiaId || data.jamia;
+                const dClass = data.class;
+                
+                const isJamiaOk = !dJamia || window.isSameJamia(dJamia, jamia);
+                const isClassOk = !dClass || window.isSameClass(dClass, rawCls);
+                
+                if (isJamiaOk && isClassOk) {
+                    return { snap, docId: id };
+                }
             }
         } catch (e) { console.warn(e); }
     }
 
-    // 2. Exact match Query se dhoondein (Base name ki bajaye Pura naam match karein)
+    // 2. Query fallback: Sirf usi Jamia aur usi Class ka document dhoondein (kisi doosri Jamia ka data hargiz load na ho)
     try {
         const q = query(
             collection(db, "monthly_test_sheets"),
             where("adminUid", "==", uid),
-            where("month", "==", mKey),
-            where("class", "==", rawCls) // Yeh line wrong overwriting ko rokegi
+            where("month", "==", mKey)
         );
         const qSnap = await getDocs(q);
-        if (!qSnap.empty) {
-            const d = qSnap.docs[0];
-            return { snap: d, docId: d.id };
+        for (const d of qSnap.docs) {
+            const data = d.data() || {};
+            const dJamia = data.jamiaName || data.jamiaId || data.jamia;
+            const dClass = data.class;
+            
+            if (window.isSameJamia(dJamia, jamia) && window.isSameClass(dClass, rawCls)) {
+                return { snap: d, docId: d.id };
+            }
         }
     } catch (err) {
         console.warn("Query fallback warning:", err);
     }
 
-    // 3. Naya result save karne ke liye nayi ID bhejein
+    // 3. Agar data nahi mila to naya result save karne ke liye standard ID bhejein
     return { snap: null, docId: possibleIds[0] };
 };
         
@@ -650,6 +731,8 @@
                     addStudentRow(stdName, {}); 
                 });
                 window.previousMonthStudents = []; 
+            } else if (tbody.rows.length === 0) {
+                window.showNoStudentsPopup();
             }
         };
 
@@ -964,7 +1047,7 @@
 
             window.previousMonthStudents = []; 
 
-            // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna
+            // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna (Sirf isi Jamia aur isi Class ke)
             try {
                 let tempMonth = monthKey;
                 for (let i = 0; i < 6; i++) {
@@ -973,10 +1056,19 @@
                     
                     const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
                     if (prevSnap && prevSnap.exists()) {
-                        const prevData = prevSnap.data();
-                        if (prevData.students && prevData.students.length > 0) {
-                            window.previousMonthStudents = prevData.students.map(s => s.name);
-                            break; 
+                        const prevData = prevSnap.data() || {};
+                        const dJamia = prevData.jamiaName || prevData.jamiaId || prevData.jamia;
+                        const dClass = prevData.class;
+                        if (window.isSameJamia(dJamia, jamiaName) && window.isSameClass(dClass, clsName)) {
+                            if (Array.isArray(prevData.students) && prevData.students.length > 0) {
+                                const names = prevData.students
+                                    .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
+                                    .filter(n => n.length > 0);
+                                if (names.length > 0) {
+                                    window.previousMonthStudents = names;
+                                    break; 
+                                }
+                            }
                         }
                     }
                 }
@@ -1042,6 +1134,8 @@
                                 addStudentRow(stdName, {}); 
                             });
                             window.previousMonthStudents = [];
+                        } else {
+                            window.showNoStudentsPopup();
                         }
                     }
                 } 
@@ -2175,9 +2269,13 @@
             }
 
             const tbody = document.getElementById('students-body');
-            if (tbody && tbody.rows.length === 0 && finalSubjectsList.length > 0 && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                window.previousMonthStudents.forEach(stdName => addStudentRow(stdName, {}));
-                window.previousMonthStudents = [];
+            if (tbody && tbody.rows.length === 0 && finalSubjectsList.length > 0) {
+                if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+                    window.previousMonthStudents.forEach(stdName => addStudentRow(stdName, {}));
+                    window.previousMonthStudents = [];
+                } else {
+                    window.showNoStudentsPopup();
+                }
             }
 
             document.querySelectorAll('.view-mode-input').forEach(inp => {
@@ -2221,11 +2319,15 @@
                 currentSheetData.push({ name, marks });
             });
 
-            if (currentSheetData.length === 0 && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                window.previousMonthStudents.forEach(stdName => {
-                    currentSheetData.push({ name: stdName, marks: {} });
-                });
-                window.previousMonthStudents = [];
+            if (currentSheetData.length === 0) {
+                if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
+                    window.previousMonthStudents.forEach(stdName => {
+                        currentSheetData.push({ name: stdName, marks: {} });
+                    });
+                    window.previousMonthStudents = [];
+                } else {
+                    window.showNoStudentsPopup();
+                }
             }
 
             const selected3 = Array.from(checkedBoxes).map(cb => cb.value);
@@ -2295,14 +2397,14 @@
 
         window.pasteFromExcel = () => {
             const modalHtml = `
-                <div id="paste-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 print:hidden">
-                    <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 flex flex-col transform transition-all">
+                <div id="paste-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 print:hidden" style="direction: rtl;">
+                    <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 flex flex-col transform transition-all text-right">
                         <div class="flex justify-between items-center mb-4 border-b pb-2">
-                            <h3 class="text-xl font-bold text-teal-800"><i class="fas fa-file-excel text-green-600 mr-2"></i> Paste Excel Data</h3>
+                            <h3 class="text-xl font-bold text-teal-800 flex items-center gap-2"><i class="fas fa-file-csv text-green-600"></i> طلبہ لسٹ کاپی پیسٹ (CSV / Excel)</h3>
                             <button onclick="document.getElementById('paste-modal').remove()" class="text-gray-400 hover:text-red-500 text-2xl leading-none">&times;</button>
                         </div>
-                        <p class="text-sm text-gray-600 mb-3 font-semibold">Excel se bachon ki list copy kar ke yahan box mein paste karein:</p>
-                        <textarea id="paste-area" class="flex-1 border-2 border-teal-100 rounded-lg p-3 text-sm font-mono min-h-[250px] outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition bg-gray-50" placeholder="Yahan paste karein..."></textarea>
+                        <p class="text-sm text-gray-700 mb-3 font-semibold urdu-font">حاضری سافٹ ویئر کی CSV فائل یا Excel سے طلبہ کی لسٹ کاپی کر کے یہاں باکس میں پیسٹ کریں:</p>
+                        <textarea id="paste-area" class="flex-1 border-2 border-teal-100 rounded-lg p-3 text-sm font-mono min-h-[250px] outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition bg-gray-50 text-left" dir="ltr" placeholder="حاضری والے سافٹ ویئر سے کاپی شدہ ڈیٹا (CSV / Excel) یہاں پیسٹ کریں..."></textarea>
                         <div class="flex justify-end gap-3 mt-5">
                             <button onclick="document.getElementById('paste-modal').remove()" class="bg-gray-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-gray-600 transition shadow-sm">Cancel</button>
                             <button onclick="processPaste()" class="bg-teal-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-teal-700 transition shadow-md flex items-center gap-2">
@@ -2329,24 +2431,35 @@
             document.getElementById('students-body').innerHTML = '';
 
             rows.forEach(rowLine => {
-                const cols = rowLine.split('\t').map(c => c.trim());
+                let trimmed = rowLine.trim();
+                if (!trimmed) return;
+
+                // Support both Tab-separated (Excel) and Comma-separated (CSV)
+                let cols = [];
+                if (trimmed.includes('\t')) {
+                    cols = trimmed.split('\t');
+                } else if (trimmed.includes(',')) {
+                    cols = trimmed.split(',');
+                } else {
+                    cols = [trimmed];
+                }
+                cols = cols.map(c => c.trim().replace(/^["']|["']$/g, ''));
+
                 if (cols.length === 0 || cols[0] === "") return; 
                 
                 let finalStudentName = "";
                 let marksData = {};
 
-                let isExportedExcel = !isNaN(parseInt(cols[0])) && cols.length > 2;
+                let isExportedExcel = !isNaN(parseInt(cols[0])) && cols.length > 2 && typeof finalSubjectsList !== 'undefined' && finalSubjectsList.length > 0;
 
-                if (isExportedExcel) {
+                if (isExportedExcel && cols.length >= 2 + finalSubjectsList.length) {
                     finalStudentName = cols[1] || "";
-                    if (typeof finalSubjectsList !== 'undefined') {
-                        finalSubjectsList.forEach((sub, idx) => {
-                            let mark = cols[2 + idx];
-                            if (mark !== undefined) {
-                                marksData[sub] = mark;
-                            }
-                        });
-                    }
+                    finalSubjectsList.forEach((sub, idx) => {
+                        let mark = cols[2 + idx];
+                        if (mark !== undefined) {
+                            marksData[sub] = mark;
+                        }
+                    });
                 } 
                 else {
                     if (cols.length >= 4) {
