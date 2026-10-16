@@ -185,6 +185,7 @@
                             <button onclick="generateJamiaCodes()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm"><i class="fas fa-wand-magic-sparkles mr-1"></i> Generate Codes</button>
                             <button onclick="copyJamiaLoginLink()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm"><i class="fas fa-copy mr-1"></i> Copy Jamia Login Link</button>
                             <button id="entry-status-btn" onclick="toggleEntryOpen()" class="bg-red-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm w-36">Entry Off</button>
+                            <button id="unlock-jamia-btn" onclick="unlockEmptyForJamia()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm" title="Jinke marks khali hain unhe Jamia ke result save ke liye unlock karein"><i class="fas fa-lock-open mr-1"></i> Unlock Empty for Jamia</button>
                         </div>
                     </div>
                     <div id="jamia-codes-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
@@ -1495,7 +1496,28 @@ window.toggleFormStatus = async () => {
                     <td class="text-sm">${g ? escH(g.groupName) : '<span class="text-gray-400">—</span>'}</td>
                 </tr>`;
             }).join('') : '<tr><td colspan="10" class="text-center p-8 text-gray-400">No students.</td></tr>';
+            updateUnlockJamiaBtn();
         };
+
+        function updateUnlockJamiaBtn() {
+            const lockedEmptyCount = entryList.filter(s => {
+                const t1 = (s.entryMarks == null || s.entryMarks === '') && s.entryBy === 'admin';
+                const t2 = (s.entryMarks2 == null || s.entryMarks2 === '') && s.entryBy2 === 'admin';
+                return t1 || t2;
+            }).length;
+            const ub = document.getElementById('unlock-jamia-btn');
+            if (ub) {
+                if (lockedEmptyCount > 0) {
+                    ub.innerHTML = `<i class="fas fa-lock-open mr-1"></i> Unlock Empty for Jamia (${lockedEmptyCount})`;
+                    ub.className = 'bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm';
+                    ub.title = `${lockedEmptyCount} students ke marks khali hain lekin admin locked hain. Jamia ke liye unlock karne yahan dabayein.`;
+                } else {
+                    ub.innerHTML = `<i class="fas fa-lock-open mr-1"></i> Unlock Empty for Jamia`;
+                    ub.className = 'bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm';
+                    ub.title = `Koi khali student admin locked nahi hai.`;
+                }
+            }
+        }
 
         // Admin kisi bhi student ke kisi bhi test ke marks update kar sakta hai (chahe wo abhi active na ho, correction ke liye)
        window.saveEntryMarks = async (id, val, r) => {
@@ -1515,10 +1537,60 @@ window.toggleFormStatus = async () => {
             
             const f = r === 2 ? {m:'entryMarks2', b:'entryBy2', t:'entryAt2'} : {m:'entryMarks', b:'entryBy', t:'entryAt'};
             try {
-                await updateDoc(doc(db,'tadrisi_students',id), {[f.m]:m, [f.b]:'admin', [f.t]:Date.now()});
-                s[f.m] = m; s[f.b] = 'admin';
-                renderEntry(); renderJamiaCodes(); showToast('Saved');
+                const bVal = m === null ? null : 'admin';
+                const tVal = m === null ? null : Date.now();
+                await updateDoc(doc(db,'tadrisi_students',id), {[f.m]:m, [f.b]:bVal, [f.t]:tVal});
+                s[f.m] = m; s[f.b] = bVal; s[f.t] = tVal;
+                renderEntry(); renderJamiaCodes(); showToast(m === null ? 'Marks removed (Unlocked for Jamia)' : 'Saved');
             } catch(e) { showToast('Save nahi hua', 'error'); }
+        };
+
+        window.unlockEmptyForJamia = async () => {
+            const toUnlock = entryList.filter(s => {
+                const t1 = (s.entryMarks == null || s.entryMarks === '') && s.entryBy === 'admin';
+                const t2 = (s.entryMarks2 == null || s.entryMarks2 === '') && s.entryBy2 === 'admin';
+                return t1 || t2;
+            });
+            if (!toUnlock.length) return showToast('Koi student admin locked with empty marks nahi mila');
+            if (!confirm(`${toUnlock.length} students ke marks khali hain. Inhein Jamia ke liye unlock karein taake Jamia portal se marks save ho sakein?`)) return;
+
+            showLoader(true);
+            try {
+                const CHUNK = 400;
+                for (let i = 0; i < toUnlock.length; i += CHUNK) {
+                    const part = toUnlock.slice(i, i + CHUNK);
+                    const b = writeBatch(db);
+                    part.forEach(s => {
+                        const upd = {};
+                        if ((s.entryMarks == null || s.entryMarks === '') && s.entryBy === 'admin') {
+                            upd.entryBy = null;
+                            upd.entryAt = null;
+                        }
+                        if ((s.entryMarks2 == null || s.entryMarks2 === '') && s.entryBy2 === 'admin') {
+                            upd.entryBy2 = null;
+                            upd.entryAt2 = null;
+                        }
+                        b.update(doc(db, 'tadrisi_students', s.id), upd);
+                    });
+                    await b.commit();
+                    part.forEach(s => {
+                        if ((s.entryMarks == null || s.entryMarks === '') && s.entryBy === 'admin') {
+                            s.entryBy = null; s.entryAt = null;
+                        }
+                        if ((s.entryMarks2 == null || s.entryMarks2 === '') && s.entryBy2 === 'admin') {
+                            s.entryBy2 = null; s.entryAt2 = null;
+                        }
+                    });
+                }
+                showToast(`${toUnlock.length} students Jamia ke liye unlock ho gaye!`);
+                renderEntry();
+                renderJamiaCodes();
+            } catch(e) {
+                console.error(e);
+                showToast('Unlock nahi ho saka: ' + (e.message || ''), 'error');
+            } finally {
+                showLoader(false);
+            }
         };
         // Doosre (ghair-active) test ka number theek karne ke liye chhota shortcut
         window.editOther = (id, r) => {

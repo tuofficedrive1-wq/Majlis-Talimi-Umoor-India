@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-@font-face { font-family: 'Jameel Noori Nastaleeq'; src: url('https://cdn.jsdelivr.net/gh/font-to-width/jameel-noori-nastaleeq-regular@1.1/jameel-noori-nastaleeq-regular.woff2') format('woff2'); }
+@font-face { font-family: 'Jameel Noori Nastaleeq'; src: url('https://cdn.jsdelivr.net/gh/sajjadsaeed/UrduFontsWeb@master/fonts/JameelNooriNastaleeq.woff2') format('woff2'); }
 body { font-family: 'Poppins', sans-serif; background: #f8fafc; }
 .urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif; }
 input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -102,7 +102,7 @@ window.login = async () => {
 window.clearSearch = () => { $('search').value = ''; renderList(); };
 
 function cardHtml(s, idx) {
-  const locked = !isOpen || (s[BF] === 'admin' && s[MF] !== null && s[MF] !== undefined && s[MF] !== '');
+  const locked = !isOpen || s[BF] === 'admin';
   const draft = s._draft !== undefined ? s._draft : (s[MF] ?? '');
   const v = draft === '' || draft === null ? null : Number(draft);
   const clr = locked ? 'bg-gray-100 text-gray-400 border-gray-200' : (v === null || isNaN(v) ? 'border-gray-300' : v >= PASS_MARK ? 'border-green-500 bg-green-50' : 'border-red-400 bg-red-50');
@@ -116,7 +116,7 @@ function cardHtml(s, idx) {
           <span class="urdu-font">${esc(s.mansab || 'طالب علم')}</span>
           <span class="urdu-font">${esc(s.city || '-')}</span>
         </div>
-        ${locked && s[BF] === 'admin' ? '<div class="text-[11px] text-gray-400 mt-0.5">Admin locked</div>' : ''}
+        ${locked && s[BF] === 'admin' ? '<div class="text-[11px] text-amber-700 font-semibold mt-0.5">Admin locked (Sirf Admin edit kar sakta hai)</div>' : ''}
       </div>
       <input type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="100" data-id="${s.id}" value="${draft}" ${locked ? 'disabled' : ''}
         oninput="onMarkInput(this,'${s.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();focusNext('${s.id}');}"
@@ -126,7 +126,9 @@ function cardHtml(s, idx) {
 window.renderList = () => {
   const term = $('search').value.trim().toLowerCase();
   const filtered = term ? students.filter(s => (s.name || '').toLowerCase().includes(term) || (s.fatherName || '').toLowerCase().includes(term) || (s.trackingCode || '').toLowerCase().includes(term)) : students;
-  $('list').innerHTML = filtered.length ? filtered.map((s, i) => cardHtml(s, i + 1)).join('') : '<div class="text-center p-10 text-gray-400 bg-white rounded-xl border">Koi match nahi mila.</div>';
+  const adminLockedCount = students.filter(s => s[BF] === 'admin').length;
+  const alertHtml = adminLockedCount > 0 ? `<div class="bg-amber-50 border border-amber-300 text-amber-800 text-xs rounded-lg p-2.5 mb-2 font-medium">Is Jamia me ${adminLockedCount} student(s) Admin ki taraf se locked hain. Baqi students ke marks aap save kar sakte hain. Agar inhein bhi unlock karwana ho to admin panel me jakar unlock karein.</div>` : '';
+  $('list').innerHTML = alertHtml + (filtered.length ? filtered.map((s, i) => cardHtml(s, i + 1)).join('') : '<div class="text-center p-10 text-gray-400 bg-white rounded-xl border">Koi match nahi mila.</div>');
   progress();
 };
 
@@ -152,8 +154,11 @@ window.focusNext = (id) => {
 };
 
 window.saveAll = async () => {
-  const dirty = students.filter(s => s._dirty);
-  if (!dirty.length) return toast('Koi tabdeeli nahi hai');
+  const dirty = students.filter(s => s._dirty && s[BF] !== 'admin');
+  if (!dirty.length) {
+    if (students.some(s => s._dirty && s[BF] === 'admin')) return toast('Yeh student(s) Admin ki taraf se locked hain', true);
+    return toast('Koi tabdeeli nahi hai');
+  }
   for (const s of dirty) {
     const v = s._draft, m = (v === '' || v == null) ? null : Number(v);
     if (m !== null && (isNaN(m) || m < 0 || m > 100)) {
@@ -181,7 +186,15 @@ window.saveAll = async () => {
     }
     renderList();
     toast(`${done} students ke marks save ho gaye`);
-  } catch (e) { console.error(e); renderList(); toast('Kuch marks save nahi hue (jo save hue woh safe hain). Dobara Save dabayein.', true); }
+  } catch (e) {
+    console.error(e);
+    renderList();
+    if (e?.code === 'permission-denied') {
+      toast('Permission error: Admin se kahein ke admin panel me unlock karein.', true);
+    } else {
+      toast('Kuch marks save nahi hue (jo save hue woh safe hain). Dobara Save dabayein.', true);
+    }
+  }
   finally { $('save-btn').disabled = false; }
 };
 </script>
