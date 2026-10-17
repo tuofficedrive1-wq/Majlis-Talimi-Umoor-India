@@ -804,6 +804,8 @@ export async function initAdminResultAnalysis(db, containerId) {
        else if (layout === 'wazahat') {
             let totalPending = 0; 
             let totalSubmitted = 0; 
+            let totalCommentAdded = 0;
+            let totalCommentPending = 0;
             let wazahatItems = [];
             let userStats = {}; // User-wise summary ke liye
 
@@ -880,7 +882,22 @@ export async function initAdminResultAnalysis(db, containerId) {
                             const hasWazahat = Boolean(finalWazahatText && finalWazahatText.trim().length > 2);
                             const docToDeleteFrom = (d.keyDocMap && d.keyDocMap[keyToDelete]) ? d.keyDocMap[keyToDelete] : (d.docId || d.id);
 
-                            if (!userStats[userName]) userStats[userName] = { name: userName, total: 0, submitted: 0, pending: 0 };
+                            let zimmedarComment = "";
+                            if (d.zimmedar_comments) {
+                                zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || d.zimmedar_comments[keyToDelete] || "";
+                            }
+                            const hasComment = Boolean(zimmedarComment && zimmedarComment.trim().length > 1);
+
+                            if (!userStats[userName]) {
+                                userStats[userName] = { 
+                                    name: userName, 
+                                    total: 0, 
+                                    submitted: 0, 
+                                    pending: 0,
+                                    commentAdded: 0,
+                                    commentPending: 0
+                                };
+                            }
                             userStats[userName].total++;
 
                             if (hasWazahat) {
@@ -891,9 +908,12 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 userStats[userName].pending++;
                             }
 
-                            let zimmedarComment = "";
-                            if (d.zimmedar_comments) {
-                                zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || d.zimmedar_comments[keyToDelete] || "";
+                            if (hasComment) {
+                                totalCommentAdded++;
+                                userStats[userName].commentAdded++;
+                            } else {
+                                totalCommentPending++;
+                                userStats[userName].commentPending++;
                             }
 
                             wazahatItems.push({
@@ -918,7 +938,8 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 subjectKey: subjectKey,
                                 isLegacy: isLegacy,
                                 docId: docToDeleteFrom,
-                                zimmedarComment: zimmedarComment
+                                zimmedarComment: zimmedarComment,
+                                hasComment: hasComment
                             });
                         }
                     });
@@ -927,16 +948,27 @@ export async function initAdminResultAnalysis(db, containerId) {
 
             const totalCases = totalPending + totalSubmitted;
             const completionRate = totalCases > 0 ? (totalSubmitted / totalCases) * 100 : 0;
+            const commentCompletionRate = totalCases > 0 ? (totalCommentAdded / totalCases) * 100 : 0;
 
             // 1. User Summary Ranking Array
             let userStatsArray = Object.keys(userStats).map(uName => {
                 let st = userStats[uName];
                 let percent = st.total > 0 ? (st.submitted / st.total) * 100 : 0;
-                return { name: uName, total: st.total, submitted: st.submitted, pending: st.pending, percent: percent };
+                let commentPercent = st.total > 0 ? (st.commentAdded / st.total) * 100 : 0;
+                return { 
+                    name: uName, 
+                    total: st.total, 
+                    submitted: st.submitted, 
+                    pending: st.pending, 
+                    percent: percent,
+                    commentAdded: st.commentAdded,
+                    commentPending: st.commentPending,
+                    commentPercent: commentPercent
+                };
             });
             userStatsArray.sort((a, b) => b.percent - a.percent);
 
-            // 2. Build User Ranking Cards
+            // 2. Build User Ranking Cards (All cards displayed together without scrollbar)
             let userCardsHtml = "";
             userStatsArray.forEach((user, index) => {
                 let rank = index + 1;
@@ -944,59 +976,86 @@ export async function initAdminResultAnalysis(db, containerId) {
                 let medalIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : `#${rank}`));
 
                 userCardsHtml += `
-                <div class="user-filter-card bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 text-sm relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer" data-username="${user.name}" title="Filter by ${user.name}">
-                    <div class="absolute top-0 right-0 ${rankBadge} text-[11px] font-black px-2.5 py-0.5 rounded-bl-lg shadow-2xs">
+                <div class="user-filter-card bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 text-sm relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer" data-username="${user.name}" title="${user.name}">
+                    <div class="absolute top-0 right-0 ${rankBadge} text-[11px] font-black px-2.5 py-0.5 rounded-bl-lg shadow-2xs font-sans">
                         ${medalIcon}
                     </div>
                     
-                    <div class="font-bold text-indigo-900 urdu-font border-b border-slate-100 pb-1.5 mb-2 pr-8 text-sm truncate">${user.name}</div>
+                    <div class="font-bold text-indigo-950 urdu-font border-b border-slate-100 pb-1.5 mb-2.5 pr-8 text-base truncate" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${user.name}</div>
                     
-                    <div class="grid grid-cols-3 gap-1 text-center py-1 bg-slate-50 rounded-lg mb-2 text-[11px]">
-                        <div><span class="block text-[10px] text-slate-500 font-sans">Kul</span><span class="font-bold text-slate-800">${user.total}</span></div>
-                        <div><span class="block text-[10px] text-emerald-600 font-sans">Aagayi</span><span class="font-bold text-emerald-700">${user.submitted}</span></div>
-                        <div><span class="block text-[10px] text-rose-500 font-sans">Baqi</span><span class="font-bold text-rose-600">${user.pending}</span></div>
+                    <!-- Wazahat Stats -->
+                    <div class="mb-2">
+                        <div class="flex justify-between items-center text-[11px] mb-1">
+                            <span class="urdu-font font-bold text-slate-700" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">وضاحت (Teacher):</span>
+                            <span class="font-sans font-bold text-emerald-700">${user.submitted}/${user.total} (${user.percent.toFixed(0)}%)</span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
+                            <div class="bg-gradient-to-r from-emerald-500 to-teal-500 h-1.5 rounded-full" style="width: ${user.percent}%"></div>
+                        </div>
                     </div>
-                    
-                    <div class="w-full bg-slate-100 rounded-full h-2 mb-1 overflow-hidden border border-slate-200">
-                        <div class="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-700" style="width: ${user.percent}%"></div>
+
+                    <!-- Zimmedar Comment Stats -->
+                    <div class="pt-1.5 border-t border-slate-100">
+                        <div class="flex justify-between items-center text-[11px] mb-1">
+                            <span class="urdu-font font-bold text-indigo-900" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">تبصرہ (Zimmedar):</span>
+                            <span class="font-sans font-bold ${user.commentAdded === user.total ? 'text-emerald-700' : (user.commentAdded > 0 ? 'text-indigo-700' : 'text-rose-600')}">${user.commentAdded}/${user.total} (${user.commentPercent.toFixed(0)}%)</span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
+                            <div class="bg-gradient-to-r from-indigo-500 to-blue-500 h-1.5 rounded-full" style="width: ${user.commentPercent}%"></div>
+                        </div>
                     </div>
-                    <div class="flex justify-between items-center text-[10px] font-sans">
-                        <span class="text-slate-500 font-semibold">Progress</span>
-                        <span class="font-black ${user.percent >= 80 ? 'text-emerald-700' : (user.percent >= 50 ? 'text-amber-600' : 'text-rose-600')}">${user.percent.toFixed(1)}%</span>
+
+                    <!-- Mini Summary Chips -->
+                    <div class="grid grid-cols-2 gap-1.5 mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-center font-sans">
+                        <div class="bg-rose-50 text-rose-700 py-1 px-1 rounded font-bold border border-rose-100">
+                            Wazahat Baqi: ${user.pending}
+                        </div>
+                        <div class="bg-amber-50 text-amber-800 py-1 px-1 rounded font-bold border border-amber-100">
+                            Comment Baqi: ${user.commentPending}
+                        </div>
                     </div>
                 </div>`;
             });
 
-            // 3. Modern Summary Bar HTML
+            // 3. Modern Summary Bar HTML (With Nastaleeq Urdu Font & Comment Stats)
             const summaryBarHtml = `
             <div class="summary-bar-wazahat mb-6 space-y-4">
                 <!-- Top Executive Banner -->
                 <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-slate-700 flex flex-col lg:flex-row items-center justify-between gap-4">
                     <div>
-                        <h3 class="text-lg font-black tracking-wide flex items-center gap-2">
-                            <i class="fas fa-clipboard-check text-amber-400 text-xl"></i>
-                            کمزور نتائج اور وضاحت جائزہ (Wazahat Followup Dashboard)
+                        <h3 class="text-2xl font-bold tracking-wide flex items-center gap-2 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                            <i class="fas fa-clipboard-check text-amber-400 text-2xl"></i>
+                            <span>کمزور نتائج اور وضاحت جائزہ</span>
+                            <span class="text-xs font-sans font-normal opacity-75">(Wazahat Followup Dashboard)</span>
                         </h3>
-                        <p class="text-xs text-slate-300 mt-1 font-sans">
-                            تمام تعلیمی ذمہ داران اور جامعات کے اساتذہ کی موصولہ وضاحتوں کا ریکارڈ برائے فالو اپ
+                        <p class="text-sm text-slate-300 mt-1 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                            تمام تعلیمی ذمہ داران اور جامعات کے اساتذہ کی موصولہ وضاحتوں اور تبصروں کا تفصیلی جائزہ
                         </p>
                     </div>
-                    <div class="flex flex-wrap items-center justify-center gap-3">
-                        <div class="bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
+                    <div class="flex flex-wrap items-center justify-center gap-2.5">
+                        <div class="bg-slate-800/90 border border-slate-700 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
                             <span class="block text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">Kul Kamzor</span>
-                            <span class="text-2xl font-black text-amber-400 font-sans">${totalCases}</span>
+                            <span class="text-xl font-black text-amber-400 font-sans">${totalCases}</span>
                         </div>
-                        <div class="bg-emerald-950/70 border border-emerald-700/60 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
+                        <div class="bg-emerald-950/70 border border-emerald-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
                             <span class="block text-[10px] text-emerald-300 font-sans font-bold uppercase tracking-wider">Wazahat Aagayi</span>
-                            <span class="text-2xl font-black text-emerald-400 font-sans">${totalSubmitted}</span>
+                            <span class="text-xl font-black text-emerald-400 font-sans">${totalSubmitted}</span>
                         </div>
-                        <div class="bg-rose-950/70 border border-rose-700/60 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
-                            <span class="block text-[10px] text-rose-300 font-sans font-bold uppercase tracking-wider">Pending</span>
-                            <span class="text-2xl font-black text-rose-400 font-sans">${totalPending}</span>
+                        <div class="bg-rose-950/70 border border-rose-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                            <span class="block text-[10px] text-rose-300 font-sans font-bold uppercase tracking-wider">Wazahat Baqi</span>
+                            <span class="text-xl font-black text-rose-400 font-sans">${totalPending}</span>
                         </div>
-                        <div class="bg-indigo-950/80 border border-indigo-700/60 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
-                            <span class="block text-[10px] text-indigo-300 font-sans font-bold uppercase tracking-wider">Completion</span>
-                            <span class="text-2xl font-black text-indigo-300 font-sans">${completionRate.toFixed(1)}%</span>
+                        <div class="bg-teal-950/70 border border-teal-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                            <span class="block text-[10px] text-teal-300 font-sans font-bold uppercase tracking-wider">Comment Aagaye</span>
+                            <span class="text-xl font-black text-teal-400 font-sans">${totalCommentAdded}</span>
+                        </div>
+                        <div class="bg-amber-950/70 border border-amber-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                            <span class="block text-[10px] text-amber-300 font-sans font-bold uppercase tracking-wider">Comment Baqi</span>
+                            <span class="text-xl font-black text-amber-400 font-sans">${totalCommentPending}</span>
+                        </div>
+                        <div class="bg-indigo-950/80 border border-indigo-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                            <span class="block text-[10px] text-indigo-300 font-sans font-bold uppercase tracking-wider">Wazahat %</span>
+                            <span class="text-xl font-black text-indigo-300 font-sans">${completionRate.toFixed(1)}%</span>
                         </div>
                     </div>
                 </div>
@@ -1005,14 +1064,16 @@ export async function initAdminResultAnalysis(db, containerId) {
                 <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
                     <div class="relative w-full md:w-96">
                         <i class="fas fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
-                        <input type="text" id="wazahat-live-search" placeholder="تلاش کریں (جامعہ، استاد، مضمون، ذمہ دار)..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans urdu-font text-right bg-slate-50/50">
+                        <input type="text" id="wazahat-live-search" placeholder="تلاش کریں (جامعہ، استاد، مضمون، ذمہ دار)..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 urdu-font text-right bg-slate-50/50" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                     </div>
                     <div class="flex items-center gap-2 w-full md:w-auto justify-end">
-                        <span class="text-xs font-bold text-slate-600 font-sans whitespace-nowrap"><i class="fas fa-filter text-indigo-500 mr-1"></i> Status:</span>
-                        <select id="wazahat-status-filter" class="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs">
+                        <span class="text-xs font-bold text-slate-600 font-sans whitespace-nowrap"><i class="fas fa-filter text-indigo-500 mr-1"></i> Filter:</span>
+                        <select id="wazahat-status-filter" class="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                             <option value="all">تمام ریکارڈز (${totalCases})</option>
-                            <option value="submitted">✅ صرف موصولہ (${totalSubmitted})</option>
-                            <option value="pending">⏳ صرف منتظر / Pending (${totalPending})</option>
+                            <option value="submitted">✅ صرف موصولہ وضاحت (${totalSubmitted})</option>
+                            <option value="pending">⏳ صرف منتظر وضاحت (${totalPending})</option>
+                            <option value="comment-added">💬 صرف تبصرہ شدہ (${totalCommentAdded})</option>
+                            <option value="comment-pending">📝 بغیر تبصرہ / کمنٹ باقی (${totalCommentPending})</option>
                         </select>
                         <button id="wazahat-reset-filter-btn" class="p-2 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg font-bold transition font-sans border border-indigo-200" title="Reset Filters">
                             <i class="fas fa-redo-alt mr-1"></i> Reset
@@ -1020,18 +1081,17 @@ export async function initAdminResultAnalysis(db, containerId) {
                     </div>
                 </div>
 
-                <!-- User-wise Summary / Ranking Section -->
+                <!-- User-wise Summary / Ranking Section (Full grid without scrollbar for easy screenshot) -->
                 ${userStatsArray.length > 0 ? `
                 <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="flex justify-between items-center mb-3">
-                        <h4 class="text-slate-800 font-bold text-sm flex items-center gap-1.5">
-                            <i class="fas fa-trophy text-amber-500 text-base"></i>
-                            User-wise Wazahat Status & Ranking
-                            <span class="text-[11px] font-normal text-slate-500 font-sans">(کارڈ پر کلک کر کے اس ذمہ دار کا ریکارڈ دیکھیں)</span>
+                    <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
+                        <h4 class="text-slate-800 font-bold text-base flex items-center gap-2 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                            <i class="fas fa-users-cog text-amber-500 text-lg"></i>
+                            <span>تعلیمی ذمہ داران کی کارکردگی اور وضاحت جائزہ</span>
                         </h4>
-                        <span class="text-xs font-bold text-slate-500 font-sans">${userStatsArray.length} Users</span>
+                        <span class="text-xs font-bold text-slate-500 font-sans bg-slate-200/80 px-2.5 py-1 rounded-full">${userStatsArray.length} Users</span>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-72 overflow-y-auto p-1 custom-scrollbar">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 p-1">
                         ${userCardsHtml}
                     </div>
                 </div>` : ''}
@@ -1044,20 +1104,19 @@ export async function initAdminResultAnalysis(db, containerId) {
             summaryDiv.innerHTML = summaryBarHtml;
             tableContainer.parentNode.insertBefore(summaryDiv, tableContainer);
 
-            // Table Head Definition with Sr. No. & Followup Actions
+            // Table Head Definition (10 Columns, Without Action Column)
             thead.innerHTML = `
-                <tr class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white text-[13px] font-bold urdu-font border-b border-slate-700 select-none">
+                <tr class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white text-[13px] font-bold urdu-font border-b border-slate-700 select-none" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                     <th class="p-3 border border-slate-700 text-center w-12 font-sans">#</th>
                     <th class="p-3 border border-slate-700 text-center min-w-[100px] font-sans">Region / State</th>
-                    <th class="p-3 border border-slate-700 text-center min-w-[120px]">تعلیمی ذمہ دار</th>
-                    <th class="p-3 border border-slate-700 text-right min-w-[160px]">جامعہ</th>
-                    <th class="p-3 border border-slate-700 text-center min-w-[120px]">استاد</th>
-                    <th class="p-3 border border-slate-700 text-center min-w-[140px]">مضمون / درجہ</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[120px] urdu-font">تعلیمی ذمہ دار</th>
+                    <th class="p-3 border border-slate-700 text-right min-w-[160px] urdu-font">جامعہ</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[120px] urdu-font">استاد</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[140px] urdu-font">مضمون / درجہ</th>
                     <th class="p-3 border border-slate-700 text-center w-20 font-sans">فیصد</th>
-                    <th class="p-3 border border-slate-700 text-center w-24">کیفیت</th>
-                    <th class="p-3 border border-slate-700 text-right min-w-[260px] bg-slate-900/60">وضاحت (Explanation)</th>
-                    <th class="p-3 border border-slate-700 text-right min-w-[180px] bg-indigo-950/40">تبصرہ (Zimmedar Comment)</th>
-                    <th class="p-3 border border-slate-700 text-center min-w-[90px] no-print">فالو اپ ایکشن</th>
+                    <th class="p-3 border border-slate-700 text-center w-24 urdu-font">کیفیت</th>
+                    <th class="p-3 border border-slate-700 text-right min-w-[260px] bg-slate-900/60 urdu-font">وضاحت (Explanation)</th>
+                    <th class="p-3 border border-slate-700 text-right min-w-[200px] bg-indigo-950/40 urdu-font">تعلیمی ذمہ دار کا تبصرہ</th>
                 </tr>`;
 
             // Function to render rows dynamically based on filters
@@ -1068,15 +1127,17 @@ export async function initAdminResultAnalysis(db, containerId) {
                 let filtered = wazahatItems.filter(item => {
                     if (statusVal === 'submitted' && !item.hasWazahat) return false;
                     if (statusVal === 'pending' && item.hasWazahat) return false;
+                    if (statusVal === 'comment-added' && !item.hasComment) return false;
+                    if (statusVal === 'comment-pending' && item.hasComment) return false;
                     if (searchVal) {
-                        const hay = `${item.jamia} ${item.originalJamia} ${item.teacher} ${item.subject} ${item.darjah} ${item.userName} ${item.region} ${item.state} ${item.wazahatText}`.toLowerCase();
+                        const hay = `${item.jamia} ${item.originalJamia} ${item.teacher} ${item.subject} ${item.darjah} ${item.userName} ${item.region} ${item.state} ${item.wazahatText} ${item.zimmedarComment}`.toLowerCase();
                         if (!hay.includes(searchVal)) return false;
                     }
                     return true;
                 });
 
                 if (filtered.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="11" class="p-16 text-center text-slate-500 font-bold bg-white text-base urdu-font">
+                    tbody.innerHTML = `<tr><td colspan="10" class="p-16 text-center text-slate-500 font-bold bg-white text-base urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                         <i class="fas fa-search text-3xl mb-2 text-slate-300 block"></i>
                         کوئی ریکارڈ نہیں ملا۔
                     </td></tr>`;
@@ -1094,15 +1155,11 @@ export async function initAdminResultAnalysis(db, containerId) {
                     }
 
                     const safeDocId = item.docId;
-                    const safeTeacher = (item.teacher || '-').replace(/"/g, '&quot;');
-                    const safeSubj = (item.subject || '-').replace(/"/g, '&quot;');
-                    const safeDarjah = (item.darjah || '-').replace(/"/g, '&quot;');
-                    const safeJamia = (item.jamia || '-').replace(/"/g, '&quot;');
 
                     const wazahatCell = item.hasWazahat ? `
                         <div class="flex flex-col gap-1.5 text-right">
-                            <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2.5 rounded-lg shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl;">
-                                <div class="whitespace-pre-wrap font-sans text-[12.5px]">${item.wazahatText}</div>
+                            <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2.5 rounded-lg shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
+                                <div class="whitespace-pre-wrap">${item.wazahatText}</div>
                                 ${formattedDate}
                             </div>
                             <button onclick="adminDeleteWazahat('${safeDocId}', '${item.keyToDelete}', ${item.isLegacy})" class="self-end text-[11px] bg-white hover:bg-rose-600 text-rose-600 hover:text-white px-2.5 py-1 rounded-md border border-rose-200 transition-colors shadow-2xs font-sans font-bold flex items-center gap-1 mt-0.5">
@@ -1110,24 +1167,22 @@ export async function initAdminResultAnalysis(db, containerId) {
                             </button>
                         </div>` : `
                         <div class="flex flex-col items-center justify-center py-2">
-                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs animate-pulse">
-                                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                                <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
                                 منتظر (Pending...)
                             </span>
                         </div>`;
 
-                    const zimmedarCell = `
-                        <div class="flex flex-col gap-1.5 text-right">
-                            ${item.zimmedarComment ? `<div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2 rounded-lg text-xs urdu-font leading-relaxed shadow-2xs">${item.zimmedarComment}</div>` : `<span class="text-slate-400 italic text-[11px] text-center block py-1 font-sans">تبصرہ نہیں لکھا</span>`}
-                            <button onclick="adminAddZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="text-[11px] text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md px-2 py-1 mx-auto font-sans font-bold transition-colors shadow-2xs flex items-center gap-1 no-print">
-                                <i class="fas fa-pen text-[10px]"></i> Comment
-                            </button>
+                    // Only show comment text; no button to add comment
+                    const zimmedarCell = item.hasComment ? `
+                        <div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2.5 rounded-lg text-xs urdu-font leading-relaxed shadow-2xs text-right whitespace-pre-wrap" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
+                            ${item.zimmedarComment}
+                        </div>` : `
+                        <div class="text-center py-2">
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                                تبصرہ باقی ہے
+                            </span>
                         </div>`;
-
-                    const actionCell = `
-                        <button onclick="adminSendWazahatLink('${safeDocId}', '${safeTeacher.replace(/'/g, "\\'")}', '${safeSubj.replace(/'/g, "\\'")}', '${item.percVal.toFixed(1)}%', '${item.kaifiyat}', '${safeDarjah.replace(/'/g, "\\'")}', '${safeJamia.replace(/'/g, "\\'")}')" class="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 mx-auto transition-transform active:scale-95 no-print" title="واٹس ایپ پر وضاحت نوٹس بھیجیں">
-                            <i class="fab fa-whatsapp text-sm"></i> نوٹس
-                        </button>`;
 
                     return `
                         <tr class="hover:bg-indigo-50/40 border-b border-slate-200 text-center transition-colors ${item.hasWazahat ? 'bg-white' : 'bg-rose-50/15'}">
@@ -1136,22 +1191,21 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 <div class="font-bold text-slate-800">${item.region}</div>
                                 <div class="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 mt-0.5 inline-block font-semibold">${item.state}</div>
                             </td>
-                            <td class="p-3 border border-slate-200 urdu-font font-bold text-indigo-900 text-sm">${item.userName}</td>
-                            <td class="p-3 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-sm leading-snug">${item.jamia}</td>
-                            <td class="p-3 border border-slate-200 urdu-font font-bold text-blue-800 text-sm">${item.teacher}</td>
+                            <td class="p-3 border border-slate-200 urdu-font font-bold text-indigo-950 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.userName}</td>
+                            <td class="p-3 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-base leading-snug" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.jamia}</td>
+                            <td class="p-3 border border-slate-200 urdu-font font-bold text-blue-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.teacher}</td>
                             <td class="p-2.5 border border-slate-200 text-center">
-                                <div class="font-bold urdu-font text-slate-800 text-sm">${item.subject}</div>
-                                <div class="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font">${item.darjah}</div>
+                                <div class="font-bold urdu-font text-slate-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.subject}</div>
+                                <div class="text-[12px] font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.darjah}</div>
                             </td>
                             <td class="p-3 border border-slate-200 text-center font-black font-sans text-sm text-rose-700 bg-rose-50/30">${item.percVal.toFixed(1)}%</td>
                             <td class="p-3 border border-slate-200 text-center">
-                                <span class="px-2.5 py-1 rounded-full text-xs font-bold urdu-font inline-block shadow-2xs" style="background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
+                                <span class="px-3 py-1 rounded-full text-xs font-bold urdu-font inline-block shadow-2xs" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
                                     ${item.kaifiyat}
                                 </span>
                             </td>
                             <td class="p-3 border border-slate-200 min-w-[260px] text-right">${wazahatCell}</td>
-                            <td class="p-3 border border-slate-200 min-w-[180px] text-right">${zimmedarCell}</td>
-                            <td class="p-3 border border-slate-200 no-print">${actionCell}</td>
+                            <td class="p-3 border border-slate-200 min-w-[200px] text-right">${zimmedarCell}</td>
                         </tr>`;
                 }).join('');
 
@@ -1159,12 +1213,23 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const filteredPen = filtered.length - filteredSub;
                 const filteredRate = filtered.length > 0 ? (filteredSub / filtered.length) * 100 : 0;
 
+                const filteredCom = filtered.filter(f => f.hasComment).length;
+                const filteredComPen = filtered.length - filteredCom;
+                const filteredComRate = filtered.length > 0 ? (filteredCom / filtered.length) * 100 : 0;
+
                 tfoot.innerHTML = `
                     <tr class="bg-slate-900 text-white font-bold text-center text-sm urdu-font border-t-2 border-slate-700">
                         <td colspan="6" class="p-3 text-right pr-4 font-sans font-bold">TOTAL SUMMARY:</td>
                         <td class="p-3 font-sans text-amber-400 font-black text-base">${filtered.length}</td>
-                        <td colspan="2" class="p-3 text-emerald-300 font-sans font-bold">Wazahat Received: ${filteredSub} (${filteredRate.toFixed(1)}%)</td>
-                        <td colspan="2" class="p-3 text-rose-300 font-sans font-bold">Pending: ${filteredPen}</td>
+                        <td class="p-3 text-center">-</td>
+                        <td class="p-3 text-emerald-300 font-sans font-bold text-right text-xs">
+                            <div>Wazahat Aagayi: ${filteredSub} (${filteredRate.toFixed(1)}%)</div>
+                            <div class="text-rose-300 font-normal">Pending: ${filteredPen}</div>
+                        </td>
+                        <td class="p-3 text-indigo-300 font-sans font-bold text-right text-xs">
+                            <div>Comments: ${filteredCom} (${filteredComRate.toFixed(1)}%)</div>
+                            <div class="text-amber-300 font-normal">Pending: ${filteredComPen}</div>
+                        </td>
                     </tr>`;
             };
 
