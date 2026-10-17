@@ -164,6 +164,41 @@
                 </div>
             </div>
         </div>
+
+        <!-- 🚀 QUICK ACTIONS & CLASS PILLS (Easy navigation & class management) -->
+        <div class="mb-6 no-print space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300 shadow-sm">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="btn-load-all-classes" class="bg-teal-700 hover:bg-teal-800 text-white font-bold py-2 px-4 rounded-lg shadow transition text-sm flex items-center gap-2 urdu-font">
+                        <i class="fas fa-layer-group"></i>
+                        <span>جامعہ کے تمام درجات خودکار شامل کریں</span>
+                    </button>
+                    <button type="button" id="btn-open-custom-modal" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow transition text-sm flex items-center gap-2 urdu-font">
+                        <i class="fas fa-plus-circle"></i>
+                        <span>نیا درجہ شامل کریں (کسٹم)</span>
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="btn-top-save" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-5 rounded-lg shadow transition text-sm flex items-center gap-2 urdu-font">
+                        <i class="fas fa-save"></i>
+                        <span>تمام ڈیٹا محفوظ کریں</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Navigation Pills for 8+ classes -->
+            <div id="class-pills-container" class="flex flex-wrap gap-2 p-2.5 bg-white rounded-xl border border-slate-200 shadow-inner">
+                <span class="text-xs font-bold text-slate-500 urdu-font self-center ml-2">درجات کی فہرست:</span>
+                <div id="class-pills-list" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Floating Toast Notification -->
+        <div id="toast-notify" class="fixed top-5 left-1/2 -translate-x-1/2 z-[200] hidden bg-slate-900 text-white px-6 py-3 rounded-xl shadow-2xl border border-slate-700 font-bold urdu-font text-base flex items-center gap-3 transition-all duration-300">
+            <i class="fas fa-check-circle text-emerald-400 text-xl"></i>
+            <span id="toast-msg">پیغام</span>
+        </div>
+
         <!-- 🏢 MULTI-CLASS FORMS CONTAINER -->
         <div id="instances-container" class="space-y-10 mb-8"></div>
     </div>
@@ -171,7 +206,7 @@
     <div class="max-w-[1100px] mx-auto mt-6 mb-10 no-print flex justify-center px-4">
         <button id="btn-save-data" class="bg-teal-700 hover:bg-teal-800 text-white font-bold py-4 px-10 rounded-xl shadow-lg transition-all text-xl urdu-font flex items-center gap-3 w-full sm:w-auto justify-center border-2 border-teal-900 focus:ring-4 focus:ring-teal-300">
             <i class="fas fa-cloud-upload-alt text-2xl"></i>
-            تمام ڈیٹا محفوظ کریں (Save Data)
+            تمام ڈیٹا محفوظ کریں (Save All Data)
         </button>
     </div>
     <!-- MODAL FOR ADDING CLASS -->
@@ -316,10 +351,175 @@
             } else { alert("Please log in first."); }
         });
 
-      // 2. Load Existing Forms (Firebase or Local)
+        // --- UI & STATE HELPER FUNCTIONS ---
+        function showToastNotification(msg, isSuccess = true) {
+            const toast = document.getElementById('toast-notify');
+            const toastMsg = document.getElementById('toast-msg');
+            if (!toast || !toastMsg) return;
+            toastMsg.textContent = msg;
+            toast.className = `fixed top-5 left-1/2 -translate-x-1/2 z-[200] ${isSuccess ? 'bg-slate-900 border-emerald-500' : 'bg-red-900 border-red-500'} text-white px-6 py-3 rounded-xl shadow-2xl border font-bold urdu-font text-base flex items-center gap-3 transition-all duration-300`;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3500);
+        }
+
+        function markInstanceAsSaved(instDiv) {
+            if (!instDiv) return;
+            const badge = instDiv.querySelector('.instance-save-badge');
+            if (badge) {
+                badge.className = "instance-save-badge text-xs font-bold urdu-font px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm no-print flex items-center gap-1";
+                badge.innerHTML = '<i class="fas fa-check-circle text-emerald-600"></i> محفوظ شدہ';
+            }
+            instDiv.dataset.isSaved = "true";
+        }
+
+        function markInstanceAsUnsaved(instDiv) {
+            if (!instDiv) return;
+            const badge = instDiv.querySelector('.instance-save-badge');
+            if (badge) {
+                badge.className = "instance-save-badge text-xs font-bold urdu-font px-2.5 py-1 rounded bg-amber-100 text-amber-800 border border-amber-300 shadow-sm no-print flex items-center gap-1";
+                badge.innerHTML = '<i class="fas fa-clock text-amber-600"></i> غیر محفوظ';
+            }
+            instDiv.dataset.isSaved = "false";
+            hasUnsavedChanges = true;
+        }
+
+        // Quick Navigation Pills Bar (Mobile & Desktop)
+        function updateClassPillsBar() {
+            const listEl = document.getElementById('class-pills-list');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+            
+            const instances = document.querySelectorAll('.jaiza-instance');
+            if (instances.length === 0) {
+                listEl.innerHTML = '<span class="text-xs text-slate-400 urdu-font">کوئی درجہ شامل نہیں</span>';
+                return;
+            }
+
+            instances.forEach((inst, idx) => {
+                const sC = inst.querySelector('.select-class');
+                const sT = inst.querySelector('.select-teacher');
+                const clsVal = (sC && sC.value) ? sC.value : `درجہ ${idx + 1}`;
+                const tcrVal = (sT && sT.value) ? sT.value : '';
+                const cardsCount = inst.querySelectorAll('.student-card.evaluated').length;
+                const isSaved = inst.dataset.isSaved === "true";
+                
+                const pill = document.createElement('button');
+                pill.type = 'button';
+                pill.className = `px-3 py-1.5 rounded-lg text-xs font-bold urdu-font border shadow-sm transition flex items-center gap-1.5 ${
+                    isSaved ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100' : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                }`;
+                pill.innerHTML = `
+                    <span>${clsVal}</span>
+                    <span class="text-[10px] eng-font px-1.5 py-0.2 rounded-full ${isSaved ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-800'}">${cardsCount} طلبہ</span>
+                    <i class="fas ${isSaved ? 'fa-check-circle text-emerald-600' : 'fa-circle text-amber-400 text-[8px]'}"></i>
+                `;
+                pill.addEventListener('click', () => {
+                    inst.classList.remove('collapsed');
+                    inst.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+                listEl.appendChild(pill);
+            });
+        }
+
+        // Jamia ke tamam darjaat aur asatiza extract karne ka function
+        function extractJamiaStructure(jamiaData) {
+            const classSet = new Set();
+            const teacherSet = new Set();
+            const pairs = []; // [{ className, teacherName, totalStudents }]
+            
+            if (!jamiaData) return { classes: [], teachers: [], pairs: [] };
+            
+            const teachersList = jamiaData.teachers || jamiaData.asatiza || [];
+            teachersList.forEach(t => {
+                const tName = t.name || t.teacherName || t.ustad || '';
+                if (tName) teacherSet.add(tName.trim());
+                
+                if (Array.isArray(t.periods)) {
+                    t.periods.forEach(p => {
+                        const cName = p.className || p.class || p.darja || p.subject || '';
+                        if (cName && cName.trim()) {
+                            classSet.add(cName.trim());
+                            pairs.push({
+                                className: cName.trim(),
+                                teacherName: tName.trim(),
+                                totalStudents: p.totalStudents || p.studentsCount || ''
+                            });
+                        }
+                    });
+                }
+            });
+
+            if (jamiaData.classes) {
+                if (Array.isArray(jamiaData.classes)) {
+                    jamiaData.classes.forEach(c => {
+                        const cName = typeof c === 'string' ? c : (c.name || c.className || c.darja);
+                        if (cName) classSet.add(cName.trim());
+                    });
+                } else if (typeof jamiaData.classes === 'object') {
+                    Object.keys(jamiaData.classes).forEach(c => classSet.add(c.trim()));
+                }
+            }
+
+            if (jamiaData.darjaat && Array.isArray(jamiaData.darjaat)) {
+                jamiaData.darjaat.forEach(d => {
+                    const dName = typeof d === 'string' ? d : (d.name || d.darja);
+                    if (dName) classSet.add(dName.trim());
+                });
+            }
+
+            return {
+                classes: Array.from(classSet),
+                teachers: Array.from(teacherSet),
+                pairs: pairs
+            };
+        }
+
+        // Jamia ke saare darjaat ko ek sath add karna
+        function loadAllJamiaClassesAutomatically() {
+            if (!loadedJamiaData) return;
+            const struct = extractJamiaStructure(loadedJamiaData);
+            
+            // Check karein kaunse pehle se added hain
+            const existingKeys = new Set();
+            document.querySelectorAll('.jaiza-instance').forEach(inst => {
+                const c = inst.querySelector('.select-class')?.value || '';
+                const t = inst.querySelector('.select-teacher')?.value || '';
+                if (c) existingKeys.add(`${c}___${t}`.toLowerCase());
+            });
+
+            let addedCount = 0;
+            // Pehle pairs me se add karein
+            struct.pairs.forEach(pair => {
+                const key = `${pair.className}___${pair.teacherName}`.toLowerCase();
+                if (!existingKeys.has(key)) {
+                    createJaizaInstance(pair.className, pair.teacherName, '', null, pair.totalStudents);
+                    existingKeys.add(key);
+                    addedCount++;
+                }
+            });
+
+            // Agar koi aisi class thi jo pair me nahi aayi
+            struct.classes.forEach(cls => {
+                let found = false;
+                existingKeys.forEach(k => { if (k.startsWith(`${cls.toLowerCase()}___`)) found = true; });
+                if (!found) {
+                    createJaizaInstance(cls, '', '', null, '');
+                    addedCount++;
+                }
+            });
+
+            updateClassPillsBar();
+            updateGlobalJamiaStats();
+            if (addedCount > 0) {
+                showToastNotification(`${addedCount} نئے درجات فارم میں شامل کر دیے گئے ہیں۔`);
+            } else {
+                showToastNotification("جامعہ کے تمام درجات پہلے سے فارم میں موجود ہیں۔");
+            }
+        }
+
+      // 2. Load Existing Forms (Firebase or Local) with Intelligent Merge
         async function loadExistingDataOrCreateNew() {
             try {
-                // URL se sirf viewOnly nikalna hai, exactDate match karne ki zaroorat nahi
                 const isViewOnly = urlParams.get('viewOnly') === 'true';
                 
                 // A. Check Firebase
@@ -327,17 +527,13 @@
                 const snap = await getDocs(q);
                 let firebaseInstances = [];
                 
-                snap.forEach(doc => {
-                    const data = doc.data();
-                    // 1. Sirf Mahina (Month) match karein
+                snap.forEach(docSnap => {
+                    const data = docSnap.data();
                     if (data.month === paramMonth || data.monthKey === paramMonth) {
-                        if (data.jaizaReport && data.jaizaReport.data) {
-                            // 2. Sirf us Jamia ka data filter karein
-                            const entriesForJamia = data.jaizaReport.data.filter(j => j.name === paramJamia);
-                            
-                            // 3. Foran saari entries load kar lein (Bina Date check kiye!)
+                        if (data.jaizaReport && Array.isArray(data.jaizaReport.data)) {
+                            const entriesForJamia = data.jaizaReport.data.filter(j => (j.name || '').trim().toLowerCase() === paramJamia.trim().toLowerCase());
                             entriesForJamia.forEach(entry => {
-                                if (entry.details && entry.students) {
+                                if (entry.details) {
                                     firebaseInstances.push(entry);
                                 }
                             });
@@ -349,19 +545,88 @@
                 const draftDataStr = localStorage.getItem(getLocalSaveKey());
                 let draftInstances = (!isViewOnly && draftDataStr) ? JSON.parse(draftDataStr) : [];
 
-                // C. Render
-               if (firebaseInstances.length > 0) {
-                    firebaseInstances.forEach(inst => createJaizaInstance(inst.details.class, inst.details.teacher, inst.details.book, inst.students, inst.details.totalStudents || ''));
-                } else if (draftInstances.length > 0) {
-                    draftInstances.forEach(inst => createJaizaInstance(inst.class, inst.teacher, inst.book, inst.students, inst.totalStudents || ''));
-                } else {
-                    createJaizaInstance(initialClass, initialTeacher, initialBook, null, '');
-                }
+                // C. SMART INTELLIGENT MERGE (Never drop any class!)
+                // Har class aur teacher ka unique record rakhein
+                const classMap = new Map();
 
-                // === NAYA LOGIC: Agar URL me viewOnly=true hai to Form lock kar dein ===
+                // 1. Pehle Firebase ka data register karein
+                firebaseInstances.forEach(inst => {
+                    const c = inst.details.class || '';
+                    const t = inst.details.teacher || '';
+                    const key = `${c}___${t}`.toLowerCase();
+                    classMap.set(key, {
+                        className: c,
+                        teacherName: t,
+                        book: inst.details.book || '',
+                        students: inst.students || [],
+                        totalStudents: inst.details.totalStudents || '',
+                        isSaved: true
+                    });
+                });
+
+                // 2. Phir Draft ka data dekhein: Agar draft me koi aisi class hai jo Firebase me abhi nahi gayi, to usay zaroor shamil karein!
+                draftInstances.forEach(inst => {
+                    const c = inst.class || '';
+                    const t = inst.teacher || '';
+                    const key = `${c}___${t}`.toLowerCase();
+                    if (!classMap.has(key)) {
+                        classMap.set(key, {
+                            className: c,
+                            teacherName: t,
+                            book: inst.book || '',
+                            students: inst.students || [],
+                            totalStudents: inst.totalStudents || '',
+                            isSaved: false
+                        });
+                    } else {
+                        // Agar Firebase me students nahi the ya draft me naye students hain:
+                        const existing = classMap.get(key);
+                        if ((!existing.students || existing.students.length === 0) && (inst.students && inst.students.length > 0)) {
+                            existing.students = inst.students;
+                            existing.isSaved = false;
+                        }
+                    }
+                });
+
+                // D. Render All Classes
+                isPreloading = true; // Auto-collapse band jab tak data load ho raha hai
+                const finalClassesToRender = Array.from(classMap.values());
+
+                if (finalClassesToRender.length > 0) {
+                    finalClassesToRender.forEach(item => {
+                        const instDiv = createJaizaInstance(item.className, item.teacherName, item.book, item.students, item.totalStudents);
+                        if (item.isSaved) {
+                            markInstanceAsSaved(instDiv);
+                        } else {
+                            markInstanceAsUnsaved(instDiv);
+                        }
+                    });
+                } else {
+                    // Agar koi saved data nahi hai, to Jamia ke tamam darjaat auto-load kar dein ya initial class banayein
+                    const struct = extractJamiaStructure(loadedJamiaData);
+                    if (struct.pairs && struct.pairs.length > 0) {
+                        struct.pairs.forEach(p => {
+                            createJaizaInstance(p.className, p.teacherName, '', null, p.totalStudents);
+                        });
+                    } else {
+                        createJaizaInstance(initialClass, initialTeacher, initialBook, null, '');
+                    }
+                }
+                isPreloading = false;
+
+                updateClassPillsBar();
+                updateGlobalJamiaStats();
+
+                // === ViewOnly Lock ===
                 if (isViewOnly) {
                     document.getElementById('btn-save-data').style.display = 'none'; 
-                    
+                    const topSave = document.getElementById('btn-top-save');
+                    if (topSave) topSave.style.display = 'none';
+                    const loadAllBtn = document.getElementById('btn-load-all-classes');
+                    if (loadAllBtn) loadAllBtn.style.display = 'none';
+                    const modalBtn = document.getElementById('btn-open-custom-modal');
+                    if (modalBtn) modalBtn.style.display = 'none';
+
                     const container = document.getElementById('instances-container');
                     const notice = document.createElement('div');
                     notice.className = "bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-6 font-bold urdu-font flex flex-col sm:flex-row justify-between items-center gap-3 rounded-lg shadow-sm text-lg";
@@ -377,25 +642,36 @@
                         el.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-80');
                     });
                     
-                    document.querySelectorAll('.btn-add-class, .btn-delete-class, .btn-load-students, .btn-add-student, .delete-student-btn').forEach(btn => {
+                    document.querySelectorAll('.btn-add-class, .btn-delete-class, .btn-load-students, .btn-add-student, .delete-student-btn, .btn-save-this-class').forEach(btn => {
                         btn.style.display = 'none';
                     });
                 }
             } catch(e) {
-                console.error(e);
+                console.error("Load error:", e);
                 createJaizaInstance(initialClass, initialTeacher, initialBook, null);
             }
         }
 
     // 3. Create Form Instance (Dynamic Box for each Class)
+        // isPreloading flag: jab data load ho raha ho to auto-collapse nahi hogi
+        let isPreloading = false;
+        let instanceIdCounter = 0;
+
         function createJaizaInstance(preClass = '', preTeacher = '', preBook = '', preStudents = null, preTotalStudents = '') {
             
-            // NAYA LOGIC: Nayi class add hone par pehle se majood tamaam classes ko collapse (band) kar dein
-            document.querySelectorAll('.jaiza-instance').forEach(inst => inst.classList.add('collapsed'));
+            // Sirf manual "Add Class" par hi collapse karein, preload ke waqt nahi
+            if (!isPreloading) {
+                document.querySelectorAll('.jaiza-instance').forEach(inst => inst.classList.add('collapsed'));
+            }
+
+            instanceIdCounter++;
+            const instanceId = 'inst-' + instanceIdCounter;
 
             const div = document.createElement('div');
+            div.id = instanceId;
+            div.dataset.instanceId = instanceId;
             // Margin bottom add kiya hai taake har class me thora faasla rahe
-            div.className = "jaiza-instance bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm relative no-print-break mb-8";
+            div.className = "jaiza-instance bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm relative no-print-break mb-8 transition-all duration-200";
             
             div.innerHTML = `
                <!-- 1. CLASS HEADER (Clickable to Expand/Collapse) -->
@@ -411,6 +687,11 @@
                                 <span class="instance-title-display">نیا درجہ (تفصیلات منتخب کریں)</span>
                             </h3>
                         </div>
+
+                        <!-- 💾 NAYA: CLASS SAVE BADGE -->
+                        <span class="instance-save-badge text-xs font-bold urdu-font px-2 py-0.5 rounded bg-slate-200 text-slate-600 border border-slate-300 shadow-sm no-print">
+                            <i class="fas fa-clock mr-1"></i> غیر محفوظ
+                        </span>
                         
                         <!-- 📊 NAYA: HEADER STATS SUMMARY (Jab bache load honge tab show hoga) -->
                         <div class="header-summary-stats hidden items-center gap-2 mr-0 sm:mr-4 bg-slate-100 p-1.5 rounded-lg border border-slate-300 shadow-sm no-print">
@@ -422,9 +703,20 @@
                         </div>
                     </div>
                     
-                    <div class="flex gap-2 w-full sm:w-auto no-print class-action-buttons shrink-0">
-                        <button type="button" class="btn-add-class flex-1 sm:flex-auto bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1 shadow-sm"><i class="fas fa-plus"></i> <span class="urdu-font">درجہ شامل کریں</span></button>
-                        <button type="button" class="btn-delete-class flex-1 sm:flex-auto bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1 shadow-sm"><i class="fas fa-minus"></i> <span class="urdu-font">درجہ ہٹائیں</span></button>
+                    <div class="flex flex-wrap gap-2 w-full sm:w-auto no-print class-action-buttons shrink-0">
+                        <!-- 💾 HAR CLASS KA APNA ALAG SAVE BUTTON -->
+                        <button type="button" class="btn-save-this-class bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1 shadow-sm" title="صرف اس درجہ کا ڈیٹا محفوظ کریں">
+                            <i class="fas fa-save"></i>
+                            <span class="urdu-font">یہ درجہ محفوظ کریں</span>
+                        </button>
+                        <button type="button" class="btn-add-class bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1 shadow-sm" title="نیا درجہ فارم شامل کریں">
+                            <i class="fas fa-plus"></i>
+                            <span class="urdu-font">درجہ شامل کریں</span>
+                        </button>
+                        <button type="button" class="btn-delete-class bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1 shadow-sm" title="اس درجہ کو ہٹائیں">
+                            <i class="fas fa-minus"></i>
+                            <span class="urdu-font">درجہ ہٹائیں</span>
+                        </button>
                     </div>
                 </div>
                 
@@ -467,18 +759,31 @@
             // Toggle Open/Close logic for Class
             const header = div.querySelector('.jaiza-instance-header');
             header.addEventListener('click', (e) => {
-                // Agar Button (Add/Delete) par click kiya hai, to form band nahi hona chahiye
+                // Agar Button (Add/Delete/Save) par click kiya hai, to form band nahi hona chahiye
                 if(e.target.closest('.class-action-buttons')) return;
                 div.classList.toggle('collapsed');
             });
 
-            div.querySelector('.btn-add-class').addEventListener('click', () => createJaizaInstance());
-            div.querySelector('.btn-delete-class').addEventListener('click', () => {
+            // Per-Class Save Button Event
+            div.querySelector('.btn-save-this-class').addEventListener('click', (e) => {
+                e.stopPropagation();
+                saveSingleClassInstance(div);
+            });
+
+            div.querySelector('.btn-add-class').addEventListener('click', (e) => {
+                e.stopPropagation();
+                createJaizaInstance();
+                updateClassPillsBar();
+            });
+
+            div.querySelector('.btn-delete-class').addEventListener('click', (e) => {
+                e.stopPropagation();
                 if(document.querySelectorAll('.jaiza-instance').length > 1) {
                     if(confirm("کیا آپ واقعی اس درجہ کو ہٹانا چاہتے ہیں؟")) { 
                         div.remove(); 
                         saveDraftToLocalMulti(); 
                         updateGlobalJamiaStats();
+                        updateClassPillsBar();
                     }
                 } else { alert("کم از کم ایک درجہ ہونا ضروری ہے۔"); }
             });
@@ -494,17 +799,27 @@
                 btnAdd.classList.add('flex');
                 div.studentCount = 0;
                 addStudentCard(div);
+                markInstanceAsUnsaved(div);
+                updateClassPillsBar();
             });
 
-            btnAdd.addEventListener('click', () => addStudentCard(div));
+            btnAdd.addEventListener('click', () => {
+                addStudentCard(div);
+                markInstanceAsUnsaved(div);
+                updateClassPillsBar();
+            });
 
             if (preStudents && preStudents.length > 0) {
                 div.querySelector('.students-container').innerHTML = '';
                 btnAdd.classList.remove('hidden');
                 btnAdd.classList.add('flex');
                 div.studentCount = 0;
-                preStudents.forEach(st => addStudentCard(div, st.name, st.scores, st.remarks));
+                // skipCollapse=true: data load karte waqt cards band nahi honge
+                preStudents.forEach(st => addStudentCard(div, st.name, st.scores, st.remarks, true));
             }
+
+            updateClassPillsBar();
+            return div;
         }
 
        // 4. Dropdowns Setup
@@ -529,24 +844,90 @@
                 }
             };
 
+            // Saari classes collect karein (teachers, periods, darjaat, classes)
             let clSet = new Set();
-            (loadedJamiaData.teachers||[]).forEach(t => t.periods?.forEach(p => { if(p.className||p.class) clSet.add(p.className||p.class); }));
-            clSet.forEach(c => { const o = document.createElement('option'); o.value=c; o.textContent=c; if(c===pC)o.selected=true; sC.appendChild(o); });
+            (loadedJamiaData.teachers||[]).forEach(t => t.periods?.forEach(p => { 
+                const c = p.className || p.class || p.darja || p.subject;
+                if(c && c.trim()) clSet.add(c.trim()); 
+            }));
+            if (loadedJamiaData.classes) {
+                if (Array.isArray(loadedJamiaData.classes)) {
+                    loadedJamiaData.classes.forEach(c => { const cName = typeof c === 'string' ? c : (c.name || c.className); if(cName) clSet.add(cName.trim()); });
+                } else if (typeof loadedJamiaData.classes === 'object') {
+                    Object.keys(loadedJamiaData.classes).forEach(c => clSet.add(c.trim()));
+                }
+            }
+            if (loadedJamiaData.darjaat && Array.isArray(loadedJamiaData.darjaat)) {
+                loadedJamiaData.darjaat.forEach(d => { const dName = typeof d === 'string' ? d : (d.name || d.darja); if(dName) clSet.add(dName.trim()); });
+            }
+            // Agar pehle se koi class set hai jo list me nahi thi, to usay bhi include karein!
+            if(pC && pC.trim()) clSet.add(pC.trim());
+
+            clSet.forEach(c => { 
+                const o = document.createElement('option'); 
+                o.value = c; 
+                o.textContent = c; 
+                if(c === pC) o.selected = true; 
+                sC.appendChild(o); 
+            });
 
             const triggerClass = (cls, pt) => {
-                sT.innerHTML='<option value="">استاد منتخب کریں</option>';
-                sT.disabled = !cls; bL.disabled = true;
+                sT.innerHTML = '<option value="">استاد منتخب کریں</option>';
+                sT.disabled = !cls; 
+                bL.disabled = true;
+                
                 if(cls) {
-                    const tInClass = loadedJamiaData.teachers.filter(t => t.periods?.some(p => (p.className||p.class)===cls));
-                    tInClass.forEach(t => { const o=document.createElement('option'); o.value=t.name; o.textContent=t.name; if(t.name===pt)o.selected=true; sT.appendChild(o); });
+                    const allTeachers = loadedJamiaData.teachers || [];
+                    const matchedTeachers = allTeachers.filter(t => t.periods?.some(p => (p.className||p.class||p.darja||p.subject) === cls));
+                    const otherTeachers = allTeachers.filter(t => !matchedTeachers.includes(t));
+                    
+                    let addedTeachers = new Set();
+                    
+                    // Pehle is class ke makhsoos asatiza
+                    matchedTeachers.forEach(t => { 
+                        const o = document.createElement('option'); 
+                        o.value = t.name; 
+                        o.textContent = `${t.name} (متعلقہ استاد)`; 
+                        if(t.name === pt) o.selected = true; 
+                        sT.appendChild(o); 
+                        addedTeachers.add(t.name);
+                    });
+                    
+                    // Phir baqi tamaam asatiza (taake user kabhi phasay nahi)
+                    otherTeachers.forEach(t => { 
+                        if(!addedTeachers.has(t.name)) {
+                            const o = document.createElement('option'); 
+                            o.value = t.name; 
+                            o.textContent = t.name; 
+                            if(t.name === pt) o.selected = true; 
+                            sT.appendChild(o); 
+                            addedTeachers.add(t.name);
+                        }
+                    });
+
+                    // Agar pre-selected teacher list me nahi tha, to add karein
+                    if(pt && !addedTeachers.has(pt)) {
+                        const o = document.createElement('option');
+                        o.value = pt;
+                        o.textContent = pt;
+                        o.selected = true;
+                        sT.appendChild(o);
+                    }
+                    
                     if(pt) triggerTeacher(cls, pt);
                 }
-                updateTitles(); saveDraftToLocalMulti();
+                updateTitles(); 
+                markInstanceAsUnsaved(div);
+                saveDraftToLocalMulti();
+                updateClassPillsBar();
             };
 
             const triggerTeacher = (cls, tcr) => {
                 bL.disabled = !tcr; 
-                updateTitles(); saveDraftToLocalMulti();
+                updateTitles(); 
+                markInstanceAsUnsaved(div);
+                saveDraftToLocalMulti();
+                updateClassPillsBar();
             };
 
             sC.addEventListener('change', () => triggerClass(sC.value, ''));
@@ -555,7 +936,9 @@
             if(inputKulTalaba) {
                 inputKulTalaba.addEventListener('input', () => {
                     calcStats(div);
+                    markInstanceAsUnsaved(div);
                     saveDraftToLocalMulti();
+                    updateClassPillsBar();
                 });
             }
 
@@ -563,16 +946,18 @@
         }
 
        // 5. Add Student Card (Dynamic Format Logic)
-        function addStudentCard(instanceDiv, pName="", pScores=null, pRemarks="") {
+        function addStudentCard(instanceDiv, pName="", pScores=null, pRemarks="", skipCollapse=false) {
             if(instanceDiv.studentCount === undefined) instanceDiv.studentCount = 0;
             instanceDiv.studentCount++;
             
             const cont = instanceDiv.querySelector('.students-container');
 
-            // === NAYA LOGIC: Naya card add hone se pehle purane sabhi cards ko collapse (band) kar do ===
-            const existingCards = instanceDiv.querySelectorAll('.student-card');
-            existingCards.forEach(c => c.classList.add('collapsed'));
-            // =========================================================================================
+            // === NAYA LOGIC: Sirf manual "Add Student" par hi purane cards collapse karein ===
+            if (!skipCollapse) {
+                const existingCards = instanceDiv.querySelectorAll('.student-card');
+                existingCards.forEach(c => c.classList.add('collapsed'));
+            }
+            // =================================================================================
 
             const card = document.createElement('div');
             card.className = "student-card bg-white border-2 border-slate-200 rounded-xl p-4 md:p-5 shadow-sm transition-all relative mt-4";
@@ -839,87 +1224,334 @@
         function saveDraftToLocalMulti() {
             let draft = [];
             document.querySelectorAll('.jaiza-instance').forEach(inst => {
-                const cls = inst.querySelector('.select-class').value;
-                const tcr = inst.querySelector('.select-teacher').value;
+                const cls = inst.querySelector('.select-class')?.value || '';
+                const tcr = inst.querySelector('.select-teacher')?.value || '';
                 const kulTalabaInput = inst.querySelector('.select-total-students');
                 const kulTalaba = kulTalabaInput ? kulTalabaInput.value : '';
                 
                 let sts = [];
                 inst.querySelectorAll('.student-card').forEach(card => {
-                    const n = card.querySelector('.student-name-input').value;
-                    const r = card.querySelector('.student-remarks-input').value;
-                    let sc = []; card.querySelectorAll('.score-input').forEach(inp => { if(inp.classList.contains('select-total-students')) return; sc.push(inp.value !== '' ? parseInt(inp.value) : '');});
+                    const n = card.querySelector('.student-name-input')?.value || '';
+                    const r = card.querySelector('.student-remarks-input')?.value || '';
+                    let sc = []; 
+                    card.querySelectorAll('.score-input').forEach(inp => { 
+                        if(inp.classList.contains('select-total-students')) return; 
+                        sc.push(inp.value !== '' ? parseInt(inp.value) : '');
+                    });
                     if(n.trim() !== "" || sc.some(s => s !== '')) sts.push({name:n, scores:sc, remarks:r});
                 });
-                // Book hat gaya hai isliye yahan se bk remove kar diya gaya
-                if(cls || tcr || sts.length > 0) draft.push({class:cls, teacher:tcr, book: '', totalStudents: kulTalaba, students:sts});
+                
+                if(cls || tcr || sts.length > 0) {
+                    draft.push({class:cls, teacher:tcr, book: '', totalStudents: kulTalaba, students:sts});
+                }
             });
             localStorage.setItem(getLocalSaveKey(), JSON.stringify(draft));
         }
 
-        document.getElementById('btn-save-data').addEventListener('click', async () => {
-            let entries = [], hasErr = false;
-            document.querySelectorAll('.jaiza-instance').forEach(inst => {
-                const cls = inst.querySelector('.select-class').value;
-                const tcr = inst.querySelector('.select-teacher').value;
-                const bk = ""; // Database pattern same rakhne ke liye khali chhor dia
-                
-                if(!cls || !tcr) { hasErr = true; return; }
-                
+        // 💾 FUNCTION: SIRF EK CLASS KA DATA FIREBASE ME MEHFOOZ KARNA
+        async function saveSingleClassInstance(inst) {
+            const cls = inst.querySelector('.select-class')?.value;
+            const tcr = inst.querySelector('.select-teacher')?.value;
+
+            if(!cls) {
+                alert("براہ کرم پہلے درجہ (Class) کا انتخاب کریں۔");
+                inst.querySelector('.select-class')?.focus();
+                return;
+            }
+            if(!tcr) {
+                alert("براہ کرم استاد (Teacher) کا انتخاب کریں۔");
+                inst.querySelector('.select-teacher')?.focus();
+                return;
+            }
+
+            const saveBtn = inst.querySelector('.btn-save-this-class');
+            const origHtml = saveBtn ? saveBtn.innerHTML : '';
+            if(saveBtn) {
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...';
+                saveBtn.disabled = true;
+            }
+
+            try {
                 const percentStr = inst.querySelector('.class-total-percent') ? inst.querySelector('.class-total-percent').textContent : '0%';
+                const kulT = inst.querySelector('.select-total-students')?.value || '';
+                const todayDate = new Date().toISOString().split('T')[0];
+
                 let sts = [];
-                
                 inst.querySelectorAll('.student-card').forEach(card => {
-                    const n = card.querySelector('.student-name-input').value.trim();
-                    const r = card.querySelector('.student-remarks-input').value.trim();
+                    const n = card.querySelector('.student-name-input')?.value.trim() || '';
+                    const r = card.querySelector('.student-remarks-input')?.value.trim() || '';
                     let sc = [], hasS = false, sum = 0;
                     card.querySelectorAll('.score-input').forEach(inp => { 
                         if(inp.classList.contains('select-total-students')) return; 
-                        let v=parseInt(inp.value); if(!isNaN(v)){sc.push(v);hasS=true;sum+=v;}else{sc.push('');} 
+                        let v = parseInt(inp.value); 
+                        if(!isNaN(v)){ sc.push(v); hasS = true; sum += v; } else { sc.push(''); } 
                     });
-                    if(n !== "" || hasS) { sts.push({name: n||"نامعلوم", scores: sc, remarks: r, total: hasS?sum:null, grade: card.dataset.grade||null}); }
+                    if(n !== "" || hasS) { 
+                        sts.push({name: n || "نامعلوم", scores: sc, remarks: r, total: hasS ? sum : null, grade: card.dataset.grade || null}); 
+                    }
                 });
+
+                const classEntry = {
+                    name: paramJamia,
+                    percentage: percentStr,
+                    status: 'Jaiza',
+                    details: { class: cls, teacher: tcr, book: '', totalStudents: kulT },
+                    students: sts,
+                    submittedAt: todayDate,
+                    isLocked: false
+                };
+
+                // Firebase Save with Smart Single Merge (Baqi kisi bhi class ko nahi chhedhega!)
+                const today = new Date(); 
+                let saveYear = today.getFullYear();
+                let saveMonthNum = today.getMonth();
+
+                const checkQ = query(collection(db, "monthly_reports"), where("userId", "==", currentUserId), where("academicYear", "==", activeAcademicYear));
+                const checkSnap = await getDocs(checkQ);
+                let existingDocId = null;
+                checkSnap.forEach(d => {
+                    const dData = d.data();
+                    if ((dData.month === paramMonth || dData.monthKey === paramMonth) && dData.jaizaReport && dData.jaizaReport.data) {
+                        existingDocId = d.id;
+                        if (dData.year) saveYear = dData.year;
+                        if (dData.monthNum !== undefined) saveMonthNum = dData.monthNum;
+                    }
+                });
+
+                const docId = existingDocId || `${currentUserId}_${activeAcademicYear}_${saveYear}_${saveMonthNum}`;
+                const reportRef = doc(db, "monthly_reports", docId); 
+                const docSnap = await getDoc(reportRef);
+
+                let jaizaData = docSnap.exists() ? (docSnap.data().jaizaReport?.data || []) : [];
+
+                // Smart Merge: Is jamia ki is class ko update karein ya add karein, baqi tamam classes mehfooz rahengi!
+                const sCls = cls.trim().toLowerCase();
+                const sTcr = tcr.trim().toLowerCase();
+                let replaced = false;
+
+                jaizaData = jaizaData.map(item => {
+                    if ((item.name || '').trim().toLowerCase() === paramJamia.trim().toLowerCase()) {
+                        const iCls = (item.details?.class || '').trim().toLowerCase();
+                        const iTcr = (item.details?.teacher || '').trim().toLowerCase();
+                        if (iCls === sCls && iTcr === sTcr) {
+                            replaced = true;
+                            return classEntry;
+                        }
+                    }
+                    return item;
+                });
+
+                if(!replaced) {
+                    jaizaData.push(classEntry);
+                }
+
+                await setDoc(reportRef, {
+                    userId: currentUserId,
+                    academicYear: activeAcademicYear,
+                    month: paramMonth,
+                    monthKey: paramMonth,
+                    year: saveYear,
+                    monthNum: saveMonthNum,
+                    jaizaReport: { status: "Done", data: jaizaData },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                markInstanceAsSaved(inst);
+                saveDraftToLocalMulti();
+                updateClassPillsBar();
+                updateGlobalJamiaStats();
+
+                showToastNotification(`درجہ "${cls}" کا ڈیٹا کامیابی سے محفوظ ہو گیا!`);
+            } catch (err) {
+                console.error(err);
+                alert("محفوظ کرنے میں مسئلہ آیا: " + err.message);
+            } finally {
+                if(saveBtn) {
+                    saveBtn.innerHTML = origHtml;
+                    saveBtn.disabled = false;
+                }
+            }
+        }
+
+        // 💾 FUNCTION: TAMAAM DARJAAT KO EK SAATH MEHFOOZ KARNA
+        async function saveAllClassesData() {
+            let entries = [];
+            let errorMsg = null;
+
+            const instances = document.querySelectorAll('.jaiza-instance');
+            if(instances.length === 0) {
+                alert("فارم میں کوئی درجہ موجود نہیں ہے۔");
+                return;
+            }
+
+            instances.forEach((inst, idx) => {
+                const cls = inst.querySelector('.select-class')?.value;
+                const tcr = inst.querySelector('.select-teacher')?.value;
+
+                if(!cls || !tcr) {
+                    if(!errorMsg) errorMsg = `براہ کرم درجہ نمبر ${idx + 1} میں کلاس اور استاد کا انتخاب کریں۔`;
+                    return;
+                }
+
+                const percentStr = inst.querySelector('.class-total-percent') ? inst.querySelector('.class-total-percent').textContent : '0%';
+                let sts = [];
+
+                inst.querySelectorAll('.student-card').forEach(card => {
+                    const n = card.querySelector('.student-name-input')?.value.trim() || '';
+                    const r = card.querySelector('.student-remarks-input')?.value.trim() || '';
+                    let sc = [], hasS = false, sum = 0;
+                    card.querySelectorAll('.score-input').forEach(inp => { 
+                        if(inp.classList.contains('select-total-students')) return; 
+                        let v = parseInt(inp.value); 
+                        if(!isNaN(v)){ sc.push(v); hasS = true; sum += v; } else { sc.push(''); } 
+                    });
+                    if(n !== "" || hasS) { 
+                        sts.push({name: n || "نامعلوم", scores: sc, remarks: r, total: hasS ? sum : null, grade: card.dataset.grade || null}); 
+                    }
+                });
+
+                const todayDate = new Date().toISOString().split('T')[0];
+                const kulT = inst.querySelector('.select-total-students')?.value || '';
                 
-                if(sts.length > 0) {
-                    const todayDate = new Date().toISOString().split('T')[0];
-                    const kulT = inst.querySelector('.select-total-students').value;
-                    entries.push({ 
+                // Class ko preserve karein chahe abhi students zero hon
+                entries.push({ 
                     name: paramJamia, 
                     percentage: percentStr, 
                     status: 'Jaiza', 
-                    details: {class:cls, teacher:tcr, book:bk, totalStudents: kulT}, 
+                    details: { class: cls, teacher: tcr, book: '', totalStudents: kulT }, 
                     students: sts,
                     submittedAt: todayDate,
-                    isLocked: false // NAYA: Data ko sirf draft ke taur par save karne ke liye
+                    isLocked: false
                 });
-                }
             });
 
-            if(hasErr) { alert("براہ کرم تمام درجات (Forms) میں کلاس اور استاد منتخب کریں۔"); return; }
-            if(entries.length === 0) { alert("کوئی ڈیٹا درج نہیں کیا گیا۔"); return; }
+            if(errorMsg) { 
+                alert(errorMsg); 
+                return; 
+            }
 
-            const btn = document.getElementById('btn-save-data');
-            const orig = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...'; btn.disabled = true;
+            if(entries.length === 0) { 
+                alert("کوئی ڈیٹا درج نہیں کیا گیا۔"); 
+                return; 
+            }
 
-           try {
-                const today = new Date(); const m = today.getMonth(); const y = today.getFullYear();
-                const reportRef = doc(db, "monthly_reports", `${currentUserId}_${activeAcademicYear}_${y}_${m}`); 
+            const btnBottom = document.getElementById('btn-save-data');
+            const btnTop = document.getElementById('btn-top-save');
+            const origBottom = btnBottom ? btnBottom.innerHTML : '';
+            const origTop = btnTop ? btnTop.innerHTML : '';
+
+            if(btnBottom) { btnBottom.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...'; btnBottom.disabled = true; }
+            if(btnTop) { btnTop.innerHTML = '<i class="fas fa-spinner fa-spin"></i> محفوظ ہو رہا ہے...'; btnTop.disabled = true; }
+
+            try {
+                const today = new Date(); 
+                let saveYear = today.getFullYear();
+                let saveMonthNum = today.getMonth();
+
+                const checkQ = query(collection(db, "monthly_reports"), where("userId", "==", currentUserId), where("academicYear", "==", activeAcademicYear));
+                const checkSnap = await getDocs(checkQ);
+                let existingDocId = null;
+                checkSnap.forEach(d => {
+                    const dData = d.data();
+                    if ((dData.month === paramMonth || dData.monthKey === paramMonth) && dData.jaizaReport && dData.jaizaReport.data) {
+                        existingDocId = d.id;
+                        if (dData.year) saveYear = dData.year;
+                        if (dData.monthNum !== undefined) saveMonthNum = dData.monthNum;
+                    }
+                });
+
+                const docId = existingDocId || `${currentUserId}_${activeAcademicYear}_${saveYear}_${saveMonthNum}`;
+                const reportRef = doc(db, "monthly_reports", docId); 
                 const docSnap = await getDoc(reportRef);
-                
+
                 let jaizaData = docSnap.exists() ? (docSnap.data().jaizaReport?.data || []) : [];
-                jaizaData = jaizaData.filter(j => j.name !== paramJamia); // Clear old entries for this jamia
-                entries.forEach(e => jaizaData.push(e)); // Add all new forms
+                // Doosri Jamiaat ka data bilkul safe rakhein
+                jaizaData = jaizaData.filter(j => (j.name || '').trim().toLowerCase() !== paramJamia.trim().toLowerCase());
+                // Is jamia ke tamam darjaat shamil karein
+                entries.forEach(e => jaizaData.push(e));
 
-                await setDoc(reportRef, { userId: currentUserId, academicYear: activeAcademicYear, month: paramMonth, monthKey: paramMonth, year: y, monthNum: m, jaizaReport: {status: "Done", data: jaizaData}, updatedAt: serverTimestamp() }, {merge: true});
-                localStorage.removeItem(getLocalSaveKey());
-                alert('تمام ڈیٹا کامیابی سے محفوظ کر لیا گیا ہے!');
-                
-                // --- NAYI LINE YAHAN ADD KAREIN ---
-                hasUnsavedChanges = false; // Save hone ke baad warning band kar dein
+                await setDoc(reportRef, {
+                    userId: currentUserId,
+                    academicYear: activeAcademicYear,
+                    month: paramMonth,
+                    monthKey: paramMonth,
+                    year: saveYear,
+                    monthNum: saveMonthNum,
+                    jaizaReport: { status: "Done", data: jaizaData },
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
 
-            } catch (e) { console.error(e); alert('ایرر: ' + e.message); } 
-            finally { btn.innerHTML = orig; btn.disabled = false; }
-        });
+                // Tamam instances ko saved mark karein
+                instances.forEach(inst => markInstanceAsSaved(inst));
+                saveDraftToLocalMulti();
+                updateClassPillsBar();
+                updateGlobalJamiaStats();
+
+                hasUnsavedChanges = false;
+                showToastNotification("جامعہ کا تمام ڈیٹا کامیابی سے محفوظ کر لیا گیا!");
+                alert('جامعہ کا تمام ڈیٹا کامیابی سے محفوظ کر لیا گیا ہے!');
+            } catch (e) {
+                console.error(e);
+                alert('ایرر: ' + e.message);
+            } finally {
+                if(btnBottom) { btnBottom.innerHTML = origBottom; btnBottom.disabled = false; }
+                if(btnTop) { btnTop.innerHTML = origTop; btnTop.disabled = false; }
+            }
+        }
+
+        // --- BUTTON LISTENERS ATTACHMENT ---
+        const btnSaveData = document.getElementById('btn-save-data');
+        if(btnSaveData) btnSaveData.addEventListener('click', saveAllClassesData);
+
+        const btnTopSave = document.getElementById('btn-top-save');
+        if(btnTopSave) btnTopSave.addEventListener('click', saveAllClassesData);
+
+        const btnLoadAll = document.getElementById('btn-load-all-classes');
+        if(btnLoadAll) btnLoadAll.addEventListener('click', loadAllJamiaClassesAutomatically);
+
+        // Custom Class Modal
+        const btnOpenModal = document.getElementById('btn-open-custom-modal');
+        const addClassModal = document.getElementById('add-class-modal');
+        const cancelAddClass = document.getElementById('cancel-add-class');
+        const confirmAddClass = document.getElementById('confirm-add-class');
+
+        if(btnOpenModal && addClassModal) {
+            btnOpenModal.addEventListener('click', () => {
+                document.getElementById('new-class-name').value = '';
+                document.getElementById('new-teacher-name').value = '';
+                const totInp = addClassModal.querySelector('.select-total-students');
+                if(totInp) totInp.value = '';
+                addClassModal.classList.remove('hidden');
+            });
+        }
+
+        if(cancelAddClass && addClassModal) {
+            cancelAddClass.addEventListener('click', () => {
+                addClassModal.classList.add('hidden');
+            });
+        }
+
+        if(confirmAddClass && addClassModal) {
+            confirmAddClass.addEventListener('click', () => {
+                const cName = document.getElementById('new-class-name').value.trim();
+                const tName = document.getElementById('new-teacher-name').value.trim();
+                const totInp = addClassModal.querySelector('.select-total-students');
+                const totVal = totInp ? totInp.value.trim() : '';
+
+                if(!cName) {
+                    alert("براہ کرم درجہ کا نام درج کریں۔");
+                    document.getElementById('new-class-name').focus();
+                    return;
+                }
+
+                // Naya instance create karein
+                createJaizaInstance(cName, tName, '', null, totVal);
+                addClassModal.classList.add('hidden');
+                updateClassPillsBar();
+                saveDraftToLocalMulti();
+                showToastNotification(`نیا درجہ "${cName}" شامل کر دیا گیا ہے۔`);
+            });
+        }
     </script>
 </body>
 </html>
