@@ -996,7 +996,7 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 zimmedarComment: zimmedarComment,
                                 hasComment: hasComment
                             });
-                        }
+                        
                     });
                 });
             });
