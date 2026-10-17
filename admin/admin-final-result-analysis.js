@@ -821,49 +821,90 @@ export async function initAdminResultAnalysis(db, containerId) {
                             percVal = tot > 0 ? (pas / tot) * 100 : 0;
                         }
 
-                        if (percVal < 70) {
                             const rawSubject = (p.subject || '-').trim();
                             const darjah = (p.class || p.darjah || '-').trim();
-                            const subjectKey = (rawSubject + "_" + darjah).replace(/[\.\s]/g, '_');
+                            
+                            // Unique keys
+                            const teacherSubjectClassKey = (teacherName + "_" + rawSubject + "_" + darjah).replace(/[\.\s]/g, '_');
+                            const subjectClassKey = (rawSubject + "_" + darjah).replace(/[\.\s]/g, '_');
+                            const subjectKey = subjectClassKey;
 
                             let finalWazahatText = "";
-                            let keyToDelete = subjectKey;
+                            let keyToDelete = teacherSubjectClassKey;
                             let isLegacy = false;
                             let wazahatDate = "";
 
+                            const normSubj = cleanUrduText(rawSubject);
+                            const normTeacher = cleanUrduText(teacherName);
+                            const normDarjah = cleanUrduText(darjah);
+
                             // --- BULLETPROOF SMART SEARCH (Exact match with result-analysis.js) ---
                             if (d.wazahat_map && typeof d.wazahat_map === 'object') {
-                                if (d.wazahat_map[subjectKey]) {
-                                    finalWazahatText = d.wazahat_map[subjectKey];
-                                    keyToDelete = subjectKey;
-                                } else if (d.wazahat_map[rawSubject]) {
-                                    finalWazahatText = d.wazahat_map[rawSubject];
-                                    keyToDelete = rawSubject;
-                                } else if (d.wazahat_map[rawSubject.replace(/\./g, '_')]) {
-                                    finalWazahatText = d.wazahat_map[rawSubject.replace(/\./g, '_')];
-                                    keyToDelete = rawSubject.replace(/\./g, '_');
-                                } else {
-                                    const normSubj = cleanUrduText(rawSubject);
-                                    const normTeacher = cleanUrduText(teacherName);
-                                    const normDarjah = cleanUrduText(darjah);
-
+                                // 1. Sab se pehle: Specific Teacher + Subject + Class key
+                                if (d.wazahat_map[teacherSubjectClassKey]) {
+                                    finalWazahatText = d.wazahat_map[teacherSubjectClassKey];
+                                    keyToDelete = teacherSubjectClassKey;
+                                }
+                                // 2. Doosra: Specific Subject + Class key
+                                else if (d.wazahat_map[subjectClassKey]) {
+                                    finalWazahatText = d.wazahat_map[subjectClassKey];
+                                    keyToDelete = subjectClassKey;
+                                }
+                                // 3. Teesra: Fuzzy match jisme teacher aur class dono match karein
+                                else {
                                     for (let key in d.wazahat_map) {
                                         const val = d.wazahat_map[key];
                                         if (!val) continue;
                                         const normKey = cleanUrduText(key);
+
                                         const subjMatch = (normKey === normSubj) || 
                                                           (normSubj.length >= 3 && normKey.includes(normSubj)) || 
                                                           (normKey.length >= 3 && normSubj.includes(normKey));
+
                                         if (subjMatch) {
-                                            if ((normTeacher && normKey.includes(normTeacher)) || 
-                                                (normDarjah && normKey.includes(normDarjah)) || 
-                                                normKey === normSubj) {
+                                            const matchesTeacher = normTeacher && normKey.includes(normTeacher);
+                                            const matchesDarjah = normDarjah && normKey.includes(normDarjah);
+
+                                            if (matchesTeacher && matchesDarjah) {
                                                 finalWazahatText = val;
                                                 keyToDelete = key;
                                                 break;
-                                            } else {
+                                            } else if (matchesDarjah) {
                                                 finalWazahatText = val;
                                                 keyToDelete = key;
+                                                break;
+                                            } else if (matchesTeacher) {
+                                                finalWazahatText = val;
+                                                keyToDelete = key;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    // 4. Sirf agar is Jamia me is subject ka akela weak case ho to hi generic subject fallback allow karein
+                                    if (!finalWazahatText) {
+                                        let sameSubjCount = 0;
+                                        (d.data || []).forEach(otherT => {
+                                            (otherT.periods || []).forEach(otherP => {
+                                                let oPerc = parseFloat(String(otherP.percentage || 0).replace('%', ''));
+                                                if (isNaN(oPerc)) {
+                                                    const tot = num(otherP.total);
+                                                    const pas = num(otherP.passed);
+                                                    oPerc = tot > 0 ? (pas / tot) * 100 : 0;
+                                                }
+                                                if (oPerc < 70 && (otherP.subject || '').trim() === rawSubject) {
+                                                    sameSubjCount++;
+                                                }
+                                            });
+                                        });
+
+                                        if (sameSubjCount <= 1) {
+                                            if (d.wazahat_map[rawSubject]) {
+                                                finalWazahatText = d.wazahat_map[rawSubject];
+                                                keyToDelete = rawSubject;
+                                            } else if (d.wazahat_map[rawSubject.replace(/\./g, '_')]) {
+                                                finalWazahatText = d.wazahat_map[rawSubject.replace(/\./g, '_')];
+                                                keyToDelete = rawSubject.replace(/\./g, '_');
                                             }
                                         }
                                     }
@@ -871,12 +912,26 @@ export async function initAdminResultAnalysis(db, containerId) {
                             }
 
                             if (d.wazahat_date_map) {
-                                wazahatDate = d.wazahat_date_map[keyToDelete] || d.wazahat_date_map[subjectKey] || d.wazahat_date_map[rawSubject] || "";
+                                wazahatDate = d.wazahat_date_map[keyToDelete] || d.wazahat_date_map[teacherSubjectClassKey] || d.wazahat_date_map[subjectClassKey] || "";
                             }
 
                             if (!finalWazahatText && d.wazahat) {
-                                finalWazahatText = d.wazahat;
-                                isLegacy = true;
+                                let totalWeakCount = 0;
+                                (d.data || []).forEach(otherT => {
+                                    (otherT.periods || []).forEach(otherP => {
+                                        let oPerc = parseFloat(String(otherP.percentage || 0).replace('%', ''));
+                                        if (isNaN(oPerc)) {
+                                            const tot = num(otherP.total);
+                                            const pas = num(otherP.passed);
+                                            oPerc = tot > 0 ? (pas / tot) * 100 : 0;
+                                        }
+                                        if (oPerc < 70) totalWeakCount++;
+                                    });
+                                });
+                                if (totalWeakCount === 1) {
+                                    finalWazahatText = d.wazahat;
+                                    isLegacy = true;
+                                }
                             }
 
                             const hasWazahat = Boolean(finalWazahatText && finalWazahatText.trim().length > 2);
