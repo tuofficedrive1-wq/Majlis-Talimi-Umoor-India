@@ -41,6 +41,21 @@ const getKefiyatColor = (p, level = 'teacher') => {
     }
 };
 
+// 🔹 CLEAN URDU TEXT HELPER (Matches result-analysis.js)
+const cleanUrduText = (str) => {
+    if (!str) return "";
+    return String(str)
+        .toLowerCase()
+        .replace(/[\s_.\-()]/g, '')
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/[ةۀھ]/g, 'ہ')
+        .replace(/[ىئ]/g, 'ی')
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/ء/g, '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
+};
+
 
 // 🔹 STUDENT-WISE FULL DATA HELPERS
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -541,9 +556,41 @@ export async function initAdminResultAnalysis(db, containerId) {
                         
                         if (layout === 'ibtidaiya') {
                             latestDataMap.set(d.id, { ...d, ...context });
+                        } else if (layout === 'teacher' || layout === 'wazahat') {
+                            if (!Array.isArray(d.data) || d.data.length === 0) return;
+                            let uniqueKey = (currentJamia || d.jamia || d.id).trim().toLowerCase();
+
+                            if (!latestDataMap.has(uniqueKey)) {
+                                d.keyDocMap = {};
+                                if (d.wazahat_map) {
+                                    for (let k in d.wazahat_map) d.keyDocMap[k] = d.id;
+                                }
+                                latestDataMap.set(uniqueKey, { ...d, ...context, docId: d.id, originalJamia: currentJamia });
+                            } else {
+                                const target = latestDataMap.get(uniqueKey);
+                                if (!target.keyDocMap) target.keyDocMap = {};
+                                if (d.wazahat_map) {
+                                    if (!target.wazahat_map) target.wazahat_map = {};
+                                    for (let k in d.wazahat_map) {
+                                        if (!target.wazahat_map[k]) {
+                                            target.wazahat_map[k] = d.wazahat_map[k];
+                                            target.keyDocMap[k] = d.id;
+                                        }
+                                    }
+                                }
+                                if (d.wazahat_date_map) {
+                                    target.wazahat_date_map = { ...d.wazahat_date_map, ...(target.wazahat_date_map || {}) };
+                                }
+                                if (d.zimmedar_comments) {
+                                    target.zimmedar_comments = { ...d.zimmedar_comments, ...(target.zimmedar_comments || {}) };
+                                }
+                                if (d.wazahat && !target.wazahat) {
+                                    target.wazahat = d.wazahat;
+                                    target.keyDocMap['_legacy_'] = d.id;
+                                }
+                            }
                         } else {
-                            let uniqueKey = (layout === 'teacher' || layout === 'wazahat') 
-                                ? `${d.jamia}_${d.teacher}`.toLowerCase() : `${d.jamia}_${d.darjah || d.class}`.toLowerCase();
+                            let uniqueKey = `${d.jamia}_${d.darjah || d.class}`.toLowerCase();
                             if (!latestDataMap.has(uniqueKey)) latestDataMap.set(uniqueKey, { ...d, ...context });
                         }
                     }
@@ -664,6 +711,7 @@ export async function initAdminResultAnalysis(db, containerId) {
         const tbody = document.getElementById("admin-body");
         const tfoot = document.getElementById("admin-foot");
         tbody.innerHTML = ""; tfoot.innerHTML = "";
+        document.querySelectorAll('.summary-bar-wazahat').forEach(el => el.remove());
         const num = (v) => parseInt(v) || 0;
 
         if (layout === 'ibtidaiya') {
@@ -754,111 +802,399 @@ export async function initAdminResultAnalysis(db, containerId) {
             });
         }
        else if (layout === 'wazahat') {
-            let totalPending = 0; let totalSubmitted = 0; let wazahatRows = ""; let latestMap = new Map();
-            let userStats = {}; // 🌟 NAYA: User-wise summary ke liye
+            let totalPending = 0; 
+            let totalSubmitted = 0; 
+            let wazahatItems = [];
+            let userStats = {}; // User-wise summary ke liye
 
             data.forEach((d) => {
                 const userName = d.userName || "Unknown";
                 (d.data || []).forEach((tEntry) => {
+                    const teacherName = (tEntry.teacher || "-").trim();
                     (tEntry.periods || []).forEach((p) => {
-                        const sPer = num(p.total) ? (num(p.passed) / num(p.total)) * 100 : 0;
-                        if (sPer < 70) {
-                            const subjectKey = (p.subject || "").replace(/\./g, '_');
-                            const uniqueId = `${d.jamia}_${tEntry.teacher}_${subjectKey}`.toLowerCase();
-                            
-                            if (!latestMap.has(uniqueId)) {
-                                const hasWazahat = (d.wazahat_map && d.wazahat_map[subjectKey]);
-                                
-                                // User Stats Update
-                                if (!userStats[userName]) userStats[userName] = { total: 0, submitted: 0, pending: 0 };
-                                userStats[userName].total++;
+                        let percVal = parseFloat(String(p.percentage || '').replace('%', ''));
+                        if (isNaN(percVal)) {
+                            const tot = num(p.total);
+                            const pas = num(p.passed);
+                            percVal = tot > 0 ? (pas / tot) * 100 : 0;
+                        }
 
-                                let tComment = "";
-                                if (hasWazahat) {
-                                    totalSubmitted++;
-                                    userStats[userName].submitted++;
-                                    // 🌟 NAYA: Reset/Delete Button Add Kiya Hai
-                                    tComment = `
-                                        <div class="flex flex-col gap-2">
-                                            <div class="text-sm urdu-font text-gray-900">${d.wazahat_map[subjectKey]}</div>
-                                            <button class="wazahat-delete-btn self-end text-[11px] bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded border border-red-200 transition" data-docid="${d.id}" data-subjkey="${subjectKey}">
-                                                <i class="fas fa-trash-alt"></i> Reset
-                                            </button>
-                                        </div>`;
+                        if (percVal < 70) {
+                            const rawSubject = (p.subject || '-').trim();
+                            const darjah = (p.class || p.darjah || '-').trim();
+                            const subjectKey = (rawSubject + "_" + darjah).replace(/[\.\s]/g, '_');
+
+                            let finalWazahatText = "";
+                            let keyToDelete = subjectKey;
+                            let isLegacy = false;
+                            let wazahatDate = "";
+
+                            // --- BULLETPROOF SMART SEARCH (Exact match with result-analysis.js) ---
+                            if (d.wazahat_map && typeof d.wazahat_map === 'object') {
+                                if (d.wazahat_map[subjectKey]) {
+                                    finalWazahatText = d.wazahat_map[subjectKey];
+                                    keyToDelete = subjectKey;
+                                } else if (d.wazahat_map[rawSubject]) {
+                                    finalWazahatText = d.wazahat_map[rawSubject];
+                                    keyToDelete = rawSubject;
+                                } else if (d.wazahat_map[rawSubject.replace(/\./g, '_')]) {
+                                    finalWazahatText = d.wazahat_map[rawSubject.replace(/\./g, '_')];
+                                    keyToDelete = rawSubject.replace(/\./g, '_');
                                 } else {
-                                    totalPending++;
-                                    userStats[userName].pending++;
-                                    tComment = '<span class="text-red-500 font-bold italic">Pending...</span>';
-                                }
+                                    const normSubj = cleanUrduText(rawSubject);
+                                    const normTeacher = cleanUrduText(teacherName);
+                                    const normDarjah = cleanUrduText(darjah);
 
-                                const zComment = (d.zimmedar_comments && d.zimmedar_comments[subjectKey]) ? `<div class="text-sm urdu-font text-indigo-900">${d.zimmedar_comments[subjectKey]}</div>` : '<span class="text-gray-400 italic text-xs">Nahi likha</span>';
-                                
-                                wazahatRows += `<tr class="border-b hover:bg-gray-50 text-center"><td class="p-2 border urdu-font font-bold text-gray-800">${d.jamia}</td><td class="p-2 border urdu-font font-bold text-blue-800">${tEntry.teacher || "-"}</td><td class="p-2 border"><div class="font-bold urdu-font text-[13px]">${p.subject || '-'}</div><div class="text-[10px] font-bold text-red-600">${p.class || '-'}</div></td><td class="p-2 border font-bold text-red-600">${sPer.toFixed(1)}%</td><td class="p-2 border urdu-font font-bold text-xs" style="color:${getKefiyatColor(sPer, 'teacher')}">${getJamiaKefiyat(sPer, 'teacher')}</td><td class="p-3 border bg-red-50/30 min-w-[200px] text-right">${tComment}</td><td class="p-3 border bg-blue-50/30 min-w-[200px] text-right">${zComment}</td></tr>`;
-                                latestMap.set(uniqueId, true);
+                                    for (let key in d.wazahat_map) {
+                                        const val = d.wazahat_map[key];
+                                        if (!val) continue;
+                                        const normKey = cleanUrduText(key);
+                                        const subjMatch = (normKey === normSubj) || 
+                                                          (normSubj.length >= 3 && normKey.includes(normSubj)) || 
+                                                          (normKey.length >= 3 && normSubj.includes(normKey));
+                                        if (subjMatch) {
+                                            if ((normTeacher && normKey.includes(normTeacher)) || 
+                                                (normDarjah && normKey.includes(normDarjah)) || 
+                                                normKey === normSubj) {
+                                                finalWazahatText = val;
+                                                keyToDelete = key;
+                                                break;
+                                            } else {
+                                                finalWazahatText = val;
+                                                keyToDelete = key;
+                                            }
+                                        }
+                                    }
+                                }
                             }
+
+                            if (d.wazahat_date_map) {
+                                wazahatDate = d.wazahat_date_map[keyToDelete] || d.wazahat_date_map[subjectKey] || d.wazahat_date_map[rawSubject] || "";
+                            }
+
+                            if (!finalWazahatText && d.wazahat) {
+                                finalWazahatText = d.wazahat;
+                                isLegacy = true;
+                            }
+
+                            const hasWazahat = Boolean(finalWazahatText && finalWazahatText.trim().length > 2);
+                            const docToDeleteFrom = (d.keyDocMap && d.keyDocMap[keyToDelete]) ? d.keyDocMap[keyToDelete] : (d.docId || d.id);
+
+                            if (!userStats[userName]) userStats[userName] = { name: userName, total: 0, submitted: 0, pending: 0 };
+                            userStats[userName].total++;
+
+                            if (hasWazahat) {
+                                totalSubmitted++;
+                                userStats[userName].submitted++;
+                            } else {
+                                totalPending++;
+                                userStats[userName].pending++;
+                            }
+
+                            let zimmedarComment = "";
+                            if (d.zimmedar_comments) {
+                                zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || d.zimmedar_comments[keyToDelete] || "";
+                            }
+
+                            wazahatItems.push({
+                                jamia: d.jamia,
+                                originalJamia: d.originalJamia || d.jamia,
+                                region: d.region || "-",
+                                state: d.state || "-",
+                                userName: userName,
+                                teacher: teacherName,
+                                subject: rawSubject,
+                                darjah: darjah,
+                                total: num(p.total),
+                                passed: num(p.passed),
+                                failed: Math.max(0, num(p.total) - num(p.passed)),
+                                percVal: percVal,
+                                kaifiyat: getJamiaKefiyat(percVal, 'teacher'),
+                                kaifiyatColor: getKefiyatColor(percVal, 'teacher'),
+                                hasWazahat: hasWazahat,
+                                wazahatText: finalWazahatText,
+                                wazahatDate: wazahatDate,
+                                keyToDelete: keyToDelete,
+                                subjectKey: subjectKey,
+                                isLegacy: isLegacy,
+                                docId: docToDeleteFrom,
+                                zimmedarComment: zimmedarComment
+                            });
                         }
                     });
                 });
             });
 
-            // 🌟 NAYA: User-wise Summary HTML Generate (With Rank & Percentage)
-            let userSummaryHtml = `<div class="bg-slate-100 p-4 border-b border-slate-300">
-                <h4 class="text-slate-800 font-bold text-sm mb-3"><i class="fas fa-trophy text-yellow-600 mr-1"></i> User-wise Summary (Ranking):</h4>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">`;
-            
-            // 1. Data ko array mein badal kar percentage nikalna
+            const totalCases = totalPending + totalSubmitted;
+            const completionRate = totalCases > 0 ? (totalSubmitted / totalCases) * 100 : 0;
+
+            // 1. User Summary Ranking Array
             let userStatsArray = Object.keys(userStats).map(uName => {
                 let st = userStats[uName];
                 let percent = st.total > 0 ? (st.submitted / st.total) * 100 : 0;
                 return { name: uName, total: st.total, submitted: st.submitted, pending: st.pending, percent: percent };
             });
-
-            // 2. Percentage ke hisaab se Sort karna (Sabse zyada percent wala #1 par)
             userStatsArray.sort((a, b) => b.percent - a.percent);
 
-            // 3. Card generate karna (Rank aur Percent progress bar ke sath)
+            // 2. Build User Ranking Cards
+            let userCardsHtml = "";
             userStatsArray.forEach((user, index) => {
                 let rank = index + 1;
-                // Top 3 ke liye alag colors (Gold, Silver, Bronze)
-                let rankColor = rank === 1 ? 'bg-yellow-500' : (rank === 2 ? 'bg-gray-400' : (rank === 3 ? 'bg-orange-400' : 'bg-indigo-500'));
-                
-                userSummaryHtml += `
-                <div class="bg-white p-3 rounded-lg shadow-sm border border-slate-200 text-sm relative overflow-hidden transition-all hover:shadow-md">
-                    <!-- Rank Badge -->
-                    <div class="absolute top-0 right-0 ${rankColor} text-white text-[11px] font-black px-2 py-1 rounded-bl-lg shadow-sm">
-                        #${rank}
+                let rankBadge = rank === 1 ? 'bg-amber-500 text-white' : (rank === 2 ? 'bg-slate-400 text-white' : (rank === 3 ? 'bg-amber-700 text-white' : 'bg-indigo-600 text-white'));
+                let medalIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : `#${rank}`));
+
+                userCardsHtml += `
+                <div class="user-filter-card bg-white p-3.5 rounded-xl shadow-xs border border-slate-200 text-sm relative overflow-hidden transition-all hover:shadow-md hover:border-indigo-300 cursor-pointer" data-username="${user.name}" title="Filter by ${user.name}">
+                    <div class="absolute top-0 right-0 ${rankBadge} text-[11px] font-black px-2.5 py-0.5 rounded-bl-lg shadow-2xs">
+                        ${medalIcon}
                     </div>
                     
-                    <div class="font-bold text-indigo-700 urdu-font border-b pb-1 mb-2 pr-8">${user.name}</div>
+                    <div class="font-bold text-indigo-900 urdu-font border-b border-slate-100 pb-1.5 mb-2 pr-8 text-sm truncate">${user.name}</div>
                     
-                    <div class="flex justify-between text-xs mb-1"><span>Kul Kamzor:</span> <span class="font-bold text-slate-700">${user.total}</span></div>
-                    <div class="flex justify-between text-xs mb-1"><span>Wazahat Aagayi:</span> <span class="font-bold text-green-600">${user.submitted}</span></div>
-                    <div class="flex justify-between text-xs mb-3"><span>Pending:</span> <span class="font-bold text-red-500">${user.pending}</span></div>
-                    
-                    <!-- Progress Bar -->
-                    <div class="w-full bg-gray-100 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-200">
-                        <div class="bg-emerald-500 h-1.5 rounded-full transition-all duration-1000" style="width: ${user.percent}%"></div>
+                    <div class="grid grid-cols-3 gap-1 text-center py-1 bg-slate-50 rounded-lg mb-2 text-[11px]">
+                        <div><span class="block text-[10px] text-slate-500 font-sans">Kul</span><span class="font-bold text-slate-800">${user.total}</span></div>
+                        <div><span class="block text-[10px] text-emerald-600 font-sans">Aagayi</span><span class="font-bold text-emerald-700">${user.submitted}</span></div>
+                        <div><span class="block text-[10px] text-rose-500 font-sans">Baqi</span><span class="font-bold text-rose-600">${user.pending}</span></div>
                     </div>
-                    <div class="text-[10px] text-right font-bold text-gray-500">${user.percent.toFixed(1)}% Completed</div>
+                    
+                    <div class="w-full bg-slate-100 rounded-full h-2 mb-1 overflow-hidden border border-slate-200">
+                        <div class="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-700" style="width: ${user.percent}%"></div>
+                    </div>
+                    <div class="flex justify-between items-center text-[10px] font-sans">
+                        <span class="text-slate-500 font-semibold">Progress</span>
+                        <span class="font-black ${user.percent >= 80 ? 'text-emerald-700' : (user.percent >= 50 ? 'text-amber-600' : 'text-rose-600')}">${user.percent.toFixed(1)}%</span>
+                    </div>
                 </div>`;
             });
-            
-            userSummaryHtml += `</div></div>`;
 
-            const summaryHeader = `<div class="bg-[#1e293b] text-white p-3 rounded-t-2xl text-center font-bold text-sm border-b border-slate-700">Kul Kamzor Results: <span class="text-yellow-400 mx-1">${totalPending + totalSubmitted}</span> | Wazahat Aa Gayi: <span class="text-green-400 mx-1">${totalSubmitted}</span> | Baqi (Pending): <span class="text-red-400 mx-1">${totalPending}</span></div>`;
-            
-            thead.innerHTML = `<tr class="bg-slate-900 text-white text-[13px] font-bold urdu-font"><th class="p-3 border border-slate-700">جامعہ</th><th class="p-3 border border-slate-700">استاد</th><th class="p-3 border border-slate-700">مضمون/درجہ</th><th class="p-3 border border-slate-700 w-16">فیصد</th><th class="p-3 border border-slate-700 w-24">کیفیت</th><th class="p-3 border border-slate-700 bg-red-900/40">وضاحت (Teacher)</th><th class="p-3 border border-slate-700 bg-blue-900/40">تبصرہ (Zimmedar)</th></tr>`;
-            
+            // 3. Modern Summary Bar HTML
+            const summaryBarHtml = `
+            <div class="summary-bar-wazahat mb-6 space-y-4">
+                <!-- Top Executive Banner -->
+                <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-slate-700 flex flex-col lg:flex-row items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-black tracking-wide flex items-center gap-2">
+                            <i class="fas fa-clipboard-check text-amber-400 text-xl"></i>
+                            کمزور نتائج اور وضاحت جائزہ (Wazahat Followup Dashboard)
+                        </h3>
+                        <p class="text-xs text-slate-300 mt-1 font-sans">
+                            تمام تعلیمی ذمہ داران اور جامعات کے اساتذہ کی موصولہ وضاحتوں کا ریکارڈ برائے فالو اپ
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-center gap-3">
+                        <div class="bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
+                            <span class="block text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">Kul Kamzor</span>
+                            <span class="text-2xl font-black text-amber-400 font-sans">${totalCases}</span>
+                        </div>
+                        <div class="bg-emerald-950/70 border border-emerald-700/60 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
+                            <span class="block text-[10px] text-emerald-300 font-sans font-bold uppercase tracking-wider">Wazahat Aagayi</span>
+                            <span class="text-2xl font-black text-emerald-400 font-sans">${totalSubmitted}</span>
+                        </div>
+                        <div class="bg-rose-950/70 border border-rose-700/60 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
+                            <span class="block text-[10px] text-rose-300 font-sans font-bold uppercase tracking-wider">Pending</span>
+                            <span class="text-2xl font-black text-rose-400 font-sans">${totalPending}</span>
+                        </div>
+                        <div class="bg-indigo-950/80 border border-indigo-700/60 rounded-xl px-4 py-2 text-center min-w-[100px] shadow-xs">
+                            <span class="block text-[10px] text-indigo-300 font-sans font-bold uppercase tracking-wider">Completion</span>
+                            <span class="text-2xl font-black text-indigo-300 font-sans">${completionRate.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Instant Filter & Live Search Toolbar -->
+                <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+                    <div class="relative w-full md:w-96">
+                        <i class="fas fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
+                        <input type="text" id="wazahat-live-search" placeholder="تلاش کریں (جامعہ، استاد، مضمون، ذمہ دار)..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans urdu-font text-right bg-slate-50/50">
+                    </div>
+                    <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                        <span class="text-xs font-bold text-slate-600 font-sans whitespace-nowrap"><i class="fas fa-filter text-indigo-500 mr-1"></i> Status:</span>
+                        <select id="wazahat-status-filter" class="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs">
+                            <option value="all">تمام ریکارڈز (${totalCases})</option>
+                            <option value="submitted">✅ صرف موصولہ (${totalSubmitted})</option>
+                            <option value="pending">⏳ صرف منتظر / Pending (${totalPending})</option>
+                        </select>
+                        <button id="wazahat-reset-filter-btn" class="p-2 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg font-bold transition font-sans border border-indigo-200" title="Reset Filters">
+                            <i class="fas fa-redo-alt mr-1"></i> Reset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- User-wise Summary / Ranking Section -->
+                ${userStatsArray.length > 0 ? `
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-xs">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-slate-800 font-bold text-sm flex items-center gap-1.5">
+                            <i class="fas fa-trophy text-amber-500 text-base"></i>
+                            User-wise Wazahat Status & Ranking
+                            <span class="text-[11px] font-normal text-slate-500 font-sans">(کارڈ پر کلک کر کے اس ذمہ دار کا ریکارڈ دیکھیں)</span>
+                        </h4>
+                        <span class="text-xs font-bold text-slate-500 font-sans">${userStatsArray.length} Users</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-72 overflow-y-auto p-1 custom-scrollbar">
+                        ${userCardsHtml}
+                    </div>
+                </div>` : ''}
+            </div>`;
+
             const tableContainer = document.getElementById("reports-view");
-            const existingSummaries = tableContainer.querySelectorAll('.summary-bar-wazahat');
-            existingSummaries.forEach(el => el.remove());
-            
-            const summaryDiv = document.createElement('div'); 
-            summaryDiv.className = 'summary-bar-wazahat'; 
-            summaryDiv.innerHTML = summaryHeader + (Object.keys(userStats).length > 0 ? userSummaryHtml : '');
-            tableContainer.prepend(summaryDiv);
-            
-            tbody.innerHTML = wazahatRows || `<tr><td colspan="7" class="p-20 text-center text-red-500 font-bold bg-white text-xl">Mashallah! Koi kamzor result nahi mila.</td></tr>`;
+            document.querySelectorAll('.summary-bar-wazahat').forEach(el => el.remove());
+            const summaryDiv = document.createElement('div');
+            summaryDiv.className = 'summary-bar-wazahat';
+            summaryDiv.innerHTML = summaryBarHtml;
+            tableContainer.parentNode.insertBefore(summaryDiv, tableContainer);
+
+            // Table Head Definition with Sr. No. & Followup Actions
+            thead.innerHTML = `
+                <tr class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white text-[13px] font-bold urdu-font border-b border-slate-700 select-none">
+                    <th class="p-3 border border-slate-700 text-center w-12 font-sans">#</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[100px] font-sans">Region / State</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[120px]">تعلیمی ذمہ دار</th>
+                    <th class="p-3 border border-slate-700 text-right min-w-[160px]">جامعہ</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[120px]">استاد</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[140px]">مضمون / درجہ</th>
+                    <th class="p-3 border border-slate-700 text-center w-20 font-sans">فیصد</th>
+                    <th class="p-3 border border-slate-700 text-center w-24">کیفیت</th>
+                    <th class="p-3 border border-slate-700 text-right min-w-[260px] bg-slate-900/60">وضاحت (Explanation)</th>
+                    <th class="p-3 border border-slate-700 text-right min-w-[180px] bg-indigo-950/40">تبصرہ (Zimmedar Comment)</th>
+                    <th class="p-3 border border-slate-700 text-center min-w-[90px] no-print">فالو اپ ایکشن</th>
+                </tr>`;
+
+            // Function to render rows dynamically based on filters
+            const renderFilteredRows = () => {
+                const searchVal = (document.getElementById('wazahat-live-search')?.value || '').toLowerCase().trim();
+                const statusVal = document.getElementById('wazahat-status-filter')?.value || 'all';
+
+                let filtered = wazahatItems.filter(item => {
+                    if (statusVal === 'submitted' && !item.hasWazahat) return false;
+                    if (statusVal === 'pending' && item.hasWazahat) return false;
+                    if (searchVal) {
+                        const hay = `${item.jamia} ${item.originalJamia} ${item.teacher} ${item.subject} ${item.darjah} ${item.userName} ${item.region} ${item.state} ${item.wazahatText}`.toLowerCase();
+                        if (!hay.includes(searchVal)) return false;
+                    }
+                    return true;
+                });
+
+                if (filtered.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="11" class="p-16 text-center text-slate-500 font-bold bg-white text-base urdu-font">
+                        <i class="fas fa-search text-3xl mb-2 text-slate-300 block"></i>
+                        کوئی ریکارڈ نہیں ملا۔
+                    </td></tr>`;
+                    tfoot.innerHTML = "";
+                    return;
+                }
+
+                tbody.innerHTML = filtered.map((item, idx) => {
+                    let formattedDate = "";
+                    if (item.wazahatDate) {
+                        try {
+                            const dObj = new Date(item.wazahatDate);
+                            formattedDate = `<div class="text-[10px] text-emerald-700 font-sans mt-1 text-left flex items-center gap-1 justify-start" dir="ltr"><i class="far fa-clock"></i> ${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</div>`;
+                        } catch(e) {}
+                    }
+
+                    const safeDocId = item.docId;
+                    const safeTeacher = (item.teacher || '-').replace(/"/g, '&quot;');
+                    const safeSubj = (item.subject || '-').replace(/"/g, '&quot;');
+                    const safeDarjah = (item.darjah || '-').replace(/"/g, '&quot;');
+                    const safeJamia = (item.jamia || '-').replace(/"/g, '&quot;');
+
+                    const wazahatCell = item.hasWazahat ? `
+                        <div class="flex flex-col gap-1.5 text-right">
+                            <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2.5 rounded-lg shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl;">
+                                <div class="whitespace-pre-wrap font-sans text-[12.5px]">${item.wazahatText}</div>
+                                ${formattedDate}
+                            </div>
+                            <button onclick="adminDeleteWazahat('${safeDocId}', '${item.keyToDelete}', ${item.isLegacy})" class="self-end text-[11px] bg-white hover:bg-rose-600 text-rose-600 hover:text-white px-2.5 py-1 rounded-md border border-rose-200 transition-colors shadow-2xs font-sans font-bold flex items-center gap-1 mt-0.5">
+                                <i class="fas fa-trash-alt text-[10px]"></i> Reset
+                            </button>
+                        </div>` : `
+                        <div class="flex flex-col items-center justify-center py-2">
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs animate-pulse">
+                                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                منتظر (Pending...)
+                            </span>
+                        </div>`;
+
+                    const zimmedarCell = `
+                        <div class="flex flex-col gap-1.5 text-right">
+                            ${item.zimmedarComment ? `<div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2 rounded-lg text-xs urdu-font leading-relaxed shadow-2xs">${item.zimmedarComment}</div>` : `<span class="text-slate-400 italic text-[11px] text-center block py-1 font-sans">تبصرہ نہیں لکھا</span>`}
+                            <button onclick="adminAddZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="text-[11px] text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md px-2 py-1 mx-auto font-sans font-bold transition-colors shadow-2xs flex items-center gap-1 no-print">
+                                <i class="fas fa-pen text-[10px]"></i> Comment
+                            </button>
+                        </div>`;
+
+                    const actionCell = `
+                        <button onclick="adminSendWazahatLink('${safeDocId}', '${safeTeacher.replace(/'/g, "\\'")}', '${safeSubj.replace(/'/g, "\\'")}', '${item.percVal.toFixed(1)}%', '${item.kaifiyat}', '${safeDarjah.replace(/'/g, "\\'")}', '${safeJamia.replace(/'/g, "\\'")}')" class="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 mx-auto transition-transform active:scale-95 no-print" title="واٹس ایپ پر وضاحت نوٹس بھیجیں">
+                            <i class="fab fa-whatsapp text-sm"></i> نوٹس
+                        </button>`;
+
+                    return `
+                        <tr class="hover:bg-indigo-50/40 border-b border-slate-200 text-center transition-colors ${item.hasWazahat ? 'bg-white' : 'bg-rose-50/15'}">
+                            <td class="p-3 border border-slate-200 font-bold font-sans text-slate-700 bg-slate-50/60 text-xs">${idx + 1}</td>
+                            <td class="p-2.5 border border-slate-200 text-center font-sans text-xs">
+                                <div class="font-bold text-slate-800">${item.region}</div>
+                                <div class="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 mt-0.5 inline-block font-semibold">${item.state}</div>
+                            </td>
+                            <td class="p-3 border border-slate-200 urdu-font font-bold text-indigo-900 text-sm">${item.userName}</td>
+                            <td class="p-3 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-sm leading-snug">${item.jamia}</td>
+                            <td class="p-3 border border-slate-200 urdu-font font-bold text-blue-800 text-sm">${item.teacher}</td>
+                            <td class="p-2.5 border border-slate-200 text-center">
+                                <div class="font-bold urdu-font text-slate-800 text-sm">${item.subject}</div>
+                                <div class="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font">${item.darjah}</div>
+                            </td>
+                            <td class="p-3 border border-slate-200 text-center font-black font-sans text-sm text-rose-700 bg-rose-50/30">${item.percVal.toFixed(1)}%</td>
+                            <td class="p-3 border border-slate-200 text-center">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold urdu-font inline-block shadow-2xs" style="background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
+                                    ${item.kaifiyat}
+                                </span>
+                            </td>
+                            <td class="p-3 border border-slate-200 min-w-[260px] text-right">${wazahatCell}</td>
+                            <td class="p-3 border border-slate-200 min-w-[180px] text-right">${zimmedarCell}</td>
+                            <td class="p-3 border border-slate-200 no-print">${actionCell}</td>
+                        </tr>`;
+                }).join('');
+
+                const filteredSub = filtered.filter(f => f.hasWazahat).length;
+                const filteredPen = filtered.length - filteredSub;
+                const filteredRate = filtered.length > 0 ? (filteredSub / filtered.length) * 100 : 0;
+
+                tfoot.innerHTML = `
+                    <tr class="bg-slate-900 text-white font-bold text-center text-sm urdu-font border-t-2 border-slate-700">
+                        <td colspan="6" class="p-3 text-right pr-4 font-sans font-bold">TOTAL SUMMARY:</td>
+                        <td class="p-3 font-sans text-amber-400 font-black text-base">${filtered.length}</td>
+                        <td colspan="2" class="p-3 text-emerald-300 font-sans font-bold">Wazahat Received: ${filteredSub} (${filteredRate.toFixed(1)}%)</td>
+                        <td colspan="2" class="p-3 text-rose-300 font-sans font-bold">Pending: ${filteredPen}</td>
+                    </tr>`;
+            };
+
+            renderFilteredRows();
+
+            // Setup Event Handlers for Toolbar & User Filter Cards
+            const searchInput = document.getElementById('wazahat-live-search');
+            const statusFilter = document.getElementById('wazahat-status-filter');
+            const resetBtn = document.getElementById('wazahat-reset-filter-btn');
+
+            if (searchInput) searchInput.oninput = renderFilteredRows;
+            if (statusFilter) statusFilter.onchange = renderFilteredRows;
+            if (resetBtn) {
+                resetBtn.onclick = () => {
+                    if (searchInput) searchInput.value = '';
+                    if (statusFilter) statusFilter.value = 'all';
+                    renderFilteredRows();
+                };
+            }
+
+            document.querySelectorAll('.user-filter-card').forEach(card => {
+                card.onclick = () => {
+                    const uName = card.dataset.username;
+                    if (searchInput) {
+                        searchInput.value = uName;
+                        renderFilteredRows();
+                        searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                };
+            });
         }
         else {
             thead.innerHTML = `<th class="p-2 border">Sr.</th><th class="p-2 border">Region</th><th class="p-2 border">تعلیمی ذمہ دار</th><th class="p-2 border">جامعہ</th><th class="p-2 border">استاد</th><th class="p-2 border">درجہ</th><th class="p-2 border">مضمون</th><th class="p-2 border">کل</th><th class="p-2 border">کامیاب</th><th class="p-2 border">%</th><th class="p-2 border">کیفیت</th><th class="p-2 border bg-emerald-900 text-white">مجموعی %</th><th class="p-2 border bg-emerald-900 text-white">مجموعی کیفیت</th>`;
@@ -1660,37 +1996,74 @@ const autoRecalculate = (pData) => {
                 }
             }
         });
-        // 🌟 NAYA: Wazahat Delete/Reset karne ka function
+        // 🌟 GLOBAL ACTION HELPERS FOR ADMIN WAZAHAT & FOLLOWUP
+        window.adminSendWazahatLink = (docId, teacherName, subject, percentage, kefiyat, darjah, jamia) => {
+            const repoName = "Majlis-Talimi-Umoor-India";
+            const baseUrl = `https://tuofficedrive1-wq.github.io/${repoName}/teacher-wazahat.html`;
+            const params = `id=${docId}&teacher=${encodeURIComponent(teacherName)}&subject=${encodeURIComponent(subject)}&perc=${encodeURIComponent(percentage)}&kef=${encodeURIComponent(kefiyat)}&class=${encodeURIComponent(darjah)}`;
+            const fullLink = `${baseUrl}?${params}`;
+            
+            const message = `*نوٹس برائے کمزور رزلٹ وضاحت (Official Notification)*\n\n` +
+                            `جامعہ: *${jamia}*\n` +
+                            `محترم ${teacherName} صاحب،\n` +
+                            `آپ کے درجہ *${darjah}* کے مضمون *(${subject})* کا رزلٹ کمزور پایا گیا ہے۔\n\n` +
+                            `*تفصیلات:*\n` +
+                            `فیصد: *${percentage}*\n` +
+                            `کیفیت: *${kefiyat}*\n\n` +
+                            `براہِ کرم اس لنک پر کلک کر کے اپنی وضاحت لازمی جمع فرمائیں:\n${fullLink}\n\n` +
+                            `شکریہ۔\nمجلس تعلیمی امور دعوت اسلامی ہند`;
+            
+            window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+        };
+
+        window.adminAddZimmedarComment = async (docId, subjectKey) => {
+            const comment = prompt("تعلیمی ذمہ دار کا تبصرہ درج کریں:");
+            if (comment === null) return;
+            try {
+                const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const docRef = doc(db, "asatiza_wise_results", docId);
+                await updateDoc(docRef, {
+                    [`zimmedar_comments.${subjectKey}`]: comment
+                });
+                alert("تبصرہ کامیابی سے محفوظ ہو گیا!");
+                const showBtn = document.getElementById('admin-show-btn');
+                if (showBtn) showBtn.click();
+            } catch (err) {
+                alert("Galti: " + err.message);
+            }
+        };
+
+        window.adminDeleteWazahat = async (docId, keyToDelete, isLegacy) => {
+            if (!confirm('کیا آپ واقعی اس وضاحت کو ڈیلیٹ کر کے فارم کو دوبارہ ری سیٹ (Reset) کرنا چاہتے ہیں؟')) return;
+            try {
+                const { updateDoc, doc, deleteField } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const docRef = doc(db, "asatiza_wise_results", docId);
+                const updatePath = {};
+                if (isLegacy) {
+                    updatePath['wazahat'] = deleteField();
+                } else {
+                    updatePath[`wazahat_map.${keyToDelete}`] = deleteField();
+                    updatePath[`wazahat_date_map.${keyToDelete}`] = deleteField();
+                    updatePath[`zimmedar_comments.${keyToDelete}`] = deleteField();
+                }
+                await updateDoc(docRef, updatePath);
+                alert("وضاحت ڈیلیٹ ہو گئی اور فارم ری سیٹ ہو گیا!");
+                const showBtn = document.getElementById('admin-show-btn');
+                if (showBtn) showBtn.click();
+            } catch (err) {
+                alert("Galti: " + err.message);
+            }
+        };
+
+        // 🌟 Event delegation for backwards compatibility
         document.addEventListener('click', async (e) => {
             const btn = e.target.closest('.wazahat-delete-btn');
             if (!btn) return;
-            
-            if (!confirm('Kya aap waqai is wazahat ko delete kar ke form ko wapas reset karna chahte hain?')) return;
-            
             const docId = btn.dataset.docid;
             const subjKey = btn.dataset.subjkey;
-            
-            const btnOriginalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reseting...';
-            btn.disabled = true;
-
-            try {
-                // Firebase se updateDoc aur deleteField laa rahe hain taake exact word delete ho
-                const { updateDoc, deleteField } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-                
-                await updateDoc(doc(db, "asatiza_wise_results", docId), {
-                    [`wazahat_map.${subjKey}`]: deleteField(),
-                    [`zimmedar_comments.${subjKey}`]: deleteField()
-                });
-
-                // Delete hone ke baad automatically list dobara refresh hogi
-                const showBtn = document.getElementById('admin-show-btn');
-                if(showBtn) showBtn.click();
-                
-            } catch (err) {
-                alert('Error resetting wazahat: ' + err.message);
-                btn.innerHTML = btnOriginalText;
-                btn.disabled = false;
+            const isLegacy = btn.dataset.islegacy === "true";
+            if (window.adminDeleteWazahat && docId && subjKey) {
+                await window.adminDeleteWazahat(docId, subjKey, isLegacy);
             }
         });
     }
