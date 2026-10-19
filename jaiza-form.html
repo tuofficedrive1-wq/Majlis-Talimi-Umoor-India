@@ -262,7 +262,7 @@ body.pdf-mode #classes-container .class-card:not(:first-child) {
   <div class="w-10 h-10 border-4 border-gray-200 border-t-teal-500 rounded-full animate-spin"></div>
 </div>
 
-<div class="max-w-6xl mx-auto space-y-4">
+<div class="max-w-6xl mx-auto space-y-4" id="main-form-wrapper">
   <!-- Header -->
   <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
     <div>
@@ -357,6 +357,9 @@ body.pdf-mode #classes-container .class-card:not(:first-child) {
     </div>
   </form>
 </div>
+
+<!-- DEDICATED PDF REPORT CONTAINER (Normal in-flow container for clean, sharp, non-blank PDF rendering) -->
+<div id="jaiza-pdf-report-container" style="display: none; background: #ffffff; width: 800px; max-width: 800px; margin: 0 auto; padding: 10px; box-sizing: border-box;" dir="rtl"></div>
 
 <script type="module">
 /*************** Firebase setup ***************/
@@ -2019,26 +2022,22 @@ if (printPdfBtn) {
         </div>
       `;
 
-      // 4. Mount container off-screen
-      container = document.createElement('div');
-      container.id = 'jaiza-pdf-export-container';
-      container.innerHTML = printTemplate;
-      container.style.position = 'absolute';
-      container.style.top = '0';
-      container.style.left = '0';
-      container.style.width = '800px';
-      container.style.maxWidth = '800px';
-      container.style.background = '#ffffff';
-      container.style.zIndex = '-9999';
-      container.style.visibility = 'visible';
-      container.style.opacity = '1';
-      container.style.pointerEvents = 'none';
+      // 4. In-flow Report Container Switch (100% reliable, no blank/black pages)
+      const mainWrapper = document.getElementById("main-form-wrapper");
+      const pdfContainer = document.getElementById("jaiza-pdf-report-container");
+      const savedScrollY = window.scrollY;
 
-      document.body.appendChild(container);
+      pdfContainer.innerHTML = printTemplate;
 
-      // Fonts wait
+      // Temporarily hide form and show report container in full document flow
+      if (mainWrapper) mainWrapper.style.display = 'none';
+      pdfContainer.style.display = 'block';
+      document.body.style.backgroundColor = '#ffffff';
+      window.scrollTo(0, 0);
+
+      // Fonts & DOM layout settle wait
       try { await document.fonts.ready; } catch(e) {}
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 700));
 
       let safeJamia = 'jaiza';
       try { safeJamia = decodeURIComponent(jamiaId || 'jaiza'); } catch(e) {}
@@ -2054,8 +2053,6 @@ if (printPdfBtn) {
           letterRendering: true,
           scrollY: 0,
           scrollX: 0,
-          windowWidth: 800,
-          logging: false,
           backgroundColor: '#ffffff'
         },
         jsPDF: {
@@ -2069,14 +2066,20 @@ if (printPdfBtn) {
         }
       };
 
-      await html2pdf().set(opt).from(container).save();
+      await html2pdf().set(opt).from(pdfContainer).save();
     } catch(err) {
       console.error('PDF generation error:', err);
       alert('PDF بنانے میں مسئلہ آیا۔ براہ کرم دوبارہ کوشش کریں۔');
     } finally {
-      if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
+      const mainWrapper = document.getElementById("main-form-wrapper");
+      const pdfContainer = document.getElementById("jaiza-pdf-report-container");
+      if (pdfContainer) {
+        pdfContainer.style.display = 'none';
+        pdfContainer.innerHTML = '';
       }
+      if (mainWrapper) mainWrapper.style.display = '';
+      document.body.style.backgroundColor = '';
+      window.scrollTo(0, savedScrollY);
       printPdfBtn.disabled = false;
       printPdfBtn.innerHTML = origHTML;
     }
