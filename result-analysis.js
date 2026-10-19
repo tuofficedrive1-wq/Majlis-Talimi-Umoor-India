@@ -168,14 +168,18 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
                     <p id="ra-report-subtitle" class="text-lg opacity-90 mt-2 font-sans text-center"></p>
                 </div>
                 <div class="flex gap-2 no-print" data-html2canvas-ignore="true">
-                    <button id="ra-download-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded shadow font-bold text-sm">
+                    <button id="ra-download-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition">
                         <i class="fas fa-file-excel mr-1"></i> Excel
                     </button>
-                    <button id="ra-download-image" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded shadow font-bold text-sm">
+                    <button id="ra-download-image" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition">
                         <i class="fas fa-image mr-1"></i> Image
+                    </button>
+                    <button id="ra-download-pdf" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded shadow font-bold text-sm transition">
+                        <i class="fas fa-file-pdf mr-1"></i> PDF
                     </button>
                 </div>
             </div>
+            <div id="ra-wazahat-summary-bar"></div>
             <div class="w-full overflow-x-auto">
                 <table id="ra-data-table" class="w-full min-w-full text-center text-[15px] border-collapse" dir="rtl">
                     <thead id="ra-table-head" class="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300 text-base"></thead>
@@ -254,6 +258,11 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         reportArea.classList.add('hidden');
         tbody.innerHTML = '';
         tfoot.innerHTML = '';
+
+        const summaryBarContainer = document.getElementById('ra-wazahat-summary-bar');
+        if (summaryBarContainer) summaryBarContainer.innerHTML = '';
+        const dataTable = document.getElementById('ra-data-table');
+        if (dataTable) dataTable.setAttribute('dir', layoutLevel === 'wazahat' ? 'ltr' : 'rtl');
 
         try {
             const collectionName = (layoutLevel === 'class' || layoutLevel === 'jamia') ? "class_wise_results" : "asatiza_wise_results"; 
@@ -552,7 +561,9 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
 else if (layoutLevel === 'wazahat') {
     let totalPending = 0;
     let totalSubmitted = 0;
-    let wazahatRows = "";
+    let totalCommentAdded = 0;
+    let totalCommentPending = 0;
+    let wazahatItems = [];
 
     latestDataMap.forEach((d) => {
         if (d.data && Array.isArray(d.data)) {
@@ -622,7 +633,6 @@ else if (layoutLevel === 'wazahat') {
                                         const matchesTeacher = normTeacher && normKey.includes(normTeacher);
                                         const matchesDarjah = normDarjah && normKey.includes(normDarjah);
 
-                                        // Agar key me teacher aur darjah dono match ho rahe hon to best match
                                         if (matchesTeacher && matchesDarjah) {
                                             finalWazahatText = val;
                                             keyToDelete = key;
@@ -641,7 +651,6 @@ else if (layoutLevel === 'wazahat') {
 
                                 // 4. Agar abhi bhi na mila ho, aur Jamia me is subject ka sirf aik hi weak case ho to hi generic key allow karein
                                 if (!finalWazahatText) {
-                                    // Check if multiple teachers teach this same subject in this jamia
                                     let sameSubjCount = 0;
                                     (d.data || []).forEach(otherT => {
                                         (otherT.periods || []).forEach(otherP => {
@@ -652,7 +661,6 @@ else if (layoutLevel === 'wazahat') {
                                         });
                                     });
 
-                                    // Sirf tab fallback allow karein jab yeh subject is jamia me akela weak ho (taake doosre teacher pe copy na ho)
                                     if (sameSubjCount <= 1) {
                                         if (d.wazahat_map[rawSubject]) {
                                             finalWazahatText = d.wazahat_map[rawSubject];
@@ -686,122 +694,435 @@ else if (layoutLevel === 'wazahat') {
                         }
                         // --- BULLETPROOF SMART SEARCH END ---
 
-                        const hasWazahat = finalWazahatText && finalWazahatText.trim().length > 2;
+                        const hasWazahat = Boolean(finalWazahatText && finalWazahatText.trim().length > 2);
                         const docToDeleteFrom = (d.keyDocMap && d.keyDocMap[keyToDelete]) ? d.keyDocMap[keyToDelete] : d.docId;
                         
-                        let formattedDateStr = "";
-                        if (wazahatDate) {
-                            try {
-                                const dObj = new Date(wazahatDate);
-                                formattedDateStr = `<div class="text-[10px] text-gray-500 mt-1 font-sans text-left" dir="ltr"><i class="far fa-clock mr-1"></i>${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</div>`;
-                            } catch(e) {}
-                        }
-
-                        // 🌟 Reset/Delete Button (Waisa hi rahega)
-                        const specificWazahat = hasWazahat 
-                            ? `<div class="flex flex-col gap-1">
-                                 <div class="bg-green-50 p-2 rounded border border-green-200 text-green-900 text-right shadow-sm" style="direction:rtl; font-family: sans-serif;">
-                                    ${finalWazahatText}
-                                    ${formattedDateStr}
-                                 </div>
-                                 <button onclick="deleteWazahat('${docToDeleteFrom}', '${keyToDelete}', ${isLegacy})" class="self-end text-[11px] bg-red-50 text-red-600 hover:bg-red-600 hover:text-white px-2 py-1 rounded border border-red-200 transition shadow-sm mt-1">
-                                     <i class="fas fa-trash-alt"></i> Reset
-                                 </button>
-                               </div>`
-                            : `<span class="text-red-500 font-bold italic animate-pulse">Pending...</span>`;
-
                         let zimmedarComment = "";
                         if (d.zimmedar_comments) {
-                            zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || "";
+                            zimmedarComment = d.zimmedar_comments[subjectKey] || d.zimmedar_comments[rawSubject] || d.zimmedar_comments[keyToDelete] || "";
                         }
+                        const hasComment = Boolean(zimmedarComment && zimmedarComment.trim().length > 1);
 
                         if (hasWazahat) totalSubmitted++; else totalPending++;
+                        if (hasComment) totalCommentAdded++; else totalCommentPending++;
 
-                        wazahatRows += `
-                            <tr class="hover:bg-red-50 border-b border-red-100 text-center">
-                                <td class="border p-3 font-bold text-right text-[10px]">${d.jamia}</td>
-                                <td class="border p-3 text-blue-700 font-bold text-xs">${tEntry.teacher || "-"}</td>
-                                <td class="border p-3 text-right text-xs">
-                                    ${rawSubject} <br>
-                                    <small class="text-gray-500">(${darjah})</small>
-                                </td>
-                                <td class="border p-3 text-red-600 font-bold text-sm">${percVal.toFixed(1)}%</td>
-                                <td class="border p-3 font-bold text-xs" style="color:${getKefiyatColor(percVal, 'teacher')}">
-                                    ${getJamiaKefiyat(percVal, 'teacher')}
-                                </td>
-                                <td class="border p-2 text-[13px] italic text-gray-700 ${hasWazahat ? 'bg-green-50/20' : 'bg-yellow-50/20'}">
-                                    <div class="max-h-32 overflow-y-auto" style="min-width:280px; white-space: pre-wrap; direction: rtl;">
-                                        ${specificWazahat}
-                                    </div>
-                                </td>
-                                <td class="border p-3 text-sm">
-                                    <div class="flex flex-col gap-1">
-                                        <span class="text-indigo-600 font-semibold text-[11px] text-right">${zimmedarComment}</span>
-                                        <button onclick="addZimmedarComment('${d.docId}', '${subjectKey}')" 
-                                                class="text-[10px] text-gray-400 hover:text-indigo-600 no-print border border-dashed rounded p-1 mt-1">
-                                            <i class="fas fa-edit"></i> Comment
-                                        </button>
-                                    </div>
-                                </td>
-                                <td class="border p-3 no-print">
-                                    <button onclick="sendWazahatLink('${d.docId}', '${tEntry.teacher}', '${rawSubject}', '${percVal.toFixed(1)}', '${getJamiaKefiyat(percVal, 'teacher')}', '${darjah}')" 
-                                            class="bg-green-600 hover:bg-green-700 text-white px-2 py-2 rounded text-[10px] flex items-center gap-1 mx-auto shadow-sm">
-                                        <i class="fab fa-whatsapp"></i> Link
-                                    </button>
-                                </td>
-                            </tr>`;
+                        wazahatItems.push({
+                            jamia: d.jamia,
+                            teacher: teacherName,
+                            subject: rawSubject,
+                            darjah: darjah,
+                            percVal: percVal,
+                            kaifiyat: getJamiaKefiyat(percVal, 'teacher'),
+                            kaifiyatColor: getKefiyatColor(percVal, 'teacher'),
+                            hasWazahat: hasWazahat,
+                            wazahatText: finalWazahatText,
+                            wazahatDate: wazahatDate,
+                            keyToDelete: keyToDelete,
+                            subjectKey: subjectKey,
+                            isLegacy: isLegacy,
+                            docId: docToDeleteFrom,
+                            zimmedarComment: zimmedarComment,
+                            hasComment: hasComment
+                        });
                     }
                 });
             });
         }
     });
 
-    thead.innerHTML = `
-    <tr class="bg-gray-800 text-white">
-        <th colspan="8" class="p-2 text-center text-sm font-sans">
-            Total Cases: <span class="text-yellow-400">${totalPending + totalSubmitted}</span> | 
-            Received: <span class="text-green-400">${totalSubmitted}</span> | 
-            Pending: <span class="text-red-400">${totalPending}</span>
-        </th>
-    </tr>
-    <tr class="bg-red-50 text-red-900 text-xs">
-        <th class="border p-3">جامعہ</th>
-        <th class="border p-3">استاد</th>
-        <th class="border p-3">مضمون / درجہ</th>
-        <th class="border p-3">فیصد</th>
-        <th class="border p-3">کیفیت</th>
-        <th class="border p-3">وضاحت (Explanation)</th>
-        <th class="border p-3 text-indigo-700">تعلیمی ذمہ دار کا تبصرہ</th> 
-        <th class="border p-3 no-print">ایکشن</th>
-    </tr>`;
+    const totalCases = totalPending + totalSubmitted;
+    const completionRate = totalCases > 0 ? (totalSubmitted / totalCases) * 100 : 0;
 
-    rowsHtml = wazahatRows;
+    // 🌟 Executive Summary Bar & Toolbar HTML (Admin Style)
+    const summaryBarHtml = `
+    <div class="summary-bar-wazahat p-4 space-y-4">
+        <!-- Top Executive Banner -->
+        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-slate-700 flex flex-col lg:flex-row items-center justify-between gap-4">
+            <div>
+                <h3 class="text-2xl font-bold tracking-wide flex items-center gap-2 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                    <i class="fas fa-clipboard-check text-amber-400 text-2xl"></i>
+                    <span>کمزور نتائج اور وضاحت جائزہ</span>
+                    <span class="text-xs font-sans font-normal opacity-75">(Wazahat Followup Dashboard)</span>
+                </h3>
+                <p class="text-sm text-slate-300 mt-1 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                    اساتذہ کی موصولہ وضاحتوں اور تعلیمی تبصروں کا تفصیلی جائزہ
+                </p>
+            </div>
+            <div class="flex flex-wrap items-center justify-center gap-2.5">
+                <div class="bg-slate-800/90 border border-slate-700 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                    <span class="block text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">Kul Kamzor</span>
+                    <span class="text-xl font-black text-amber-400 font-sans">${totalCases}</span>
+                </div>
+                <div class="bg-emerald-950/70 border border-emerald-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                    <span class="block text-[10px] text-emerald-300 font-sans font-bold uppercase tracking-wider">Wazahat Aagayi</span>
+                    <span class="text-xl font-black text-emerald-400 font-sans">${totalSubmitted}</span>
+                </div>
+                <div class="bg-rose-950/70 border border-rose-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                    <span class="block text-[10px] text-rose-300 font-sans font-bold uppercase tracking-wider">Wazahat Baqi</span>
+                    <span class="text-xl font-black text-rose-400 font-sans">${totalPending}</span>
+                </div>
+                <div class="bg-teal-950/70 border border-teal-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                    <span class="block text-[10px] text-teal-300 font-sans font-bold uppercase tracking-wider">Comment Aagaye</span>
+                    <span class="text-xl font-black text-teal-400 font-sans">${totalCommentAdded}</span>
+                </div>
+                <div class="bg-amber-950/70 border border-amber-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                    <span class="block text-[10px] text-amber-300 font-sans font-bold uppercase tracking-wider">Comment Baqi</span>
+                    <span class="text-xl font-black text-amber-400 font-sans">${totalCommentPending}</span>
+                </div>
+                <div class="bg-indigo-950/80 border border-indigo-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
+                    <span class="block text-[10px] text-indigo-300 font-sans font-bold uppercase tracking-wider">Wazahat %</span>
+                    <span class="text-xl font-black text-indigo-300 font-sans">${completionRate.toFixed(1)}%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instant Filter & Live Search Toolbar -->
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 no-print">
+            <div class="relative w-full md:w-96">
+                <i class="fas fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
+                <input type="text" id="wazahat-live-search" placeholder="تلاش کریں (جامعہ، استاد، مضمون، وغیرہ)..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 urdu-font text-right bg-slate-50/50" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+            </div>
+            <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                <span class="text-xs font-bold text-slate-600 font-sans whitespace-nowrap"><i class="fas fa-filter text-indigo-500 mr-1"></i> Filter:</span>
+                <select id="wazahat-status-filter" class="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                    <option value="all">تمام ریکارڈز (${totalCases})</option>
+                    <option value="submitted">✅ صرف موصولہ وضاحت (${totalSubmitted})</option>
+                    <option value="pending">⏳ صرف منتظر وضاحت (${totalPending})</option>
+                    <option value="comment-added">💬 صرف تبصرہ شدہ (${totalCommentAdded})</option>
+                    <option value="comment-pending">📝 بغیر تبصرہ / کمنٹ باقی (${totalCommentPending})</option>
+                </select>
+                <button id="wazahat-reset-filter-btn" class="p-2 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg font-bold transition font-sans border border-indigo-200" title="Reset Filters">
+                    <i class="fas fa-redo-alt mr-1"></i> Reset
+                </button>
+            </div>
+        </div>
+    </div>`;
+
+    const summaryBarContainer = document.getElementById('ra-wazahat-summary-bar');
+    if (summaryBarContainer) summaryBarContainer.innerHTML = summaryBarHtml;
+
+    // 🌟 Elegant Table Header (Identical design to admin)
+    thead.innerHTML = `
+        <tr class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white text-[13px] font-bold urdu-font border-b border-slate-700 select-none" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+            <th class="p-3 border border-slate-700 text-center w-12 font-sans">#</th>
+            <th class="p-3 border border-slate-700 text-right min-w-[160px] urdu-font">جامعہ</th>
+            <th class="p-3 border border-slate-700 text-center min-w-[120px] urdu-font">استاد</th>
+            <th class="p-3 border border-slate-700 text-center min-w-[140px] urdu-font">مضمون / درجہ</th>
+            <th class="p-3 border border-slate-700 text-center w-20 font-sans">فیصد</th>
+            <th class="p-3 border border-slate-700 text-center w-24 urdu-font">کیفیت</th>
+            <th class="p-3 border border-slate-700 text-right min-w-[280px] bg-slate-900/60 urdu-font">وضاحت (Explanation)</th>
+            <th class="p-3 border border-slate-700 text-right min-w-[200px] bg-indigo-950/40 urdu-font">تعلیمی ذمہ دار کا تبصرہ</th>
+            <th class="p-3 border border-slate-700 text-center w-24 no-print urdu-font">ایکشن</th>
+        </tr>`;
+
+    const renderFilteredRows = () => {
+        const searchVal = (document.getElementById('wazahat-live-search')?.value || '').toLowerCase().trim();
+        const statusVal = document.getElementById('wazahat-status-filter')?.value || 'all';
+
+        let filtered = wazahatItems.filter(item => {
+            if (statusVal === 'submitted' && !item.hasWazahat) return false;
+            if (statusVal === 'pending' && item.hasWazahat) return false;
+            if (statusVal === 'comment-added' && !item.hasComment) return false;
+            if (statusVal === 'comment-pending' && item.hasComment) return false;
+            if (searchVal) {
+                const hay = `${item.jamia} ${item.teacher} ${item.subject} ${item.darjah} ${item.wazahatText} ${item.zimmedarComment}`.toLowerCase();
+                if (!hay.includes(searchVal)) return false;
+            }
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" class="p-16 text-center text-slate-500 font-bold bg-white text-base urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                <i class="fas fa-search text-3xl mb-2 text-slate-300 block"></i>
+                کوئی ریکارڈ نہیں ملا۔
+            </td></tr>`;
+            tfoot.innerHTML = "";
+            return;
+        }
+
+        tbody.innerHTML = filtered.map((item, idx) => {
+            let formattedDate = "";
+            if (item.wazahatDate) {
+                try {
+                    const dObj = new Date(item.wazahatDate);
+                    formattedDate = `<div class="text-[10px] text-emerald-700 font-sans mt-1 text-left flex items-center gap-1 justify-start" dir="ltr"><i class="far fa-clock"></i> ${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</div>`;
+                } catch(e) {}
+            }
+
+            const safeDocId = item.docId;
+
+            const wazahatCell = item.hasWazahat ? `
+                <div class="flex flex-col gap-1.5 text-right">
+                    <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2.5 rounded-lg shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
+                        <div class="whitespace-pre-wrap">${item.wazahatText}</div>
+                        ${formattedDate}
+                    </div>
+                    <button onclick="deleteWazahat('${safeDocId}', '${item.keyToDelete}', ${item.isLegacy})" class="self-end text-[11px] bg-white hover:bg-rose-600 text-rose-600 hover:text-white px-2.5 py-1 rounded-md border border-rose-200 transition-colors shadow-2xs font-sans font-bold flex items-center gap-1 mt-0.5 no-print">
+                        <i class="fas fa-trash-alt text-[10px]"></i> Reset
+                    </button>
+                </div>` : `
+                <div class="flex flex-col items-center justify-center py-2">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                        <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                        منتظر (Pending...)
+                    </span>
+                </div>`;
+
+            const zimmedarCell = item.hasComment ? `
+                <div class="flex flex-col gap-1 text-right">
+                    <div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2.5 rounded-lg text-xs urdu-font leading-relaxed shadow-2xs text-right whitespace-pre-wrap" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
+                        ${item.zimmedarComment}
+                    </div>
+                    <button onclick="addZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="self-end text-[10px] text-indigo-600 hover:text-indigo-800 font-sans font-bold no-print mt-0.5 flex items-center gap-1">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                </div>` : `
+                <div class="flex flex-col items-center justify-center py-2">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                        تبصرہ باقی ہے
+                    </span>
+                    <button onclick="addZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="mt-1 text-[11px] bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white px-2.5 py-1 rounded border border-indigo-200 font-sans font-bold no-print transition-colors">
+                        <i class="fas fa-plus mr-1"></i> Add Comment
+                    </button>
+                </div>`;
+
+            const actionCell = `
+                <button onclick="sendWazahatLink('${safeDocId}', '${item.teacher}', '${item.subject}', '${item.percVal.toFixed(1)}', '${item.kaifiyat}', '${item.darjah}')" 
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 mx-auto shadow-sm transition-colors whitespace-nowrap" title="WhatsApp Notice Bhejein">
+                    <i class="fab fa-whatsapp text-sm"></i> لنک
+                </button>`;
+
+            return `
+                <tr class="hover:bg-indigo-50/40 border-b border-slate-200 text-center transition-colors ${item.hasWazahat ? 'bg-white' : 'bg-rose-50/15'}">
+                    <td class="p-3 border border-slate-200 font-bold font-sans text-slate-700 bg-slate-50/60 text-xs">${idx + 1}</td>
+                    <td class="p-3 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-base leading-snug" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.jamia}</td>
+                    <td class="p-3 border border-slate-200 urdu-font font-bold text-blue-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.teacher}</td>
+                    <td class="p-2.5 border border-slate-200 text-center">
+                        <div class="font-bold urdu-font text-slate-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.subject}</div>
+                        <div class="text-[12px] font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.darjah}</div>
+                    </td>
+                    <td class="p-3 border border-slate-200 text-center font-black font-sans text-sm text-rose-700 bg-rose-50/30">${item.percVal.toFixed(1)}%</td>
+                    <td class="p-3 border border-slate-200 text-center">
+                        <span class="px-3 py-1 rounded-full text-xs font-bold urdu-font inline-block shadow-2xs" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
+                            ${item.kaifiyat}
+                        </span>
+                    </td>
+                    <td class="p-3 border border-slate-200 min-w-[280px] text-right">${wazahatCell}</td>
+                    <td class="p-3 border border-slate-200 min-w-[200px] text-right">${zimmedarCell}</td>
+                    <td class="p-3 border border-slate-200 text-center no-print">${actionCell}</td>
+                </tr>`;
+        }).join('');
+
+        const filteredSub = filtered.filter(f => f.hasWazahat).length;
+        const filteredPen = filtered.length - filteredSub;
+        const filteredRate = filtered.length > 0 ? (filteredSub / filtered.length) * 100 : 0;
+
+        const filteredCom = filtered.filter(f => f.hasComment).length;
+        const filteredComPen = filtered.length - filteredCom;
+        const filteredComRate = filtered.length > 0 ? (filteredCom / filtered.length) * 100 : 0;
+
+        tfoot.innerHTML = `
+            <tr class="bg-slate-900 text-white font-bold text-center text-sm urdu-font border-t-2 border-slate-700">
+                <td colspan="4" class="p-3 text-right pr-4 font-sans font-bold">TOTAL SUMMARY:</td>
+                <td class="p-3 font-sans text-amber-400 font-black text-base">${filtered.length}</td>
+                <td class="p-3 text-center">-</td>
+                <td class="p-3 text-emerald-300 font-sans font-bold text-right text-xs">
+                    <div>Wazahat Aagayi: ${filteredSub} (${filteredRate.toFixed(1)}%)</div>
+                    <div class="text-rose-300 font-normal">Pending: ${filteredPen}</div>
+                </td>
+                <td class="p-3 text-indigo-300 font-sans font-bold text-right text-xs">
+                    <div>Comments: ${filteredCom} (${filteredComRate.toFixed(1)}%)</div>
+                    <div class="text-amber-300 font-normal">Pending: ${filteredComPen}</div>
+                </td>
+                <td class="p-3 text-center no-print">-</td>
+            </tr>`;
+    };
+
+    renderFilteredRows();
+
+    // Setup Event Handlers for Toolbar
+    const searchInput = document.getElementById('wazahat-live-search');
+    const statusFilter = document.getElementById('wazahat-status-filter');
+    const resetBtn = document.getElementById('wazahat-reset-filter-btn');
+
+    if (searchInput) searchInput.oninput = renderFilteredRows;
+    if (statusFilter) statusFilter.onchange = renderFilteredRows;
+    if (resetBtn) {
+        resetBtn.onclick = () => {
+            if (searchInput) searchInput.value = '';
+            if (statusFilter) statusFilter.value = 'all';
+            renderFilteredRows();
+        };
+    }
 }
 
-            tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
+            if (layoutLevel !== 'wazahat') {
+                tbody.innerHTML = rowsHtml || `<tr><td colspan="15" class="py-10 text-red-500 font-bold bg-white text-center">کوئی ریکارڈ نہیں ملا۔</td></tr>`;
+            }
             subtitle.textContent = `${examType} | سال: ${examYear}`;
             loader.classList.add('hidden');
             reportArea.classList.remove('hidden');
 
-           document.getElementById('ra-download-excel').onclick = () => {
-    // Check karein ke XLSX library load hui hai ya nahi
-    if (window.XLSX) {
-        const table = document.getElementById('ra-data-table');
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Analysis" });
-        XLSX.writeFile(wb, `Result_${layoutLevel}_${examYear}.xlsx`);
-    } else {
-        alert("Excel library (SheetJS) load nahi hui. Internet connection check karein.");
-    }
-};
+            // 📥 1. EXCEL EXPORT
+            document.getElementById('ra-download-excel').onclick = () => {
+                if (window.XLSX) {
+                    const table = document.getElementById('ra-data-table');
+                    const wb = XLSX.utils.table_to_book(table, { sheet: "Analysis" });
+                    XLSX.writeFile(wb, `Result_${layoutLevel}_${examYear}.xlsx`);
+                } else {
+                    alert("Excel library (SheetJS) load nahi hui. Internet connection check karein.");
+                }
+            };
 
+            // 🖼️ 2. IMAGE EXPORT (Clean high-res without cuts)
             document.getElementById('ra-download-image').onclick = async () => {
-                if(window.html2canvas) {
-                    const canvas = await window.html2canvas(document.getElementById('ra-report-area'), { scale: 2, useCORS: true });
-                    const link = document.createElement("a");
-                    link.download = `Result_${layoutLevel}_${examYear}.png`;
-                    link.href = canvas.toDataURL();
-                    link.click();
-                } else { alert("Download library load nahi hui."); }
+                if (window.html2canvas) {
+                    const btn = document.getElementById('ra-download-image');
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Image...`;
+                    btn.disabled = true;
+
+                    try {
+                        const reportArea = document.getElementById('ra-report-area');
+                        const prevOverflow = reportArea.style.overflow;
+                        reportArea.style.overflow = 'visible';
+                        const tableWrapper = reportArea.querySelector('.overflow-x-auto');
+                        const prevWrapperOverflow = tableWrapper ? tableWrapper.style.overflow : '';
+                        if (tableWrapper) tableWrapper.style.overflow = 'visible';
+
+                        const canvas = await window.html2canvas(reportArea, { 
+                            scale: 2.2, 
+                            useCORS: true,
+                            backgroundColor: '#ffffff',
+                            windowWidth: Math.max(document.documentElement.clientWidth, reportArea.scrollWidth + 100),
+                            ignoreElements: (el) => el.classList && (el.classList.contains('no-print') || el.hasAttribute('data-html2canvas-ignore'))
+                        });
+
+                        reportArea.style.overflow = prevOverflow;
+                        if (tableWrapper) tableWrapper.style.overflow = prevWrapperOverflow;
+
+                        const link = document.createElement("a");
+                        link.download = `Result_${layoutLevel}_${examYear}.png`;
+                        link.href = canvas.toDataURL("image/png");
+                        link.click();
+                    } catch (e) {
+                        alert("Image download error: " + e.message);
+                    } finally {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                } else { 
+                    alert("Download library load nahi hui."); 
+                }
+            };
+
+            // 📄 3. PDF EXPORT (High-Res Multi-Page Landscape Crisp Text)
+            document.getElementById('ra-download-pdf').onclick = async () => {
+                const btn = document.getElementById('ra-download-pdf');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> PDF...`;
+                btn.disabled = true;
+
+                try {
+                    let jsPDFClass = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+                    if (!jsPDFClass) {
+                        await new Promise((resolve, reject) => {
+                            const s = document.createElement('script');
+                            s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+                            s.onload = resolve;
+                            s.onerror = reject;
+                            document.head.appendChild(s);
+                        });
+                        jsPDFClass = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+                    }
+
+                    if (!jsPDFClass || !window.html2canvas) {
+                        alert("PDF library load nahi ho saki. Internet connection check karein.");
+                        return;
+                    }
+
+                    const reportArea = document.getElementById('ra-report-area');
+                    
+                    // Temporarily allow full width so columns don't get clipped
+                    const prevOverflow = reportArea.style.overflow;
+                    reportArea.style.overflow = 'visible';
+                    const tableWrapper = reportArea.querySelector('.overflow-x-auto');
+                    const prevWrapperOverflow = tableWrapper ? tableWrapper.style.overflow : '';
+                    if (tableWrapper) tableWrapper.style.overflow = 'visible';
+
+                    const canvas = await window.html2canvas(reportArea, {
+                        scale: 2.2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        windowWidth: Math.max(document.documentElement.clientWidth, reportArea.scrollWidth + 100),
+                        ignoreElements: (el) => {
+                            return el.classList && (el.classList.contains('no-print') || el.hasAttribute('data-html2canvas-ignore'));
+                        }
+                    });
+
+                    // Restore container overflow
+                    reportArea.style.overflow = prevOverflow;
+                    if (tableWrapper) tableWrapper.style.overflow = prevWrapperOverflow;
+
+                    const pdf = new jsPDFClass({
+                        orientation: 'landscape',
+                        unit: 'mm',
+                        format: 'a4'
+                    });
+
+                    const pdfPageWidth = 297;
+                    const pdfPageHeight = 210;
+                    const margin = 8;
+                    const usableWidth = pdfPageWidth - (margin * 2);
+                    const usableHeight = pdfPageHeight - (margin * 2);
+
+                    const mmPerPx = usableWidth / canvas.width;
+                    const totalHeightMm = canvas.height * mmPerPx;
+
+                    if (totalHeightMm <= usableHeight) {
+                        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                        pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, totalHeightMm);
+                    } else {
+                        const sliceHeightPx = usableHeight / mmPerPx;
+                        let renderedHeightPx = 0;
+                        let pageIndex = 0;
+
+                        while (renderedHeightPx < canvas.height) {
+                            if (pageIndex > 0) {
+                                pdf.addPage('a4', 'landscape');
+                            }
+
+                            const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - renderedHeightPx);
+                            const sliceCanvas = document.createElement('canvas');
+                            sliceCanvas.width = canvas.width;
+                            sliceCanvas.height = currentSliceHeightPx;
+
+                            const ctx = sliceCanvas.getContext('2d');
+                            ctx.drawImage(
+                                canvas,
+                                0, renderedHeightPx, canvas.width, currentSliceHeightPx,
+                                0, 0, canvas.width, currentSliceHeightPx
+                            );
+
+                            const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.98);
+                            const sliceHeightMm = currentSliceHeightPx * mmPerPx;
+
+                            pdf.addImage(sliceImgData, 'JPEG', margin, margin, usableWidth, sliceHeightMm);
+
+                            renderedHeightPx += currentSliceHeightPx;
+                            pageIndex++;
+                        }
+                    }
+
+                    pdf.save(`Result_${layoutLevel}_${examYear}.pdf`);
+                } catch (err) {
+                    console.error("PDF generation error:", err);
+                    alert("PDF download me masla aaya: " + err.message);
+                } finally {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
             };
 
         } catch (err) {
