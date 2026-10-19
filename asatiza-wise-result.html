@@ -18,6 +18,15 @@
 </head>
 <body class="bg-gray-100 p-2 sm:p-6">
 
+<!-- 🌟 Global Loading Overlay -->
+<div id="page-loader" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center transition-opacity duration-300">
+  <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border border-teal-100 max-w-sm w-[90%] text-center">
+    <div class="w-14 h-14 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin"></div>
+    <div id="loader-title" class="font-bold text-teal-900 text-xl font-['Jameel_Noori_Nastaleeq',serif]">ڈیٹا لوڈ ہو رہا ہے...</div>
+    <div id="loader-sub" class="text-xs text-gray-500 font-sans">براہ کرم چند لمحے انتظار فرمائیں</div>
+  </div>
+</div>
+
 <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden border-t-4 border-teal-700">
   <div class="bg-white p-4 flex justify-between items-center border-b">
     <div class="flex items-center gap-4">
@@ -86,6 +95,28 @@ const examYear = params.get('examYear') || '';
 const userRole = params.get('role') || 'user';
 let currentDocId = null;
 let isLocked = false;
+
+window.showLoader = function(title = "ڈیٹا لوڈ ہو رہا ہے...", sub = "براہ کرم چند لمحے انتظار فرمائیں") {
+  const loader = document.getElementById('page-loader');
+  if (!loader) return;
+  const titleEl = document.getElementById('loader-title');
+  const subEl = document.getElementById('loader-sub');
+  if (titleEl) titleEl.innerText = title;
+  if (subEl) subEl.innerText = sub;
+  loader.style.display = 'flex';
+  loader.classList.remove('opacity-0', 'pointer-events-none');
+};
+
+window.hideLoader = function() {
+  const loader = document.getElementById('page-loader');
+  if (!loader) return;
+  loader.classList.add('opacity-0', 'pointer-events-none');
+  setTimeout(() => {
+    if (loader.classList.contains('opacity-0')) {
+      loader.style.display = 'none';
+    }
+  }, 300);
+};
 
 // 🔹 EXAM KE HISAAB SE SEMESTER NIKALNA 🔹
 let targetSemester = "1"; 
@@ -269,18 +300,15 @@ async function loadExcelData() {
 }
 
 function checkClassMatch(class1, class2) {
-  let c1 = cleanUrdu(class1); let c2 = cleanUrdu(class2);
-  if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
+  let c1 = cleanUrdu(class1).replace(/^درجہ\s*/, '').trim();
+  let c2 = cleanUrdu(class2).replace(/^درجہ\s*/, '').trim();
+  if (c1 === c2) return true;
   if (window.academicConfigData && window.academicConfigData.classes) {
       for (let c of window.academicConfigData.classes) {
-          let urdu = cleanUrdu(c.classNameUrdu); let eng = cleanUrdu(c.classNameEng);
-          if (!urdu && !eng) continue;
-          let match1 = false;
-          if (urdu) match1 = (c1 === urdu || c1.includes(urdu));
-          if (eng && !match1) match1 = (c1 === eng || c1.includes(eng));
-          let match2 = false;
-          if (urdu) match2 = (c2 === urdu || c2.includes(urdu));
-          if (eng && !match2) match2 = (c2 === eng || c2.includes(eng));
+          let urdu = cleanUrdu(c.classNameUrdu).replace(/^درجہ\s*/, '').trim();
+          let eng = cleanUrdu(c.classNameEng).trim();
+          let match1 = (urdu && c1 === urdu) || (eng && c1 === eng);
+          let match2 = (urdu && c2 === urdu) || (eng && c2 === eng);
           if (match1 && match2) return true;
       }
   }
@@ -289,9 +317,11 @@ function checkClassMatch(class1, class2) {
 
 function findExactExcelClass(karkClass) {
   if(!karkClass) return null;
+  const cleanKark = cleanUrdu(karkClass).replace(/^درجہ\s*/, '').trim();
   for (let exClass in window.excelSubjectsData) {
       if (!exClass || exClass.trim() === '') continue;
-      if (checkClassMatch(karkClass, exClass)) {
+      const cleanEx = cleanUrdu(exClass).replace(/^درجہ\s*/, '').trim();
+      if (cleanKark === cleanEx) {
           return exClass; 
       }
   }
@@ -394,30 +424,11 @@ window.periodRowHTML = function(p={}) {
 
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
-  let matchedExClass = null;
 
   if (hasExcelData) {
-      // 1. Exact match pehle check karein
       for (let exClass in window.excelSubjectsData) {
-          if (exClass === cVal) {
-              classFound = true;
-              matchedExClass = exClass;
-              break;
-          }
-      }
-      // 2. Agar exact match nahi mila to smart matching check karein (e.g. 'ابتدائیہ کی' -> 'ابتدائیہ')
-      if (!classFound && cVal && cVal !== 'دیگر (Other)') {
-          for (let exClass in window.excelSubjectsData) {
-              if (checkClassMatch(exClass, cVal)) {
-                  classFound = true;
-                  matchedExClass = exClass;
-                  break;
-              }
-          }
-      }
-
-      for (let exClass in window.excelSubjectsData) {
-          let selected = (exClass === matchedExClass) ? 'selected' : '';
+          let selected = (exClass === cVal) ? 'selected' : '';
+          if (exClass === cVal) classFound = true;
           classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
       }
   } else {
@@ -425,12 +436,12 @@ window.periodRowHTML = function(p={}) {
   }
   
   let isCustomClass = cVal && !classFound && cVal !== 'دیگر (Other)';
-  if (isCustomClass) classOpts += `<option value="${cVal}" selected class="text-gray-500 font-bold">${cVal}</option>`;
+  if (isCustomClass) classOpts += `<option value="${cVal}" selected class="text-indigo-700 font-bold">${cVal}</option>`;
   
   let isOtherClassSel = cVal === 'دیگر (Other)';
   classOpts += `<option value="دیگر (Other)" ${isOtherClassSel ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
 
-  let activeClass = classFound ? (matchedExClass || cVal) : cVal;
+  let activeClass = classFound ? cVal : '';
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
   let subjFound = false;
   if (classFound && window.excelSubjectsData[activeClass]) {
@@ -450,7 +461,7 @@ window.periodRowHTML = function(p={}) {
 
   let isCustomSubj = sVal && !subjFound && sVal !== 'دیگر (Other)';
   if (isCustomSubj) {
-      subjOpts += `<option value="${sVal}" selected class="text-gray-500 font-bold">${sVal}</option>`;
+      subjOpts += `<option value="${sVal}" selected class="text-indigo-700 font-bold">${sVal}</option>`;
   }
   
   let isOtherSubjSel = sVal === 'دیگر (Other)';
@@ -585,6 +596,13 @@ window.saveData = async function() {
       return;
   }
 
+  showLoader("ڈیٹا محفوظ ہو رہا ہے...", "براہ کرم چند لمحے انتظار فرمائیں");
+  const saveBtn = document.querySelector('button[onclick="saveData()"]');
+  if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+  }
+
   const allTeachers = [];
   document.querySelectorAll(".border-b.hover\\:bg-gray-50").forEach(tr => {
     const tName = tr.querySelector('input[placeholder="نام استاد"]')?.value;
@@ -634,7 +652,14 @@ window.saveData = async function() {
     }
     alert("الحمدللہ! رزلٹ کامیابی سے محفوظ ہو گیا ہے۔ ✅");
     location.reload();
-  } catch (e) { alert("Save error: " + e.message); }
+  } catch (e) { 
+    hideLoader();
+    if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+    alert("Save error: " + e.message); 
+  }
 };
 
 // ✅ LOCK/UNLOCK FUNCTION LOGIC
@@ -649,6 +674,7 @@ window.toggleLock = async function() {
     
     if (!confirm(confirmMsg)) return;
 
+    showLoader("لاک اسٹیٹس تبدیل ہو رہا ہے...", "براہ کرم چند لمحے انتظار فرمائیں");
     try {
         await updateDoc(doc(db, "asatiza_wise_results", currentDocId), {
             isLocked: newLockStatus
@@ -656,6 +682,7 @@ window.toggleLock = async function() {
         alert(newLockStatus ? "فارم کامیابی کے ساتھ لاک ہو گیا ہے! 🔒" : "فارم اب انلاک کر دیا گیا ہے! 🔓");
         location.reload(); // Refresh to apply changes dynamically
     } catch(e) {
+        hideLoader();
         alert("Error updating lock status: " + e.message);
     }
 };
@@ -700,47 +727,57 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('display-year').innerText = decodeURIComponent(examYear);
 
   onAuthStateChanged(auth, async (user) => {
-      await loadAcademicConfig();
-      await loadExcelData(); 
+      showLoader("ڈیٹا لوڈ ہو رہا ہے...", "کلاسز اور اساتذہ کا ڈیٹا حاصل کیا جا رہا ہے");
+      try {
+          await loadAcademicConfig();
+          await loadExcelData(); 
 
-      const savedDataExists = await loadSavedFirestoreData();
-      
-      // Data load hone ke baad lock state aur admin status apply karna
-      applyLockAndAdminState();
-
-      if (savedDataExists) return; 
-
-      const karkardagiTeachers = await loadKarkardagiTeachers(user); 
-
-      if (karkardagiTeachers.length > 0) {
-          karkardagiTeachers.forEach(t => {
-              let periodsForUI = [];
-              const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
-              const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className || p.class || '').filter(c => c !== ''))];
-
-              uniqueClasses.forEach(karkClass => {
-                  let excelMatchedClass = findExactExcelClass(karkClass);
-                  periodsForUI.push({
-                      class: excelMatchedClass || karkClass, 
-                      subject: '', 
-                      total: '', passed: '', percentage: '', kaifiyat: ''
-                  });
-              });
-              
-              if(periodsForUI.length === 0) periodsForUI = [{}];
-              window.addTeacherRow(t.name, periodsForUI);
-          });
-      } else {
-          window.addTeacherRow(); 
-      }
-
-      setTimeout(() => {
-          document.querySelectorAll('.total-inp').forEach(inp => {
-              if (inp.value) window.calcRow(inp.closest('tr'));
-          });
-          // Ek baar wapas state enforce karo taake newly added default rows bhi lock ho jayein
+          const savedDataExists = await loadSavedFirestoreData();
+          
+          // Data load hone ke baad lock state aur admin status apply karna
           applyLockAndAdminState();
-      }, 800);
+
+          if (savedDataExists) {
+              hideLoader();
+              return; 
+          }
+
+          const karkardagiTeachers = await loadKarkardagiTeachers(user); 
+
+          if (karkardagiTeachers.length > 0) {
+              karkardagiTeachers.forEach(t => {
+                  let periodsForUI = [];
+                  const filteredPeriods = (t.periods || []).filter(p => p.semester === targetSemester);
+                  const uniqueClasses = [...new Set(filteredPeriods.map(p => p.className || p.class || '').filter(c => c !== ''))];
+
+                  uniqueClasses.forEach(karkClass => {
+                      let excelMatchedClass = findExactExcelClass(karkClass);
+                      periodsForUI.push({
+                          class: excelMatchedClass || karkClass, 
+                          subject: '', 
+                          total: '', passed: '', percentage: '', kaifiyat: ''
+                      });
+                  });
+                  
+                  if(periodsForUI.length === 0) periodsForUI = [{}];
+                  window.addTeacherRow(t.name, periodsForUI);
+              });
+          } else {
+              window.addTeacherRow(); 
+          }
+
+          setTimeout(() => {
+              document.querySelectorAll('.total-inp').forEach(inp => {
+                  if (inp.value) window.calcRow(inp.closest('tr'));
+              });
+              // Ek baar wapas state enforce karo taake newly added default rows bhi lock ho jayein
+              applyLockAndAdminState();
+              hideLoader();
+          }, 800);
+      } catch (err) {
+          console.error("Initialization error:", err);
+          hideLoader();
+      }
   });
 });
 </script>
