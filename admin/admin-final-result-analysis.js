@@ -1,7 +1,7 @@
 // ✅ FINAL FIXED: ADMIN RESULT ANALYSIS (WITH STATE FILTER & STATE SUMMARY)
 
 import {
-    collection, query, where, getDocs, orderBy, doc, setDoc, writeBatch, deleteDoc
+    collection, query, where, getDocs, orderBy, doc, setDoc, getDoc, writeBatch, deleteDoc
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 🔹 HELPERS: Status & Colors
@@ -1341,28 +1341,49 @@ export async function initAdminResultAnalysis(db, containerId) {
                 const context = getJamiaContext(j.name);
                 const ownerUserId = getOwnerId(j.name);
                 const origOwner = getOwnerId(j.origName);
-                const subjAgg = {};
+
+                // Existing excel_subjects_data preserve/merge karne ke liye load karein
+                let existingClasses = {};
+                if (p.mode === 'edit') {
+                    try {
+                        const exSnap = await getDoc(doc(db, "excel_subjects_data", sanitizeId(`${j.origName || j.name}_${examYear}_${examType}`)));
+                        if (exSnap.exists()) {
+                            existingClasses = exSnap.data().classes || {};
+                        }
+                    } catch(e) {
+                        console.warn("Could not load existing excel_subjects_data:", e);
+                    }
+                }
+
                 let order = 0;
                 for (const c of j.classes) {
-    // 🌟 SMART SAVE LOGIC 🌟
-    // Agar mode edit hai, aur is class me (ya iske jamia ke naam me) koi tabdeeli nahi hui, to ise Firebase par dobara save na karein!
-    if (p.mode === 'edit' && !c.isEdited && !j.isEdited && !c.deleted) {
-        continue; // Isko skip kar ke agli class par jao (Time bachega)
-    }
-
-    const oldClassId = sanitizeId(`${origOwner}_${j.origName}_${examYear}_${examType}_${c.origName}`);
-    const newClassId = sanitizeId(`${ownerUserId}_${j.name}_${examYear}_${examType}_${c.name}`);
-    // ...
+                    const oldClassId = sanitizeId(`${origOwner}_${j.origName}_${examYear}_${examType}_${c.origName}`);
+                    const newClassId = sanitizeId(`${ownerUserId}_${j.name}_${examYear}_${examType}_${c.name}`);
                     const oldStudId = sanitizeId(`${j.origName}_${examYear}_${examType}_${c.origName}`);
                     const newStudId = sanitizeId(`${j.name}_${examYear}_${examType}_${c.name}`);
-                    if (c.deleted || oldClassId !== newClassId) {
+
+                    if (c.deleted) {
+                        delete existingClasses[c.name];
+                        if (c.origName) delete existingClasses[c.origName];
+                        await deleteDoc(doc(db, "class_wise_results", oldClassId));
+                        await deleteDoc(doc(db, "student_results", oldStudId));
+                        continue;
+                    }
+
+                    if (oldClassId !== newClassId) {
                         await deleteDoc(doc(db, "class_wise_results", oldClassId));
                         await deleteDoc(doc(db, "student_results", oldStudId));
                     }
-                    if (c.deleted) continue;
 
+                    // Hamesha class ka subject summary compute karein taake excel_subjects_data se classes gayab na hon
                     const { summary, subj } = computeClassSummary(c);
-                    subjAgg[c.name] = subj;
+                    existingClasses[c.name] = subj;
+
+                    // 🌟 SMART SAVE LOGIC 🌟
+                    // Agar mode edit hai, aur is class me (ya iske jamia ke naam me) koi tabdeeli nahi hui, to student_results aur class_wise_results ko dobara Firebase par save na karein
+                    if (p.mode === 'edit' && !c.isEdited && !j.isEdited) {
+                        continue;
+                    }
 
                     await setDoc(doc(db, "class_wise_results", newClassId), {
                         uid: ownerUserId, userId: ownerUserId, userName: context.userName, region: context.region,
@@ -1378,9 +1399,9 @@ export async function initAdminResultAnalysis(db, containerId) {
                 if (j.origName !== j.name) {
                     await deleteDoc(doc(db, "excel_subjects_data", sanitizeId(`${j.origName}_${examYear}_${examType}`)));
                 }
-                if (Object.keys(subjAgg).length > 0) {
+                if (Object.keys(existingClasses).length > 0) {
                     await setDoc(doc(db, "excel_subjects_data", sanitizeId(`${j.name}_${examYear}_${examType}`)), {
-                        jamia: j.name, examType, examYear, classes: subjAgg, timestamp: Date.now()
+                        jamia: j.name, examType, examYear, classes: existingClasses, timestamp: Date.now()
                     });
                 }
             }
