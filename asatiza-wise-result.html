@@ -65,7 +65,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 // ✅ updateDoc import add kiya gaya hai
-import { getFirestore, collection, addDoc, getDocs, query, where, getDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, query, where, getDoc, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"; 
 
 const firebaseConfig = {
@@ -99,6 +99,75 @@ if (decodedExamType.includes("ششماہی")) {
 window.excelSubjectsData = {}; 
 window.academicConfigData = null;
 
+const sanitizeId = (s) => String(s).replace(/\//g, '-').replace(/\s+/g, '_');
+
+// 🔹 SMART STRING CLEANING & NORMALIZATION 🔹
+function cleanUrdu(str) {
+  if(!str) return "";
+  return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+}
+
+const norm = s => cleanUrdu(String(s || '')).replace(/[–—−]/g, '-').replace(/\s/g, '');
+
+// 🔹 STUDENT RESULT DOCUMENT SE SUBJECT STATS COMPUTE KARNA 🔹
+function computeSubjectsFromStudentDoc(d) {
+    const subj = {};
+    const keys = d.keys || [];
+    const subjects = d.subjects || {};
+    const colMap = d.colMap || {};
+    const students = d.students || [];
+
+    const parseMarks = (cell) => {
+        const s = String(cell ?? '').trim();
+        if (s.includes('+')) {
+            const parts = s.split('+').map(parseFloat);
+            return parts.every(n => !isNaN(n)) ? parts.reduce((a, b) => a + b, 0) : NaN;
+        }
+        return parseFloat(s);
+    };
+
+    if (keys.length > 0) {
+        keys.forEach(num => {
+            const sc = subjects[num];
+            const key = colMap[num];
+            if (!sc || !key) return;
+            const sName = typeof sc === 'object' ? sc.name : sc;
+            if (sName && !subj[sName]) subj[sName] = { total: 0, passed: 0 };
+        });
+
+        students.forEach(st => {
+            keys.forEach(num => {
+                const sc = subjects[num];
+                const key = colMap[num];
+                if (!sc || !key) return;
+                const sName = typeof sc === 'object' ? sc.name : sc;
+                const passMarks = typeof sc === 'object' && sc.pass !== undefined ? sc.pass : 40;
+                if (!sName) return;
+                if (!subj[sName]) subj[sName] = { total: 0, passed: 0 };
+
+                const cellStr = String(st[key] ?? '').trim();
+                const low = cellStr.toLowerCase();
+                const isAbs = cellStr === 'غ' || cellStr === 'غائب' || low === 'a' || low === 'absent';
+                const isTextGhaib = isAbs || cellStr === '';
+                const isTextNakam = cellStr === 'ناکام' || low === 'fail' || low === 'f';
+                if (!isTextGhaib) {
+                    subj[sName].total++;
+                    const m = parseMarks(st[key]);
+                    if (!isNaN(m) && m >= passMarks) subj[sName].passed++;
+                    else if (isNaN(m) && !isTextNakam) subj[sName].passed++;
+                }
+            });
+        });
+    } else if (typeof subjects === 'object') {
+        Object.values(subjects).forEach(sc => {
+            const sName = typeof sc === 'object' ? sc.name : sc;
+            if (sName && !subj[sName]) subj[sName] = { total: 0, passed: 0 };
+        });
+    }
+
+    return subj;
+}
+
 // 🔹 1. Load Admin Academic Config
 async function loadAcademicConfig() {
   try {
@@ -107,32 +176,96 @@ async function loadAcademicConfig() {
   } catch(e){}
 }
 
-// 🔹 2. Load Excel Data
+// 🔹 2. Load Excel Data & Auto-Recover Missing Classes
 async function loadExcelData() {
   try {
-      const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName), where("examType", "==", examType), where("examYear", "==", examYear));
-      const snap = await getDocs(q);
-      console.log("Docs mile:", snap.size);
-snap.docs.forEach(d => console.log(d.id, d.data().timestamp, (d.data().data || []).length, JSON.stringify(d.data().examType)));
-    const x = await getDoc(doc(db, "asatiza_wise_results", "xJK084WVqr7yfj5GYDWH"));
-const d = x.data();
-["jamia","examType","examYear"].forEach(k => {
-  const v = String(d[k]);
-  console.log(k, JSON.stringify(v), v.length, [...v].map(c => c.charCodeAt(0).toString(16)).join(' '));
-});
-      if(!snap.empty) {
-          window.excelSubjectsData = snap.docs[0].data().classes || {};
+      window.excelSubjectsData = {};
+      const targetExamType = norm(examType);
+      const targetExamYear = norm(examYear);
+      let excelDocId = sanitizeId(`${jamiaName}_${examYear}_${examType}`);
+
+      // A) excel_subjects_data se load karein
+      try {
+          const q = query(collection(db, "excel_subjects_data"), where("jamia", "==", jamiaName));
+          const snap = await getDocs(q);
+          const matchedDoc = snap.docs.find(d => {
+              const x = d.data();
+              return norm(x.examType) === targetExamType && norm(x.examYear) === targetExamYear;
+          });
+          if (matchedDoc) {
+              excelDocId = matchedDoc.id;
+              window.excelSubjectsData = Object.assign({}, matchedDoc.data().classes || {});
+          }
+      } catch (e) {
+          console.warn("Excel data direct load error:", e);
+      }
+
+      // B) student_results se classes aur subjects verify / auto-recover karein
+      let recoveredAny = false;
+      try {
+          const qStud = query(collection(db, "student_results"), where("jamia", "==", jamiaName));
+          const snapStud = await getDocs(qStud);
+          const matchedStuds = snapStud.docs.filter(d => {
+              const x = d.data();
+              return norm(x.examType) === targetExamType && norm(x.examYear) === targetExamYear;
+          });
+
+          matchedStuds.forEach(docSnap => {
+              const d = docSnap.data();
+              const className = d.darjah;
+              if (!className) return;
+
+              if (!window.excelSubjectsData[className] || Object.keys(window.excelSubjectsData[className]).length === 0) {
+                  const computedSubj = computeSubjectsFromStudentDoc(d);
+                  if (Object.keys(computedSubj).length > 0) {
+                      window.excelSubjectsData[className] = computedSubj;
+                      recoveredAny = true;
+                  }
+              }
+          });
+      } catch (e) {
+          console.warn("student_results check error:", e);
+      }
+
+      // C) class_wise_results se bhi missing classes add karein (taake koi filled class dropdown se miss na ho)
+      try {
+          const qClass = query(collection(db, "class_wise_results"), where("jamia", "==", jamiaName));
+          const snapClass = await getDocs(qClass);
+          const matchedClasses = snapClass.docs.filter(d => {
+              const x = d.data();
+              return norm(x.examType) === targetExamType && norm(x.examYear) === targetExamYear;
+          });
+
+          matchedClasses.forEach(docSnap => {
+              const d = docSnap.data();
+              const className = d.darjah;
+              if (className && !window.excelSubjectsData[className]) {
+                  window.excelSubjectsData[className] = {};
+                  recoveredAny = true;
+              }
+          });
+      } catch (e) {
+          console.warn("class_wise_results check error:", e);
+      }
+
+      // D) Agar missing classes recover hui hain to Firestore me excel_subjects_data ko auto-heal / update karein
+      if (recoveredAny && Object.keys(window.excelSubjectsData).length > 0) {
+          try {
+              await setDoc(doc(db, "excel_subjects_data", excelDocId), {
+                  jamia: jamiaName,
+                  examType,
+                  examYear,
+                  classes: window.excelSubjectsData,
+                  timestamp: Date.now()
+              }, { merge: true });
+              console.log("excel_subjects_data auto-repaired successfully in Firestore!");
+          } catch (healErr) {
+              console.warn("Could not write healed excel_subjects_data to Firestore:", healErr);
+          }
       }
   } catch(e) { 
       console.error("Excel Data Load Error:", e);
-      alert("⚠️ فائر بیس رولز کا مسئلہ!\nڈیٹا بیس میں 'excel_subjects_data' کو ریڈ کرنے کی اجازت نہیں ہے۔ براہ کرم رولز اپڈیٹ کریں۔");
   }
-}
-
-// 🔹 3. SMART CLASS MATCHING LOGIC
-function cleanUrdu(str) {
-  if(!str) return "";
-  return String(str).toLowerCase().replace(/\s+/g, ' ').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/آ/g, 'ا').replace(/ة/g, 'ہ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 }
 
 function checkClassMatch(class1, class2) {
@@ -261,10 +394,30 @@ window.periodRowHTML = function(p={}) {
 
   let classOpts = '<option value="">کلاس منتخب کریں</option>';
   let classFound = false;
+  let matchedExClass = null;
+
   if (hasExcelData) {
-      for(let exClass in window.excelSubjectsData) {
-          let selected = (exClass === cVal) ? 'selected' : '';
-          if (exClass === cVal) classFound = true;
+      // 1. Exact match pehle check karein
+      for (let exClass in window.excelSubjectsData) {
+          if (exClass === cVal) {
+              classFound = true;
+              matchedExClass = exClass;
+              break;
+          }
+      }
+      // 2. Agar exact match nahi mila to smart matching check karein (e.g. 'ابتدائیہ کی' -> 'ابتدائیہ')
+      if (!classFound && cVal && cVal !== 'دیگر (Other)') {
+          for (let exClass in window.excelSubjectsData) {
+              if (checkClassMatch(exClass, cVal)) {
+                  classFound = true;
+                  matchedExClass = exClass;
+                  break;
+              }
+          }
+      }
+
+      for (let exClass in window.excelSubjectsData) {
+          let selected = (exClass === matchedExClass) ? 'selected' : '';
           classOpts += `<option value="${exClass}" ${selected}>${exClass}</option>`;
       }
   } else {
@@ -277,10 +430,11 @@ window.periodRowHTML = function(p={}) {
   let isOtherClassSel = cVal === 'دیگر (Other)';
   classOpts += `<option value="دیگر (Other)" ${isOtherClassSel ? 'selected' : ''} class="text-blue-600 font-bold">دیگر (Other)</option>`;
 
+  let activeClass = classFound ? (matchedExClass || cVal) : cVal;
   let subjOpts = '<option value="" selected>مضمون منتخب کریں</option>';
   let subjFound = false;
-  if (classFound && window.excelSubjectsData[cVal]) {
-      const subjects = Object.keys(window.excelSubjectsData[cVal]);
+  if (classFound && window.excelSubjectsData[activeClass]) {
+      const subjects = Object.keys(window.excelSubjectsData[activeClass]);
       if(subjects.length === 0) {
           subjOpts += `<option value="" disabled class="text-red-500 font-bold">ایکسل میں مضامین نہیں ملے</option>`;
       } else {
