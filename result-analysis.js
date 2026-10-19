@@ -735,63 +735,63 @@ else if (layoutLevel === 'wazahat') {
 
     // 🌟 Executive Summary Bar & Toolbar HTML (Admin Style)
     const summaryBarHtml = `
-    <div class="summary-bar-wazahat p-4 space-y-4">
+    <div class="summary-bar-wazahat p-3 space-y-3">
         <!-- Top Executive Banner -->
-        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-slate-700 flex flex-col lg:flex-row items-center justify-between gap-4">
+        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 rounded-xl shadow-lg border border-slate-700 flex flex-col lg:flex-row items-center justify-between gap-3">
             <div>
-                <h3 class="text-2xl font-bold tracking-wide flex items-center gap-2 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
-                    <i class="fas fa-clipboard-check text-amber-400 text-2xl"></i>
+                <h3 class="text-xl font-bold tracking-wide flex items-center gap-2 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                    <i class="fas fa-clipboard-check text-amber-400 text-xl"></i>
                     <span>کمزور نتائج اور وضاحت جائزہ</span>
                     <span class="text-xs font-sans font-normal opacity-75">(Wazahat Followup Dashboard)</span>
                 </h3>
-                <p class="text-sm text-slate-300 mt-1 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                <p class="text-xs text-slate-300 mt-0.5 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                     اساتذہ کی موصولہ وضاحتوں اور تعلیمی تبصروں کا تفصیلی جائزہ
                 </p>
             </div>
-            <div class="flex flex-wrap items-center justify-center gap-2.5">
-                <div class="bg-slate-800/90 border border-slate-700 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
-                    <span class="block text-[10px] text-slate-400 font-sans font-bold uppercase tracking-wider">Kul Kamzor</span>
-                    <span class="text-xl font-black text-amber-400 font-sans">${totalCases}</span>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+                <div class="bg-slate-800/90 border border-slate-700 rounded-lg px-3 py-1.5 text-center min-w-[85px] shadow-xs">
+                    <span class="block text-[9px] text-slate-400 font-sans font-bold uppercase tracking-wider">Kul Kamzor</span>
+                    <span class="text-lg font-black text-amber-400 font-sans">${totalCases}</span>
                 </div>
-                <div class="bg-emerald-950/70 border border-emerald-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
-                    <span class="block text-[10px] text-emerald-300 font-sans font-bold uppercase tracking-wider">Wazahat Aagayi</span>
-                    <span class="text-xl font-black text-emerald-400 font-sans">${totalSubmitted}</span>
+                <div class="bg-emerald-950/70 border border-emerald-700/60 rounded-lg px-3 py-1.5 text-center min-w-[85px] shadow-xs">
+                    <span class="block text-[9px] text-emerald-300 font-sans font-bold uppercase tracking-wider">Wazahat Aagayi</span>
+                    <span class="text-lg font-black text-emerald-400 font-sans">${totalSubmitted}</span>
                 </div>
-                <div class="bg-rose-950/70 border border-rose-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
-                    <span class="block text-[10px] text-rose-300 font-sans font-bold uppercase tracking-wider">Wazahat Baqi</span>
-                    <span class="text-xl font-black text-rose-400 font-sans">${totalPending}</span>
+                <div class="bg-rose-950/70 border border-rose-700/60 rounded-lg px-3 py-1.5 text-center min-w-[85px] shadow-xs">
+                    <span class="block text-[9px] text-rose-300 font-sans font-bold uppercase tracking-wider">Wazahat Baqi</span>
+                    <span class="text-lg font-black text-rose-400 font-sans">${totalPending}</span>
                 </div>
-                <div class="bg-teal-950/70 border border-teal-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
-                    <span class="block text-[10px] text-teal-300 font-sans font-bold uppercase tracking-wider">Comment Aagaye</span>
-                    <span class="text-xl font-black text-teal-400 font-sans">${totalCommentAdded}</span>
+                <div class="bg-teal-950/70 border border-teal-700/60 rounded-lg px-3 py-1.5 text-center min-w-[95px] shadow-xs">
+                    <span class="block text-[9px] text-teal-300 font-sans font-bold uppercase tracking-wider">Comment Add Kar Diye</span>
+                    <span class="text-lg font-black text-teal-400 font-sans">${totalCommentAdded}</span>
                 </div>
-                <div class="bg-amber-950/70 border border-amber-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
-                    <span class="block text-[10px] text-amber-300 font-sans font-bold uppercase tracking-wider">Comment Baqi</span>
-                    <span class="text-xl font-black text-amber-400 font-sans">${totalCommentPending}</span>
+                <div class="bg-amber-950/70 border border-amber-700/60 rounded-lg px-3 py-1.5 text-center min-w-[85px] shadow-xs">
+                    <span class="block text-[9px] text-amber-300 font-sans font-bold uppercase tracking-wider">Comment Baqi</span>
+                    <span class="text-lg font-black text-amber-400 font-sans">${totalCommentPending}</span>
                 </div>
-                <div class="bg-indigo-950/80 border border-indigo-700/60 rounded-xl px-3.5 py-2 text-center min-w-[90px] shadow-xs">
-                    <span class="block text-[10px] text-indigo-300 font-sans font-bold uppercase tracking-wider">Wazahat %</span>
-                    <span class="text-xl font-black text-indigo-300 font-sans">${completionRate.toFixed(1)}%</span>
+                <div class="bg-indigo-950/80 border border-indigo-700/60 rounded-lg px-3 py-1.5 text-center min-w-[85px] shadow-xs">
+                    <span class="block text-[9px] text-indigo-300 font-sans font-bold uppercase tracking-wider">Wazahat %</span>
+                    <span class="text-lg font-black text-indigo-300 font-sans">${completionRate.toFixed(1)}%</span>
                 </div>
             </div>
         </div>
 
         <!-- Instant Filter & Live Search Toolbar -->
-        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 no-print">
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 no-print">
             <div class="relative w-full md:w-96">
-                <i class="fas fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
-                <input type="text" id="wazahat-live-search" placeholder="تلاش کریں (جامعہ، استاد، مضمون، وغیرہ)..." class="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 urdu-font text-right bg-slate-50/50" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                <i class="fas fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                <input type="text" id="wazahat-live-search" placeholder="تلاش کریں (جامعہ، استاد، مضمون، وغیرہ)..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 urdu-font text-right bg-slate-50/50" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
             </div>
             <div class="flex items-center gap-2 w-full md:w-auto justify-end">
                 <span class="text-xs font-bold text-slate-600 font-sans whitespace-nowrap"><i class="fas fa-filter text-indigo-500 mr-1"></i> Filter:</span>
-                <select id="wazahat-status-filter" class="p-2 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                <select id="wazahat-status-filter" class="p-1.5 border border-slate-200 rounded-lg text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                     <option value="all">تمام ریکارڈز (${totalCases})</option>
                     <option value="submitted">✅ صرف موصولہ وضاحت (${totalSubmitted})</option>
                     <option value="pending">⏳ صرف منتظر وضاحت (${totalPending})</option>
-                    <option value="comment-added">💬 صرف تبصرہ شدہ (${totalCommentAdded})</option>
+                    <option value="comment-added">💬 صرف تبصرہ شامل شدہ (${totalCommentAdded})</option>
                     <option value="comment-pending">📝 بغیر تبصرہ / کمنٹ باقی (${totalCommentPending})</option>
                 </select>
-                <button id="wazahat-reset-filter-btn" class="p-2 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg font-bold transition font-sans border border-indigo-200" title="Reset Filters">
+                <button id="wazahat-reset-filter-btn" class="p-1.5 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg font-bold transition font-sans border border-indigo-200" title="Reset Filters">
                     <i class="fas fa-redo-alt mr-1"></i> Reset
                 </button>
             </div>
@@ -801,18 +801,18 @@ else if (layoutLevel === 'wazahat') {
     const summaryBarContainer = document.getElementById('ra-wazahat-summary-bar');
     if (summaryBarContainer) summaryBarContainer.innerHTML = summaryBarHtml;
 
-    // 🌟 Elegant Table Header (Identical design to admin)
+    // 🌟 Compact Table Header (Admin Style)
     thead.innerHTML = `
-        <tr class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white text-[13px] font-bold urdu-font border-b border-slate-700 select-none" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
-            <th class="p-3 border border-slate-700 text-center w-12 font-sans">#</th>
-            <th class="p-3 border border-slate-700 text-right min-w-[160px] urdu-font">جامعہ</th>
-            <th class="p-3 border border-slate-700 text-center min-w-[120px] urdu-font">استاد</th>
-            <th class="p-3 border border-slate-700 text-center min-w-[140px] urdu-font">مضمون / درجہ</th>
-            <th class="p-3 border border-slate-700 text-center w-20 font-sans">فیصد</th>
-            <th class="p-3 border border-slate-700 text-center w-24 urdu-font">کیفیت</th>
-            <th class="p-3 border border-slate-700 text-right min-w-[280px] bg-slate-900/60 urdu-font">وضاحت (Explanation)</th>
-            <th class="p-3 border border-slate-700 text-right min-w-[200px] bg-indigo-950/40 urdu-font">تعلیمی ذمہ دار کا تبصرہ</th>
-            <th class="p-3 border border-slate-700 text-center w-24 no-print urdu-font">ایکشن</th>
+        <tr class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white text-[12px] font-bold urdu-font border-b border-slate-700 select-none" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+            <th class="py-2.5 px-2 border border-slate-700 text-center w-10 font-sans">#</th>
+            <th class="py-2.5 px-3 border border-slate-700 text-right min-w-[140px] urdu-font">جامعہ</th>
+            <th class="py-2.5 px-2 border border-slate-700 text-center min-w-[110px] urdu-font">استاد</th>
+            <th class="py-2.5 px-2 border border-slate-700 text-center min-w-[120px] urdu-font">مضمون / درجہ</th>
+            <th class="py-2.5 px-2 border border-slate-700 text-center w-16 font-sans">فیصد</th>
+            <th class="py-2.5 px-2 border border-slate-700 text-center w-20 urdu-font">کیفیت</th>
+            <th class="py-2.5 px-3 border border-slate-700 text-right min-w-[270px] bg-slate-900/60 urdu-font">وضاحت (Explanation)</th>
+            <th class="py-2.5 px-3 border border-slate-700 text-right min-w-[190px] bg-indigo-950/40 urdu-font">تعلیمی ذمہ دار کا تبصرہ</th>
+            <th class="py-2.5 px-2 border border-slate-700 text-center w-20 no-print urdu-font">ایکشن</th>
         </tr>`;
 
     const renderFilteredRows = () => {
@@ -832,8 +832,8 @@ else if (layoutLevel === 'wazahat') {
         });
 
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" class="p-16 text-center text-slate-500 font-bold bg-white text-base urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
-                <i class="fas fa-search text-3xl mb-2 text-slate-300 block"></i>
+            tbody.innerHTML = `<tr><td colspan="9" class="p-12 text-center text-slate-500 font-bold bg-white text-base urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                <i class="fas fa-search text-2xl mb-2 text-slate-300 block"></i>
                 کوئی ریکارڈ نہیں ملا۔
             </td></tr>`;
             tfoot.innerHTML = "";
@@ -845,71 +845,71 @@ else if (layoutLevel === 'wazahat') {
             if (item.wazahatDate) {
                 try {
                     const dObj = new Date(item.wazahatDate);
-                    formattedDate = `<div class="text-[10px] text-emerald-700 font-sans mt-1 text-left flex items-center gap-1 justify-start" dir="ltr"><i class="far fa-clock"></i> ${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</div>`;
+                    formattedDate = `<div class="text-[9.5px] text-emerald-700 font-sans mt-0.5 text-left flex items-center gap-1 justify-start" dir="ltr"><i class="far fa-clock"></i> ${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</div>`;
                 } catch(e) {}
             }
 
             const safeDocId = item.docId;
 
             const wazahatCell = item.hasWazahat ? `
-                <div class="flex flex-col gap-1.5 text-right">
-                    <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2.5 rounded-lg shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
+                <div class="flex flex-col gap-1 text-right">
+                    <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2 rounded-md shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 0.95rem;">
                         <div class="whitespace-pre-wrap">${item.wazahatText}</div>
                         ${formattedDate}
                     </div>
-                    <button onclick="deleteWazahat('${safeDocId}', '${item.keyToDelete}', ${item.isLegacy})" class="self-end text-[11px] bg-white hover:bg-rose-600 text-rose-600 hover:text-white px-2.5 py-1 rounded-md border border-rose-200 transition-colors shadow-2xs font-sans font-bold flex items-center gap-1 mt-0.5 no-print">
-                        <i class="fas fa-trash-alt text-[10px]"></i> Reset
+                    <button onclick="deleteWazahat('${safeDocId}', '${item.keyToDelete}', ${item.isLegacy})" class="self-end text-[10px] bg-white hover:bg-rose-600 text-rose-600 hover:text-white px-2 py-0.5 rounded border border-rose-200 transition-colors shadow-2xs font-sans font-bold flex items-center gap-1 mt-0.5 no-print">
+                        <i class="fas fa-trash-alt text-[9px]"></i> Reset
                     </button>
                 </div>` : `
-                <div class="flex flex-col items-center justify-center py-2">
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
-                        <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                <div class="flex flex-col items-center justify-center py-1">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
                         منتظر (Pending...)
                     </span>
                 </div>`;
 
             const zimmedarCell = item.hasComment ? `
                 <div class="flex flex-col gap-1 text-right">
-                    <div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2.5 rounded-lg text-xs urdu-font leading-relaxed shadow-2xs text-right whitespace-pre-wrap" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
+                    <div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2 rounded-md text-xs urdu-font leading-relaxed shadow-2xs text-right whitespace-pre-wrap" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 0.95rem;">
                         ${item.zimmedarComment}
                     </div>
-                    <button onclick="addZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="self-end text-[10px] text-indigo-600 hover:text-indigo-800 font-sans font-bold no-print mt-0.5 flex items-center gap-1">
+                    <button onclick="addZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="self-end text-[9px] text-indigo-600 hover:text-indigo-800 font-sans font-bold no-print mt-0.5 flex items-center gap-1">
                         <i class="fas fa-edit"></i> Edit
                     </button>
                 </div>` : `
-                <div class="flex flex-col items-center justify-center py-2">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
+                <div class="flex flex-col items-center justify-center py-1">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-slate-100 text-slate-500 border border-slate-200 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
                         تبصرہ باقی ہے
                     </span>
-                    <button onclick="addZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="mt-1 text-[11px] bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white px-2.5 py-1 rounded border border-indigo-200 font-sans font-bold no-print transition-colors">
+                    <button onclick="addZimmedarComment('${safeDocId}', '${item.subjectKey}')" class="mt-1 text-[10px] bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white px-2 py-0.5 rounded border border-indigo-200 font-sans font-bold no-print transition-colors">
                         <i class="fas fa-plus mr-1"></i> Add Comment
                     </button>
                 </div>`;
 
             const actionCell = `
                 <button onclick="sendWazahatLink('${safeDocId}', '${item.teacher}', '${item.subject}', '${item.percVal.toFixed(1)}', '${item.kaifiyat}', '${item.darjah}')" 
-                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 mx-auto shadow-sm transition-colors whitespace-nowrap" title="WhatsApp Notice Bhejein">
+                        class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1 mx-auto shadow-sm transition-colors whitespace-nowrap" title="WhatsApp Notice Bhejein">
                     <i class="fab fa-whatsapp text-sm"></i> لنک
                 </button>`;
 
             return `
                 <tr class="hover:bg-indigo-50/40 border-b border-slate-200 text-center transition-colors ${item.hasWazahat ? 'bg-white' : 'bg-rose-50/15'}">
-                    <td class="p-3 border border-slate-200 font-bold font-sans text-slate-700 bg-slate-50/60 text-xs">${idx + 1}</td>
-                    <td class="p-3 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-base leading-snug" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.jamia}</td>
-                    <td class="p-3 border border-slate-200 urdu-font font-bold text-blue-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.teacher}</td>
-                    <td class="p-2.5 border border-slate-200 text-center">
-                        <div class="font-bold urdu-font text-slate-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.subject}</div>
-                        <div class="text-[12px] font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.darjah}</div>
+                    <td class="py-2 px-1 border border-slate-200 font-bold font-sans text-slate-700 bg-slate-50/60 text-xs">${idx + 1}</td>
+                    <td class="py-2 px-2.5 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-sm leading-snug" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.jamia}</td>
+                    <td class="py-2 px-2 border border-slate-200 urdu-font font-bold text-blue-900 text-sm" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.teacher}</td>
+                    <td class="py-2 px-2 border border-slate-200 text-center">
+                        <div class="font-bold urdu-font text-slate-900 text-sm" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.subject}</div>
+                        <div class="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.darjah}</div>
                     </td>
-                    <td class="p-3 border border-slate-200 text-center font-black font-sans text-sm text-rose-700 bg-rose-50/30">${item.percVal.toFixed(1)}%</td>
-                    <td class="p-3 border border-slate-200 text-center">
-                        <span class="px-3 py-1 rounded-full text-xs font-bold urdu-font inline-block shadow-2xs" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
+                    <td class="py-2 px-1 border border-slate-200 text-center font-black font-sans text-xs text-rose-700 bg-rose-50/30">${item.percVal.toFixed(1)}%</td>
+                    <td class="py-2 px-1 border border-slate-200 text-center">
+                        <span class="px-2 py-0.5 rounded-full text-[11px] font-bold urdu-font inline-block shadow-2xs" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
                             ${item.kaifiyat}
                         </span>
                     </td>
-                    <td class="p-3 border border-slate-200 min-w-[280px] text-right">${wazahatCell}</td>
-                    <td class="p-3 border border-slate-200 min-w-[200px] text-right">${zimmedarCell}</td>
-                    <td class="p-3 border border-slate-200 text-center no-print">${actionCell}</td>
+                    <td class="py-2 px-2 border border-slate-200 min-w-[270px] text-right">${wazahatCell}</td>
+                    <td class="py-2 px-2 border border-slate-200 min-w-[190px] text-right">${zimmedarCell}</td>
+                    <td class="py-2 px-1 border border-slate-200 text-center no-print">${actionCell}</td>
                 </tr>`;
         }).join('');
 
@@ -922,19 +922,19 @@ else if (layoutLevel === 'wazahat') {
         const filteredComRate = filtered.length > 0 ? (filteredCom / filtered.length) * 100 : 0;
 
         tfoot.innerHTML = `
-            <tr class="bg-slate-900 text-white font-bold text-center text-sm urdu-font border-t-2 border-slate-700">
-                <td colspan="4" class="p-3 text-right pr-4 font-sans font-bold">TOTAL SUMMARY:</td>
-                <td class="p-3 font-sans text-amber-400 font-black text-base">${filtered.length}</td>
-                <td class="p-3 text-center">-</td>
-                <td class="p-3 text-emerald-300 font-sans font-bold text-right text-xs">
+            <tr class="bg-slate-900 text-white font-bold text-center text-xs urdu-font border-t-2 border-slate-700">
+                <td colspan="4" class="p-2.5 text-right pr-4 font-sans font-bold">TOTAL SUMMARY:</td>
+                <td class="p-2.5 font-sans text-amber-400 font-black text-sm">${filtered.length}</td>
+                <td class="p-2.5 text-center">-</td>
+                <td class="p-2.5 text-emerald-300 font-sans font-bold text-right text-xs">
                     <div>Wazahat Aagayi: ${filteredSub} (${filteredRate.toFixed(1)}%)</div>
                     <div class="text-rose-300 font-normal">Pending: ${filteredPen}</div>
                 </td>
-                <td class="p-3 text-indigo-300 font-sans font-bold text-right text-xs">
-                    <div>Comments: ${filteredCom} (${filteredComRate.toFixed(1)}%)</div>
+                <td class="p-2.5 text-indigo-300 font-sans font-bold text-right text-xs">
+                    <div>Comments Add: ${filteredCom} (${filteredComRate.toFixed(1)}%)</div>
                     <div class="text-amber-300 font-normal">Pending: ${filteredComPen}</div>
                 </td>
-                <td class="p-3 text-center no-print">-</td>
+                <td class="p-2.5 text-center no-print">-</td>
             </tr>`;
     };
 
@@ -1016,11 +1016,11 @@ else if (layoutLevel === 'wazahat') {
                 }
             };
 
-            // 📄 3. PDF EXPORT (High-Res Multi-Page Landscape Crisp Text)
+            // 📄 3. PDF EXPORT (Page-by-Page Table Slicing, Repeated Header on Every Page, Zero Row Cuts, Compact Design)
             document.getElementById('ra-download-pdf').onclick = async () => {
                 const btn = document.getElementById('ra-download-pdf');
                 const originalText = btn.innerHTML;
-                btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> PDF...`;
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> PDF Ban Raha Hai...`;
                 btn.disabled = true;
 
                 try {
@@ -1041,77 +1041,281 @@ else if (layoutLevel === 'wazahat') {
                         return;
                     }
 
-                    const reportArea = document.getElementById('ra-report-area');
-                    
-                    // Temporarily allow full width so columns don't get clipped
-                    const prevOverflow = reportArea.style.overflow;
-                    reportArea.style.overflow = 'visible';
-                    const tableWrapper = reportArea.querySelector('.overflow-x-auto');
-                    const prevWrapperOverflow = tableWrapper ? tableWrapper.style.overflow : '';
-                    if (tableWrapper) tableWrapper.style.overflow = 'visible';
-
-                    const canvas = await window.html2canvas(reportArea, {
-                        scale: 2.2,
-                        useCORS: true,
-                        logging: false,
-                        backgroundColor: '#ffffff',
-                        windowWidth: Math.max(document.documentElement.clientWidth, reportArea.scrollWidth + 100),
-                        ignoreElements: (el) => {
-                            return el.classList && (el.classList.contains('no-print') || el.hasAttribute('data-html2canvas-ignore'));
-                        }
-                    });
-
-                    // Restore container overflow
-                    reportArea.style.overflow = prevOverflow;
-                    if (tableWrapper) tableWrapper.style.overflow = prevWrapperOverflow;
-
                     const pdf = new jsPDFClass({
                         orientation: 'landscape',
                         unit: 'mm',
                         format: 'a4'
                     });
 
-                    const pdfPageWidth = 297;
-                    const pdfPageHeight = 210;
-                    const margin = 8;
-                    const usableWidth = pdfPageWidth - (margin * 2);
-                    const usableHeight = pdfPageHeight - (margin * 2);
+                    if (layoutLevel === 'wazahat') {
+                        // 🌟 Dedicated Compact Multi-Page Generator for Wazahat Layout
+                        const searchVal = (document.getElementById('wazahat-live-search')?.value || '').toLowerCase().trim();
+                        const statusVal = document.getElementById('wazahat-status-filter')?.value || 'all';
 
-                    const mmPerPx = usableWidth / canvas.width;
-                    const totalHeightMm = canvas.height * mmPerPx;
+                        let itemsForPdf = wazahatItems.filter(item => {
+                            if (statusVal === 'submitted' && !item.hasWazahat) return false;
+                            if (statusVal === 'pending' && item.hasWazahat) return false;
+                            if (statusVal === 'comment-added' && !item.hasComment) return false;
+                            if (statusVal === 'comment-pending' && item.hasComment) return false;
+                            if (searchVal) {
+                                const hay = `${item.jamia} ${item.teacher} ${item.subject} ${item.darjah} ${item.wazahatText} ${item.zimmedarComment}`.toLowerCase();
+                                if (!hay.includes(searchVal)) return false;
+                            }
+                            return true;
+                        });
 
-                    if (totalHeightMm <= usableHeight) {
-                        const imgData = canvas.toDataURL('image/jpeg', 0.98);
-                        pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, totalHeightMm);
-                    } else {
-                        const sliceHeightPx = usableHeight / mmPerPx;
-                        let renderedHeightPx = 0;
-                        let pageIndex = 0;
-
-                        while (renderedHeightPx < canvas.height) {
-                            if (pageIndex > 0) {
-                                pdf.addPage('a4', 'landscape');
+                        const buildPdfRow = (item, sr) => {
+                            let formattedDate = "";
+                            if (item.wazahatDate) {
+                                try {
+                                    const dObj = new Date(item.wazahatDate);
+                                    formattedDate = `${dObj.toLocaleDateString('en-GB')} ${dObj.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}`;
+                                } catch(e) {}
                             }
 
-                            const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - renderedHeightPx);
-                            const sliceCanvas = document.createElement('canvas');
-                            sliceCanvas.width = canvas.width;
-                            sliceCanvas.height = currentSliceHeightPx;
+                            const wazahatHtml = item.hasWazahat ? `
+                                <div style="background-color: #f0fdf4; border: 1px solid #86efac; color: #064e3b; padding: 4px 6px; border-radius: 4px; font-size: 11px; line-height: 1.35; direction: rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; white-space: pre-wrap;">
+                                    ${item.wazahatText}
+                                    ${formattedDate ? `<div style="font-size: 8.5px; color: #047857; font-family: sans-serif; margin-top: 2px; direction: ltr; text-align: left;">🕒 ${formattedDate}</div>` : ''}
+                                </div>` : `
+                                <div style="text-align: center; padding: 2px;">
+                                    <span style="display: inline-block; padding: 1px 6px; border-radius: 9999px; font-size: 9.5px; font-weight: bold; color: #b91c1c; background-color: #fff1f2; border: 1px solid #fecdd3; font-family: 'Jameel Noori Nastaleeq', serif;">منتظر (Pending...)</span>
+                                </div>`;
 
-                            const ctx = sliceCanvas.getContext('2d');
-                            ctx.drawImage(
-                                canvas,
-                                0, renderedHeightPx, canvas.width, currentSliceHeightPx,
-                                0, 0, canvas.width, currentSliceHeightPx
-                            );
+                            const commentHtml = item.hasComment ? `
+                                <div style="background-color: #eef2ff; border: 1px solid #c7d2fe; color: #1e1b4b; padding: 4px 6px; border-radius: 4px; font-size: 11px; line-height: 1.35; direction: rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; white-space: pre-wrap;">
+                                    ${item.zimmedarComment}
+                                </div>` : `
+                                <div style="text-align: center; padding: 2px;">
+                                    <span style="display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: bold; color: #64748b; background-color: #f1f5f9; border: 1px solid #e2e8f0; font-family: 'Jameel Noori Nastaleeq', serif;">تبصرہ باقی ہے</span>
+                                </div>`;
 
-                            const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.98);
-                            const sliceHeightMm = currentSliceHeightPx * mmPerPx;
+                            return `
+                                <tr style="border-bottom: 1px solid #cbd5e1; background-color: ${sr % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 2px; text-align: center; font-family: sans-serif; font-weight: bold; font-size: 11px; background-color: #f1f5f9; color: #334155; width: 35px;">${sr}</td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: right; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 13px; font-weight: bold; color: #0f172a; width: 140px;">${item.jamia}</td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 4px; text-align: center; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 12px; font-weight: bold; color: #1e3a8a; width: 120px;">${item.teacher}</td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 4px; text-align: center; width: 120px;">
+                                        <div style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 12px; font-weight: bold; color: #0f172a;">${item.subject}</div>
+                                        <div style="display: inline-block; padding: 0.5px 5px; border-radius: 3px; background: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; font-size: 10px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', serif;">${item.darjah}</div>
+                                    </td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 2px; text-align: center; font-family: sans-serif; font-weight: 800; font-size: 12px; color: #b91c1c; background-color: #fff1f2; width: 55px;">${item.percVal.toFixed(1)}%</td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 2px; text-align: center; width: 75px;">
+                                        <span style="display: inline-block; padding: 1.5px 6px; border-radius: 9999px; font-size: 10px; font-weight: bold; font-family: 'Jameel Noori Nastaleeq', serif; background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
+                                            ${item.kaifiyat}
+                                        </span>
+                                    </td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: right; vertical-align: middle; width: 320px;">${wazahatHtml}</td>
+                                    <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: right; vertical-align: middle; width: 235px;">${commentHtml}</td>
+                                </tr>`;
+                        };
 
-                            pdf.addImage(sliceImgData, 'JPEG', margin, margin, usableWidth, sliceHeightMm);
+                        // 1. Measure exact row heights in a hidden container to eliminate cut rows completely
+                        const tempMeasure = document.createElement('div');
+                        tempMeasure.style.position = 'absolute';
+                        tempMeasure.style.left = '-9999px';
+                        tempMeasure.style.top = '0';
+                        tempMeasure.style.width = '1100px';
+                        tempMeasure.innerHTML = `<table style="width:100%; border-collapse:collapse;"><tbody>${itemsForPdf.map((item, idx) => buildPdfRow(item, idx + 1)).join('')}</tbody></table>`;
+                        document.body.appendChild(tempMeasure);
 
-                            renderedHeightPx += currentSliceHeightPx;
-                            pageIndex++;
+                        const measuredRows = Array.from(tempMeasure.querySelectorAll('tr'));
+                        const heights = measuredRows.map(tr => tr.offsetHeight);
+                        document.body.removeChild(tempMeasure);
+
+                        // 2. Group rows into pages based on available page height
+                        const pages = [];
+                        let curPage = [];
+                        let curHeight = 0;
+
+                        itemsForPdf.forEach((item, idx) => {
+                            const h = heights[idx] || 55;
+                            const limit = (pages.length === 0) ? 550 : 615;
+
+                            if (curHeight + h > limit && curPage.length > 0) {
+                                pages.push(curPage);
+                                curPage = [];
+                                curHeight = 0;
+                            }
+                            curPage.push({ item, sr: idx + 1 });
+                            curHeight += h;
+                        });
+                        if (curPage.length > 0) pages.push(curPage);
+
+                        const totalPages = pages.length || 1;
+                        const subCount = itemsForPdf.filter(x => x.hasWazahat).length;
+                        const penCount = itemsForPdf.filter(x => !x.hasWazahat).length;
+                        const comCount = itemsForPdf.filter(x => x.hasComment).length;
+
+                        // 3. Render each page with repeated header, thead, rows, and page numbers
+                        for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+                            const tempPage = document.createElement('div');
+                            tempPage.style.position = 'absolute';
+                            tempPage.style.left = '-9999px';
+                            tempPage.style.top = '0';
+                            tempPage.style.width = '1100px';
+                            tempPage.style.minHeight = '745px';
+                            tempPage.style.backgroundColor = '#ffffff';
+                            tempPage.style.padding = '12px 14px';
+                            tempPage.style.boxSizing = 'border-box';
+                            tempPage.style.display = 'flex';
+                            tempPage.style.flexDirection = 'column';
+                            tempPage.style.justifyContent = 'space-between';
+
+                            const pageHeaderHtml = (pIdx === 0) ? `
+                                <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); color: white; padding: 10px 14px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div>
+                                        <h2 style="margin: 0; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 22px; font-weight: bold; color: #f8fafc; line-height: 1.3;">
+                                            مجلس تعلیمی امور انڈیا - کمزور نتائج اور وضاحت جائزہ
+                                        </h2>
+                                        <p style="margin: 2px 0 0; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 13px; color: #cbd5e1;">
+                                            ${examType} | تعلیمی سال: ${examYear}
+                                        </p>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 5px; text-align: center;">
+                                            <span style="font-size: 8.5px; color: #94a3b8; display: block; font-family: sans-serif; font-weight: bold;">TOTAL</span>
+                                            <span style="font-size: 13px; font-weight: 900; color: #fbbf24; font-family: sans-serif;">${totalCases}</span>
+                                        </div>
+                                        <div style="background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); padding: 3px 8px; border-radius: 5px; text-align: center;">
+                                            <span style="font-size: 8.5px; color: #6ee7b7; display: block; font-family: sans-serif; font-weight: bold;">WAZAHAT AAGAYI</span>
+                                            <span style="font-size: 13px; font-weight: 900; color: #34d399; font-family: sans-serif;">${totalSubmitted} (${completionRate.toFixed(0)}%)</span>
+                                        </div>
+                                        <div style="background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.25); padding: 3px 8px; border-radius: 5px; text-align: center;">
+                                            <span style="font-size: 8.5px; color: #fda4af; display: block; font-family: sans-serif; font-weight: bold;">WAZAHAT BAQI</span>
+                                            <span style="font-size: 13px; font-weight: 900; color: #fb7185; font-family: sans-serif;">${totalPending}</span>
+                                        </div>
+                                        <div style="background: rgba(20,184,166,0.12); border: 1px solid rgba(20,184,166,0.25); padding: 3px 8px; border-radius: 5px; text-align: center;">
+                                            <span style="font-size: 8.5px; color: #5eead4; display: block; font-family: sans-serif; font-weight: bold;">COMMENTS ADD</span>
+                                            <span style="font-size: 13px; font-weight: 900; color: #2dd4bf; font-family: sans-serif;">${totalCommentAdded}</span>
+                                        </div>
+                                    </div>
+                                </div>` : `
+                                <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: white; padding: 7px 14px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 17px; font-weight: bold; color: #f8fafc;">
+                                        مجلس تعلیمی امور انڈیا - کمزور نتائج اور وضاحت جائزہ (${examType} | تعلیمی سال: ${examYear})
+                                    </div>
+                                    <div style="font-family: sans-serif; font-size: 10px; color: #94a3b8; font-weight: bold;">
+                                        Page ${pIdx + 1} of ${totalPages}
+                                    </div>
+                                </div>`;
+
+                            const theadHtml = `
+                                <thead style="background: #1e293b; color: white;">
+                                    <tr style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 12.5px; font-weight: bold;">
+                                        <th style="border: 1px solid #334155; padding: 5px 2px; text-align: center; width: 35px; font-family: sans-serif;">#</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 6px; text-align: right; width: 140px;">جامعہ</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 4px; text-align: center; width: 120px;">استاد</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 4px; text-align: center; width: 120px;">مضمون / درجہ</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 2px; text-align: center; width: 55px; font-family: sans-serif;">فیصد</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 2px; text-align: center; width: 75px;">کیفیت</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 6px; text-align: right; width: 320px;">وضاحت (Explanation)</th>
+                                        <th style="border: 1px solid #334155; padding: 5px 6px; text-align: right; width: 235px;">تعلیمی ذمہ دار کا تبصرہ</th>
+                                    </tr>
+                                </thead>`;
+
+                            const isLastPage = (pIdx === totalPages - 1);
+                            const tfootHtml = isLastPage ? `
+                                <tfoot style="background: #0f172a; color: white; font-weight: bold; text-align: center;">
+                                    <tr style="font-size: 11.5px;">
+                                        <td colspan="4" style="border: 1px solid #334155; padding: 5px 8px; text-align: right; font-family: sans-serif;">TOTAL SUMMARY:</td>
+                                        <td style="border: 1px solid #334155; padding: 5px 2px; font-family: sans-serif; color: #fbbf24; font-size: 12px;">${itemsForPdf.length}</td>
+                                        <td style="border: 1px solid #334155; padding: 5px 2px;">-</td>
+                                        <td style="border: 1px solid #334155; padding: 5px 6px; text-align: right; font-size: 10.5px; color: #6ee7b7; font-family: sans-serif;">
+                                            Wazahat Aagayi: ${subCount} | Pending: ${penCount}
+                                        </td>
+                                        <td style="border: 1px solid #334155; padding: 5px 6px; text-align: right; font-size: 10.5px; color: #5eead4; font-family: sans-serif;">
+                                            Comments Add: ${comCount} | Pending: ${itemsForPdf.length - comCount}
+                                        </td>
+                                    </tr>
+                                </tfoot>` : '';
+
+                            tempPage.innerHTML = `
+                                <div>
+                                    ${pageHeaderHtml}
+                                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                                        ${theadHtml}
+                                        <tbody>
+                                            ${(pages[pIdx] || []).map(pItem => buildPdfRow(pItem.item, pItem.sr)).join('')}
+                                        </tbody>
+                                        ${tfootHtml}
+                                    </table>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 4px 0; font-size: 9.5px; color: #64748b; font-family: sans-serif; border-top: 1px solid #e2e8f0; margin-top: 6px;">
+                                    <div>Majlis-e-Talimi Umoor India - Official Wazahat Followup Report</div>
+                                    <div>Page ${pIdx + 1} of ${totalPages}</div>
+                                </div>`;
+
+                            document.body.appendChild(tempPage);
+                            const canvas = await window.html2canvas(tempPage, { 
+                                scale: 2, 
+                                useCORS: true, 
+                                backgroundColor: '#ffffff',
+                                logging: false
+                            });
+                            document.body.removeChild(tempPage);
+
+                            if (pIdx > 0) pdf.addPage('a4', 'landscape');
+                            const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                            pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210);
+                        }
+                    } else {
+                        // 🌟 Generic Clean Page-by-Page Generator for other layouts (jamia, class, teacher)
+                        const allRows = Array.from(document.querySelectorAll('#ra-table-body tr'));
+                        const theadHtml = document.getElementById('ra-table-head').innerHTML;
+                        const tfootHtml = document.getElementById('ra-table-foot').innerHTML;
+                        const rowsPerPage = 16;
+                        const totalPages = Math.ceil(allRows.length / rowsPerPage) || 1;
+
+                        for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+                            const tempPage = document.createElement('div');
+                            tempPage.style.position = 'absolute';
+                            tempPage.style.left = '-9999px';
+                            tempPage.style.top = '0';
+                            tempPage.style.width = '1100px';
+                            tempPage.style.minHeight = '745px';
+                            tempPage.style.backgroundColor = '#ffffff';
+                            tempPage.style.padding = '14px';
+                            tempPage.style.boxSizing = 'border-box';
+                            tempPage.style.display = 'flex';
+                            tempPage.style.flexDirection = 'column';
+                            tempPage.style.justifyContent = 'space-between';
+
+                            const rowsSlice = allRows.slice(pIdx * rowsPerPage, (pIdx + 1) * rowsPerPage);
+                            const rowsSliceHtml = rowsSlice.map(r => r.outerHTML).join('');
+                            const isLastPage = (pIdx === totalPages - 1);
+
+                            tempPage.innerHTML = `
+                                <div>
+                                    <div style="background: linear-gradient(135deg, #3730a3 0%, #1e1b4b 100%); color: white; padding: 10px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <h2 style="margin: 0; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 22px; font-weight: bold;">
+                                            نتیجہ امتحان - ${document.getElementById('ra-report-subtitle')?.innerText || ''}
+                                        </h2>
+                                        <span style="font-family: sans-serif; font-size: 11px; opacity: 0.85;">Page ${pIdx + 1} of ${totalPages}</span>
+                                    </div>
+                                    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 12px;" dir="rtl">
+                                        <thead>${theadHtml}</thead>
+                                        <tbody class="divide-y divide-gray-200 urdu-font">${rowsSliceHtml}</tbody>
+                                        ${isLastPage && tfootHtml ? `<tfoot>${tfootHtml}</tfoot>` : ''}
+                                    </table>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding: 6px 4px 0; font-size: 10px; color: #64748b; font-family: sans-serif; border-top: 1px solid #e2e8f0;">
+                                    <div>Majlis-e-Talimi Umoor India</div>
+                                    <div>Page ${pIdx + 1} of ${totalPages}</div>
+                                </div>`;
+
+                            document.body.appendChild(tempPage);
+                            const canvas = await window.html2canvas(tempPage, { 
+                                scale: 2, 
+                                useCORS: true, 
+                                backgroundColor: '#ffffff',
+                                logging: false
+                            });
+                            document.body.removeChild(tempPage);
+
+                            if (pIdx > 0) pdf.addPage('a4', 'landscape');
+                            const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                            pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210);
                         }
                     }
 
