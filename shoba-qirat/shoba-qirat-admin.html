@@ -1107,25 +1107,27 @@
         const fetchAllData = async () => {
             showLoader(true, "شعبہ قراءت کا ڈیٹا موصول ہو رہا ہے...");
             try {
-                // 1. Fetch Users whose role is 'shoba_qirat' or has shoba_qirat in zimmedari
+                // 1. Fetch Users whose role is strictly 'shoba_qirat'
                 const usersSnap = await getDocs(collection(db, 'users'));
                 const rawUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+                // Sirf shoba_qirat role wale users shamil honge
                 allShobaQiratUsers = rawUsers.filter(u => {
-                    const r = (u.role || '').toLowerCase();
-                    const z = (u.zimmedari || '').toLowerCase();
-                    return (
-                        r === 'shoba_qirat' || 
-                        r.includes('qirat') || 
-                        z.includes('قراءت') || 
-                        z.includes('qirat') ||
-                        (Array.isArray(u.jamiaatList) && u.jamiaatList.length > 0 && r !== 'admin')
-                    ) && u.isActive !== false;
+                    const r = (u.role || '').trim().toLowerCase().replace(/\s+/g, '_');
+                    return r === 'shoba_qirat' && u.isActive !== false;
                 });
 
-                // 2. Fetch Monthly Reports
+                const shobaQiratUserIds = new Set(allShobaQiratUsers.map(u => u.id));
+
+                // 2. Fetch Monthly Reports - sirf shoba_qirat users ki reports
                 const reportsSnap = await getDocs(collection(db, 'monthly_reports'));
-                allReports = reportsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                allReports = reportsSnap.docs
+                    .map(d => {
+                        const data = d.data();
+                        const uid = data.userId || d.id.split('_')[0];
+                        return { id: d.id, userId: uid, ...data };
+                    })
+                    .filter(rep => rep.userId && shobaQiratUserIds.has(rep.userId));
 
                 // 3. Fetch Follow-up Notes
                 try {
@@ -2064,7 +2066,8 @@
                 if (!matchesMonth) return;
 
                 if (rep.tadrisRecording && Array.isArray(rep.tadrisRecording.data)) {
-                    const u = allShobaQiratUsers.find(user => user.id === rep.userId) || {};
+                    const u = allShobaQiratUsers.find(user => user.id === rep.userId);
+                    if (!u) return;
                     rep.tadrisRecording.data.forEach(rec => {
                         recordings.push({
                             reportId: rep.id,
