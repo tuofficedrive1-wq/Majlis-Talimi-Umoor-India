@@ -3,6 +3,7 @@ import {
     getDocs, 
     collection, 
     query,
+    where,
     addDoc 
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
@@ -91,11 +92,11 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
                             <span class="text-sm text-blue-600 font-bold">Behtar (Very Good)</span>
                         </label>
                         <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
-                            <input type="checkbox" value="Munasib" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <input type="checkbox" value="Munasib" class="insp-grade-checkbox form-checkbox h-4 w-4 text-amber-600 rounded">
                             <span class="text-sm text-amber-600 font-bold">Munasib (Good)</span>
                         </label>
                         <label class="flex items-center space-x-3 p-2 hover:bg-indigo-50 cursor-pointer rounded transition border-b border-slate-100">
-                            <input type="checkbox" value="Kamzor" class="insp-grade-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <input type="checkbox" value="Kamzor" class="insp-grade-checkbox form-checkbox h-4 w-4 text-red-600 rounded">
                             <span class="text-sm text-red-600 font-bold">Kamzor (Weak)</span>
                         </label>
                     </div>
@@ -149,17 +150,49 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
         <div id="insp-wazahat-area" class="hidden mt-4 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
             <div class="bg-amber-500 text-white p-4 text-center border-b-4 border-amber-700">
                 <h2 class="text-xl md:text-2xl font-bold tracking-wide">Teachers Required to Explain Weaknesses</h2>
-                <p class="text-xs md:text-sm text-amber-50 mt-1">Sirf Munasib aur Kamzor kaifiyat wale records</p>
+                <p class="text-xs md:text-sm text-amber-50 mt-1">Kamzor aur Munasib kaifiyat wale asatiza ki tafseel o wazahat</p>
             </div>
+
+            <!-- NAYA: WAZAHAT FILTER BAR -->
+            <div class="bg-slate-50 p-3.5 border-b border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+                <div class="flex flex-wrap gap-3 items-center">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Filter by Kaifiyat:</label>
+                        <select id="insp-wazahat-filter-grade" class="p-1.5 border border-slate-300 rounded text-xs font-semibold bg-white outline-none">
+                            <option value="all">Tamam (Kamzor + Munasib)</option>
+                            <option value="Kamzor">Sirf Kamzor (Weak)</option>
+                            <option value="Munasib">Sirf Munasib (Good)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Filter by Status:</label>
+                        <select id="insp-wazahat-filter-status" class="p-1.5 border border-slate-300 rounded text-xs font-semibold bg-white outline-none">
+                            <option value="all">Tamam Status (All)</option>
+                            <option value="submitted">Wazahat Shuda (Submitted)</option>
+                            <option value="waiting">Intezar Mein (Waiting)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Search Teacher / Jamia:</label>
+                        <input type="text" id="insp-wazahat-filter-search" placeholder="Naam se talash..." class="p-1.5 border border-slate-300 rounded text-xs bg-white outline-none w-44">
+                    </div>
+                </div>
+                <div id="insp-wazahat-stats" class="text-xs font-bold text-slate-600 flex gap-2">
+                    <span class="bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded">Total: <span id="wazahat-count-total">0</span></span>
+                    <span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded">Submitted: <span id="wazahat-count-sub">0</span></span>
+                    <span class="bg-amber-100 text-amber-700 px-2.5 py-1 rounded">Waiting: <span id="wazahat-count-wait">0</span></span>
+                </div>
+            </div>
+
             <div class="overflow-x-auto">
                 <table class="min-w-full text-center text-sm border-collapse">
                     <thead>
                         <tr class="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wide">
                             <th class="px-4 py-3 border-r border-slate-200 w-8">#</th>
-                            <th class="px-4 py-3 border-r border-slate-200 w-28">Jamia</th>
-                            <th class="px-4 py-3 border-r border-slate-200 w-36">Ustad Ka Naam</th>
-                            <th class="px-4 py-3 border-r border-slate-200">Kamzor / Munasib Mazameen Ki Tafseel</th>
-                            <th class="px-4 py-3 border-r border-slate-200 w-32">Status</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-28 text-left">Jamia</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-36 text-left">Ustad Ka Naam</th>
+                            <th class="px-4 py-3 border-r border-slate-200 text-left">Kamzor / Munasib Mazameen</th>
+                            <th class="px-4 py-3 border-r border-slate-200 w-72 text-left">Wazahat (Explanation)</th>
                             <th class="px-4 py-3 w-32">Action / Link</th>
                         </tr>
                     </thead>
@@ -463,21 +496,44 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
             });
         }
 
-        // 2. Render Wazahat Tab (Without Cards, Simple Clean List)
+        // 2. Render Wazahat Tab (Live Database & Filterable System)
+        // A. Fetch Submitted Wazahat from Database
+        const wazahatRef = collection(db, 'mahana_wazahat_records');
+        const wQ = query(wazahatRef, where("month", ">=", startMonth), where("month", "<=", endMonth));
+        const wSnap = await getDocs(wQ);
+        
+        const submittedWazahats = {};
+        wSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            const key = `${data.jamia}_${data.teacherName}_${data.month}`;
+            submittedWazahats[key] = data; 
+        });
+
+        // B. Group Weak / Munasib Records
         const wazahatData = {};
         rows.forEach(r => {
             if (r.grade.text === "Munasib" || r.grade.text === "Kamzor") {
                 const key = `${r.jamiaName}_${r.teacherName}_${r.month}`;
                 if (!wazahatData[key]) {
-                    wazahatData[key] = { jamia: r.jamiaName, teacher: r.teacherName, month: r.month, subjects: [], rawData: [] };
+                    wazahatData[key] = { 
+                        jamia: r.jamiaName, 
+                        teacher: r.teacherName, 
+                        month: r.month, 
+                        subjects: [], 
+                        rawData: [],
+                        hasKamzor: false,
+                        hasMunasib: false
+                    };
                 }
+                if (r.grade.text === "Kamzor") wazahatData[key].hasKamzor = true;
+                if (r.grade.text === "Munasib") wazahatData[key].hasMunasib = true;
+
                 const gradeColor = r.grade.text === 'Kamzor' ? 'text-red-600' : 'text-amber-600';
                 
-                // Card-style hata kar normal text banaya gaya
                 wazahatData[key].subjects.push(`
-                    <div class="mb-1 last:mb-0 text-sm">
-                        <span class="font-medium text-slate-700">${r.className} : ${r.subjectName}</span> 
-                        (<span class="font-bold">${r.score}</span> - <span class="font-bold ${gradeColor}">${r.grade.text}</span>)
+                    <div class="mb-1.5 last:mb-0 text-xs">
+                        <span class="font-bold text-slate-800">${r.className} : ${r.subjectName}</span> 
+                        (<span class="font-black text-indigo-700">${r.score}</span> - <span class="font-bold ${gradeColor}">${r.grade.text}</span>)
                     </div>
                 `);
                 
@@ -485,26 +541,114 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
             }
         });
 
-        const wKeys = Object.keys(wazahatData);
-        if (wKeys.length === 0) {
-            wazahatBody.innerHTML = `<tr><td colspan="6" class="py-6 text-emerald-600 font-bold bg-emerald-50 text-sm">Alhamdulillah! Koi munasib ya kamzor karkardagi nahi mili.</td></tr>`;
-        } else {
-            wKeys.forEach((key, index) => {
-                const item = wazahatData[key];
+        const allWazahatKeys = Object.keys(wazahatData);
+        const allWazahatItems = allWazahatKeys.map(key => {
+            const item = wazahatData[key];
+            const wKey = `${item.jamia}_${item.teacher}_${item.month}`;
+            const subData = submittedWazahats[wKey] || null;
+            return {
+                ...item,
+                wKey,
+                isSubmitted: !!subData,
+                submittedData: subData
+            };
+        });
+
+        // Function to render wazahat items based on filters
+        const renderWazahatFilteredTable = () => {
+            const gradeFilter = document.getElementById('insp-wazahat-filter-grade')?.value || 'all';
+            const statusFilter = document.getElementById('insp-wazahat-filter-status')?.value || 'all';
+            const searchFilter = (document.getElementById('insp-wazahat-filter-search')?.value || '').trim().toLowerCase();
+
+            const filteredItems = allWazahatItems.filter(item => {
+                // Kaifiyat Filter
+                if (gradeFilter === 'Kamzor' && !item.hasKamzor) return false;
+                if (gradeFilter === 'Munasib' && !item.hasMunasib) return false;
+                
+                // Status Filter
+                if (statusFilter === 'submitted' && !item.isSubmitted) return false;
+                if (statusFilter === 'waiting' && item.isSubmitted) return false;
+
+                // Search Filter
+                if (searchFilter) {
+                    const matchTea = item.teacher.toLowerCase().includes(searchFilter);
+                    const matchJam = item.jamia.toLowerCase().includes(searchFilter);
+                    if (!matchTea && !matchJam) return false;
+                }
+                return true;
+            });
+
+            // Update stats
+            const countTotal = allWazahatItems.length;
+            const countSub = allWazahatItems.filter(i => i.isSubmitted).length;
+            const countWait = countTotal - countSub;
+            
+            const totalEl = document.getElementById('wazahat-count-total');
+            const subEl = document.getElementById('wazahat-count-sub');
+            const waitEl = document.getElementById('wazahat-count-wait');
+            if (totalEl) totalEl.textContent = countTotal;
+            if (subEl) subEl.textContent = countSub;
+            if (waitEl) waitEl.textContent = countWait;
+
+            if (filteredItems.length === 0) {
+                wazahatBody.innerHTML = `<tr><td colspan="6" class="py-8 text-slate-400 font-bold bg-slate-50 text-center text-sm">Is filter ke mutabiq koi record nahi mila.</td></tr>`;
+                return;
+            }
+
+            wazahatBody.innerHTML = filteredItems.map((item, index) => {
                 const subList = item.subjects.join('');
-                const payload = { jamia: item.jamia, teacher: item.teacher, month: item.month, data: item.rawData };
+                
+                // Ajeer code calculation for WhatsApp / Link authentication
+                let expectedCode = "";
+                if (userProfileData && userProfileData.academicYears) {
+                    Object.values(userProfileData.academicYears).forEach(yearData => {
+                        if (yearData.karkardagiStructure) {
+                            const jData = yearData.karkardagiStructure.find(j => j.jamiaName === item.jamia);
+                            if (jData && jData.teachers) {
+                                const tData = jData.teachers.find(t => (t.name || t.teacherName) === item.teacher);
+                                if (tData && tData.loginCode) expectedCode = String(tData.loginCode);
+                            }
+                        }
+                    });
+                }
+
+                const payload = { 
+                    jamia: item.jamia, 
+                    teacher: item.teacher, 
+                    month: item.month, 
+                    data: item.rawData,
+                    expectedCode: expectedCode
+                };
                 const encodedPayload = encodeURIComponent(JSON.stringify(payload));
 
-                wazahatBody.innerHTML += `
-                    <tr class="hover:bg-amber-50/50 transition-colors odd:bg-white even:bg-slate-50/50 text-sm" data-sid="">
-                        <td class="px-4 py-3 border-r border-slate-200">${index + 1}</td>
-                        <td class="px-4 py-3 border-r border-slate-200 text-indigo-700 font-bold">${item.jamia}</td>
-                        <td class="px-4 py-3 border-r border-slate-200 font-bold">${item.teacher}</td>
+                let wazahatColumnHtml = `<span class="inline-flex items-center gap-1.5 text-red-500 bg-red-50 px-2.5 py-1 rounded font-bold border border-red-200 text-xs"><i class="fas fa-hourglass-half"></i> Intezar Mein (Waiting...)</span>`;
+                
+                if (item.isSubmitted) {
+                    const wData = item.submittedData;
+                    const dateObj = new Date(wData.timestamp);
+                    const formattedDate = dateObj.toLocaleDateString('en-GB'); 
+                    const formattedTime = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }); 
+                    const formattedDateTime = `${formattedDate} | ${formattedTime}`;
+
+                    wazahatColumnHtml = `
+                        <div class="text-left bg-emerald-50/70 p-2.5 rounded-lg border border-emerald-200">
+                            <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                                <span class="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full"><i class="fas fa-check-circle"></i> Mawsul Shuda (Submitted)</span>
+                                <span class="text-[11px] text-slate-500 font-semibold"><i class="far fa-clock"></i> ${formattedDateTime}</span>
+                            </div>
+                            <p class="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap break-words">${wData.wazahat || '-'}</p>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <tr class="hover:bg-amber-50/40 transition-colors odd:bg-white even:bg-slate-50/50 text-sm" data-sid="">
+                        <td class="px-4 py-3 border-r border-slate-200 text-slate-400 font-bold">${index + 1}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 text-indigo-700 font-bold text-left">${item.jamia}</td>
+                        <td class="px-4 py-3 border-r border-slate-200 font-bold text-slate-800 text-left">${item.teacher}</td>
                         <td class="px-4 py-3 border-r border-slate-200 text-left leading-relaxed">${subList}</td>
-                        <td class="px-4 py-3 border-r border-slate-200 whitespace-nowrap">
-                            <span class="text-red-500 bg-red-50 px-2.5 py-1 rounded font-bold border border-red-200 text-xs">Waiting...</span>
-                        </td>
-                        <td class="px-4 py-3">
+                        <td class="px-4 py-3 border-r border-slate-200 text-left align-top">${wazahatColumnHtml}</td>
+                        <td class="px-4 py-3 align-middle">
                             <div class="flex flex-col gap-2 justify-center items-center">
                                 <button data-payload="${encodedPayload}" class="js-wa-btn bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-1.5 px-3 rounded transition w-full flex items-center justify-center gap-1.5 text-xs shadow-sm">
                                     <i class="fab fa-whatsapp"></i> WA
@@ -516,8 +660,20 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
                         </td>
                     </tr>
                 `;
-            });
-        }
+            }).join('');
+        };
+
+        // Render initially
+        renderWazahatFilteredTable();
+
+        // Wire up Wazahat filter listeners
+        const wGradeFilter = document.getElementById('insp-wazahat-filter-grade');
+        const wStatusFilter = document.getElementById('insp-wazahat-filter-status');
+        const wSearchFilter = document.getElementById('insp-wazahat-filter-search');
+
+        if (wGradeFilter) wGradeFilter.onchange = renderWazahatFilteredTable;
+        if (wStatusFilter) wStatusFilter.onchange = renderWazahatFilteredTable;
+        if (wSearchFilter) wSearchFilter.oninput = renderWazahatFilteredTable;
 
         loader.classList.add('hidden');
         tabsContainer.classList.remove('hidden');

@@ -64,7 +64,7 @@
         </div>
     </div>
 
-    <div class="px-4 max-w-md mx-auto">
+    <div class="px-4 max-w-md mx-auto transition-all duration-300" id="app-main-wrapper">
         
         <div id="login-container" class="app-card p-6 border-t-4 border-indigo-600 mt-4">
             <div class="text-center mb-5">
@@ -182,12 +182,28 @@
                     <i class="fas fa-check-circle"></i> <span>Save Performance Data</span>
                 </button>
             </form>
+
+            <!-- SEMESTER PERFORMANCE PROFILE TABLE -->
+            <div id="teacher-profile-view" class="hidden app-card p-4 md:p-6 mt-5 border-t-4 border-emerald-600 shadow-sm">
+                <div class="flex items-center justify-between border-b pb-3 mb-4">
+                    <h3 class="font-extrabold text-slate-800 text-xs md:text-sm flex items-center gap-2">
+                        <span class="w-7 h-7 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-xs">
+                            <i class="fas fa-chart-bar"></i>
+                        </span>
+                        <span id="profile-title">Semester Karkardagi Profile</span>
+                    </h3>
+                    <span id="profile-sem-badge" class="text-[10px] md:text-xs bg-emerald-100 text-emerald-800 font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">Sem 1</span>
+                </div>
+                <div id="profile-table-container" class="overflow-x-auto no-scrollbar">
+                    <!-- Table rendered dynamically -->
+                </div>
+            </div>
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ==========================================
         // FIREBASE CONFIGURATION
@@ -238,6 +254,8 @@
 
         let gActiveYear = "2026-2027";
         let gTeacherData = null;
+        let gCalData = null;
+        let gActiveSemester = 1;
         let gJamiaId = "001"; 
 
         if (urlJamiaName) displayJamia.innerText = urlJamiaName;
@@ -275,6 +293,7 @@
                 
                 if (calSnap.exists()) {
                     calData = calSnap.data();
+                    gCalData = calData;
                     gActiveYear = calData.activeYear || "2026-2027";
                 }
 
@@ -342,15 +361,19 @@
                 else if (s2Days > 0 && s1Days === 0) activeSemester = 2;
             }
 
-            if (activeSemester !== null) {
-                periods = periods.filter(p => {
-                    const pSem = p.semester || p.sem || p.term; 
-                    if (pSem) {
-                        return String(pSem) === String(activeSemester);
-                    }
-                    return true;
-                });
+            if (activeSemester === null) {
+                activeSemester = ['apr', 'may', 'jun', 'jul'].includes(shortMonthKey) ? 1 : 2;
             }
+            gActiveSemester = activeSemester;
+
+            periods = periods.filter(p => {
+                if (p.status === 'transferred') return false;
+                const pSem = p.semester || p.sem || p.term; 
+                if (pSem) {
+                    return String(pSem) === String(activeSemester);
+                }
+                return true;
+            });
 
             if (periods.length === 0) {
                 periodContainer.innerHTML = `
@@ -448,15 +471,182 @@
                 if (!document.getElementById('freeze-banner')) {
                     const lockedBanner = document.createElement('div');
                     lockedBanner.id = "freeze-banner";
-                    lockedBanner.className = "p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
-                    lockedBanner.innerHTML = `<i class="fas fa-lock text-rose-600"></i> Yeh report Academic Inspector ke Zariye check karke lock kar di gayi hai.`;
+                    lockedBanner.className = "p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-center text-xs font-bold mb-4 flex items-center justify-center gap-2";
+                    lockedBanner.innerHTML = `<i class="fas fa-check-circle text-emerald-600"></i> Yeh report submit ho chuki hai / Inspector ke zariye check karke lock kar di gayi hai.`;
                     periodContainer.insertBefore(lockedBanner, periodContainer.firstChild);
                 }
+
+                renderTeacherSemesterProfile(teacherData, calData, activeSemester || 1);
             } else {
                 btnSave.style.setProperty('display', 'flex', 'important');
                 btnSave.classList.remove('hidden');
                 const existingBanner = document.getElementById('freeze-banner');
                 if (existingBanner) existingBanner.remove();
+            }
+        }
+
+        // ==========================================
+        // RENDER SEMESTER PERFORMANCE PROFILE TABLE
+        // ==========================================
+        async function renderTeacherSemesterProfile(teacherData, calData, activeSemester) {
+            const profileView = document.getElementById('teacher-profile-view');
+            const tableContainer = document.getElementById('profile-table-container');
+            const profileSemBadge = document.getElementById('profile-sem-badge');
+            const profileTitle = document.getElementById('profile-title');
+            const mainWrapper = document.getElementById('app-main-wrapper');
+
+            if (!profileView || !tableContainer) return;
+
+            if (mainWrapper) {
+                mainWrapper.classList.remove('max-w-md');
+                mainWrapper.classList.add('max-w-xl', 'md:max-w-3xl');
+            }
+
+            if (profileSemBadge) {
+                profileSemBadge.innerText = `Sem ${activeSemester}`;
+            }
+            if (profileTitle) {
+                profileTitle.innerText = `Semester ${activeSemester} Karkardagi Profile`;
+            }
+
+            profileView.classList.remove('hidden');
+            tableContainer.innerHTML = '<p class="text-center p-4 text-xs font-bold text-slate-400"><i class="fas fa-spinner fa-spin mr-1"></i> Profile load ho rahi hai...</p>';
+
+            try {
+                const monthUrduNames = {
+                    apr: "اپریل", may: "مئی", jun: "جون", jul: "جولائی",
+                    aug: "اگست", sep: "ستمبر", oct: "اکتوبر", nov: "نومبر",
+                    dec: "دسمبر", jan: "جنوری", feb: "فروری", mar: "مارچ"
+                };
+
+                const sem1Months = ['apr', 'may', 'jun', 'jul'];
+                const sem2Months = ['aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
+                const currentSemMonths = activeSemester === 2 ? sem2Months : sem1Months;
+
+                const shortMonth = dbMonthKey.toLowerCase().trim();
+                const cutoffIdx = currentSemMonths.indexOf(shortMonth);
+                const displayMonths = cutoffIdx !== -1 ? currentSemMonths.slice(0, cutoffIdx + 1) : currentSemMonths;
+
+                // Public database check for admin confirmed data
+                let publicPerfData = {};
+                try {
+                    const perfSnap = await getDoc(doc(db, "academic_performance", gJamiaId));
+                    if (perfSnap.exists()) publicPerfData = perfSnap.data();
+
+                    if (activeSemester === 1) {
+                        const [arch1, arch2] = await Promise.all([
+                            getDoc(doc(db, "academic_performance", `${gJamiaId}_archive_apr_jun`)),
+                            getDoc(doc(db, "academic_performance", `${gJamiaId}_archive_jul`))
+                        ]);
+                        if (arch1.exists()) publicPerfData = { ...arch1.data(), ...publicPerfData };
+                        if (arch2.exists()) publicPerfData = { ...arch2.data(), ...publicPerfData };
+                    }
+                } catch(e) {
+                    console.warn("Public perf fetch for profile:", e);
+                }
+
+                const teacherPeriods = (teacherData.periods || []).filter(p => {
+                    if (p.status === 'transferred') return false;
+                    const pSem = p.semester || p.sem || 1;
+                    return String(pSem) === String(activeSemester);
+                });
+
+                if (teacherPeriods.length === 0) {
+                    tableContainer.innerHTML = '<p class="text-center p-4 text-xs font-bold text-slate-400">Is semester ka koi period record nahi mila.</p>';
+                    return;
+                }
+
+                let tableHtml = `
+                    <table class="w-full text-xs md:text-sm border border-slate-200 text-center whitespace-nowrap rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-emerald-50 text-emerald-950 font-bold border-b border-emerald-200">
+                            <tr>
+                                <th class="p-2.5 md:p-3 border-r border-emerald-200 text-right bg-emerald-100/70" rowspan="2" style="position:sticky; right:0; z-index:10; background:#d1fae5;">کتاب / کلاس</th>
+                                ${displayMonths.map(m => `
+                                    <th class="p-2 md:p-3 border-r border-emerald-200" rowspan="2">
+                                        ${monthUrduNames[m] || m.toUpperCase()}<br>
+                                        <span class="text-[10px] font-normal text-emerald-700">(پڑھایا)</span>
+                                    </th>
+                                `).join('')}
+                                <th class="p-2 md:p-2.5 border-b border-emerald-200 bg-indigo-50 text-indigo-900" colspan="3">مجموعی کارکردگی</th>
+                            </tr>
+                            <tr class="text-[10px] md:text-xs bg-indigo-50/50 text-slate-700">
+                                <th class="p-1.5 md:p-2 border-r border-emerald-200">کل صفحات</th>
+                                <th class="p-1.5 md:p-2 border-r border-emerald-200 text-indigo-700 font-extrabold">اب تک پڑھایا</th>
+                                <th class="p-1.5 md:p-2 text-rose-600 font-extrabold">بقیہ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                `;
+
+                teacherPeriods.forEach(p => {
+                    const totalBookPages = parseInt(p.totalPages || p.pages || 0, 10);
+                    let rowCumulativeTaught = 0;
+
+                    tableHtml += `
+                        <tr class="hover:bg-slate-50 transition-colors">
+                            <td class="p-2.5 md:p-3 border-r border-slate-100 text-right font-bold text-slate-800 bg-white" style="position:sticky; right:0; z-index:5;">
+                                <div class="text-xs md:text-sm text-slate-900 font-extrabold">${p.bookName}</div>
+                                <div class="text-[10px] md:text-xs text-indigo-600 font-semibold">${p.className}</div>
+                            </td>
+                    `;
+
+                    displayMonths.forEach(m => {
+                        let taught = 0;
+                        let isVerified = false;
+
+                        // Check teacher period achieved
+                        if (p.achieved && p.achieved[m] !== undefined) {
+                            taught = parseInt(p.achieved[m]) || 0;
+                            if (p.locked && (p.locked[m] === true || p.locked[m] === "true")) {
+                                isVerified = true;
+                            }
+                        }
+
+                        // Check public perf data
+                        if (publicPerfData[m]?.teachers) {
+                            const pubT = publicPerfData[m].teachers.find(t => t.name.toLowerCase() === teacherData.name.toLowerCase());
+                            if (pubT && pubT.periods_detail) {
+                                const matchedKey = Object.keys(pubT.periods_detail).find(k => {
+                                    const d = pubT.periods_detail[k];
+                                    return d.class === p.className && d.subject === p.bookName;
+                                });
+                                if (matchedKey) {
+                                    taught = parseInt(pubT.periods_detail[matchedKey].page_to) || taught;
+                                    isVerified = true;
+                                }
+                            }
+                        }
+
+                        rowCumulativeTaught += taught;
+                        const bgCol = isVerified ? "bg-emerald-50/60" : "";
+
+                        tableHtml += `
+                            <td class="p-2 md:p-3 border-r border-slate-100 font-extrabold text-emerald-800 ${bgCol}">
+                                ${taught > 0 ? taught : '-'}
+                                ${isVerified ? '<i class="fas fa-check-circle text-[9px] text-emerald-500 ml-1" title="Verified"></i>' : ''}
+                            </td>
+                        `;
+                    });
+
+                    const remaining = totalBookPages - rowCumulativeTaught;
+                    let remColor = "text-slate-800";
+                    if (remaining <= 0) remColor = "text-emerald-600 font-extrabold";
+                    else if (remaining < (totalBookPages * 0.2)) remColor = "text-amber-600 font-extrabold";
+
+                    tableHtml += `
+                            <td class="p-2 md:p-2.5 border-r border-slate-100 font-bold text-slate-700 bg-slate-50/40">${totalBookPages}</td>
+                            <td class="p-2 md:p-2.5 border-r border-slate-100 font-black text-indigo-700 bg-indigo-50/30">${rowCumulativeTaught}</td>
+                            <td class="p-2 md:p-2.5 font-black ${remColor} bg-slate-50/40" dir="ltr">${remaining}</td>
+                        </tr>
+                    `;
+                });
+
+                tableHtml += `</tbody></table>`;
+                tableContainer.innerHTML = tableHtml;
+
+            } catch (err) {
+                console.error("Profile error:", err);
+                tableContainer.innerHTML = `<p class="text-center p-4 text-xs font-bold text-red-600">Profile load karne me error: ${err.message}</p>`;
             }
         }
 
@@ -518,23 +708,21 @@
                     let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
 
                     let periodsDetailMap = {};
-                            const periods = gTeacherData.periods || [];
-                            let savedCount = 1; // Naya variable counting ke liye
-                            
-                            periods.forEach((p) => {
-                                const inputField = document.querySelector(`input[data-period-id="${p.id}"]`);
-                                
-                                // FIX: Agar input field screen par maujood hai, tabhi use save karo (Doosre semester ko chhor do)
-                                if (inputField) {
-                                    periodsDetailMap[`period_${savedCount}`] = {
-                                        class: p.className,
-                                        subject: p.bookName,
-                                        page_from: 0, 
-                                        page_to: parseInt(inputField.value) || 0 
-                                    };
-                                    savedCount++;
-                                }
-                            });
+                    const periods = gTeacherData.periods || [];
+                    let savedCount = 1;
+                    
+                    periods.forEach((p) => {
+                        const inputField = document.querySelector(`input[data-period-id="${p.id}"]`);
+                        if (inputField) {
+                            periodsDetailMap[`period_${savedCount}`] = {
+                                class: p.className,
+                                subject: p.bookName,
+                                page_from: 0, 
+                                page_to: parseInt(inputField.value) || 0 
+                            };
+                            savedCount++;
+                        }
+                    });
 
                     const newTeacherEntry = {
                         name: gTeacherData.name,
@@ -553,16 +741,71 @@
                     let targetTeachers = (monthSection.teachers || []).filter(t => t.name.toLowerCase() !== gTeacherData.name.toLowerCase());
                     targetTeachers.push(newTeacherEntry);
 
-                    currentPerfData[dbMonthKey] = {
-                        teachers: targetTeachers,
-                        updated_at: new Date().toISOString()
-                    };
+                    // 1. Save specific dbMonthKey to academic_performance with merge
+                    await setDoc(perfDocRef, {
+                        [dbMonthKey]: {
+                            teachers: targetTeachers,
+                            updated_at: new Date().toISOString()
+                        }
+                    }, { merge: true });
 
-                    await setDoc(perfDocRef, currentPerfData, { merge: true });
-                    alert(`🎉 MashaAllah! Aapki final report successfully save ho gayi hai.`);
-                    
-                    location.reload();
-                    
+                    // 2. Sync with inspector's user record in users/{inspectorId}
+                    try {
+                        const userRef = doc(db, "users", inspectorId);
+                        const userSnap = await getDoc(userRef);
+                        if (userSnap.exists()) {
+                            let academicYears = userSnap.data().academicYears || {};
+                            let structure = academicYears[gActiveYear]?.karkardagiStructure || [];
+                            let jamiaData = structure.find(j => j.jamiaName === urlJamiaName);
+                            if (jamiaData?.teachers) {
+                                let t = jamiaData.teachers.find(te => String(te.id) === String(gTeacherData.id) || String(te.loginCode) === String(gTeacherData.loginCode));
+                                if (t && t.periods) {
+                                    t.periods.forEach(p => {
+                                        const inputField = document.querySelector(`input[data-period-id="${p.id}"]`);
+                                        if (inputField) {
+                                            if (!p.achieved) p.achieved = {};
+                                            p.achieved[dbMonthKey] = parseInt(inputField.value) || 0;
+                                            if (!p.locked) p.locked = {};
+                                            p.locked[dbMonthKey] = true;
+                                        }
+                                    });
+                                    await updateDoc(userRef, { academicYears });
+                                }
+                            }
+                        }
+                    } catch(uErr) {
+                        console.warn("Inspector sync warning:", uErr);
+                    }
+
+                    // 3. Update in-memory teacher periods
+                    gTeacherData.periods.forEach(p => {
+                        const inputField = document.querySelector(`input[data-period-id="${p.id}"]`);
+                        if (inputField) {
+                            if (!p.achieved) p.achieved = {};
+                            p.achieved[dbMonthKey] = parseInt(inputField.value) || 0;
+                            if (!p.locked) p.locked = {};
+                            p.locked[dbMonthKey] = true;
+                        }
+                    });
+
+                    // 4. Hide form elements and render Semester Profile Table
+                    document.getElementById('period-section-card').classList.add('hidden');
+                    document.getElementById('deeni-kaam-container').classList.add('hidden');
+                    btnSave.classList.add('hidden');
+                    btnSave.style.setProperty('display', 'none', 'important');
+
+                    // Show success message banner
+                    if (!document.getElementById('success-submit-banner')) {
+                        const successBanner = document.createElement('div');
+                        successBanner.id = "success-submit-banner";
+                        successBanner.className = "p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-center text-xs md:text-sm font-bold mb-4 shadow-sm flex items-center justify-center gap-2";
+                        successBanner.innerHTML = `<i class="fas fa-check-circle text-emerald-600 text-base"></i> 🎉 MashaAllah! Aapki final report successfully save ho gayi hai.`;
+                        mainFormContainer.insertBefore(successBanner, mainFormContainer.firstChild);
+                    }
+
+                    // Render table like teacher-form.html
+                    await renderTeacherSemesterProfile(gTeacherData, gCalData, gActiveSemester);
+
                 } catch (error) {
                     console.error("Error saving data:", error);
                     alert("Data save hone me error aayi: " + error.message);

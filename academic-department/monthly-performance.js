@@ -341,6 +341,11 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4" id="form-${jamia.replace(/\s+/g, '')}">
                                 <input type="text" id="name-${jamia.replace(/\s+/g, '')}" placeholder="Name" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm font-medium outline-none transition">
                                 <input type="text" id="ajeer-${jamia.replace(/\s+/g, '')}" placeholder="Ajeer Code" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm font-bold outline-none transition" maxlength="6">
+                                <select id="cat-${jamia.replace(/\s+/g, '')}" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition bg-white text-slate-700 font-medium">
+                                    <option value="">Category (Madani / Asri)</option>
+                                    <option value="Madani">Madani</option>
+                                    <option value="Asri">Asri</option>
+                                </select>
                                 <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
                                 <input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
                                 <input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qual." class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
@@ -392,6 +397,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
 
             const name = document.getElementById(`name-${safeId}`).value.trim();
             const ajeer = document.getElementById(`ajeer-${safeId}`).value.trim();
+            const teacherType = document.getElementById(`cat-${safeId}`)?.value || "";
             const contact = document.getElementById(`contact-${safeId}`).value.trim();
             const level = document.getElementById(`level-${safeId}`).value.trim();
             const hQual = document.getElementById(`h-qual-${safeId}`).value.trim();
@@ -420,7 +426,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
                     if (idx > -1) {
                         jamiaData.teachers[idx] = {
                             ...jamiaData.teachers[idx],
-                            name, loginCode: ajeer, contact, levelQualified: level,
+                            name, loginCode: ajeer, teacherType, contact, levelQualified: level,
                             highestQualification: hQual, mailId: mail, experience: exp,
                             specialization: spec, teachingPeriod: tPeriod, ijaraStatus: ijara
                         };
@@ -429,7 +435,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
                     btn.innerText = "Save Profile";
                 } else {
                     jamiaData.teachers.push({
-                        id: `t-${Date.now()}`, name, loginCode: ajeer, contact, levelQualified: level,
+                        id: `t-${Date.now()}`, name, loginCode: ajeer, teacherType, contact, levelQualified: level,
                         highestQualification: hQual, mailId: mail, experience: exp, specialization: spec,
                         teachingPeriod: tPeriod, ijaraStatus: ijara, periods: []
                     });
@@ -437,7 +443,7 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
 
                 await updateDoc(userRef, { academicYears });
                 alert("Teacher Data Saved!");
-                document.querySelectorAll(`#form-${safeId} input`).forEach(inp => inp.value = "");
+                document.querySelectorAll(`#form-${safeId} input, #form-${safeId} select`).forEach(inp => inp.value = "");
                 loadAllTeachers(assignedJamiaat, db, currentUser, selectedYear);
             } catch (e) { alert("Error: " + e.message); }
             btn.disabled = false;
@@ -476,7 +482,10 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                     <!-- Teacher Header -->
                     <div class="teacher-toggle flex justify-between items-center p-3 md:p-4 cursor-pointer hover:bg-slate-50 transition-colors" data-tid="${uniqueId}" data-jamia="${jamia}">
                         <div class="flex flex-col">
-                            <span class="font-bold text-slate-800 text-sm md:text-base">${t.name}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-slate-800 text-sm md:text-base">${t.name}</span>
+                                ${t.teacherType ? `<span class="text-[9px] md:text-[10px] px-1.5 py-0.5 rounded font-bold ${t.teacherType === 'Madani' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}">${t.teacherType}</span>` : ''}
+                            </div>
                             <span class="text-[9px] md:text-xs text-indigo-600 font-bold uppercase tracking-wider mt-0.5 md:mt-1">Code: ${t.loginCode}</span>
                         </div>
                         <div class="flex items-center gap-3 md:gap-4">
@@ -662,11 +671,22 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
         const targetMonthKey = getActiveShortMonth();
         const currentYearMonthPrefix = `${activeYear.split('-')[0]}-${monthNames.indexOf(targetMonthKey) + 1 < 10 ? '0' + (monthNames.indexOf(targetMonthKey) + 1) : monthNames.indexOf(targetMonthKey) + 1}`;
 
-        // NAYA: Sab Jamiaat ka Public data ek hi baar fetch karein (Speed Optimized)
-        const publicDataPromises = filteredJamiaat.map(jamiaName => {
+        // NAYA: Sab Jamiaat ka Public data ek hi baar fetch karein (Speed Optimized + Archive Fallback)
+        const publicDataPromises = filteredJamiaat.map(async jamiaName => {
             const match = jamiaName.match(/\d+/);
             const jamiaDocId = match ? match[0] : "001";
-            return getDoc(doc(db, "academic_performance", jamiaDocId));
+            const snap = await getDoc(doc(db, "academic_performance", jamiaDocId));
+            let data = snap.exists() ? snap.data() : {};
+            if (!data[targetMonthKey]) {
+                if (['apr', 'may', 'jun'].includes(targetMonthKey)) {
+                    const arch = await getDoc(doc(db, "academic_performance", `${jamiaDocId}_archive_apr_jun`));
+                    if (arch.exists()) data = { ...data, ...arch.data() };
+                } else if (targetMonthKey === 'jul') {
+                    const arch = await getDoc(doc(db, "academic_performance", `${jamiaDocId}_archive_jul`));
+                    if (arch.exists()) data = { ...data, ...arch.data() };
+                }
+            }
+            return { exists: () => true, data: () => data };
         });
         
         // SPEED BOOSTER: Sabhi Jamia ke targets ek hi baar parallel mangwa lein (Loop ke bahar)
@@ -1005,6 +1025,9 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
             if (teacher) {
                 document.getElementById(`name-${safeId}`).value = teacher.name || "";
                 document.getElementById(`ajeer-${safeId}`).value = teacher.loginCode || "";
+                if (document.getElementById(`cat-${safeId}`)) {
+                    document.getElementById(`cat-${safeId}`).value = teacher.teacherType || teacher.category || "";
+                }
                 document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
                 document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
                 document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
@@ -1449,7 +1472,10 @@ const loadTeacherProfilesTable = async (jamiaat, db, currentUser) => {
                         ${jamiaData.teachers.map(t => `
                             <tr class="hover:bg-slate-50 transition-colors">
                                 <td class="p-2 md:p-4 border-r border-slate-100">
-                                    <div class="font-bold text-slate-800 text-xs md:text-base">${t.name}</div>
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="font-bold text-slate-800 text-xs md:text-base">${t.name}</span>
+                                        ${t.teacherType ? `<span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${t.teacherType === 'Madani' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}">${t.teacherType}</span>` : ''}
+                                    </div>
                                     <div class="text-indigo-600 text-[9px] md:text-xs uppercase mt-0.5 md:mt-1 font-bold tracking-wider">ID: ${t.loginCode}</div>
                                 </td>
                                 <td class="p-2 md:p-4 border-r border-slate-100">
@@ -1726,8 +1752,22 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             const match = jamiaName.match(/\d+/);
             const jamiaDocId = match ? match[0] : "001";
             const snap = await getDoc(doc(db, "academic_performance", jamiaDocId));
-            if (snap.exists()) publicDataMap[jamiaName] = snap.data();
-            else publicDataMap[jamiaName] = {};
+            let data = snap.exists() ? snap.data() : {};
+            
+            // If historical months are needed, merge archive data
+            const hasArchMonths = semMonths.some(m => ['apr', 'may', 'jun', 'jul'].includes(m));
+            if (hasArchMonths) {
+                try {
+                    const [arch1, arch2] = await Promise.all([
+                        getDoc(doc(db, "academic_performance", `${jamiaDocId}_archive_apr_jun`)),
+                        getDoc(doc(db, "academic_performance", `${jamiaDocId}_archive_jul`))
+                    ]);
+                    if (arch1.exists()) data = { ...arch1.data(), ...data };
+                    if (arch2.exists()) data = { ...arch2.data(), ...data };
+                } catch(e) { console.warn("Archive fetch skipped:", e); }
+            }
+
+            publicDataMap[jamiaName] = data;
         });
         await Promise.all(publicDataPromises);
 
