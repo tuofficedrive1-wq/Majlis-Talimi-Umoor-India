@@ -193,6 +193,24 @@
                     </div>
                 </div>
 
+                <div id="class-loading-indicator" class="hidden my-8 p-6 sm:p-8 bg-teal-50 border-2 border-dashed border-teal-300 rounded-2xl text-center shadow-sm transition-all duration-300">
+                    <div class="inline-flex items-center justify-center w-14 h-14 bg-white rounded-full shadow-md text-teal-600 mb-3 animate-pulse">
+                        <i class="fas fa-file-invoice text-2xl"></i>
+                    </div>
+                    <div class="flex items-center justify-center gap-3 mb-2">
+                        <i class="fas fa-spinner fa-spin text-2xl text-teal-600"></i>
+                        <h4 class="text-xl sm:text-2xl font-bold text-teal-900 urdu-font" style="font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', Tahoma, sans-serif;">
+                            رزلٹ شیٹ اور طلبہ کی لسٹ لوڈ ہو رہی ہے...
+                        </h4>
+                    </div>
+                    <p class="text-sm sm:text-base font-semibold text-teal-700">
+                        Class <span id="loading-class-name" class="font-bold text-teal-900"></span> کا ڈیٹا اور پرانے ریکارڈز تلاش کیے جا رہے ہیں، برائے کرم انتظار فرمائیں...
+                    </p>
+                    <p class="text-xs text-teal-600 mt-1">
+                        (Result sheet aur student records load ho rahe hain, baraye mehrbani intezar karein...)
+                    </p>
+                </div>
+
                 <div id="result-area" class="hidden">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                         <h2 class="text-xl font-bold text-gray-800 border-b-2 border-teal-500 pb-1">Result Sheet</h2>
@@ -663,6 +681,7 @@
             const container = document.getElementById('checkbox-container');
             const selectionArea = document.getElementById('subject-selection-area');
             const resultArea = document.getElementById('result-area');
+            const loaderElem = document.getElementById('class-loading-indicator');
 
             container.innerHTML = '';
             resultArea.classList.add('hidden'); 
@@ -670,12 +689,21 @@
 
             if (!clsName) { 
                 selectionArea.classList.add('hidden'); 
+                if (loaderElem) loaderElem.classList.add('hidden');
                 currentActiveRequestCls = "";
                 return; 
             }
 
             currentActiveRequestCls = clsName;
             const thisRequestCls = clsName;
+
+            // Loading indicator dikhayein aur selection area ko filhal hide rakhein
+            if (loaderElem) {
+                const loaderClassName = document.getElementById('loading-class-name');
+                if (loaderClassName) loaderClassName.textContent = `[${clsName}]`;
+                loaderElem.classList.remove('hidden');
+            }
+            selectionArea.classList.add('hidden');
 
             const rawSubjectsSet = classBooksMap[clsName] || new Set();
             
@@ -695,7 +723,6 @@
                 container.appendChild(wrapper);
             });
 
-            selectionArea.classList.remove('hidden');
             await window.checkExistingForClass(clsName);
         };
 
@@ -1053,6 +1080,7 @@
             const studentsBody = document.getElementById('students-body');
             const classSelect = document.getElementById('class-select');
             const selectionArea = document.getElementById('subject-selection-area'); 
+            const loaderElem = document.getElementById('class-loading-indicator');
 
             finalSubjectsList = [];
             studentsBody.innerHTML = '';
@@ -1068,41 +1096,41 @@
 
             window.classPreviousStudentsMap = window.classPreviousStudentsMap || {};
 
-            // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna (Sirf isi Jamia aur isi Class ke)
-            if (!window.classPreviousStudentsMap[clsName] || window.classPreviousStudentsMap[clsName].length === 0) {
-                try {
-                    let tempMonth = monthKey;
-                    for (let i = 0; i < 6; i++) {
-                        tempMonth = window.getPreviousMonth(tempMonth);
-                        if (!tempMonth) break;
-                        
-                        const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
-                        if (currentActiveRequestCls !== thisRequestCls) return;
+            try {
+                // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna (Sirf isi Jamia aur isi Class ke)
+                if (!window.classPreviousStudentsMap[clsName] || window.classPreviousStudentsMap[clsName].length === 0) {
+                    try {
+                        let tempMonth = monthKey;
+                        for (let i = 0; i < 6; i++) {
+                            tempMonth = window.getPreviousMonth(tempMonth);
+                            if (!tempMonth) break;
+                            
+                            const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
+                            if (currentActiveRequestCls !== thisRequestCls) return;
 
-                        if (prevSnap && prevSnap.exists()) {
-                            const prevData = prevSnap.data() || {};
-                            const dJamia = prevData.jamiaName || prevData.jamiaId || prevData.jamia;
-                            const dClass = prevData.class;
-                            if (window.isSameJamia(dJamia, jamiaName) && window.isSameClass(dClass, clsName)) {
-                                if (Array.isArray(prevData.students) && prevData.students.length > 0) {
-                                    const names = prevData.students
-                                        .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
-                                        .filter(n => n.length > 0);
-                                    if (names.length > 0) {
-                                        window.classPreviousStudentsMap[clsName] = names;
-                                        break; 
+                            if (prevSnap && prevSnap.exists()) {
+                                const prevData = prevSnap.data() || {};
+                                const dJamia = prevData.jamiaName || prevData.jamiaId || prevData.jamia;
+                                const dClass = prevData.class;
+                                if (window.isSameJamia(dJamia, jamiaName) && window.isSameClass(dClass, clsName)) {
+                                    if (Array.isArray(prevData.students) && prevData.students.length > 0) {
+                                        const names = prevData.students
+                                            .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
+                                            .filter(n => n.length > 0);
+                                        if (names.length > 0) {
+                                            window.classPreviousStudentsMap[clsName] = names;
+                                            break; 
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
-            }
+                    } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
+                }
 
-            if (currentActiveRequestCls !== thisRequestCls) return;
+                if (currentActiveRequestCls !== thisRequestCls) return;
 
-            // 2. Current mahine ka data load karna
-            try {
+                // 2. Current mahine ka data load karna
                 const { snap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
                 if (currentActiveRequestCls !== thisRequestCls) return;
                 
@@ -1171,6 +1199,9 @@
                     if (isViewMode && !isEditingMode) {
                         resultArea.classList.remove('hidden');
                         document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
+                    } else {
+                        // Nayi sheet hai: subjects selection box dikhayein
+                        selectionArea.classList.remove('hidden');
                     }
                 }
 
@@ -1190,7 +1221,13 @@
                     if(headerTrash) headerTrash.style.display = 'none';
                 }
                 if (typeof isEditingMode !== 'undefined' && isEditingMode) enableEditMode(true); 
-            } catch(e) { console.log("New sheet or error loading:", e); }
+            } catch(e) { 
+                console.log("New sheet or error loading:", e); 
+            } finally {
+                if (currentActiveRequestCls === thisRequestCls && loaderElem) {
+                    loaderElem.classList.add('hidden');
+                }
+            }
         };
 
         window.toggleSummary = async () => {
