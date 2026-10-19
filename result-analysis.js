@@ -254,6 +254,14 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
         const tfoot = document.getElementById('ra-table-foot');
         const subtitle = document.getElementById('ra-report-subtitle');
 
+        let wazahatItems = [];
+        let totalCases = 0;
+        let totalSubmitted = 0;
+        let totalPending = 0;
+        let totalCommentAdded = 0;
+        let totalCommentPending = 0;
+        let completionRate = 0;
+
         loader.classList.remove('hidden');
         reportArea.classList.add('hidden');
         tbody.innerHTML = '';
@@ -559,11 +567,11 @@ export async function initResultAnalysis(db, user, containerId, userProfileData)
     // --- Baki ka purana code upar wese hi rahega ---
 
 else if (layoutLevel === 'wazahat') {
-    let totalPending = 0;
-    let totalSubmitted = 0;
-    let totalCommentAdded = 0;
-    let totalCommentPending = 0;
-    let wazahatItems = [];
+    totalPending = 0;
+    totalSubmitted = 0;
+    totalCommentAdded = 0;
+    totalCommentPending = 0;
+    wazahatItems = [];
 
     latestDataMap.forEach((d) => {
         if (d.data && Array.isArray(d.data)) {
@@ -730,8 +738,8 @@ else if (layoutLevel === 'wazahat') {
         }
     });
 
-    const totalCases = totalPending + totalSubmitted;
-    const completionRate = totalCases > 0 ? (totalSubmitted / totalCases) * 100 : 0;
+    totalCases = totalPending + totalSubmitted;
+    completionRate = totalCases > 0 ? (totalSubmitted / totalCases) * 100 : 0;
 
     // 🌟 Executive Summary Bar & Toolbar HTML (Admin Style)
     const summaryBarHtml = `
@@ -1052,7 +1060,7 @@ else if (layoutLevel === 'wazahat') {
                         const searchVal = (document.getElementById('wazahat-live-search')?.value || '').toLowerCase().trim();
                         const statusVal = document.getElementById('wazahat-status-filter')?.value || 'all';
 
-                        let itemsForPdf = wazahatItems.filter(item => {
+                        let itemsForPdf = (wazahatItems || []).filter(item => {
                             if (statusVal === 'submitted' && !item.hasWazahat) return false;
                             if (statusVal === 'pending' && item.hasWazahat) return false;
                             if (statusVal === 'comment-added' && !item.hasComment) return false;
@@ -1063,6 +1071,11 @@ else if (layoutLevel === 'wazahat') {
                             }
                             return true;
                         });
+
+                        if (!itemsForPdf.length) {
+                            alert("Filter ke mutabiq koi data download ke liye nahi mila.");
+                            return;
+                        }
 
                         const buildPdfRow = (item, sr) => {
                             let formattedDate = "";
@@ -1186,8 +1199,12 @@ else if (layoutLevel === 'wazahat') {
                                             <span style="font-size: 13px; font-weight: 900; color: #fb7185; font-family: sans-serif;">${totalPending}</span>
                                         </div>
                                         <div style="background: rgba(20,184,166,0.12); border: 1px solid rgba(20,184,166,0.25); padding: 3px 8px; border-radius: 5px; text-align: center;">
-                                            <span style="font-size: 8.5px; color: #5eead4; display: block; font-family: sans-serif; font-weight: bold;">COMMENTS ADD</span>
+                                            <span style="font-size: 8.5px; color: #5eead4; display: block; font-family: sans-serif; font-weight: bold;">COMMENT ADD KAR DIYE</span>
                                             <span style="font-size: 13px; font-weight: 900; color: #2dd4bf; font-family: sans-serif;">${totalCommentAdded}</span>
+                                        </div>
+                                        <div style="background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.25); padding: 3px 8px; border-radius: 5px; text-align: center;">
+                                            <span style="font-size: 8.5px; color: #fcd34d; display: block; font-family: sans-serif; font-weight: bold;">COMMENT BAQI</span>
+                                            <span style="font-size: 13px; font-weight: 900; color: #fbbf24; font-family: sans-serif;">${totalCommentPending}</span>
                                         </div>
                                     </div>
                                 </div>` : `
