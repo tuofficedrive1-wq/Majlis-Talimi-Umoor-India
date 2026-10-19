@@ -318,19 +318,33 @@
         // Urdu/Arabic text ko normalize karne ka function (spelling mismatch rokne ke liye)
         window.normalizeClassText = (str) => {
             if (!str) return '';
-            return str.trim()
+            return str.toString()
+                .replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '')
+                .trim()
+                .replace(/_+/g, ' ')
                 .replace(/\s+/g, '_')
                 .replace(/[أإآ]/g, 'ا')
                 .replace(/[ةۀھ]/g, 'ہ')
                 .replace(/[ىئ]/g, 'ی')
-                .replace(/[\u064B-\u065F\u0670]/g, '');
+                .replace(/[\u064B-\u065F\u0670]/g, '')
+                .toLowerCase();
+        };
+
+        // Class button aur dropdown display ke liye clean aur unique format
+        window.formatClassDisplayName = (str) => {
+            if (!str) return '';
+            return str.toString()
+                .replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '')
+                .trim()
+                .replace(/_+/g, ' ')
+                .replace(/\s+/g, ' ');
         };
 
         // Jamia match verification function
         window.isSameJamia = (j1, j2) => {
             if (!j1 || !j2) return false;
-            const s1 = String(j1).trim().toLowerCase();
-            const s2 = String(j2).trim().toLowerCase();
+            const s1 = String(j1).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+            const s2 = String(j2).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
             if (s1 === s2) return true;
             
             const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
@@ -342,6 +356,11 @@
             const core2 = strip(clean2);
             if (core1 && core2 && core1 === core2) return true;
 
+            const normCity = (s) => strip(s).replace(/oo/g, 'o').replace(/ee/g, 'i').replace(/[aeiou]/g, '');
+            const nc1 = normCity(clean1);
+            const nc2 = normCity(clean2);
+            if (nc1 && nc2 && nc1 === nc2) return true;
+
             return false;
         };
 
@@ -352,15 +371,7 @@
             const s2 = String(c2).trim().toLowerCase();
             if (s1 === s2) return true;
 
-            const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
-            const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
-            if (clean1 === clean2) return true;
-
-            const n1 = window.normalizeClassText(c1);
-            const n2 = window.normalizeClassText(c2);
-            if (n1 && n2 && n1 === n2) return true;
-
-            return false;
+            return window.normalizeClassText(c1) === window.normalizeClassText(c2);
         };
 
         // Purani list na milne par popup message dikhane ka function
@@ -548,28 +559,49 @@
                 const userData = userDoc.data();
                 globalUserData = userData;
                 const years = userData.academicYears || {};
-                const yearData = years[acYear];
+                const shortAcYear = acYear ? acYear.replace(/-20(\d\d)$/, '-$1') : null;
+                const yearData = years[acYear] || (shortAcYear ? years[shortAcYear] : null) || Object.values(years)[0];
                 let jamiaStruct = null;
                 
                 if (yearData && Array.isArray(yearData.karkardagiStructure)) {
-                    jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
+                    jamiaStruct = yearData.karkardagiStructure.find(j => window.isSameJamia(j.jamiaName, jamiaName));
                 }
                 if (!jamiaStruct && Array.isArray(userData.academicStructure)) {
-                    jamiaStruct = userData.academicStructure.find(j => j.jamiaName === jamiaName);
+                    jamiaStruct = userData.academicStructure.find(j => window.isSameJamia(j.jamiaName, jamiaName));
                 }
-                if (!jamiaStruct) { alert("Setup nahi mila. Admin se rabta karein."); return; }
+                if (!jamiaStruct) { 
+                    alert("Setup nahi mila. Admin se rabta karein."); 
+                    document.getElementById('loader').classList.add('hidden');
+                    return; 
+                }
 
                 classBooksMap = {};
+
+                // 1. Agar jamiaStruct.classes me classes defined hain to unhe add karein
+                if (Array.isArray(jamiaStruct.classes)) {
+                    jamiaStruct.classes.forEach(c => {
+                        const dName = window.formatClassDisplayName(c);
+                        if (dName && !classBooksMap[dName]) classBooksMap[dName] = new Set();
+                    });
+                } else if (jamiaStruct.classes && typeof jamiaStruct.classes === 'object') {
+                    Object.keys(jamiaStruct.classes).forEach(c => {
+                        const dName = window.formatClassDisplayName(c);
+                        if (dName && !classBooksMap[dName]) classBooksMap[dName] = new Set();
+                    });
+                }
+
+                // 2. Teachers aur unke periods se strictly classes aur kitabein add karein (Deduplicated canonical names)
                 if (Array.isArray(jamiaStruct.teachers)) {
                     jamiaStruct.teachers.forEach(t => {
                         if (Array.isArray(t.periods)) {
                             t.periods.forEach(p => {
-                                const cName = (p.className || p.class || p.darja || '').trim();
-                                const bName = (p.bookName || p.book || p.kitab || p.subject || '').trim();
-                                if (!cName || !bName) return;
+                                const rawCName = (p.className || p.class || p.cName || p.darja || '').trim();
+                                const bName = (p.bookName || p.book || p.bName || p.kitab || p.subject || '').trim();
+                                if (!rawCName || !bName) return;
 
-                                const cleanClass = cName.split('_')[0].trim();
-                                const periodSem = normalizeSem(p.sem || p.semester);
+                                const cName = window.formatClassDisplayName(rawCName);
+                                const cleanClass = cName.split('_')[0].split(' ')[0].trim();
+                                const periodSem = normalizeSem(p.sem || p.semester || p.term);
                                 const configSem = subjectSemesterMap[`${cleanClass}__${bName}`] 
                                                || subjectSemesterMap[`${cName}__${bName}`] 
                                                || subjectSemesterMap[bName] 
@@ -585,28 +617,6 @@
                         }
                     });
                 }
-
-                // Agar pichle kisi mahine me aisi class save hai jo current teacher list me nahi hai, to use bhi dhoondh lein
-                try {
-                    const q = query(
-                        collection(db, "monthly_test_sheets"),
-                        where("adminUid", "==", adminUid),
-                        where("month", "==", monthKey)
-                    );
-                    const qSnap = await getDocs(q);
-                    const existingNorms = Object.keys(classBooksMap).map(k => window.normalizeClassText(k.split('_')[0]));
-                    
-                    qSnap.forEach(d => {
-                        const sData = d.data();
-                        if ((sData.jamiaName || '').trim().toLowerCase() === jamiaName.trim().toLowerCase() && sData.class) {
-                            const cNorm = window.normalizeClassText(sData.class.split('_')[0]);
-                            if (!existingNorms.includes(cNorm)) {
-                                classBooksMap[sData.class] = new Set(sData.subjects || []);
-                                existingNorms.push(cNorm);
-                            }
-                        }
-                    });
-                } catch (e) { console.warn(e); }
 
                 const tabs = document.getElementById('class-tabs');
                 const select = document.getElementById('class-select');
@@ -645,6 +655,9 @@
             } catch (error) { console.error("Error loading data:", error); }
         }
 
+        let currentActiveRequestCls = "";
+        window.classPreviousStudentsMap = {};
+
         window.handleClassChange = async () => {
             const clsName = document.getElementById('class-select').value;
             const container = document.getElementById('checkbox-container');
@@ -657,11 +670,14 @@
 
             if (!clsName) { 
                 selectionArea.classList.add('hidden'); 
+                currentActiveRequestCls = "";
                 return; 
             }
 
-            const rawSubjectsSet = classBooksMap[clsName];
-            if (!rawSubjectsSet) return;
+            currentActiveRequestCls = clsName;
+            const thisRequestCls = clsName;
+
+            const rawSubjectsSet = classBooksMap[clsName] || new Set();
             
             const filteredSubjects = Array.from(rawSubjectsSet).filter(s => {
                 const lower = s.toLowerCase().trim();
@@ -726,11 +742,13 @@
             document.getElementById('result-area').classList.remove('hidden');
 
             const tbody = document.getElementById('students-body');
-            if (tbody.innerHTML.trim() === '' && window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                window.previousMonthStudents.forEach(stdName => {
+            const clsName = document.getElementById('class-select').value;
+            const prevStudents = (window.classPreviousStudentsMap && window.classPreviousStudentsMap[clsName]) || [];
+
+            if (tbody.innerHTML.trim() === '' && prevStudents.length > 0) {
+                prevStudents.forEach(stdName => {
                     addStudentRow(stdName, {}); 
                 });
-                window.previousMonthStudents = []; 
             } else if (tbody.rows.length === 0) {
                 window.showNoStudentsPopup();
             }
@@ -1028,6 +1046,9 @@
         };
 
         window.checkExistingForClass = async (clsName) => {
+            const thisRequestCls = clsName;
+            if (currentActiveRequestCls !== thisRequestCls) return;
+
             const resultArea = document.getElementById('result-area');
             const studentsBody = document.getElementById('students-body');
             const classSelect = document.getElementById('class-select');
@@ -1045,38 +1066,45 @@
             const params = new URLSearchParams(window.location.search);
             const isViewMode = params.get('mode') === 'view';
 
-            window.previousMonthStudents = []; 
+            window.classPreviousStudentsMap = window.classPreviousStudentsMap || {};
 
             // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna (Sirf isi Jamia aur isi Class ke)
-            try {
-                let tempMonth = monthKey;
-                for (let i = 0; i < 6; i++) {
-                    tempMonth = window.getPreviousMonth(tempMonth);
-                    if (!tempMonth) break;
-                    
-                    const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
-                    if (prevSnap && prevSnap.exists()) {
-                        const prevData = prevSnap.data() || {};
-                        const dJamia = prevData.jamiaName || prevData.jamiaId || prevData.jamia;
-                        const dClass = prevData.class;
-                        if (window.isSameJamia(dJamia, jamiaName) && window.isSameClass(dClass, clsName)) {
-                            if (Array.isArray(prevData.students) && prevData.students.length > 0) {
-                                const names = prevData.students
-                                    .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
-                                    .filter(n => n.length > 0);
-                                if (names.length > 0) {
-                                    window.previousMonthStudents = names;
-                                    break; 
+            if (!window.classPreviousStudentsMap[clsName] || window.classPreviousStudentsMap[clsName].length === 0) {
+                try {
+                    let tempMonth = monthKey;
+                    for (let i = 0; i < 6; i++) {
+                        tempMonth = window.getPreviousMonth(tempMonth);
+                        if (!tempMonth) break;
+                        
+                        const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
+                        if (currentActiveRequestCls !== thisRequestCls) return;
+
+                        if (prevSnap && prevSnap.exists()) {
+                            const prevData = prevSnap.data() || {};
+                            const dJamia = prevData.jamiaName || prevData.jamiaId || prevData.jamia;
+                            const dClass = prevData.class;
+                            if (window.isSameJamia(dJamia, jamiaName) && window.isSameClass(dClass, clsName)) {
+                                if (Array.isArray(prevData.students) && prevData.students.length > 0) {
+                                    const names = prevData.students
+                                        .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
+                                        .filter(n => n.length > 0);
+                                    if (names.length > 0) {
+                                        window.classPreviousStudentsMap[clsName] = names;
+                                        break; 
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
+                } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
+            }
+
+            if (currentActiveRequestCls !== thisRequestCls) return;
 
             // 2. Current mahine ka data load karna
             try {
                 const { snap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
+                if (currentActiveRequestCls !== thisRequestCls) return;
                 
                 if (snap && snap.exists()) {
                     const data = snap.data(); 
@@ -1129,11 +1157,11 @@
                     if (data.students && data.students.length > 0) {
                         data.students.forEach(s => addStudentRow(s.name, s.marks || {})); 
                     } else if (!isViewMode || isEditingMode) {
-                        if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                            window.previousMonthStudents.forEach(stdName => {
+                        const prevStudents = window.classPreviousStudentsMap[clsName] || [];
+                        if (prevStudents.length > 0) {
+                            prevStudents.forEach(stdName => {
                                 addStudentRow(stdName, {}); 
                             });
-                            window.previousMonthStudents = [];
                         } else {
                             window.showNoStudentsPopup();
                         }
@@ -2269,10 +2297,12 @@
             }
 
             const tbody = document.getElementById('students-body');
+            const currentCls = document.getElementById('class-select')?.value;
+            const prevStudents = (window.classPreviousStudentsMap && currentCls && window.classPreviousStudentsMap[currentCls]) || [];
+
             if (tbody && tbody.rows.length === 0 && finalSubjectsList.length > 0) {
-                if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                    window.previousMonthStudents.forEach(stdName => addStudentRow(stdName, {}));
-                    window.previousMonthStudents = [];
+                if (prevStudents.length > 0) {
+                    prevStudents.forEach(stdName => addStudentRow(stdName, {}));
                 } else {
                     window.showNoStudentsPopup();
                 }
@@ -2319,12 +2349,14 @@
                 currentSheetData.push({ name, marks });
             });
 
+            const currentCls = document.getElementById('class-select')?.value;
+            const prevStudents = (window.classPreviousStudentsMap && currentCls && window.classPreviousStudentsMap[currentCls]) || [];
+
             if (currentSheetData.length === 0) {
-                if (window.previousMonthStudents && window.previousMonthStudents.length > 0) {
-                    window.previousMonthStudents.forEach(stdName => {
+                if (prevStudents.length > 0) {
+                    prevStudents.forEach(stdName => {
                         currentSheetData.push({ name: stdName, marks: {} });
                     });
-                    window.previousMonthStudents = [];
                 } else {
                     window.showNoStudentsPopup();
                 }
