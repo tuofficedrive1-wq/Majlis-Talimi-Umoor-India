@@ -234,6 +234,7 @@ body.pdf-mode #classes-container .class-card:not(:first-child) {
   /* Inputs */
   input[type="text"], input[type="number"], select { border: none !important; border-bottom: 1px dashed #555 !important; background: transparent !important; color: black !important; }
   textarea { border: 1px solid #aaa !important; width: 100% !important; color: black !important; }
+  .q-text { width: 100% !important; max-width: 100% !important; }
 
   /* Table */
   table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
@@ -1613,102 +1614,469 @@ const updateDashboardReport = async (finalPercent, finalGrade) => {
   }
 };
 
-// ─── PDF BANAO LOGIC (html2pdf.js — Reliable & Beautiful) ───
+// ─── PDF REPORT GENERATOR (html2pdf.js — Executive Professional Report) ───
 const printPdfBtn = document.getElementById("print-pdf-btn");
 if (printPdfBtn) {
   printPdfBtn.addEventListener("click", async () => {
- 
-    // html2pdf library check
     if (typeof html2pdf === 'undefined') {
       alert('PDF library load nahi hui. Page refresh kar ke dobara koshish karein.');
       return;
     }
- 
-    // Button disable (duplicate click rokne ke liye)
+
+    // Helper functions
+    const escapeHtml = (str) => {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
+
+    const getGradeBadge = (grade) => {
+      const g = (grade || "").trim();
+      if (g === "ممتاز") {
+        return `<span style="background-color: #d1fae5; color: #065f46; border: 1px solid #10b981; padding: 2px 10px; border-radius: 9999px; font-weight: bold; font-size: 12px; display: inline-block;">★ ممتاز</span>`;
+      } else if (g === "بہتر") {
+        return `<span style="background-color: #dbeafe; color: #1e40af; border: 1px solid #3b82f6; padding: 2px 10px; border-radius: 9999px; font-weight: bold; font-size: 12px; display: inline-block;">بہتر</span>`;
+      } else if (g === "مناسب") {
+        return `<span style="background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 2px 10px; border-radius: 9999px; font-weight: bold; font-size: 12px; display: inline-block;">مناسب</span>`;
+      } else if (g === "کمزور") {
+        return `<span style="background-color: #ffe4e6; color: #9f1239; border: 1px solid #f43f5e; padding: 2px 10px; border-radius: 9999px; font-weight: bold; font-size: 12px; display: inline-block;">کمزور</span>`;
+      }
+      return `<span style="background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 9999px; font-size: 12px; display: inline-block;">-</span>`;
+    };
+
+    const renderCheckBadge = (label, isChecked) => {
+      if (isChecked) {
+        return `<span style="display: inline-flex; align-items: center; gap: 4px; background: #ecfdf5; color: #065f46; border: 1px solid #10b981; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: bold;"><span style="color: #059669; font-size: 12px; font-weight: 900;">✓</span> ${label}</span>`;
+      } else {
+        return `<span style="display: inline-flex; align-items: center; gap: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 3px 8px; font-size: 11px;"><span style="color: #cbd5e1; font-size: 11px;">✗</span> ${label}</span>`;
+      }
+    };
+
+    // 1. Meta data
+    let jamiaNameText = "";
+    const headerJamiaEl = document.getElementById("header-jamia-name");
+    if (headerJamiaEl) {
+      jamiaNameText = headerJamiaEl.textContent.replace(/^جامعہ:\s*/, '').trim();
+    }
+    if (!jamiaNameText) {
+      try { jamiaNameText = decodeURIComponent(jamiaId || ''); } catch(e) { jamiaNameText = jamiaId || ''; }
+    }
+
+    let monthDisplay = "";
+    if (monthKey) {
+      const [yStr, mStr] = monthKey.split("-");
+      const mIndex = parseInt(mStr, 10) - 1;
+      const mName = urduMonths[mIndex] || monthKey;
+      monthDisplay = `${mName} ${yStr || ''}`;
+    }
+
+    const jamiaPerc = document.getElementById("jamia-percent")?.textContent?.trim() || "0";
+    const jamiaGrade = document.getElementById("jamia-grade")?.textContent?.trim() || "-";
+    const totalClassesText = document.getElementById("total-classes")?.textContent?.trim() || "0";
+    const totalBooksText = document.getElementById("total-books")?.textContent?.trim() || "0";
+
+    // 2. Gather class cards data
+    const classCards = Array.from(classesContainer.querySelectorAll(".class-card"));
+    const classesData = [];
+    let grandTotalSt = 0;
+    let grandPresSt = 0;
+
+    classCards.forEach((card, cIdx) => {
+      const classSelect = card.querySelector(".class-select");
+      let className = "";
+      if (classSelect) {
+        className = classSelect.value || (classSelect.selectedIndex >= 0 ? classSelect.options[classSelect.selectedIndex]?.text : "");
+      }
+      if (!className) className = `کلاس ${cIdx + 1}`;
+
+      const totalSt = Number(card.querySelector(".total-students")?.value || 0);
+      const presSt = Number(card.querySelector(".present-students")?.value || 0);
+      grandTotalSt += totalSt;
+      grandPresSt += presSt;
+
+      const classPercent = card.querySelector(".class-percent")?.value?.trim() || "-";
+      const classGrade = card.querySelector(".class-grade")?.value?.trim() || "-";
+      const issues = card.querySelector(".issues")?.value?.trim() || "";
+      const suggestions = card.querySelector(".suggestions")?.value?.trim() || "";
+
+      const bookCards = Array.from(card.querySelectorAll(".book-card"));
+      const booksData = [];
+
+      bookCards.forEach(bCard => {
+        const teacherSelect = bCard.querySelector(".book-teacher");
+        const teacherName = teacherSelect ? (teacherSelect.value || (teacherSelect.selectedIndex >= 0 ? teacherSelect.options[teacherSelect.selectedIndex]?.text : "")) : "";
+
+        const bookSelect = bCard.querySelector(".book-name");
+        const bookName = bookSelect ? (bookSelect.value || (bookSelect.selectedIndex >= 0 ? bookSelect.options[bookSelect.selectedIndex]?.text : "")) : "";
+
+        const bookPercent = bCard.querySelector(".book-percent")?.value?.trim() || "-";
+        const weakness = bCard.querySelector(".weakness")?.value?.trim() || "";
+
+        const questions = [];
+        const qRows = bCard.querySelectorAll(".question-row");
+        qRows.forEach((row, qIdx) => {
+          const qText = row.querySelector(".q-text")?.value?.trim() || "";
+          const qCorr = row.querySelector(".q-correct")?.value?.trim() || "";
+          // If either question text is present or students count is filled
+          if (qText || qCorr !== "") {
+            questions.push({
+              num: qIdx + 1,
+              text: qText || `سوال ${qIdx + 1}`,
+              correct: qCorr !== "" ? qCorr : "0"
+            });
+          }
+        });
+
+        const checks = {
+          sabaqSunana: bCard.querySelector(".chk-sabaq-sunana")?.checked || false,
+          sabaqParhana: bCard.querySelector(".chk-sabaq-parhana")?.checked || false,
+          waqtIstemal: bCard.querySelector(".chk-waqt-istemal")?.checked || false,
+          tiyari: bCard.querySelector(".chk-tiyari")?.checked || false,
+          takrar: bCard.querySelector(".chk-takrar")?.checked || false,
+          nizam: bCard.querySelector(".chk-nizam")?.checked || false,
+        };
+
+        const hasAnyCheck = Object.values(checks).some(Boolean);
+        const hasData = teacherName || bookName || (bookPercent && bookPercent !== "-") || questions.length || weakness || hasAnyCheck;
+
+        if (hasData) {
+          booksData.push({
+            teacherName: teacherName || "نامعلوم استاذ",
+            bookName: bookName || "کتاب منتخب نہیں",
+            bookPercent,
+            questions,
+            checks,
+            weakness
+          });
+        }
+      });
+
+      classesData.push({
+        className,
+        totalStudents: totalSt,
+        presentStudents: presSt,
+        classPercent,
+        classGrade,
+        issues,
+        suggestions,
+        books: booksData
+      });
+    });
+
+    if (classesData.length === 0) {
+      alert("رپورٹ بنانے کے لیے فارم میں کم از کم ایک کلاس کا ہونا ضروری ہے۔");
+      return;
+    }
+
+    // Button feedback
     printPdfBtn.disabled = true;
     const origHTML = printPdfBtn.innerHTML;
     printPdfBtn.innerHTML = '<span class="urdu text-sm">⏳ PDF بن رہی ہے...</span>';
- 
-    // Step 1: Tamam class bodies force-show karo
-    const allBodies = document.querySelectorAll('.class-body');
-    allBodies.forEach(body => {
-      body.classList.remove('hidden');
-      body.style.setProperty('display', 'block', 'important');
-      body.style.setProperty('visibility', 'visible', 'important');
-      body.style.setProperty('opacity', '1', 'important');
-    });
- 
-    // Step 2: UI buttons temporarily hide karo
-    const uiElements = [
-      ...['#dashboard-back-btn','#info-box','#error-box','#success-box',
-          '#loader','#enable-edit-btn','#add-class-btn']
-        .map(s => document.querySelector(s)),
-      ...document.querySelectorAll('.add-book-btn,.remove-book-btn,.remove-class-btn,.toggle-body-btn'),
-      printPdfBtn,
-      document.querySelector('button[type="submit"]'),
-    ].filter(Boolean);
-    uiElements.forEach(el => el.style.setProperty('display', 'none', 'important'));
 
-    const allTextareas = document.querySelectorAll('textarea');
-    allTextareas.forEach(ta => {
-        ta.style.height = 'auto'; // Pehle height auto karein
-        ta.style.height = (ta.scrollHeight + 5) + 'px'; // Content ke mutabiq height set karein
-    });
- 
-    // Step 3: pdf-mode on
-    document.body.classList.add('pdf-mode');
- 
-    // Step 4: Fonts aur render ka intezaar
-    try { await document.fonts.ready; } catch(e) {}
-    await new Promise(r => setTimeout(r, 900));
- 
-    // Step 5: Filename
-    let safeJamia = 'jaiza';
-    try { safeJamia = decodeURIComponent(jamiaId || 'jaiza'); } catch(e) {}
-    const filename = `تعلیمی_جائزہ_${safeJamia}_${monthKey || ''}.pdf`;
- 
-    
-    // Step 6: html2pdf options
-    const opt = {
-      margin: [10, 10, 13, 10],
-      filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        letterRendering: true,
-        scrollY: 0,
-        windowWidth: Math.max(document.documentElement.scrollWidth, 1050),
-        logging: false,
-        backgroundColor: '#ffffff',
-      },
-      jsPDF: {
-        unit: 'mm',
-        format: 'a4',
-        orientation: 'portrait',
-        compress: true,
-      },
-      pagebreak: {
-        mode: ['css', 'legacy'] /* 'css' yahan likhna zaroori hai taake har class naye page par chali jaye */
-      },
-    };
- 
-    // Step 7: PDF generate aur download
+    let container = null;
     try {
-      await html2pdf().set(opt).from(document.querySelector('.max-w-6xl')).save();
-    } catch (err) {
-      console.error('PDF error:', err);
+      // 3. Build HTML Template
+      let classesHtml = '';
+      classesData.forEach((cls, cIdx) => {
+        let booksHtml = '';
+        if (cls.books.length === 0) {
+          booksHtml = `
+            <div style="padding: 12px; text-align: center; color: #64748b; font-size: 13px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px;">
+              اس کلاس کے لیے کوئی کتاب درج نہیں کی گئی۔
+            </div>
+          `;
+        } else {
+          cls.books.forEach((book, bIdx) => {
+            let questionsRowsHtml = '';
+            if (book.questions.length === 0) {
+              questionsRowsHtml = `
+                <tr>
+                  <td colspan="3" style="padding: 10px; font-size: 12px; text-align: center; color: #94a3b8; border: 1px solid #e2e8f0; background: #fafafa;">
+                    کوئی سوال درج نہیں کیا گیا۔
+                  </td>
+                </tr>
+              `;
+            } else {
+              book.questions.forEach((q, qIdx) => {
+                const isEven = qIdx % 2 === 0;
+                questionsRowsHtml += `
+                  <tr style="background-color: ${isEven ? '#ffffff' : '#f8fafc'};">
+                    <td style="padding: 8px; font-size: 12px; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; vertical-align: top; color: #475569;">
+                      ${q.num}
+                    </td>
+                    <td style="padding: 8px 12px; font-size: 13px; line-height: 1.8; text-align: right; border: 1px solid #e2e8f0; vertical-align: top; word-break: break-word; white-space: normal; color: #0f172a;">
+                      ${escapeHtml(q.text)}
+                    </td>
+                    <td style="padding: 8px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; vertical-align: top; color: #0f766e; white-space: nowrap;">
+                      ${escapeHtml(q.correct)} ${cls.presentStudents ? `<span style="font-size: 11px; font-weight: normal; color: #64748b;">/ ${cls.presentStudents}</span>` : ''}
+                    </td>
+                  </tr>
+                `;
+              });
+            }
+
+            booksHtml += `
+              <div style="border: 1.5px solid #cbd5e1; border-right: 5px solid #059669; border-radius: 8px; margin-top: 10px; padding: 10px; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
+                <!-- Book Top Bar -->
+                <div style="background: #ecfdf5; border-bottom: 1.5px solid #a7f3d0; padding: 6px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                    <div>
+                      <span style="font-size: 11px; color: #065f46; font-weight: 600;">استاذ: </span>
+                      <span style="font-size: 13px; font-weight: bold; color: #064e3b;">${escapeHtml(book.teacherName)}</span>
+                    </div>
+                    <div>
+                      <span style="font-size: 11px; color: #065f46; font-weight: 600;">کتاب / پیریڈ: </span>
+                      <span style="font-size: 13px; font-weight: bold; color: #064e3b;">${escapeHtml(book.bookName)}</span>
+                    </div>
+                  </div>
+                  <div style="background: #fef3c7; border: 1px solid #f59e0b; padding: 3px 10px; border-radius: 6px; font-size: 13px; font-weight: 800; color: #92400e;">
+                    فیصد: ${escapeHtml(book.bookPercent)}
+                  </div>
+                </div>
+
+                <!-- Questions Table -->
+                <table style="width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 6px; border: 1px solid #cbd5e1; direction: rtl; table-layout: fixed; background: #ffffff;">
+                  <thead>
+                    <tr style="background: #0f766e; color: #ffffff;">
+                      <th style="width: 8%; padding: 6px; font-size: 12px; font-weight: bold; border: 1px solid #0f766e; text-align: center;">#</th>
+                      <th style="width: 67%; padding: 6px 10px; font-size: 12px; font-weight: bold; border: 1px solid #0f766e; text-align: right;">سوال (تفصیل)</th>
+                      <th style="width: 25%; padding: 6px; font-size: 12px; font-weight: bold; border: 1px solid #0f766e; text-align: center;">درست جواب دینے والے طلبہ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${questionsRowsHtml}
+                  </tbody>
+                </table>
+
+                <!-- Checkpoints -->
+                <div style="margin-top: 6px; padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+                  <div style="font-size: 11px; font-weight: bold; color: #475569; margin-bottom: 4px;">تدریسی مشاہدات و امور:</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    ${renderCheckBadge("سبق سننا", book.checks.sabaqSunana)}
+                    ${renderCheckBadge("سبق پڑھانا", book.checks.sabaqParhana)}
+                    ${renderCheckBadge("وائٹ بورڈ کا استعمال", book.checks.waqtIstemal)}
+                    ${renderCheckBadge("پیشگی تیاری", book.checks.tiyari)}
+                    ${renderCheckBadge("تکرار کرانا", book.checks.takrar)}
+                    ${renderCheckBadge("درجہ کا نظم و نسق", book.checks.nizam)}
+                  </div>
+                </div>
+
+                <!-- Weakness / Notes -->
+                ${book.weakness ? `
+                  <div style="margin-top: 8px; padding: 7px 12px; background: #fffbeb; border: 1px solid #fef3c7; border-right: 4px solid #d97706; border-radius: 6px;">
+                    <div style="font-size: 11px; font-weight: bold; color: #92400e; margin-bottom: 2px;">کمزوریاں / نوٹس (استاذ و کتاب):</div>
+                    <div style="font-size: 12px; color: #451a03; line-height: 1.8; white-space: pre-wrap; word-break: break-word;">${escapeHtml(book.weakness)}</div>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          });
+        }
+
+        // Attendance Percentage
+        const attRate = cls.totalStudents > 0 ? Math.round((cls.presentStudents / cls.totalStudents) * 100) : 0;
+
+        classesHtml += `
+          <div class="pdf-class-card" style="border: 2px solid #1e3a5f; border-radius: 10px; margin-bottom: 22px; background: #ffffff; overflow: hidden; page-break-inside: avoid; break-inside: avoid; ${cIdx > 0 ? 'page-break-before: always; break-before: page;' : ''}">
+            <!-- Class Header -->
+            <div style="background: linear-gradient(to left, #0f3460, #1e3a8a); color: #ffffff; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-size: 11px; color: #bfdbfe; display: block;">کلاس وار جائزہ</span>
+                <span style="font-size: 18px; font-weight: 800; color: #ffffff;">${escapeHtml(cls.className)}</span>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center; text-align: center;">
+                <div style="background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.25);">
+                  <div style="font-size: 10px; color: #bfdbfe;">کل طلبہ</div>
+                  <div style="font-size: 14px; font-weight: bold; color: #ffffff;">${cls.totalStudents}</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.25);">
+                  <div style="font-size: 10px; color: #bfdbfe;">حاضر طلبہ</div>
+                  <div style="font-size: 14px; font-weight: bold; color: #ffffff;">${cls.presentStudents}</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.25);">
+                  <div style="font-size: 10px; color: #bfdbfe;">حاضری تناسب</div>
+                  <div style="font-size: 14px; font-weight: bold; color: #ffffff;">${attRate}%</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Class Body -->
+            <div style="padding: 12px; background: #ffffff;">
+              <!-- Books Section -->
+              ${booksHtml}
+
+              <!-- Class Summary & Issues/Suggestions -->
+              <div style="margin-top: 14px; padding: 12px; background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #86efac; padding-bottom: 8px; margin-bottom: 8px;">
+                  <div>
+                    <span style="font-size: 13px; font-weight: bold; color: #166534;">اس کلاس کا مجموعی فیصد: </span>
+                    <span style="font-size: 16px; font-weight: 800; color: #15803d; background: #dcfce7; padding: 3px 10px; border-radius: 6px; border: 1px solid #86efac;">${escapeHtml(cls.classPercent)}</span>
+                  </div>
+                  <div>
+                    <span style="font-size: 13px; font-weight: bold; color: #166534; margin-left: 6px;">درجہ کیفیت: </span>
+                    ${getGradeBadge(cls.classGrade)}
+                  </div>
+                </div>
+
+                ${cls.issues ? `
+                  <div style="margin-top: 8px; padding: 8px 12px; background: #fff1f2; border: 1px solid #fecdd3; border-right: 4px solid #e11d48; border-radius: 6px;">
+                    <div style="font-size: 12px; font-weight: bold; color: #9f1239; margin-bottom: 2px;">⚠️ کمزوریاں اور مسائل:</div>
+                    <div style="font-size: 12px; color: #4c0519; line-height: 1.8; white-space: pre-wrap; word-break: break-word;">${escapeHtml(cls.issues)}</div>
+                  </div>
+                ` : ''}
+
+                ${cls.suggestions ? `
+                  <div style="margin-top: 8px; padding: 8px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-right: 4px solid #2563eb; border-radius: 6px;">
+                    <div style="font-size: 12px; font-weight: bold; color: #1e40af; margin-bottom: 2px;">💡 حل اور تجاویز:</div>
+                    <div style="font-size: 12px; color: #1e3a8a; line-height: 1.8; white-space: pre-wrap; word-break: break-word;">${escapeHtml(cls.suggestions)}</div>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+      const printTemplate = `
+        <div id="jaiza-pdf-report-inner" style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', system-ui, sans-serif; padding: 18px 20px; color: #0f172a; background: #ffffff; width: 800px; max-width: 800px; box-sizing: border-box; direction: rtl; margin: 0 auto; line-height: 1.6;">
+          
+          <!-- Institutional Header -->
+          <div style="text-align: center; border-bottom: 2.5px solid #0284c7; padding-bottom: 8px; margin-bottom: 12px;">
+            <div style="font-size: 14px; font-weight: bold; color: #0369a1; letter-spacing: 0.5px;">مجلس تعلیمی امور (ہند)</div>
+            <h1 style="margin: 4px 0; font-size: 26px; font-weight: 900; color: #0f172a; font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif;">
+              تعلیمی جائزہ رپورٹ
+            </h1>
+            <div style="font-size: 14px; font-weight: 600; color: #334155; margin-top: 4px;">
+              <span style="font-weight: bold; color: #0f172a;">جامعہ:</span> ${escapeHtml(jamiaNameText)}
+              <span style="margin: 0 10px; color: #94a3b8;">|</span>
+              <span style="font-weight: bold; color: #0f172a;">مہینہ:</span> ${escapeHtml(monthDisplay)}
+            </div>
+          </div>
+
+          <!-- Jamia Overall Summary Bar -->
+          <div style="background: linear-gradient(to left, #0c4a6e, #0369a1); color: #ffffff; border-radius: 10px; padding: 10px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
+            <div style="display: flex; gap: 20px; align-items: center;">
+              <div>
+                <div style="font-size: 11px; color: #bae6fd;">مجموعی فیصد</div>
+                <div style="font-size: 22px; font-weight: 900; color: #fde047;">${escapeHtml(jamiaPerc)}%</div>
+              </div>
+              <div style="border-right: 1px solid rgba(255,255,255,0.25); height: 32px;"></div>
+              <div>
+                <div style="font-size: 11px; color: #bae6fd;">مجموعی کیفیت</div>
+                <div style="font-size: 17px; font-weight: bold; color: #ffffff;">${escapeHtml(jamiaGrade)}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 14px; align-items: center; text-align: center;">
+              <div style="background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px;">
+                <div style="font-size: 10px; color: #bae6fd;">کل کلاسیں</div>
+                <div style="font-size: 14px; font-weight: bold;">${escapeHtml(totalClassesText)}</div>
+              </div>
+              <div style="background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px;">
+                <div style="font-size: 10px; color: #bae6fd;">کل کتب</div>
+                <div style="font-size: 14px; font-weight: bold;">${escapeHtml(totalBooksText)}</div>
+              </div>
+              <div style="background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px;">
+                <div style="font-size: 10px; color: #bae6fd;">کل طلبہ</div>
+                <div style="font-size: 14px; font-weight: bold;">${grandTotalSt}</div>
+              </div>
+              <div style="background: rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px;">
+                <div style="font-size: 10px; color: #bae6fd;">حاضر طلبہ</div>
+                <div style="font-size: 14px; font-weight: bold;">${grandPresSt}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- All Classes -->
+          ${classesHtml}
+
+          <!-- Official Signatures Footer -->
+          <div style="margin-top: 25px; padding-top: 15px; border-top: 1.5px solid #cbd5e1; page-break-inside: avoid; break-inside: avoid;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 10px 20px 0 20px; text-align: center;">
+              <div>
+                <div style="width: 140px; border-bottom: 1.5px dashed #64748b; margin-bottom: 6px;"></div>
+                <div style="font-size: 12px; font-weight: bold; color: #334155;">دستخط ممتحن / جائزہ کار</div>
+              </div>
+              <div>
+                <div style="width: 140px; border-bottom: 1.5px dashed #64748b; margin-bottom: 6px;"></div>
+                <div style="font-size: 12px; font-weight: bold; color: #334155;">دستخط ناظمِ جامعہ / مہتمم</div>
+              </div>
+              <div>
+                <div style="width: 140px; border-bottom: 1.5px dashed #64748b; margin-bottom: 6px;"></div>
+                <div style="font-size: 12px; font-weight: bold; color: #334155;">دستخط ناظمِ تعلیمات</div>
+              </div>
+            </div>
+            <div style="text-align: center; margin-top: 15px; font-size: 11px; color: #94a3b8;">
+              رپورٹ کا اجرا بتاریخ: ${todayStr} | کمپیوٹرائزڈ جائزہ رپورٹ - مجلس تعلیمی امور (ہند)
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      // 4. Mount container off-screen
+      container = document.createElement('div');
+      container.id = 'jaiza-pdf-export-container';
+      container.innerHTML = printTemplate;
+      container.style.position = 'absolute';
+      container.style.top = '0';
+      container.style.left = '0';
+      container.style.width = '800px';
+      container.style.maxWidth = '800px';
+      container.style.background = '#ffffff';
+      container.style.zIndex = '-9999';
+      container.style.visibility = 'visible';
+      container.style.opacity = '1';
+      container.style.pointerEvents = 'none';
+
+      document.body.appendChild(container);
+
+      // Fonts wait
+      try { await document.fonts.ready; } catch(e) {}
+      await new Promise(r => setTimeout(r, 600));
+
+      let safeJamia = 'jaiza';
+      try { safeJamia = decodeURIComponent(jamiaId || 'jaiza'); } catch(e) {}
+      const filename = `تعلیمی_جائزہ_${safeJamia}_${monthKey || ''}.pdf`;
+
+      const opt = {
+        margin: [10, 10, 12, 10],
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          letterRendering: true,
+          scrollY: 0,
+          scrollX: 0,
+          windowWidth: 800,
+          logging: false,
+          backgroundColor: '#ffffff'
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait',
+          compress: true
+        },
+        pagebreak: {
+          mode: ['css', 'legacy']
+        }
+      };
+
+      await html2pdf().set(opt).from(container).save();
+    } catch(err) {
+      console.error('PDF generation error:', err);
       alert('PDF بنانے میں مسئلہ آیا۔ براہ کرم دوبارہ کوشش کریں۔');
     } finally {
-      // Step 8: Sab restore karo
-      document.body.classList.remove('pdf-mode');
-      allBodies.forEach(body => {
-        body.style.removeProperty('display');
-        body.style.removeProperty('visibility');
-        body.style.removeProperty('opacity');
-      });
-      uiElements.forEach(el => el.style.removeProperty('display'));
+      if (container && container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
       printPdfBtn.disabled = false;
       printPdfBtn.innerHTML = origHTML;
     }
