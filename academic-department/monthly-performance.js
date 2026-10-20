@@ -1,4 +1,4 @@
-import { 
+﻿import { 
     doc, 
     getDoc,
     updateDoc,
@@ -483,6 +483,9 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                 const sem1Periods = (t.periods || []).filter(p => p.semester == "1" || p.semester == 1);
                 const sem2Periods = (t.periods || []).filter(p => p.semester == "2" || p.semester == 2);
 
+                const sem1DupCount = sem1Periods.length - new Set(sem1Periods.map(p => `${(p.className || '').trim().toLowerCase()}_${(p.bookName || '').trim().toLowerCase()}`)).size;
+                const sem2DupCount = sem2Periods.length - new Set(sem2Periods.map(p => `${(p.className || '').trim().toLowerCase()}_${(p.bookName || '').trim().toLowerCase()}`)).size;
+
                 return `
                 <div class="border border-slate-200 rounded-xl bg-white mb-3 shadow-sm overflow-hidden" id="teacher-card-${uniqueId}">
                     <!-- Teacher Header -->
@@ -546,9 +549,12 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                         Semester 1 (Apr-Aug) 
                                         <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm text-slate-500">${sem1Periods.length} Kitabein</span>
                                     </div>
-                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-3 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="1" data-to="2">
-                                        <i class="fas fa-copy mr-1"></i> Sem 2 Me Copy Karein
-                                    </button>
+                                    <div class="flex items-center gap-1.5 md:gap-2">
+                                        ${sem1DupCount > 0 ? `<button class="clean-dup-btn bg-amber-500 hover:bg-amber-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-2.5 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-sem="1"><i class="fas fa-broom mr-1"></i> Clean Duplicates (${sem1DupCount})</button>` : ''}
+                                        <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-3 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="1" data-to="2">
+                                            <i class="fas fa-copy mr-1"></i> Sem 2 Me Copy Karein
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="sem-content hidden border-t border-slate-100">
                                     <div class="overflow-x-auto no-scrollbar w-full bg-white p-1">
@@ -592,9 +598,12 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
                                         Semester 2 (Sep-Jan) 
                                         <span class="bg-white px-2 py-0.5 rounded-full text-[10px] border border-slate-200 shadow-sm text-slate-500">${sem2Periods.length} Kitabein</span>
                                     </div>
-                                    <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-3 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="2" data-to="1">
-                                        <i class="fas fa-copy mr-1"></i> Sem 1 Me Copy Karein
-                                    </button>
+                                    <div class="flex items-center gap-1.5 md:gap-2">
+                                        ${sem2DupCount > 0 ? `<button class="clean-dup-btn bg-amber-500 hover:bg-amber-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-2.5 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-sem="2"><i class="fas fa-broom mr-1"></i> Clean Duplicates (${sem2DupCount})</button>` : ''}
+                                        <button class="copy-sem-btn bg-indigo-500 hover:bg-indigo-600 text-white text-[9px] md:text-[10px] font-bold px-2 py-1 md:px-3 md:py-1.5 rounded transition shadow-sm" data-tid="${uniqueId}" data-jamia="${jamia}" data-from="2" data-to="1">
+                                            <i class="fas fa-copy mr-1"></i> Sem 1 Me Copy Karein
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="sem-content hidden border-t border-slate-100">
                                     <div class="overflow-x-auto no-scrollbar w-full bg-white p-1">
@@ -988,17 +997,31 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                     const tIndex = teachers.findIndex(teach => teach.id === tid);
                     if (tIndex > -1) {
                         const periods = teachers[tIndex].periods || [];
-                        const periodsToCopy = periods.filter(p => String(p.semester) === String(fromSem));
+                        const periodsToCopy = periods.filter(p => String(p.semester) === String(fromSem) && p.status !== 'transferred');
+                        const existingTargetPeriods = periods.filter(p => String(p.semester) === String(toSem) && p.status !== 'transferred');
                         
-                        // Nayi IDs generate karke duplicate periods banayein
-                        const newPeriods = periodsToCopy.map((p, idx) => ({
-                            id: `p-${Date.now()}-${idx}`,
-                            className: p.className,
-                            bookName: p.bookName,
-                            semester: toSem, // Target semester update kiya
-                            totalPages: p.totalPages,
-                            syllabus: p.syllabus || 'Majlis'
-                        }));
+                        const newPeriods = [];
+                        periodsToCopy.forEach((p, idx) => {
+                            const isAlreadyPresent = existingTargetPeriods.some(ep => 
+                                (ep.className || "").trim().toLowerCase() === (p.className || "").trim().toLowerCase() &&
+                                (ep.bookName || "").trim().toLowerCase() === (p.bookName || "").trim().toLowerCase()
+                            );
+                            if (!isAlreadyPresent) {
+                                newPeriods.push({
+                                    id: `p-${Date.now()}-${idx}`,
+                                    className: p.className,
+                                    bookName: p.bookName,
+                                    semester: toSem,
+                                    totalPages: p.totalPages,
+                                    syllabus: p.syllabus || 'Majlis'
+                                });
+                            }
+                        });
+                        
+                        if (newPeriods.length === 0) {
+                            alert(`Sem ${toSem} me ye saari kitabein pehle se maujood hain.`);
+                            return teachers;
+                        }
                         
                         teachers[tIndex].periods = [...periods, ...newPeriods];
                     }
@@ -1011,6 +1034,55 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                 alert("Error: " + err.message);
                 btn.disabled = false;
                 btn.innerHTML = originalHtml;
+            }
+        };
+    });
+
+    // 3b. Clean Duplicates Button
+    container.querySelectorAll('.clean-dup-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            const tid = btn.dataset.tid;
+            const jamiaName = btn.dataset.jamia;
+            const targetSem = btn.dataset.sem;
+
+            if (!confirm(`Kya aap Semester ${targetSem} ke duplicate periods ko clean karna chahte hain?`)) return;
+
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Cleaning...`;
+
+            try {
+                await updateTeacherData(db, currentUser, jamiaName, selectedYear, (teachers) => {
+                    const tIndex = teachers.findIndex(teach => teach.id === tid);
+                    if (tIndex > -1) {
+                        const periods = teachers[tIndex].periods || [];
+                        const seenKeys = new Set();
+                        const cleaned = [];
+
+                        periods.forEach(p => {
+                            if (String(p.semester) === String(targetSem)) {
+                                const key = `${(p.className || '').trim().toLowerCase()}_${(p.bookName || '').trim().toLowerCase()}`;
+                                if (!seenKeys.has(key)) {
+                                    seenKeys.add(key);
+                                    cleaned.push(p);
+                                }
+                            } else {
+                                cleaned.push(p);
+                            }
+                        });
+
+                        teachers[tIndex].periods = cleaned;
+                    }
+                    return teachers;
+                });
+
+                alert(`Semester ${targetSem} ke duplicates clean ho gaye!`);
+                loadAllTeachers(jamiaat, db, currentUser, selectedYear);
+            } catch (err) {
+                alert("Clean error: " + err.message);
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
             }
         };
     });
@@ -1853,7 +1925,14 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 if (!assignedJamiaat.includes(jamia.jamiaName)) return;
 
                 jamia.teachers.forEach(teacher => {
-                    (teacher.periods || []).filter(p => p.semester == semester).forEach(p => {
+                    const seenPeriods = new Set();
+                    (teacher.periods || []).filter(p => {
+                        if (p.status === 'transferred') return false;
+                        return String(p.semester) === String(semester);
+                    }).forEach(p => {
+                        const pKey = `${(p.className || '').trim().toLowerCase()}_${(p.bookName || '').trim().toLowerCase()}`;
+                        if (seenPeriods.has(pKey)) return;
+                        seenPeriods.add(pKey);
                         const target = getTargetValue(p, targetMonthKey, jamia.jamiaName);
                         const achievedValue = getAchievedValue(p, targetMonthKey, jamia.jamiaName, teacher.name);
                         
@@ -1952,7 +2031,22 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             }
 
             teachersToRender.forEach(teacher => {
-                const periodsInSemester = (teacher.periods || []).filter(p => p.semester == semester);
+                const rawPeriods = (teacher.periods || []).filter(p => {
+                    if (p.status === 'transferred') return false;
+                    return String(p.semester) === String(semester);
+                });
+
+                // Deduplicate by Class and Book to prevent duplicate rows
+                const seenKeys = new Set();
+                const periodsInSemester = [];
+                rawPeriods.forEach(p => {
+                    const key = `${(p.className || '').trim().toLowerCase()}_${(p.bookName || '').trim().toLowerCase()}`;
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        periodsInSemester.push(p);
+                    }
+                });
+
                 if (periodsInSemester.length === 0) return;
 
                 // 🎯 NAYA: Har teacher card ke liye unique ID
@@ -2059,7 +2153,20 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 if (!assignedJamiaat.includes(jamia.jamiaName)) return;
 
                 jamia.teachers.forEach(teacher => {
-                    const periodsInSemester = (teacher.periods || []).filter(p => p.semester == semester);
+                    const rawPeriods = (teacher.periods || []).filter(p => {
+                        if (p.status === 'transferred') return false;
+                        return String(p.semester) === String(semester);
+                    });
+
+                    const seenKeys = new Set();
+                    const periodsInSemester = [];
+                    rawPeriods.forEach(p => {
+                        const key = `${(p.className || '').trim().toLowerCase()}_${(p.bookName || '').trim().toLowerCase()}`;
+                        if (!seenKeys.has(key)) {
+                            seenKeys.add(key);
+                            periodsInSemester.push(p);
+                        }
+                    });
                     
                     periodsInSemester.forEach(p => {
                         let munasibCount = 0;
