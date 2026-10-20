@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -203,7 +203,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ==========================================
         // FIREBASE CONFIGURATION
@@ -486,7 +486,96 @@
         }
 
         // ==========================================
-        // RENDER SEMESTER PERFORMANCE PROFILE TABLE
+        // FETCH TARGETS & HELPER FOR SEMESTER PROFILE
+        // ==========================================
+        async function fetchTargetsForJamia(db, jamiaName) {
+            if (!jamiaName) return {};
+            const cleanName = jamiaName.trim().toUpperCase().replace(/\s+/g, '_');
+            let mergedTargets = {};
+
+            const mergeIntoBase = (overrideTargets) => {
+                for (const subKey in overrideTargets) {
+                    if (!mergedTargets[subKey]) mergedTargets[subKey] = {};
+                    for (const month in overrideTargets[subKey]) {
+                        const val = overrideTargets[subKey][month];
+                        if (val > 0) {
+                            mergedTargets[subKey][month] = val;
+                        } else if (mergedTargets[subKey][month] === undefined) {
+                            mergedTargets[subKey][month] = 0;
+                        }
+                    }
+                }
+            };
+
+            try {
+                // 1. Global target
+                let globalSnap = await getDoc(doc(db, "page_targets", "global_targets"));
+                if (globalSnap.exists()) {
+                    mergeIntoBase(globalSnap.data().targets || {});
+                } else {
+                    let oldGlobalSnap = await getDoc(doc(db, "settings", "monthly_page_targets"));
+                    if (oldGlobalSnap.exists()) mergeIntoBase(oldGlobalSnap.data().targets || {});
+                }
+
+                // 2. Jamia Master (state / region)
+                const masterQuery = query(collection(db, "jamiaat_master"), where("jamiaName", "==", jamiaName.trim().toUpperCase()));
+                const masterDocs = await getDocs(masterQuery);
+                if (!masterDocs.empty) {
+                    const masterData = masterDocs.docs[0].data();
+                    if (masterData.state) {
+                        const cleanState = masterData.state.trim().toUpperCase().replace(/\s+/g, '_');
+                        let stateSnap = await getDoc(doc(db, "page_targets", `state_${cleanState}_targets`));
+                        if (stateSnap.exists()) mergeIntoBase(stateSnap.data().targets || {});
+                    }
+                    if (masterData.region) {
+                        const cleanRegion = masterData.region.trim().toUpperCase().replace(/\s+/g, '_');
+                        let regionSnap = await getDoc(doc(db, "page_targets", `region_${cleanRegion}_targets`));
+                        if (regionSnap.exists()) mergeIntoBase(regionSnap.data().targets || {});
+                    }
+                }
+
+                // 3. Jamia specific target
+                let jamiaSnap = await getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`));
+                if (jamiaSnap.exists()) {
+                    mergeIntoBase(jamiaSnap.data().targets || {});
+                }
+            } catch (e) {
+                console.warn("fetchTargetsForJamia error:", e);
+            }
+
+            return mergedTargets;
+        }
+
+        const getTargetValue = (period, monthKey, jamiaTargets) => {
+            let target = 0;
+            const monthlyTargets = jamiaTargets || {};
+            const exactSubId = `${(period.className || "").trim()}_${(period.bookName || "").trim()}`.replace(/\s+/g, '_');
+
+            if (monthlyTargets[exactSubId] && monthlyTargets[exactSubId][monthKey] !== undefined) {
+                target = parseInt(monthlyTargets[exactSubId][monthKey]) || 0;
+            } else if (monthlyTargets) {
+                const userClassNoSpace = (period.className || "").trim().toLowerCase().replace(/[\s\-_]/g, ''); 
+                const userBookNameFormatted = (period.bookName || "").trim().replace(/\s+/g, '_').toLowerCase();
+                for (const adminKey in monthlyTargets) {
+                    const adminKeyLower = adminKey.toLowerCase();
+                    const suffix = `_${userBookNameFormatted}`;
+                    if (adminKeyLower.endsWith(suffix)) {
+                        const adminClassKeyPart = adminKeyLower.substring(0, adminKeyLower.length - suffix.length);
+                        const adminClassNoSpace = adminClassKeyPart.replace(/[\s\-_]/g, '');
+                        if (userClassNoSpace.startsWith(adminClassNoSpace)) {
+                            if (monthlyTargets[adminKey][monthKey] !== undefined) {
+                                target = parseInt(monthlyTargets[adminKey][monthKey]) || 0;
+                                break; 
+                            }
+                        }
+                    }
+                }
+            }
+            return target;
+        };
+
+        // ==========================================
+        // RENDER SEMESTER PERFORMANCE PROFILE TABLE (ENGLISH VERSION)
         // ==========================================
         async function renderTeacherSemesterProfile(teacherData, calData, activeSemester) {
             const profileView = document.getElementById('teacher-profile-view');
@@ -499,33 +588,30 @@
 
             if (mainWrapper) {
                 mainWrapper.classList.remove('max-w-md');
-                mainWrapper.classList.add('max-w-xl', 'md:max-w-3xl');
+                mainWrapper.classList.add('max-w-xl', 'md:max-w-5xl');
             }
 
             if (profileSemBadge) {
                 profileSemBadge.innerText = `Sem ${activeSemester}`;
             }
             if (profileTitle) {
-                profileTitle.innerText = `Semester ${activeSemester} Karkardagi Profile`;
+                profileTitle.innerText = `Semester ${activeSemester} Performance Profile`;
             }
 
             profileView.classList.remove('hidden');
             tableContainer.innerHTML = '<p class="text-center p-4 text-xs font-bold text-slate-400"><i class="fas fa-spinner fa-spin mr-1"></i> Profile load ho rahi hai...</p>';
 
             try {
-                const monthUrduNames = {
-                    apr: "اپریل", may: "مئی", jun: "جون", jul: "جولائی",
-                    aug: "اگست", sep: "ستمبر", oct: "اکتوبر", nov: "نومبر",
-                    dec: "دسمبر", jan: "جنوری", feb: "فروری", mar: "مارچ"
-                };
-
                 const sem1Months = ['apr', 'may', 'jun', 'jul'];
                 const sem2Months = ['aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
-                const currentSemMonths = activeSemester === 2 ? sem2Months : sem1Months;
+                const allSemMonths = String(activeSemester) === "2" ? sem2Months : sem1Months;
 
                 const shortMonth = dbMonthKey.toLowerCase().trim();
-                const cutoffIdx = currentSemMonths.indexOf(shortMonth);
-                const displayMonths = cutoffIdx !== -1 ? currentSemMonths.slice(0, cutoffIdx + 1) : currentSemMonths;
+                const cutoffIdx = allSemMonths.indexOf(shortMonth);
+                const displayMonths = cutoffIdx !== -1 ? allSemMonths.slice(0, cutoffIdx + 1) : allSemMonths;
+
+                // Har assigned jamia ka target fetch karein
+                const jamiaTargets = await fetchTargetsForJamia(db, urlJamiaName);
 
                 // Public database check for admin confirmed data
                 let publicPerfData = {};
@@ -533,7 +619,8 @@
                     const perfSnap = await getDoc(doc(db, "academic_performance", gJamiaId));
                     if (perfSnap.exists()) publicPerfData = perfSnap.data();
 
-                    if (activeSemester === 1) {
+                    const hasArchMonths = allSemMonths.some(m => ['apr', 'may', 'jun', 'jul'].includes(m));
+                    if (hasArchMonths) {
                         const [arch1, arch2] = await Promise.all([
                             getDoc(doc(db, "academic_performance", `${gJamiaId}_archive_apr_jun`)),
                             getDoc(doc(db, "academic_performance", `${gJamiaId}_archive_jul`))
@@ -557,45 +644,51 @@
                 }
 
                 let tableHtml = `
-                    <table class="w-full text-xs md:text-sm border border-slate-200 text-center whitespace-nowrap rounded-xl overflow-hidden shadow-sm">
-                        <thead class="bg-emerald-50 text-emerald-950 font-bold border-b border-emerald-200">
+                    <table class="min-w-full text-[10px] md:text-xs bg-white border border-slate-200 border-collapse text-left rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-slate-100">
                             <tr>
-                                <th class="p-2.5 md:p-3 border-r border-emerald-200 text-right bg-emerald-100/70" rowspan="2" style="position:sticky; right:0; z-index:10; background:#d1fae5;">کتاب / کلاس</th>
+                                <th class="border border-slate-200 p-2 md:p-3 min-w-[140px] md:min-w-[180px] text-slate-700 font-bold uppercase tracking-wider text-left">Book / Class</th>
+                                <th class="border border-slate-200 p-2 min-w-[70px] text-slate-700 font-bold uppercase text-center">Total Pages</th>
+                                <th class="border border-slate-200 p-2 min-w-[70px] text-slate-700 font-bold uppercase text-center">Total Taught</th>
+                                <th class="border border-slate-200 p-2 min-w-[70px] bg-yellow-100 text-red-600 font-bold uppercase text-center">Remaining</th>
+                                <th class="border border-slate-200 p-2 min-w-[70px] bg-green-100 text-green-700 font-bold uppercase text-center">Percent</th>
                                 ${displayMonths.map(m => `
-                                    <th class="p-2 md:p-3 border-r border-emerald-200" rowspan="2">
-                                        ${monthUrduNames[m] || m.toUpperCase()}<br>
-                                        <span class="text-[10px] font-normal text-emerald-700">(پڑھایا)</span>
-                                    </th>
+                                    <th colspan="2" class="border border-slate-200 p-2 font-bold text-indigo-900 uppercase text-center">${m.toUpperCase()}</th>
                                 `).join('')}
-                                <th class="p-2 md:p-2.5 border-b border-emerald-200 bg-indigo-50 text-indigo-900" colspan="3">مجموعی کارکردگی</th>
                             </tr>
-                            <tr class="text-[10px] md:text-xs bg-indigo-50/50 text-slate-700">
-                                <th class="p-1.5 md:p-2 border-r border-emerald-200">کل صفحات</th>
-                                <th class="p-1.5 md:p-2 border-r border-emerald-200 text-indigo-700 font-extrabold">اب تک پڑھایا</th>
-                                <th class="p-1.5 md:p-2 text-rose-600 font-extrabold">بقیہ</th>
+                            <tr class="bg-slate-50">
+                                <th class="border border-slate-200"></th>
+                                <th class="border border-slate-200"></th>
+                                <th class="border border-slate-200"></th>
+                                <th class="border border-slate-200 bg-yellow-50"></th>
+                                <th class="border border-slate-200 bg-green-50"></th>
+                                ${displayMonths.map(() => `
+                                    <th class="border border-slate-200 p-1.5 md:p-2 text-indigo-600 text-[9px] md:text-xs font-semibold text-center">Target</th>
+                                    <th class="border border-slate-200 p-1.5 md:p-2 text-emerald-600 text-[9px] md:text-xs font-semibold text-center">Taught</th>
+                                `).join('')}
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
                 `;
 
                 teacherPeriods.forEach(p => {
-                    const totalBookPages = parseInt(p.totalPages || p.pages || 0, 10);
-                    let rowCumulativeTaught = 0;
+                    // Admin ke targets ka sum nikalna pure semester ke liye
+                    let adminTotalPages = 0;
+                    allSemMonths.forEach(m => {
+                        adminTotalPages += getTargetValue(p, m, jamiaTargets);
+                    });
+                    const totalPages = adminTotalPages > 0 ? adminTotalPages : parseInt(p.totalPages || p.pages || 0, 10);
 
-                    tableHtml += `
-                        <tr class="hover:bg-slate-50 transition-colors">
-                            <td class="p-2.5 md:p-3 border-r border-slate-100 text-right font-bold text-slate-800 bg-white" style="position:sticky; right:0; z-index:5;">
-                                <div class="text-xs md:text-sm text-slate-900 font-extrabold">${p.bookName}</div>
-                                <div class="text-[10px] md:text-xs text-indigo-600 font-semibold">${p.className}</div>
-                            </td>
-                    `;
+                    let cumulativeTaught = 0;
+                    let monthDataHtml = ``;
 
                     displayMonths.forEach(m => {
+                        const target = getTargetValue(p, m, jamiaTargets);
                         let taught = 0;
                         let isVerified = false;
 
                         // Check teacher period achieved
-                        if (p.achieved && p.achieved[m] !== undefined) {
+                        if (p.achieved && p.achieved[m] !== undefined && p.achieved[m] !== "") {
                             taught = parseInt(p.achieved[m]) || 0;
                             if (p.locked && (p.locked[m] === true || p.locked[m] === "true")) {
                                 isVerified = true;
@@ -603,40 +696,48 @@
                         }
 
                         // Check public perf data
-                        if (publicPerfData[m]?.teachers) {
-                            const pubT = publicPerfData[m].teachers.find(t => t.name.toLowerCase() === teacherData.name.toLowerCase());
-                            if (pubT && pubT.periods_detail) {
-                                const matchedKey = Object.keys(pubT.periods_detail).find(k => {
-                                    const d = pubT.periods_detail[k];
-                                    return d.class === p.className && d.subject === p.bookName;
-                                });
-                                if (matchedKey) {
-                                    taught = parseInt(pubT.periods_detail[matchedKey].page_to) || taught;
-                                    isVerified = true;
+                        if (!taught || taught === 0) {
+                            if (publicPerfData[m]?.teachers) {
+                                const pubT = publicPerfData[m].teachers.find(t => (t.name || "").trim().toLowerCase() === (teacherData.name || "").trim().toLowerCase());
+                                if (pubT && pubT.periods_detail) {
+                                    const matchedKey = Object.keys(pubT.periods_detail).find(k => {
+                                        const d = pubT.periods_detail[k];
+                                        return (d.class || "").trim().toLowerCase() === (p.className || "").trim().toLowerCase() && 
+                                               (d.subject || "").trim().toLowerCase() === (p.bookName || "").trim().toLowerCase();
+                                    });
+                                    if (matchedKey) {
+                                        taught = parseInt(pubT.periods_detail[matchedKey].page_to) || 0;
+                                        isVerified = true;
+                                    }
                                 }
                             }
+                        } else if (p.locked && (p.locked[m] === true || p.locked[m] === "true")) {
+                            isVerified = true;
                         }
 
-                        rowCumulativeTaught += taught;
-                        const bgCol = isVerified ? "bg-emerald-50/60" : "";
-
-                        tableHtml += `
-                            <td class="p-2 md:p-3 border-r border-slate-100 font-extrabold text-emerald-800 ${bgCol}">
+                        cumulativeTaught += taught;
+                        monthDataHtml += `
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center text-slate-500 font-medium">${target}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-bold text-slate-800 ${isVerified ? 'bg-emerald-50/50' : ''}">
                                 ${taught > 0 ? taught : '-'}
                                 ${isVerified ? '<i class="fas fa-check-circle text-[9px] text-emerald-500 ml-1" title="Verified"></i>' : ''}
                             </td>
                         `;
                     });
 
-                    const remaining = totalBookPages - rowCumulativeTaught;
-                    let remColor = "text-slate-800";
-                    if (remaining <= 0) remColor = "text-emerald-600 font-extrabold";
-                    else if (remaining < (totalBookPages * 0.2)) remColor = "text-amber-600 font-extrabold";
+                    const remainingPages = Math.max(0, totalPages - cumulativeTaught);
+                    const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
 
                     tableHtml += `
-                            <td class="p-2 md:p-2.5 border-r border-slate-100 font-bold text-slate-700 bg-slate-50/40">${totalBookPages}</td>
-                            <td class="p-2 md:p-2.5 border-r border-slate-100 font-black text-indigo-700 bg-indigo-50/30">${rowCumulativeTaught}</td>
-                            <td class="p-2 md:p-2.5 font-black ${remColor} bg-slate-50/40" dir="ltr">${remaining}</td>
+                        <tr class="hover:bg-slate-50 transition-colors">
+                            <td class="border border-slate-200 p-1.5 md:p-2 font-bold text-slate-800 text-left">
+                                ${p.bookName} <br><span class="text-[9px] md:text-[10px] text-slate-500 font-normal block mt-1">${p.className}</span>
+                            </td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-bold text-slate-700">${totalPages}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-black text-blue-700">${cumulativeTaught}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-black text-red-600 bg-yellow-50">${remainingPages}</td>
+                            <td class="border border-slate-200 p-1.5 md:p-2 text-center font-black text-emerald-600 bg-green-50">${percent}%</td>
+                            ${monthDataHtml}
                         </tr>
                     `;
                 });

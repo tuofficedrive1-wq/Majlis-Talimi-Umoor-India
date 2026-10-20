@@ -14,6 +14,7 @@ let academicConfig = null;
 let gDb = null;
 let gCurrentUser = null;
 const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const academicYearMonths = ["apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "jan", "feb", "mar"];
 let gAssignedJamiaat = [];
 
 // --- Summary Tab Global Data ---
@@ -42,7 +43,7 @@ async function getAcademicConfig(db) {
 
     // ERROR FIX: DB me keys 's1' aur 's2' ke naam se save hoti hain
     let s1 = [], s2 = [];
-    monthNames.forEach((m) => {
+    academicYearMonths.forEach((m) => {
         let sem1Days = 0, sem2Days = 0;
         if (academicConfig.months && academicConfig.months[m]) {
             sem1Days = parseInt(academicConfig.months[m].s1) || 0;
@@ -52,8 +53,8 @@ async function getAcademicConfig(db) {
         if (sem2Days > 0) s2.push(m);
     });
 
-    gActiveSem1Months = s1.length > 0 ? s1 : ["apr", "may", "jun", "jul", "aug"];
-    gActiveSem2Months = s2.length > 0 ? s2 : ["sep", "oct", "nov", "dec", "jan", "feb", "mar"];
+    gActiveSem1Months = s1.length > 0 ? s1 : ["apr", "may", "jun", "jul"];
+    gActiveSem2Months = s2.length > 0 ? s2 : ["aug", "sep", "oct", "nov", "dec", "jan", "feb", "mar"];
 
     return academicConfig;
 }
@@ -173,7 +174,7 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     
     // Sirf wahi mahine nikalen jinme kisi bhi semester ke days > 0 hain
     const activeMonths = [...new Set([...gActiveSem1Months, ...gActiveSem2Months])];
-    const orderedActiveMonths = monthNames.filter(m => activeMonths.includes(m));
+    const orderedActiveMonths = academicYearMonths.filter(m => activeMonths.includes(m));
 
    // renderSubTabContent function me jahan 'performance' tab ka if condition hai:
     if (tabName === 'performance') {
@@ -1824,7 +1825,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             
             if (period.achieved && period.achieved[prefix] !== undefined) val = period.achieved[prefix];
             else if (period.achieved && period.achieved[monthKey] !== undefined) val = period.achieved[monthKey];
-            else {
+            if (!val || parseInt(val) === 0) {
                 const publicJamia = publicDataMap[jamiaName] || {};
                 const publicMonth = publicJamia[monthKey] || publicJamia[prefix];
                 if (publicMonth && publicMonth.teachers) {
@@ -1832,13 +1833,13 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                     if (pTeacher && pTeacher.periods_detail) {
                         const matched = Object.keys(pTeacher.periods_detail).find(k => {
                             const d = pTeacher.periods_detail[k];
-                            return d.class === period.className && d.subject === period.bookName;
+                            return (d.class || "").trim().toLowerCase() === (period.className || "").trim().toLowerCase() && (d.subject || "").trim().toLowerCase() === (period.bookName || "").trim().toLowerCase();
                         });
                         if (matched) val = pTeacher.periods_detail[matched].page_to || 0;
                     }
                 }
             }
-            return val;
+            return parseInt(val) || 0;
         };
 
         // ----------------------------------------------------
@@ -2001,11 +2002,11 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                     // 🎯 NAYA LOGIC: User ka totalPages hatakar Admin ke targets ka sum nikalna
                     let adminTotalPages = 0;
                     allSemMonths.forEach(m => {
-                        adminTotalPages += getTargetValue(period, m);
+                        adminTotalPages += getTargetValue(period, m, jamiaName);
                     });
                     
                     // Ab 'totalPages' admin ke sabhi mahinon ke target ka total ban jayega
-                    const totalPages = adminTotalPages; 
+                    const totalPages = adminTotalPages > 0 ? adminTotalPages : parseInt(period.totalPages || period.pages || 0, 10); 
                     
                     let cumulativeTaught = 0;
                     let monthDataHtml = ``;
@@ -2066,7 +2067,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                         let hasMunasib = false;
 
                         semMonths.forEach(m => {
-                            const target = getTargetValue(p, m);
+                            const target = getTargetValue(p, m, jamia.jamiaName);
                             const achievedValue = getAchievedValue(p, m, jamia.jamiaName, teacher.name);
                             
                             let status = '-';
