@@ -347,7 +347,12 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
                                     <option value="Asri">Asri</option>
                                 </select>
                                 <input type="text" id="contact-${jamia.replace(/\s+/g, '')}" placeholder="Contact" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
-                                <input type="text" id="level-${jamia.replace(/\s+/g, '')}" placeholder="Level" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
+                                <select id="level-${jamia.replace(/\s+/g, '')}" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition bg-white text-slate-700 font-medium">
+                                    <option value="">Select Level</option>
+                                    <option value="Middle">Middle</option>
+                                    <option value="Matric">Matric</option>
+                                    <option value="Inter">Inter</option>
+                                </select>
                                 <input type="text" id="h-qual-${jamia.replace(/\s+/g, '')}" placeholder="Highest Qual." class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
                                 <input type="email" id="mail-${jamia.replace(/\s+/g, '')}" placeholder="Mail ID" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
                                 <input type="text" id="exp-${jamia.replace(/\s+/g, '')}" placeholder="Experience" class="p-2 md:p-2.5 border border-slate-200 focus:border-indigo-400 rounded-lg text-xs md:text-sm outline-none transition">
@@ -1029,7 +1034,19 @@ const attachTeacherEvents = (container, db, currentUser, jamiaat, selectedYear) 
                     document.getElementById(`cat-${safeId}`).value = teacher.teacherType || teacher.category || "";
                 }
                 document.getElementById(`contact-${safeId}`).value = teacher.contact || "";
-                document.getElementById(`level-${safeId}`).value = teacher.levelQualified || "";
+                if (document.getElementById(`level-${safeId}`)) {
+                    const lVal = teacher.levelQualified || "";
+                    const sel = document.getElementById(`level-${safeId}`);
+                    sel.value = lVal;
+                    if (!sel.value && lVal) {
+                        for (let opt of sel.options) {
+                            if (opt.value.toLowerCase() === lVal.toLowerCase()) {
+                                sel.value = opt.value;
+                                break;
+                            }
+                        }
+                    }
+                }
                 document.getElementById(`h-qual-${safeId}`).value = teacher.highestQualification || "";
                 document.getElementById(`mail-${safeId}`).value = teacher.mailId || "";
                 document.getElementById(`exp-${safeId}`).value = teacher.experience || "";
