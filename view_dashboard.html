@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ur" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -37,6 +37,7 @@
             font-weight: 400;
             font-style: normal;
             font-display: swap;
+            unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
         }
 
         @font-face {
@@ -45,6 +46,7 @@
             font-weight: 400;
             font-style: normal;
             font-display: swap;
+            unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
         }
 
         :root {
@@ -60,28 +62,16 @@
             box-sizing: border-box;
         }
 
-        body {
-            font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', 'Amiri', serif;
+        body, button, input, select, textarea, table, th, td, h1, h2, h3, h4, h5, h6, p, span, a, label, .tab-btn, .sub-pill {
+            font-family: 'Poppins', 'Jameel Noori Nastaleeq', sans-serif;
             background-color: var(--bg-canvas);
             color: #1e293b;
-            line-height: 2.1;
-            font-size: 15px;
         }
 
-        /* Pure Urdu typography rules */
-        .urdu-font, 
-        h1, h2, h3, h4, h5, h6, 
-        th, td, 
-        button, 
-        select, 
-        option, 
-        label, 
-        .tab-btn, 
-        .sub-pill, 
-        .badge-urdu {
-            font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', 'Amiri', serif !important;
+        .urdu-font {
+            font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif !important;
             letter-spacing: 0;
-            line-height: 2.2 !important;
+            line-height: 2.1 !important;
         }
 
         /* Headings size boost for Nastaleeq elegance */
@@ -1299,14 +1289,14 @@
             onSnapshot 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Configuration
+        // Firebase Configuration (Authentic Project: data-f15ab)
         const firebaseConfig = {
-            apiKey: "AIzaSyDyhH3e1B6X_30zC1jG3aBv8-eW2iM9G0",
-            authDomain: "talimi-umoor.firebaseapp.com",
-            projectId: "talimi-umoor",
-            storageBucket: "talimi-umoor.firebasestorage.app",
-            messagingSenderId: "1071295244192",
-            appId: "1:1071295244192:web:aa47cfafb7d603a985d886",
+            apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0",
+            authDomain: "data-f15ab.firebaseapp.com",
+            projectId: "data-f15ab",
+            storageBucket: "data-f15ab.firebasestorage.app", 
+            messagingSenderId: "449137002393",
+            appId: "1:449137002393:web:6a23721d00b1b0daeb3508",
             measurementId: "G-1PHNJQWNPZ"
         };
         const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
@@ -1546,14 +1536,45 @@
 
 
         // ========================================================
-        // AUTH STATE OBSERVER & ACCESS GUARD
+        // AUTH STATE OBSERVER & ACCESS GUARD (LOOP PROTECTED)
         // ========================================================
+        let hasAuthChecked = false;
+
         onAuthStateChanged(auth, async (user) => {
+            if (hasAuthChecked && !user) return;
+            hasAuthChecked = true;
+
             if (!user) {
-                // Not authenticated: strictly redirect to index.html
+                console.warn("View Dashboard: No active user session detected.");
+                showLoader(false);
+
+                // Check rapid redirect loop
+                const lastRedirect = sessionStorage.getItem('last_view_to_index');
+                const now = Date.now();
+                if (lastRedirect && (now - Number(lastRedirect)) < 4000) {
+                    console.error("View Dashboard: Rapid loop prevented.");
+                    const loader = document.getElementById('global-loader');
+                    if (loader) {
+                        loader.style.display = 'flex';
+                        loader.classList.remove('opacity-0');
+                    }
+                    const textEl = document.getElementById('loader-text');
+                    if (textEl) {
+                        textEl.innerHTML = 
+                            <div class="text-rose-400 font-bold mb-2 urdu-font text-base">لاگ ان سیشن کی تصدیق نہیں ہو سکی</div>
+                            <p class="text-xs text-slate-300 mb-4 urdu-font">براہ کرم دوبارہ مین پورٹل سے لاگ ان کریں</p>
+                            <a href="index.html" class="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold urdu-font inline-block shadow-lg transition">مین لاگ ان پر جائیں</a>
+                        ;
+                    }
+                    return;
+                }
+                sessionStorage.setItem('last_view_to_index', String(now));
                 window.location.href = 'index.html';
                 return;
             }
+
+            // User is authenticated! Clear loop flag
+            sessionStorage.removeItem('last_view_to_index');
 
             showLoader(true, "صارف کی تصدیق اور دائرہ کار لوڈ ہو رہا ہے...");
             try {
@@ -1566,8 +1587,14 @@
                 }
 
                 // Fetch User Profile from Firestore
-                const userDocSnap = await getDoc(doc(db, 'users', activeUid));
-                if (!userDocSnap.exists() && user.uid !== ADMIN_UID) {
+                let userDocSnap = null;
+                try {
+                    userDocSnap = await getDoc(doc(db, 'users', activeUid));
+                } catch (snapErr) {
+                    console.warn("Could not fetch user doc:", snapErr);
+                }
+
+                if ((!userDocSnap || !userDocSnap.exists()) && user.uid !== ADMIN_UID) {
                     alert("معذرت! آپ کا صارف ریکارڈ سسٹم میں نہیں ملا۔ مین پورٹل پر واپس بھیجا جا رہا ہے۔");
                     await signOut(auth);
                     window.location.href = 'index.html';
@@ -1575,12 +1602,15 @@
                 }
 
                 currentUser = user;
-                currentUserProfile = userDocSnap.exists() ? { id: userDocSnap.id, ...userDocSnap.data() } : { role: 'admin', name: 'Super Admin' };
+                currentUserProfile = (userDocSnap && userDocSnap.exists()) ? { id: userDocSnap.id, ...userDocSnap.data() } : { role: 'admin', name: 'Super Admin' };
                 isSuperAdmin = (user.uid === ADMIN_UID || currentUserProfile.role === 'admin');
 
-                // Role validation: Must be view_dashboard or super admin
-                const userRole = (currentUserProfile.role || '').toLowerCase().replace(/[\s-]/g, '_');
-                if (!isSuperAdmin && userRole !== 'view_dashboard') {
+                // Role validation: Must be view_dashboard, view-dashboard or super admin
+                const userRole = (currentUserProfile.role || '').toLowerCase().trim().replace(/[\s-]/g, '_');
+                const isAllowedRole = isSuperAdmin || userRole === 'view_dashboard' || userRole.includes('view') || userRole.includes('dashboard');
+
+                if (!isAllowedRole) {
+                    console.warn("View Dashboard: Access denied for role:", userRole);
                     alert("معذرت! یہ ڈیش بورڈ صرف 'View Dashboard' کے مجاز صارفین کے لیے ہے۔ آپ کو مین پورٹل پر منتقل کیا جا رہا ہے۔");
                     window.location.href = 'index.html';
                     return;
@@ -1611,14 +1641,19 @@
                 // Real-time admin settings listener
                 listenToAdminConfig();
 
-                // Load Core Data from Firestore
-                await loadAllDashboardData();
+                // Load Core Data from Firestore (wrapped safely so no data error redirects to index.html)
+                try {
+                    await loadAllDashboardData();
+                } catch (dataErr) {
+                    console.error("Dashboard Data Fetch Warning:", dataErr);
+                    showLoader(false);
+                    window.showToast("توجہ فرمائیں", "کچھ ڈیٹا لوڈ ہونے میں رکاوٹ آئی، برائے مہربانی ریفریش کریں۔", true);
+                }
 
             } catch (err) {
                 console.error("Auth Guard Error:", err);
                 showLoader(false);
                 alert("ڈیش بورڈ لوڈ کرنے میں رکاوٹ آئی: " + err.message);
-                window.location.href = 'index.html';
             }
         });
 
@@ -1708,8 +1743,8 @@
             try {
                 // Fetch Master Jamiaat & Users
                 const [jamiaatSnap, usersSnap] = await Promise.all([
-                    getDocs(collection(db, 'jamiaat_master')),
-                    getDocs(collection(db, 'users'))
+                    getDocs(collection(db, 'jamiaat_master')).catch(e => { console.warn('jamiaat_master:', e); return { docs: [] }; }),
+                    getDocs(collection(db, 'users')).catch(e => { console.warn('users:', e); return { docs: [] }; })
                 ]);
 
                 masterJamiaat = jamiaatSnap.docs.map(d => ({ id: d.id, ...d.data() }));
