@@ -52,10 +52,14 @@
             box-sizing: border-box;
         }
 
-        body, button, input, select, textarea, table, th, td, h1, h2, h3, h4, h5, h6, p, span, a, label, .tab-btn, .sub-pill {
+        body {
             font-family: 'Poppins', 'Jameel Noori Nastaleeq', sans-serif;
             background-color: var(--bg-canvas);
             color: #1e293b;
+        }
+
+        button, input, select, textarea {
+            font-family: 'Poppins', 'Jameel Noori Nastaleeq', sans-serif;
         }
 
         .urdu-font {
@@ -1603,9 +1607,19 @@
                 }
 
                 // Determine Scope: Region, State, or All India
-                assignedScope = (currentUserProfile.assignedScope || (currentUserProfile.assignedRegion ? 'region' : (currentUserProfile.assignedState ? 'state' : 'all'))).toLowerCase();
-                assignedRegion = (currentUserProfile.assignedRegion || currentUserProfile.region || '').trim().toUpperCase();
-                assignedState = (currentUserProfile.assignedState || currentUserProfile.state || '').trim().toUpperCase();
+                // Determine Scope: Region, State, or All India
+                const rawScope = String(currentUserProfile.assignedScope || '').toLowerCase().trim();
+                if (rawScope === 'india' || rawScope === 'all_india' || rawScope === 'all') {
+                    assignedScope = 'all';
+                } else if (rawScope === 'region' || currentUserProfile.assignedRegion) {
+                    assignedScope = 'region';
+                } else if (rawScope === 'state' || currentUserProfile.assignedState) {
+                    assignedScope = 'state';
+                } else {
+                    assignedScope = 'all';
+                }
+                assignedRegion = String(currentUserProfile.assignedRegion || currentUserProfile.region || '').trim().toUpperCase();
+                assignedState = String(currentUserProfile.assignedState || currentUserProfile.state || '').trim().toUpperCase();
 
                 // Show Admin Panel Link for super admins
                 if (isSuperAdmin) {
@@ -1727,34 +1741,104 @@
         const loadAllDashboardData = async () => {
             showLoader(true, "تمام جامعات، ذمہ داران اور رپورٹس کا ڈیٹا حاصل کیا جا رہا ہے...");
             try {
-                // Fetch Master Jamiaat & Users
+                // Fetch Master Jamiaat & Users in parallel
                 const [jamiaatSnap, usersSnap] = await Promise.all([
                     getDocs(collection(db, 'jamiaat_master')).catch(e => { console.warn('jamiaat_master:', e); return { docs: [] }; }),
                     getDocs(collection(db, 'users')).catch(e => { console.warn('users:', e); return { docs: [] }; })
                 ]);
 
-                masterJamiaat = jamiaatSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                allUsers = (usersSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
 
-                // ========================================================
-                // USER CATEGORIZATION RULE:
-                // 1. Standard Zimmedar: strictly role === 'standard' (TEACHERS EXCLUDED!)
-                // 2. Academic Inspector: role === 'inspector'
-                // 3. Shoba Qirat: role === 'shoba_qirat'
-                // ========================================================
+                // Categorize Users (strictly active, teachers excluded from standard)
                 standardUsers = allUsers.filter(u => {
-                    const r = (u.role || '').trim().toLowerCase();
+                    const r = String(u.role || '').trim().toLowerCase();
                     return r === 'standard' && u.isActive !== false;
                 });
 
                 inspectorUsers = allUsers.filter(u => {
-                    const r = (u.role || '').trim().toLowerCase();
-                    return (r === 'inspector' || r === 'academic inspector' || r === 'academic_inspector' || r === 'education_office') && u.isActive !== false;
+                    const r = String(u.role || '').trim().toLowerCase().replace(/[\s-]/g, '_');
+                    return (r === 'inspector' || r === 'academic_inspector' || r === 'education_office') && u.isActive !== false;
                 });
 
                 qiratUsers = allUsers.filter(u => {
-                    const r = (u.role || '').trim().toLowerCase().replace(/[\s-]/g, '_');
+                    const r = String(u.role || '').trim().toLowerCase().replace(/[\s-]/g, '_');
                     return (r === 'shoba_qirat' || r === 'shoba_qirat_admin') && u.isActive !== false;
+                });
+
+                // Build Unified Master Jamiaat Map (merging jamiaat_master AND user assignments)
+                const masterJamiasMap = new Map();
+
+                // 1. From jamiaat_master collection
+                (jamiaatSnap.docs || []).forEach(d => {
+                    const data = d.data();
+                    const rawName = data.jamiaName || data.name || '';
+                    const cleanName = String(rawName).trim();
+                    if (cleanName && cleanName !== 'undefined') {
+                        const key = cleanName.toLowerCase();
+                        masterJamiasMap.set(key, {
+                            id: d.id,
+                            name: cleanName,
+                            jamiaName: cleanName,
+                            urduName: data.urduName || cleanName,
+                            region: String(data.region || '').trim().toUpperCase(),
+                            state: String(data.state || '').trim().toUpperCase(),
+                            code: data.code || ''
+                        });
+                    }
+                });
+
+                // 2. From all users' jamiaatList & assignedJamiaat (admin.html style)
+                allUsers.forEach(user => {
+                    if (user.id === ADMIN_UID) return;
+                    const userRegion = String(user.region || '').trim().toUpperCase();
+                    const userState = String(user.state || '').trim().toUpperCase();
+
+                    const userJamiaList = [];
+                    if (Array.isArray(user.jamiaatList)) {
+                        user.jamiaatList.forEach(item => {
+                            if (typeof item === 'object' && item !== null) {
+                                const n = item.name || item.jamiaName || item.jamia;
+                                if (n) userJamiaList.push({ name: String(n).trim(), id: item.id });
+                            } else if (typeof item === 'string' && item.trim()) {
+                                userJamiaList.push({ name: item.trim(), id: null });
+                            }
+                        });
+                    }
+                    if (Array.isArray(user.assignedJamiaat)) {
+                        user.assignedJamiaat.forEach(item => {
+                            if (typeof item === 'object' && item !== null) {
+                                const n = item.name || item.jamiaName;
+                                if (n) userJamiaList.push({ name: String(n).trim(), id: item.id });
+                            } else if (typeof item === 'string' && item.trim()) {
+                                userJamiaList.push({ name: item.trim(), id: null });
+                            }
+                        });
+                    }
+                    ['jamiaName', 'assignedJamia', 'jamia'].forEach(k => {
+                        if (typeof user[k] === 'string' && user[k].trim()) {
+                            userJamiaList.push({ name: user[k].trim(), id: null });
+                        }
+                    });
+
+                    userJamiaList.forEach(({ name, id }) => {
+                        if (!name || name === 'undefined') return;
+                        const key = name.toLowerCase();
+                        let target = masterJamiasMap.get(key);
+                        if (!target) {
+                            target = {
+                                id: id || ('usr_jamia_' + key),
+                                name: name,
+                                jamiaName: name,
+                                urduName: name,
+                                region: userRegion || '',
+                                state: userState || '',
+                                code: ''
+                            };
+                            masterJamiasMap.set(key, target);
+                        }
+                        if (!target.region && userRegion) target.region = userRegion;
+                        if (!target.state && userState) target.state = userState;
+                    });
                 });
 
                 // Fetch All Submissions & Reports in Parallel
@@ -1780,15 +1864,46 @@
                     getDocs(collection(db, 'shoba_qirat_followups')).catch(() => ({ docs: [] }))
                 ]);
 
-                allJaizaReports = jaizaSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allMonthlyReports = monthlyRepSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allInspectionReports = inspectionRepSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allAcademicInspections = academicInspSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allMonthlyTestSheets = testSheetsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allClassWiseResults = classWiseSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allAsatizaWiseResults = asatizaWiseSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allEnrollmentRecords = enrollSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                allQiratFollowups = qiratFollowSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                allJaizaReports = (jaizaSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allMonthlyReports = (monthlyRepSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allInspectionReports = (inspectionRepSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allAcademicInspections = (academicInspSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allMonthlyTestSheets = (testSheetsSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allClassWiseResults = (classWiseSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allAsatizaWiseResults = (asatizaWiseSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allEnrollmentRecords = (enrollSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+                allQiratFollowups = (qiratFollowSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+
+                // 3. Scan Jamia names from reports in case any are missing from master
+                const scanReportJamia = (rawName, region, state) => {
+                    if (!rawName || typeof rawName !== 'string') return;
+                    const cleanName = rawName.trim();
+                    if (!cleanName || cleanName === 'undefined') return;
+                    const key = cleanName.toLowerCase();
+                    if (!masterJamiasMap.has(key)) {
+                        masterJamiasMap.set(key, {
+                            id: 'rep_' + key,
+                            name: cleanName,
+                            jamiaName: cleanName,
+                            urduName: cleanName,
+                            region: String(region || '').trim().toUpperCase(),
+                            state: String(state || '').trim().toUpperCase(),
+                            code: ''
+                        });
+                    }
+                };
+
+                allJaizaReports.forEach(r => scanReportJamia(r.jamiaName || r.name, r.region, r.state));
+                allMonthlyReports.forEach(m => scanReportJamia(m.jamiaName || m.jamia, m.region, m.state));
+                allInspectionReports.forEach(i => scanReportJamia(i.jamiaName, i.region, i.state));
+                allMonthlyTestSheets.forEach(t => scanReportJamia(t.jamia || t.jamiaName, t.region, t.state));
+
+                // Convert map to masterJamiaat array
+                masterJamiaat = Array.from(masterJamiasMap.values());
+                console.log("Master Jamiaat loaded:", masterJamiaat.length);
+                console.log("Standard Users loaded:", standardUsers.length);
+                console.log("Inspectors loaded:", inspectorUsers.length);
+                console.log("Qirat Users loaded:", qiratUsers.length);
 
                 // Setup Filter Dropdowns
                 setupFilterDropdowns();
@@ -1809,8 +1924,8 @@
             const regionSelect = document.getElementById('filter-region-select');
             const stateSelect = document.getElementById('filter-state-select');
 
-            const regions = [...new Set(masterJamiaat.map(j => j.region).filter(Boolean))].sort();
-            const states = [...new Set(masterJamiaat.map(j => j.state).filter(Boolean))].sort();
+            const regions = [...new Set(masterJamiaat.map(j => String(j.region || '').trim().toUpperCase()).filter(Boolean))].sort();
+            const states = [...new Set(masterJamiaat.map(j => String(j.state || '').trim().toUpperCase()).filter(Boolean))].sort();
 
             if (regionSelect) {
                 let rHtml = '<option value="all">تمام ریجنز (All Regions)</option>';
@@ -1846,8 +1961,8 @@
         // JAMIA & USER SCOPE EVALUATION HELPERS
         // ========================================================
         const isJamiaInScope = (jamia, filterRegion = 'all', filterState = 'all') => {
-            const jRegion = (jamia.region || '').trim().toUpperCase();
-            const jState = (jamia.state || '').trim().toUpperCase();
+            const jRegion = String(jamia.region || '').trim().toUpperCase();
+            const jState = String(jamia.state || '').trim().toUpperCase();
 
             // 1. Role Scope Enforcement (from admin assignment)
             if (assignedScope === 'region' && assignedRegion && !isSuperAdmin) {
@@ -1896,7 +2011,7 @@
 
         // Lookup Zimmedaran for a Jamia
         const getZimmedaranForJamia = (jamiaName) => {
-            const jClean = jamiaName.trim().toUpperCase();
+            const jClean = String(jamiaName || '').trim().toUpperCase();
 
             // Standard: strictly role === 'standard' (no teachers!)
             const stdMatches = standardUsers.filter(u => {
@@ -1924,21 +2039,45 @@
         };
 
         const isUserInScope = (user, filterRegion = 'all', filterState = 'all') => {
+            const uRegion = String(user.region || '').trim().toUpperCase();
+            const uState = String(user.state || '').trim().toUpperCase();
             const userJamias = getUserJamiaNames(user);
 
-            // If user has assigned Jamiaat, check if any match active scope
-            if (userJamias.length > 0) {
-                return masterJamiaat.some(mj => {
-                    return userJamias.includes(mj.name.trim().toUpperCase()) && isJamiaInScope(mj, filterRegion, filterState);
-                });
+            // 1. Role Scope Enforcement (from admin assignment)
+            if (assignedScope === 'region' && assignedRegion && !isSuperAdmin) {
+                const matchesUserRegion = uRegion === assignedRegion;
+                const hasJamiaInRegion = userJamias.length > 0 && masterJamiaat.some(mj => 
+                    userJamias.includes(String(mj.name || mj.jamiaName || '').trim().toUpperCase()) && 
+                    String(mj.region || '').trim().toUpperCase() === assignedRegion
+                );
+                if (!matchesUserRegion && !hasJamiaInRegion) return false;
+            } else if (assignedScope === 'state' && assignedState && !isSuperAdmin) {
+                const matchesUserState = uState === assignedState;
+                const hasJamiaInState = userJamias.length > 0 && masterJamiaat.some(mj => 
+                    userJamias.includes(String(mj.name || mj.jamiaName || '').trim().toUpperCase()) && 
+                    String(mj.state || '').trim().toUpperCase() === assignedState
+                );
+                if (!matchesUserState && !hasJamiaInState) return false;
             }
 
-            // Fallback: check user's region directly
-            const uRegion = (user.region || '').trim().toUpperCase();
-            if (filterRegion !== 'all' && uRegion !== filterRegion) return false;
-            if (assignedScope === 'region' && assignedRegion && !isSuperAdmin) {
-                return uRegion === assignedRegion;
+            // 2. Interactive Filter
+            if (filterRegion !== 'all') {
+                const matchesUserRegion = uRegion === filterRegion;
+                const matchesJamiaRegion = userJamias.length > 0 && masterJamiaat.some(mj => 
+                    userJamias.includes(String(mj.name || mj.jamiaName || '').trim().toUpperCase()) && 
+                    String(mj.region || '').trim().toUpperCase() === filterRegion
+                );
+                if (!matchesUserRegion && !matchesJamiaRegion) return false;
             }
+            if (filterState !== 'all') {
+                const matchesUserState = uState === filterState;
+                const matchesJamiaState = userJamias.length > 0 && masterJamiaat.some(mj => 
+                    userJamias.includes(String(mj.name || mj.jamiaName || '').trim().toUpperCase()) && 
+                    String(mj.state || '').trim().toUpperCase() === filterState
+                );
+                if (!matchesUserState && !matchesJamiaState) return false;
+            }
+
             return true;
         };
 
@@ -1957,11 +2096,16 @@
                 const inScope = isJamiaInScope(j, selectedRegion, selectedState);
                 if (!inScope) return false;
                 if (!searchTerm) return true;
-                return (j.name || '').toLowerCase().includes(searchTerm) ||
-                       (j.urduName || '').toLowerCase().includes(searchTerm) ||
-                       (j.code || '').toLowerCase().includes(searchTerm) ||
-                       (j.state || '').toLowerCase().includes(searchTerm) ||
-                       (j.region || '').toLowerCase().includes(searchTerm);
+                const jName = String(j.name || '').toLowerCase();
+                const jUrdu = String(j.urduName || '').toLowerCase();
+                const jCode = String(j.code || '').toLowerCase();
+                const jState = String(j.state || '').toLowerCase();
+                const jRegion = String(j.region || '').toLowerCase();
+                return jName.includes(searchTerm) ||
+                       jUrdu.includes(searchTerm) ||
+                       jCode.includes(searchTerm) ||
+                       jState.includes(searchTerm) ||
+                       jRegion.includes(searchTerm);
             });
 
             // 2. Filter Users (Strictly categorized)
@@ -1976,11 +2120,11 @@
             document.getElementById('badge-total-qirat').textContent = scopedQiratUsers.length;
 
             // Render Components
-            renderOverviewTab(selectedMonth);
-            renderJamiaatListTab(selectedMonth);
-            renderStandardTab(selectedMonth);
-            renderInspectorsTab(selectedMonth);
-            renderQiratTab(selectedMonth);
+            try { renderOverviewTab(selectedMonth); } catch (e) { console.error("renderOverviewTab error:", e); }
+            try { renderJamiaatListTab(selectedMonth); } catch (e) { console.error("renderJamiaatListTab error:", e); }
+            try { renderStandardTab(selectedMonth); } catch (e) { console.error("renderStandardTab error:", e); }
+            try { renderInspectorsTab(selectedMonth); } catch (e) { console.error("renderInspectorsTab error:", e); }
+            try { renderQiratTab(selectedMonth); } catch (e) { console.error("renderQiratTab error:", e); }
         };
 
 
@@ -1988,7 +2132,7 @@
         // 1. RENDER OVERVIEW TAB
         // ========================================================
         const renderOverviewTab = (selectedMonth) => {
-            const scopedJamiaNames = new Set(scopedJamiaat.map(j => j.name.trim().toLowerCase()));
+            const scopedJamiaNames = new Set(scopedJamiaat.map(j => String(j.name || j.jamiaName || '').trim().toLowerCase()).filter(Boolean));
 
             // Metric Counters
             document.getElementById('stat-total-jamiaat').textContent = scopedJamiaat.length;
@@ -2148,7 +2292,7 @@
                 }
 
                 // Current Month Submissions Badges for this Jamia
-                const jClean = j.name.trim().toLowerCase();
+                const jClean = String(j.name || j.jamiaName || '').trim().toLowerCase();
                 
                 const hasJaiza = allJaizaReports.some(r => {
                     const matchJ = (r.jamiaName || r.name || '').trim().toLowerCase() === jClean;
@@ -2215,7 +2359,7 @@
             const tbody = document.getElementById('overview-recent-tbody');
             if (!tbody) return;
 
-            const scopedJamiaNames = new Set(scopedJamiaat.map(j => j.name.trim().toLowerCase()));
+            const scopedJamiaNames = new Set(scopedJamiaat.map(j => String(j.name || j.jamiaName || '').trim().toLowerCase()).filter(Boolean));
             const feedItems = [];
 
             // Combine Jaiza Reports
@@ -2371,7 +2515,7 @@
                 }
 
                 // Reporting Status
-                const jClean = j.name.trim().toLowerCase();
+                const jClean = String(j.name || j.jamiaName || '').trim().toLowerCase();
                 const hasJaiza = allJaizaReports.some(r => {
                     const matchJ = (r.jamiaName || r.name || '').trim().toLowerCase() === jClean;
                     return matchJ && (selectedMonth === 'all' || r.monthKey === selectedMonth || r.month === selectedMonth);
@@ -2424,7 +2568,7 @@
         // 3. RENDER STANDARD TAB (Sub-views)
         // ========================================================
         const renderStandardTab = (selectedMonth) => {
-            const scopedJamiaNames = new Set(scopedJamiaat.map(j => j.name.trim().toLowerCase()));
+            const scopedJamiaNames = new Set(scopedJamiaat.map(j => String(j.name || j.jamiaName || '').trim().toLowerCase()).filter(Boolean));
 
             // 1. Users List (Strictly role === 'standard', NO TEACHERS!)
             const stdUsersTbody = document.getElementById('std-users-tbody');
@@ -2632,7 +2776,7 @@
         // 4. RENDER INSPECTOR TAB
         // ========================================================
         const renderInspectorsTab = (selectedMonth) => {
-            const scopedJamiaNames = new Set(scopedJamiaat.map(j => j.name.trim().toLowerCase()));
+            const scopedJamiaNames = new Set(scopedJamiaat.map(j => String(j.name || j.jamiaName || '').trim().toLowerCase()).filter(Boolean));
 
             // 1. Users List
             const inspUsersTbody = document.getElementById('insp-users-tbody');
@@ -2715,7 +2859,7 @@
         // 5. RENDER SHOBA QIRAT TAB
         // ========================================================
         const renderQiratTab = (selectedMonth) => {
-            const scopedJamiaNames = new Set(scopedJamiaat.map(j => j.name.trim().toLowerCase()));
+            const scopedJamiaNames = new Set(scopedJamiaat.map(j => String(j.name || j.jamiaName || '').trim().toLowerCase()).filter(Boolean));
 
             // 1. Users List
             const qiratUsersTbody = document.getElementById('qirat-users-tbody');
