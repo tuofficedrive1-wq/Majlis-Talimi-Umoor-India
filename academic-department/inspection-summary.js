@@ -303,7 +303,11 @@ export async function renderInspectionSummary(assignedJamiaat, db) {
 
         if (userProfileData.academicYears && userProfileData.academicYears[academicYear]) {
             const struct = userProfileData.academicYears[academicYear].karkardagiStructure || [];
-            jamiaData = struct.find(j => j.jamiaName.trim() === selectedJamia);
+            const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            jamiaData = struct.find(j => {
+                const jn = j.jamiaName || j.name || '';
+                return jn.trim() === selectedJamia || norm(jn) === norm(selectedJamia);
+            });
         }
 
         if (jamiaData) {
@@ -440,8 +444,12 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
 
         qSnap.forEach(docSnap => {
             const data = docSnap.data();
-            if (!assignedJamiaat.includes(data.jamiaName)) return;
-            if (jamiaFilter && data.jamiaName !== jamiaFilter) return;
+            const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            const docJamia = data.jamiaName || data.name || '';
+            const docNorm = norm(docJamia);
+            const assignedNorms = (assignedJamiaat || []).map(norm);
+            if (!assignedJamiaat.includes(docJamia) && !assignedNorms.includes(docNorm)) return;
+            if (jamiaFilter && docJamia !== jamiaFilter && docNorm !== norm(jamiaFilter)) return;
             const docMonth = data.month; 
             if (!docMonth || docMonth < startMonth || docMonth > endMonth) return;
 

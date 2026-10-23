@@ -495,6 +495,23 @@ window.listenToAdminReports = (selectedMonth) => {
                 const headerText = document.getElementById('current-month-text');
                 if (headerText) headerText.textContent = selectedMonthFull;
 
+                // Master Jamiaat Directory se official names map karne ke liye cache banate hain
+                window.masterJamiaMap = new Map();
+                try {
+                    const mSnap = await getDocs(collection(db, "jamiaat_master"));
+                    mSnap.forEach(d => {
+                        const mData = d.data();
+                        const mName = (mData.name || mData.jamiaName || '').trim();
+                        if (mName && mName !== 'undefined') {
+                            const rec = { id: d.id, name: mName, region: mData.region || '', state: mData.state || '' };
+                            window.masterJamiaMap.set(d.id, rec);
+                            window.masterJamiaMap.set(mName.toLowerCase(), rec);
+                            const normK = mName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                            if (normK) window.masterJamiaMap.set(normK, rec);
+                        }
+                    });
+                } catch(e) { console.warn("Master jamia cache warning:", e); }
+
                 const userDoc = await getDoc(doc(db, "users", currentUser.uid));
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
@@ -502,7 +519,17 @@ window.listenToAdminReports = (selectedMonth) => {
                     const nameElement = document.getElementById('inspector-name');
                     if (nameElement) nameElement.textContent = userData.name || "Inspector";
 
-                    assignedJamiaat = (userData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j);
+                    assignedJamiaat = (userData.jamiaatList || []).map(j => {
+                        const jId = typeof j === 'object' ? j.id : null;
+                        const rawName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                        if (!rawName) return null;
+                        if (jId && window.masterJamiaMap.has(jId)) return window.masterJamiaMap.get(jId).name;
+                        if (window.masterJamiaMap.has(String(rawName).trim().toLowerCase())) return window.masterJamiaMap.get(String(rawName).trim().toLowerCase()).name;
+                        const normK = String(rawName).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        if (window.masterJamiaMap.has(normK)) return window.masterJamiaMap.get(normK).name;
+                        return String(rawName).trim();
+                    }).filter(Boolean);
+
                     const countElem = document.getElementById('stat-jamia-count');
                     if (countElem) countElem.textContent = assignedJamiaat.length;
                 }
@@ -580,21 +607,43 @@ window.listenToAdminReports = (selectedMonth) => {
                 reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
 
                 const detailResults = await Promise.all(
-                    assignedJamiaat.map(jamia => {
+                    assignedJamiaat.map(async jamia => {
                         const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`;
-                        return getDoc(doc(db, "academic_inspections", inspectionId))
-                            .then(detailSnap => ({ jamia, detailSnap }));
+                        let detailSnap = await getDoc(doc(db, "academic_inspections", inspectionId));
+                        
+                        // Dual lookup: Agar direct master name se doc na mile, toh legacy ya normalized match check karein
+                        if (!detailSnap.exists()) {
+                            try {
+                                const qLeg = query(
+                                    collection(db, "academic_inspections"),
+                                    where("inspectorId", "==", currentUser.uid),
+                                    where("monthKey", "==", month)
+                                );
+                                const legSnap = await getDocs(qLeg);
+                                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                                const targetNorm = norm(jamia);
+                                const foundDoc = legSnap.docs.find(d => {
+                                    const dData = d.data();
+                                    return norm(dData.jamiaName) === targetNorm || norm(dData.legacyJamiaName) === targetNorm;
+                                });
+                                if (foundDoc) detailSnap = foundDoc;
+                            } catch(e) {}
+                        }
+                        return { jamia, detailSnap };
                     })
                 );
 
+                const normHelper = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
                 detailResults.forEach(({ jamia, detailSnap }) => {
-                    if (detailSnap.exists()) {
+                    if (detailSnap && detailSnap.exists()) {
                         const detailData = detailSnap.data();
                         if (!reportsData.jaiza) reportsData.jaiza = [];
 
-                        let existingJaiza = reportsData.jaiza.find(j => j.name === jamia);
+                        let existingJaiza = reportsData.jaiza.find(j => normHelper(j.name) === normHelper(jamia));
 
                         if (existingJaiza) {
+                            existingJaiza.name = jamia;
                             existingJaiza.score = detailData.overallPercentage ? detailData.overallPercentage.replace('%', '') : '0';
                             if (detailData.inspectionDate) {
                                 const d = detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate() : new Date(detailData.inspectionDate);
@@ -773,11 +822,18 @@ window.renderInspectionList = () => {
     let pendingHTML = '';
     let submittedHTML = '';
     
+    const normHelper = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
     assignedJamiaat.forEach((jamia, index) => {
-        const adminReport = (window.allReports || []).find(r => r.jamiaName === jamia && r.inspectorId === currentUser.uid && r.month === monthInput);
+        const jNorm = normHelper(jamia);
+        const adminReport = (window.allReports || []).find(r => 
+            r.inspectorId === currentUser.uid && 
+            r.month === monthInput &&
+            (r.jamiaName === jamia || normHelper(r.jamiaName) === jNorm || normHelper(r.legacyJamiaName) === jNorm)
+        );
         const isSubmitted = !!adminReport;
 
-        const draftEntry = saved.find(s => s.name === jamia) || {};
+        const draftEntry = saved.find(s => s.name === jamia || normHelper(s.name) === jNorm) || {};
         let entry = isSubmitted ? adminReport : draftEntry;
         
         let inputPlaceholder = "Select type first...";
@@ -1109,7 +1165,11 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
                 for (let jamia of assignedJamiaat) {
                     const sourceStandardJamia = jamiaatMapping[jamia] || jamia;
                     const normSourceJamia = normalizeName(sourceStandardJamia);
-                    const jamiaSheets = allSheets.filter(sheet => normalizeName(sheet.jamiaName) === normSourceJamia);
+                    const cleanNorm = s => s.replace(/[^a-z0-9]/g, '');
+                    const jamiaSheets = allSheets.filter(sheet => {
+                        const sName = normalizeName(sheet.jamiaName);
+                        return sName === normSourceJamia || cleanNorm(sName) === cleanNorm(normSourceJamia);
+                    });
                     
                     if (jamiaSheets.length === 0) {
                         rowsHTML += `

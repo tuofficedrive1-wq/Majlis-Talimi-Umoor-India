@@ -938,9 +938,24 @@
           );
           const snap = await getDocs(q);
           entries = [];
-          snap.forEach(d => {
-              entries.push({ cloudId: d.id, ...d.data(), id: d.id });
-          });
+          if (snap.empty) {
+              try {
+                  const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", userId));
+                  const allSnap = await getDocs(qAll);
+                  const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                  const curNorm = norm(currentJamia);
+                  allSnap.forEach(d => {
+                      const dData = d.data();
+                      if (norm(dData.jamiaName) === curNorm) {
+                          entries.push({ cloudId: d.id, ...dData, id: d.id });
+                      }
+                  });
+              } catch(e) {}
+          } else {
+              snap.forEach(d => {
+                  entries.push({ cloudId: d.id, ...d.data(), id: d.id });
+              });
+          }
           entries.sort((a,b) => new Date(b.savedAt) - new Date(a.savedAt));
           renderEntries();
       } catch(e) {
@@ -1479,6 +1494,22 @@
             data.jamiaName = currentJamia;
             data.inspectorId = userId;
             data.savedAt = new Date().toISOString();
+
+            // Master directory se state aur region auto-tag karein
+            try {
+                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                const curNorm = norm(currentJamia);
+                const mSnap = await getDocs(collection(db, "jamiaat_master"));
+                mSnap.forEach(d => {
+                    const m = d.data();
+                    const mName = m.name || m.jamiaName;
+                    if (mName && (mName.trim().toUpperCase() === currentJamia.trim().toUpperCase() || norm(mName) === curNorm)) {
+                        data.state = (m.state || '').toUpperCase();
+                        data.region = (m.region || '').toUpperCase();
+                        data.jamiaId = d.id;
+                    }
+                });
+            } catch(e) {}
             
             var docRef = await addDoc(collection(db, "enrollment_records"), data);
             data.cloudId = docRef.id;

@@ -1,4 +1,4 @@
-﻿import { 
+import { 
     doc, 
     getDoc,
     updateDoc,
@@ -293,7 +293,11 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
             const teacherSelect = document.getElementById('teacher-profile-teacher');
             if(!jamia) { teacherSelect.innerHTML = '<option value="">Select Teacher</option>'; return; }
             
-            const jamiaData = gSummaryKarkardagiStructure.find(j => j.jamiaName === jamia);
+            const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            const jamiaData = gSummaryKarkardagiStructure.find(j => {
+                const jn = j.jamiaName || j.name || '';
+                return jn === jamia || norm(jn) === norm(jamia);
+            });
             if(jamiaData && jamiaData.teachers) {
                 teacherSelect.innerHTML = '<option value="all" class="font-bold text-indigo-700">(All Teachers)</option>' + 
                     jamiaData.teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
@@ -424,8 +428,13 @@ const setupStructureEvents = (container, db, currentUser, assignedJamiaat, selec
                 if (!academicYears[selectedYear]) academicYears[selectedYear] = { karkardagiStructure: [] };
                 
                 let structure = academicYears[selectedYear].karkardagiStructure;
-                let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                let jamiaData = structure.find(j => {
+                    const jn = j.jamiaName || j.name || '';
+                    return jn === jamiaName || norm(jn) === norm(jamiaName);
+                });
                 if (!jamiaData) { jamiaData = { jamiaName, teachers: [] }; structure.push(jamiaData); }
+                else { jamiaData.jamiaName = jamiaName; }
 
                 if (editId) {
                     const idx = jamiaData.teachers.findIndex(t => t.id === editId);
@@ -470,7 +479,11 @@ const loadAllTeachers = async (jamiaat, db, currentUser, selectedYear) => {
         jamiaat.forEach(jamia => {
             const safeId = jamia.replace(/\s+/g, '');
             const listDiv = document.getElementById(`list-${safeId}`);
-            const jamiaData = structure.find(j => j.jamiaName === jamia);
+            const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            const jamiaData = structure.find(j => {
+                const jn = j.jamiaName || j.name || '';
+                return jn === jamia || norm(jn) === norm(jamia);
+            });
             if (!listDiv || !jamiaData) return;
 
             listDiv.innerHTML = jamiaData.teachers.map(t => {

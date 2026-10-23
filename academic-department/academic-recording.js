@@ -91,8 +91,10 @@ async function loadRecordingData(assignedJamiaat, currentUser, db, monthInput) {
         // RENDER JAMIA LIST
         // ============================================
         let listHTML = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">`;
+        const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         assignedJamiaat.forEach(jamia => {
-            const jamiaRecs = allFetchedRecordings.filter(r => r.jamiaName === jamia);
+            const jNorm = norm(jamia);
+            const jamiaRecs = allFetchedRecordings.filter(r => r.jamiaName === jamia || norm(r.jamiaName) === jNorm);
             const count = jamiaRecs.length;
             
             // YAHAN FOLDER PATH KA MASLA HAL KIYA GAYA HAI
