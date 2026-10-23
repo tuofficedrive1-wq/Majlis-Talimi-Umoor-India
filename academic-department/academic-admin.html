@@ -472,13 +472,21 @@
                             <input type="text" id="mj-search" placeholder="Search jamia / user..." class="border rounded-lg px-3 py-2 text-sm">
                             <select id="mj-region" class="border rounded-lg px-3 py-2 text-sm bg-white"><option value="">All Regions</option></select>
                             <select id="mj-state" class="border rounded-lg px-3 py-2 text-sm bg-white"><option value="">All States</option></select>
-                            <button id="mj-refresh" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
-                            <button id="mj-csv" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold"><i class="fas fa-file-csv mr-1"></i> CSV</button>
+                            <select id="mj-filter-status" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white font-medium">
+                                <option value="all">All Jamiaat</option>
+                                <option value="assigned">Only Assigned (Active)</option>
+                                <option value="unassigned">⚠️ Only Unassigned (Ghost / Duplicate)</option>
+                            </select>
+                            <button id="mj-refresh" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition"><i class="fas fa-sync-alt mr-1"></i> Refresh</button>
+                            <button onclick="window.cleanUnassignedGhostJamiaat()" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-lg text-xs md:text-sm font-bold shadow-sm transition flex items-center gap-1.5" title="Unassigned duplicate entries ko Master list se delete karein">
+                                <i class="fas fa-broom"></i> Clean Unassigned Duplicates
+                            </button>
+                            <button id="mj-csv" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition"><i class="fas fa-file-csv mr-1"></i> CSV</button>
                         </div>
                     </div>
                     <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
                         <table class="w-full text-left text-sm">
-                            <thead class="text-[11px] font-bold uppercase border-b sticky top-0">
+                            <thead class="text-[11px] font-bold uppercase border-b sticky top-0 bg-slate-100 text-slate-700">
                                 <tr>
                                     <th class="px-3 py-3 text-center w-10">Sr</th>
                                     <th class="px-3 py-3">Region</th>
@@ -486,9 +494,10 @@
                                     <th class="px-3 py-3">Jamia (English)</th>
                                     <th class="px-3 py-3 text-right">Jamia (Urdu)</th>
                                     <th class="px-3 py-3 min-w-[220px]">Assigned Roles &amp; Users</th>
+                                    <th class="px-3 py-3 text-center w-28">Action</th>
                                 </tr>
                             </thead>
-                            <tbody id="mj-tbody" class="divide-y"><tr><td colspan="6" class="p-6 text-center text-gray-400">Tab khulne par load hoga...</td></tr></tbody>
+                            <tbody id="mj-tbody" class="divide-y"><tr><td colspan="7" class="p-6 text-center text-gray-400">Tab khulne par load hoga...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -1255,9 +1264,9 @@
     function mjBuildRows() {
         const map = new Map();
         (masterJamiaat || []).forEach(m => {
-            const name = (m.jamiaName || '').trim();
+            const name = (m.name || m.jamiaName || '').trim();
             if (!name) return;
-            map.set(mjLoose(name), { name, urdu: m.urduName || '', region: m.region || '', state: m.state || '', roles: {}, inMaster: true });
+            map.set(mjLoose(name), { id: m.id, name, urdu: m.urduName || '', region: m.region || '', state: m.state || '', roles: {}, inMaster: true });
         });
         (mjUsers || []).forEach(u => {
             if (u.role === 'admin') return;
@@ -1268,7 +1277,7 @@
                 if (!jn || jn === 'undefined') return;
                 const k = mjLoose(jn);
                 let row = map.get(k);
-                if (!row) { row = { name: String(jn).trim(), urdu: '', region: '', state: '', roles: {}, inMaster: false }; map.set(k, row); }
+                if (!row) { row = { id: '', name: String(jn).trim(), urdu: '', region: '', state: '', roles: {}, inMaster: false }; map.set(k, row); }
                 if (!row.region && uReg) row.region = uReg;
                 (row.roles[role] = row.roles[role] || []);
                 const who = u.name || u.email || u.id;
@@ -1284,29 +1293,111 @@
         if (!tbody) return;
         mjBuildRows();
         const rSel = document.getElementById('mj-region'), sSel = document.getElementById('mj-state');
+        const statusSel = document.getElementById('mj-filter-status');
         let reg = rSel.value, st = sSel.value;
+        const statusFilter = statusSel ? statusSel.value : 'all';
         const q = document.getElementById('mj-search').value.trim().toLowerCase();
         const uniq = a => [...new Set(a.filter(Boolean))].sort();
         const fill = (el, label, vals, cur) => { el.innerHTML = `<option value="">${label}</option>` + vals.map(v => `<option value="${mjEsc(v)}">${mjEsc(v)}</option>`).join(''); el.value = vals.includes(cur) ? cur : ''; };
         fill(rSel, 'All Regions', uniq(mjRows.map(r => r.region)), reg); reg = rSel.value;
         fill(sSel, 'All States', uniq(mjRows.filter(r => !reg || r.region === reg).map(r => r.state)), st); st = sSel.value;
 
-        const rows = mjRows.filter(r => (!reg || r.region === reg) && (!st || r.state === st) &&
+        let rows = mjRows.filter(r => (!reg || r.region === reg) && (!st || r.state === st) &&
             (!q || (r.name + ' ' + r.urdu + ' ' + Object.values(r.roles).flat().join(' ')).toLowerCase().includes(q)));
-        document.getElementById('mj-count').textContent = `(${rows.length} / ${mjRows.length} jamiaat)`;
+
+        if (statusFilter === 'assigned') {
+            rows = rows.filter(r => Object.keys(r.roles).length > 0);
+        } else if (statusFilter === 'unassigned') {
+            rows = rows.filter(r => Object.keys(r.roles).length === 0);
+        }
+
+        const unassignedCount = mjRows.filter(r => r.inMaster && Object.keys(r.roles).length === 0).length;
+        document.getElementById('mj-count').innerHTML = `(${rows.length} / ${mjRows.length} jamiaat)${unassignedCount > 0 ? ` · <span class="text-red-600 font-bold">${unassignedCount} Unassigned Ghost</span>` : ''}`;
         window.__mjVisible = rows;
-        if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-gray-400">Koi jamia nahi mili.</td></tr>'; return; }
+        if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">Koi jamia nahi mili.</td></tr>'; return; }
+        
         tbody.innerHTML = rows.map((r, i) => {
+            const hasRoles = Object.keys(r.roles).length > 0;
             const roles = Object.keys(r.roles).sort((a, b) => a.toLowerCase() === 'standard' ? -1 : b.toLowerCase() === 'standard' ? 1 : a.localeCompare(b))
-                .map(role => `<div class="mb-1"><span class="px-2 py-0.5 rounded text-[9px] font-black uppercase border ${role.toLowerCase().includes('inspector') ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200'}">${mjEsc(role)}</span> <span class="text-xs text-gray-600">${r.roles[role].map(mjEsc).join(', ')}</span></div>`).join('') || '<span class="text-xs text-gray-400">—</span>';
-            return `<tr class="${r.inMaster ? '' : 'bg-amber-50'}">
-                <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+                .map(role => `<div class="mb-1"><span class="px-2 py-0.5 rounded text-[9px] font-black uppercase border ${role.toLowerCase().includes('inspector') ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200'}">${mjEsc(role)}</span> <span class="text-xs text-gray-600">${r.roles[role].map(mjEsc).join(', ')}</span></div>`).join('') || '<span class="text-xs text-slate-400 italic">No user assigned</span>';
+            
+            const actionBtn = r.id ? `
+                <button onclick="window.deleteGhostMasterJamia('${r.id}', '${mjEsc(r.name).replace(/'/g, "\\'")}')" class="bg-red-50 hover:bg-red-600 text-red-600 hover:text-white px-2.5 py-1 rounded-md text-xs font-bold border border-red-200 transition shadow-sm flex items-center gap-1 mx-auto" title="Delete from Master Directory">
+                    <i class="fas fa-trash-alt"></i> Delete
+                </button>
+            ` : `<span class="text-[10px] text-slate-400 italic">User assigned</span>`;
+
+            return `<tr class="${r.inMaster ? (!hasRoles ? 'bg-amber-50/50' : '') : 'bg-amber-50'} hover:bg-slate-50 transition border-b border-slate-100">
+                <td class="px-3 py-2 text-center text-gray-400 font-bold">${i + 1}</td>
                 <td class="px-3 py-2 font-semibold">${mjEsc(r.region) || '<span class="text-gray-400">—</span>'}</td>
                 <td class="px-3 py-2 font-semibold">${mjEsc(r.state) || '<span class="text-amber-600 text-xs">State set nahi</span>'}</td>
-                <td class="px-3 py-2 font-bold">${mjEsc(r.name)}${r.inMaster ? '' : ' <span class="text-[10px] text-amber-600">(master mein nahi)</span>'}</td>
-                <td class="px-3 py-2 text-right" dir="rtl" style="font-family:'Jameel Noori Nastaleeq','Noto Nastaliq Urdu',serif">${mjEsc(r.urdu)}</td>
-                <td class="px-3 py-2">${roles}</td></tr>`;
+                <td class="px-3 py-2 font-bold flex items-center gap-1.5 flex-wrap">
+                    <span>${mjEsc(r.name)}</span>
+                    ${r.inMaster ? '' : ' <span class="text-[9px] bg-amber-100 text-amber-800 px-1 rounded font-bold">(master mein nahi)</span>'}
+                    ${!hasRoles ? ' <span class="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">Unassigned</span>' : ''}
+                </td>
+                <td class="px-3 py-2 text-right font-medium" dir="rtl" style="font-family:'Jameel Noori Nastaleeq','Noto Nastaliq Urdu',serif">${mjEsc(r.urdu)}</td>
+                <td class="px-3 py-2">${roles}</td>
+                <td class="px-3 py-2 text-center">${actionBtn}</td>
+            </tr>`;
         }).join('');
+    };
+
+    window.deleteGhostMasterJamia = async (jamiaId, jamiaName) => {
+        if (!jamiaId) {
+            alert("Yeh Jamia Master Directory collection mein direct document nahi hai (sirf kisi user ke assigned list mein naam tha). Ise hatane ke liye Synchronizer se sync karein ya inspector se unassign karein.");
+            return;
+        }
+        const hasUsers = mjRows.find(r => r.id === jamiaId && Object.keys(r.roles).length > 0);
+        let msg = `Kya aap waqai "${jamiaName}" ko Master Directory se DELETE karna chahte hain?`;
+        if (hasUsers) {
+            msg += `\n\n⚠️ NOTE: Is Jamia ke sath users assigned hain!`;
+        }
+        if (!confirm(msg)) return;
+
+        showLoader(true);
+        try {
+            await deleteDoc(doc(db, "jamiaat_master", jamiaId));
+            alert(`Jamia "${jamiaName}" ko Master Directory se kamiyabi se delete kar diya gaya!`);
+            window.openMasterJamiaatTab(true);
+        } catch(err) {
+            console.error("Delete Error:", err);
+            alert("Delete nahi ho saki: " + err.message);
+        } finally {
+            showLoader(false);
+        }
+    };
+
+    window.cleanUnassignedGhostJamiaat = async () => {
+        const ghostRows = mjRows.filter(r => r.inMaster && r.id && Object.keys(r.roles).length === 0);
+        if (ghostRows.length === 0) {
+            alert("Alhamdulillah! Koi bhi unassigned ya ghost Jamia nahi mila. Sabhi Jamiaat kisi na kisi user ke sath linked hain.");
+            return;
+        }
+        const sampleList = ghostRows.map(r => `• ${r.name} (${r.region || 'No Region'})`).slice(0, 15).join('\n');
+        const moreText = ghostRows.length > 15 ? `\n...aur ${ghostRows.length - 15} mazeed.` : '';
+
+        const confirmMsg = `Total ${ghostRows.length} aisi Jamiaat mili hain jo Master Directory me maujood hain lekin kisi bhi user ko assign nahi hain (jaise BHAV NAGAR, BOMBAY HOTEL AHMEDABD waghera):\n\n` +
+            sampleList + moreText +
+            `\n\nKya aap in sabhi ${ghostRows.length} unassigned/duplicate Jamiaat ko Master Directory se DELETE karna chahte hain?`;
+
+        if (!confirm(confirmMsg)) return;
+
+        showLoader(true);
+        try {
+            let deletedCount = 0;
+            for (const g of ghostRows) {
+                await deleteDoc(doc(db, "jamiaat_master", g.id));
+                deletedCount++;
+            }
+            alert(`MashaAllah! ${deletedCount} unassigned duplicate Jamiaat ko Master Directory se kamiyabi se delete kar diya gaya!`);
+            window.openMasterJamiaatTab(true);
+        } catch(err) {
+            console.error("Batch delete error:", err);
+            alert("Delete karne me error aaya: " + err.message);
+        } finally {
+            showLoader(false);
+        }
     };
 
     window.openMasterJamiaatTab = async (force) => {
@@ -1316,7 +1407,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
     // Aapka pehle se majood Master Jamiaat ka code
-    ['mj-region', 'mj-state'].forEach(id => document.getElementById(id)?.addEventListener('change', () => window.renderMasterJamiaatTable()));
+    ['mj-region', 'mj-state', 'mj-filter-status'].forEach(id => document.getElementById(id)?.addEventListener('change', () => window.renderMasterJamiaatTable()));
     document.getElementById('mj-search')?.addEventListener('input', () => window.renderMasterJamiaatTable());
     document.getElementById('mj-refresh')?.addEventListener('click', () => window.openMasterJamiaatTab(true));
     document.getElementById('mj-csv')?.addEventListener('click', () => {
@@ -2540,10 +2631,18 @@
                         <span class="text-[11px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">${occBadge}</span>
                     </td>
                     <td class="p-3">
-                        <select class="sync-target-select w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-indigo-500 bg-white" data-old-name="${row.oldName.replace(/"/g, '&quot;')}" onchange="window.onSyncSelectChange(${idx})">
-                            <option value="">-- Master Jamia Select Karein --</option>
-                            ${masterOptionsHTML}
-                        </select>
+                        <div class="flex items-center gap-1.5">
+                            <select class="sync-target-select flex-1 p-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-indigo-500 bg-white" data-old-name="${row.oldName.replace(/"/g, '&quot;')}" onchange="window.onSyncSelectChange(${idx})">
+                                <option value="">-- Master Jamia Select Karein --</option>
+                                <option value="__PURGE_DELETE__" class="text-red-600 font-bold">🗑️ [DELETE / PURGE DEMO DATA]</option>
+                                <option value="__IGNORE_SKIP__" class="text-slate-500">⏭️ [IGNORE / SKIP]</option>
+                                ${masterOptionsHTML}
+                            </select>
+                            ${!row.isAlreadyExact ? `
+                            <button onclick="window.purgeLegacyJamiaData('${row.oldName.replace(/'/g, "\\'")}')" class="p-1.5 text-xs text-red-600 hover:text-white hover:bg-red-600 border border-red-300 hover:border-red-600 rounded-lg transition" title="Is Demo/Ghalat Jamia ka tamam data delete karein">
+                                <i class="fas fa-trash"></i>
+                            </button>` : ''}
+                        </div>
                     </td>
                     <td class="p-3 font-medium text-slate-600 text-xs" id="sync-regstate-${idx}">${regState}</td>
                     <td class="p-3 text-center" id="sync-status-${idx}">${statusBadge}</td>
@@ -2575,7 +2674,13 @@
         const selOption = selectElem.options[selectElem.selectedIndex];
         const masterId = selectElem.value;
 
-        if (masterId && selOption) {
+        if (masterId === '__PURGE_DELETE__') {
+            regStateElem.textContent = 'Will be Deleted';
+            statusElem.innerHTML = `<span class="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded font-bold text-[10px]"><i class="fas fa-trash mr-1"></i> Will Purge</span>`;
+        } else if (masterId === '__IGNORE_SKIP__') {
+            regStateElem.textContent = 'Skip';
+            statusElem.innerHTML = `<span class="bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded font-bold text-[10px]"><i class="fas fa-forward mr-1"></i> Ignored</span>`;
+        } else if (masterId && selOption) {
             const reg = selOption.getAttribute('data-region') || '—';
             const st = selOption.getAttribute('data-state') || '—';
             regStateElem.textContent = `${reg} / ${st}`;
@@ -2583,6 +2688,88 @@
         } else {
             regStateElem.textContent = '—';
             statusElem.innerHTML = `<span class="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded font-bold text-[10px]"><i class="fas fa-times mr-1"></i> Not Selected</span>`;
+        }
+    };
+
+    window.purgeLegacyJamiaData = async (oldName) => {
+        if (!oldName) return;
+        const confirmMsg = `Kya aap waqai "${oldName}" ka tamam TEST / DEMO data (Inspections, Tests, Users assignment) mukammal DELETE karna chahte hain?\n\n` +
+            `Is se "${oldName}" se linked tamam demo records clean ho jayenge aur Master Directory se bhatakne wale naam hat jayenge.`;
+        if (!confirm(confirmMsg)) return;
+
+        showLoader(true);
+        try {
+            const usersSnap = await getDocs(collection(db, "users"));
+            for (const uDoc of usersSnap.docs) {
+                const uData = uDoc.data();
+                let mod = false;
+                const origLen = (uData.jamiaatList || []).length;
+                const filteredList = (uData.jamiaatList || []).filter(j => {
+                    const jn = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    return String(jn).trim().toUpperCase() !== oldName.trim().toUpperCase();
+                });
+                if (filteredList.length !== origLen) mod = true;
+
+                let updatedAcademicYears = uData.academicYears ? JSON.parse(JSON.stringify(uData.academicYears)) : null;
+                if (updatedAcademicYears) {
+                    Object.keys(updatedAcademicYears).forEach(yr => {
+                        const struct = updatedAcademicYears[yr]?.karkardagiStructure;
+                        if (Array.isArray(struct)) {
+                            const newStruct = struct.filter(item => {
+                                const jn = item.jamiaName || item.name;
+                                return String(jn).trim().toUpperCase() !== oldName.trim().toUpperCase();
+                            });
+                            if (newStruct.length !== struct.length) {
+                                updatedAcademicYears[yr].karkardagiStructure = newStruct;
+                                mod = true;
+                            }
+                        }
+                    });
+                }
+                if (mod) {
+                    const upPayload = { jamiaatList: filteredList };
+                    if (updatedAcademicYears) upPayload.academicYears = updatedAcademicYears;
+                    await updateDoc(doc(db, "users", uDoc.id), upPayload);
+                }
+            }
+
+            const qInsp = query(collection(db, "academic_inspections"), where("jamiaName", "==", oldName));
+            const inspSnap = await getDocs(qInsp);
+            for (const d of inspSnap.docs) {
+                await deleteDoc(doc(db, "academic_inspections", d.id));
+            }
+
+            const qTest = query(collection(db, "monthly_test_sheets"), where("jamiaName", "==", oldName));
+            const tSnap = await getDocs(qTest);
+            for (const d of tSnap.docs) {
+                await deleteDoc(doc(db, "monthly_test_sheets", d.id));
+            }
+
+            const qJaiza = query(collection(db, "jaiza_forms"), where("jamiaName", "==", oldName));
+            const jSnap = await getDocs(qJaiza);
+            for (const d of jSnap.docs) {
+                await deleteDoc(doc(db, "jaiza_forms", d.id));
+            }
+
+            const qEnroll = query(collection(db, "enrollment_records"), where("jamiaName", "==", oldName));
+            const eSnap = await getDocs(qEnroll);
+            for (const d of eSnap.docs) {
+                await deleteDoc(doc(db, "enrollment_records", d.id));
+            }
+
+            const qMaster = query(collection(db, "jamiaat_master"), where("name", "==", oldName));
+            const mSnap = await getDocs(qMaster);
+            for (const d of mSnap.docs) {
+                await deleteDoc(doc(db, "jamiaat_master", d.id));
+            }
+
+            alert(`"${oldName}" ka tamam demo data kamiyabi se delete ho gaya!`);
+            window.scanDatabaseForJamiaSync();
+        } catch(err) {
+            console.error("Purge error:", err);
+            alert("Delete karne me masla aaya: " + err.message);
+        } finally {
+            showLoader(false);
         }
     };
 
@@ -2594,11 +2781,18 @@
         }
 
         const mappingsToExecute = [];
+        const purgesToExecute = [];
+
         selects.forEach(sel => {
             const oldName = sel.getAttribute('data-old-name');
             const masterId = sel.value;
             const selOption = sel.options[sel.selectedIndex];
-            if (masterId && selOption) {
+
+            if (masterId === '__PURGE_DELETE__') {
+                purgesToExecute.push(oldName);
+            } else if (masterId === '__IGNORE_SKIP__' || !masterId) {
+                // skip
+            } else if (selOption) {
                 const masterName = selOption.getAttribute('data-name');
                 const region = selOption.getAttribute('data-region') || '';
                 const state = selOption.getAttribute('data-state') || '';
@@ -2608,15 +2802,15 @@
             }
         });
 
-        if (mappingsToExecute.length === 0) {
-            alert("Sabhi Jamiaat pehle se hi Master List ke exact format me hain! Koi update baki nahi hai.");
+        if (mappingsToExecute.length === 0 && purgesToExecute.length === 0) {
+            alert("Sabhi Jamiaat pehle se hi Master List ke exact format me hain! Koi update ya purge baki nahi hai.");
             return;
         }
 
-        const confirmMsg = `Kya aap waqai ${mappingsToExecute.length} Jamiaat ke purane naamon ko Master List ke hisab se update karna chahte hain?\n\n` +
-            `• Tamam Users ke Jamiaat assignments aur Karkardagi Structure update honge.\n` +
-            `• Inspections, Monthly Test Sheets, aur Enrollment records update honge.\n` +
-            `• ZERO DATA LOSS: Sabhi scores, dates aur student records mehfooz rahenge.`;
+        const confirmMsg = `Kya aap waqai is operation ko run karna chahte hain?\n\n` +
+            `• ${mappingsToExecute.length} Jamiaat ke naamon ko Master List ke hisab se update kiya jayega.\n` +
+            `• ${purgesToExecute.length} Jamiaat ke demo/test records ko mukammal delete (purge) kiya jayega.\n` +
+            `• ZERO DATA LOSS: Sabhi valid scores, dates aur student records mehfooz rahenge.`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -2636,13 +2830,14 @@
             consoleEl.scrollTop = consoleEl.scrollHeight;
         };
 
-        log(`🚀 Starting Master Synchronization (${mappingsToExecute.length} Jamiaat mappings to apply)...`);
+        log(`🚀 Starting Master Synchronization (${mappingsToExecute.length} mappings, ${purgesToExecute.length} purges)...`);
 
         try {
             const oldToNewMap = new Map();
             mappingsToExecute.forEach(m => oldToNewMap.set(m.oldName.toUpperCase(), m));
+            const purgeSet = new Set(purgesToExecute.map(p => p.toUpperCase()));
 
-            log(`Phase 1: Fetching users collection...`);
+            log(`Phase 1: Synchronizing users collection...`);
             const usersSnap = await getDocs(collection(db, "users"));
             let updatedUserCount = 0;
 
@@ -2650,7 +2845,14 @@
                 const uData = uDoc.data();
                 let userModified = false;
 
-                let updatedList = (uData.jamiaatList || []).map(j => {
+                let updatedList = (uData.jamiaatList || []).filter(j => {
+                    const currentName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    if (currentName && purgeSet.has(String(currentName).trim().toUpperCase())) {
+                        userModified = true;
+                        return false;
+                    }
+                    return true;
+                }).map(j => {
                     const currentName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
                     if (!currentName) return j;
                     const mapMatch = oldToNewMap.get(String(currentName).trim().toUpperCase());
@@ -2666,16 +2868,24 @@
                     Object.keys(updatedAcademicYears).forEach(yr => {
                         const struct = updatedAcademicYears[yr]?.karkardagiStructure;
                         if (Array.isArray(struct)) {
+                            const newStruct = [];
                             struct.forEach(item => {
                                 const jn = item.jamiaName || item.name;
-                                if (!jn) return;
-                                const mapMatch = oldToNewMap.get(String(jn).trim().toUpperCase());
+                                if (!jn) { newStruct.push(item); return; }
+                                const upperJn = String(jn).trim().toUpperCase();
+                                if (purgeSet.has(upperJn)) {
+                                    userModified = true;
+                                    return; // drop purged
+                                }
+                                const mapMatch = oldToNewMap.get(upperJn);
                                 if (mapMatch) {
                                     item.jamiaName = mapMatch.masterName;
                                     item.jamiaId = mapMatch.masterId;
                                     userModified = true;
                                 }
+                                newStruct.push(item);
                             });
+                            updatedAcademicYears[yr].karkardagiStructure = newStruct;
                         }
                     });
                 }
@@ -2697,7 +2907,12 @@
             for (const iDoc of inspSnap.docs) {
                 const iData = iDoc.data();
                 const curJamia = iData.jamiaName || '';
-                const mapMatch = oldToNewMap.get(curJamia.trim().toUpperCase());
+                const curUpper = curJamia.trim().toUpperCase();
+                if (purgeSet.has(curUpper)) {
+                    await deleteDoc(doc(db, "academic_inspections", iDoc.id));
+                    continue;
+                }
+                const mapMatch = oldToNewMap.get(curUpper);
                 if (mapMatch) {
                     await updateDoc(doc(db, "academic_inspections", iDoc.id), {
                         jamiaName: mapMatch.masterName,
@@ -2731,6 +2946,13 @@
                 
                 ['jaiza', 'recordings', 'tests', 'enroll'].forEach(key => {
                     if (Array.isArray(rData[key])) {
+                        rData[key] = rData[key].filter(item => {
+                            if (item && item.name && purgeSet.has(String(item.name).trim().toUpperCase())) {
+                                isChanged = true;
+                                return false;
+                            }
+                            return true;
+                        });
                         rData[key].forEach(item => {
                             if (item && item.name) {
                                 const mapMatch = oldToNewMap.get(String(item.name).trim().toUpperCase());
@@ -2754,6 +2976,20 @@
             log(`Phase 4: Updating monthly_test_sheets & jaiza_forms...`);
             let testCount = 0;
             let jaizaCount = 0;
+
+            for (const pName of purgesToExecute) {
+                const qTestP = query(collection(db, "monthly_test_sheets"), where("jamiaName", "==", pName));
+                const tSnapP = await getDocs(qTestP);
+                for (const d of tSnapP.docs) await deleteDoc(doc(db, "monthly_test_sheets", d.id));
+
+                const qJaizaP = query(collection(db, "jaiza_forms"), where("jamiaName", "==", pName));
+                const jSnapP = await getDocs(qJaizaP);
+                for (const d of jSnapP.docs) await deleteDoc(doc(db, "jaiza_forms", d.id));
+
+                const qEnrollP = query(collection(db, "enrollment_records"), where("jamiaName", "==", pName));
+                const eSnapP = await getDocs(qEnrollP);
+                for (const d of eSnapP.docs) await deleteDoc(doc(db, "enrollment_records", d.id));
+            }
 
             for (const m of mappingsToExecute) {
                 const qTest = query(collection(db, "monthly_test_sheets"), where("jamiaName", "==", m.oldName));
