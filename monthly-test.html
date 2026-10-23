@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -423,116 +423,71 @@
             document.body.insertAdjacentHTML('beforeend', modalHtml);
         };
 
-        // Clean and standard Jamia core name extractor (e.g. "JAMIA-TUL-MADINA BARODA" -> "BARODA")
-        window.getCanonicalJamiaName = (jamia) => {
-            if (!jamia) return '';
-            let s = jamia.toString().replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim();
-            s = s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia)[\s_-]*/gi, '').trim();
-            return s.toUpperCase();
-        };
+        // Smart Document ID Finder
+       window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
+    const jClean = jamia.trim().replace(/\s+/g, '_');
+    const jOld = jamia.replace(/\s/g, '_');
+    
+    const fullCls = rawCls.trim().replace(/\s+/g, '_');
+    const normFull = window.normalizeClassText(rawCls);
+    
+    const ids = [];
+    [fullCls, normFull].forEach(c => {
+        if (c) {
+            ids.push(`${uid}_${jClean}_${mKey}_${c}`);
+            ids.push(`${uid}_${jOld}_${mKey}_${c}`);
+        }
+    });
+    return [...new Set(ids)];
+};
 
-        // Smart Document ID Finder (Har qism ke Jamia aur Class variants ko support karta hai)
-        window.getPossibleDocIds = (uid, jamia, mKey, rawCls) => {
-            const ids = new Set();
-            const jRaw = jamia.trim().replace(/\s+/g, '_');
-            const jCore = window.getCanonicalJamiaName(jamia).replace(/\s+/g, '_');
-            const jPrefixed1 = `JAMIA-TUL-MADINA_${jCore}`;
-            const jPrefixed2 = `JAMIA_TUL_MADINA_${jCore}`;
-            const jPrefixed3 = `JAMIA_${jCore}`;
-            
-            const jamiaVariants = [...new Set([jRaw, jCore, jPrefixed1, jPrefixed2, jPrefixed3].filter(Boolean))];
+        // Firebase se 100% sahi document dhoondhne ka function (Direct ID + Query Fallback - Jamia aur Class dono filter ke sath)
+       window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
+    const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
 
-            const cRaw = rawCls.trim().replace(/\s+/g, '_');
-            const cNorm = window.normalizeClassText(rawCls);
-            
-            // Common Urdu/Arabic letter variations for classes:
-            // Heh variants: \u06C1 (Urdu Heh), \u0647 (Arabic Heh), \u0629 (Teh Marbuta)
-            // Yeh variants: \u06CC (Farsi/Urdu Yeh), \u064A (Arabic Yeh), \u0649 (Alif Maqsura), \u0670 (Dagger Alif)
-            const classVariants = new Set([cRaw, cNorm]);
-            
-            [cRaw, cNorm].forEach(c => {
-                if (!c) return;
-                classVariants.add(c.replace(/[\u0647\u0629]/g, '\u06C1'));
-                classVariants.add(c.replace(/[\u06C1\u0629]/g, '\u0647'));
-                classVariants.add(c.replace(/[\u06C1\u0647]/g, '\u0629'));
-                classVariants.add(c.replace(/[\u0649\u064A\u0670]/g, '\u06CC'));
-                classVariants.add(c.replace(/[\u06CC\u0649]/g, '\u064A'));
-                classVariants.add(c.replace(/\u0670/g, ''));
-                if (c.endsWith('\u06CC')) classVariants.add(c + '\u0670');
-            });
-
-            // Standard / canonical ID: Hamesha sabse pehle rank karega
-            const canonical = `${uid}_${jCore}_${mKey}_${cNorm}`;
-            const canonicalRaw = `${uid}_${jCore}_${mKey}_${cRaw}`;
-            ids.add(canonical);
-            ids.add(canonicalRaw);
-
-            jamiaVariants.forEach(j => {
-                classVariants.forEach(c => {
-                    if (c) {
-                        ids.add(`${uid}_${j}_${mKey}_${c}`);
-                    }
-                });
-            });
-
-            return Array.from(ids);
-        };
-
-        // Firebase se 100% sahi document dhoondhne ka function
-        window.fetchClassSheetDoc = async (uid, jamia, mKey, rawCls) => {
-            const possibleIds = window.getPossibleDocIds(uid, jamia, mKey, rawCls);
-            const canonicalDocId = possibleIds[0];
-            const coreJamia = window.getCanonicalJamiaName(jamia);
-
-            // 1. Direct ID look-up (Sabse tezi se aur direct match)
-            for (const id of possibleIds) {
-                try {
-                    const snap = await getDoc(doc(db, "monthly_test_sheets", id));
-                    if (snap.exists()) {
-                        const data = snap.data() || {};
-                        const dJamia = data.jamiaName || data.jamiaId || data.jamia;
-                        const dClass = data.class;
-                        
-                        const isClassOk = !dClass || window.isSameClass(dClass, rawCls);
-                        const isIdBelongsToJamia = id.toUpperCase().includes(coreJamia);
-                        const isFieldJamiaOk = !dJamia || window.isSameJamia(dJamia, jamia);
-
-                        if (isClassOk && (isIdBelongsToJamia || isFieldJamiaOk)) {
-                            return { snap, docId: id };
-                        }
-                    }
-                } catch (e) { 
-                    console.warn("Direct getDoc warning:", e); 
+    // 1. Pehle direct ID se data dhoondein aur verify karein ke jamia aur class wahi hain
+    for (const id of possibleIds) {
+        try {
+            const snap = await getDoc(doc(db, "monthly_test_sheets", id));
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                const dJamia = data.jamiaName || data.jamiaId || data.jamia;
+                const dClass = data.class;
+                
+                const isJamiaOk = !dJamia || window.isSameJamia(dJamia, jamia);
+                const isClassOk = !dClass || window.isSameClass(dClass, rawCls);
+                
+                if (isJamiaOk && isClassOk) {
+                    return { snap, docId: id };
                 }
             }
+        } catch (e) { console.warn(e); }
+    }
 
-            // 2. Query fallback: Direct ID se na mile to Firestore me search karein
-            try {
-                const q = query(
-                    collection(db, "monthly_test_sheets"),
-                    where("adminUid", "==", uid),
-                    where("month", "==", mKey)
-                );
-                const qSnap = await getDocs(q);
-                for (const d of qSnap.docs) {
-                    const data = d.data() || {};
-                    const dJamia = data.jamiaName || data.jamiaId || data.jamia;
-                    const dClass = data.class;
-                    
-                    if (window.isSameJamia(dJamia, jamia) && window.isSameClass(dClass, rawCls)) {
-                        // CRITICAL SAFETY CHECK: Agar document ID me kisi doosri Jamia ka naam hai,
-                        // to use docId ke taur par return na karein taaki doosri Jamia overwrite na ho!
-                        const isDocIdBelongsToJamia = d.id.toUpperCase().includes(coreJamia) || possibleIds.includes(d.id);
-                        return { snap: d, docId: isDocIdBelongsToJamia ? d.id : canonicalDocId };
-                    }
-                }
-            } catch (err) {
-                console.warn("Query fallback warning:", err);
+    // 2. Query fallback: Sirf usi Jamia aur usi Class ka document dhoondein (kisi doosri Jamia ka data hargiz load na ho)
+    try {
+        const q = query(
+            collection(db, "monthly_test_sheets"),
+            where("adminUid", "==", uid),
+            where("month", "==", mKey)
+        );
+        const qSnap = await getDocs(q);
+        for (const d of qSnap.docs) {
+            const data = d.data() || {};
+            const dJamia = data.jamiaName || data.jamiaId || data.jamia;
+            const dClass = data.class;
+            
+            if (window.isSameJamia(dJamia, jamia) && window.isSameClass(dClass, rawCls)) {
+                return { snap: d, docId: d.id };
             }
+        }
+    } catch (err) {
+        console.warn("Query fallback warning:", err);
+    }
 
-            // 3. Agar data nahi mila to naya result save karne ke liye canonical ID bhejein
-            return { snap: null, docId: canonicalDocId };
-        };
+    // 3. Agar data nahi mila to naya result save karne ke liye standard ID bhejein
+    return { snap: null, docId: possibleIds[0] };
+};
         
         function getAcademicYear(key) {
             if (!key) return null;
@@ -637,7 +592,6 @@
                     document.getElementById('loader').classList.add('hidden');
                     return; 
                 }
-                if (jamiaStruct && jamiaStruct.jamiaName) { jamiaName = jamiaStruct.jamiaName; }
 
                 classBooksMap = {};
 
@@ -687,29 +641,7 @@
                 tabs.innerHTML = '';
                 select.innerHTML = '<option value="">-- Select Class --</option>';
 
-                // Tarteeb-e-Nisab (Academic Progression Sort)
-                const standardClassOrder = [
-                    '\u062D\u0641\u0638', // Hifz
-                    '\u0627\u0628\u062A\u062F\u0627\u0626\u06CC\u06C1', // Ibtidaiyah
-                    '\u0633\u0627\u0644 \u0627\u0648\u0644', // Saal Awwal
-                    '\u0633\u0627\u0644 \u062F\u0648\u0645', // Saal Doom
-                    '\u0633\u0627\u0644 \u062F\u0648\u0645 \u062E\u0635\u0648\u0635\u06CC', // Saal Doom Khusoosi
-                    '\u0627\u0648\u0644\u06CC\u0670', // Oola
-                    '\u0627\u0648\u0644\u06CC', // Oola
-                    '\u062B\u0627\u0646\u06CC\u06C1', // Saniya
-                    '\u062B\u0627\u0644\u062B\u06C1', // Salisa
-                    '\u0631\u0627\u0628\u0639\u06C1', // Rabia
-                    '\u062E\u0627\u0645\u0633\u06C1', // Khamisa
-                    '\u0633\u0627\u062F\u0633\u06C1', // Sadisa
-                    '\u0633\u0627\u0628\u0639\u06C1', // Sabia
-                    '\u062F\u0648\u0631\u06C3 \u0627\u0644\u062D\u062F\u06CC\u062B' // Daura Hadith
-                ];
-                const getClassOrderScore = (cls) => {
-                    const norm = window.normalizeClassText(cls);
-                    const idx = standardClassOrder.findIndex(o => norm.includes(window.normalizeClassText(o)) || window.normalizeClassText(o).includes(norm));
-                    return idx >= 0 ? idx : 99;
-                };
-                const sortedClasses = Object.keys(classBooksMap).sort((a, b) => getClassOrderScore(a) - getClassOrderScore(b));
+                const sortedClasses = Object.keys(classBooksMap).sort();
                 sortedClasses.forEach(cls => {
                     const opt = document.createElement('option');
                     opt.value = cls;
@@ -738,13 +670,6 @@
 
                 document.getElementById('loader').classList.add('hidden');
                 document.getElementById('main-content').classList.remove('hidden');
-                // Page load par pehli class par focus karein
-                if (sortedClasses.length > 0) {
-                    const firstBtn = tabs.querySelector('button');
-                    if (firstBtn && (!select.value || select.value === '')) {
-                        firstBtn.click();
-                    }
-                }
             } catch (error) { console.error("Error loading data:", error); }
         }
 
@@ -1021,10 +946,6 @@
             }
             
             const { docId } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, rawClass);
-            const coreJamia = window.getCanonicalJamiaName(jamiaName);
-            const safeDocId = (docId && docId.toUpperCase().includes(coreJamia)) 
-                            ? docId 
-                            : window.getPossibleDocIds(adminUid, jamiaName, monthKey, rawClass)[0];
             const selectedClass = rawClass;
             const students = [];
 
@@ -1044,7 +965,7 @@
             }
 
             try {
-                await setDoc(doc(db, "monthly_test_sheets", safeDocId), {
+                await setDoc(doc(db, "monthly_test_sheets", docId), {
                     adminUid, jamiaName, month: monthKey, class: selectedClass,
                     subjects: finalSubjectsList, 
                     subjectMap: subjectTranslationMap, 
@@ -1175,38 +1096,42 @@
 
             window.classPreviousStudentsMap = window.classPreviousStudentsMap || {};
 
-            // Pichle mahine ke students dhoondhne ka helper function (Sirf naye forms ke liye zaroorat padne par)
-            const fetchPreviousStudents = async () => {
-                if (window.classPreviousStudentsMap[clsName] && window.classPreviousStudentsMap[clsName].length > 0) {
-                    return window.classPreviousStudentsMap[clsName];
-                }
-                try {
-                    let tempMonth = monthKey;
-                    for (let i = 0; i < 6; i++) {
-                        tempMonth = window.getPreviousMonth(tempMonth);
-                        if (!tempMonth) break;
-                        const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
-                        if (currentActiveRequestCls !== thisRequestCls) return [];
-                        if (prevSnap && prevSnap.exists()) {
-                            const prevData = prevSnap.data() || {};
-                            if (Array.isArray(prevData.students) && prevData.students.length > 0) {
-                                const names = prevData.students
-                                    .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
-                                    .filter(n => n.length > 0);
-                                if (names.length > 0) {
-                                    window.classPreviousStudentsMap[clsName] = names;
-                                    return names;
+            try {
+                // 1. Pichle 6 mahino me se kisi bhi mahine ke students dhoondhna (Sirf isi Jamia aur isi Class ke)
+                if (!window.classPreviousStudentsMap[clsName] || window.classPreviousStudentsMap[clsName].length === 0) {
+                    try {
+                        let tempMonth = monthKey;
+                        for (let i = 0; i < 6; i++) {
+                            tempMonth = window.getPreviousMonth(tempMonth);
+                            if (!tempMonth) break;
+                            
+                            const { snap: prevSnap } = await window.fetchClassSheetDoc(adminUid, jamiaName, tempMonth, clsName);
+                            if (currentActiveRequestCls !== thisRequestCls) return;
+
+                            if (prevSnap && prevSnap.exists()) {
+                                const prevData = prevSnap.data() || {};
+                                const dJamia = prevData.jamiaName || prevData.jamiaId || prevData.jamia;
+                                const dClass = prevData.class;
+                                if (window.isSameJamia(dJamia, jamiaName) && window.isSameClass(dClass, clsName)) {
+                                    if (Array.isArray(prevData.students) && prevData.students.length > 0) {
+                                        const names = prevData.students
+                                            .map(s => (typeof s === 'string' ? s : (s.name || '')).trim())
+                                            .filter(n => n.length > 0);
+                                        if (names.length > 0) {
+                                            window.classPreviousStudentsMap[clsName] = names;
+                                            break; 
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                } catch(e) { console.warn("Pichle mahine fetch error:", e); }
-                return [];
-            };
+                    } catch(e) { console.log("Pichle mahine ka data fetch karne me error:", e); }
+                }
 
-            try {
-                // 1. Sabse pehle CURRENT mahine ka data seedha load karein (FAST, INSTANT & RELIABLE)
-                const { snap, docId } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
+                if (currentActiveRequestCls !== thisRequestCls) return;
+
+                // 2. Current mahine ka data load karna
+                const { snap } = await window.fetchClassSheetDoc(adminUid, jamiaName, monthKey, clsName);
                 if (currentActiveRequestCls !== thisRequestCls) return;
                 
                 if (snap && snap.exists()) {
@@ -1260,8 +1185,7 @@
                     if (data.students && data.students.length > 0) {
                         data.students.forEach(s => addStudentRow(s.name, s.marks || {})); 
                     } else if (!isViewMode || isEditingMode) {
-                        // Document hai par students nahi hain, tab pichle mahine se lene ki koshish karein
-                        const prevStudents = await fetchPreviousStudents();
+                        const prevStudents = window.classPreviousStudentsMap[clsName] || [];
                         if (prevStudents.length > 0) {
                             prevStudents.forEach(stdName => {
                                 addStudentRow(stdName, {}); 
@@ -1272,15 +1196,12 @@
                     }
                 } 
                 else {
-                    // Document save nahi hai: Yeh nayi sheet hai
                     if (isViewMode && !isEditingMode) {
                         resultArea.classList.remove('hidden');
                         document.getElementById('table-head').innerHTML = '<tr><td colspan="10" class="text-center p-4 text-gray-500 italic">Is class ka data abhi tak save nahi hua hai. Upar "Enable Editing" dabakar subjects add karein.</td></tr>';
                     } else {
                         // Nayi sheet hai: subjects selection box dikhayein
                         selectionArea.classList.remove('hidden');
-                        // Pichle mahine ke students background me fetch karein
-                        fetchPreviousStudents();
                     }
                 }
 
