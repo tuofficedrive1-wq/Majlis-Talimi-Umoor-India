@@ -921,39 +921,29 @@
     let currentId = null;
     let tempJamias = [];
     let masterJamiaat = []; 
-    // jamiaat_master (admin.html wali master list) se State/Region/Name ko 100% Admin Master ke hisab se align karne ke helpers
-    const UP_EAST_JAMIAAT = ['ALLAHABAD', 'AZAMGARH', 'BAHRAICH', 'BANARAS', 'DEORIA', 'GORAKHPUR', 'KUSHINAGAR', 'MAU', 'VARANASI', 'JAUNPUR', 'GHAZIPUR', 'BALLIA', 'SULTANPUR', 'BASTI', 'FAIZABAD', 'AYODHYA', 'GONDA', 'SIDDHARTH NAGAR', 'SANT KABIR NAGAR', 'MIRZAPUR', 'CHANDAULI', 'BHADOHI'];
-    const UP_WEST_JAMIAAT = ['AGRA', 'ALIGARH', 'AMROHA', 'BAREILLY', 'BADAUN', 'BUDAUN', 'BULANDSHAHR', 'MATHURA', 'MEERUT', 'MORADABAD', 'MUZAFFARNAGAR', 'RAMPUR', 'SAHARANPUR', 'SAMBHAL', 'SHAHJAHANPUR', 'BIJNOR', 'FIROZABAD', 'MAINPURI', 'PILIBHIT', 'KASGANJ', 'ETAH', 'HATHRAS', 'BAGHPAT', 'SHAMLI', 'HAPUR', 'GHAZIABAD', 'NOIDA'];
-    const UP_CENTRAL_JAMIAAT = ['LUCKNOW', 'KANPUR', 'SITAPUR', 'UNNAO', 'HARDOI', 'RAEBARELI', 'BARABANKI', 'LAKHIMPUR', 'KHERI'];
 
-    const resolveAdminStateAndRegion = (rawName, rawState, rawRegion) => {
-        let name = String(rawName || '').trim().toUpperCase();
-        let reg = String(rawRegion || '').trim().toUpperCase();
-        let st = String(rawState || '').trim().toUpperCase();
-
-        if (reg === 'DEHLI') reg = 'DELHI';
-
-        if (st === 'MADHYA PRADESH' || st === 'MP') st = 'M.P.';
-        if (st === 'M.P.') {
-            if (!reg) reg = 'AJMER';
-        }
-
-        if (st === 'UTTAR PRADESH' || st === 'UP' || st.startsWith('U.P')) {
-            if (!reg) reg = 'DELHI';
-            if (st === 'UTTAR PRADESH' || st === 'UP') {
-                if (UP_EAST_JAMIAAT.some(j => name.includes(j))) st = 'U.P. EAST';
-                else if (UP_WEST_JAMIAAT.some(j => name.includes(j))) st = 'U.P. WEST';
-                else if (UP_CENTRAL_JAMIAAT.some(j => name.includes(j))) st = 'U.P. CENTRAL';
-                else st = 'U.P. EAST';
+    function showLoader(show, msg = "Processing...") {
+        let loader = document.getElementById('global-action-loader');
+        if (show) {
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = 'global-action-loader';
+                loader.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99999] flex flex-col items-center justify-center gap-3 text-white';
+                loader.innerHTML = `
+                    <div class="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <p id="global-action-loader-msg" class="text-sm font-semibold tracking-wide">${msg}</p>
+                `;
+                document.body.appendChild(loader);
+            } else {
+                const m = document.getElementById('global-action-loader-msg');
+                if (m) m.innerText = msg;
+                loader.style.display = 'flex';
             }
+        } else {
+            if (loader) loader.style.display = 'none';
         }
-
-        if (['BIHAR', 'CHHATTISGARH'].includes(st)) {
-            if (!reg) reg = 'DELHI';
-        }
-
-        return { name, state: st, region: reg };
-    };
+    }
+    window.showLoader = showLoader;
 
     const canonicalizeMasterDocs = (docs) => {
         const map = new Map();
@@ -965,14 +955,19 @@
             const cleanName = (d.name || d.jamiaName || '').trim().toUpperCase();
             if (!cleanName || cleanName === 'UNDEFINED') return;
 
-            const resolved = resolveAdminStateAndRegion(cleanName, d.state, d.region);
+            // Direct values from Master List (Admin master directory)
+            const st = String(d.state || '').trim().toUpperCase();
+            let reg = String(d.region || '').trim().toUpperCase();
+            if (reg === 'DEHLI') reg = 'DELHI';
+            if (reg === 'BENGALORE') reg = 'BANGALORE';
+
             const item = {
                 id: id,
                 name: cleanName,
                 jamiaName: cleanName,
-                urduName: d.urduName || '',
-                state: resolved.state,
-                region: resolved.region,
+                urduName: d.urduName || d.nameUrdu || '',
+                state: st,
+                region: reg,
                 rawDoc: d
             };
 
@@ -987,16 +982,11 @@
                 if (existing.urduName) scoreExisting += 10;
                 if (item.urduName) scoreNew += 10;
 
-                if (['M.P.', 'U.P. EAST', 'U.P. WEST', 'U.P. CENTRAL', 'BIHAR', 'CHHATTISGARH'].includes(existing.state)) scoreExisting += 8;
-                if (['M.P.', 'U.P. EAST', 'U.P. WEST', 'U.P. CENTRAL', 'BIHAR', 'CHHATTISGARH'].includes(item.state)) scoreNew += 8;
+                if (existing.state) scoreExisting += 10;
+                if (item.state) scoreNew += 10;
 
-                if (existing.region === 'DELHI') scoreExisting += 5;
-                if (item.region === 'DELHI') scoreNew += 5;
-
-                const rawD = d;
-                const rawE = existing.rawDoc || {};
-                if (rawD.state === 'UTTAR PRADESH' || rawD.region === 'DEHLI' || rawD.state === 'MADHYA PRADESH') scoreNew -= 5;
-                if (rawE.state === 'UTTAR PRADESH' || rawE.region === 'DEHLI' || rawE.state === 'MADHYA PRADESH') scoreExisting -= 5;
+                if (existing.region) scoreExisting += 5;
+                if (item.region) scoreNew += 5;
 
                 if (scoreNew > scoreExisting) {
                     ghosts.push(existing);
@@ -1601,9 +1591,9 @@
     };
 
     window.syncAllEnrollmentRecordsWithMaster = async () => {
-        if (!confirm("Kya aap tamam purane Enrollment Records (student data) ko official Master Jamiaat List (State, Region aur IDs) ke mutabiq 100% update karna chahte hain?\n\nIsse purane 'DEHLI', 'BENGALORE' waghera theek ho kar official Admin format me convert ho jayenge.")) return;
+        if (!confirm("Kya aap tamam purane Enrollment Records (student data) ko official Master Jamiaat List ke mutabiq 100% sync/update karna chahte hain?\n\nIsse Jamia Name match hone par Master List ki official State (jaise 'J&K' bajaye 'JAMMU AND KASHMIR'), Region aur JamiaId har student record me update ho jayenge bina kisi data loss ke.")) return;
 
-        showLoader(true);
+        showLoader(true, "Enrollment Data Master List se Sync ho raha hai...");
         try {
             if (!masterJamiaat || masterJamiaat.length === 0) {
                 const mSnap = await getDocs(jamiaDirectoryRef);
@@ -1611,35 +1601,37 @@
                 masterJamiaat = res.canonical;
             }
 
-            // Create fast lookup map for Master Jamiaat
+            // Create fast lookup map for Master Jamiaat directly from Master List
             const masterMap = new Map();
             masterJamiaat.forEach(m => {
-                const resolved = resolveAdminStateAndRegion(m.name, m.state, m.region);
-                const info = { id: m.id, name: m.name, state: resolved.state, region: resolved.region };
+                const info = { id: m.id, name: m.name, state: (m.state || '').trim(), region: (m.region || '').trim() };
                 masterMap.set(m.name.trim().toUpperCase(), info);
                 masterMap.set(normCompare(m.name), info);
+                masterMap.set(mjLoose(m.name), info);
             });
 
             const enrollSnap = await getDocs(collection(db, "enrollment_records"));
             let updatedCount = 0;
             let totalCount = enrollSnap.docs.length;
+            let batch = writeBatch(db);
+            let batchOps = 0;
 
             for (const docSnap of enrollSnap.docs) {
                 const data = docSnap.data();
-                const curName = (data.jamiaName || '').trim().toUpperCase();
+                const curName = (data.jamiaName || '').trim();
                 if (!curName) continue;
 
-                let match = masterMap.get(curName) || masterMap.get(normCompare(curName));
+                const curUpper = curName.toUpperCase();
+                let match = masterMap.get(curUpper) || masterMap.get(normCompare(curName)) || masterMap.get(mjLoose(curName));
                 
                 // Fuzzy search if needed
                 if (!match) {
-                    const words = curName.split(/\s+/).filter(w => w.length > 2 && !['JAMIA', 'JAMIATUL', 'MADINA', 'INDIA'].includes(w));
+                    const words = curUpper.split(/\s+/).filter(w => w.length > 2 && !['JAMIA', 'JAMIATUL', 'MADINA', 'INDIA'].includes(w));
                     if (words.length > 0) {
                         for (const m of masterJamiaat) {
                             const mUpper = m.name.toUpperCase();
                             if (words.every(w => mUpper.includes(w))) {
-                                const resolved = resolveAdminStateAndRegion(m.name, m.state, m.region);
-                                match = { id: m.id, name: m.name, state: resolved.state, region: resolved.region };
+                                match = { id: m.id, name: m.name, state: (m.state || '').trim(), region: (m.region || '').trim() };
                                 break;
                             }
                         }
@@ -1647,10 +1639,10 @@
                 }
 
                 if (match) {
-                    let curState = normKey(data.state);
-                    let curRegion = normKey(data.region);
-                    let targetState = normKey(match.state);
-                    let targetRegion = normKey(match.region);
+                    const curState = (data.state || '').trim();
+                    const curRegion = (data.region || '').trim();
+                    const targetState = match.state;
+                    const targetRegion = match.region;
 
                     // Check if update is needed
                     if (data.jamiaName !== match.name ||
@@ -1658,18 +1650,30 @@
                         curState !== targetState ||
                         curRegion !== targetRegion) {
 
-                        await updateDoc(doc(db, "enrollment_records", docSnap.id), {
+                        const docRef = doc(db, "enrollment_records", docSnap.id);
+                        batch.update(docRef, {
                             jamiaName: match.name,
                             jamiaId: match.id,
                             state: match.state,
                             region: match.region
                         });
+                        batchOps++;
                         updatedCount++;
+
+                        if (batchOps >= 400) {
+                            await batch.commit();
+                            batch = writeBatch(db);
+                            batchOps = 0;
+                        }
                     }
                 }
             }
 
-            alert(`MashaAllah! Total ${totalCount} records me se ${updatedCount} purane Enrollment records ko official Admin Master (Region: DELHI/AJMER/MUMBAI..., State: U.P. EAST/M.P....) ke sath kamiyabi se update kar diya gaya!`);
+            if (batchOps > 0) {
+                await batch.commit();
+            }
+
+            alert(`MashaAllah! Total ${totalCount} records me se ${updatedCount} purane Enrollment records ko official Admin Master List ke mutabiq (State, Region aur IDs) update kar diya gaya!`);
 
         } catch (err) {
             console.error("Enrollment sync error:", err);
@@ -2102,9 +2106,8 @@
             return;
         }
 
-        const resolved = resolveAdminStateAndRegion(name, rawState, rawRegion);
-        const state = resolved.state;
-        const region = resolved.region;
+        let state = rawState;
+        let region = rawRegion === 'DEHLI' ? 'DELHI' : rawRegion === 'BENGALORE' ? 'BANGALORE' : rawRegion;
 
         if(!state || !region) {
             alert("Is Jamia ke liye State aur Region bharna zaroori hai!");
