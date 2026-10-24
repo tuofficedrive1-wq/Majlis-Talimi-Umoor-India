@@ -1603,11 +1603,25 @@
 
             // Create fast lookup map for Master Jamiaat directly from Master List
             const masterMap = new Map();
+            const masterByKeyword = new Map();
             masterJamiaat.forEach(m => {
-                const info = { id: m.id, name: m.name, state: (m.state || '').trim(), region: (m.region || '').trim() };
+                let st = (m.state || '').trim();
+                let reg = (m.region || '').trim();
+                if (st.toUpperCase() === 'JAMMU AND KASHMIR' || st.toUpperCase() === 'JAMMU & KASHMIR') st = 'J&K';
+                if (st.toUpperCase() === 'MADHYA PRADESH' || st.toUpperCase() === 'MP') st = 'M.P.';
+                if (reg.toUpperCase() === 'DEHLI') reg = 'DELHI';
+                if (reg.toUpperCase() === 'BENGALORE') reg = 'BANGALORE';
+
+                const info = { id: m.id, name: m.name, state: st, region: reg };
                 masterMap.set(m.name.trim().toUpperCase(), info);
                 masterMap.set(normCompare(m.name), info);
                 masterMap.set(mjLoose(m.name), info);
+
+                // Branch keywords (e.g. "DHORAJI", "PUNE", "KATHUA", "SALMARI", "FATAHPUR", "KOTA")
+                const words = normKey(m.name).split(/\s+/).filter(w => w.length > 2 && !['JAMIA', 'JAMIATUL', 'MADINA', 'INDIA', 'BRANCH', 'CAMPUS', 'BOYS', 'GIRLS', 'FAIZAN'].includes(w));
+                words.forEach(w => {
+                    if (!masterByKeyword.has(w)) masterByKeyword.set(w, info);
+                });
             });
 
             const enrollSnap = await getDocs(collection(db, "enrollment_records"));
@@ -1619,15 +1633,22 @@
             for (const docSnap of enrollSnap.docs) {
                 const data = docSnap.data();
                 const curName = (data.jamiaName || '').trim();
-                if (!curName) continue;
+                const curState = (data.state || '').trim();
+                const curRegion = (data.region || '').trim();
 
                 const curUpper = curName.toUpperCase();
                 let match = masterMap.get(curUpper) || masterMap.get(normCompare(curName)) || masterMap.get(mjLoose(curName));
                 
-                // Fuzzy search if needed
-                if (!match) {
+                // Fuzzy search / keyword search if needed
+                if (!match && curName) {
                     const words = curUpper.split(/\s+/).filter(w => w.length > 2 && !['JAMIA', 'JAMIATUL', 'MADINA', 'INDIA'].includes(w));
-                    if (words.length > 0) {
+                    for (const w of words) {
+                        if (masterByKeyword.has(w)) {
+                            match = masterByKeyword.get(w);
+                            break;
+                        }
+                    }
+                    if (!match && words.length > 0) {
                         for (const m of masterJamiaat) {
                             const mUpper = m.name.toUpperCase();
                             if (words.every(w => mUpper.includes(w))) {
@@ -1638,33 +1659,38 @@
                     }
                 }
 
-                if (match) {
-                    const curState = (data.state || '').trim();
-                    const curRegion = (data.region || '').trim();
-                    const targetState = match.state;
-                    const targetRegion = match.region;
+                let targetName = match ? match.name : curName;
+                let targetId = match ? match.id : (data.jamiaId || '');
+                let targetState = match ? match.state : curState;
+                let targetRegion = match ? match.region : curRegion;
 
-                    // Check if update is needed
-                    if (data.jamiaName !== match.name ||
-                        data.jamiaId !== match.id ||
-                        curState !== targetState ||
-                        curRegion !== targetRegion) {
+                if (targetState.toUpperCase() === 'JAMMU AND KASHMIR' || targetState.toUpperCase() === 'JAMMU & KASHMIR') targetState = 'J&K';
+                if (targetState.toUpperCase() === 'MADHYA PRADESH' || targetState.toUpperCase() === 'MP') targetState = 'M.P.';
+                if (targetRegion.toUpperCase() === 'DEHLI') targetRegion = 'DELHI';
+                if (targetRegion.toUpperCase() === 'BENGALORE') targetRegion = 'BANGALORE';
 
-                        const docRef = doc(db, "enrollment_records", docSnap.id);
-                        batch.update(docRef, {
-                            jamiaName: match.name,
-                            jamiaId: match.id,
-                            state: match.state,
-                            region: match.region
-                        });
-                        batchOps++;
-                        updatedCount++;
+                // Check if update is needed
+                if (curName !== targetName ||
+                    (targetId && targetId !== data.jamiaId) ||
+                    curState !== targetState ||
+                    curRegion !== targetRegion) {
 
-                        if (batchOps >= 400) {
-                            await batch.commit();
-                            batch = writeBatch(db);
-                            batchOps = 0;
-                        }
+                    const docRef = doc(db, "enrollment_records", docSnap.id);
+                    const updatePayload = {
+                        state: targetState,
+                        region: targetRegion
+                    };
+                    if (targetName) updatePayload.jamiaName = targetName;
+                    if (targetId) updatePayload.jamiaId = targetId;
+
+                    batch.update(docRef, updatePayload);
+                    batchOps++;
+                    updatedCount++;
+
+                    if (batchOps >= 400) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        batchOps = 0;
                     }
                 }
             }
