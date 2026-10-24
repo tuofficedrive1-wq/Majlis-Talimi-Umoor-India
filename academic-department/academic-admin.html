@@ -711,6 +711,9 @@
                             <button onclick="window.cleanUnassignedGhostJamiaat()" class="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2.5 rounded-lg text-xs md:text-sm font-bold shadow-sm transition flex items-center gap-2" title="Admin Master ke sath sync karein aur ghost duplicates delete karein">
                                 <i class="fas fa-broom"></i> <span>Align With Admin Master</span>
                             </button>
+                            <button onclick="window.syncAllEnrollmentRecordsWithMaster()" class="bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-2.5 rounded-lg text-xs md:text-sm font-bold shadow-sm transition flex items-center gap-2" title="Purane tamam Enrollment Records (Student data) ko Master List ke sath 100% update karein">
+                                <i class="fas fa-user-graduate"></i> <span>Sync Old Enrollment Data</span>
+                            </button>
                             <button id="btn-scan-master-sync" onclick="window.scanDatabaseForJamiaSync()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-xs md:text-sm font-bold shadow-sm transition flex items-center gap-2">
                                 <i class="fas fa-search"></i> <span>Scan Database</span>
                             </button>
@@ -1488,7 +1491,19 @@
                 try { await deleteDoc(doc(db, "jamiaat_master", jamiaId)); } catch(e) { console.warn("deleteDoc direct error:", e); }
             }
 
-            // 2. Only if users were assigned and we want to purge this jamia completely
+            // 2. ALWAYS search jamiaat_master for ALL documents matching this name and delete them
+            if (jamiaName) {
+                const allMasterSnap = await getDocs(jamiaDirectoryRef);
+                for (const d of allMasterSnap.docs) {
+                    const md = d.data();
+                    const mn = md.name || md.jamiaName || '';
+                    if (d.id === jamiaId || normKey(mn) === normTarget || (looseTarget && mjLoose(mn) === looseTarget)) {
+                        await deleteDoc(doc(db, "jamiaat_master", d.id));
+                    }
+                }
+            }
+
+            // 3. Clean from users jamiaatList if assigned
             if (hasUsers && jamiaName) {
                 const uSnap = await getDocs(collection(db, "users"));
                 for (const uDoc of uSnap.docs) {
@@ -1506,7 +1521,10 @@
                 }
             }
 
-            // 3. Force reload master jamiaat & users from server
+            // 4. Immediately remove from local memory cache
+            masterJamiaat = (masterJamiaat || []).filter(m => m.id !== jamiaId && normKey(m.name || m.jamiaName) !== normTarget && mjLoose(m.name || m.jamiaName) !== looseTarget);
+
+            // 5. Force reload master jamiaat & users from server
             await window.openMasterJamiaatTab(true);
             alert(`Jamia "${jamiaName}" ko Master Directory se kamiyabi se delete kar diya gaya!`);
         } catch(err) {
@@ -1520,79 +1538,146 @@
     window.cleanUnassignedGhostJamiaat = async () => {
         showLoader(true);
         try {
-            // Load fresh docs from jamiaat_master
             const mSnap = await getDocs(jamiaDirectoryRef);
-            const { canonical, ghosts } = canonicalizeMasterDocs(mSnap.docs);
             await mjLoadUsers(true);
-            mjBuildRows();
 
-            // Find all unassigned canonical jamiaat that have 0 users in mjRows
-            const unassignedCanonical = canonical.filter(c => {
-                const row = mjRows.find(r => r.name.toUpperCase() === c.name.toUpperCase());
-                return !row || Object.keys(row.roles).length === 0;
+            // Build set of all Jamia names assigned to active users
+            const assignedJamiaSet = new Set();
+            (mjUsers || []).forEach(u => {
+                if (u.role === 'admin') return;
+                (u.jamiaatList || []).forEach(j => {
+                    const jn = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+                    if (jn) assignedJamiaSet.add(mjLoose(jn));
+                });
             });
 
-            // Combine ghosts and unassigned entries
-            const toDeleteMap = new Map();
-            ghosts.forEach(g => { if (g.id) toDeleteMap.set(g.id, g); });
-            unassignedCanonical.forEach(c => { if (c.id) toDeleteMap.set(c.id, c); });
-            const allGhostsToDelete = Array.from(toDeleteMap.values());
-
-            if (allGhostsToDelete.length === 0) {
-                // If no ghosts to delete, still normalize existing documents to Admin Master standard
-                for (const c of canonical) {
-                    await setDoc(doc(db, "jamiaat_master", c.id), {
-                        name: c.name,
-                        jamiaName: c.name,
-                        state: c.state,
-                        region: c.region,
-                        urduName: c.urduName || ''
-                    }, { merge: true });
+            // Find all docs in jamiaat_master that have NO user assigned
+            const toDeleteDocs = [];
+            mSnap.docs.forEach(docSnap => {
+                const d = docSnap.data();
+                const rawName = (d.name || d.jamiaName || '').trim();
+                const looseName = mjLoose(rawName);
+                if (!assignedJamiaSet.has(looseName)) {
+                    toDeleteDocs.push({ id: docSnap.id, name: rawName, region: d.region, state: d.state });
                 }
-                await window.openMasterJamiaatTab(true);
-                alert("Alhamdulillah! Koi ghost duplicate nahi mila. Tamam Master Jamiaat Admin standard ke sath 100% sync hain.");
+            });
+
+            if (toDeleteDocs.length === 0) {
+                alert("Alhamdulillah! Master Directory me koi bhi unassigned ya ghost Jamia nahi mili.");
                 return;
             }
 
-            const sampleList = allGhostsToDelete.slice(0, 15).map(g => `• ${g.name} [${g.region || '—'} - ${g.state || '—'}]`).join('\n');
-            const more = allGhostsToDelete.length > 15 ? `\n...aur ${allGhostsToDelete.length - 15} mazeed.` : '';
+            const sampleList = toDeleteDocs.slice(0, 15).map(g => `• ${g.name} [${g.region || '—'} - ${g.state || '—'}]`).join('\n');
+            const more = toDeleteDocs.length > 15 ? `\n...aur ${toDeleteDocs.length - 15} mazeed.` : '';
 
-            const confirmMsg = `Total ${allGhostsToDelete.length} duplicate/ghost Jamiaat mili hain jo Admin Master se alag hain ya unassigned hain (jaise MADHYA PRADESH, DEHLI, duplicate entries waghera):\n\n` +
+            const confirmMsg = `Total ${toDeleteDocs.length} aisi Jamiaat mili hain jo Master Directory me maujood hain lekin kisi bhi user ko assign nahi hain (Unassigned Ghosts):\n\n` +
                 sampleList + more +
-                `\n\nKya aap in sabhi ${allGhostsToDelete.length} records ko Master Directory se DELETE karna chahte hain aur baki official Jamiaat ko Admin Master list ke sath sync karna chahte hain?`;
+                `\n\nKya aap in sabhi ${toDeleteDocs.length} unassigned Jamiaat ko Master Directory se DELETE karna chahte hain?`;
 
             if (!confirm(confirmMsg)) return;
 
             let deletedCount = 0;
-            for (const g of allGhostsToDelete) {
+            for (const g of toDeleteDocs) {
                 try {
                     await deleteDoc(doc(db, "jamiaat_master", g.id));
                     deletedCount++;
                 } catch(e) { console.warn("Ghost delete error:", e); }
             }
 
-            // Normalize remaining official canonical docs in Firestore
-            for (const c of canonical) {
-                if (!toDeleteMap.has(c.id)) {
-                    await setDoc(doc(db, "jamiaat_master", c.id), {
-                        name: c.name,
-                        jamiaName: c.name,
-                        state: c.state,
-                        region: c.region,
-                        urduName: c.urduName || ''
-                    }, { merge: true });
-                }
-            }
-
+            // Immediately clear local cache and re-read from Firestore
+            masterJamiaat = [];
             await window.openMasterJamiaatTab(true);
             if (typeof window.scanDatabaseForJamiaSync === 'function') {
                 await window.scanDatabaseForJamiaSync();
             }
 
-            alert(`MashaAllah! ${deletedCount} duplicate/ghost Jamiaat ko Master Directory se kamiyabi se delete kar diya gaya!\nAb Academic Master List aur Admin Master List 100% ek jaisi hain.`);
+            alert(`MashaAllah! ${deletedCount} unassigned ghost Jamiaat ko Master Directory se kamiyabi se delete kar diya gaya!`);
         } catch(err) {
             console.error("Batch Clean Error:", err);
             alert("Clean karne me error aaya: " + err.message);
+        } finally {
+            showLoader(false);
+        }
+    };
+
+    window.syncAllEnrollmentRecordsWithMaster = async () => {
+        if (!confirm("Kya aap tamam purane Enrollment Records (student data) ko official Master Jamiaat List (State, Region aur IDs) ke mutabiq 100% update karna chahte hain?\n\nIsse purane 'DEHLI', 'BENGALORE' waghera theek ho kar official Admin format me convert ho jayenge.")) return;
+
+        showLoader(true);
+        try {
+            if (!masterJamiaat || masterJamiaat.length === 0) {
+                const mSnap = await getDocs(jamiaDirectoryRef);
+                const res = canonicalizeMasterDocs(mSnap.docs);
+                masterJamiaat = res.canonical;
+            }
+
+            // Create fast lookup map for Master Jamiaat
+            const masterMap = new Map();
+            masterJamiaat.forEach(m => {
+                const resolved = resolveAdminStateAndRegion(m.name, m.state, m.region);
+                const info = { id: m.id, name: m.name, state: resolved.state, region: resolved.region };
+                masterMap.set(m.name.trim().toUpperCase(), info);
+                masterMap.set(normCompare(m.name), info);
+            });
+
+            const enrollSnap = await getDocs(collection(db, "enrollment_records"));
+            let updatedCount = 0;
+            let totalCount = enrollSnap.docs.length;
+
+            for (const docSnap of enrollSnap.docs) {
+                const data = docSnap.data();
+                const curName = (data.jamiaName || '').trim().toUpperCase();
+                if (!curName) continue;
+
+                let match = masterMap.get(curName) || masterMap.get(normCompare(curName));
+                
+                // Fuzzy search if needed
+                if (!match) {
+                    const words = curName.split(/\s+/).filter(w => w.length > 2 && !['JAMIA', 'JAMIATUL', 'MADINA', 'INDIA'].includes(w));
+                    if (words.length > 0) {
+                        for (const m of masterJamiaat) {
+                            const mUpper = m.name.toUpperCase();
+                            if (words.every(w => mUpper.includes(w))) {
+                                const resolved = resolveAdminStateAndRegion(m.name, m.state, m.region);
+                                match = { id: m.id, name: m.name, state: resolved.state, region: resolved.region };
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (match) {
+                    let curState = normKey(data.state);
+                    let curRegion = normKey(data.region);
+                    let targetState = normKey(match.state);
+                    let targetRegion = normKey(match.region);
+
+                    // Check if update is needed
+                    if (data.jamiaName !== match.name ||
+                        data.jamiaId !== match.id ||
+                        curState !== targetState ||
+                        curRegion !== targetRegion) {
+
+                        await updateDoc(doc(db, "enrollment_records", docSnap.id), {
+                            jamiaName: match.name,
+                            jamiaId: match.id,
+                            state: match.state,
+                            region: match.region
+                        });
+                        updatedCount++;
+                    }
+                }
+            }
+
+            alert(`MashaAllah! Total ${totalCount} records me se ${updatedCount} purane Enrollment records ko official Admin Master (Region: DELHI/AJMER/MUMBAI..., State: U.P. EAST/M.P....) ke sath kamiyabi se update kar diya gaya!`);
+
+        } catch (err) {
+            console.error("Enrollment sync error:", err);
+            alert("Enrollment sync me error: " + err.message);
+        } finally {
+            showLoader(false);
+        }
+    };
         } finally {
             showLoader(false);
         }

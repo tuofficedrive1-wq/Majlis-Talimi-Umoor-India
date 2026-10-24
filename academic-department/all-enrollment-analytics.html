@@ -105,8 +105,13 @@
     <div class="flex-1 flex flex-col h-screen overflow-hidden bg-[#f4f7f6]">
         
         <!-- Top Header -->
-        <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40 h-[72px] flex items-center px-6 shrink-0">
+        <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40 h-[72px] flex items-center justify-between px-6 shrink-0">
             <h1 class="text-xl font-bold text-slate-800 tracking-tight">All Users Enrollment Analytics</h1>
+            <div class="flex items-center gap-2">
+                <button onclick="window.syncAllEnrollmentRecordsToMaster()" class="bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Cloud Database me purana enrollment data Admin Master list ke mutabiq update karein">
+                    <i class="fas fa-magic"></i> <span>Sync All Records to Master</span>
+                </button>
+            </div>
         </header>
 
         <!-- Scrollable Main Container -->
@@ -223,6 +228,37 @@
                 // State/Region ka source: jamiaat_master (admin.html wali Master Jamiaat Directory)
                 const norm = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, ' ');
                 const loose = (v) => norm(v).replace(/[^A-Z0-9\u0600-\u06FF]/g, ''); // space/punctuation ka farq ignore
+                
+                const UP_EAST_JAMIAAT = ['ALLAHABAD', 'AZAMGARH', 'BAHRAICH', 'BANARAS', 'DEORIA', 'GORAKHPUR', 'KUSHINAGAR', 'MAU', 'VARANASI', 'JAUNPUR', 'GHAZIPUR', 'BALLIA', 'SULTANPUR', 'BASTI', 'FAIZABAD', 'AYODHYA', 'GONDA', 'SIDDHARTH NAGAR', 'SANT KABIR NAGAR', 'MIRZAPUR', 'CHANDAULI', 'BHADOHI'];
+                const UP_WEST_JAMIAAT = ['AGRA', 'ALIGARH', 'AMROHA', 'BAREILLY', 'BADAUN', 'BUDAUN', 'BULANDSHAHR', 'MATHURA', 'MEERUT', 'MORADABAD', 'MUZAFFARNAGAR', 'RAMPUR', 'SAHARANPUR', 'SAMBHAL', 'SHAHJAHANPUR', 'BIJNOR', 'FIROZABAD', 'MAINPURI', 'PILIBHIT', 'KASGANJ', 'ETAH', 'HATHRAS', 'BAGHPAT', 'SHAMLI', 'HAPUR', 'GHAZIABAD', 'NOIDA'];
+                const UP_CENTRAL_JAMIAAT = ['LUCKNOW', 'KANPUR', 'SITAPUR', 'UNNAO', 'HARDOI', 'RAEBARELI', 'BARABANKI', 'LAKHIMPUR', 'KHERI'];
+
+                function resolveAdminStateAndRegion(rawName, rawState, rawRegion) {
+                    let name = String(rawName || '').trim().toUpperCase();
+                    let reg = String(rawRegion || '').trim().toUpperCase();
+                    let st = String(rawState || '').trim().toUpperCase();
+
+                    if (reg === 'DEHLI') reg = 'DELHI';
+                    if (reg === 'BENGALORE') reg = 'BANGALORE';
+
+                    if (st === 'MADHYA PRADESH' || st === 'MP') st = 'M.P.';
+                    if (st === 'M.P.' && !reg) reg = 'AJMER';
+
+                    if (st === 'UTTAR PRADESH' || st === 'UP' || st.startsWith('U.P')) {
+                        if (!reg) reg = 'DELHI';
+                        if (st === 'UTTAR PRADESH' || st === 'UP') {
+                            if (UP_EAST_JAMIAAT.some(j => name.includes(j))) st = 'U.P. EAST';
+                            else if (UP_WEST_JAMIAAT.some(j => name.includes(j))) st = 'U.P. WEST';
+                            else if (UP_CENTRAL_JAMIAAT.some(j => name.includes(j))) st = 'U.P. CENTRAL';
+                            else st = 'U.P. EAST';
+                        }
+                    }
+
+                    if (['BIHAR', 'CHHATTISGARH'].includes(st) && !reg) reg = 'DELHI';
+                    if (st === 'KARNATAKA' && !reg) reg = 'BANGALORE';
+                    return { name, state: st, region: reg };
+                }
+
                 const masterByKey = {}, masterById = {}, masterList = [];
                 let masterError = '', masterDocs = 0, masterWithState = 0;
                 const loggedIn = await authReady;
@@ -231,10 +267,11 @@
                     masterSnap.forEach(d => {
                         const m = d.data();
                         masterDocs++;
-                        // State kisi bhi common field naam mein ho sakti hai
+                        const rawName = (m.name || m.jamiaName || '').trim().toUpperCase();
                         const stRaw = m.state ?? m.State ?? m.stateName ?? m.riyasat ?? m.province ?? '';
                         const rgRaw = m.region ?? m.Region ?? m.ilaqa ?? '';
-                        const info = { state: norm(stRaw), region: norm(rgRaw) };
+                        const resolved = resolveAdminStateAndRegion(rawName, stRaw, rgRaw);
+                        const info = { state: resolved.state, region: resolved.region };
                         if (info.state) masterWithState++;
                         masterById[d.id] = info;
                         [m.name, m.jamiaName, m.urduName, m.englishName].forEach(n => {
@@ -272,10 +309,14 @@
                     const m = findMaster(r.jamiaName) || {};
                     if (r.jamiaName && !m.state) unmatched.add(r.jamiaName);
                     
+                    const rawSt = m.state || norm(r.state || inspector.state) || '';
+                    const rawReg = m.region || norm(r.region || inspector.region) || '';
+                    const resolved = resolveAdminStateAndRegion(r.jamiaName, rawSt, rawReg);
+
                     return {
                         ...r,
-                        region: m.region || norm(r.region || inspector.region) || '—',
-                        state: m.state || norm(r.state || inspector.state) || '—',
+                        region: resolved.region || '—',
+                        state: resolved.state || '—',
                         jamiaName: r.jamiaName || '—',
                         jmClass: r.jmClass || '—', 
                         classDegree: r.classLevel || r.schoolClass || r.degree || '—', 
