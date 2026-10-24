@@ -1023,20 +1023,85 @@
       badge.innerHTML = `<span style="background:rgba(26,92,53,0.1); padding:3px 8px; border-radius:4px; border:1px solid rgba(26,92,53,0.2);">🏛️ State: <b>${jamiaObj.state || 'N/A'}</b> &nbsp;|&nbsp; 📍 Region: <b>${jamiaObj.region || 'N/A'}</b></span>`;
   }
 
+  const UP_EAST_JAMIAAT = ['ALLAHABAD', 'AZAMGARH', 'BAHRAICH', 'BANARAS', 'DEORIA', 'GORAKHPUR', 'KUSHINAGAR', 'MAU', 'VARANASI', 'JAUNPUR', 'GHAZIPUR', 'BALLIA', 'SULTANPUR', 'BASTI', 'FAIZABAD', 'AYODHYA', 'GONDA', 'SIDDHARTH NAGAR', 'SANT KABIR NAGAR', 'MIRZAPUR', 'CHANDAULI', 'BHADOHI'];
+  const UP_WEST_JAMIAAT = ['AGRA', 'ALIGARH', 'AMROHA', 'BAREILLY', 'BADAUN', 'BUDAUN', 'BULANDSHAHR', 'MATHURA', 'MEERUT', 'MORADABAD', 'MUZAFFARNAGAR', 'RAMPUR', 'SAHARANPUR', 'SAMBHAL', 'SHAHJAHANPUR', 'BIJNOR', 'FIROZABAD', 'MAINPURI', 'PILIBHIT', 'KASGANJ', 'ETAH', 'HATHRAS', 'BAGHPAT', 'SHAMLI', 'HAPUR', 'GHAZIABAD', 'NOIDA'];
+  const UP_CENTRAL_JAMIAAT = ['LUCKNOW', 'KANPUR', 'SITAPUR', 'UNNAO', 'HARDOI', 'RAEBARELI', 'BARABANKI', 'LAKHIMPUR', 'KHERI'];
+
+  function resolveAdminStateAndRegion(rawName, rawState, rawRegion) {
+      let name = String(rawName || '').trim().toUpperCase();
+      let reg = String(rawRegion || '').trim().toUpperCase();
+      let st = String(rawState || '').trim().toUpperCase();
+
+      if (reg === 'DEHLI') reg = 'DELHI';
+      if (st === 'MADHYA PRADESH' || st === 'MP') st = 'M.P.';
+      if (st === 'M.P.' && !reg) reg = 'AJMER';
+
+      if (st === 'UTTAR PRADESH' || st === 'UP' || st.startsWith('U.P')) {
+          if (!reg) reg = 'DELHI';
+          if (st === 'UTTAR PRADESH' || st === 'UP') {
+              if (UP_EAST_JAMIAAT.some(j => name.includes(j))) st = 'U.P. EAST';
+              else if (UP_WEST_JAMIAAT.some(j => name.includes(j))) st = 'U.P. WEST';
+              else if (UP_CENTRAL_JAMIAAT.some(j => name.includes(j))) st = 'U.P. CENTRAL';
+              else st = 'U.P. EAST';
+          }
+      }
+
+      if (['BIHAR', 'CHHATTISGARH'].includes(st) && !reg) reg = 'DELHI';
+      return { name, state: st, region: reg };
+  }
+
+  function canonicalizeMasterDocs(docs) {
+      const map = new Map();
+      docs.forEach(doc => {
+          const d = typeof doc.data === 'function' ? doc.data() : doc;
+          const id = doc.id || d.id;
+          const cleanName = (d.name || d.jamiaName || '').trim().toUpperCase();
+          if (!cleanName || cleanName === 'UNDEFINED') return;
+
+          const resolved = resolveAdminStateAndRegion(cleanName, d.state, d.region);
+          const item = {
+              id: id,
+              name: cleanName,
+              jamiaName: cleanName,
+              urduName: d.urduName || '',
+              state: resolved.state,
+              region: resolved.region,
+              rawDoc: d
+          };
+
+          const key = cleanName;
+          if (!map.has(key)) {
+              map.set(key, item);
+          } else {
+              const existing = map.get(key);
+              let scoreExisting = 0;
+              let scoreNew = 0;
+
+              if (existing.urduName) scoreExisting += 10;
+              if (item.urduName) scoreNew += 10;
+
+              if (['M.P.', 'U.P. EAST', 'U.P. WEST', 'U.P. CENTRAL', 'BIHAR', 'CHHATTISGARH'].includes(existing.state)) scoreExisting += 8;
+              if (['M.P.', 'U.P. EAST', 'U.P. WEST', 'U.P. CENTRAL', 'BIHAR', 'CHHATTISGARH'].includes(item.state)) scoreNew += 8;
+
+              if (existing.region === 'DELHI') scoreExisting += 5;
+              if (item.region === 'DELHI') scoreNew += 5;
+
+              const rawD = d;
+              const rawE = existing.rawDoc || {};
+              if (rawD.state === 'UTTAR PRADESH' || rawD.region === 'DEHLI' || rawD.state === 'MADHYA PRADESH') scoreNew -= 5;
+              if (rawE.state === 'UTTAR PRADESH' || rawE.region === 'DEHLI' || rawE.state === 'MADHYA PRADESH') scoreExisting -= 5;
+
+              if (scoreNew > scoreExisting) map.set(key, item);
+          }
+      });
+      return { canonical: Array.from(map.values()) };
+  }
+
   async function initMasterJamiaDropdown() {
       try {
           const snap = await getDocs(collection(db, "jamiaat_master"));
-          masterJamiaatList = snap.docs.map(d => {
-              const data = d.data();
-              const name = (data.name || data.jamiaName || '').trim();
-              return {
-                  id: d.id,
-                  name: name,
-                  state: (data.state || '').trim().toUpperCase(),
-                  region: (data.region || '').trim().toUpperCase(),
-                  urduName: data.urduName || ''
-              };
-          }).filter(j => j.name).sort((a, b) => a.name.localeCompare(b.name));
+          const res = canonicalizeMasterDocs(snap.docs);
+          masterJamiaatList = res.canonical.sort((a, b) => a.name.localeCompare(b.name));
 
           const norm = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
           const curNorm = norm(currentJamia);
@@ -1614,13 +1679,8 @@
             if (!chosenMaster) {
                 try {
                     const mSnap = await getDocs(collection(db, "jamiaat_master"));
-                    mSnap.forEach(d => {
-                        const m = d.data();
-                        const mn = m.name || m.jamiaName || '';
-                        if (mn.toUpperCase() === chosenJamiaName.toUpperCase() || norm(mn) === curNorm) {
-                            chosenMaster = { id: d.id, name: mn.trim(), state: (m.state || '').toUpperCase(), region: (m.region || '').toUpperCase() };
-                        }
-                    });
+                    const res = canonicalizeMasterDocs(mSnap.docs);
+                    chosenMaster = res.canonical.find(m => m.name.toUpperCase() === chosenJamiaName.toUpperCase() || norm(m.name) === curNorm);
                 } catch(e) {}
             }
 
