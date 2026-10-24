@@ -327,6 +327,12 @@
       <h2 class="card-title">Access Code Darj Karein</h2>
     </div>
     <div class="card-body">
+      <div class="field field-wide" id="gateJamiaWrap" hidden>
+        <label for="gateJamiaSelect">Select Jamia (Master Directory) <span class="req">*</span></label>
+        <select id="gateJamiaSelect" style="width:100%; padding:10px 12px; border:1px solid var(--border-md); border-radius:6px; font-size:14px; background:var(--card); font-weight:600; margin-bottom:14px;">
+          <option value="">— Master Directory se Jamia Select Karein —</option>
+        </select>
+      </div>
       <div class="field field-wide">
         <label for="gateCodeInput">Is Jamia ka 5-digit code <span class="req">*</span></label>
         <input type="text" id="gateCodeInput" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="e.g. 48213">
@@ -358,6 +364,15 @@
         <h2 class="card-title">Student Particulars</h2>
       </div>
       <div class="card-body">
+        <div class="field-row" style="margin-bottom:14px;">
+          <div class="field field-wide">
+            <label for="formJamiaSelect">Jamia (Master Directory) <span class="req">*</span></label>
+            <select id="formJamiaSelect" name="formJamiaSelect" required style="width:100%; padding:10px 12px; border:1px solid var(--border-md); border-radius:8px; font-size:14px; font-weight:700; background:var(--card); color:var(--ink-1);">
+              <option value="">— Select Jamia from Master List —</option>
+            </select>
+            <p id="jamiaMetaBadge" style="font-size:11px; color:var(--primary); font-weight:700; margin-top:4px; margin-bottom:0;"></p>
+          </div>
+        </div>
         <div class="field-row">
           <div class="field">
             <label for="studentName">Student's Name <span class="req">*</span></label>
@@ -999,7 +1014,99 @@
       fetchCloudEntries();
   }
 
+  let masterJamiaatList = [];
+
+  function updateJamiaMetaBadge(jamiaObj) {
+      const badge = document.getElementById('jamiaMetaBadge');
+      if (!badge) return;
+      if (!jamiaObj) { badge.innerHTML = ''; return; }
+      badge.innerHTML = `<span style="background:rgba(26,92,53,0.1); padding:3px 8px; border-radius:4px; border:1px solid rgba(26,92,53,0.2);">🏛️ State: <b>${jamiaObj.state || 'N/A'}</b> &nbsp;|&nbsp; 📍 Region: <b>${jamiaObj.region || 'N/A'}</b></span>`;
+  }
+
+  async function initMasterJamiaDropdown() {
+      try {
+          const snap = await getDocs(collection(db, "jamiaat_master"));
+          masterJamiaatList = snap.docs.map(d => {
+              const data = d.data();
+              const name = (data.name || data.jamiaName || '').trim();
+              return {
+                  id: d.id,
+                  name: name,
+                  state: (data.state || '').trim().toUpperCase(),
+                  region: (data.region || '').trim().toUpperCase(),
+                  urduName: data.urduName || ''
+              };
+          }).filter(j => j.name).sort((a, b) => a.name.localeCompare(b.name));
+
+          const norm = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const curNorm = norm(currentJamia);
+
+          const gateSelect = document.getElementById('gateJamiaSelect');
+          const formSelect = document.getElementById('formJamiaSelect');
+
+          const optionsHtml = '<option value="">— Master List se Jamia Select Karein —</option>' + 
+              masterJamiaatList.map(m => {
+                  const loc = [m.region, m.state].filter(Boolean).join(' - ');
+                  return `<option value="${m.name}">${m.name} ${loc ? '[' + loc + ']' : ''}</option>`;
+              }).join('');
+
+          if (gateSelect) gateSelect.innerHTML = optionsHtml;
+          if (formSelect) formSelect.innerHTML = optionsHtml;
+
+          let matched = null;
+          if (currentJamia) {
+              matched = masterJamiaatList.find(m => m.name.toUpperCase() === currentJamia.toUpperCase() || norm(m.name) === curNorm);
+          }
+
+          if (matched) {
+              currentJamia = matched.name;
+              if (gateSelect) gateSelect.value = matched.name;
+              if (formSelect) formSelect.value = matched.name;
+              updateJamiaMetaBadge(matched);
+          } else {
+              const wrap = document.getElementById('gateJamiaWrap');
+              if (wrap) wrap.hidden = false;
+          }
+
+          if (gateSelect) {
+              gateSelect.addEventListener('change', function() {
+                  const sel = masterJamiaatList.find(m => m.name === this.value);
+                  if (sel) {
+                      currentJamia = sel.name;
+                      if (formSelect) formSelect.value = sel.name;
+                      updateJamiaMetaBadge(sel);
+                  }
+              });
+          }
+
+          if (formSelect) {
+              formSelect.addEventListener('change', function() {
+                  const sel = masterJamiaatList.find(m => m.name === this.value);
+                  if (sel) {
+                      currentJamia = sel.name;
+                      updateJamiaMetaBadge(sel);
+                      const bannerTitle = document.querySelector('.banner-title');
+                      if (bannerTitle) { bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>'; }
+                      fetchCloudEntries();
+                  }
+              });
+          }
+      } catch(e) {
+          console.warn("Master Jamiaat load nahi hui:", e);
+      }
+  }
+
   async function verifyGateCode(){
+      if (!currentJamia) {
+          const gateSelect = document.getElementById('gateJamiaSelect');
+          if (gateSelect && gateSelect.value) {
+              currentJamia = gateSelect.value;
+          } else {
+              gateErrorEl.textContent = 'Pehle Jamia select karein!';
+              return;
+          }
+      }
+
       var entered = fieldValue('gateCodeInput');
       gateErrorEl.textContent = '';
       if(!/^\d{5}$/.test(entered)){ gateErrorEl.textContent = 'Poora 5-digit code darj karen.'; return; }
@@ -1027,13 +1134,10 @@
       }
   }
 
-  if (!currentJamia) {
-      gateCard.querySelector('.card-body').innerHTML = '<p style="color:var(--red);font-weight:600;margin:0;">Error: Jamia is link ke URL mein maujood nahi hai. Sahi link (jisme ?jamia=... ho) dobara istemal karen.</p>';
-  } else {
-      gateSubmitBtn.addEventListener('click', verifyGateCode);
-      gateCodeInputEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); verifyGateCode(); } });
-      gateCodeInputEl.focus();
-  }
+  initMasterJamiaDropdown();
+  gateSubmitBtn.addEventListener('click', verifyGateCode);
+  gateCodeInputEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); verifyGateCode(); } });
+  gateCodeInputEl.focus();
 
   function resetWithin(section){
     section.querySelectorAll('select').forEach(function(s){ s.selectedIndex=0; });
@@ -1482,6 +1586,16 @@
 
     try {
         if(window.editingDocId) {
+            const formSelect = document.getElementById('formJamiaSelect');
+            if (formSelect && formSelect.value) {
+                const chosenMaster = (masterJamiaatList || []).find(m => m.name === formSelect.value);
+                if (chosenMaster) {
+                    data.jamiaName = chosenMaster.name;
+                    data.jamiaId = chosenMaster.id;
+                    data.state = chosenMaster.state;
+                    data.region = chosenMaster.region;
+                }
+            }
             await updateDoc(doc(db, "enrollment_records", window.editingDocId), data);
             var index = entries.findIndex(x => x.cloudId === window.editingDocId);
             if(index > -1) { entries[index] = { ...entries[index], ...data }; }
@@ -1491,25 +1605,31 @@
             renderEntries();
             window.switchEnrollmentTab('dashboard');
         } else {
-            data.jamiaName = currentJamia;
-            data.inspectorId = userId;
-            data.savedAt = new Date().toISOString();
+            const formSelect = document.getElementById('formJamiaSelect');
+            const chosenJamiaName = (formSelect && formSelect.value) ? formSelect.value.trim() : (currentJamia || '').trim();
+            const norm = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const curNorm = norm(chosenJamiaName);
 
-            // Master directory se state aur region auto-tag karein
-            try {
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const curNorm = norm(currentJamia);
-                const mSnap = await getDocs(collection(db, "jamiaat_master"));
-                mSnap.forEach(d => {
-                    const m = d.data();
-                    const mName = m.name || m.jamiaName;
-                    if (mName && (mName.trim().toUpperCase() === currentJamia.trim().toUpperCase() || norm(mName) === curNorm)) {
-                        data.state = (m.state || '').toUpperCase();
-                        data.region = (m.region || '').toUpperCase();
-                        data.jamiaId = d.id;
-                    }
-                });
-            } catch(e) {}
+            let chosenMaster = (masterJamiaatList || []).find(m => m.name.toUpperCase() === chosenJamiaName.toUpperCase() || norm(m.name) === curNorm);
+            if (!chosenMaster) {
+                try {
+                    const mSnap = await getDocs(collection(db, "jamiaat_master"));
+                    mSnap.forEach(d => {
+                        const m = d.data();
+                        const mn = m.name || m.jamiaName || '';
+                        if (mn.toUpperCase() === chosenJamiaName.toUpperCase() || norm(mn) === curNorm) {
+                            chosenMaster = { id: d.id, name: mn.trim(), state: (m.state || '').toUpperCase(), region: (m.region || '').toUpperCase() };
+                        }
+                    });
+                } catch(e) {}
+            }
+
+            data.jamiaName = chosenMaster ? chosenMaster.name : chosenJamiaName;
+            data.jamiaId = chosenMaster ? chosenMaster.id : '';
+            data.state = chosenMaster ? chosenMaster.state : '';
+            data.region = chosenMaster ? chosenMaster.region : '';
+            data.inspectorId = userId || '';
+            data.savedAt = new Date().toISOString();
             
             var docRef = await addDoc(collection(db, "enrollment_records"), data);
             data.cloudId = docRef.id;
@@ -1535,6 +1655,12 @@
       if(!e) return;
       
       window.editingDocId = cloudId;
+
+      if (document.getElementById('formJamiaSelect') && e.jamiaName) {
+          document.getElementById('formJamiaSelect').value = e.jamiaName;
+          const sel = (masterJamiaatList || []).find(m => m.name === e.jamiaName);
+          if (sel) updateJamiaMetaBadge(sel);
+      }
       
       document.getElementById('studentName').value = e.studentName || '';
       document.getElementById('fatherName').value = e.fatherName || '';
