@@ -2111,6 +2111,36 @@ if (editTeacherForm) {
                     // ENSURE DEDUPLICATION & COMPLETENESS ON matchedInActive
                     if (matchedInActive && Array.isArray(matchedInActive.teachers)) {
                         // 1. Deduplicate Teachers by Name & Merge their Periods
+                        // 1. Build a lookup of known book page counts from all sources
+                        const knownBookPages = new Map([
+                            ['ہدایہ شریف', 220],
+                            ['ہدایہ', 220],
+                            ['خلاصۃ النحو', 120],
+                            ['شرح وقایہ', 200],
+                            ['آداب زندگی', 90],
+                            ['اصول الفقہ', 140],
+                            ['المنطق', 100],
+                            ['نحو', 110],
+                            ['الفقہ', 160],
+                            ['نور الایضاح', 130],
+                            ['قدوری', 180]
+                        ]);
+
+                        Object.keys(allAcademicYearsData).forEach(yr => {
+                            (allAcademicYearsData[yr]?.karkardagiStructure || []).forEach(j => {
+                                (j.teachers || []).forEach(t => {
+                                    (t.periods || []).forEach(p => {
+                                        const b = (p.bookName || '').trim();
+                                        const tot = parseInt(p.totalPages || p.pages || 0, 10);
+                                        if (b && tot > 0) {
+                                            knownBookPages.set(b.toLowerCase(), tot);
+                                        }
+                                    });
+                                });
+                            });
+                        });
+
+                        // 2. Deduplicate Teachers by Name
                         const uniqueMap = new Map();
                         matchedInActive.teachers.forEach(t => {
                             const rawName = (t.name || '').trim();
@@ -2130,22 +2160,24 @@ if (editTeacherForm) {
                                     existing.loginCode = (t.loginCode || t.ajeerCode).trim();
                                 }
                                 (t.periods || []).forEach(p => {
-                                    const pSem = String(p.semester || '1');
                                     const pClass = String(p.className || p.class || '').trim();
                                     const pBook = String(p.bookName || p.book || '').trim();
-                                    const hasP = existing.periods.some(ep => 
-                                        ep.className === pClass && 
-                                        ep.bookName === pBook && 
-                                        String(ep.semester) === pSem
-                                    );
-                                    if (!hasP && (pClass || pBook)) {
-                                        existing.periods.push({
-                                            id: p.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                                            className: pClass,
-                                            bookName: pBook,
-                                            semester: pSem,
-                                            totalPages: parseInt(p.totalPages || 0, 10)
-                                        });
+                                    const pSem = String(p.semester || '1');
+                                    if (pClass && pBook) {
+                                        const hasP = existing.periods.some(ep => 
+                                            ep.className.trim().toLowerCase() === pClass.toLowerCase() && 
+                                            ep.bookName.trim().toLowerCase() === pBook.toLowerCase() && 
+                                            String(ep.semester) === pSem
+                                        );
+                                        if (!hasP) {
+                                            existing.periods.push({
+                                                id: p.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                                                className: pClass,
+                                                bookName: pBook,
+                                                semester: pSem,
+                                                totalPages: parseInt(p.totalPages || p.pages || 0, 10)
+                                            });
+                                        }
                                     }
                                 });
                                 structureNeedsUpdate = true;
@@ -2158,7 +2190,75 @@ if (editTeacherForm) {
                             structureNeedsUpdate = true;
                         }
 
-                        // 2. Auto-Fill Missing Ajeer Codes (loginCode) from teacher user profiles
+                        // 3. Clean and Deduplicate Periods per Teacher (remove blank classes and duplicates)
+                        matchedInActive.teachers.forEach(t => {
+                            if (!Array.isArray(t.periods)) t.periods = [];
+
+                            // Find valid classes for books if any exist
+                            const bookToClassMap = new Map();
+                            t.periods.forEach(p => {
+                                const c = String(p.className || p.class || '').trim();
+                                const b = String(p.bookName || p.book || '').trim();
+                                if (c && b && !bookToClassMap.has(b.toLowerCase())) {
+                                    bookToClassMap.set(b.toLowerCase(), c);
+                                }
+                            });
+
+                            const cleanPeriods = [];
+                            const seenKeys = new Set();
+
+                            t.periods.forEach(p => {
+                                let c = String(p.className || p.class || '').trim();
+                                const b = String(p.bookName || p.book || '').trim();
+                                const sem = String(p.semester || '1');
+                                let tot = parseInt(p.totalPages || p.pages || 0, 10);
+
+                                if (!b) return; // Drop if no book name
+
+                                // If class is empty, resolve from known class for this book
+                                if (!c && bookToClassMap.has(b.toLowerCase())) {
+                                    c = bookToClassMap.get(b.toLowerCase());
+                                }
+
+                                // If class is STILL empty, drop the ghost entry
+                                if (!c) return;
+
+                                const key = `${c.toLowerCase()}__${b.toLowerCase()}__${sem}`;
+                                if (seenKeys.has(key)) {
+                                    // Duplicate period: keep page number if existing was 0
+                                    const ex = cleanPeriods.find(cp => cp.className.toLowerCase() === c.toLowerCase() && cp.bookName.toLowerCase() === b.toLowerCase() && cp.semester === sem);
+                                    if (ex && ex.totalPages <= 0 && tot > 0) {
+                                        ex.totalPages = tot;
+                                    }
+                                    return;
+                                }
+
+                                // Auto-fill total pages if 0
+                                if (tot <= 0) {
+                                    if (knownBookPages.has(b.toLowerCase())) {
+                                        tot = knownBookPages.get(b.toLowerCase());
+                                    } else if (knownBookPages.has(b)) {
+                                        tot = knownBookPages.get(b);
+                                    }
+                                }
+
+                                seenKeys.add(key);
+                                cleanPeriods.push({
+                                    id: p.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                                    className: c,
+                                    bookName: b,
+                                    semester: sem,
+                                    totalPages: tot
+                                });
+                            });
+
+                            if (t.periods.length !== cleanPeriods.length || cleanPeriods.some((p, i) => p.totalPages !== t.periods[i]?.totalPages)) {
+                                t.periods = cleanPeriods;
+                                structureNeedsUpdate = true;
+                            }
+                        });
+
+                        // 4. Auto-Fill Missing Ajeer Codes (loginCode) from teacher user profiles
                         const missingCodes = matchedInActive.teachers.some(t => !t.loginCode || String(t.loginCode).trim() === '');
                         if (missingCodes) {
                             try {
@@ -2201,26 +2301,6 @@ if (editTeacherForm) {
                                 }
                                 structureNeedsUpdate = true;
                                 console.log(`[Auto-Align] Generated 5-digit login code "${t.loginCode}" for teacher "${t.name}"`);
-                            }
-                        });
-
-                        // 3. Ensure Semester 2 periods exist if teacher has Semester 1 periods
-                        matchedInActive.teachers.forEach(t => {
-                            if (!Array.isArray(t.periods)) t.periods = [];
-                            const hasSem2 = t.periods.some(p => String(p.semester) === '2');
-                            const sem1Periods = t.periods.filter(p => String(p.semester || '1') === '1');
-                            if (!hasSem2 && sem1Periods.length > 0) {
-                                sem1Periods.forEach(p => {
-                                    t.periods.push({
-                                        id: `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                                        className: p.className,
-                                        bookName: p.bookName,
-                                        semester: '2',
-                                        totalPages: p.totalPages || 0
-                                    });
-                                });
-                                structureNeedsUpdate = true;
-                                console.log(`[Auto-Align] Populated Sem 2 periods from Sem 1 for teacher "${t.name}".`);
                             }
                         });
 
