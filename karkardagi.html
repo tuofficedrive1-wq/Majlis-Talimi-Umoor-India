@@ -543,6 +543,8 @@ window.isSameJamia = (j1, j2) => {
     const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
     const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
     if (clean1 === clean2) return true;
+    // Strict separation: agar ek me bypass hai aur doosre me nahi to match na karein
+    if (clean1.includes('bypass') !== clean2.includes('bypass')) return false;
     const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia)[\s_-]*/gi, '').trim();
     return strip(clean1) === strip(clean2);
 };
@@ -1944,12 +1946,68 @@ if (editTeacherForm) {
                     allAcademicYearsData[activeYear].karkardagiStructure = [];
                 }
 
+                // Pre-Disambiguate JABALPUR vs JABALPUR BYPASS across all structures
+                Object.keys(allAcademicYearsData).forEach(yr => {
+                    const struct = allAcademicYearsData[yr]?.karkardagiStructure;
+                    if (Array.isArray(struct)) {
+                        struct.forEach(j => {
+                            const teachers = j.teachers || [];
+                            const tNames = teachers.map(t => (t.name || '').trim());
+                            const isJabalpurTeachers = tNames.some(n => 
+                                n.includes('\u0635\u0627\u062f\u0642') || n.includes('\u0627\u06a9\u0628\u0631') || n.includes('\u0645\u0634\u0639\u0631') || 
+                                n.includes('\u0645\u06a9\u0631\u0645') || n.includes('\u0627\u062d\u0645\u062f \u0631\u0636\u0627') || n.includes('\u0637\u0627\u0644\u0628') || n.includes('\u0639\u0628\u062f \u0627\u0644\u0631\u0634\u06cc\u062f') || n.includes('\u0632\u06cc\u062f')
+                            );
+                            const isBypassTeachers = tNames.some(n => 
+                                n.includes('\u062f\u0633\u062a\u06af\u06cc\u0631') || n.includes('\u0637\u0627\u06c1\u0631') || n.includes('\u0646\u0648\u0631 \u0639\u0627\u0644\u0645')
+                            );
+
+                            if (isJabalpurTeachers && !isBypassTeachers) {
+                                const targetJabalpur = assignedNames.find(a => {
+                                    const c = a.toLowerCase();
+                                    return c.includes('jabalpur') && !c.includes('bypass');
+                                }) || 'JABALPUR';
+                                if (j.jamiaName !== targetJabalpur) {
+                                    console.log('[Auto-Align] Corrected Jamia name for Jabalpur teachers: "' + j.jamiaName + '" -> "' + targetJabalpur + '"');
+                                    j.jamiaName = targetJabalpur;
+                                    const matchAssigned = assignedJamiaat.find(a => a.name === targetJabalpur);
+                                    if (matchAssigned && matchAssigned.id) j.id = matchAssigned.id;
+                                    structureNeedsUpdate = true;
+                                }
+                            } else if (isBypassTeachers && !isJabalpurTeachers) {
+                                const targetBypass = assignedNames.find(a => {
+                                    const c = a.toLowerCase();
+                                    return c.includes('jabalpur') && c.includes('bypass');
+                                }) || 'JABALPUR BYPASS';
+                                if (j.jamiaName !== targetBypass) {
+                                    console.log('[Auto-Align] Corrected Jamia name for Jabalpur Bypass teachers: "' + j.jamiaName + '" -> "' + targetBypass + '"');
+                                    j.jamiaName = targetBypass;
+                                    const matchAssigned = assignedJamiaat.find(a => a.name === targetBypass);
+                                    if (matchAssigned && matchAssigned.id) j.id = matchAssigned.id;
+                                    structureNeedsUpdate = true;
+                                }
+                            }
+                        });
+                    }
+                });
+
                 // Har assigned Jamia ke liye structure check karein
                 for (const assigned of assignedJamiaat) {
                     const assignedName = assigned.name;
-                    let matchedInActive = allAcademicYearsData[activeYear].karkardagiStructure.find(j => 
-                        (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName)
-                    );
+                    let matchedInActive = allAcademicYearsData[activeYear].karkardagiStructure.find(j => {
+                        if (assigned.id && j.id === assigned.id) return true;
+                        if ((j.jamiaName || '').trim().toLowerCase() === assignedName.trim().toLowerCase()) return true;
+                        const isBypass = assignedName.toLowerCase().includes('bypass');
+                        const isJabalpur = assignedName.toLowerCase().includes('jabalpur');
+                        if (isJabalpur) {
+                            const tNames = (j.teachers || []).map(t => (t.name || '').trim());
+                            if (isBypass) {
+                                return tNames.some(n => n.includes('\u062f\u0633\u062a\u06af\u06cc\u0631') || n.includes('\u0637\u0627\u06c1\u0631') || n.includes('\u0646\u0648\u0631 \u0639\u0627\u0644\u0645'));
+                            } else {
+                                return tNames.some(n => n.includes('\u0635\u0627\u062f\u0642') || n.includes('\u0627\u06a9\u0628\u0631') || n.includes('\u0645\u0634\u0639\u0631') || n.includes('\u0645\u06a9\u0631\u0645') || n.includes('\u0627\u062d\u0645\u062f \u0631\u0636\u0627') || n.includes('\u0637\u0627\u0644\u0628') || n.includes('\u0639\u0628\u062f \u0627\u0644\u0631\u0634\u06cc\u062f') || n.includes('\u0632\u06cc\u062f'));
+                            }
+                        }
+                        return window.isSameJamia(j.jamiaName, assignedName);
+                    });
 
                     const needsRecovery = !matchedInActive || isCorruptedOrIncomplete(matchedInActive.teachers);
 
@@ -2486,6 +2544,20 @@ if (editTeacherForm) {
         if (currentReport) {
             currentMonthReport = currentReport;
             monthlyReportData = currentReport.karkardagiReport?.data || [];
+            if (Array.isArray(monthlyReportData)) {
+                monthlyReportData.forEach(item => {
+                    if (!item) return;
+                    const matchedJamia = currentStructure.find(j => 
+                        (j.teachers || []).some(t => 
+                            (item.teacherId && t.id === item.teacherId) || 
+                            (item.teacherName && normMatch(t.name) === normMatch(item.teacherName))
+                        )
+                    );
+                    if (matchedJamia && item.jamiaName !== matchedJamia.jamiaName) {
+                        item.jamiaName = matchedJamia.jamiaName;
+                    }
+                });
+            }
         }
 
         const submissionsRef = collection(db, 'teacher_submissions');
@@ -2507,8 +2579,15 @@ if (editTeacherForm) {
             const jamiaNameRaw = (data.jamiaId || data.jamiaName || '').toString(); 
             const teacherId = (data.teacherId || '').toString().trim();
             
-            let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
-            if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
+            let jamiaData = null;
+            if (teacherId) {
+                jamiaData = currentStructure.find(j => (j.teachers || []).some(t => t.id === teacherId));
+            }
+            if (!jamiaData) {
+                jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw) || 
+                            currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim()) ||
+                            currentStructure.find(j => window.isSameJamia(j.jamiaName, jamiaNameRaw));
+            }
             const finalJamiaName = jamiaData ? jamiaData.jamiaName : jamiaNameRaw;
 
             if (Array.isArray(data.changedValues)) {
@@ -2556,8 +2635,15 @@ if (editTeacherForm) {
             
             if (!teacherId) return;
 
-            let jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw);
-            if (!jamiaData) jamiaData = currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim());
+            let jamiaData = null;
+            if (teacherId) {
+                jamiaData = currentStructure.find(j => (j.teachers || []).some(t => t.id === teacherId));
+            }
+            if (!jamiaData) {
+                jamiaData = currentStructure.find(j => j.jamiaName === jamiaNameRaw) || 
+                            currentStructure.find(j => j.jamiaName.trim() === jamiaNameRaw.trim()) ||
+                            currentStructure.find(j => window.isSameJamia(j.jamiaName, jamiaNameRaw));
+            }
 
             if (jamiaData) {
                 const teacherData = jamiaData.teachers?.find(t => t.id === teacherId);
@@ -6509,7 +6595,10 @@ window.renderSubmitStatusReport = () => {
                 }
             }
             if (!isSubmitted) {
-                const savedEntry = monthlyReportData.find(e => e.jamiaName === jamia.jamiaName && e.teacherId === teacher.id);
+                const savedEntry = monthlyReportData.find(e => 
+                    (e.jamiaName === jamia.jamiaName || window.isSameJamia(e.jamiaName, jamia.jamiaName)) && 
+                    (e.teacherId === teacher.id || (e.teacherName && normMatch(e.teacherName) === normMatch(teacher.name)))
+                );
                 if (savedEntry && (savedEntry.pagesTaught > 0 || savedEntry.lastIbarat)) {
                     isSubmitted = true;
                 }
@@ -6612,7 +6701,10 @@ window.renderSubmitStatusReport = () => {
             }
 
             if (!isSubmitted) {
-                const savedEntry = monthlyReportData.find(e => e.jamiaName === jamiaName && e.teacherId === teacherId);
+                const savedEntry = monthlyReportData.find(e => 
+                    (e.jamiaName === jamiaName || window.isSameJamia(e.jamiaName, jamiaName)) && 
+                    (e.teacherId === teacherId || (e.teacherName && normMatch(e.teacherName) === normMatch(teacher.name)))
+                );
                 if (savedEntry && (savedEntry.pagesTaught > 0 || savedEntry.lastIbarat)) {
                     isSubmitted = true;
                     let adminTime = currentMonthReport?.updatedAt || currentMonthReport?.createdAt || null;
