@@ -367,7 +367,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { 
   getFirestore, collection, query, where, getDocs, addDoc, deleteDoc, 
-  getDoc, doc, updateDoc, serverTimestamp // updateDoc yahan add kiya hai
+  getDoc, doc, updateDoc, setDoc, serverTimestamp // updateDoc yahan add kiya hai
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -425,12 +425,16 @@ if (!jamiaId || !monthKey) {
   const monthName = urduMonths[mIndex] || monthKey; // Mahine ka naam nikalega
   
   // Is code se heading aur mahina print aur screen dono jagah bada aur center ho jayega
-  // Is code se heading aur mahina print aur screen dono jagah bada aur center ho jayega
           subtitle.innerHTML = `<div style="text-align: center; margin-top: 8px;">
             <span class="text-xl md:text-2xl font-bold text-gray-800 urdu" id="header-jamia-name">جامعہ: ${decodeURIComponent(jamiaId)}</span> 
             <span class="mx-3 text-gray-400">|</span> 
             <span class="text-lg md:text-xl font-semibold text-gray-700 urdu">مہینہ: ${monthName} ${yearStr}</span>
           </div>`;
+
+  const backBtn = document.getElementById("dashboard-back-btn");
+  if (backBtn) {
+    backBtn.href = `index.html?month=${encodeURIComponent(monthKey)}&tab=jaiza`;
+  }
 }
 
 let currentUser = null;
@@ -1306,6 +1310,67 @@ if (enableEditBtn) {
   });
 }
 
+// Helper Function: Dashboard (monthly_reports) Update karne ke liye
+const updateDashboardReport = async (finalPercent, finalGrade) => {
+  if (!currentUser || !jamiaId || !monthKey) return;
+
+  try {
+    const [yStr, mStr] = monthKey.split("-");
+    const yearNum = parseInt(yStr);
+    const monthNum = parseInt(mStr) - 1; // 0-11
+    const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
+    const targetDate = new Date(yearNum, monthNum);
+    const monthName = targetDate.toLocaleString('default', { month: 'long' });
+    
+    // ID format wahi hona chahiye jo index.html me hai
+    const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
+    const reportRef = doc(db, "monthly_reports", reportId);
+
+    const reportSnap = await getDoc(reportRef);
+    let jaizaData = [];
+    if (reportSnap.exists()) {
+      const reportData = reportSnap.data() || {};
+      jaizaData = Array.isArray(reportData.jaizaReport?.data) ? reportData.jaizaReport.data : [];
+    }
+
+    const jamiaNameDecoded = decodeURIComponent(jamiaId).trim();
+    const norm = (s) => String(s || '').trim().toLowerCase();
+
+    // Pehle se mojood entry hata kar nayi update karein
+    jaizaData = jaizaData.filter(j => norm(j.name) !== norm(jamiaNameDecoded));
+
+    const cleanPercent = String(finalPercent || '').replace('%', '').trim();
+
+    const newEntry = {
+      jamiaId: window.REAL_JAMIA_ID || jamiaId,
+      name: jamiaNameDecoded,
+      date: new Date().toISOString().split('T')[0], // Aaj ki date
+      type: "Jaiza",
+      percentage: cleanPercent,
+      wazahat: ""
+    };
+
+    jaizaData.push(newEntry);
+
+    const updatePayload = {
+      userId: currentUser.uid,
+      userEmail: currentUser.email || '',
+      month: monthName,
+      year: yearNum,
+      academicYear,
+      jaizaReport: {
+        status: 'Done',
+        data: jaizaData
+      }
+    };
+
+    await setDoc(reportRef, updatePayload, { merge: true });
+    console.log("Dashboard successfully updated with new jaiza data for:", jamiaNameDecoded, cleanPercent);
+  } catch (err) {
+    console.error("Dashboard update failed:", err);
+  }
+};
+
 /*************** Submit → save in Firestore ***************/
 formEl.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1456,6 +1521,16 @@ formEl.addEventListener("submit", async (e) => {
     const addPromises = payloads.map(p => addDoc(collection(db,"jaiza_forms"), p));
     await Promise.all(addPromises);
 
+    // 🌟 Dashboard Report update karein (taake index.html me Submitted Jaizaat me show ho)
+    const classPercs = payloads.map(p => p.classPercentage).filter(p => p != null && !isNaN(p));
+    let calculatedAvg = "";
+    if (classPercs.length > 0) {
+      calculatedAvg = (classPercs.reduce((a, b) => a + b, 0) / classPercs.length).toFixed(2);
+    }
+    const finalPercent = calculatedAvg || (jamiaPercEl ? jamiaPercEl.textContent.trim() : "");
+    const finalGrade = jamiaGradeEl ? jamiaGradeEl.textContent.trim() : "";
+    await updateDashboardReport(finalPercent, finalGrade);
+
     showSuccess("تعلیمی جائزہ کامیابی کے ساتھ محفوظ ہو گیا۔");
     isFormDirty = false; 
     localStorage.removeItem(`jaiza_draft_${jamiaId}_${monthKey}`);
@@ -1564,58 +1639,6 @@ window.addEventListener("beforeunload", function (e) {
     e.returnValue = ""; 
   }
 });
-  // --- Yahan se Naya Code Copy karein ---
-
-// Helper Function: Dashboard Update karne ke liye
-const updateDashboardReport = async (finalPercent, finalGrade) => {
-  if (!currentUser || !jamiaId || !monthKey) return;
-
-  // 1. Report ID generate karein (Dashboard logic ke mutabiq)
-  const [yStr, mStr] = monthKey.split("-");
-  const yearNum = parseInt(yStr);
-  const monthNum = parseInt(mStr) - 1; // 0-11
-  const academicYear = (monthNum >= 3) ? `${yearNum}-${yearNum + 1}` : `${yearNum - 1}-${yearNum}`;
-  
-  // ID format wahi hona chahiye jo index.html me hai
-  const reportId = `${currentUser.uid}_${academicYear}_${yearNum}_${monthNum}`;
-  const reportRef = doc(db, "monthly_reports", reportId);
-
-  try {
-    const reportSnap = await getDoc(reportRef);
-    if (reportSnap.exists()) {
-      const reportData = reportSnap.data();
-      let jaizaData = reportData.jaizaReport?.data || [];
-      const jamiaNameDecoded = decodeURIComponent(jamiaId);
-
-      // Check karein agar ye Jamia pehle se list me hai
-      const index = jaizaData.findIndex(j => j.name === jamiaNameDecoded);
-
-      const newEntry = {
-        name: jamiaNameDecoded,
-        date: new Date().toISOString().split('T')[0], // Aaj ki date
-        type: "Jaiza",
-        percentage: finalPercent, // Updated Percentage (e.g. 69.30)
-      };
-
-      if (index !== -1) {
-        // Agar pehle se hai to update karein (Merge logic)
-        jaizaData[index] = { ...jaizaData[index], ...newEntry };
-      } else {
-        // Agar nahi hai to naya add karein
-        jaizaData.push(newEntry);
-      }
-
-      // Firestore Update
-      await updateDoc(reportRef, {
-        "jaizaReport.data": jaizaData,
-        "jaizaReport.status": "Done"
-      });
-      console.log("Dashboard successfully updated with new %:", finalPercent);
-    }
-  } catch (err) {
-    console.error("Dashboard update failed:", err);
-  }
-};
 
 // ─── PDF REPORT GENERATOR (html2pdf.js — Executive Professional Report) ───
 const printPdfBtn = document.getElementById("print-pdf-btn");
