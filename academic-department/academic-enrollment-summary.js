@@ -601,22 +601,6 @@ window.refreshEditModalSubFields = () => {
             bHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Board</label><select id="dyn-board" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['State Board','Open State Board','CBSE'], isSameType?r.board:'')}</select>`;
             sHtml = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
         }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
-        }
         bCont.innerHTML = bHtml; sCont.innerHTML = sHtml;
     }
     else if (type === 'Madrasa Board') {
@@ -624,40 +608,8 @@ window.refreshEditModalSubFields = () => {
         const sCont = document.getElementById('dyn-stream-container');
         if (cls === '11th' || cls === '12th') {
             sCont.innerHTML = `<label class="text-xs font-bold text-slate-500 mb-1">Stream</label><select id="dyn-stream" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(['Arts','Commerce','Science'], isSameType?r.stream:'')}</select>`;
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
         } else {
             sCont.innerHTML = '';
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
         }
     }
     else if (type === 'College') {
@@ -669,60 +621,12 @@ window.refreshEditModalSubFields = () => {
             'UG_Year': ['1st Year','2nd Year','3rd Year'],
             'PG_Semester': ['1st Semester','2nd Semester','3rd Semester','4th Semester'],
             'PG_Year': ['1st Year','2nd Year']
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
         };
         if(deg && dur) {
             const key = (['B.A.','B.Com','B.Sc.'].includes(deg) ? 'UG' : 'PG') + '_' + dur;
             sCont.innerHTML = `<label class="text-xs font-bold text-slate-500 mb-1">Session</label><select id="dyn-session" class="w-full p-2 border border-slate-300 rounded-lg text-sm outline-none"><option value="">— Select —</option>${makeOpts(opts[key]||[], isSameType?r.session:'')}</select>`;
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
         } else {
             sCont.innerHTML = '';
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
         }
     }
 };
@@ -784,22 +688,6 @@ window.saveEditRecord = async () => {
         const index = _allRecords.findIndex(r => r.id === _currentEditId);
         if(index !== -1) {
             _allRecords[index] = { ..._allRecords[index], ...updatedData };
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
         }
         
         window.closeEditModal();
