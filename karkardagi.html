@@ -1990,6 +1990,65 @@ if (editTeacherForm) {
                     }
                 });
 
+                // Deduplicate any multiple entries for the same Jamia across all structures
+                Object.keys(allAcademicYearsData).forEach(yr => {
+                    const struct = allAcademicYearsData[yr]?.karkardagiStructure;
+                    if (Array.isArray(struct)) {
+                        const uniqueJamiaList = [];
+                        struct.forEach(j => {
+                            const rawName = (j.jamiaName || '').trim();
+                            if (!rawName) return;
+
+                            const existingIdx = uniqueJamiaList.findIndex(uj => 
+                                (uj.id && j.id && uj.id === j.id) || 
+                                uj.jamiaName.trim().toLowerCase() === rawName.toLowerCase() ||
+                                window.isSameJamia(uj.jamiaName, rawName)
+                            );
+
+                            if (existingIdx === -1) {
+                                uniqueJamiaList.push(j);
+                            } else {
+                                console.log('[Auto-Align] Found duplicate Jamia entry for "' + rawName + '". Consolidating...');
+                                structureNeedsUpdate = true;
+                                const existing = uniqueJamiaList[existingIdx];
+                                
+                                const isJabalpur = rawName.toLowerCase().includes('jabalpur') && !rawName.toLowerCase().includes('bypass');
+                                if (isJabalpur) {
+                                    const isClean8 = (entry) => {
+                                        const count = entry.teachers?.length || 0;
+                                        const hasAkbar = (entry.teachers || []).some(t => (t.name || '').includes('\u0627\u06a9\u0628\u0631'));
+                                        const hasAzhar = (entry.teachers || []).some(t => (t.name || '').includes('\u0627\u0638\u06c1\u0631'));
+                                        return count === 8 && hasAkbar && !hasAzhar;
+                                    };
+                                    if (isClean8(j)) {
+                                        uniqueJamiaList[existingIdx] = j;
+                                    } else if (!isClean8(existing) && (j.teachers?.length || 0) < (existing.teachers?.length || 0)) {
+                                        uniqueJamiaList[existingIdx] = j;
+                                    }
+                                } else {
+                                    const score = (entry) => {
+                                        let sc = 0;
+                                        (entry.teachers || []).forEach(t => {
+                                            if (t.loginCode) sc += 5;
+                                            sc += (t.periods || []).length;
+                                        });
+                                        return sc;
+                                    };
+                                    if (score(j) > score(existing)) {
+                                        uniqueJamiaList[existingIdx] = j;
+                                    }
+                                }
+                            }
+                        });
+
+                        if (uniqueJamiaList.length !== struct.length) {
+                            allAcademicYearsData[yr].karkardagiStructure = uniqueJamiaList;
+                            structureNeedsUpdate = true;
+                            console.log('[Auto-Align] Deduplicated karkardagiStructure for ' + yr + ': ' + struct.length + ' -> ' + uniqueJamiaList.length + ' jamiaat');
+                        }
+                    }
+                });
+
                 // Har assigned Jamia ke liye structure check karein
                 for (const assigned of assignedJamiaat) {
                     const assignedName = assigned.name;
@@ -2159,7 +2218,14 @@ if (editTeacherForm) {
                                     teachers: JSON.parse(JSON.stringify(foundSource.teachers)),
                                     principalSignature: foundSource.principalSignature || ''
                                 };
-                                allAcademicYearsData[activeYear].karkardagiStructure.push(matchedInActive);
+                                const existJamiaIdx = allAcademicYearsData[activeYear].karkardagiStructure.findIndex(j => 
+                                    (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName)
+                                );
+                                if (existJamiaIdx !== -1) {
+                                    allAcademicYearsData[activeYear].karkardagiStructure[existJamiaIdx] = matchedInActive;
+                                } else {
+                                    allAcademicYearsData[activeYear].karkardagiStructure.push(matchedInActive);
+                                }
                             }
                             structureNeedsUpdate = true;
                             console.log(`[Auto-Align] Applied restored ${foundSource.teachers.length} teachers for "${assignedName}" into ${activeYear}`);
@@ -4248,7 +4314,14 @@ if (bookSelect.value === 'other') {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
             
             const yearData = allAcademicYearsData[activeYear];
-            const karkardagiStructure = yearData.karkardagiStructure || [];
+            const rawStructure = yearData.karkardagiStructure || [];
+            const seenReportingJamias = new Set();
+            const karkardagiStructure = rawStructure.filter(j => {
+                const k = (j.jamiaName || '').trim().toLowerCase();
+                if (!k || seenReportingJamias.has(k)) return false;
+                seenReportingJamias.add(k);
+                return true;
+            });
             
             // Step 1: Validation
             if (karkardagiStructure.length === 0) {
@@ -6567,11 +6640,20 @@ window.renderSubmitStatusReport = () => {
         return;
     }
 
-    const structure = allAcademicYearsData[activeYear].karkardagiStructure || [];
-    if (structure.length === 0) {
+    const rawStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
+    if (rawStructure.length === 0) {
         container.innerHTML = `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500">Koi structure data nahi mila.</div>`;
         return;
     }
+
+    // Deduplicate any duplicate Jamia entries on render
+    const seenStatusJamias = new Set();
+    const structure = rawStructure.filter(j => {
+        const k = (j.jamiaName || '').trim().toLowerCase();
+        if (!k || seenStatusJamias.has(k)) return false;
+        seenStatusJamias.add(k);
+        return true;
+    });
 
     // --- 1. GLOBAL TOTALS CALCULATION ---
     let grandTotalJamiaat = 0;
