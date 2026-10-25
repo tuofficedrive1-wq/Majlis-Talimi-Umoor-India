@@ -2303,6 +2303,51 @@ if (editTeacherForm) {
                                         }
                                     });
                                 });
+
+                                // Sem 2 clean-up: Sirf wahi Sem 2 kitabein rakhein jinme report bhari hui hai, extra copied kitabein drop karein
+                                const tSem2Books = new Map();
+                                repSnap.forEach(d => {
+                                    const dData = d.data() || {};
+                                    const isSem2Doc = (dData.semester === '2' || dData.semester === 2 || (typeof dData.monthNum === 'number' && (dData.monthNum >= 8 || dData.monthNum <= 1)));
+                                    if (isSem2Doc) {
+                                        const items = dData.karkardagiReport?.data || dData.data || [];
+                                        if (Array.isArray(items)) {
+                                            items.forEach(it => {
+                                                if (it && it.teacherName && (it.bookName || it.book)) {
+                                                    const tk = nMatch(it.teacherName);
+                                                    const bk = nMatch(it.bookName || it.book);
+                                                    if (!tSem2Books.has(tk)) tSem2Books.set(tk, new Set());
+                                                    tSem2Books.get(tk).add(bk);
+                                                }
+                                            });
+                                        }
+                                    }
+                                });
+
+                                matchedInActive.teachers.forEach(t => {
+                                    const tk = nMatch(t.name);
+                                    if (tSem2Books.has(tk)) {
+                                        const reportedSet = tSem2Books.get(tk);
+                                        if (reportedSet.size > 0 && Array.isArray(t.periods)) {
+                                            const oldCount = t.periods.length;
+                                            t.periods = t.periods.filter(p => {
+                                                if (String(p.semester) !== '2') return true; // Sem 1 remains safe
+                                                const bk = nMatch(p.bookName);
+                                                if (reportedSet.has(bk)) return true; // Reported in Sem 2: KEEP
+                                                // Unreported in Sem 2 and already exists in Sem 1: DROP extra copy
+                                                const inSem1 = t.periods.some(p1 => String(p1.semester || '1') === '1' && nMatch(p1.bookName) === bk);
+                                                if (inSem1) {
+                                                    console.log(`[Auto-Align] Purged extra/unreported Sem 2 book for "${t.name}": "${p.bookName}"`);
+                                                    return false;
+                                                }
+                                                return true;
+                                            });
+                                            if (t.periods.length !== oldCount) {
+                                                structureNeedsUpdate = true;
+                                            }
+                                        }
+                                    }
+                                });
                             }
                         } catch(e) {
                             console.warn("[Auto-Align] Error realigning IDs from monthly_reports:", e);
@@ -2562,6 +2607,61 @@ if (editTeacherForm) {
             }
             teacherSubmissionsMap.set(mapKey, existingData);
         });
+
+        // Clean up any extra/unreported Sem 2 periods that were copied from Sem 1
+        if (allYearReportsData.length > 0 && currentStructure.length > 0) {
+            const nMatch = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
+            const teacherSem2ReportsMap = new Map();
+
+            allYearReportsData.forEach(rep => {
+                const isSem2 = (rep.semester === '2' || rep.semester === 2 || (typeof rep.monthNum === 'number' && (rep.monthNum >= 8 || rep.monthNum <= 1)));
+                if (isSem2) {
+                    const items = rep.karkardagiReport?.data || rep.data || [];
+                    if (Array.isArray(items)) {
+                        items.forEach(it => {
+                            if (it && it.teacherName && (it.bookName || it.book)) {
+                                const tK = nMatch(it.teacherName);
+                                const bK = nMatch(it.bookName || it.book);
+                                if (!teacherSem2ReportsMap.has(tK)) teacherSem2ReportsMap.set(tK, new Set());
+                                teacherSem2ReportsMap.get(tK).add(bK);
+                            }
+                        });
+                    }
+                }
+            });
+
+            let structureChanged = false;
+            currentStructure.forEach(jamia => {
+                (jamia.teachers || []).forEach(t => {
+                    const tK = nMatch(t.name);
+                    if (teacherSem2ReportsMap.has(tK)) {
+                        const reportedBooks = teacherSem2ReportsMap.get(tK);
+                        if (reportedBooks.size > 0 && Array.isArray(t.periods)) {
+                            const oldCount = t.periods.length;
+                            t.periods = t.periods.filter(p => {
+                                if (String(p.semester) !== '2') return true;
+                                const bK = nMatch(p.bookName);
+                                if (reportedBooks.has(bK)) return true;
+                                const existsInSem1 = t.periods.some(p1 => String(p1.semester || '1') === '1' && nMatch(p1.bookName) === bK);
+                                if (existsInSem1) {
+                                    return false; // Remove extra copied period
+                                }
+                                return true;
+                            });
+                            if (t.periods.length !== oldCount) {
+                                structureChanged = true;
+                            }
+                        }
+                    }
+                });
+            });
+
+            if (structureChanged && currentUser) {
+                updateDoc(doc(db, 'users', currentUser.uid), {
+                    [`academicYears.${activeYear}.karkardagiStructure`]: currentStructure
+                }).catch(e => console.warn("Structure clean save warning:", e));
+            }
+        }
 
         lastLoadedReportKey = cacheKey;
         if (typeof window.renderSubmitStatusReport === 'function') {
