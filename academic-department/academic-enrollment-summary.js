@@ -304,22 +304,6 @@ window.downloadEnrollmentCSV = () => {
         if(str.includes(',') || str.includes('"') || str.includes('\n')) {
             str = `"${str.replace(/"/g, '""')}"`;
         }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
-        }
         return str;
     };
 
