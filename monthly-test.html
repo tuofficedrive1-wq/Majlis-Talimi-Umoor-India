@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -530,7 +530,31 @@
                 console.warn("Query fallback warning:", err);
             }
 
-            // 3. Agar data nahi mila to naya result save karne ke liye canonical ID bhejein
+            // 3. Global Jamia fallback (Agar jamia reassigned hui ho aur purane UID ke tahat sheet save ho)
+            try {
+                const qGlobal = query(
+                    collection(db, "monthly_test_sheets"),
+                    where("month", "==", mKey)
+                );
+                const gSnap = await getDocs(qGlobal);
+                for (const d of gSnap.docs) {
+                    const data = d.data() || {};
+                    const dJamia = data.jamiaName || data.jamiaId || data.jamia;
+                    const dClass = data.class;
+                    if (window.isSameJamia(dJamia, jamia) && window.isSameClass(dClass, rawCls)) {
+                        console.log("Found test sheet via global fallback:", d.id);
+                        if (uid && data.adminUid !== uid) {
+                            try { updateDoc(d.ref, { adminUid: uid }); } catch(e){}
+                        }
+                        const isDocIdBelongsToJamia = d.id.toUpperCase().includes(coreJamia) || possibleIds.includes(d.id);
+                        return { snap: d, docId: isDocIdBelongsToJamia ? d.id : canonicalDocId };
+                    }
+                }
+            } catch (err) {
+                console.warn("Global fallback warning:", err);
+            }
+
+            // 4. Agar data nahi mila to naya result save karne ke liye canonical ID bhejein
             return { snap: null, docId: canonicalDocId };
         };
         
@@ -637,7 +661,15 @@
                     document.getElementById('loader').classList.add('hidden');
                     return; 
                 }
-                if (jamiaStruct && jamiaStruct.jamiaName) { jamiaName = jamiaStruct.jamiaName; }
+                // Check if user has official assigned master jamia name
+                const userJamias = (userData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j).filter(Boolean);
+                const assignedMasterMatch = userJamias.find(aj => window.isSameJamia(aj, jamiaName));
+                if (assignedMasterMatch) {
+                    jamiaName = assignedMasterMatch;
+                    if (jamiaStruct) jamiaStruct.jamiaName = assignedMasterMatch;
+                } else if (jamiaStruct && jamiaStruct.jamiaName) { 
+                    jamiaName = jamiaStruct.jamiaName; 
+                }
 
                 classBooksMap = {};
 
@@ -1014,9 +1046,9 @@
             }
 
             const rawClass = document.getElementById('class-select').value;
-            if(!rawClass && !isAutoSave) { 
-                alert("Class select nahi hai."); 
-                if(btn) btn.disabled=false; 
+            if(!rawClass || !rawClass.trim()) { 
+                if(!isAutoSave) alert("Class select nahi hai."); 
+                if(btn && !isAutoSave) btn.disabled=false; 
                 return; 
             }
             

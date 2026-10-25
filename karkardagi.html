@@ -534,6 +534,26 @@ import {
 let adminAcademicConfig = null;
 let karkardagiStructure = [];
 
+// Smart Jamia Name Matcher & Helper
+window.isSameJamia = (j1, j2) => {
+    if (!j1 || !j2) return false;
+    const s1 = String(j1).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+    const s2 = String(j2).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+    if (s1 === s2) return true;
+    const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
+    const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
+    if (clean1 === clean2) return true;
+    const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia)[\s_-]*/gi, '').trim();
+    return strip(clean1) === strip(clean2);
+};
+
+window.findJamiaInStructure = (structure, name) => {
+    if (!Array.isArray(structure) || !name) return null;
+    return structure.find(j => (j.jamiaName || '').trim().toUpperCase() === String(name).trim().toUpperCase()) 
+        || structure.find(j => window.isSameJamia(j.jamiaName, name)) 
+        || null;
+};
+
 // LOCATION: initApp se bilkul pehle ise define karein
 const updateMonthDropdown = () => {
     const monthSelect = document.getElementById('report-month-select'); 
@@ -1874,6 +1894,80 @@ if (editTeacherForm) {
             allAcademicYearsData[activeYear].sem2TotalDays = adminConfig.sem2TotalDays || 0;
         }
 
+        // 3.5. AUTO-ALIGNMENT: Structure Jamia Names ko Assigned Jamia Names se synchronize karein
+        if (allAcademicYearsData && userProfileData && userProfileData.jamiaatList) {
+            let structureNeedsUpdate = false;
+            const assignedNames = (userProfileData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j).filter(Boolean);
+            
+            // Current activeYear me karkardagiStructure ensure karein
+            if (activeYear) {
+                if (!allAcademicYearsData[activeYear]) allAcademicYearsData[activeYear] = {};
+                if (!Array.isArray(allAcademicYearsData[activeYear].karkardagiStructure)) {
+                    allAcademicYearsData[activeYear].karkardagiStructure = [];
+                }
+
+                // Har assigned Jamia ke liye structure check karein
+                assignedNames.forEach(assignedName => {
+                    let matchedInActive = allAcademicYearsData[activeYear].karkardagiStructure.find(j => window.isSameJamia(j.jamiaName, assignedName));
+                    
+                    if (matchedInActive) {
+                        if (matchedInActive.jamiaName !== assignedName) {
+                            console.log(`[Auto-Align] Updating jamiaName in activeYear: "${matchedInActive.jamiaName}" -> "${assignedName}"`);
+                            matchedInActive.jamiaName = assignedName;
+                            structureNeedsUpdate = true;
+                        }
+                    } else {
+                        // Agar activeYear me nahi mila to doosre saalon me ya userProfileData.academicStructure me dhoondein
+                        let foundInOtherYear = null;
+                        for (const yr of Object.keys(allAcademicYearsData)) {
+                            if (yr === activeYear) continue;
+                            const otherStruct = allAcademicYearsData[yr]?.karkardagiStructure;
+                            const found = (otherStruct || []).find(j => window.isSameJamia(j.jamiaName, assignedName));
+                            if (found && Array.isArray(found.teachers) && found.teachers.length > 0) {
+                                foundInOtherYear = found;
+                                break;
+                            }
+                        }
+                        if (!foundInOtherYear && Array.isArray(userProfileData.academicStructure)) {
+                            foundInOtherYear = userProfileData.academicStructure.find(j => window.isSameJamia(j.jamiaName, assignedName));
+                        }
+
+                        if (foundInOtherYear) {
+                            console.log(`[Auto-Align] Restoring teachers for "${assignedName}" from previous structure`);
+                            allAcademicYearsData[activeYear].karkardagiStructure.push({
+                                ...JSON.parse(JSON.stringify(foundInOtherYear)),
+                                jamiaName: assignedName
+                            });
+                            structureNeedsUpdate = true;
+                        }
+                    }
+                });
+
+                // Sabhi academic years me names ko align karein
+                Object.keys(allAcademicYearsData).forEach(yr => {
+                    const sArr = allAcademicYearsData[yr]?.karkardagiStructure;
+                    if (Array.isArray(sArr)) {
+                        sArr.forEach(j => {
+                            const m = assignedNames.find(a => window.isSameJamia(j.jamiaName, a));
+                            if (m && j.jamiaName !== m) {
+                                j.jamiaName = m;
+                                structureNeedsUpdate = true;
+                            }
+                        });
+                    }
+                });
+            }
+
+            if (structureNeedsUpdate) {
+                try {
+                    await updateDoc(doc(db, 'users', currentUser.uid), { academicYears: allAcademicYearsData });
+                    console.log("[Auto-Align] Saved synchronized academicYears to Firestore successfully.");
+                } catch(e) {
+                    console.warn("[Auto-Align] Failed to save updated academicYears:", e);
+                }
+            }
+        }
+
         // 4. UI aur Data Reload
         populateYearSelector();
         if (activeYear) {
@@ -2463,9 +2557,11 @@ if (saveAcademicMonthsBtn) {
             const karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
             
             setupAccordionContainer.innerHTML = jamiaat.map(jamiaName => {
-                let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
+                let jamiaData = window.findJamiaInStructure(karkardagiStructure, jamiaName);
                 if (!jamiaData) {
                     jamiaData = { jamiaName: jamiaName, teachers: [] };
+                } else if (jamiaData.jamiaName !== jamiaName) {
+                    jamiaData.jamiaName = jamiaName;
                 }
                  if (!Array.isArray(jamiaData.teachers)) { jamiaData.teachers = []; }
                 
@@ -2810,11 +2906,13 @@ function generateTeacherLoginCode(existingTeachers = []) {
 
     // Local copy nikaalein update karne ke liye
     let currentStructure = [...(allAcademicYearsData[activeYear].karkardagiStructure || [])];
-    let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+    let jamiaData = window.findJamiaInStructure(currentStructure, jamiaName);
     
     if (!jamiaData) {
         jamiaData = { jamiaName: jamiaName, teachers: [] };
         currentStructure.push(jamiaData);
+    } else {
+        jamiaData.jamiaName = jamiaName;
     }
     if (!jamiaData.teachers) jamiaData.teachers = [];
 
@@ -2880,7 +2978,7 @@ const handleEditTeacherName = (e) => {
     if (!activeYear || !jamiaName || !teacherId) return;
 
     const structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-    const jamiaData = structure.find(j => j.jamiaName === jamiaName);
+    const jamiaData = window.findJamiaInStructure(structure, jamiaName);
     const teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
 
     if (!teacherData) {
@@ -2916,7 +3014,7 @@ const handleUpdateTeacherName = async (e) => {
 
     // 1. Local State Update Logic (Sabse pehle local data badlein)
     let structure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-    let jamiaData = structure.find(j => j.jamiaName === jamiaName);
+    let jamiaData = window.findJamiaInStructure(structure, jamiaName);
 
     if (!jamiaData || !Array.isArray(jamiaData.teachers)) {
         showNotification("Teacher data structure me nahi mila.", true);
@@ -2985,7 +3083,7 @@ const handleUpdateTeacherName = async (e) => {
     try {
         // Local state se filter karein
         let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
-        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let jamiaData = window.findJamiaInStructure(currentStructure, jamiaName);
 
         if (jamiaData) {
             jamiaData.teachers = jamiaData.teachers.filter(t => t.id !== teacherId);
@@ -3054,7 +3152,7 @@ const newPeriod = {
     try {
         // 1. Local structure update karein
         let karkardagiStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
-        let jamiaData = karkardagiStructure.find(j => j.jamiaName === jamiaName);
+        let jamiaData = window.findJamiaInStructure(karkardagiStructure, jamiaName);
         let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
         
         if (teacherData) {
@@ -3102,7 +3200,7 @@ const newPeriod = {
     showLoader(true);
     try {
         let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
-        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let jamiaData = window.findJamiaInStructure(currentStructure, jamiaName);
         let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
 
         if (teacherData && teacherData.periods) {
@@ -3226,7 +3324,7 @@ const handleTransferPeriodClick = (e) => {
     document.getElementById('transfer-book-info').innerHTML = `Kitab: <b>${bookName}</b> (${className}) - Sem ${semester}`;
 
     // Populate Teachers Dropdown (Usi Jamia ke baqi teachers)
-    const jamiaData = allAcademicYearsData[activeYear].karkardagiStructure.find(j => j.jamiaName === jamiaName);
+    const jamiaData = window.findJamiaInStructure(allAcademicYearsData[activeYear].karkardagiStructure, jamiaName);
     const newTeacherSelect = document.getElementById('transfer-new-teacher-select');
     let teacherOptions = '<option value="">Teacher Select Karein</option>';
     
@@ -6055,7 +6153,7 @@ const handleDuplicatePeriod = async (e) => {
     showLoader(true);
     try {
         let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
-        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let jamiaData = window.findJamiaInStructure(currentStructure, jamiaName);
         let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
 
         if (teacherData) {
@@ -6103,7 +6201,7 @@ const handleCopySemesterPeriods = async (e) => {
     showLoader(true);
     try {
         let currentStructure = [...allAcademicYearsData[activeYear].karkardagiStructure];
-        let jamiaData = currentStructure.find(j => j.jamiaName === jamiaName);
+        let jamiaData = window.findJamiaInStructure(currentStructure, jamiaName);
         let teacherData = jamiaData?.teachers.find(t => t.id === teacherId);
 
         if (teacherData && teacherData.periods) {
