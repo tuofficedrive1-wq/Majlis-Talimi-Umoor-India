@@ -547,11 +547,29 @@ window.isSameJamia = (j1, j2) => {
     return strip(clean1) === strip(clean2);
 };
 
-window.findJamiaInStructure = (structure, name) => {
-    if (!Array.isArray(structure) || !name) return null;
-    return structure.find(j => (j.jamiaName || '').trim().toUpperCase() === String(name).trim().toUpperCase()) 
-        || structure.find(j => window.isSameJamia(j.jamiaName, name)) 
-        || null;
+window.findJamiaInStructure = (structure, identifier) => {
+    if (!Array.isArray(structure) || !identifier) return null;
+    const targetId = typeof identifier === 'object' ? (identifier.id || identifier.jamiaId) : null;
+    const targetName = typeof identifier === 'object' ? (identifier.name || identifier.jamiaName) : identifier;
+
+    // 1. Primary Match: Master Jamia ID
+    if (targetId) {
+        const byId = structure.find(j => j.jamiaId === targetId || j.id === targetId);
+        if (byId) return byId;
+    }
+
+    // 2. Secondary Match: Exact Name Match
+    if (targetName) {
+        const cleanTarget = String(targetName).trim().toUpperCase();
+        const byExact = structure.find(j => (j.jamiaName || '').trim().toUpperCase() === cleanTarget);
+        if (byExact) return byExact;
+
+        // 3. Fallback Match: Smart Name Match (Prefixes: "JAMIA-TUL-MADINA JABALPUR" === "JABALPUR")
+        const bySmart = structure.find(j => window.isSameJamia(j.jamiaName, targetName));
+        if (bySmart) return bySmart;
+    }
+
+    return null;
 };
 
 // LOCATION: initApp se bilkul pehle ise define karein
@@ -1907,41 +1925,110 @@ if (editTeacherForm) {
                 }
 
                 // Har assigned Jamia ke liye structure check karein
-                assignedNames.forEach(assignedName => {
+                for (const assignedName of assignedNames) {
                     let matchedInActive = allAcademicYearsData[activeYear].karkardagiStructure.find(j => window.isSameJamia(j.jamiaName, assignedName));
                     
-                    if (matchedInActive) {
-                        if (matchedInActive.jamiaName !== assignedName) {
-                            console.log(`[Auto-Align] Updating jamiaName in activeYear: "${matchedInActive.jamiaName}" -> "${assignedName}"`);
-                            matchedInActive.jamiaName = assignedName;
-                            structureNeedsUpdate = true;
-                        }
-                    } else {
-                        // Agar activeYear me nahi mila to doosre saalon me ya userProfileData.academicStructure me dhoondein
-                        let foundInOtherYear = null;
+                    // Agar activeYear me nahi mila ya teachers khali hain (length === 0):
+                    if (!matchedInActive || !Array.isArray(matchedInActive.teachers) || matchedInActive.teachers.length === 0) {
+                        console.log(`[Auto-Align] Teachers missing for "${assignedName}", searching recovery sources...`);
+                        let foundSource = null;
+                        
+                        // 1. Check all other academic years
                         for (const yr of Object.keys(allAcademicYearsData)) {
                             if (yr === activeYear) continue;
                             const otherStruct = allAcademicYearsData[yr]?.karkardagiStructure;
                             const found = (otherStruct || []).find(j => window.isSameJamia(j.jamiaName, assignedName));
                             if (found && Array.isArray(found.teachers) && found.teachers.length > 0) {
-                                foundInOtherYear = found;
+                                foundSource = found;
+                                console.log(`[Auto-Align] Found ${found.teachers.length} teachers in year "${yr}"!`);
                                 break;
                             }
                         }
-                        if (!foundInOtherYear && Array.isArray(userProfileData.academicStructure)) {
-                            foundInOtherYear = userProfileData.academicStructure.find(j => window.isSameJamia(j.jamiaName, assignedName));
+
+                        // 2. Check academicStructure field on user profile
+                        if (!foundSource && Array.isArray(userProfileData.academicStructure)) {
+                            const found = userProfileData.academicStructure.find(j => window.isSameJamia(j.jamiaName, assignedName));
+                            if (found && Array.isArray(found.teachers) && found.teachers.length > 0) {
+                                foundSource = found;
+                                console.log(`[Auto-Align] Found ${found.teachers.length} teachers in userProfileData.academicStructure!`);
+                            }
                         }
 
-                        if (foundInOtherYear) {
-                            console.log(`[Auto-Align] Restoring teachers for "${assignedName}" from previous structure`);
-                            allAcademicYearsData[activeYear].karkardagiStructure.push({
-                                ...JSON.parse(JSON.stringify(foundInOtherYear)),
-                                jamiaName: assignedName
-                            });
+                        // 3. Fallback: Recover from monthly_reports submitted by this user
+                        if (!foundSource) {
+                            try {
+                                const repSnap = await getDocs(query(
+                                    collection(db, "monthly_reports"),
+                                    where("userId", "==", currentUser.uid)
+                                ));
+                                const recMap = new Map();
+                                repSnap.forEach(d => {
+                                    const rData = d.data() || {};
+                                    const items = rData.karkardagiReport?.data || rData.data || [];
+                                    if (Array.isArray(items)) {
+                                        items.forEach(it => {
+                                            if (window.isSameJamia(it.jamiaName, assignedName) && it.teacherName) {
+                                                const tId = it.teacherId || `teacher-${it.teacherName.replace(/\s+/g, '_')}`;
+                                                if (!recMap.has(tId)) {
+                                                    recMap.set(tId, {
+                                                        id: tId,
+                                                        name: it.teacherName,
+                                                        loginCode: it.loginCode || it.ajeerCode || '',
+                                                        periods: []
+                                                    });
+                                                }
+                                                const tObj = recMap.get(tId);
+                                                const pId = it.periodId || `period-${it.className}_${it.bookName}`;
+                                                if (!tObj.periods.some(p => p.id === pId || (p.className === it.className && p.bookName === it.bookName))) {
+                                                    tObj.periods.push({
+                                                        id: pId,
+                                                        className: it.className || it.class || '',
+                                                        bookName: it.bookName || it.book || '',
+                                                        semester: String(it.semester || '1'),
+                                                        totalPages: parseInt(it.totalPages || 0, 10)
+                                                    });
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
+
+                                if (recMap.size > 0) {
+                                    foundSource = {
+                                        jamiaName: assignedName,
+                                        teachers: Array.from(recMap.values())
+                                    };
+                                    console.log(`[Auto-Align] Successfully recovered ${foundSource.teachers.length} teachers from monthly_reports!`);
+                                }
+                            } catch(err) {
+                                console.warn("[Auto-Align] monthly_reports recovery warning:", err);
+                            }
+                        }
+
+                        if (foundSource && Array.isArray(foundSource.teachers) && foundSource.teachers.length > 0) {
+                            if (matchedInActive) {
+                                matchedInActive.teachers = JSON.parse(JSON.stringify(foundSource.teachers));
+                                matchedInActive.jamiaName = assignedName;
+                                if (foundSource.principalSignature && !matchedInActive.principalSignature) {
+                                    matchedInActive.principalSignature = foundSource.principalSignature;
+                                }
+                            } else {
+                                allAcademicYearsData[activeYear].karkardagiStructure.push({
+                                    ...JSON.parse(JSON.stringify(foundSource)),
+                                    jamiaName: assignedName
+                                });
+                            }
+                            structureNeedsUpdate = true;
+                            console.log(`[Auto-Align] Restored ${foundSource.teachers.length} teachers for "${assignedName}" into ${activeYear}`);
+                        } else if (matchedInActive && matchedInActive.jamiaName !== assignedName) {
+                            matchedInActive.jamiaName = assignedName;
                             structureNeedsUpdate = true;
                         }
+                    } else if (matchedInActive && matchedInActive.jamiaName !== assignedName) {
+                        matchedInActive.jamiaName = assignedName;
+                        structureNeedsUpdate = true;
                     }
-                });
+                }
 
                 // Sabhi academic years me names ko align karein
                 Object.keys(allAcademicYearsData).forEach(yr => {
@@ -2548,20 +2635,25 @@ if (saveAcademicMonthsBtn) {
 
         const renderSetupTab = () => {
             if (!activeYear) return; 
-            const jamiaat = (userProfileData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j);
-            if (jamiaat.length === 0) {
+            const rawJamiaatList = userProfileData.jamiaatList || [];
+            if (rawJamiaatList.length === 0) {
                  setupAccordionContainer.innerHTML = '<p class="text-yellow-700">Aapke profile me koi Jamia add nahi hai.</p>';
                  return;
             }
             
             const karkardagiStructure = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
             
-            setupAccordionContainer.innerHTML = jamiaat.map(jamiaName => {
-                let jamiaData = window.findJamiaInStructure(karkardagiStructure, jamiaName);
+            setupAccordionContainer.innerHTML = rawJamiaatList.map(jamiaItem => {
+                const jamiaName = typeof jamiaItem === 'object' ? (jamiaItem.name || jamiaItem.jamiaName) : jamiaItem;
+                const jamiaId = typeof jamiaItem === 'object' ? (jamiaItem.id || jamiaItem.jamiaId) : null;
+                
+                // Match by Jamia ID pehle, phir Name
+                let jamiaData = window.findJamiaInStructure(karkardagiStructure, jamiaItem);
                 if (!jamiaData) {
-                    jamiaData = { jamiaName: jamiaName, teachers: [] };
-                } else if (jamiaData.jamiaName !== jamiaName) {
-                    jamiaData.jamiaName = jamiaName;
+                    jamiaData = { jamiaId: jamiaId, jamiaName: jamiaName, teachers: [] };
+                } else {
+                    if (jamiaId && !jamiaData.jamiaId) jamiaData.jamiaId = jamiaId;
+                    if (jamiaName) jamiaData.jamiaName = jamiaName;
                 }
                  if (!Array.isArray(jamiaData.teachers)) { jamiaData.teachers = []; }
                 
