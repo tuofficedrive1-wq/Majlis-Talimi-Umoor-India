@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head> 
     <meta charset="UTF-8">
@@ -2258,6 +2258,56 @@ if (editTeacherForm) {
                             }
                         });
 
+                        // 3.5. Realign teacher IDs and period IDs from saved monthly_reports so history matches 100%
+                        try {
+                            const repSnap = await getDocs(query(
+                                collection(db, "monthly_reports"),
+                                where("userId", "==", currentUser.uid),
+                                where("academicYear", "==", activeYear)
+                            ));
+                            const repItems = [];
+                            repSnap.forEach(d => {
+                                const dData = d.data() || {};
+                                const items = dData.karkardagiReport?.data || dData.data || [];
+                                if (Array.isArray(items)) {
+                                    items.forEach(it => {
+                                        if (it && it.periodId) repItems.push(it);
+                                    });
+                                }
+                            });
+
+                            if (repItems.length > 0) {
+                                const nMatch = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
+                                matchedInActive.teachers.forEach(t => {
+                                    const tMatch = repItems.find(it => 
+                                        window.isSameJamia(it.jamiaName, assignedName) && 
+                                        nMatch(it.teacherName) === nMatch(t.name)
+                                    );
+                                    if (tMatch && tMatch.teacherId && t.id !== tMatch.teacherId) {
+                                        console.log(`[Auto-Align] Realigned teacher ID for "${t.name}": ${t.id} -> ${tMatch.teacherId}`);
+                                        t.id = tMatch.teacherId;
+                                        structureNeedsUpdate = true;
+                                    }
+
+                                    (t.periods || []).forEach(p => {
+                                        const pMatch = repItems.find(it => 
+                                            window.isSameJamia(it.jamiaName, assignedName) && 
+                                            nMatch(it.teacherName) === nMatch(t.name) &&
+                                            nMatch(it.bookName || it.book) === nMatch(p.bookName) &&
+                                            (!it.className || !p.className || nMatch(it.className) === nMatch(p.className))
+                                        );
+                                        if (pMatch && pMatch.periodId && p.id !== pMatch.periodId) {
+                                            console.log(`[Auto-Align] Realigned period ID for "${t.name}" - "${p.bookName}": ${p.id} -> ${pMatch.periodId}`);
+                                            p.id = pMatch.periodId;
+                                            structureNeedsUpdate = true;
+                                        }
+                                    });
+                                });
+                            }
+                        } catch(e) {
+                            console.warn("[Auto-Align] Error realigning IDs from monthly_reports:", e);
+                        }
+
                         // 4. Auto-Fill Missing Ajeer Codes (loginCode) from teacher user profiles
                         const missingCodes = matchedInActive.teachers.some(t => !t.loginCode || String(t.loginCode).trim() === '');
                         if (missingCodes) {
@@ -3916,8 +3966,44 @@ if (bookSelect.value === 'other') {
 };
         
         // --- REPORTING TAB LOGIC ---
+        // Helper: Period matching by ID or by Jamia + Teacher + Book + Class
+        const normMatch = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
+
+        const matchPeriodEntry = (entry, teacher, period, jamiaName) => {
+            if (!entry) return false;
+            // 1. Direct ID match
+            if (entry.periodId && period && entry.periodId === period.id) {
+                if (!jamiaName || !entry.jamiaName || window.isSameJamia(entry.jamiaName, jamiaName)) {
+                    return true;
+                }
+            }
+            // 2. Strict Jamia match
+            if (jamiaName && entry.jamiaName && !window.isSameJamia(entry.jamiaName, jamiaName)) {
+                return false;
+            }
+
+            // 3. Teacher match (by ID or normalized Name)
+            const entryTName = normMatch(entry.teacherName);
+            const curTName = normMatch(teacher?.name);
+            const sameTeacher = (entry.teacherId && teacher?.id && entry.teacherId === teacher.id) ||
+                                (entryTName && curTName && (entryTName === curTName || entryTName.includes(curTName) || curTName.includes(entryTName)));
+            if (!sameTeacher) return false;
+
+            // 4. Book & Class match
+            const entryBook = normMatch(entry.bookName || entry.book);
+            const curBook = normMatch(period?.bookName);
+            const sameBook = entryBook && curBook && (entryBook === curBook || entryBook.includes(curBook) || curBook.includes(entryBook));
+            if (!sameBook) return false;
+
+            const entryClass = normMatch(entry.className || entry.class);
+            const curClass = normMatch(period?.className);
+            const sameClass = !entryClass || !curClass || entryClass === curClass || entryClass.includes(curClass) || curClass.includes(entryClass);
+
+            return sameClass;
+        };
+
         // NAYA HELPER: Sirf pichle mahino ka cumulative nikalne ke liye
-        const getPreviousCumulative = (periodId, semester, currentMonthNum, allYearReportsData) => {
+        const getPreviousCumulative = (periodId, semester, currentMonthNum, allYearReportsData, periodObj = null, teacherObj = null, jamiaName = null) => {
              let prevCumulative = 0;
              const activeMonths = getMonthsForSemester(semester);
              const currentIndex = activeMonths.indexOf(currentMonthNum);
@@ -3928,7 +4014,10 @@ if (bookSelect.value === 'other') {
              
              allYearReportsData.forEach(report => {
                  if (prevMonths.includes(report.monthNum)) {
-                     const periodEntry = report.karkardagiReport?.data?.find(entry => entry.periodId === periodId);
+                     const periodEntry = (report.karkardagiReport?.data || []).find(entry => 
+                         (entry.periodId && entry.periodId === periodId) ||
+                         (periodObj && teacherObj && matchPeriodEntry(entry, teacherObj, periodObj, jamiaName))
+                     );
                      if (periodEntry) {
                          prevCumulative += parseInt(periodEntry.pagesTaught || 0, 10);
                      }
@@ -3937,7 +4026,7 @@ if (bookSelect.value === 'other') {
              return prevCumulative;
         };
         // Helper to calculate Cumulative Taught (Up to the given month)
-        const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentYearNum, allYearReportsData) => {
+        const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentYearNum, allYearReportsData, periodObj = null, teacherObj = null, jamiaName = null) => {
              let cumulativeTaught = 0;
              const activeMonths = getMonthsForSemester(semester);
              const currentIndex = activeMonths.indexOf(currentMonthNum);
@@ -3947,24 +4036,27 @@ if (bookSelect.value === 'other') {
 
              allYearReportsData.forEach(report => {
                  if (monthsToInclude.includes(report.monthNum)) {
-                     const periodEntry = report.karkardagiReport?.data?.find(entry => entry.periodId === periodId);
+                     const periodEntry = (report.karkardagiReport?.data || []).find(entry => 
+                         (entry.periodId && entry.periodId === periodId) ||
+                         (periodObj && teacherObj && matchPeriodEntry(entry, teacherObj, periodObj, jamiaName))
+                     );
                      if (periodEntry) {
                          cumulativeTaught += parseInt(periodEntry.pagesTaught || 0, 10);
                      }
                  }
              });
              return cumulativeTaught;
-         };
+        };
          
-         // Helper to update cumulative data on input change
-         const updateCumulativeDataLocally = (periodId, semester, currentMonthNum, currentYearNum, taught, row) => {
-             const prevCumulative = getPreviousCumulative(periodId, semester, currentMonthNum, allYearReportsData);
+        // Helper to update cumulative data on input change
+        const updateCumulativeDataLocally = (periodId, semester, currentMonthNum, currentYearNum, taught, row, periodObj = null, teacherObj = null, jamiaName = null) => {
+             const prevCumulative = getPreviousCumulative(periodId, semester, currentMonthNum, allYearReportsData, periodObj, teacherObj, jamiaName);
              const newCumulative = prevCumulative + taught; // Sirf pichle mahinon ke total me naya input add karein
              
              row.querySelector('.cumulative-taught-cell').textContent = newCumulative;
              row.dataset.cumulativeTaught = newCumulative;
              return newCumulative;
-         };
+        };
 
         const renderReportingTab = () => {
              if (!activeYear || !allAcademicYearsData[activeYear]) return; 
@@ -4160,15 +4252,31 @@ if (daysThisMonth === 0) {
                         let submissionData = null;
                         if (teacherSubmissionsMap && teacherSubmissionsMap.has(submissionKey)) {
                             submissionData = teacherSubmissionsMap.get(submissionKey);
+                        } else if (teacherSubmissionsMap) {
+                            for (const [k, sVal] of teacherSubmissionsMap.entries()) {
+                                const parts = k.split('::');
+                                const sJamia = parts[0];
+                                const sTid = parts[1];
+                                const sPid = parts[2];
+                                if (window.isSameJamia(sJamia, jamiaName)) {
+                                    const sameT = (sTid === teacher.id) || (sVal.teacherName && normMatch(sVal.teacherName) === normMatch(teacher.name));
+                                    const sameB = (sPid === period.id) || (sVal.bookName && normMatch(sVal.bookName) === normMatch(period.bookName));
+                                    if (sameT && sameB) {
+                                        submissionData = sVal;
+                                        break;
+                                    }
+                                }
+                            }
                         }
 
-                        // monthly_reports me saved data (fallback ke liye)
-                        const savedEntry = monthlyReportData.find(
-                            entry =>
-                                entry.periodId === period.id &&
-                                entry.jamiaName === jamiaName &&
-                                entry.teacherId === teacher.id
-                        );
+                        // monthly_reports me saved data (Smart Match: ID first, then Teacher + Book + Class)
+                        const savedEntry = monthlyReportData.find(entry => matchPeriodEntry(entry, teacher, period, jamiaName));
+
+                        // Agar savedEntry mil gaya aur period.id alag tha, to IDs ko sync kar dein
+                        if (savedEntry && savedEntry.periodId && period.id !== savedEntry.periodId) {
+                            period.id = savedEntry.periodId;
+                            if (savedEntry.teacherId) teacher.id = savedEntry.teacherId;
+                        }
 
                         let pagesTaughtValue = 0;
                         let lastIbarat = '';
@@ -4212,7 +4320,10 @@ const initialCumulativeBeforeInput = getPreviousCumulative(
     period.id,
     period.semester,
     monthNum,
-    allYearReportsData
+    allYearReportsData,
+    period,
+    teacher,
+    jamiaName
 );
 
 // Achievement / kaifiyat
