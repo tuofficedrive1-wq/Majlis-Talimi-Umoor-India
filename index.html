@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head> 
     <meta charset="UTF-8">
@@ -2285,6 +2285,21 @@ if (document.getElementById('asatiza-details-tab-content')) {
          };
 
 // 🔸 Jaiza Form (jaiza_forms) se Majmui % + Date aur Type auto-fill karne wala helper
+// Smart Jamia Name Matcher Helper
+const isSameJamia = (j1, j2) => {
+    if (!j1 || !j2) return false;
+    const s1 = String(j1).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+    const s2 = String(j2).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+    if (s1 === s2) return true;
+    const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
+    const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
+    if (clean1 === clean2) return true;
+    if (clean1.includes('bypass') !== clean2.includes('bypass')) return false;
+    const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia|جامعۃ\s*المدینہ|جامعہ)[\s_-]*/gi, '').trim();
+    return strip(clean1) === strip(clean2);
+};
+
+// 🌟 Jaiza Form (jaiza_forms) se Majmui % + Date aur Type auto-fill karne wala helper
 async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
     try {
         const user = auth.currentUser;
@@ -2293,7 +2308,6 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
         // jaiza_forms collection se data uthayenge
         const qRef = query(
             collection(db, "jaiza_forms"),
-            where("jamiaId", "==", jamiaName),
             where("monthKey", "==", monthKey),
             where("createdBy", "==", user.uid)
         );
@@ -2302,7 +2316,19 @@ async function autoFillJaizaRowFromForm(rowEl, jamiaName, monthKey) {
         if (snap.empty) return;
 
         const docs = [];
-        snap.forEach(d => docs.push(d.data()));
+        const normTarget = String(jamiaName || '').trim().toLowerCase();
+        snap.forEach(d => {
+            const data = d.data();
+            const dName = (data.jamiaName || data.name || "").trim().toLowerCase();
+            const dId = (data.jamiaId || "").trim().toLowerCase();
+            const dUrdu = (data.jamiaUrduName || data.urduName || "").trim();
+            if (dName === normTarget || dId === normTarget || dUrdu === jamiaName.trim() || 
+                isSameJamia(dName, jamiaName) || isSameJamia(dId, jamiaName)) {
+                docs.push(data);
+            }
+        });
+
+        if (docs.length === 0) return;
 
         // 1️⃣ Sabse pehle Date nikalna aur set karna (taake ye kabhi fail na ho)
         let latestDate = null;

@@ -1,4 +1,4 @@
-// Filename: jaiza-summary.js
+﻿// Filename: jaiza-summary.js
 
 import {
     collection, query, where, getDocs, addDoc
@@ -24,6 +24,20 @@ const getAcademicYear = (dateString) => {
 };
 
 // Main Function
+// Smart Jamia Name Matcher Helper
+const isSameJamia = (j1, j2) => {
+    if (!j1 || !j2) return false;
+    const s1 = String(j1).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+    const s2 = String(j2).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+    if (s1 === s2) return true;
+    const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
+    const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
+    if (clean1 === clean2) return true;
+    if (clean1.includes('bypass') !== clean2.includes('bypass')) return false;
+    const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia|جامعۃ\s*المدینہ|جامعہ)[\s_-]*/gi, '').trim();
+    return strip(clean1) === strip(clean2);
+};
+
 export async function initJaizaSummary(db, user, containerId, userProfileData) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -595,8 +609,25 @@ async function fetchAndRenderReport(db, user, userProfileData) {
    try {
         // 🌟 NAYA: Master Jamiaat List Fetch Karein (Urdu Naam Ke Liye)
         const masterSnap = await getDocs(collection(db, 'jamiaat_master'));
-        const jamiaMasterDict = {};
-        masterSnap.forEach(d => { jamiaMasterDict[d.id] = d.data(); });
+        const masterList = [];
+        masterSnap.forEach(d => { masterList.push({ id: d.id, ...d.data() }); });
+
+        const findMasterJamia = (jId, jName) => {
+            const cleanId = String(jId || '').trim();
+            const cleanName = String(jName || '').trim();
+            return masterList.find(m => {
+                if (cleanId && (m.id === cleanId || m.id.toLowerCase() === cleanId.toLowerCase())) return true;
+                if (cleanName && (m.name || '').trim().toLowerCase() === cleanName.toLowerCase()) return true;
+                if (cleanId && (m.name || '').trim().toLowerCase() === cleanId.toLowerCase()) return true;
+                if (cleanName && (m.urduName || '').trim() === cleanName) return true;
+                if (cleanId && (m.urduName || '').trim() === cleanId) return true;
+                if (cleanName && isSameJamia(m.name, cleanName)) return true;
+                if (cleanId && isSameJamia(m.name, cleanId)) return true;
+                if (cleanName && isSameJamia(m.urduName, cleanName)) return true;
+                if (cleanId && isSameJamia(m.urduName, cleanId)) return true;
+                return false;
+            });
+        };
 
         const qRef = collection(db, 'jaiza_forms');
         const q = query(qRef, where("createdBy", "==", user.uid));
@@ -607,8 +638,17 @@ async function fetchAndRenderReport(db, user, userProfileData) {
         let filteredDocs = allDocs.filter(d => d.monthKey >= startMonth && d.monthKey <= endMonth);
 
         if (jamiaFilter) {
-            // NAYA: ID ki jagah naam se filter (Kyunki dropdown me English naam hai)
-            filteredDocs = filteredDocs.filter(d => d.jamiaName === jamiaFilter || d.jamiaId === jamiaFilter);
+            filteredDocs = filteredDocs.filter(d => {
+                if (d.jamiaName === jamiaFilter || d.jamiaId === jamiaFilter) return true;
+                const m = findMasterJamia(d.jamiaId, d.jamiaName);
+                if (m) {
+                    return m.name.toLowerCase() === jamiaFilter.toLowerCase() ||
+                           m.urduName === jamiaFilter ||
+                           m.id === jamiaFilter ||
+                           isSameJamia(m.name, jamiaFilter);
+                }
+                return isSameJamia(d.jamiaName, jamiaFilter) || isSameJamia(d.jamiaId, jamiaFilter);
+            });
         }
         if (selectedClasses.length > 0) {
             filteredDocs = filteredDocs.filter(d => selectedClasses.includes(d.className));
@@ -618,12 +658,13 @@ async function fetchAndRenderReport(db, user, userProfileData) {
 
         filteredDocs.forEach(doc => {
             if (doc.books && Array.isArray(doc.books)) {
-                // 🌟 NAYA: Asli Urdu Naam Nikalein
-                let displayJamiaName = doc.jamiaName || doc.jamiaId; 
-                let englishName = doc.jamiaName;
-                if (jamiaMasterDict[doc.jamiaId]) {
-                    displayJamiaName = jamiaMasterDict[doc.jamiaId].urduName || jamiaMasterDict[doc.jamiaId].name || doc.jamiaName;
-                    englishName = jamiaMasterDict[doc.jamiaId].name || doc.jamiaName;
+                // 🌟 NAYA: Asli Urdu Naam Nikalein (UI ke liye consistent Urdu naam)
+                const master = findMasterJamia(doc.jamiaId, doc.jamiaName);
+                let displayJamiaName = doc.jamiaUrduName || doc.jamiaName || doc.jamiaId; 
+                let englishName = doc.jamiaName || doc.jamiaId;
+                if (master) {
+                    displayJamiaName = master.urduName || doc.jamiaUrduName || master.name || doc.jamiaName;
+                    englishName = master.name || doc.jamiaName;
                 }
 
                 doc.books.forEach(book => {
@@ -734,7 +775,12 @@ async function fetchAndRenderReport(db, user, userProfileData) {
                     Object.values(userProfileData.academicYears).forEach(yearData => {
                         if (yearData.karkardagiStructure) {
                             // English naam se match karein taake Ajeer code mil jaye
-                            const jData = yearData.karkardagiStructure.find(j => j.jamiaName === item.jamiaEnglish || j.jamiaName === item.jamia);
+                            const jData = yearData.karkardagiStructure.find(j => 
+                                j.jamiaName === item.jamiaEnglish || 
+                                j.jamiaName === item.jamia ||
+                                isSameJamia(j.jamiaName, item.jamiaEnglish) ||
+                                isSameJamia(j.jamiaName, item.jamia)
+                            );
                             if (jData && jData.teachers) {
                                 const tData = jData.teachers.find(t => t.name === item.teacher);
                                 if (tData && tData.loginCode) expectedCode = String(tData.loginCode);

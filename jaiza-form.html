@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ur" dir="rtl">
 <head>
   <meta charset="UTF-8" />
@@ -492,6 +492,39 @@ const getMonthInfoFromKey = (key) => {
   return { yearNum, monthNum, academicYear };
 };
 
+// Smart Jamia Name Matcher Helper
+const isSameJamia = (j1, j2) => {
+  if (!j1 || !j2) return false;
+  const s1 = String(j1).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+  const s2 = String(j2).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase();
+  if (s1 === s2) return true;
+  const clean1 = s1.replace(/[\s_\-]+/g, ' ').trim();
+  const clean2 = s2.replace(/[\s_\-]+/g, ' ').trim();
+  if (clean1 === clean2) return true;
+  if (clean1.includes('bypass') !== clean2.includes('bypass')) return false;
+  const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia|جامعۃ\s*المدینہ|جامعہ)[\s_-]*/gi, '').trim();
+  return strip(clean1) === strip(clean2);
+};
+
+let masterJamiasList = [];
+
+const findMasterJamia = (jId, jName) => {
+  const cleanId = String(jId || '').trim();
+  const cleanName = String(jName || '').trim();
+  return masterJamiasList.find(m => {
+    if (cleanId && (m.id === cleanId || m.id.toLowerCase() === cleanId.toLowerCase())) return true;
+    if (cleanName && (m.name || '').trim().toLowerCase() === cleanName.toLowerCase()) return true;
+    if (cleanId && (m.name || '').trim().toLowerCase() === cleanId.toLowerCase()) return true;
+    if (cleanName && (m.urduName || '').trim() === cleanName) return true;
+    if (cleanId && (m.urduName || '').trim() === cleanId) return true;
+    if (cleanName && isSameJamia(m.name, cleanName)) return true;
+    if (cleanId && isSameJamia(m.name, cleanId)) return true;
+    if (cleanName && isSameJamia(m.urduName, cleanName)) return true;
+    if (cleanId && isSameJamia(m.urduName, cleanId)) return true;
+    return false;
+  });
+};
+
 /*************** Load teaching structure ***************/
 const loadTeachingStructure = async (user) => {
   teachingMap = {};
@@ -534,19 +567,88 @@ const loadTeachingStructure = async (user) => {
       return;
     }
 
-    const userData     = userDocSnap.data() || {};
-    const years        = userData.academicYears || {};
-    const yearData     = years[academicYear];
+    const userData = userDocSnap.data() || {};
+    const userRole = (userData.role || 'standard').toLowerCase();
+    const isInspector = userRole === 'inspector' || userRole === 'academic inspector' || userRole === 'education_office';
+
+    let targetUserData = userData;
+
+    // 🛡️ CRITICAL FIX: Agar user inspector role ka hai to inspector ka structure show NAHI hoga!
+    // Sirf genuine standard user (Zimmedar) ka structure show hoga:
+    if (isInspector) {
+      console.warn("Inspector role detected in jaiza-form. Searching genuine standard user for this Jamia...");
+      const decodedJamia = decodeURIComponent(jamiaId || "").trim();
+      let foundStandardUser = null;
+      try {
+        const usersSnap = await getDocs(collection(db, "users"));
+        for (const uDoc of usersSnap.docs) {
+          if (uDoc.id === user.uid) continue;
+          const uData = uDoc.data() || {};
+          const uRole = (uData.role || 'standard').toLowerCase();
+          if (uRole === 'inspector' || uRole.includes('inspector') || uRole === 'education_office') continue;
+
+          // Check if this standard user has the Jamia assigned or in their structure
+          const uJamias = (uData.jamiaatList || []).map(j => typeof j === 'object' ? (j.name || j.jamiaName) : j);
+          const hasJamia = uJamias.some(jn => 
+            isSameJamia(jn, decodedJamia) || 
+            (window.REAL_JAMIA_ID && (jn === window.REAL_JAMIA_ID || jn?.id === window.REAL_JAMIA_ID)) ||
+            (window.MASTER_NAME_ENG && isSameJamia(jn, window.MASTER_NAME_ENG)) ||
+            (window.MASTER_NAME_URDU && isSameJamia(jn, window.MASTER_NAME_URDU))
+          );
+          
+          const uStruct = uData.academicYears?.[academicYear]?.karkardagiStructure || [];
+          const hasInStruct = uStruct.some(j => 
+            isSameJamia(j.jamiaName, decodedJamia) || 
+            (window.REAL_JAMIA_ID && (j.id === window.REAL_JAMIA_ID || j.jamiaId === window.REAL_JAMIA_ID)) || 
+            (window.MASTER_NAME_ENG && isSameJamia(j.jamiaName, window.MASTER_NAME_ENG)) ||
+            (window.MASTER_NAME_URDU && isSameJamia(j.jamiaName, window.MASTER_NAME_URDU))
+          );
+
+          if (hasJamia || hasInStruct) {
+            foundStandardUser = uData;
+            console.log('[Jaiza] Loaded structure from genuine standard user: ' + (foundStandardUser.name || foundStandardUser.email));
+            break;
+          }
+        }
+      } catch(e) {
+        console.warn("Error finding standard user:", e);
+      }
+
+      if (foundStandardUser) {
+        targetUserData = foundStandardUser;
+        if (!document.getElementById('inspector-jaiza-notice')) {
+          const notice = document.createElement('div');
+          notice.id = 'inspector-jaiza-notice';
+          notice.className = 'w-full bg-blue-700 text-white text-center py-2 px-4 font-bold text-sm urdu shadow mb-4';
+          notice.innerHTML = '<i class="fas fa-info-circle ml-2"></i> آپ انسپکٹر اکاؤنٹ سے دیکھ رہے ہیں: اس جائزے میں ذمہ دار (اسٹینڈرڈ یوزر: ' + (foundStandardUser.name || 'Zimmedar') + ') کا منظور شدہ اساتذہ سیٹ اپ دکھایا جا رہا ہے۔';
+          document.body.prepend(notice);
+        }
+      } else {
+        showError("اس جامعہ کے لیے کسی ذمہ دار (اسٹینڈرڈ یوزر) کا تعلیمی سیٹ اپ نہیں ملا۔");
+        return;
+      }
+    }
+
+    const years = targetUserData.academicYears || {};
+    const yearData = years[academicYear];
 
     if (!yearData || !Array.isArray(yearData.karkardagiStructure)) {
       showError("اس تعلیمی سال کے لیے کارکردگی کا سیٹ اپ نہیں ملا، پہلے Karkardagi Setup مکمل کریں۔");
       return;
     }
 
-    const jamiaName = decodeURIComponent(jamiaId || "");
+    const jamiaName = decodeURIComponent(jamiaId || "").trim();
 
-    // Sirf current jamia ka structure use karna
-    const jamiaStruct = yearData.karkardagiStructure.find(j => j.jamiaName === jamiaName);
+    // Sirf current jamia ka structure use karna (Smart multi-lingual match)
+    const jamiaStruct = yearData.karkardagiStructure.find(j => {
+      const jn = (j.jamiaName || j.name || '').trim();
+      if (!jn && !j.id && !j.jamiaId) return false;
+      if (jn === jamiaName) return true;
+      if (window.REAL_JAMIA_ID && (j.id === window.REAL_JAMIA_ID || j.jamiaId === window.REAL_JAMIA_ID)) return true;
+      if (window.MASTER_NAME_ENG && (jn.toLowerCase() === window.MASTER_NAME_ENG.toLowerCase() || isSameJamia(jn, window.MASTER_NAME_ENG))) return true;
+      if (window.MASTER_NAME_URDU && (jn === window.MASTER_NAME_URDU || isSameJamia(jn, window.MASTER_NAME_URDU))) return true;
+      return isSameJamia(jn, jamiaName);
+    });
 
     if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
       showError("اس جامعہ کے لیے کارکردگی سیٹ اپ خالی ہے، اس لیے کلاس/استاذ/کتاب نہیں مل رہیں۔");
@@ -1085,7 +1187,13 @@ const loadExistingJaizaForms = async (user) => {
     const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
     const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
 
-    if (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) {
+    const isMatch = (dbJamiaId === decodedJamia || dbJamiaName === decodedJamia) ||
+      (window.REAL_JAMIA_ID && (dbJamiaId === window.REAL_JAMIA_ID.toLowerCase())) ||
+      (window.MASTER_NAME_ENG && (dbJamiaName === window.MASTER_NAME_ENG.toLowerCase() || isSameJamia(dbJamiaName, window.MASTER_NAME_ENG))) ||
+      (window.MASTER_NAME_URDU && dbJamiaName === window.MASTER_NAME_URDU.toLowerCase()) ||
+      isSameJamia(dbJamiaName, decodedJamia) || isSameJamia(dbJamiaId, decodedJamia);
+
+    if (isMatch) {
       let clsName = data.className || "Unknown";
       uniqueDocsMap[clsName] = { id: d.id, ...data };
       
@@ -1265,25 +1373,29 @@ onAuthStateChanged(auth, async (user) => {
 
  showLoader(true);
   try {
-    // 🌟 NAYA LOGIC: Master List se Urdu Naam nikal kar header mein dikhayen
+    // 🌟 NAYA LOGIC: Master List se Urdu Naam aur Master ID nikal kar header mein dikhayen
     try {
-      const decodedJamia = decodeURIComponent(jamiaId).trim();
-      let finalDisplayName = decodedJamia;
-      
       const masterSnap = await getDocs(collection(db, "jamiaat_master"));
-      masterSnap.forEach(d => {
-          const data = d.data();
-          if (d.id === decodedJamia || (data.name || "").trim().toLowerCase() === decodedJamia.toLowerCase()) {
-              if (data.urduName) {
-                  finalDisplayName = `${data.urduName} (${data.name})`; // Urdu aur English dono dikhayega
-              } else if (data.name) {
-                  finalDisplayName = data.name;
-              }
-          }
-      });
-      const headerJamiaEl = document.getElementById("header-jamia-name");
-      if (headerJamiaEl) headerJamiaEl.innerHTML = `جامعہ: ${finalDisplayName}`;
-    } catch(e) { console.log("Urdu name fetch error:", e); }
+      masterJamiasList = masterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) { console.warn("Master jamiaat load error:", e); }
+
+    const decodedJamia = decodeURIComponent(jamiaId).trim();
+    const matchedMaster = findMasterJamia(decodedJamia, decodedJamia);
+    if (matchedMaster) {
+      window.REAL_JAMIA_ID = matchedMaster.id;
+      window.MASTER_NAME_ENG = (matchedMaster.name || decodedJamia).toUpperCase();
+      window.MASTER_NAME_URDU = matchedMaster.urduName || "";
+    } else {
+      window.REAL_JAMIA_ID = window.REAL_JAMIA_ID || jamiaId;
+      window.MASTER_NAME_ENG = decodedJamia;
+      window.MASTER_NAME_URDU = "";
+    }
+
+    let finalDisplayName = window.MASTER_NAME_URDU 
+      ? `${window.MASTER_NAME_URDU} (${window.MASTER_NAME_ENG})`
+      : (window.MASTER_NAME_ENG || decodedJamia);
+    const headerJamiaEl = document.getElementById("header-jamia-name");
+    if (headerJamiaEl) headerJamiaEl.innerHTML = `جامعہ: ${finalDisplayName}`;
 
     // Ab ye form "currentUser" (yaani trick kiye hue user) ka data hi layega aur save karega
     await loadTeachingStructure(currentUser);
@@ -1334,16 +1446,24 @@ const updateDashboardReport = async (finalPercent, finalGrade) => {
     }
 
     const jamiaNameDecoded = decodeURIComponent(jamiaId).trim();
-    const norm = (s) => String(s || '').trim().toLowerCase();
+    const finalJamiaName = window.MASTER_NAME_ENG || jamiaNameDecoded;
 
-    // Pehle se mojood entry hata kar nayi update karein
-    jaizaData = jaizaData.filter(j => norm(j.name) !== norm(jamiaNameDecoded));
+    // Pehle se mojood entry hata kar nayi update karein (Smart multi-lingual filter)
+    jaizaData = jaizaData.filter(j => {
+      const jName = (j.name || '').trim();
+      const jId = (j.jamiaId || '').trim();
+      if (window.REAL_JAMIA_ID && jId === window.REAL_JAMIA_ID) return false;
+      if (isSameJamia(jName, jamiaNameDecoded)) return false;
+      if (isSameJamia(jName, finalJamiaName)) return false;
+      return true;
+    });
 
     const cleanPercent = String(finalPercent || '').replace('%', '').trim();
 
     const newEntry = {
       jamiaId: window.REAL_JAMIA_ID || jamiaId,
-      name: jamiaNameDecoded,
+      name: finalJamiaName,
+      urduName: window.MASTER_NAME_URDU || "",
       date: new Date().toISOString().split('T')[0], // Aaj ki date
       type: "Jaiza",
       percentage: cleanPercent,
@@ -1471,8 +1591,9 @@ formEl.addEventListener("submit", async (e) => {
     if (allEmptyClass) return;
 
     payloads.push({
-      jamiaId: finalJamiaId, // 🌟 Asli ID store ho rahi hai
-      jamiaName: decodedJamia, // 🌟 Naam alag se store ho raha hai
+      jamiaId: finalJamiaId, // 🌟 Asli Master ID store ho rahi hai
+      jamiaName: window.MASTER_NAME_ENG || decodedJamia, // 🌟 Standard English Naam
+      jamiaUrduName: window.MASTER_NAME_URDU || "", // 🌟 Asli Urdu Naam
       monthKey,
       className,
       totalStudents,
@@ -1506,12 +1627,21 @@ formEl.addEventListener("submit", async (e) => {
     const delPromises = [];
     const searchJamia = decodedJamia.trim().toLowerCase();
     
+    const finalJamiaName = (window.MASTER_NAME_ENG || decodedJamia).trim().toLowerCase();
+    const finalUrduName = (window.MASTER_NAME_URDU || "").trim().toLowerCase();
+
     oldSnap.forEach(d => {
         const data = d.data();
         const dbJamiaId = (data.jamiaId || "").trim().toLowerCase();
         const dbJamiaName = (data.jamiaName || data.name || "").trim().toLowerCase();
         
-        if (dbJamiaId === searchJamia || dbJamiaName === searchJamia || dbJamiaId === finalJamiaId.toLowerCase()) {
+        const isMatch = (dbJamiaId === searchJamia || dbJamiaName === searchJamia) ||
+          (finalJamiaId && dbJamiaId === finalJamiaId.toLowerCase()) ||
+          (finalJamiaName && (dbJamiaName === finalJamiaName || isSameJamia(dbJamiaName, finalJamiaName))) ||
+          (finalUrduName && (dbJamiaName === finalUrduName || isSameJamia(dbJamiaName, finalUrduName))) ||
+          isSameJamia(dbJamiaName, decodedJamia) || isSameJamia(dbJamiaId, decodedJamia);
+
+        if (isMatch) {
             delPromises.push(deleteDoc(d.ref));
         }
     });
