@@ -133,6 +133,67 @@ const detectRoles = (columns) => {
 
 const ROLE_LABELS = { roll: 'Roll No.', admission: 'Dakhila No.', name: 'Naam (Urdu)', nameEn: 'Name (English)', father: 'Walid (Urdu)', fatherEn: 'Father (English)', jamiaUr: 'Jamia ka naam (Urdu)', dob: 'Tareekh Paidaish', region: 'Region', kefiyat: 'Kefiyat', grade: 'Grade', total: 'Hasil Marks', maxTotal: 'Kul Marks', percent: 'Percentage' };
 
+// --- SMART TYPOGRAPHY & MULTI-LANGUAGE UTILS ---
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function isUrduText(str) {
+    if (!str || typeof str !== 'string') return false;
+    const urduChars = (str.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
+    const latinChars = (str.match(/[a-zA-Z]/g) || []).length;
+    if (urduChars === 0) return false;
+    if (latinChars === 0) return true;
+    return urduChars >= latinChars;
+}
+
+function formatSmartContent(rawText, isPdf = false) {
+    if (!rawText) return "";
+    const lines = String(rawText).split(/\r?\n/);
+    
+    return lines.map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            return `<div style="height: ${isPdf ? '4px' : '6px'};"></div>`;
+        }
+        
+        const isUrdu = isUrduText(trimmed);
+        
+        if (isUrdu) {
+            const fontSize = isPdf ? '11.5px' : '0.98rem';
+            const lineHeight = isPdf ? '1.55' : '1.8';
+            return `<div style="direction: rtl; text-align: right; font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif; font-size: ${fontSize}; line-height: ${lineHeight}; color: inherit;">${escapeHtml(line)}</div>`;
+        } else {
+            const fontSize = isPdf ? '10px' : '0.85rem';
+            const lineHeight = isPdf ? '1.4' : '1.5';
+            return `<div style="direction: ltr; text-align: left; font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: ${fontSize}; line-height: ${lineHeight}; font-weight: 500; color: inherit;">${escapeHtml(line)}</div>`;
+        }
+    }).join('');
+}
+
+function getSmartTextHtml(text, options = {}) {
+    if (!text) return "";
+    const trimmed = String(text).trim();
+    const isUrdu = isUrduText(trimmed);
+
+    const isPdf = options.isPdf || false;
+    const size = options.size || (isPdf ? (isUrdu ? '12px' : '11px') : (isUrdu ? '0.95rem' : '0.85rem'));
+    const color = options.color || 'inherit';
+    const bold = options.bold !== false;
+
+    if (isUrdu) {
+        return `<span style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif; font-size: ${size}; color: ${color}; font-weight: ${bold ? 'bold' : 'normal'}; direction: rtl; display: inline-block; line-height: 1.35;">${escapeHtml(trimmed)}</span>`;
+    } else {
+        return `<span style="font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: ${size}; color: ${color}; font-weight: ${bold ? '700' : '500'}; direction: ltr; display: inline-block; line-height: 1.35;">${escapeHtml(trimmed)}</span>`;
+    }
+}
+
 export async function initAdminResultAnalysis(db, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -1199,8 +1260,8 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     const wazahatCell = item.hasWazahat ? `
                         <div class="flex flex-col gap-1.5 text-right">
-                            <div class="bg-emerald-50/90 border border-emerald-300/80 text-emerald-950 p-2.5 rounded-lg shadow-2xs text-xs leading-relaxed urdu-font" style="direction:rtl; font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
-                                <div class="whitespace-pre-wrap">${item.wazahatText}</div>
+                            <div class="p-2.5 rounded-lg text-xs leading-relaxed shadow-2xs border border-emerald-200/80 bg-emerald-50/50 text-emerald-950">
+                                ${formatSmartContent(item.wazahatText, false)}
                                 ${formattedDate}
                             </div>
                             <button onclick="adminDeleteWazahat('${safeDocId}', '${item.keyToDelete}', ${item.isLegacy})" class="self-end text-[11px] bg-white hover:bg-rose-600 text-rose-600 hover:text-white px-2.5 py-1 rounded-md border border-rose-200 transition-colors shadow-2xs font-sans font-bold flex items-center gap-1 mt-0.5">
@@ -1216,8 +1277,8 @@ export async function initAdminResultAnalysis(db, containerId) {
 
                     // Only show comment text; no button to add comment
                     const zimmedarCell = item.hasComment ? `
-                        <div class="bg-indigo-50/90 border border-indigo-200 text-indigo-950 p-2.5 rounded-lg text-xs urdu-font leading-relaxed shadow-2xs text-right whitespace-pre-wrap" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; font-size: 1.05rem;">
-                            ${item.zimmedarComment}
+                        <div class="p-2.5 rounded-lg text-xs leading-relaxed shadow-2xs border border-indigo-200/80 bg-indigo-50/50 text-indigo-950 text-right">
+                            ${formatSmartContent(item.zimmedarComment, false)}
                         </div>` : `
                         <div class="text-center py-2">
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">
@@ -1232,18 +1293,24 @@ export async function initAdminResultAnalysis(db, containerId) {
                                 <div class="font-bold text-slate-800">${item.region}</div>
                                 <div class="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 mt-0.5 inline-block font-semibold">${item.state}</div>
                             </td>
-                            <td class="p-3 border border-slate-200 urdu-font font-bold text-indigo-950 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.userName}</td>
-                            <td class="p-3 border border-slate-200 urdu-font font-bold text-slate-900 text-right text-base leading-snug" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.jamia}</td>
-                            <td class="p-3 border border-slate-200 urdu-font font-bold text-blue-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.teacher}</td>
+                            <td class="p-3 border border-slate-200 text-indigo-950 text-base">
+                                ${getSmartTextHtml(item.userName, { color: '#1e1b4b', size: '14px' })}
+                            </td>
+                            <td class="p-3 border border-slate-200 text-right text-slate-900 text-base leading-snug">
+                                ${getSmartTextHtml(item.jamia, { align: 'right', size: '14px' })}
+                            </td>
+                            <td class="p-3 border border-slate-200 text-center">
+                                ${getSmartTextHtml(item.teacher, { color: '#1e3a8a', size: '14px' })}
+                            </td>
                             <td class="p-2.5 border border-slate-200 text-center">
-                                <div class="font-bold urdu-font text-slate-900 text-base" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.subject}</div>
-                                <div class="text-[12px] font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded inline-block mt-0.5 border border-rose-100 urdu-font" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif;">${item.darjah}</div>
+                                <div>${getSmartTextHtml(item.subject, { size: '14px' })}</div>
+                                <div class="mt-0.5">${getSmartTextHtml(item.darjah, { color: '#be123c', size: '12px' })}</div>
                             </td>
                             <td class="p-3 border border-slate-200 text-center font-black font-sans text-sm text-rose-700 bg-rose-50/30">${item.percVal.toFixed(1)}%</td>
                             <td class="p-3 border border-slate-200 text-center">
-                                <span class="px-3 py-1 rounded-full text-xs font-bold urdu-font inline-block shadow-2xs" style="font-family: 'Jameel Noori Nastaleeq', 'Poppins', serif; background-color: ${item.kaifiyatColor}18; color: ${item.kaifiyatColor}; border: 1px solid ${item.kaifiyatColor}40;">
+                                <div class="font-bold text-xs" style="font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif; color: ${item.kaifiyatColor}; line-height: 1.35;">
                                     ${item.kaifiyat}
-                                </span>
+                                </div>
                             </td>
                             <td class="p-3 border border-slate-200 min-w-[260px] text-right">${wazahatCell}</td>
                             <td class="p-3 border border-slate-200 min-w-[200px] text-right">${zimmedarCell}</td>
