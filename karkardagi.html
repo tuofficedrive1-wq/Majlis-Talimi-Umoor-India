@@ -1927,7 +1927,7 @@ if (editTeacherForm) {
             
             const assignedNames = assignedJamiaat.map(j => j.name);
             const uRole = (userProfileData.role || '').toLowerCase();
-            const isStandardRole = uRole === 'standard' || !uRole.includes('inspector');
+            const isStandardRole = uRole === 'standard' || (!uRole.includes('inspector') && uRole !== 'shoba_qirat' && uRole !== 'education_office');
 
             // Helper to check if a teacher structure is dummy/inspector pollution
             const isInspectorPolluted = (teachers) => {
@@ -1945,12 +1945,44 @@ if (editTeacherForm) {
                 });
             };
 
-            // Helper to check bilingual name equivalence between English & Urdu
+            // Helper to check if a structure is purely Shoba Qirat (only 1-2 teachers teaching only Tajweed)
+            const isShobaQiratStructure = (teachers) => {
+                if (!Array.isArray(teachers) || teachers.length === 0) return false;
+                if (teachers.length > 2) return false;
+                const allBooks = teachers.flatMap(t => (t.periods || []).map(p => (p.bookName || '').trim().toLowerCase()));
+                if (allBooks.length === 0) return false;
+                return allBooks.every(b => b.includes('\u062a\u062c\u0648\u06cc\u062f') || b.includes('tajweed') || b.includes('\u0642\u0631\u0627\u062a') || b.includes('qirat'));
+            };
+
+            // Helper to clean core teacher name by removing titles, honorifics, and nisbats
+            const getCoreTeacherName = (name) => {
+                if (!name) return "";
+                let s = String(name).trim().toLowerCase();
+                // Normalize Yeh, Alef, Heh
+                s = s.replace(/[\u064A\u0649\u06CC\u0670]/g, '\u06CC'); // Yeh
+                s = s.replace(/[\u0622\u0623\u0625\u0671]/g, '\u0627'); // Alef
+                s = s.replace(/[\u0629]/g, '\u06c1'); // Teh marbuta
+                // Remove titles: Ù…ÙØªÛŒ | Ù…ÙˆÙ„Ø§Ù†Ø§ | Ø§Ø³ØªØ§Ø° | Ø§Ø³ØªØ§Ø¯ | Ù‚Ø§Ø±ÛŒ | Ø­Ø§ÙØ¸ | Ø¬Ù†Ø§Ø¨ | ØµØ§Ø­Ø¨ | ØµØ§Ø¨ | Ù…ÛŒØ§Úº | Ø³ÛŒØ¯
+                s = s.replace(/(^|\s+)(\u0645\u0641\u062a\u06cc|\u0645\u0648\u0644\u0627\u0646\u0627|\u0627\u0633\u062a\u0627\u0630|\u0627\u0633\u062a\u0627\u062f|\u0642\u0627\u0631\u06cc|\u062d\u0627\u0641\u0638|\u062c\u0646\u0627\u0628|\u0635\u0627\u062d\u0628|\u0635\u0627\u0628|\u0645\u06cc\u0627\u06ba|\u0633\u06cc\u062f|\bmr\.?|\bsir|\bmolana|\bmufti|\bqari|\bhafiz|\bdr\.?)(\s+|$)/gi, ' ');
+                // Remove nisbats: Ù…Ø¯Ù†ÛŒ | Ù…ØµØ¨Ø§Ø­ÛŒ | Ù†Ø¸Ø§Ù…ÛŒ | Ù‚Ø§Ø¯Ø±ÛŒ | Ø±Ø¶ÙˆÛŒ | Ø¹Ø·Ø§Ø±ÛŒ | Ø¨Ø±Ú©Ø§ØªÛŒ
+                s = s.replace(/(^|\s+)(\u0645\u062f\u0646\u06cc|\u0645\u0635\u0628\u0627\u062d\u06cc|\u0646\u0638\u0627\u0645\u06cc|\u0642\u0627\u062f\u0631\u06cc|\u0631\u0636\u0648\u06cc|\u0639\u0637\u0627\u0631\u06cc|\u0628\u0631\u06a9\u0627\u062a\u06cc)(\s+|$)/gi, ' ');
+                return s.trim().replace(/[\s\-_]+/g, '');
+            };
+
+            // Helper to check bilingual name equivalence between English & Urdu AND title-agnostic equivalence
             const isSameTeacherName = (n1, n2) => {
                 if (!n1 || !n2) return false;
                 const a = n1.trim().toLowerCase().replace(/[\s\-_]+/g, '');
                 const b = n2.trim().toLowerCase().replace(/[\s\-_]+/g, '');
                 if (a === b) return true;
+                
+                // Title-agnostic core match (e.g. "Ù…ÙØªÛŒ ÙØ§Ø±ÙˆÙ‚ ØµØ§Ø­Ø¨" == "Ø§Ø³ØªØ§Ø° ÙØ§Ø±ÙˆÙ‚ Ù…ØµØ¨Ø§Ø­ÛŒ ØµØ§Ø­Ø¨")
+                const c1 = getCoreTeacherName(n1);
+                const c2 = getCoreTeacherName(n2);
+                if (c1 && c2 && c1.length >= 3 && c2.length >= 3 && c1 === c2) {
+                    return true;
+                }
+
                 const pairs = [
                     ['akbar', '\u0627\u06a9\u0628\u0631'],
                     ['junaid', '\u062c\u0646\u06cc\u062f'],
@@ -1982,10 +2014,13 @@ if (editTeacherForm) {
             // Helper to check if a teacher list is corrupted or incomplete
             const isCorruptedOrIncomplete = (teachers) => {
                 if (!Array.isArray(teachers) || teachers.length === 0) return true;
-                if (isStandardRole && isInspectorPolluted(teachers)) return true;
+                if (isStandardRole && (isInspectorPolluted(teachers) || isShobaQiratStructure(teachers))) return true;
                 const names = teachers.map(t => (t.name || '').trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean);
                 const hasDuplicates = new Set(names).size < names.length;
                 if (hasDuplicates) return true;
+                const coreNames = teachers.map(t => getCoreTeacherName(t.name)).filter(Boolean);
+                const hasCoreDuplicates = new Set(coreNames).size < coreNames.length;
+                if (hasCoreDuplicates) return true;
                 const hasAnyCode = teachers.some(t => t.loginCode && String(t.loginCode).trim() !== '');
                 const hasSem2 = teachers.some(t => (t.periods || []).some(p => String(p.semester) === '2'));
                 if (!hasAnyCode || !hasSem2) return true;
@@ -2129,9 +2164,9 @@ if (editTeacherForm) {
                         return window.isSameJamia(j.jamiaName, assignedName);
                     });
 
-                    // Standard user ke data se inspector dummy teachers foran saaf karein
-                    if (isStandardRole && matchedInActive && isInspectorPolluted(matchedInActive.teachers)) {
-                        console.warn(`[Auto-Align] Purging inspector dummy teachers for "${assignedName}". Triggering recovery.`);
+                    // Standard user ke data se inspector dummy teachers aur Shoba Qirat structure foran saaf karein
+                    if (isStandardRole && matchedInActive && (isInspectorPolluted(matchedInActive.teachers) || isShobaQiratStructure(matchedInActive.teachers))) {
+                        console.warn(`[Auto-Align] Purging invalid/shoba-qirat/inspector teachers for "${assignedName}". Triggering recovery.`);
                         matchedInActive.teachers = [];
                         structureNeedsUpdate = true;
                     }
@@ -2293,16 +2328,16 @@ if (editTeacherForm) {
                             }
                         }
 
-                        // 4. RECOVERY SOURCE D: Search other users in Firestore (Sirf standard users, NEVER inspector!)
+                        // 4. RECOVERY SOURCE D: Search other users in Firestore (SIRF standard users / Zimmedar, NEVER Shoba Qirat ya Inspector!)
                         if (!foundSource || isCorruptedOrIncomplete(foundSource.teachers)) {
                             try {
                                 const allUsersSnap = await getDocs(collection(db, "users"));
                                 for (const uDoc of allUsersSnap.docs) {
                                     if (uDoc.id === currentUser.uid) continue;
                                     const uData = uDoc.data() || {};
-                                    // Inspector ya non-standard roles se structure kabhi copy na karein
                                     const uRole = (uData.role || '').toLowerCase();
-                                    if (uRole === 'inspector' || uRole.includes('inspector') || uRole === 'education_office') {
+                                    // ðŸ›¡ï¸ CRITICAL: Sirf STANDARD role (Zimmedar) se structure lein! Shoba Qirat, Inspector, Office sab reject!
+                                    if (uRole !== 'standard') {
                                         continue;
                                     }
                                     if (uData.academicYears) {
@@ -2312,7 +2347,7 @@ if (editTeacherForm) {
                                             if (Array.isArray(otherStruct)) {
                                                 const match = otherStruct.find(j => (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName));
                                                 if (match && Array.isArray(match.teachers) && match.teachers.length > 0) {
-                                                    if (isInspectorPolluted(match.teachers)) continue; // SKIP POLLUTED!
+                                                    if (isInspectorPolluted(match.teachers) || isShobaQiratStructure(match.teachers)) continue; // SKIP POLLUTED!
                                                     const hasCodes = match.teachers.some(t => t.loginCode && String(t.loginCode).trim() !== '');
                                                     const hasSem2 = match.teachers.some(t => (t.periods || []).some(p => String(p.semester) === '2'));
                                                     const tNames = match.teachers.map(t => (t.name || '').trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean);
@@ -2427,11 +2462,15 @@ if (editTeacherForm) {
                                 });
                             } else {
                                 const existing = uniqueMap.get(existingKey);
-                                // Prefer Urdu name over English
+                                // Prefer Urdu name over English, and prefer richer title (e.g. Mufti / Molana over Ustad)
                                 const isUrdu = /[\u0600-\u06FF]/.test(rawName);
                                 const existingIsUrdu = /[\u0600-\u06FF]/.test(existing.name);
                                 if (isUrdu && !existingIsUrdu) {
                                     existing.name = rawName;
+                                } else if (isUrdu && existingIsUrdu) {
+                                    if ((rawName.includes('Ù…ÙØªÛŒ') || rawName.includes('Ù…ÙˆÙ„Ø§Ù†Ø§')) && !existing.name.includes('Ù…ÙØªÛŒ') && !existing.name.includes('Ù…ÙˆÙ„Ø§Ù†Ø§')) {
+                                        existing.name = rawName;
+                                    }
                                 }
                                 if (!existing.loginCode && (t.loginCode || t.ajeerCode)) {
                                     existing.loginCode = (t.loginCode || t.ajeerCode).trim();
