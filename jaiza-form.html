@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ur" dir="rtl">
 <head>
   <meta charset="UTF-8" />
@@ -438,9 +438,6 @@ if (!jamiaId || !monthKey) {
 }
 
 let currentUser = null;
-// 🔐 Draft key ab user-specific hai (pehle sab users ek hi browser draft share karte the)
-const getDraftKey = () => `jaiza_draft_${currentUser?.uid || 'nouser'}_${jamiaId}_${monthKey}`;
-const getLegacyDraftKey = () => `jaiza_draft_${jamiaId}_${monthKey}`;
 let classCount  = 0;
 let isFormDirty = false; // Ye track karega ki user ne kuch likha hai ya nahi
 
@@ -632,7 +629,6 @@ const loadTeachingStructure = async (user) => {
       }
     }
 
-    console.log('[Jaiza] Structure source -> loggedIn uid:', user.uid, '| role:', userRole, '| using inspector-fallback:', isInspector, '| source name:', targetUserData.name || targetUserData.email);
     const years = targetUserData.academicYears || {};
     const yearData = years[academicYear];
 
@@ -643,8 +639,23 @@ const loadTeachingStructure = async (user) => {
 
     const jamiaName = decodeURIComponent(jamiaId || "").trim();
 
+    const isInspectorPolluted = (teachers) => {
+      if (!Array.isArray(teachers) || teachers.length === 0) return false;
+      return teachers.some(t => {
+        const name = (t.name || '').trim().toLowerCase();
+        const code = String(t.loginCode || t.ajeerCode || '').trim();
+        if (code === '72525' || code === '75163') return true;
+        if (name.includes('chhaila') || name.startsWith('mr.') || /\bmr\b/i.test(name) || /\bsir\b/i.test(name)) return true;
+        const books = (t.periods || []).map(p => (p.bookName || '').trim().toLowerCase());
+        if (books.length > 0 && books.every(b => b === 'mathematics' || b === 'english' || b === 'general knowledge' || b === 'english grammar')) {
+          return true;
+        }
+        return false;
+      });
+    };
+
     // Sirf current jamia ka structure use karna (Smart multi-lingual match)
-    const jamiaStruct = yearData.karkardagiStructure.find(j => {
+    let jamiaStruct = yearData.karkardagiStructure.find(j => {
       const jn = (j.jamiaName || j.name || '').trim();
       if (!jn && !j.id && !j.jamiaId) return false;
       if (jn === jamiaName) return true;
@@ -653,6 +664,20 @@ const loadTeachingStructure = async (user) => {
       if (window.MASTER_NAME_URDU && (jn === window.MASTER_NAME_URDU || isSameJamia(jn, window.MASTER_NAME_URDU))) return true;
       return isSameJamia(jn, jamiaName);
     });
+
+    // Agar standard user ke activeYear me bhi inspector dummy data bacha hua ho, to clean previous year se fallback karein
+    if (jamiaStruct && isInspectorPolluted(jamiaStruct.teachers)) {
+      console.warn("[Jaiza] Active year structure is polluted with inspector dummy data, checking other clean years...");
+      for (const yr of Object.keys(years)) {
+        if (yr === academicYear) continue;
+        const cleanJ = (years[yr]?.karkardagiStructure || []).find(j => isSameJamia(j.jamiaName, jamiaName));
+        if (cleanJ && !isInspectorPolluted(cleanJ.teachers) && Array.isArray(cleanJ.teachers) && cleanJ.teachers.length > 0) {
+          jamiaStruct = cleanJ;
+          console.log(`[Jaiza] Fallback to clean structure from academic year: ${yr}`);
+          break;
+        }
+      }
+    }
 
     if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
       showError("اس جامعہ کے لیے کارکردگی سیٹ اپ خالی ہے، اس لیے کلاس/استاذ/کتاب نہیں مل رہیں۔");
@@ -1148,9 +1173,7 @@ const addNewClassCard = () => {
 const loadExistingJaizaForms = async (user) => {
   if (!jamiaId || !monthKey) return;
 
-  const localKey = getDraftKey();
-  // Purana (bina user-id wala) shared draft kisi aur role ka ho sakta hai -> hamesha hata do
-  try { localStorage.removeItem(getLegacyDraftKey()); } catch(e) {}
+  const localKey = `jaiza_draft_${jamiaId}_${monthKey}`;
   const draftStr = localStorage.getItem(localKey);
   let docs = [];
   let usingDraft = false;
@@ -1164,10 +1187,8 @@ const loadExistingJaizaForms = async (user) => {
       } else {
         const ask = confirm("آپ کا پچھلا نامکمل (unsaved) ڈیٹا ملا ہے۔ کیا آپ اسے واپس لانا چاہتے ہیں؟");
         if (ask) {
-          // Sirf wahi classes rakho jo is user ke apne structure (teachingMap) me hain
-          const hasMap = Object.keys(teachingMap || {}).length > 0;
-          docs = hasMap ? parsed.filter(d => !d.className || teachingMap[d.className]) : parsed;
-          usingDraft = docs.length > 0;
+          docs = parsed;
+          usingDraft = true;
           if (enableEditBtn) enableEditBtn.disabled = true;
         } else {
           localStorage.removeItem(localKey);
@@ -1671,10 +1692,7 @@ formEl.addEventListener("submit", async (e) => {
 
     showSuccess("تعلیمی جائزہ کامیابی کے ساتھ محفوظ ہو گیا۔");
     isFormDirty = false; 
-    localStorage.removeItem(getDraftKey());
-    // Save ke baad form read-only ho jaye (Update / تدوین dabane par hi dobara edit ho)
-    toggleEditMode(false);
-    if (enableEditBtn) enableEditBtn.disabled = false;
+    localStorage.removeItem(`jaiza_draft_${jamiaId}_${monthKey}`);
   } catch(err) {
     console.error(err);
     showError("ڈیٹا محفوظ کرتے وقت مسئلہ آیا، بعد میں دوبارہ کوشش کریں۔");
@@ -1759,20 +1777,15 @@ const saveDraftToLocal = () => {
   });
 
   // Data ko browser ki memory mein save kar diya
-  if (currentUser?.uid) localStorage.setItem(getDraftKey(), JSON.stringify(payloads));
+  localStorage.setItem(`jaiza_draft_${jamiaId}_${monthKey}`, JSON.stringify(payloads));
 };
 
 // Jab bhi form mein kuch likha jaye ya badla jaye, toh background mein save ho jayega
-// ⚠️ e.isTrusted: sirf asli user ke typing/select par chale.
-// Form load hote waqt code khud dispatchEvent("change") karta hai (class/teacher fill karne ke liye);
-// pehle wo bhi "unsaved" + draft bana deta tha, isi liye har baar jhoota popup aata tha.
-formEl.addEventListener("input", (e) => {
-  if (!e.isTrusted) return;
+formEl.addEventListener("input", () => {
   isFormDirty = true;
   saveDraftToLocal();
 });
-formEl.addEventListener("change", (e) => {
-  if (!e.isTrusted) return;
+formEl.addEventListener("change", () => {
   isFormDirty = true;
   saveDraftToLocal();
 });
