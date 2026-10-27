@@ -520,8 +520,15 @@ async function loadRules(db) {
 
 async function syncRulesToSettings(db) {
     try {
+        const cleanRules = rulesCache.map(r => {
+            const clean = {};
+            Object.keys(r || {}).forEach(k => {
+                if (r[k] !== undefined) clean[k] = r[k];
+            });
+            return clean;
+        });
         await setDoc(doc(db, 'settings', 'karkardagi_lock_rules'), {
-            rules: rulesCache,
+            rules: cleanRules,
             updatedAt: new Date().toISOString()
         }, { merge: true });
     } catch(e) {
