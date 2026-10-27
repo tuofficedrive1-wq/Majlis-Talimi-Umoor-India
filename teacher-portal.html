@@ -2286,7 +2286,20 @@ async function gateState() {
 
   // 2. Zimmedar Approved Unlock Request (Checked before general lock/early)
   let rq = null;
-  try { const d = await db.collection(REQ).doc(reqId()).get(); if (d.exists) rq = d.data(); } catch(e) {}
+  try {
+    const d = await db.collection(REQ).doc(reqId()).get();
+    if (d.exists) {
+      rq = d.data();
+    } else if (T?.id) {
+      const qSnap = await db.collection(REQ)
+        .where('teacherId', '==', T.id)
+        .where('month', '==', ctx.m)
+        .where('year', '==', ctx.y)
+        .limit(1)
+        .get();
+      if (!qSnap.empty) rq = qSnap.docs[0].data();
+    }
+  } catch(e) {}
   if (rq && rq.status === 'approved' && rq.openFrom && rq.openTo && today >= rq.openFrom && today <= rq.openTo) {
     return { open:true, note:`ذمہ دار نے ${fmtYmd(rq.openFrom)} سے ${fmtYmd(rq.openTo)} تک رپورٹ کھول دی ہے` };
   }
@@ -2338,17 +2351,43 @@ async function sendUnlockReq() {
   const reason = $('#ur').value.trim();
   if (reason.length < 5) return toast('وضاحت تفصیل سے لکھیں');
   $('#urb').disabled = true;
+
+  const uid = auth.currentUser ? auth.currentUser.uid : '';
+  const payload = {
+    userId: uid,
+    teacherUid: uid,
+    teacherId: T?.id || '',
+    teacherName: T?.name || '',
+    ajeerCode: String(CODE || ''),
+    zimmedarId: String(IDX?.userId || ME?.zimmedarId || ''),
+    jamiaName: String(J?.jamiaName || IDX?.jamiaName || ''),
+    month: ctx.m,
+    year: ctx.y,
+    monthLabel: monthLabel(),
+    reason,
+    status: 'pending',
+    requestedAt: iso(),
+    openFrom: null,
+    openTo: null,
+    zimmedarNote: '',
+    decidedAt: null
+  };
+
   try {
-    await db.collection(REQ).doc(reqId()).set({
-      teacherId: T.id, teacherName: T.name, ajeerCode: CODE, zimmedarId: IDX.userId,
-      jamiaName: J.jamiaName, month: ctx.m, year: ctx.y, monthLabel: monthLabel(),
-      reason, status: 'pending', requestedAt: iso(), openFrom: null, openTo: null, zimmedarNote: '', decidedAt: null
-    });
+    await db.collection(REQ).doc(reqId()).set(payload, { merge: true });
     toast('درخواست ذمہ دار کو بھیج دی گئی');
     vKark();
   } catch(e) {
-    toast('خرابی: ' + e.message);
-    $('#urb').disabled = false;
+    console.warn('Set unlock request failed, trying add fallback:', e);
+    try {
+      await db.collection(REQ).add(payload);
+      toast('درخواست ذمہ دار کو بھیج دی گئی');
+      vKark();
+    } catch(e2) {
+      console.error('Send unlock request error:', e2);
+      toast('خرابی: ' + (e2.message || e.message));
+      $('#urb').disabled = false;
+    }
   }
 }
 
