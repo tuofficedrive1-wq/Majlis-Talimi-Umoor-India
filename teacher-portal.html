@@ -1645,17 +1645,34 @@ let lockRulesUnsub = null;
 function listenToLockRules() {
   if (lockRulesUnsub) return;
   try {
-    lockRulesUnsub = db.collection('settings').doc('karkardagi_lock_rules').onSnapshot(doc => {
-      if (doc.exists && Array.isArray(doc.data()?.rules)) {
-        window.__adminLockRules = doc.data().rules;
-      } else {
-        window.__adminLockRules = [];
+    // 1. Primary real-time listener on root collection 'karkardagi_lock_rules'
+    lockRulesUnsub = db.collection('karkardagi_lock_rules').onSnapshot(snap => {
+      window.__adminLockRules = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log('[LockRules Listener] Real-time collection rules count:', window.__adminLockRules.length);
+      if (tab === 'kark' || tab === 'home') {
+        go(tab);
       }
-      if (tab === 'kark') {
-        vKark();
-      }
-    }, () => {});
-  } catch(e) {}
+    }, err => {
+      console.warn('[LockRules Listener] Collection listen failed, trying settings doc:', err);
+      try {
+        db.collection('settings').doc('karkardagi_lock_rules').onSnapshot(doc => {
+          if (doc.exists && Array.isArray(doc.data()?.rules)) {
+            window.__adminLockRules = doc.data().rules;
+          } else {
+            window.__adminLockRules = [];
+          }
+          console.log('[LockRules Listener] Fallback settings doc rules count:', window.__adminLockRules.length);
+          if (tab === 'kark' || tab === 'home') {
+            go(tab);
+          }
+        }, err2 => {
+          console.warn('[LockRules Listener] Settings doc listen error:', err2);
+        });
+      } catch(e2) {}
+    });
+  } catch(e) {
+    console.warn('listenToLockRules error:', e);
+  }
 }
 
 function finish() {
@@ -2122,25 +2139,41 @@ async function gateState() {
 
   // 1. Check Admin Central Karkardagi Lock Rules (Highest Priority)
   let rulesList = [];
-  if (Array.isArray(window.__adminLockRules)) {
+  if (Array.isArray(window.__adminLockRules) && window.__adminLockRules.length > 0) {
     rulesList = window.__adminLockRules.filter(r => r && r.status === 'active');
   } else {
+    // If cache not yet filled, fetch directly from collection first, then settings doc
     try {
-      const sDoc = await db.collection('settings').doc('karkardagi_lock_rules').get();
-      if (sDoc.exists && Array.isArray(sDoc.data()?.rules)) {
-        window.__adminLockRules = sDoc.data().rules;
+      const snap = await db.collection('karkardagi_lock_rules').get();
+      if (!snap.empty) {
+        window.__adminLockRules = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         rulesList = window.__adminLockRules.filter(r => r && r.status === 'active');
+      } else {
+        const sDoc = await db.collection('settings').doc('karkardagi_lock_rules').get();
+        if (sDoc.exists && Array.isArray(sDoc.data()?.rules)) {
+          window.__adminLockRules = sDoc.data().rules;
+          rulesList = window.__adminLockRules.filter(r => r && r.status === 'active');
+        }
       }
-    } catch(e) {}
+    } catch(e) {
+      try {
+        const sDoc = await db.collection('settings').doc('karkardagi_lock_rules').get();
+        if (sDoc.exists && Array.isArray(sDoc.data()?.rules)) {
+          window.__adminLockRules = sDoc.data().rules;
+          rulesList = window.__adminLockRules.filter(r => r && r.status === 'active');
+        }
+      } catch(e2) {}
+    }
   }
 
+  let adminExpiredRule = null;
   try {
     if (rulesList.length > 0) {
-      const teacherAjeer = String(CODE || '').trim();
-      const teacherEmailCode = String(auth.currentUser?.email || '').split('@')[0].trim();
-      const teacherProfileAjeer = String(ME?.ajeerCode || '').trim();
-      const teacherId = String(T?.id || IDX?.teacherId || ME?.teacherId || '').trim();
-      const teacherLoginCode = String(T?.loginCode || '').trim();
+      const teacherAjeer = String(CODE || '').trim().toLowerCase();
+      const teacherEmailCode = String(auth.currentUser?.email || '').split('@')[0].trim().toLowerCase();
+      const teacherProfileAjeer = String(ME?.ajeerCode || '').trim().toLowerCase();
+      const teacherId = String(T?.id || IDX?.teacherId || ME?.teacherId || '').trim().toLowerCase();
+      const teacherLoginCode = String(T?.loginCode || '').trim().toLowerCase();
       const teacherRawName = T?.name || IDX?.name || ME?.name || '';
       const cleanTName = cleanName(teacherRawName);
 
@@ -2161,8 +2194,10 @@ async function gateState() {
 
       const activeRules = [];
       rulesList.forEach(r => {
-        const mMatch = r.month === 'all' || Number(r.month) === ctx.m;
-        const yMatch = r.year === 'all' || Number(r.year) === ctx.y;
+        const rM = (r.month === 'all' || r.month === undefined || r.month === null) ? 'all' : Number(r.month);
+        const mMatch = rM === 'all' || rM === ctx.m || rM === (ctx.m + 1);
+        const rY = (r.year === 'all' || r.year === undefined || r.year === null) ? 'all' : Number(r.year);
+        const yMatch = rY === 'all' || rY === ctx.y;
         if (mMatch && yMatch) {
           activeRules.push(r);
         }
@@ -2171,16 +2206,20 @@ async function gateState() {
       // Priority 1: Specific Teacher (Match by code, ID, email, OR teacher name in targetLabel/targetValue)
       const ruleTeacher = activeRules.find(r => {
         if (r.scope !== 'teacher') return false;
-        const tVal = String(r.targetValue || '').trim();
-        const tLbl = String(r.targetLabel || '').trim();
+        const tVal = String(r.targetValue || '').trim().toLowerCase();
+        const tLbl = String(r.targetLabel || '').trim().toLowerCase();
 
-        const codeMatch = (teacherAjeer && tVal === teacherAjeer) ||
-                          (teacherEmailCode && tVal === teacherEmailCode) ||
-                          (teacherProfileAjeer && tVal === teacherProfileAjeer) ||
-                          (teacherId && tVal === teacherId) ||
-                          (teacherLoginCode && tVal === teacherLoginCode) ||
-                          (teacherAjeer && tLbl.includes(teacherAjeer)) ||
-                          (teacherEmailCode && tLbl.includes(teacherEmailCode));
+        const ajeerClean = teacherAjeer;
+        const emailCodeClean = teacherEmailCode;
+        const profileAjeerClean = teacherProfileAjeer;
+        const tIdClean = teacherId;
+        const loginCodeClean = teacherLoginCode;
+
+        const codeMatch = (ajeerClean && (tVal === ajeerClean || tLbl.includes(ajeerClean))) ||
+                          (emailCodeClean && (tVal === emailCodeClean || tLbl.includes(emailCodeClean))) ||
+                          (profileAjeerClean && (tVal === profileAjeerClean || tLbl.includes(profileAjeerClean))) ||
+                          (tIdClean && (tVal === tIdClean || tLbl.includes(tIdClean))) ||
+                          (loginCodeClean && (tVal === loginCodeClean || tLbl.includes(loginCodeClean)));
 
         const nameMatch = cleanTName && (
           cleanName(tVal).includes(cleanTName) ||
@@ -2198,7 +2237,12 @@ async function gateState() {
         if (r.scope !== 'jamia') return false;
         const jVal = String(r.targetValue || '').trim().toUpperCase();
         const jLbl = String(r.targetLabel || '').trim().toUpperCase();
-        return (jamiaName && (jVal === jamiaName || jLbl.includes(jamiaName) || cleanName(jLbl).includes(cleanName(jamiaName))));
+        const jNameClean = cleanName(jamiaName);
+        return (jamiaName && (
+          jVal === jamiaName || 
+          jLbl.includes(jamiaName) || 
+          (jNameClean && (cleanName(jVal).includes(jNameClean) || cleanName(jLbl).includes(jNameClean)))
+        ));
       });
 
       // Priority 3: Specific State
@@ -2208,14 +2252,14 @@ async function gateState() {
       const ruleRegion = activeRules.find(r => r.scope === 'region' && jamiaRegion && String(r.targetValue).trim().toUpperCase() === jamiaRegion);
 
       // Priority 5: All India
-      const ruleAll = activeRules.find(r => r.scope === 'all');
+      const ruleAll = activeRules.find(r => r.scope === 'all' || r.scope === 'all_india' || !r.scope);
 
       const matchedRule = ruleTeacher || ruleJamia || ruleState || ruleRegion || ruleAll;
-      console.log('[Karkardagi Lock Check]', { today, ctx, teacherAjeer, cleanTName, jamiaName, matchedRule });
+      console.log('[Karkardagi Lock Check]', { today, ctx, teacherAjeer, cleanTName, jamiaName, matchedRule, activeRulesCount: activeRules.length });
 
       if (matchedRule) {
         if (today >= matchedRule.openFrom && today <= matchedRule.openTo) {
-          const scopeLabel = matchedRule.scope === 'all' ? 'مرکزی ایڈمن کی عمومی رعایت' :
+          const scopeLabel = (matchedRule.scope === 'all' || matchedRule.scope === 'all_india' || !matchedRule.scope) ? 'مرکزی ایڈمن کی عمومی رعایت' :
                              matchedRule.scope === 'region' ? `ریجن (${matchedRule.targetLabel || matchedRule.targetValue}) رعایت` :
                              matchedRule.scope === 'state' ? `ریاست (${matchedRule.targetLabel || matchedRule.targetValue}) رعایت` :
                              matchedRule.scope === 'jamia' ? `جامعہ (${matchedRule.targetLabel || matchedRule.targetValue}) رعایت` :
@@ -2228,8 +2272,11 @@ async function gateState() {
           return {
             open: false,
             early: true,
-            html: `<div class="card lockcard"><div class="card-title"><h3 style="color:#B45309"><i class="fas fa-hourglass-half"></i> رپورٹ ابھی کھلی نہیں</h3></div><p class="muted" style="margin:0">${monthLabel()} کی رپورٹ ایڈمن شیڈول کے تحت ${fmtYmd(matchedRule.openFrom)} کو کھلے گی۔</p></div>`
+            scheduledDate: matchedRule.openFrom,
+            html: `<div class="card lockcard"><div class="card-title"><h3 style="color:#B45309"><i class="fas fa-hourglass-half"></i> رپورٹ ابھی کھلی نہیں</h3></div><p class="muted" style="margin:0">${monthLabel()} کی رپورٹ ایڈمن شیڈول کے تحت <b>${fmtYmd(matchedRule.openFrom)}</b> کو کھلے گی (اور <b>${fmtYmd(matchedRule.openTo)}</b> تک کھلی رہے گی)۔</p></div>`
           };
+        } else if (today > matchedRule.openTo) {
+          adminExpiredRule = matchedRule;
         }
       }
     }
@@ -2237,17 +2284,16 @@ async function gateState() {
     console.warn('Admin lock check error:', err);
   }
 
-  // 2. Default Month-end Window (Last day of month + 1st of next month)
-  if (nowW >= start && nowW <= dl) return { open:true, note:`یہ رپورٹ صرف ${winText()} کو بھری جا سکتی ہے — آج کھلی ہے` };
-  if (nowW < start) return { open:false, early:true, html:`<div class="card lockcard"><div class="card-title"><h3 style="color:#B45309"><i class="fas fa-hourglass-half"></i> ابھی رپورٹ کھلی نہیں</h3></div><p class="muted" style="margin:0">${monthLabel()} کی رپورٹ ${winText()} کو بھری جا سکتی ہے۔ ${lastDayN()} ${MONTHS[ctx.m]} کو واپس آئیں۔</p></div>` };
-  
-  // 3. Zimmedar Approved Unlock Request
+  // 2. Zimmedar Approved Unlock Request (Checked before general lock/early)
   let rq = null;
   try { const d = await db.collection(REQ).doc(reqId()).get(); if (d.exists) rq = d.data(); } catch(e) {}
   if (rq && rq.status === 'approved' && rq.openFrom && rq.openTo && today >= rq.openFrom && today <= rq.openTo) {
     return { open:true, note:`ذمہ دار نے ${fmtYmd(rq.openFrom)} سے ${fmtYmd(rq.openTo)} تک رپورٹ کھول دی ہے` };
   }
-  
+
+  // 3. Default Month-end Window (Last day of month + 1st of next month)
+  if (nowW >= start && nowW <= dl) return { open:true, note:`یہ رپورٹ صرف ${winText()} کو بھری جا سکتی ہے — آج کھلی ہے` };
+
   const form = `
     <label>وضاحت — رپورٹ وقت پر کیوں نہیں بھری؟</label>
     <textarea id="ur" placeholder="یہاں وجہ لکھیں..."></textarea>
@@ -2258,8 +2304,34 @@ async function gateState() {
   else if (rq && rq.status === 'approved') body = `<div class="box zim"><small>منظور ہوئی تھی: ${fmtYmd(rq.openFrom)} تا ${fmtYmd(rq.openTo)} — یہ مدت ختم ہو چکی</small>${esc(rq.zimmedarNote || '')}</div>${form}`;
   else if (rq && rq.status === 'rejected') body = `<div class="box zim"><small>پچھلی درخواست مسترد ہوئی</small>${esc(rq.zimmedarNote || 'کوئی نوٹ نہیں')}</div>${form}`;
   else body = form;
-  
-  return { open:false, html:`<div class="card lockcard"><div class="card-title"><h3 style="color:var(--red)"><i class="fas fa-lock"></i> اس ماہ کی رپورٹ لاک ہے</h3></div><p class="muted" style="margin:0">رپورٹ صرف ${winText()} کو کھلتی ہے، وہ وقت گزر چکا۔ اب بھرنے کے لیے ذمہ دار کی اجازت درکار ہے۔</p>${body}</div>` };
+
+  // 4. Admin unlock rule was set, but its openTo date has passed
+  if (adminExpiredRule) {
+    return {
+      open: false,
+      early: false,
+      expired: true,
+      html: `
+        <div class="card lockcard">
+          <div class="card-title">
+            <h3 style="color:var(--red)"><i class="fas fa-calendar-times"></i> ان لاک کی مقررہ تاریخ ختم ہو چکی ہے</h3>
+          </div>
+          <p class="muted" style="margin:0 0 10px">
+            ایڈمن کی جانب سے ${monthLabel()} کے لیے دی گئی رعایت کی تاریخ (<b>${fmtYmd(adminExpiredRule.openFrom)} تا ${fmtYmd(adminExpiredRule.openTo)}</b>) ختم ہو چکی ہے۔<br>
+            اب باقاعدہ شیڈول کے تحت رپورٹ <b>${winText()}</b> کو کھلے گی۔<br>
+            اگر آپ کو رپورٹ جمع کروانے کے لیے مزید وقت درکار ہے تو نیچے سے درخواست ارسال کریں۔
+          </p>
+          ${body}
+        </div>
+      `
+    };
+  }
+
+  // 5. Default Early Window (Before regular month-end window)
+  if (nowW < start) return { open:false, early:true, html:`<div class="card lockcard"><div class="card-title"><h3 style="color:#B45309"><i class="fas fa-hourglass-half"></i> ابھی رپورٹ کھلی نہیں</h3></div><p class="muted" style="margin:0">${monthLabel()} کی رپورٹ ${winText()} کو بھری جا سکتی ہے۔ ${lastDayN()} ${MONTHS[ctx.m]} کو واپس آئیں۔</p></div>` };
+
+  // 6. Default Expired Window (After 1st of next month)
+  return { open:false, early:false, expired:true, html:`<div class="card lockcard"><div class="card-title"><h3 style="color:var(--red)"><i class="fas fa-lock"></i> اس ماہ کی رپورٹ لاک ہے</h3></div><p class="muted" style="margin:0">رپورٹ صرف ${winText()} کو کھلتی ہے، وہ وقت گزر چکا۔ اب بھرنے کے لیے ذمہ دار کی اجازت درکار ہے۔</p>${body}</div>` };
 }
 
 async function sendUnlockReq() {
@@ -2291,17 +2363,69 @@ async function vKark() {
   const deeniOld = subs.find(s => s.role !== 'user_update' && +s.submissionMonth === ctx.m && +s.submissionYear === ctx.y && s.deeniKaam)?.deeniKaam || null;
   const g = open.length ? await gateState() : { open:true };
 
+  // Notice if any other month is currently unlocked for this teacher by central admin
+  let otherMonthNotice = '';
+  if (Array.isArray(window.__adminLockRules)) {
+    const todayStr = ymdW();
+    const otherActive = window.__adminLockRules.filter(r => {
+      if (r.status !== 'active') return false;
+      if (todayStr < r.openFrom || todayStr > r.openTo) return false;
+      const rM = (r.month === 'all' || r.month === undefined || r.month === null) ? 'all' : Number(r.month);
+      if (rM === 'all') return false;
+      return rM !== ctx.m && rM !== (ctx.m + 1);
+    });
+
+    if (otherActive.length > 0) {
+      const match = otherActive.find(r => {
+        if (r.scope === 'all' || r.scope === 'all_india' || !r.scope) return true;
+        if (r.scope === 'jamia') {
+          const jVal = String(r.targetValue || '').trim().toUpperCase();
+          const jLbl = String(r.targetLabel || '').trim().toUpperCase();
+          const jName = String(J?.jamiaName || IDX?.jamiaName || ME?.jamiaName || '').trim().toUpperCase();
+          return jName && (jVal === jName || jLbl.includes(jName) || cleanName(jLbl).includes(cleanName(jName)));
+        }
+        if (r.scope === 'teacher') {
+          const tVal = String(r.targetValue || '').trim().toLowerCase();
+          const teacherAjeer = String(CODE || '').trim().toLowerCase();
+          return teacherAjeer && tVal === teacherAjeer;
+        }
+        return false;
+      });
+
+      if (match) {
+        const mIdx = Number(match.month);
+        const yVal = match.year || ctx.y;
+        const targetLabel = (MONTHS[mIdx] ? `${MONTHS[mIdx]} ${yVal}` : `ماہ ${mIdx}`);
+        otherMonthNotice = `
+          <div class="card" style="background:#FFFBEB;border:1px solid #FDE68A;border-right:5px solid #F59E0B;padding:12px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <div style="font-size:13px;color:#92400E;font-weight:bold">
+                <i class="fas fa-bell" style="color:#D97706;margin-left:5px"></i>
+                مرکزی ایڈمن کی جانب سے <b>${targetLabel}</b> کی رپورٹ (${fmtYmd(match.openFrom)} تا ${fmtYmd(match.openTo)}) کھلی ہوئی ہے!
+              </div>
+              <button class="btn btn-sm btn-sub" onclick="chMonth('${yVal}-${mIdx}')" style="font-size:12px;padding:4px 12px;background:#D97706;color:white;border:none;border-radius:6px;cursor:pointer">
+                👉 ${targetLabel} کی رپورٹ پر جائیں
+              </button>
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
+
   let html = `
     <div class="card">
       <div class="card-title">
         <h3><i class="fas fa-book-open-reader"></i> ${monthLabel()} — ماہانہ کارکردگی</h3>
         <span class="pill ${open.length ? (g.open ? (filledIds.length ? 'wait' : 'no') : (g.early ? 'wait' : 'no')) : ''}">
-          ${!active.length && !filledIds.length ? 'کوئی کتاب نہیں' : open.length ? (g.open ? (filledIds.length ? 'کچھ کتب باقی' : 'جمع نہیں ہوئی') : (g.early ? 'ابھی کھلی نہیں' : 'لاک ہے')) : 'مکمل جمع شدہ — لاک'}
+          ${!active.length && !filledIds.length ? 'کوئی کتاب نہیں' : open.length ? (g.open ? (filledIds.length ? 'کچھ کتب باقی' : 'جمع نہیں ہوئی') : (g.early ? (g.scheduledDate ? `${fmtYmd(g.scheduledDate)} کو کھلے گی` : 'ابھی کھلی نہیں') : (g.expired ? 'رعایت ختم — لاک' : 'لاک ہے'))) : 'مکمل جمع شدہ — لاک'}
         </span>
       </div>
       ${open.length && g.open && g.note ? `<div class="muted" style="margin-top:4px"><i class="fas fa-clock" style="color:var(--gold)"></i> ${g.note}</div>` : ''}
     </div>
   `;
+
+  html += otherMonthNotice;
 
   if (filledIds.length) {
     html += `
@@ -3496,7 +3620,11 @@ async function vHome() {
   const tas = recs.filter(e => e.tasurat || e.adminTasurat);
   const g = open.length ? await gateState() : { open:true };
 
-  const status = open.length ? (g.open ? (Object.keys(rows).length ? 'کچھ کتب باقی' : 'جمع نہیں ہوئی') : (g.early ? `${lastDayN()} ${MONTHS[ctx.m]} کو کھلے گی` : 'مدت ختم — لاک')) : 'مکمل جمع شدہ';
+  const status = open.length ? (
+    g.open ? (Object.keys(rows).length ? 'کچھ کتب باقی' : 'جمع نہیں ہوئی') : 
+    (g.early ? (g.scheduledDate ? `${fmtYmd(g.scheduledDate)} کو کھلے گی` : `${lastDayN()} ${MONTHS[ctx.m]} کو کھلے گی`) : 
+    (g.expired ? 'رعایت ختم — لاک' : 'مدت ختم — لاک'))
+  ) : 'مکمل جمع شدہ';
 
   V(`
     <!-- Month Quick Status Banner -->
@@ -3506,9 +3634,9 @@ async function vHome() {
         <span class="pill ${open.length ? 'no' : ''}">${status}</span>
       </div>
       <p style="margin:0" class="muted">فعال کتب: <b>${active.length}</b> • جمع شدہ کتب: <b>${Object.keys(rows).length}</b></p>
-      ${open.length && !g.early ? `
+      ${open.length ? `
         <button class="btn" onclick="go('kark')" style="margin-top:12px">
-          <i class="fas fa-pen-to-square"></i> ${g.open ? `کارکردگی رپورٹ بھریں (${open.length} کتب باقی)` : 'مدت ختم — ان لاک درخواست بھیجیں'}
+          <i class="fas fa-pen-to-square"></i> ${g.open ? `کارکردگی رپورٹ بھریں (${open.length} کتب باقی)` : (g.early ? (g.scheduledDate ? `ایڈمن شیڈول: ${fmtYmd(g.scheduledDate)} کو کھلے گی` : 'ابھی کھلی نہیں') : 'لاک ہے — تفصیل و ان لاک درخواست')}
         </button>
       ` : ''}
     </div>
