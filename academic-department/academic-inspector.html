@@ -442,6 +442,7 @@
 
         let currentUser = null;
         let assignedJamiaat = [];
+        let assignedJamiaIdentity = new Map();
         let allReports = [];
         let reportsData = null;
         window.currentUserData = null;
@@ -505,9 +506,8 @@ window.listenToAdminReports = (selectedMonth) => {
                         if (mName && mName !== 'undefined') {
                             const rec = { id: d.id, name: mName, region: mData.region || '', state: mData.state || '' };
                             window.masterJamiaMap.set(d.id, rec);
-                            window.masterJamiaMap.set(mName.toLowerCase(), rec);
-                            const normK = mName.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                            if (normK) window.masterJamiaMap.set(normK, rec);
+                            const nameKey = mName.trim().toLowerCase();
+                            if (!window.masterJamiaMap.has(nameKey)) window.masterJamiaMap.set(nameKey, rec);
                         }
                     });
                 } catch(e) { console.warn("Master jamia cache warning:", e); }
@@ -519,15 +519,15 @@ window.listenToAdminReports = (selectedMonth) => {
                     const nameElement = document.getElementById('inspector-name');
                     if (nameElement) nameElement.textContent = userData.name || "Inspector";
 
+                    assignedJamiaIdentity = new Map();
                     assignedJamiaat = (userData.jamiaatList || []).map(j => {
                         const jId = typeof j === 'object' ? j.id : null;
                         const rawName = typeof j === 'object' ? (j.name || j.jamiaName) : j;
                         if (!rawName) return null;
-                        if (jId && window.masterJamiaMap.has(jId)) return window.masterJamiaMap.get(jId).name;
-                        if (window.masterJamiaMap.has(String(rawName).trim().toLowerCase())) return window.masterJamiaMap.get(String(rawName).trim().toLowerCase()).name;
-                        const normK = String(rawName).toUpperCase().replace(/[^A-Z0-9]/g, '');
-                        if (window.masterJamiaMap.has(normK)) return window.masterJamiaMap.get(normK).name;
-                        return String(rawName).trim();
+                        const master = jId ? window.masterJamiaMap.get(jId) : window.masterJamiaMap.get(String(rawName).trim().toLowerCase());
+                        const name = master ? master.name : String(rawName).trim();
+                        assignedJamiaIdentity.set(name, { id: jId || (master && master.id) || null, name, rawName: String(rawName).trim() });
+                        return name;
                     }).filter(Boolean);
 
                     const countElem = document.getElementById('stat-jamia-count');
@@ -589,9 +589,26 @@ window.listenToAdminReports = (selectedMonth) => {
             const qTest = query(collection(db, "monthly_test_sheets"), where("month", "==", month));
             const testSnap = await getDocs(qTest);
             const allSheets = [];
-            testSnap.forEach(doc => allSheets.push(doc.data()));
+            testSnap.forEach(doc => allSheets.push({ id: doc.id, ...doc.data() }));
             window.testSheetsCache[month] = allSheets;
             return allSheets;
+        }
+
+        function getJamiaTestSheets(jamiaName, sheets) {
+            const identity = assignedJamiaIdentity.get(jamiaName) || { name: jamiaName };
+            const aliases = new Set([identity.name, identity.rawName].filter(Boolean).map(name => String(name).trim().toLowerCase()));
+            return sheets.filter(sheet => {
+                const sheetJamiaId = sheet.jamiaId || sheet.masterJamiaId || sheet.jamiaMasterId;
+                if (sheetJamiaId) return identity.id && String(sheetJamiaId) === String(identity.id);
+                const sheetName = String(sheet.jamiaName || '').trim().toLowerCase();
+                if (!aliases.has(sheetName)) return false;
+                // If a legacy name belongs to more than one assigned identity, keep it unassigned.
+                const owners = assignedJamiaat.filter(name => {
+                    const other = assignedJamiaIdentity.get(name) || { name };
+                    return [other.name, other.rawName].filter(Boolean).some(alias => String(alias).trim().toLowerCase() === sheetName);
+                });
+                return owners.length === 1 && owners[0] === jamiaName;
+            });
         }
 
         // LOAD STATS
@@ -661,17 +678,12 @@ window.listenToAdminReports = (selectedMonth) => {
                 });
 
                 const allSheets = await getMonthlyTestSheets(month);
-                const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
-                const normalizeName = (name) => String(typeof name === 'object' ? (name.name || name.jamiaName || '') : (name || '')).trim().toLowerCase();
 
                 reportsData.tests = []; 
                 let completedTestCount = 0; 
 
                 for (let jamia of assignedJamiaat) {
-                    const sourceStandardJamia = jamiaatMapping[jamia] || jamia;
-                    const normSourceJamia = normalizeName(sourceStandardJamia);
-                    
-                    const jamiaSheets = allSheets.filter(sheet => normalizeName(sheet.jamiaName) === normSourceJamia);
+                    const jamiaSheets = getJamiaTestSheets(jamia, allSheets);
                     if (jamiaSheets.length > 0) completedTestCount++; 
 
                     let grandPresent = 0;
@@ -1155,21 +1167,13 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-indigo-500 font-bold text-center"><i class="fas fa-spinner fa-spin mr-2"></i> Linked Jamiaat ka data calculate ho raha hai...</td></tr>';
 
             try {
-                const jamiaatMapping = (window.currentUserData && window.currentUserData.jamiaatMapping) || {};
                 const allSheets = await getMonthlyTestSheets(monthInput);
 
-                const normalizeName = (name) => String(typeof name === 'object' ? (name.name || name.jamiaName || '') : (name || '')).trim().toLowerCase();
                 window.currentInspectorTestData = {};
                 let rowsHTML = "";
 
                 for (let jamia of assignedJamiaat) {
-                    const sourceStandardJamia = jamiaatMapping[jamia] || jamia;
-                    const normSourceJamia = normalizeName(sourceStandardJamia);
-                    const cleanNorm = s => s.replace(/[^a-z0-9]/g, '');
-                    const jamiaSheets = allSheets.filter(sheet => {
-                        const sName = normalizeName(sheet.jamiaName);
-                        return sName === normSourceJamia || cleanNorm(sName) === cleanNorm(normSourceJamia);
-                    });
+                    const jamiaSheets = getJamiaTestSheets(jamia, allSheets);
                     
                     if (jamiaSheets.length === 0) {
                         rowsHTML += `
