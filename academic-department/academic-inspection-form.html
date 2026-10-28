@@ -145,7 +145,7 @@
 
     <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
     const firebaseConfig = {
@@ -160,9 +160,10 @@
     const auth = getAuth(app);
 
     const urlParams = new URLSearchParams(window.location.search);
-    const jamiaName = urlParams.get('jamia');
+    const jamiaName = urlParams.get('jamia') || '';
+    let currentJamiaId = urlParams.get('jamiaId') || '';
     const urlMonth = urlParams.get('month');
-   document.getElementById('jamia-title').innerHTML = `${jamiaName} <br> <span class="text-yellow-300 font-bold text-[13px] border-t border-indigo-500 pt-1 mt-1 inline-block tracking-wide"><i class="far fa-calendar-alt"></i> Month: ${getMonthName(getCurrentMonthKey())}</span>`;
+    document.getElementById('jamia-title').innerHTML = `${jamiaName} <br> <span class="text-yellow-300 font-bold text-[13px] border-t border-indigo-500 pt-1 mt-1 inline-block tracking-wide"><i class="far fa-calendar-alt"></i> Month: ${getMonthName(getCurrentMonthKey())}</span>`;
 
     let currentUser = null;
     let fullStructure = []; 
@@ -176,7 +177,7 @@
             window.location.href = "index.html";
         }
     });
-        function getMonthName(monthKey) {
+    function getMonthName(monthKey) {
         if (!monthKey) return "";
         const [year, month] = monthKey.split('-');
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -188,33 +189,107 @@ function getCurrentMonthKey() {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
-        function getAcademicYear() {
+    function getAcademicYear(monthKey) {
+        const key = monthKey || getCurrentMonthKey();
+        if (key && /^\d{4}-\d{2}$/.test(key)) {
+            const [y, m] = key.split('-').map(Number);
+            return m >= 4 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+        }
         const now = new Date();
         const month = now.getMonth() + 1;
         const year = now.getFullYear();
         return month >= 4 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
     }
         
-async function loadJamiaStructure() {
-        const activeYear = getAcademicYear();
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
+async function loadJamiaStructure(targetJamiaId = null, targetMonthKey = null) {
+        let effectiveJamiaId = targetJamiaId || currentJamiaId;
+        const effectiveMonth = targetMonthKey || getCurrentMonthKey();
+        const activeYear = getAcademicYear(effectiveMonth);
+        
+        try {
+            const userRef = doc(db, "users", currentUser.uid);
+            const userSnap = await getDoc(userRef);
 
-        if (userSnap.exists()) {
-            const userData = userSnap.data();
-            const academicData = userData.academicYears?.[activeYear]?.karkardagiStructure || [];
-            
-            const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-            const targetNorm = norm(jamiaName);
-            const jamiaData = academicData.find(j => {
-                const jn = j.jamiaName || j.name || '';
-                return jn.trim() === jamiaName.trim() || norm(jn) === targetNorm;
-            });
-            
-            if (jamiaData) {
-                fullStructure = jamiaData.teachers;
-                console.log("Structure Loaded Successfully for:", activeYear);
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+
+                // 1. Agar jamiaId URL ya param me nahi mili, to userData.jamiaatList se dhoondhein
+                if (!effectiveJamiaId && Array.isArray(userData.jamiaatList)) {
+                    const cleanTarget = String(jamiaName || '').trim().toLowerCase();
+                    const foundJ = userData.jamiaatList.find(j => {
+                        if (typeof j === 'object' && j) {
+                            const jn = String(j.name || j.jamiaName || '').trim().toLowerCase();
+                            return jn === cleanTarget;
+                        }
+                        return false;
+                    });
+                    if (foundJ && foundJ.id) {
+                        effectiveJamiaId = foundJ.id;
+                        currentJamiaId = foundJ.id;
+                    }
+                }
+
+                // 2. Agar phir bhi jamiaId na mile, to jamiaat_master se exact name match se dhoondhein
+                if (!effectiveJamiaId && jamiaName) {
+                    try {
+                        const mSnap = await getDocs(collection(db, "jamiaat_master"));
+                        const cleanTarget = String(jamiaName).trim().toLowerCase();
+                        mSnap.forEach(d => {
+                            const mData = d.data();
+                            const mName = String(mData.name || mData.jamiaName || '').trim().toLowerCase();
+                            if (mName === cleanTarget) {
+                                effectiveJamiaId = d.id;
+                                currentJamiaId = d.id;
+                            }
+                        });
+                    } catch(e) { console.warn("Master jamia fetch error:", e); }
+                }
+
+                const cleanTargetName = String(jamiaName || '').trim().toLowerCase();
+
+                // Jamia ko karkardagiStructure array me dhoondne ka helper
+                const findInStruct = (struct) => {
+                    if (!Array.isArray(struct)) return null;
+                    // Primary: Jamia ID match
+                    if (effectiveJamiaId) {
+                        const byId = struct.find(j => (j.jamiaId && String(j.jamiaId) === String(effectiveJamiaId)) || (j.id && String(j.id) === String(effectiveJamiaId)));
+                        if (byId) return byId;
+                    }
+                    // Fallback: Exact Name match (No substring / partial match taake Jabalpur aur Jabalpur Bypass mix na hon)
+                    if (cleanTargetName) {
+                        const byExact = struct.find(j => String(j.jamiaName || j.name || '').trim().toLowerCase() === cleanTargetName);
+                        if (byExact) return byExact;
+                    }
+                    return null;
+                };
+
+                // Pehle target month ke academic year me dhoondhein
+                let jamiaData = null;
+                if (userData.academicYears?.[activeYear]?.karkardagiStructure) {
+                    jamiaData = findInStruct(userData.academicYears[activeYear].karkardagiStructure);
+                }
+
+                // Agar target year me na mile, to tamam doosre saal check karein
+                if (!jamiaData && userData.academicYears) {
+                    const allYears = Object.keys(userData.academicYears).sort().reverse();
+                    for (const yr of allYears) {
+                        const candidate = findInStruct(userData.academicYears[yr]?.karkardagiStructure);
+                        if (candidate && Array.isArray(candidate.teachers) && candidate.teachers.length > 0) {
+                            jamiaData = candidate;
+                            console.log(`Structure found in alternate year ${yr} for:`, jamiaName);
+                            break;
+                        }
+                    }
+                }
+
+                if (jamiaData && Array.isArray(jamiaData.teachers)) {
+                    fullStructure = jamiaData.teachers;
+                    if (jamiaData.jamiaId && !currentJamiaId) currentJamiaId = jamiaData.jamiaId;
+                    console.log("Structure Loaded Successfully for:", activeYear, "Teachers count:", fullStructure.length);
+                }
             }
+        } catch (err) {
+            console.error("Structure load error:", err);
         }
     }
 
@@ -278,8 +353,11 @@ async function loadJamiaStructure() {
         if(!selectedClass) return alert("Please select a class first!");
 
         const bookId = Date.now();
-        const teachersInClass = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
-        const teacherOptions = teachersInClass.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        let teachersInClass = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
+        if (teachersInClass.length === 0) {
+            teachersInClass = fullStructure;
+        }
+        const teacherOptions = teachersInClass.map(t => `<option value="${t.id}">${t.name || t.teacherName}</option>`).join('');
 
         const bookRow = `
             <div class="book-row bg-white p-4 rounded-2xl border border-slate-100" id="book-${bookId}">
@@ -313,7 +391,10 @@ async function loadJamiaStructure() {
     window.updateBooks = (teacherSelect, bookRowId, className) => {
     const teacherId = teacherSelect.value;
     const teacher = fullStructure.find(t => t.id === teacherId);
-    const books = teacher?.periods?.filter(p => p.className === className) || [];
+    let books = teacher?.periods?.filter(p => p.className === className) || [];
+    if (books.length === 0 && teacher?.periods) {
+        books = teacher.periods; // Fallback to all periods of this teacher if class not specific
+    }
     const bookSelect = document.querySelector(`#book-${bookRowId} .book-select`);
     
     bookSelect.innerHTML = '<option value="">Select Subject</option>' + 
@@ -459,9 +540,11 @@ window.updateCalculations = () => {
 
     const finalReport = {
         jamiaName: jamiaName,
+        jamiaId: currentJamiaId || '',
         inspectorId: currentUser.uid,
         inspectionDate: serverTimestamp(),
         month: monthKey,
+        monthKey: monthKey,
         overallPercentage: document.getElementById('jamia-total-percent').textContent,
         totalClasses: document.getElementById('total-classes-count').textContent,
         totalBooks: document.getElementById('total-books-count').textContent,
@@ -494,8 +577,13 @@ window.updateCalculations = () => {
                 });
             });
 
+            const tSelect = row.querySelector('.teacher-select');
+            const tText = tSelect?.options[tSelect.selectedIndex]?.text || '';
+            const tName = (tText !== 'Select Teacher' && !tText.startsWith('Teacher (')) ? tText : '';
+
             classData.subjects.push({
-                teacherId: row.querySelector('.teacher-select').value,
+                teacherId: tSelect.value,
+                teacherName: tName,
                 subjectName: row.querySelector('.book-select').value,
                 subjectScore: row.querySelector('.book-percent').textContent,
                 evaluations: questions
@@ -515,13 +603,17 @@ window.updateCalculations = () => {
         
         let currentJaiza = dashSnap.exists() ? (dashSnap.data().jaiza || []) : [];
         const normJ = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        currentJaiza = currentJaiza.filter(j => normJ(j.name) !== normJ(jamiaName));
+        currentJaiza = currentJaiza.filter(j => {
+            if (currentJamiaId && j.jamiaId) return j.jamiaId !== currentJamiaId;
+            return normJ(j.name) !== normJ(jamiaName);
+        });
         
         const scoreVal = finalReport.overallPercentage.replace('%', '');
         const dateVal = now.toISOString().split('T')[0];
 
         currentJaiza.push({
             name: jamiaName,
+            jamiaId: currentJamiaId || '',
             score: scoreVal,
             type: "Inspection",
             date: dateVal
@@ -542,15 +634,68 @@ window.updateCalculations = () => {
 
 async function loadExistingReport() {
         const monthKey = getCurrentMonthKey();
-        const reportId = `REP_${jamiaName.replace(/\s+/g, '_')}_${monthKey}`;
+        const primaryReportId = `REP_${jamiaName.replace(/\s+/g, '_')}_${monthKey}`;
         
         try {
-            let reportRef = doc(db, "academic_inspections", reportId);
+            let reportRef = doc(db, "academic_inspections", primaryReportId);
             let reportSnap = await getDoc(reportRef);
 
-            if (reportSnap.exists()) {
+            // 2. Lookup by REP_JamiaId_Month if available
+            if (!reportSnap.exists() && currentJamiaId) {
+                try {
+                    const idReportRef = doc(db, "academic_inspections", `REP_${currentJamiaId}_${monthKey}`);
+                    const idSnap = await getDoc(idReportRef);
+                    if (idSnap.exists()) reportSnap = idSnap;
+                } catch(e) {}
+            }
+
+            // 3. Dual lookup fallback in academic_inspections collection
+            if (!reportSnap.exists()) {
+                try {
+                    const qInsp = query(collection(db, "academic_inspections"), where("inspectorId", "==", currentUser.uid));
+                    const inspDocs = await getDocs(qInsp);
+                    const cleanTarget = String(jamiaName).trim().toLowerCase();
+                    const found = inspDocs.docs.find(d => {
+                        const dData = d.data();
+                        const dMonth = dData.month || dData.monthKey;
+                        if (dMonth !== monthKey) return false;
+                        if (currentJamiaId && dData.jamiaId && String(dData.jamiaId) === String(currentJamiaId)) return true;
+                        const dj = String(dData.jamiaName || '').trim().toLowerCase();
+                        return dj === cleanTarget;
+                    });
+                    if (found) reportSnap = found;
+                } catch(e) {}
+            }
+
+            if (reportSnap && reportSnap.exists()) {
                 const savedData = reportSnap.data();
                 console.log("Is mahine ka data mil gaya:", savedData);
+
+                if (savedData.jamiaId && !currentJamiaId) {
+                    currentJamiaId = savedData.jamiaId;
+                }
+
+                // Agar structure load nahi hua ya khali tha, report ke month aur jamiaId se reload karein
+                if (!fullStructure || fullStructure.length === 0) {
+                    await loadJamiaStructure(currentJamiaId, savedData.month || monthKey);
+                }
+
+                // Agar currentUser ke paas structure nahi hai aur savedData.inspectorId alag ho:
+                if ((!fullStructure || fullStructure.length === 0) && savedData.inspectorId && savedData.inspectorId !== currentUser.uid) {
+                    try {
+                        const origUserSnap = await getDoc(doc(db, "users", savedData.inspectorId));
+                        if (origUserSnap.exists()) {
+                            const origData = origUserSnap.data();
+                            const repAy = getAcademicYear(savedData.month || monthKey);
+                            const struct = origData.academicYears?.[repAy]?.karkardagiStructure || [];
+                            const cleanTarget = String(jamiaName).trim().toLowerCase();
+                            const jObj = struct.find(j => (currentJamiaId && (j.jamiaId === currentJamiaId || j.id === currentJamiaId)) || String(j.jamiaName || j.name || '').trim().toLowerCase() === cleanTarget);
+                            if (jObj && Array.isArray(jObj.teachers)) {
+                                fullStructure = jObj.teachers;
+                            }
+                        }
+                    } catch(e) {}
+                }
 
                 document.getElementById('classes-list').innerHTML = '';
                 
@@ -570,7 +715,10 @@ async function loadExistingReport() {
 
 function renderSavedClass(cData) {
     const classId = Date.now() + Math.random(); // Unique ID
-    const classes = [...new Set(fullStructure.flatMap(t => t.periods?.map(p => p.className) || []))];
+    let classes = [...new Set(fullStructure.flatMap(t => t.periods?.map(p => p.className) || []))];
+    if (cData.className && !classes.includes(cData.className)) {
+        classes.push(cData.className);
+    }
     const classOptions = classes.map(c => 
         `<option value="${c}" ${c === cData.className ? 'selected' : ''}>${c}</option>`
     ).join('');
@@ -627,15 +775,37 @@ function renderSavedBook(classId, sData, container) {
     const card = document.getElementById(`class-${classId}`);
     const selectedClass = card.dataset.selectedClass;
 
-    const teachersInClass = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
-    const teacherOptions = teachersInClass.map(t => 
-        `<option value="${t.id}" ${t.id === sData.teacherId ? 'selected' : ''}>${t.name}</option>`
+    let teachersInClass = fullStructure.filter(t => t.periods?.some(p => p.className === selectedClass));
+    
+    // Saved teacher ko fullStructure me dhoondhein
+    let savedTeacher = fullStructure.find(t => t.id === sData.teacherId || (sData.teacherName && (t.name || t.teacherName) === sData.teacherName));
+    if (savedTeacher && !teachersInClass.some(t => t.id === savedTeacher.id)) {
+        teachersInClass.push(savedTeacher);
+    }
+    if (teachersInClass.length === 0 && fullStructure.length > 0) {
+        teachersInClass = [...fullStructure];
+    }
+
+    let teacherOptions = teachersInClass.map(t => 
+        `<option value="${t.id}" ${t.id === sData.teacherId ? 'selected' : ''}>${t.name || t.teacherName}</option>`
     ).join('');
 
-    const teacher = fullStructure.find(t => t.id === sData.teacherId);
-    const books = teacher?.periods?.filter(p => p.className === selectedClass) || [];
-    const bookOptions = books.map(b => 
-        `<option value="${b.bookName}" ${b.bookName === sData.subjectName ? 'selected' : ''}>${b.bookName}</option>`
+    if (sData.teacherId && !teachersInClass.some(t => t.id === sData.teacherId)) {
+        const displayName = sData.teacherName || (savedTeacher ? (savedTeacher.name || savedTeacher.teacherName) : `Teacher (${sData.teacherId})`);
+        teacherOptions = `<option value="${sData.teacherId}" selected>${displayName}</option>` + teacherOptions;
+    }
+
+    const teacher = savedTeacher || fullStructure.find(t => t.id === sData.teacherId);
+    let books = teacher?.periods?.filter(p => p.className === selectedClass) || [];
+    if (books.length === 0 && teacher?.periods) {
+        books = teacher.periods;
+    }
+    let bookNames = [...new Set(books.map(b => b.bookName).filter(Boolean))];
+    if (sData.subjectName && !bookNames.includes(sData.subjectName)) {
+        bookNames.push(sData.subjectName);
+    }
+    const bookOptions = bookNames.map(bName => 
+        `<option value="${bName}" ${bName === sData.subjectName ? 'selected' : ''}>${bName}</option>`
     ).join('');
 
     const bookRow = `

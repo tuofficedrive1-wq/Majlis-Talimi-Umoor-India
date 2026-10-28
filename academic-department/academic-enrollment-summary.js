@@ -16,42 +16,82 @@ export async function renderEnrollmentSummary(assignedJamiaat, db, currentUser) 
     container.innerHTML = '<div class="p-8 text-center text-indigo-500 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i> Data load ho raha hai...</div>';
 
     try {
-        _allRecords = [];
-        for (let i = 0; i < assignedJamiaat.length; i += 30) {
-            const chunk = assignedJamiaat.slice(i, i + 30);
-            const q = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid), where("jamiaName", "in", chunk));
-            const snap = await getDocs(q);
-            snap.forEach(doc => { 
-                _allRecords.push({ ...doc.data(), id: doc.id }); 
-            });
-        }
-
-        // Dual matching fallback for un-migrated records
-        if (_allRecords.length === 0) {
-            try {
-                const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
-                const allSnap = await getDocs(qAll);
-                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const assignedNorms = (assignedJamiaat || []).map(norm);
-                allSnap.forEach(doc => {
-                    const r = doc.data();
-                    if (assignedNorms.includes(norm(r.jamiaName))) {
-                        _allRecords.push({ ...r, id: doc.id });
-                    }
-                });
-            } catch(e) {}
-        }
-
-        // State: jamiaat_master (admin.html wali master list) se jamia ke naam ke hisab se
+        // Master Jamiaat Map banayein (ID -> Doc aur Name -> Doc)
+        const masterById = {};
+        const masterByName = {};
         try {
-            const nk = v => String(v || '').toUpperCase().replace(/[^A-Z0-9\u0600-\u06FF]/g, '');
-            const stateByName = {};
-            (await getDocs(collection(db, "jamiaat_master"))).forEach(d => {
-                const m = d.data(), st = String(m.state || '').trim().toUpperCase();
-                [m.name, m.jamiaName, m.urduName].forEach(n => { if (n && st) stateByName[nk(n)] = st; });
+            const mSnap = await getDocs(collection(db, "jamiaat_master"));
+            mSnap.forEach(d => {
+                const m = d.data();
+                const mName = (m.name || m.jamiaName || '').trim();
+                const rec = { id: d.id, name: mName, state: String(m.state || '').trim().toUpperCase(), region: String(m.region || '').trim().toUpperCase() };
+                masterById[d.id] = rec;
+                if (mName) {
+                    masterByName[mName.toLowerCase()] = rec;
+                }
             });
-            _allRecords.forEach(r => { r._state = stateByName[nk(r.jamiaName)] || String(r.state || '').trim().toUpperCase() || ''; });
-        } catch (e) { console.warn("jamiaat_master load nahi hui:", e); }
+        } catch (e) { console.warn("jamiaat_master load error:", e); }
+
+        // Assigned Jamiaat Identity map (Name/ID map)
+        const assignedJamiaMap = new Map();
+        (assignedJamiaat || []).forEach(j => {
+            const raw = typeof j === 'object' ? (j.name || j.jamiaName) : j;
+            const jId = typeof j === 'object' ? (j.id || j.jamiaId) : null;
+            const cleanName = String(raw || '').trim();
+            const master = (jId && masterById[jId]) || masterByName[cleanName.toLowerCase()] || null;
+            const resolvedId = jId || (master && master.id) || null;
+            const resolvedName = master ? master.name : cleanName;
+            assignedJamiaMap.set(resolvedName.toLowerCase(), { id: resolvedId, name: resolvedName, state: master?.state || '' });
+            if (cleanName.toLowerCase() !== resolvedName.toLowerCase()) {
+                assignedJamiaMap.set(cleanName.toLowerCase(), { id: resolvedId, name: resolvedName, state: master?.state || '' });
+            }
+        });
+
+        // Inspector ke tamam enrollment records fetch karein
+        const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", currentUser.uid));
+        const allSnap = await getDocs(qAll);
+        _allRecords = [];
+
+        allSnap.forEach(d => {
+            const r = d.data();
+            let matchedJamia = null;
+
+            // 1. Primary: Match by jamiaId
+            if (r.jamiaId) {
+                for (const [nameKey, info] of assignedJamiaMap.entries()) {
+                    if (info.id && String(info.id) === String(r.jamiaId)) {
+                        matchedJamia = info;
+                        break;
+                    }
+                }
+            }
+
+            // 2. Fallback: Exact name match for un-migrated records without jamiaId
+            if (!matchedJamia && !r.jamiaId && r.jamiaName) {
+                const cleanR = String(r.jamiaName).trim().toLowerCase();
+                if (assignedJamiaMap.has(cleanR)) {
+                    matchedJamia = assignedJamiaMap.get(cleanR);
+                    // Safe auto-migration if unambiguous
+                    if (matchedJamia.id) {
+                        r.jamiaId = matchedJamia.id;
+                        updateDoc(doc(db, "enrollment_records", d.id), { jamiaId: matchedJamia.id }).catch(()=>{});
+                    }
+                }
+            }
+
+            if (matchedJamia) {
+                const mDoc = (r.jamiaId && masterById[r.jamiaId]) || null;
+                const finalState = (mDoc && mDoc.state) || matchedJamia.state || String(r.state || '').trim().toUpperCase() || '';
+                const finalName = (mDoc && mDoc.name) || matchedJamia.name || r.jamiaName;
+                _allRecords.push({
+                    ...r,
+                    id: d.id,
+                    jamiaName: finalName,
+                    _state: finalState,
+                    _jamiaId: r.jamiaId || matchedJamia.id || ''
+                });
+            }
+        });
 
         if (_allRecords.length === 0) {
             container.innerHTML = '<div class="p-8 text-center text-slate-400 font-medium">Abhi tak kisi Jamia ka koi student data submit nahi hua.</div>';
@@ -677,6 +717,12 @@ window.saveEditRecord = async () => {
     else if (admType === 'Waiting') {
         updatedData.classLevel = getVal('dyn-classLevel') || '';
     }
+
+    if (_currentEditRecord) {
+        if (_currentEditRecord._jamiaId && !updatedData.jamiaId) updatedData.jamiaId = _currentEditRecord._jamiaId;
+        if (_currentEditRecord.jamiaName && !updatedData.jamiaName) updatedData.jamiaName = _currentEditRecord.jamiaName;
+    }
+
     const saveBtn = document.getElementById('save-edit-btn');
     const originalText = saveBtn.innerHTML;
     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';

@@ -529,6 +529,7 @@ window.listenToAdminReports = (selectedMonth) => {
                         assignedJamiaIdentity.set(name, { id: jId || (master && master.id) || null, name, rawName: String(rawName).trim() });
                         return name;
                     }).filter(Boolean);
+                    window.assignedJamiaIdentity = assignedJamiaIdentity;
 
                     const countElem = document.getElementById('stat-jamia-count');
                     if (countElem) countElem.textContent = assignedJamiaat.length;
@@ -625,42 +626,56 @@ window.listenToAdminReports = (selectedMonth) => {
 
                 const detailResults = await Promise.all(
                     assignedJamiaat.map(async jamia => {
+                        const identity = assignedJamiaIdentity.get(jamia) || {};
+                        const jId = identity.id || '';
                         const inspectionId = `REP_${jamia.replace(/\s+/g, '_')}_${month}`;
                         let detailSnap = await getDoc(doc(db, "academic_inspections", inspectionId));
+
+                        // Dual lookup: jamiaId based doc check
+                        if (!detailSnap.exists() && jId) {
+                            try {
+                                const idSnap = await getDoc(doc(db, "academic_inspections", `REP_${jId}_${month}`));
+                                if (idSnap.exists()) detailSnap = idSnap;
+                            } catch(e) {}
+                        }
                         
-                        // Dual lookup: Agar direct master name se doc na mile, toh legacy ya normalized match check karein
+                        // Query lookup: inspectorId match
                         if (!detailSnap.exists()) {
                             try {
                                 const qLeg = query(
                                     collection(db, "academic_inspections"),
-                                    where("inspectorId", "==", currentUser.uid),
-                                    where("monthKey", "==", month)
+                                    where("inspectorId", "==", currentUser.uid)
                                 );
                                 const legSnap = await getDocs(qLeg);
-                                const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                                const targetNorm = norm(jamia);
+                                const cleanJamia = String(jamia).trim().toLowerCase();
                                 const foundDoc = legSnap.docs.find(d => {
                                     const dData = d.data();
-                                    return norm(dData.jamiaName) === targetNorm || norm(dData.legacyJamiaName) === targetNorm;
+                                    const dMonth = dData.month || dData.monthKey;
+                                    if (dMonth !== month) return false;
+                                    if (jId && dData.jamiaId && String(dData.jamiaId) === String(jId)) return true;
+                                    const dj = String(dData.jamiaName || '').trim().toLowerCase();
+                                    const legJ = String(dData.legacyJamiaName || '').trim().toLowerCase();
+                                    return dj === cleanJamia || legJ === cleanJamia;
                                 });
                                 if (foundDoc) detailSnap = foundDoc;
                             } catch(e) {}
                         }
-                        return { jamia, detailSnap };
+                        return { jamia, detailSnap, jId };
                     })
                 );
 
                 const normHelper = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
-                detailResults.forEach(({ jamia, detailSnap }) => {
+                detailResults.forEach(({ jamia, detailSnap, jId }) => {
                     if (detailSnap && detailSnap.exists()) {
                         const detailData = detailSnap.data();
                         if (!reportsData.jaiza) reportsData.jaiza = [];
 
-                        let existingJaiza = reportsData.jaiza.find(j => normHelper(j.name) === normHelper(jamia));
+                        let existingJaiza = reportsData.jaiza.find(j => (jId && j.jamiaId && String(j.jamiaId) === String(jId)) || normHelper(j.name) === normHelper(jamia));
 
                         if (existingJaiza) {
                             existingJaiza.name = jamia;
+                            if (jId) existingJaiza.jamiaId = jId;
                             existingJaiza.score = detailData.overallPercentage ? detailData.overallPercentage.replace('%', '') : '0';
                             if (detailData.inspectionDate) {
                                 const d = detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate() : new Date(detailData.inspectionDate);
@@ -669,6 +684,7 @@ window.listenToAdminReports = (selectedMonth) => {
                         } else {
                             reportsData.jaiza.push({
                                 name: jamia,
+                                jamiaId: jId || detailData.jamiaId || '',
                                 score: detailData.overallPercentage ? detailData.overallPercentage.replace('%', '') : '0',
                                 type: "Inspection",
                                 date: detailData.inspectionDate ? (detailData.inspectionDate.toDate ? detailData.inspectionDate.toDate().toISOString().split('T')[0] : detailData.inspectionDate) : ""
@@ -838,14 +854,17 @@ window.renderInspectionList = () => {
 
     assignedJamiaat.forEach((jamia, index) => {
         const jNorm = normHelper(jamia);
-        const adminReport = (window.allReports || []).find(r => 
-            r.inspectorId === currentUser.uid && 
-            r.month === monthInput &&
-            (r.jamiaName === jamia || normHelper(r.jamiaName) === jNorm || normHelper(r.legacyJamiaName) === jNorm)
-        );
+        const identity = assignedJamiaIdentity.get(jamia) || {};
+        const jId = identity.id || '';
+
+        const adminReport = (window.allReports || []).find(r => {
+            if (r.inspectorId !== currentUser.uid || r.month !== monthInput) return false;
+            if (jId && r.jamiaId && String(r.jamiaId) === String(jId)) return true;
+            return r.jamiaName === jamia || normHelper(r.jamiaName) === jNorm || normHelper(r.legacyJamiaName) === jNorm;
+        });
         const isSubmitted = !!adminReport;
 
-        const draftEntry = saved.find(s => s.name === jamia || normHelper(s.name) === jNorm) || {};
+        const draftEntry = saved.find(s => (jId && s.jamiaId && String(s.jamiaId) === String(jId)) || s.name === jamia || normHelper(s.name) === jNorm) || {};
         let entry = isSubmitted ? adminReport : draftEntry;
         
         let inputPlaceholder = "Select type first...";
@@ -885,7 +904,7 @@ window.renderInspectionList = () => {
                        value="${entry.score || ''}">
                 
                 <a id="form-link-${index}" style="display: ${(entry.type === 'Inspection' || isSubmitted) ? 'flex' : 'none'}" 
-   href="academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}&month=${monthInput}" 
+   href="academic-inspection-form.html?jamia=${encodeURIComponent(jamia)}${jId ? `&jamiaId=${encodeURIComponent(jId)}` : ''}&month=${monthInput}" 
    target="_blank" 
    class="items-center justify-center px-3 py-1.5 ${isSubmitted ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 border-indigo-100'} hover:text-white rounded-lg transition-all text-xs font-bold border gap-1.5 shrink-0">
     <i class="${isSubmitted ? 'fas fa-file-alt' : 'fas fa-edit'}"></i>
@@ -1450,7 +1469,9 @@ window.renderEnrollmentTab = async () => {
 
         let rowsHTML = '';
         assignedJamiaat.forEach(jamia => {
-            const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}&userId=${currentUser.uid}`;
+            const identity = assignedJamiaIdentity.get(jamia) || {};
+            const jId = identity.id || '';
+            const formUrl = `${formBaseUrl}?jamia=${encodeURIComponent(jamia)}${jId ? `&jamiaId=${encodeURIComponent(jId)}` : ''}&userId=${currentUser.uid}`;
             const code = codesByJamia[jamia] || '—';
             const stats = statsByJamia[jamia] || { classes: 0, students: 0 };
 
@@ -1513,22 +1534,38 @@ async function getEnrollmentStats(jamiaatList) {
     jamiaatList.forEach(j => { stats[j] = { classes: 0, students: 0 }; });
 
     const classesByJamia = {};
-    for (let i = 0; i < jamiaatList.length; i += 30) {
-        const chunk = jamiaatList.slice(i, i + 30);
-        const snap = await getDocs(query(
-            collection(db, "enrollment_records"),
-            where("inspectorId", "==", currentUser.uid),
-            where("jamiaName", "in", chunk)
-        ));
-        snap.forEach(d => {
-            const rec = d.data();
-            const jamia = rec.jamiaName;
-            if (!stats[jamia]) stats[jamia] = { classes: 0, students: 0 };
-            stats[jamia].students++;
-            if (!classesByJamia[jamia]) classesByJamia[jamia] = new Set();
-            if (rec.jmClass) classesByJamia[jamia].add(rec.jmClass);
-        });
-    }
+    const qAll = query(
+        collection(db, "enrollment_records"),
+        where("inspectorId", "==", currentUser.uid)
+    );
+    const snap = await getDocs(qAll);
+    
+    snap.forEach(d => {
+        const rec = d.data();
+        let matchedJamia = null;
+        if (rec.jamiaId) {
+            matchedJamia = jamiaatList.find(j => {
+                const ident = assignedJamiaIdentity.get(j);
+                return ident && ident.id && String(ident.id) === String(rec.jamiaId);
+            });
+        }
+        if (!matchedJamia && rec.jamiaName) {
+            const cleanRec = String(rec.jamiaName).trim().toLowerCase();
+            matchedJamia = jamiaatList.find(j => {
+                const ident = assignedJamiaIdentity.get(j);
+                const n1 = String(ident?.name || j).trim().toLowerCase();
+                const n2 = String(ident?.rawName || '').trim().toLowerCase();
+                return n1 === cleanRec || (n2 && n2 === cleanRec);
+            });
+        }
+
+        if (matchedJamia) {
+            if (!stats[matchedJamia]) stats[matchedJamia] = { classes: 0, students: 0 };
+            stats[matchedJamia].students++;
+            if (!classesByJamia[matchedJamia]) classesByJamia[matchedJamia] = new Set();
+            if (rec.jmClass) classesByJamia[matchedJamia].add(rec.jmClass);
+        }
+    });
 
     Object.keys(classesByJamia).forEach(jamia => {
         stats[jamia].classes = classesByJamia[jamia].size;
@@ -1578,20 +1615,36 @@ window.copyEnrollmentLink = (url, btnElement) => {
             try {
                 const recordsMap = {}; 
 
-                for (let i = 0; i < assignedJamiaat.length; i += 30) {
-                    const chunk = assignedJamiaat.slice(i, i + 30);
-                    const snap = await getDocs(query(
-                        collection(db, "enrollment_records"),
-                        where("inspectorId", "==", currentUser.uid),
-                        where("jamiaName", "in", chunk)
-                    ));
-                    
-                    snap.forEach(doc => {
-                        const data = doc.data();
-                        const jName = data.jamiaName;
-                        let jmCls = data.jmClass; 
-                        const admType = data.admissionType;
-                        let mappedAsri = null;
+                const qAll = query(
+                    collection(db, "enrollment_records"),
+                    where("inspectorId", "==", currentUser.uid)
+                );
+                const snap = await getDocs(qAll);
+                
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    let matchedJamia = null;
+                    if (data.jamiaId) {
+                        matchedJamia = assignedJamiaat.find(j => {
+                            const ident = assignedJamiaIdentity.get(j);
+                            return ident && ident.id && String(ident.id) === String(data.jamiaId);
+                        });
+                    }
+                    if (!matchedJamia && data.jamiaName) {
+                        const cleanRec = String(data.jamiaName).trim().toLowerCase();
+                        matchedJamia = assignedJamiaat.find(j => {
+                            const ident = assignedJamiaIdentity.get(j);
+                            const n1 = String(ident?.name || j).trim().toLowerCase();
+                            const n2 = String(ident?.rawName || '').trim().toLowerCase();
+                            return n1 === cleanRec || (n2 && n2 === cleanRec);
+                        });
+                    }
+                    if (!matchedJamia) return;
+
+                    const jName = matchedJamia;
+                    let jmCls = data.jmClass; 
+                    const admType = data.admissionType;
+                    let mappedAsri = null;
 
                         if (admType === 'College') {
                             if (data.programLevel === 'Under-Graduate') mappedAsri = 'Under Graduate';
@@ -1615,7 +1668,6 @@ window.copyEnrollmentLink = (url, btnElement) => {
                             recordsMap[jName][jmCls][mappedAsri]++; 
                         }
                     });
-                }
 
                 const jmClasses = [
                     "Hifz", 

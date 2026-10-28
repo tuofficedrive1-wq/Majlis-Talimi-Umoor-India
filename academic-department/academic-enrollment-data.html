@@ -879,6 +879,7 @@
 
   var urlParams    = new URLSearchParams(window.location.search);
   var currentJamia = urlParams.get('jamia');
+  var currentJamiaId = urlParams.get('jamiaId') || '';
   var userId       = urlParams.get('userId');
 
   var form            = document.getElementById('enrollmentForm');
@@ -944,34 +945,41 @@
   }
 
   async function fetchCloudEntries() {
-      if(!userId || !currentJamia) return;
+      if(!userId || (!currentJamia && !currentJamiaId)) return;
       try {
-          const q = query(
-              collection(db, "enrollment_records"),
-              where("inspectorId", "==", userId),
-              where("jamiaName", "==", currentJamia)
-          );
-          const snap = await getDocs(q);
+          const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", userId));
+          const allSnap = await getDocs(qAll);
           entries = [];
-          if (snap.empty) {
-              try {
-                  const qAll = query(collection(db, "enrollment_records"), where("inspectorId", "==", userId));
-                  const allSnap = await getDocs(qAll);
-                  const norm = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                  const curNorm = norm(currentJamia);
-                  allSnap.forEach(d => {
-                      const dData = d.data();
-                      if (norm(dData.jamiaName) === curNorm) {
-                          entries.push({ cloudId: d.id, ...dData, id: d.id });
+          const cleanTarget = String(currentJamia || '').trim().toUpperCase();
+
+          allSnap.forEach(d => {
+              const dData = d.data();
+              let isMatch = false;
+
+              // 1. Primary: Match by jamiaId
+              if (currentJamiaId && dData.jamiaId) {
+                  if (String(dData.jamiaId) === String(currentJamiaId)) {
+                      isMatch = true;
+                  }
+              }
+              // 2. Fallback: Exact name match for un-migrated records without jamiaId
+              else if (!dData.jamiaId && cleanTarget) {
+                  const recName = String(dData.jamiaName || '').trim().toUpperCase();
+                  if (recName === cleanTarget) {
+                      isMatch = true;
+                      // Safe backfill if unambiguous
+                      if (currentJamiaId) {
+                          dData.jamiaId = currentJamiaId;
+                          updateDoc(doc(db, "enrollment_records", d.id), { jamiaId: currentJamiaId }).catch(()=>{});
                       }
-                  });
-              } catch(e) {}
-          } else {
-              snap.forEach(d => {
-                  entries.push({ cloudId: d.id, ...d.data(), id: d.id });
-              });
-          }
-          entries.sort((a,b) => new Date(b.savedAt) - new Date(a.savedAt));
+                  }
+              }
+
+              if (isMatch) {
+                  entries.push({ cloudId: d.id, ...dData, id: d.id });
+              }
+          });
+          entries.sort((a,b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
           renderEntries();
       } catch(e) {
           console.error("Fetch entries error:", e);
@@ -1091,12 +1099,20 @@
           if (formSelect) formSelect.innerHTML = optionsHtml;
 
           let matched = null;
-          if (currentJamia) {
-              matched = masterJamiaatList.find(m => m.name.toUpperCase() === currentJamia.toUpperCase() || norm(m.name) === curNorm);
+          if (currentJamiaId) {
+              matched = masterJamiaatList.find(m => m.id === currentJamiaId);
+          }
+          if (!matched && currentJamia) {
+              const cleanCurrent = currentJamia.trim().toUpperCase();
+              matched = masterJamiaatList.find(m => m.name.trim().toUpperCase() === cleanCurrent);
+              if (!matched) {
+                  matched = masterJamiaatList.find(m => norm(m.name) === curNorm);
+              }
           }
 
           if (matched) {
               currentJamia = matched.name;
+              currentJamiaId = matched.id;
               if (gateSelect) gateSelect.value = matched.name;
               if (formSelect) formSelect.value = matched.name;
               updateJamiaMetaBadge(matched);
@@ -1107,9 +1123,10 @@
 
           if (gateSelect) {
               gateSelect.addEventListener('change', function() {
-                  const sel = masterJamiaatList.find(m => m.name === this.value);
+                  const sel = masterJamiaatList.find(m => m.name === this.value || m.id === this.value);
                   if (sel) {
                       currentJamia = sel.name;
+                      currentJamiaId = sel.id;
                       if (formSelect) formSelect.value = sel.name;
                       updateJamiaMetaBadge(sel);
                   }
@@ -1118,9 +1135,10 @@
 
           if (formSelect) {
               formSelect.addEventListener('change', function() {
-                  const sel = masterJamiaatList.find(m => m.name === this.value);
+                  const sel = masterJamiaatList.find(m => m.name === this.value || m.id === this.value);
                   if (sel) {
                       currentJamia = sel.name;
+                      currentJamiaId = sel.id;
                       updateJamiaMetaBadge(sel);
                       const bannerTitle = document.querySelector('.banner-title');
                       if (bannerTitle) { bannerTitle.innerHTML = 'Enrollment Data <br><span style="font-size: 20px; color: #E8F5E9;">' + currentJamia + '</span>'; }
@@ -1137,7 +1155,9 @@
       if (!currentJamia) {
           const gateSelect = document.getElementById('gateJamiaSelect');
           if (gateSelect && gateSelect.value) {
-              currentJamia = gateSelect.value;
+              const sel = masterJamiaatList.find(m => m.name === gateSelect.value || m.id === gateSelect.value);
+              currentJamia = sel ? sel.name : gateSelect.value;
+              if (sel) currentJamiaId = sel.id;
           } else {
               gateErrorEl.textContent = 'Pehle Jamia select karein!';
               return;
@@ -1155,6 +1175,13 @@
       try {
           var codeDocId = currentJamia.replace(/\s+/g, '_');
           var codeSnap = await getDoc(doc(db, "jamia_codes", codeDocId));
+
+          if (!codeSnap.exists() && currentJamiaId) {
+              try {
+                  var idCodeSnap = await getDoc(doc(db, "jamia_codes", currentJamiaId));
+                  if (idCodeSnap.exists()) codeSnap = idCodeSnap;
+              } catch(e) {}
+          }
 
           if (codeSnap.exists() && String(codeSnap.data().code) === entered) {
               unlockForm();
@@ -1625,13 +1652,15 @@
         if(window.editingDocId) {
             const formSelect = document.getElementById('formJamiaSelect');
             if (formSelect && formSelect.value) {
-                const chosenMaster = (masterJamiaatList || []).find(m => m.name === formSelect.value);
+                const chosenMaster = (masterJamiaatList || []).find(m => (currentJamiaId && m.id === currentJamiaId) || m.id === formSelect.value || m.name === formSelect.value);
                 if (chosenMaster) {
                     data.jamiaName = chosenMaster.name;
                     data.jamiaId = chosenMaster.id;
                     data.state = chosenMaster.state;
                     data.region = chosenMaster.region;
                 }
+            } else if (currentJamiaId) {
+                data.jamiaId = currentJamiaId;
             }
             await updateDoc(doc(db, "enrollment_records", window.editingDocId), data);
             var index = entries.findIndex(x => x.cloudId === window.editingDocId);
@@ -1647,17 +1676,17 @@
             const norm = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
             const curNorm = norm(chosenJamiaName);
 
-            let chosenMaster = (masterJamiaatList || []).find(m => m.name.toUpperCase() === chosenJamiaName.toUpperCase() || norm(m.name) === curNorm);
+            let chosenMaster = (masterJamiaatList || []).find(m => (currentJamiaId && m.id === currentJamiaId) || m.id === formSelect?.value || m.name.toUpperCase() === chosenJamiaName.toUpperCase() || norm(m.name) === curNorm);
             if (!chosenMaster) {
                 try {
                     const mSnap = await getDocs(collection(db, "jamiaat_master"));
                     const res = canonicalizeMasterDocs(mSnap.docs);
-                    chosenMaster = res.canonical.find(m => m.name.toUpperCase() === chosenJamiaName.toUpperCase() || norm(m.name) === curNorm);
+                    chosenMaster = res.canonical.find(m => (currentJamiaId && m.id === currentJamiaId) || m.name.toUpperCase() === chosenJamiaName.toUpperCase() || norm(m.name) === curNorm);
                 } catch(e) {}
             }
 
             data.jamiaName = chosenMaster ? chosenMaster.name : chosenJamiaName;
-            data.jamiaId = chosenMaster ? chosenMaster.id : '';
+            data.jamiaId = chosenMaster ? chosenMaster.id : (currentJamiaId || '');
             data.state = chosenMaster ? chosenMaster.state : '';
             data.region = chosenMaster ? chosenMaster.region : '';
             data.inspectorId = userId || '';
@@ -1688,10 +1717,19 @@
       
       window.editingDocId = cloudId;
 
-      if (document.getElementById('formJamiaSelect') && e.jamiaName) {
-          document.getElementById('formJamiaSelect').value = e.jamiaName;
-          const sel = (masterJamiaatList || []).find(m => m.name === e.jamiaName);
-          if (sel) updateJamiaMetaBadge(sel);
+      if (e.jamiaId) {
+          currentJamiaId = e.jamiaId;
+      }
+      if (document.getElementById('formJamiaSelect')) {
+          let sel = null;
+          if (e.jamiaId) sel = (masterJamiaatList || []).find(m => m.id === e.jamiaId);
+          if (!sel && e.jamiaName) sel = (masterJamiaatList || []).find(m => m.name.trim().toUpperCase() === String(e.jamiaName).trim().toUpperCase());
+          if (sel) {
+              document.getElementById('formJamiaSelect').value = sel.name;
+              updateJamiaMetaBadge(sel);
+              currentJamia = sel.name;
+              currentJamiaId = sel.id;
+          }
       }
       
       document.getElementById('studentName').value = e.studentName || '';

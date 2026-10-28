@@ -435,10 +435,17 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
 
         const academicYear = getAcademicYear(startMonth);
         let allTeachersMapping = {}; 
-        if (userProfileData && userProfileData.academicYears && userProfileData.academicYears[academicYear]) {
-            const structure = userProfileData.academicYears[academicYear].karkardagiStructure || [];
-            structure.forEach(j => {
-                if(j.teachers) { j.teachers.forEach(t => { allTeachersMapping[t.id] = t.name || t.teacherName; }); }
+        if (userProfileData && userProfileData.academicYears) {
+            // Tamam saalon ke academic structure se teachers map karein taake purani report me bhi teacher names sahi dikhein
+            Object.values(userProfileData.academicYears).forEach(ay => {
+                const structure = ay.karkardagiStructure || [];
+                structure.forEach(j => {
+                    if (Array.isArray(j.teachers)) {
+                        j.teachers.forEach(t => {
+                            if (t.id) allTeachersMapping[t.id] = t.name || t.teacherName;
+                        });
+                    }
+                });
             });
         }
 
@@ -450,7 +457,7 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
             const assignedNorms = (assignedJamiaat || []).map(norm);
             if (!assignedJamiaat.includes(docJamia) && !assignedNorms.includes(docNorm)) return;
             if (jamiaFilter && docJamia !== jamiaFilter && docNorm !== norm(jamiaFilter)) return;
-            const docMonth = data.month; 
+            const docMonth = data.month || data.monthKey; 
             if (!docMonth || docMonth < startMonth || docMonth > endMonth) return;
 
             if (data.classes && Array.isArray(data.classes)) {
@@ -458,7 +465,7 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
                     if (selectedClasses.length > 0 && !selectedClasses.includes(cls.className)) return;
                     if (cls.subjects && Array.isArray(cls.subjects)) {
                         cls.subjects.forEach(sub => {
-                            let tName = allTeachersMapping[sub.teacherId] || sub.teacherId || "-";
+                            let tName = allTeachersMapping[sub.teacherId] || sub.teacherName || sub.teacherId || "-";
                             if (teacherFilter && tName !== teacherFilter) return;
 
                             const scoreText = sub.subjectScore || "0%";
@@ -611,9 +618,13 @@ async function fetchAndRenderReport(db, assignedJamiaat, userProfileData) {
                 if (userProfileData && userProfileData.academicYears) {
                     Object.values(userProfileData.academicYears).forEach(yearData => {
                         if (yearData.karkardagiStructure) {
-                            const jData = yearData.karkardagiStructure.find(j => j.jamiaName === item.jamia);
+                            const cleanTarget = String(item.jamia || '').trim().toLowerCase();
+                            const jData = yearData.karkardagiStructure.find(j => 
+                                (item.jamiaId && (j.jamiaId === item.jamiaId || j.id === item.jamiaId)) ||
+                                String(j.jamiaName || j.name || '').trim().toLowerCase() === cleanTarget
+                            );
                             if (jData && jData.teachers) {
-                                const tData = jData.teachers.find(t => (t.name || t.teacherName) === item.teacher);
+                                const tData = jData.teachers.find(t => (t.name || t.teacherName) === item.teacher || (item.teacherId && t.id === item.teacherId));
                                 if (tData && tData.loginCode) expectedCode = String(tData.loginCode);
                             }
                         }
