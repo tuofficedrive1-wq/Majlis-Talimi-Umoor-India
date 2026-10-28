@@ -273,6 +273,7 @@
 
         let adminUid = "";
         let jamiaName = "";
+        let jamiaMasterId = null;
         let currentSheetData = [];
         let isEditingMode = false;
         let monthKey = "";
@@ -298,6 +299,20 @@
             let finalJamiaName = jamiaName;
             if (!finalJamiaName.toUpperCase().includes("JAMIA")) {
                 finalJamiaName = "JAMIA-TUL-MADINA " + finalJamiaName;
+            }
+
+            // Store the master identity with every sheet so similar Jamia names never merge.
+            try {
+                const masterSnap = await getDocs(collection(db, "jamiaat_master"));
+                const nameKeys = new Set([jamiaName, finalJamiaName].map(name => name.trim().toLowerCase()));
+                const masterDoc = masterSnap.docs.find(d => {
+                    const data = d.data();
+                    return nameKeys.has(String(data.name || '').trim().toLowerCase()) ||
+                        nameKeys.has(String(data.jamiaName || '').trim().toLowerCase());
+                });
+                if (masterDoc) jamiaMasterId = masterDoc.id;
+            } catch (e) {
+                console.warn("Jamia identity lookup failed; saving legacy name only:", e);
             }
             
             document.getElementById('display-jamia').textContent = finalJamiaName.toUpperCase();
@@ -1096,7 +1111,7 @@
 
             try {
                 await setDoc(doc(db, "monthly_test_sheets", safeDocId), {
-                    adminUid, jamiaName, month: monthKey, class: selectedClass,
+                    adminUid, jamiaName, jamiaId: jamiaMasterId, month: monthKey, class: selectedClass,
                     subjects: finalSubjectsList, 
                     subjectMap: subjectTranslationMap, 
                     students, 
