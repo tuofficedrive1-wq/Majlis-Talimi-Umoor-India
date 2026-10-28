@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ur" dir="rtl">
 <head>
   <meta charset="UTF-8" />
@@ -662,154 +662,21 @@ const loadTeachingStructure = async (user) => {
             isSameJamia(jn, decodedJamia) || 
             (window.REAL_JAMIA_ID && (jn === window.REAL_JAMIA_ID || jn?.id === window.REAL_JAMIA_ID)) ||
             (window.MASTER_NAME_ENG && isSameJamia(jn, window.MASTER_NAME_ENG)) ||
-            (window.MASTER_NAME_URDU && isSameJamia(jn,     // Agar activeYear me inspector dummy data ya shoba qirat data bacha hua ho, to fallback karein
-    if (jamiaStruct && (isInspectorPolluted(jamiaStruct.teachers) || isShobaQiratStructure(jamiaStruct.teachers))) {
-      console.warn("[Jaiza] Active year structure is polluted with inspector dummy data or shoba qirat, checking other clean years...");
-      let cleanFound = false;
-      for (const yr of Object.keys(years)) {
-        if (yr === academicYear) continue;
-        const cleanJ = (years[yr]?.karkardagiStructure || []).find(j => isSameJamia(j.jamiaName, jamiaName));
-        if (cleanJ && !isInspectorPolluted(cleanJ.teachers) && !isShobaQiratStructure(cleanJ.teachers) && Array.isArray(cleanJ.teachers) && cleanJ.teachers.length > 0) {
-          jamiaStruct = cleanJ;
-          cleanFound = true;
-          console.log([Jaiza] Fallback to clean structure from academic year: );
-          break;
-        }
-      }
-
-      // Agar user ke kisi academic year me clean structure na ho to monthly_reports se recover karein
-      if (!cleanFound) {
-        try {
-          console.log([Jaiza] Recovering authentic teachers from monthly_reports for ""...);
-          const repSnap = await getDocs(query(
-            collection(db, "monthly_reports"),
-            where("userId", "==", targetUserData.uid || targetUserData.id || user.uid)
-          ));
-          const recMap = new Map();
-          repSnap.forEach(d => {
-            const rData = d.data() || {};
-            const items = rData.karkardagiReport?.data || rData.data || [];
-            if (Array.isArray(items)) {
-              items.forEach(it => {
-                if (isSameJamia(it.jamiaName, jamiaName) && it.teacherName) {
-                  const rawName = String(it.teacherName).trim();
-                  if (!rawName) return;
-                  let tObj = null;
-                  for (const existingT of recMap.values()) {
-                    if (it.teacherId && existingT.id === it.teacherId) { tObj = existingT; break; }
-                    if (isSameTeacherName(existingT.name, rawName)) { tObj = existingT; break; }
-                  }
-                  if (!tObj) {
-                    tObj = {
-                      id: it.teacherId || 	eacher--,
-                      name: rawName,
-                      loginCode: it.loginCode || it.ajeerCode || '',
-                      periods: []
-                    };
-                    recMap.set(tObj.id, tObj);
-                  }
-                  const pSemester = String(it.semester || '1');
-                  const pClass = String(it.className || it.class || '').trim();
-                  const pBook = String(it.bookName || it.book || '').trim();
-                  if (pClass && pBook && !tObj.periods.some(p => p.className === pClass && p.bookName === pBook && String(p.semester) === pSemester)) {
-                    tObj.periods.push({ className: pClass, bookName: pBook, semester: pSemester });
-                  }
-                }
-              });
-            }
-          });
-          if (recMap.size > 0) {
-            jamiaStruct = {
-              jamiaName: jamiaName,
-              teachers: Array.from(recMap.values())
-            };
-            console.log([Jaiza] Successfully recovered  authentic teachers from monthly reports for );
+            (window.MASTER_NAME_URDU && isSameJamia(jn, window.MASTER_NAME_URDU))
+          );
+          if (hasJamia) {
+            foundStandardUser = { ...uData, uid: uDoc.id };
+            break;
           }
-        } catch(e) {
-          console.warn("[Jaiza] Error checking monthly reports:", e);
         }
+      } catch (e) {
+        console.error("Standard user search failed:", e);
       }
-    }
 
-    if (!jamiaStruct || !Array.isArray(jamiaStruct.teachers)) {
-      showError("Ø§Ø³ Ø¬Ø§Ù…Ø¹Û Ú©Û’ Ù„ÛŒÛ’ Ø§Ø³Ù¹Ø±Ú©Ú†Ø± Ø³ÛŒÙ¹ Ø§Ù¾ Ù†ÛÛŒÚº Ù…Ù„Ø§Û” Ø¨Ø±Ø§Ø¦Û’ Ù…ÛØ±Ø¨Ø§Ù†ÛŒ Ù¾ÛÙ„Û’ Ú©Ø§Ø±Ú©Ø±Ø¯Ú¯ÛŒ Ø³ÛŒÙ¹ Ø§Ù¾ Ú©Ø±ÛŒÚºÛ”");
-      return;
-    }
-
-    // Deduplicate teachers (handles title variations like Mufti vs Ustad, Maulana, etc.)
-    const uniqueMap = new Map();
-    (jamiaStruct.teachers || []).forEach(t => {
-      const rawName = (t.name || t.teacherName || t.ustad || "").trim();
-      const normKey = rawName.toLowerCase().replace(/\s+/g, ' ');
-      if (!normKey) return;
-      const tId = (t.id || t.teacherId || '').trim();
-
-      let existingKey = null;
-      if (tId && uniqueMap.has(id_)) {
-        existingKey = id_;
-      } else if (uniqueMap.has(normKey)) {
-        existingKey = normKey;
+      if (foundStandardUser) {
+        targetUserData = foundStandardUser;
       } else {
-        for (const [k, v] of uniqueMap.entries()) {
-          if (tId && v.id === tId) { existingKey = k; break; }
-          if (isSameTeacherName(v.name, rawName)) { existingKey = k; break; }
-        }
-      }
-
-      if (!existingKey) {
-        const newKey = tId ? id_ : normKey;
-        uniqueMap.set(newKey, {
-          ...t,
-          name: rawName,
-          periods: Array.isArray(t.periods) ? [...t.periods] : []
-        });
-      } else {
-        const existing = uniqueMap.get(existingKey);
-        const isUrdu = /[\u0600-\u06FF]/.test(rawName);
-        const existingIsUrdu = /[\u0600-\u06FF]/.test(existing.name);
-        if (isUrdu && !existingIsUrdu) {
-          existing.name = rawName;
-        } else if (isUrdu && existingIsUrdu) {
-          const hasRich = /[\u0645\u0641\u062a\u06cc|\u0645\u0648\u0644\u0627\u0646\u0627|\u0642\u0627\u0631\u06cc]/.test(rawName);
-          const existRich = /[\u0645\u0641\u062a\u06cc|\u0645\u0648\u0644\u0627\u0646\u0627|\u0642\u0627\u0631\u06cc]/.test(existing.name);
-          if (hasRich && !existRich) existing.name = rawName;
-        }
-        (t.periods || []).forEach(pNew => {
-          const cName = pNew.className || pNew.class || pNew.darja || "";
-          const bName = pNew.bookName || pNew.book || pNew.kitab || pNew.subject || "";
-          const pSem = String(pNew.semester || pNew.sem || "1");
-          const exists = existing.periods.some(pOld => {
-            const oc = pOld.className || pOld.class || pOld.darja || "";
-            const ob = pOld.bookName || pOld.book || pOld.kitab || pOld.subject || "";
-            const os = String(pOld.semester || pOld.sem || "1");
-            return oc === cName && ob === bName && os === pSem;
-          });
-          if (!exists && (cName || bName)) {
-            existing.periods.push({ ...pNew });
-          }
-        });
-      }
-    });
-
-    const activeTeachers = Array.from(uniqueMap.values());
-
-    // teacher + unke periods (class + book) ko map me daalna
-    activeTeachers.forEach(t => {
-      const teacherName = t.name || t.teacherName || t.ustad || "";
-      (t.periods || []).forEach(p => {
-        const className = p.className || p.class || p.darja || "";
-        const bookName  = p.bookName  || p.book  || p.kitab || p.subject || "";
-        const dbSem     = String(p.semester || p.sem || ""); // <-- NAYA: Semester ki field nikalna
-
-        if (!className || !teacherName || !bookName) return;
-
-        if (!teachingMap[className]) teachingMap[className] = [];
-        
-        // NAYA: dbSem ko bhi map me store kar rahe hain taake filter me kaam aaye
-        teachingMap[className].push({ teacherName, bookName, dbSem });
-      });
-    });
-معہ کے لیے کسی ذمہ دار (اسٹینڈرڈ یوزر) کا تعلیمی سیٹ اپ نہیں ملا۔");
+        showError("اس جامعہ کے لیے کسی ذمہ دار (اسٹینڈرڈ یوزر) کا تعلیمی سیٹ اپ نہیں ملا۔");
         return;
       }
     }
@@ -850,16 +717,70 @@ const loadTeachingStructure = async (user) => {
       return isSameJamia(jn, jamiaName);
     });
 
-    // Agar standard user ke activeYear me bhi inspector dummy data bacha hua ho, to clean previous year se fallback karein
-    if (jamiaStruct && isInspectorPolluted(jamiaStruct.teachers)) {
-      console.warn("[Jaiza] Active year structure is polluted with inspector dummy data, checking other clean years...");
+    if (jamiaStruct && (isInspectorPolluted(jamiaStruct.teachers) || isShobaQiratStructure(jamiaStruct.teachers))) {
+      console.warn("[Jaiza] Active year structure is polluted with inspector dummy data or shoba qirat, checking other clean years...");
+      let cleanFound = false;
       for (const yr of Object.keys(years)) {
         if (yr === academicYear) continue;
         const cleanJ = (years[yr]?.karkardagiStructure || []).find(j => isSameJamia(j.jamiaName, jamiaName));
-        if (cleanJ && !isInspectorPolluted(cleanJ.teachers) && Array.isArray(cleanJ.teachers) && cleanJ.teachers.length > 0) {
+        if (cleanJ && !isInspectorPolluted(cleanJ.teachers) && !isShobaQiratStructure(cleanJ.teachers) && Array.isArray(cleanJ.teachers) && cleanJ.teachers.length > 0) {
           jamiaStruct = cleanJ;
+          cleanFound = true;
           console.log(`[Jaiza] Fallback to clean structure from academic year: ${yr}`);
           break;
+        }
+      }
+
+      // Agar user ke kisi academic year me clean structure na ho to monthly_reports se recover karein
+      if (!cleanFound) {
+        try {
+          console.log(`[Jaiza] Recovering authentic teachers from monthly_reports for "${jamiaName}"...`);
+          const repSnap = await getDocs(query(
+            collection(db, "monthly_reports"),
+            where("userId", "==", targetUserData.uid || targetUserData.id || user.uid)
+          ));
+          const recMap = new Map();
+          repSnap.forEach(d => {
+            const rData = d.data() || {};
+            const items = rData.karkardagiReport?.data || rData.data || [];
+            if (Array.isArray(items)) {
+              items.forEach(it => {
+                if (isSameJamia(it.jamiaName, jamiaName) && it.teacherName) {
+                  const rawName = String(it.teacherName).trim();
+                  if (!rawName) return;
+                  let tObj = null;
+                  for (const existingT of recMap.values()) {
+                    if (it.teacherId && existingT.id === it.teacherId) { tObj = existingT; break; }
+                    if (isSameTeacherName(existingT.name, rawName)) { tObj = existingT; break; }
+                  }
+                  if (!tObj) {
+                    tObj = {
+                      id: it.teacherId || `teacher-${recMap.size + 1}-${rawName.toLowerCase().replace(/\s+/g, '-')}`,
+                      name: rawName,
+                      loginCode: it.loginCode || it.ajeerCode || '',
+                      periods: []
+                    };
+                    recMap.set(tObj.id, tObj);
+                  }
+                  const pSemester = String(it.semester || '1');
+                  const pClass = String(it.className || it.class || '').trim();
+                  const pBook = String(it.bookName || it.book || '').trim();
+                  if (pClass && pBook && !tObj.periods.some(p => p.className === pClass && p.bookName === pBook && String(p.semester) === pSemester)) {
+                    tObj.periods.push({ className: pClass, bookName: pBook, semester: pSemester });
+                  }
+                }
+              });
+            }
+          });
+          if (recMap.size > 0) {
+            jamiaStruct = {
+              jamiaName: jamiaName,
+              teachers: Array.from(recMap.values())
+            };
+            console.log(`[Jaiza] Successfully recovered ${recMap.size} authentic teachers from monthly reports for ${jamiaName}`);
+          }
+        } catch(e) {
+          console.warn("[Jaiza] Error checking monthly reports:", e);
         }
       }
     }
@@ -869,8 +790,65 @@ const loadTeachingStructure = async (user) => {
       return;
     }
 
-    // teacher + unke periods (class + book) ko map me daalna
+    // Deduplicate teachers (handles title variations like Mufti vs Ustad, Maulana, etc.)
+    const uniqueMap = new Map();
     (jamiaStruct.teachers || []).forEach(t => {
+      const rawName = (t.name || t.teacherName || t.ustad || "").trim();
+      const normKey = rawName.toLowerCase().replace(/\s+/g, ' ');
+      if (!normKey) return;
+      const tId = (t.id || t.teacherId || '').trim();
+
+      let existingKey = null;
+      if (tId && uniqueMap.has(`id_${tId}`)) {
+        existingKey = `id_${tId}`;
+      } else if (uniqueMap.has(normKey)) {
+        existingKey = normKey;
+      } else {
+        for (const [k, v] of uniqueMap.entries()) {
+          if (tId && v.id === tId) { existingKey = k; break; }
+          if (isSameTeacherName(v.name, rawName)) { existingKey = k; break; }
+        }
+      }
+
+      if (!existingKey) {
+        const newKey = tId ? `id_${tId}` : normKey;
+        uniqueMap.set(newKey, {
+          ...t,
+          name: rawName,
+          periods: Array.isArray(t.periods) ? [...t.periods] : []
+        });
+      } else {
+        const existing = uniqueMap.get(existingKey);
+        const isUrdu = /[\u0600-\u06FF]/.test(rawName);
+        const existingIsUrdu = /[\u0600-\u06FF]/.test(existing.name);
+        if (isUrdu && !existingIsUrdu) {
+          existing.name = rawName;
+        } else if (isUrdu && existingIsUrdu) {
+          const hasRich = /[\u0645\u0641\u062a\u06cc|\u0645\u0648\u0644\u0627\u0646\u0627|\u0642\u0627\u0631\u06cc]/.test(rawName);
+          const existRich = /[\u0645\u0641\u062a\u06cc|\u0645\u0648\u0644\u0627\u0646\u0627|\u0642\u0627\u0631\u06cc]/.test(existing.name);
+          if (hasRich && !existRich) existing.name = rawName;
+        }
+        (t.periods || []).forEach(pNew => {
+          const cName = pNew.className || pNew.class || pNew.darja || "";
+          const bName = pNew.bookName || pNew.book || pNew.kitab || pNew.subject || "";
+          const pSem = String(pNew.semester || pNew.sem || "1");
+          const exists = existing.periods.some(pOld => {
+            const oc = pOld.className || pOld.class || pOld.darja || "";
+            const ob = pOld.bookName || pOld.book || pOld.kitab || pOld.subject || "";
+            const os = String(pOld.semester || pOld.sem || "1");
+            return oc === cName && ob === bName && os === pSem;
+          });
+          if (!exists && (cName || bName)) {
+            existing.periods.push({ ...pNew });
+          }
+        });
+      }
+    });
+
+    const activeTeachers = Array.from(uniqueMap.values());
+
+    // teacher + unke periods (class + book) ko map me daalna
+    activeTeachers.forEach(t => {
       const teacherName = t.name || t.teacherName || t.ustad || "";
       (t.periods || []).forEach(p => {
         const className = p.className || p.class || p.darja || "";
