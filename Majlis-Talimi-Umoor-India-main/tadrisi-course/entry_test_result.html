@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jamia Entry Test Marks</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: 'Jameel Noori Nastaleeq'; src: url('https://cdn.jsdelivr.net/gh/sajjadsaeed/UrduFontsWeb@master/fonts/JameelNooriNastaleeq.woff2') format('woff2'); }
+body { font-family: 'Poppins', sans-serif; background: #f8fafc; }
+.urdu-font { font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif; }
+input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+</style>
+</head>
+<body class="text-gray-800 pb-28">
+
+<div id="toast" class="hidden fixed top-5 left-1/2 -translate-x-1/2 text-white py-3 px-6 rounded-lg shadow-lg z-50 font-bold whitespace-nowrap"></div>
+
+<!-- Login -->
+<div id="login" class="min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border-t-4 border-teal-600">
+    <h1 class="text-2xl font-bold text-teal-800 mb-1">Tadrisi Entry Test</h1>
+    <p class="text-sm text-gray-500 mb-6">Apne Jamia ka code darj karein</p>
+    <input id="code" inputmode="numeric" maxlength="12" placeholder="Jamia Code" autocomplete="off"
+      class="w-full p-3 border-2 rounded-lg text-center text-2xl font-mono tracking-widest outline-none focus:border-teal-500"
+      onkeydown="if(event.key==='Enter')login()">
+    <button id="login-btn" onclick="login()" class="w-full mt-4 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-lg font-bold text-lg">Login</button>
+    <p id="err" class="text-red-600 text-sm mt-3 min-h-[1.25rem]"></p>
+  </div>
+</div>
+
+<!-- Marks entry (mobile-first cards) -->
+<div id="app" class="hidden max-w-2xl mx-auto px-3 pt-3">
+  <div class="sticky top-0 z-20 bg-[#f8fafc] pb-2 pt-1 -mx-3 px-3">
+    <div class="bg-white rounded-xl shadow-sm border-l-4 border-teal-600 p-3 mb-2 flex items-center justify-between gap-2">
+      <div class="min-w-0">
+        <h2 id="jamia-name" class="urdu-font text-xl font-bold text-teal-800 truncate"></h2>
+        <p class="text-xs text-gray-500" id="year"></p>
+      </div>
+      <button onclick="location.reload()" class="shrink-0 bg-red-50 text-red-700 border border-red-300 px-3 py-2 rounded-lg font-bold text-sm">Logout</button>
+    </div>
+
+    <div id="closed-note" class="hidden bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg p-2.5 mb-2 font-bold text-sm">Marks entry abhi band hai. Aap sirf list dekh sakte hain.</div>
+
+    <div class="relative mb-2">
+      <input id="search" oninput="renderList()" placeholder="Naam ya code se dhoondain..." autocomplete="off"
+        class="w-full p-3 pr-9 border rounded-lg text-sm outline-none focus:border-teal-500">
+      <button type="button" onclick="clearSearch()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg leading-none">&times;</button>
+    </div>
+    <p id="progress" class="text-xs font-bold text-teal-700 text-center"></p>
+  </div>
+
+  <div id="list" class="space-y-2 mt-1"></div>
+</div>
+
+<div id="save-bar" class="hidden fixed bottom-0 inset-x-0 bg-white border-t shadow-2xl p-3 flex justify-center" style="padding-bottom: max(12px, env(safe-area-inset-bottom));">
+  <button id="save-btn" onclick="saveAll()" class="bg-teal-600 hover:bg-teal-700 text-white px-10 py-3 rounded-lg font-bold text-lg shadow w-full max-w-xs">Save Marks</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getFirestore, collection, query, where, getDocs, doc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const app = initializeApp({ apiKey: "AIzaSyDhPuyX0y1gb3uXoIRcdcQPkd5Q4KJFgl0", authDomain: "data-f15ab.firebaseapp.com", projectId: "data-f15ab", storageBucket: "data-f15ab.appspot.com", messagingSenderId: "449137002393", appId: "1:449137002393:web:6a23721d00b1b0daeb3508" });
+const db = getFirestore(app);
+const PASS_MARK = 70;
+let students = [], isOpen = false, jamiaCode = '', round = 1, MF = 'entryMarks', BF = 'entryBy', TF = 'entryAt';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast = (m, bad) => { const e = $('toast'); e.textContent = m; e.className = `fixed top-5 left-1/2 -translate-x-1/2 text-white py-3 px-6 rounded-lg shadow-lg z-50 font-bold whitespace-nowrap ${bad ? 'bg-red-500' : 'bg-teal-600'}`; setTimeout(() => e.classList.add('hidden'), 2500); };
+
+window.login = async () => {
+  const c = $('code').value.trim();
+  $('err').textContent = '';
+  if (!c) return;
+  $('login-btn').disabled = true;
+  try {
+    const cd = await getDoc(doc(db, 'tadrisi_jamia_codes', c));
+    if (!cd.exists()) { $('err').textContent = 'Code galat hai.'; return; }
+    const cfg = await getDoc(doc(db, 'tadrisi_config', 'entry_test'));
+    if (!cfg.exists() || !cfg.data().academicYear) { $('err').textContent = 'Entry abhi shuru nahi hui.'; return; }
+    const jamia = cd.data().jamia, year = cfg.data().academicYear;
+    isOpen = cfg.data().isOpen === true; jamiaCode = c;
+    round = cfg.data().round === 2 ? 2 : 1; MF = round === 2 ? 'entryMarks2' : 'entryMarks'; BF = round === 2 ? 'entryBy2' : 'entryBy'; TF = round === 2 ? 'entryAt2' : 'entryAt';
+    const rdate = round === 2 ? cfg.data().round2Date : cfg.data().round1Date;
+    if (!isOpen) { $('err').textContent = 'Marks entry abhi band hai. Admin se rabta karein.'; return; }
+    const snap = await getDocs(query(collection(db, 'tadrisi_students'), where('jamia', '==', jamia), where('academicYear', '==', year)));
+    students = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    if (round === 2) students = students.filter(s => !(s.entryMarks >= PASS_MARK)); // Test 1 me pass wale Test 2 nahi dete
+    $('jamia-name').textContent = jamia; $('year').textContent = `${year} · Test ${round}${rdate ? ' (' + rdate + ')' : ''}`;
+    $('closed-note').classList.toggle('hidden', isOpen);
+    $('save-bar').classList.toggle('hidden', !isOpen);
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    renderList();
+  } catch (e) { console.error(e); $('err').textContent = 'Connection ya permission ka masla hai.'; }
+  finally { $('login-btn').disabled = false; }
+};
+
+window.clearSearch = () => { $('search').value = ''; renderList(); };
+
+function cardHtml(s, idx) {
+  const locked = !isOpen || s[BF] === 'admin';
+  const draft = s._draft !== undefined ? s._draft : (s[MF] ?? '');
+  const v = draft === '' || draft === null ? null : Number(draft);
+  const clr = locked ? 'bg-gray-100 text-gray-400 border-gray-200' : (v === null || isNaN(v) ? 'border-gray-300' : v >= PASS_MARK ? 'border-green-500 bg-green-50' : 'border-red-400 bg-red-50');
+  return `<div class="bg-white rounded-xl border shadow-sm p-3 flex items-center gap-3">
+      <div class="shrink-0 w-6 text-center text-gray-400 font-bold text-sm">${idx}</div>
+      <div class="flex-1 min-w-0">
+        <div class="urdu-font font-bold text-lg leading-snug truncate">${esc(s.name)}</div>
+        <div class="text-sm text-gray-500 truncate">${esc(s.fatherName)}</div>
+        <div class="flex flex-wrap items-center gap-x-2 mt-1 text-xs text-gray-400">
+          <span class="font-mono font-bold text-teal-700">${esc(s.trackingCode || '-')}</span>
+          <span class="urdu-font">${esc(s.mansab || 'طالب علم')}</span>
+          <span class="urdu-font">${esc(s.city || '-')}</span>
+        </div>
+        ${locked && s[BF] === 'admin' ? '<div class="text-[11px] text-amber-700 font-semibold mt-0.5">Admin locked (Sirf Admin edit kar sakta hai)</div>' : ''}
+      </div>
+      <input type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="100" data-id="${s.id}" value="${draft}" ${locked ? 'disabled' : ''}
+        oninput="onMarkInput(this,'${s.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();focusNext('${s.id}');}"
+        class="shrink-0 w-16 h-14 text-xl text-center font-bold rounded-lg border-2 outline-none focus:border-teal-500 ${clr}"></div>`;
+}
+
+window.renderList = () => {
+  const term = $('search').value.trim().toLowerCase();
+  const filtered = term ? students.filter(s => (s.name || '').toLowerCase().includes(term) || (s.fatherName || '').toLowerCase().includes(term) || (s.trackingCode || '').toLowerCase().includes(term)) : students;
+  const adminLockedCount = students.filter(s => s[BF] === 'admin').length;
+  const alertHtml = adminLockedCount > 0 ? `<div class="bg-amber-50 border border-amber-300 text-amber-800 text-xs rounded-lg p-2.5 mb-2 font-medium">Is Jamia me ${adminLockedCount} student(s) Admin ki taraf se locked hain. Baqi students ke marks aap save kar sakte hain. Agar inhein bhi unlock karwana ho to admin panel me jakar unlock karein.</div>` : '';
+  $('list').innerHTML = alertHtml + (filtered.length ? filtered.map((s, i) => cardHtml(s, i + 1)).join('') : '<div class="text-center p-10 text-gray-400 bg-white rounded-xl border">Koi match nahi mila.</div>');
+  progress();
+};
+
+function progress() {
+  const saved = students.filter(s => s[MF] != null).length, dirty = students.filter(s => s._dirty).length;
+  $('progress').textContent = `Saved: ${saved} / ${students.length}` + (dirty ? ` · ${dirty} unsaved` : '');
+}
+
+window.onMarkInput = (el, id) => {
+  const s = students.find(x => x.id === id); if (!s) return;
+  s._draft = el.value; s._dirty = true;
+  const v = el.value === '' ? null : Number(el.value);
+  el.className = el.className.replace(/border-gray-300|border-green-500|bg-green-50|border-red-400|bg-red-50/g, '').trim();
+  el.classList.add(v === null || isNaN(v) ? 'border-gray-300' : v >= PASS_MARK ? 'border-green-500' : 'border-red-400');
+  if (v !== null && !isNaN(v)) el.classList.add(v >= PASS_MARK ? 'bg-green-50' : 'bg-red-50');
+  progress();
+};
+
+window.focusNext = (id) => {
+  const inputs = [...document.querySelectorAll('#list input[data-id]')];
+  const idx = inputs.findIndex(i => i.dataset.id === id);
+  if (idx > -1 && idx < inputs.length - 1) inputs[idx + 1].focus(); else document.activeElement.blur();
+};
+
+window.saveAll = async () => {
+  const dirty = students.filter(s => s._dirty && s[BF] !== 'admin');
+  if (!dirty.length) {
+    if (students.some(s => s._dirty && s[BF] === 'admin')) return toast('Yeh student(s) Admin ki taraf se locked hain', true);
+    return toast('Koi tabdeeli nahi hai');
+  }
+  for (const s of dirty) {
+    const v = s._draft, m = (v === '' || v == null) ? null : Number(v);
+    if (m !== null && (isNaN(m) || m < 0 || m > 100)) {
+      toast(`${s.name} ke marks 0-100 ke beech hon`, true);
+      $('search').value = s.trackingCode || s.name || ''; renderList();
+      return;
+    }
+  }
+  $('save-btn').disabled = true;
+  try {
+    // Firestore rules me har update par get() chalta hai aur ek batch me total 20 get() ki hadd hai.
+    // Isliye chhote batch (8) me save karte hain; jo chunk save ho gaya woh turant "saved" mark ho jata hai.
+    const CHUNK = 8;
+    let done = 0;
+    for (let i = 0; i < dirty.length; i += CHUNK) {
+      const part = dirty.slice(i, i + CHUNK);
+      const b = writeBatch(db);
+      part.forEach(s => {
+        const v = s._draft, m = (v === '' || v == null) ? null : Number(v);
+        b.update(doc(db, 'tadrisi_students', s.id), { [MF]: m, [BF]: 'jamia', [TF]: Date.now() });
+      });
+      await b.commit();
+      part.forEach(s => { const v = s._draft, m = (v === '' || v == null) ? null : Number(v); s[MF] = m; s[BF] = 'jamia'; delete s._draft; delete s._dirty; });
+      done += part.length;
+    }
+    renderList();
+    toast(`${done} students ke marks save ho gaye`);
+  } catch (e) {
+    console.error(e);
+    renderList();
+    if (e?.code === 'permission-denied') {
+      toast('Permission error: Admin se kahein ke admin panel me unlock karein.', true);
+    } else {
+      toast('Kuch marks save nahi hue (jo save hue woh safe hain). Dobara Save dabayein.', true);
+    }
+  }
+  finally { $('save-btn').disabled = false; }
+};
+</script>
+</body>
+</html>
