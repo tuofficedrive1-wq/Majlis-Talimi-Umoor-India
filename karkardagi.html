@@ -305,7 +305,7 @@ html.embedded #loader{position:fixed!important;top:0!important;left:0!important;
                     </div>
 
                     <div id="submit-status-tab-content" class="tab-content hidden space-y-6">
-    <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col sm:flex-row items-center gap-4">
         <div>
             <h3 class="text-2xl font-bold text-slate-800">Teacher Submission Status</h3>
             <p class="text-sm text-gray-500 mt-1">Kis jamia ke kis ustad ne link fill ki hai aur kiski pending hai</p>
@@ -387,9 +387,7 @@ html.embedded #loader{position:fixed!important;top:0!important;left:0!important;
             <label class="font-semibold text-gray-700 whitespace-nowrap">Select Active Year:</label>
             <select id="active-year-select" class="w-full md:w-64 p-2 border rounded-lg bg-white"></select>
         </div>
-        <button type="button" id="restore-structure-btn" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow text-sm transition">
-            <i class="fas fa-history"></i> اسٹرکچر درست اور بحال کریں (Restore & Fix Structure)
-        </button>
+
     </div>
 
     <p class="text-gray-600">Jamiaat aur Teachers ki tafseelat yahan dekhein.</p>
@@ -1687,14 +1685,7 @@ btn.addEventListener('click', async (e) => {
                 if (activeYearSelect) {
                     activeYearSelect.addEventListener('change', handleYearChange);
                 }
-                const restoreStructureBtn = document.getElementById('restore-structure-btn');
-                if (restoreStructureBtn) {
-                    restoreStructureBtn.addEventListener('click', () => {
-                        if (typeof window.repairAndRestoreStructure === 'function') {
-                            window.repairAndRestoreStructure(true);
-                        }
-                    });
-                }
+
             reportMonthSelect.addEventListener('change', handleMonthChange); 
             jamiaFilterSelect.addEventListener('change', handleJamiaFilterChange); 
             summaryMonthSelect.addEventListener('change', renderSummaryTab); 
@@ -1977,237 +1968,6 @@ if (editTeacherForm) {
                 }
                 return { id: null, name: String(j || '').trim() };
             }).filter(j => j.name);
-
-            // Function to restore and repair structure 100% from authentic monthly reports
-            window.repairAndRestoreStructure = async (interactive = true) => {
-                if (!currentUser || !activeYear) return;
-                if (interactive && !confirm("Kya aap waqai saved monthly reports se structure ko 100% pehle jaisa restore aur saaf karna chahte hain?\n\n- Har Jamia ke teachers unki sahi Jamia me wapas aa jayenge.\n- Har teacher ki kitabein unhi ke paas set ho jayengi.\n- Maujooda structure ka backup save ho jayega.")) {
-                    return;
-                }
-
-                showLoader(true);
-                try {
-                    if (assignedJamiaat.length === 0) {
-                        showNotification("Aapke profile me koi Jamia assigned nahi hai.", true);
-                        showLoader(false);
-                        return;
-                    }
-
-                    // 1. Fetch user's own authentic monthly_reports from Firestore
-                    const repSnap = await getDocs(query(
-                        collection(db, "monthly_reports"),
-                        where("userId", "==", currentUser.uid),
-                        where("academicYear", "==", activeYear)
-                    ));
-
-                    const allUserReports = [];
-                    repSnap.forEach(d => allUserReports.push(d.data()));
-
-                    // Agar activeYear me reports kam hon to baki sabhi mahino ki reports bhi dekh lein
-                    if (allUserReports.length === 0) {
-                        const allRepSnap = await getDocs(query(
-                            collection(db, "monthly_reports"),
-                            where("userId", "==", currentUser.uid)
-                        ));
-                        allRepSnap.forEach(d => allUserReports.push(d.data()));
-                    }
-
-                    const norm = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
-
-                    // Pre-calculate which Jamia each teacher actually taught in from monthly_reports
-                    const teacherJamiaAffinity = new Map();
-                    allUserReports.forEach(r => {
-                        const items = r.karkardagiReport?.data || r.data || [];
-                        items.forEach(it => {
-                            if (!it || !it.teacherName || !it.jamiaName) return;
-                            const tNameKey = norm(it.teacherName);
-                            const jKey = norm(it.jamiaName);
-                            if (!teacherJamiaAffinity.has(tNameKey)) {
-                                teacherJamiaAffinity.set(tNameKey, new Map());
-                            }
-                            const jCounts = teacherJamiaAffinity.get(tNameKey);
-                            jCounts.set(jKey, (jCounts.get(jKey) || 0) + 1);
-                        });
-                    });
-
-                    // Build clean structure for each assigned Jamia
-                    const currentStruct = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
-                    const restoredJamiaList = [];
-
-                    assignedJamiaat.forEach(assigned => {
-                        const aName = assigned.name;
-                        const aId = assigned.id;
-                        const aNorm = norm(aName);
-
-                        const existingJ = currentStruct.find(j => 
-                            (aId && (j.jamiaId === aId || j.id === aId)) ||
-                            norm(j.jamiaName) === aNorm ||
-                            window.isSameJamia(j.jamiaName, aName)
-                        );
-
-                        const teachersMap = new Map();
-
-                        // A. Add authentic teachers and periods from monthly_reports for THIS Jamia
-                        allUserReports.forEach(r => {
-                            const items = r.karkardagiReport?.data || r.data || [];
-                            items.forEach(it => {
-                                if (!it || !it.teacherName || !it.jamiaName) return;
-                                if (!window.isSameJamia(it.jamiaName, aName) && norm(it.jamiaName) !== aNorm) return;
-
-                                const rawName = it.teacherName.trim();
-                                const tId = it.teacherId ? String(it.teacherId).trim() : null;
-                                const tKey = tId ? ('id_' + tId) : ('name_' + norm(rawName));
-
-                                if (!teachersMap.has(tKey)) {
-                                    teachersMap.set(tKey, {
-                                        id: tId || ('teacher-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
-                                        name: rawName,
-                                        loginCode: it.loginCode || it.ajeerCode || '',
-                                        periods: []
-                                    });
-                                }
-                                const tObj = teachersMap.get(tKey);
-                                if (!tObj.loginCode && (it.loginCode || it.ajeerCode)) {
-                                    tObj.loginCode = it.loginCode || it.ajeerCode;
-                                }
-
-                                const pClass = String(it.className || it.class || '').trim();
-                                const pBook = String(it.bookName || it.book || '').trim();
-                                let pSem = String(it.semester || '');
-                                if (!pSem) {
-                                    pSem = (typeof r.monthNum === 'number' && (r.monthNum >= 8 || r.monthNum <= 1)) ? '2' : '1';
-                                }
-                                const pTotal = parseInt(it.totalPages || it.monthlyTarget || 0, 10);
-
-                                if (pClass && pBook) {
-                                    const hasP = tObj.periods.some(p => 
-                                        norm(p.className) === norm(pClass) &&
-                                        norm(p.bookName) === norm(pBook) &&
-                                        String(p.semester || '1') === pSem
-                                    );
-                                    if (!hasP) {
-                                        tObj.periods.push({
-                                            id: it.periodId || ('period-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
-                                            className: pClass,
-                                            bookName: pBook,
-                                            semester: pSem,
-                                            totalPages: pTotal,
-                                            status: 'active'
-                                        });
-                                    }
-                                }
-                            });
-                        });
-
-                        // B. Merge existing teachers of THIS Jamia (preserving login codes and un-reported periods like newly added Sem 2)
-                        if (existingJ && Array.isArray(existingJ.teachers)) {
-                            existingJ.teachers.forEach(curT => {
-                                const rawName = (curT.name || '').trim();
-                                if (!rawName) return;
-                                const curTNorm = norm(rawName);
-
-                                // Check if this teacher has strong affinity to ANOTHER assigned Jamia
-                                if (teacherJamiaAffinity.has(curTNorm)) {
-                                    const jCounts = teacherJamiaAffinity.get(curTNorm);
-                                    let topJ = null, topC = 0;
-                                    for (const [jK, c] of jCounts.entries()) {
-                                        if (c > topC) { topC = c; topJ = jK; }
-                                    }
-                                    if (topJ && topJ !== aNorm && assignedJamiaat.some(aj => norm(aj.name) === topJ)) {
-                                        console.log('Skipping misplaced teacher ' + rawName + ' from ' + aName + ' because they belong to Jamia ' + topJ);
-                                        return;
-                                    }
-                                }
-
-                                const tId = curT.id ? String(curT.id).trim() : null;
-                                const tKey = tId ? ('id_' + tId) : ('name_' + curTNorm);
-
-                                if (!teachersMap.has(tKey)) {
-                                    teachersMap.set(tKey, {
-                                        id: tId || ('teacher-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
-                                        name: rawName,
-                                        loginCode: curT.loginCode || curT.ajeerCode || '',
-                                        periods: []
-                                    });
-                                }
-                                const targetT = teachersMap.get(tKey);
-                                if (!targetT.loginCode && (curT.loginCode || curT.ajeerCode)) {
-                                    targetT.loginCode = curT.loginCode || curT.ajeerCode;
-                                }
-
-                                (curT.periods || []).forEach(curP => {
-                                    const c = String(curP.className || curP.class || '').trim();
-                                    const b = String(curP.bookName || curP.book || '').trim();
-                                    const sem = String(curP.semester || '1');
-                                    const tot = parseInt(curP.totalPages || curP.pages || 0, 10);
-
-                                    if (c && b) {
-                                        const hasP = targetT.periods.some(p => 
-                                            norm(p.className) === norm(c) &&
-                                            norm(p.bookName) === norm(b) &&
-                                            String(p.semester || '1') === sem
-                                        );
-                                        if (!hasP) {
-                                            targetT.periods.push({
-                                                id: curP.id || ('period-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
-                                                className: c,
-                                                bookName: b,
-                                                semester: sem,
-                                                totalPages: tot,
-                                                status: curP.status || 'active'
-                                            });
-                                        }
-                                    }
-                                });
-                            });
-                        }
-
-                        // Ensure each teacher has a unique 5-digit login code if missing
-                        const teacherList = Array.from(teachersMap.values());
-                        teacherList.forEach(t => {
-                            if (!t.loginCode || String(t.loginCode).trim() === '') {
-                                if (typeof generateTeacherLoginCode === 'function') {
-                                    t.loginCode = generateTeacherLoginCode(teacherList);
-                                } else {
-                                    t.loginCode = String(Math.floor(10000 + Math.random() * 90000));
-                                }
-                            }
-                        });
-
-                        restoredJamiaList.push({
-                            jamiaId: aId || undefined,
-                            jamiaName: aName,
-                            principalSignature: existingJ?.principalSignature || '',
-                            teachers: teacherList
-                        });
-                    });
-
-                    // Backup current structure before overwriting
-                    const backupCurrent = JSON.parse(JSON.stringify(allAcademicYearsData[activeYear]?.karkardagiStructure || []));
-
-                    // Save restored structure to Firestore
-                    const userRef = doc(db, 'users', currentUser.uid);
-                    await updateDoc(userRef, {
-                        ['academicYears.' + activeYear + '.karkardagiStructure']: restoredJamiaList,
-                        ['academicYears.' + activeYear + '.karkardagiStructure_backup']: backupCurrent,
-                        lastUpdated: serverTimestamp()
-                    });
-
-                    allAcademicYearsData[activeYear].karkardagiStructure = restoredJamiaList;
-                    allAcademicYearsData[activeYear].karkardagiStructure_backup = backupCurrent;
-
-                    renderSetupTab();
-                    renderReportingTab();
-                    populateTeacherProfileFilters();
-
-                    showNotification("Structure kamyabi se 100% pehle jaisa restore aur clean ho gaya!");
-                } catch (err) {
-                    console.error("Restore Error:", err);
-                    showNotification("Restore karne me masla aaya: " + err.message, true);
-                } finally {
-                    showLoader(false);
-                }
-            };
 
             // Standard safe synchronization for current session (Non-destructive)
             if (activeYear) {
