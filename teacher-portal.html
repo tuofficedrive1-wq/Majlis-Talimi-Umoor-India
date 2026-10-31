@@ -2647,7 +2647,8 @@ function recCard(e) {
         تاریخ: ${fmtD(e.date)} • دورانیہ: ${esc(e.duration || '-')}${e.pageNumber ? ' • صفحہ ' + esc(e.pageNumber) : ''}${e.maktaba ? ' • ' + esc(e.maktaba) : ''}
       </div>
       <audio controls preload="none" src="${esc(e.url)}" style="width:100%;margin-top:8px;border-radius:10px"></audio>
-      ${e.tasurat ? `<div class="box muf"><small><i class="fas fa-user-check"></i> مفتش کا تاثر • ${fmtD(e.tasuratDate)}</small>${esc(e.tasurat)}</div>` : ''}
+      ${e.status === 'Rejected' ? `<div class="box" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c"><small><i class="fas fa-triangle-exclamation"></i> مسترد</small>یہ ریکارڈنگ مسترد ہو گئی ہے۔ نئی ریکارڈنگ ایک الگ اندراج کے طور پر محفوظ ہو گی۔</div>` : ''}
+      ${e.tasurat ? `<div class="box muf"><small><i class="fas fa-user-check"></i> مفتش کا تاثر • ${fmtD(e.checkedAt || e.tasuratDate)}</small>${esc(e.tasurat)}</div>` : ''}
       ${e.adminTasurat ? `<div class="box zim"><small><i class="fas fa-user-tie"></i> ذمہ دار کا تبصرہ</small>${esc(e.adminTasurat)}</div>` : ''}
       ${tc.map(c => `<div class="box me"><small><i class="fas fa-pen"></i> میرا تبصرہ • ${fmtDT(c.date)}</small>${esc(c.text)}</div>`).join('')}
       <div style="display:flex;gap:8px;margin-top:10px">
@@ -2750,6 +2751,22 @@ function getWazahatTypeInfo(r) {
   const t = String(r.type || '').toLowerCase();
   const subStr = JSON.stringify(r.data || []);
   
+  // 0. Monthly Test (kamzor test result)
+  if (t === 'monthly_test') {
+    return {
+      typeKey: 'monthly_test',
+      tag: 'ماہانہ ٹیسٹ کی وضاحت',
+      badgeClass: 'pill no',
+      icon: 'fa-file-signature',
+      color: '#7C3AED',
+      badgeBg: '#F5F3FF',
+      badgeText: '#5B21B6',
+      border: '#DDD6FE',
+      heading: 'ماہانہ ٹیسٹ کے کمزور نتائج کی وضاحت',
+      desc: 'محترم استاد صاحب! ماہانہ ٹیسٹ میں آپ کی درج ذیل کتب میں کامیاب طلبہ کی شرح معیار سے کم رہی ہے۔ برائے کرم کمزور نتیجے کی وجوہات اور طلبہ کی اصلاح کے لیے اپنا لائحہ عمل تحریر فرمائیں:'
+    };
+  }
+
   // 1. Takmeel-e-Nisab
   if (t === 'munasib' || /تکمیل.*نصاب|نصاب.*تاخیر/i.test(r.title || '') || /تکمیل.*نصاب/i.test(r.subject || '')) {
     return {
@@ -2886,6 +2903,7 @@ async function getWaz() {
     if (!match) {
       match = uniqueSubmitted.find(s => {
         if (matchedSubIds.has(s.id)) return false;
+        if ((s.type || 'jaiza') !== (r.type || 'jaiza')) return false; // alag qism (jaiza/test/munasib) ka jawab mix na ho
         const tMatch = matchTeacher(s.teacherName, r.teacher) || (s.ajeerCode && String(s.ajeerCode) === String(r.expectedCode));
         const rMonth = String(r.month || '');
         const sMonth = String(s.month || '');
@@ -2913,7 +2931,7 @@ async function getWaz() {
 
 function reqBodyDetailed(r) {
   const items = (r.data || []).map(x => {
-    const isWeak = (x.grade === 'کمزور' || (x.percent !== undefined && parseFloat(x.percent) < 40));
+    const isWeak = (x.grade === 'کمزور' || x.grade === 'تشویش ناک' || (x.percent !== undefined && parseFloat(x.percent) < (r.type === 'monthly_test' ? 60 : 40)));
     return `
       <div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px;box-shadow:0 1px 3px rgba(0,0,0,0.03)">
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -3395,6 +3413,17 @@ function chTestMonth(k) {
   vMonthlyTest();
 }
 
+/* Grade bands (monthly-test.html wali): 80+ ممتاز, 70+ جید جداً, 60+ جید, 50+ مقبول, 40+ پاس, us se kam کمزور */
+function testKaif(p) {
+  p = parseFloat(p) || 0;
+  if (p >= 80) return { t: 'ممتاز', cls: 'mumtaz' };
+  if (p >= 70) return { t: 'جید جداً', cls: 'mumtaz' };
+  if (p >= 60) return { t: 'جید', cls: 'munasib' };
+  if (p >= 50) return { t: 'مقبول', cls: 'munasib' };
+  if (p >= 40) return { t: 'پاس', cls: 'kamzor' };
+  return { t: 'کمزور', cls: 'kamzor' };
+}
+
 async function getMonthlyTest() {
   const mk = selectedTestMonthKey || `${ctx.y}-${String(ctx.m + 1).padStart(2, '0')}`;
   const allSheets = await getAllMonthlyTestSheets();
@@ -3445,23 +3474,26 @@ async function getMonthlyTest() {
         const maxMarks = (subLower.includes('english') || subLower.includes('math') || subLower.includes('hisab') || subLower.includes('computer')) ? 25 : 100;
         const passMarks = maxMarks * 0.40;
 
+        // asatiza-wise-result jaisa hisab: gair hazir/khali shamil nahi, Fisad = Kamyab / Hazir
+        const tmParse = (cell) => {
+          const s = String(cell ?? '').trim();
+          if (s.includes('+')) { const p = s.split('+').map(parseFloat); return p.every(n => !isNaN(n)) ? p.reduce((a, b) => a + b, 0) : NaN; }
+          return parseFloat(s);
+        };
         students.forEach(std => {
-          const m = std.marks ? std.marks[matchedBook] : undefined;
-          if (m === undefined || m === null) return;
-
-          if (String(m).trim().toUpperCase() === 'A') {
-            absentCount++;
-            studentDetails.push({ name: std.name || 'طالب علم', mark: 'A', max: maxMarks, status: 'غیر حاضر', isPass: false });
-          } else {
-            const num = parseFloat(m);
-            if (!isNaN(num)) {
-              appearedCount++;
-              totalMarks += num;
-              const isPass = num >= passMarks;
-              if (isPass) passedCount++; else failedCount++;
-              studentDetails.push({ name: std.name || 'طالب علم', mark: num, max: maxMarks, status: isPass ? 'پاس' : 'فیل', isPass });
-            }
+          const raw = std.marks ? std.marks[matchedBook] : undefined;
+          const c = String(raw ?? '').trim(), low = c.toLowerCase();
+          if (c === '' || c === '\u063a' || c === '\u063a\u0627\u0626\u0628' || low === 'a' || low === 'absent') {
+            if (c !== '') { absentCount++; studentDetails.push({ name: std.name || 'طالب علم', mark: 'A', max: maxMarks, status: 'غیر حاضر', isPass: false }); }
+            return;
           }
+          const num = tmParse(c);
+          const isNakamTxt = (c === '\u0646\u0627\u06a9\u0627\u0645' || low === 'fail' || low === 'f');
+          const isPass = !isNaN(num) ? (num >= passMarks) : !isNakamTxt;
+          appearedCount++;
+          if (!isNaN(num)) totalMarks += num;
+          if (isPass) passedCount++; else failedCount++;
+          studentDetails.push({ name: std.name || 'طالب علم', mark: !isNaN(num) ? num : c, max: maxMarks, status: isPass ? 'پاس' : 'فیل', isPass });
         });
 
         const passPerc = appearedCount > 0 ? ((passedCount / appearedCount) * 100).toFixed(1) : '0.0';
@@ -3549,8 +3581,8 @@ async function vMonthlyTest() {
             <span class="muted" style="font-size:13px;display:block">مجموعی کامیابی فیصد (${currentMonthLabel})</span>
             <div class="big" style="color:var(--g)" dir="ltr">${overallPerc}%</div>
           </div>
-          <span class="grade-badge ${parseFloat(overallPerc) >= 60 ? 'mumtaz' : (parseFloat(overallPerc) >= 40 ? 'munasib' : 'kamzor')}" style="font-size:16px;padding:6px 18px">
-            ${parseFloat(overallPerc) >= 70 ? 'بہترین' : (parseFloat(overallPerc) >= 40 ? 'مناسب' : 'کمزور')}
+          <span class="grade-badge ${testKaif(overallPerc).cls}" style="font-size:16px;padding:6px 18px">
+            ${testKaif(overallPerc).t}
           </span>
         </div>
         <div class="test-metric-grid" style="margin-top:12px;border-top:1px dashed #86EFAC;padding-top:10px">
@@ -3576,7 +3608,7 @@ async function vMonthlyTest() {
 
     <!-- Cards per Book / Class -->
     ${results.map((r, idx) => {
-      const isWeak = parseFloat(r.passPercentage) < 50;
+      const isWeak = parseFloat(r.passPercentage) < 60;
       return `
         <div class="card" style="${isWeak ? 'border-right:5px solid var(--red)' : 'border-right:5px solid #10B981'}">
           <div class="card-title">
@@ -3584,8 +3616,8 @@ async function vMonthlyTest() {
               <b style="font-size:18px;color:var(--g)">${esc(r.className)} — ${esc(r.bookName)}</b>
               <div class="muted" style="font-size:13px">کل درج طلبہ: ${r.totalStudents} • زیادہ سے زیادہ نمبرات: ${r.maxMarks}</div>
             </div>
-            <span class="grade-badge ${parseFloat(r.passPercentage) >= 60 ? 'mumtaz' : (parseFloat(r.passPercentage) >= 40 ? 'munasib' : 'kamzor')}" dir="ltr">
-              <b>${r.passPercentage}%</b>
+            <span class="grade-badge ${testKaif(r.passPercentage).cls}" dir="ltr">
+              <b>${r.passPercentage}%</b> <span class="urdu-font" style="font-size:12px">${testKaif(r.passPercentage).t}</span>
             </span>
           </div>
 

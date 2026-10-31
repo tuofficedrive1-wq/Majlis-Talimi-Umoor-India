@@ -215,8 +215,49 @@
                 verifiedAjeerCode = codeInput;
                 window.wazahatContext = payloadData; 
 
+                // 1. Pehle linkId se check karein
+                let existingRecord = null;
                 const q = query(collection(db, "mahana_wazahat_records"), where("linkId", "==", sid));
                 const existingSnap = await getDocs(q);
+
+                if (!existingSnap.empty) {
+                    existingRecord = existingSnap.docs[0].data();
+                } else {
+                    // 2. BACKUP CHECK: Agar naya link hone ki wajah se linkId na mile,
+                    // to Ajeer Code + Month se check karein
+                    if (verifiedAjeerCode && payloadData.month) {
+                        try {
+                            const qCode = query(collection(db, "mahana_wazahat_records"), 
+                                where("ajeerCode", "==", verifiedAjeerCode),
+                                where("month", "==", payloadData.month)
+                            );
+                            const snapCode = await getDocs(qCode);
+                            if (!snapCode.empty) {
+                                existingRecord = snapCode.docs[0].data();
+                            }
+                        } catch (e) {
+                            console.warn("Ajeer code lookup warning:", e);
+                        }
+                    }
+
+                    // 3. BACKUP CHECK: Teacher Name + Month se check karein
+                    if (!existingRecord && payloadData.teacher && payloadData.month) {
+                        try {
+                            const qTeacher = query(collection(db, "mahana_wazahat_records"), 
+                                where("teacherName", "==", payloadData.teacher),
+                                where("month", "==", payloadData.month)
+                            );
+                            const snapTeacher = await getDocs(qTeacher);
+                            if (!snapTeacher.empty) {
+                                const docs = snapTeacher.docs.map(d => d.data());
+                                docs.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+                                existingRecord = docs[0];
+                            }
+                        } catch (e) {
+                            console.warn("Teacher name lookup warning:", e);
+                        }
+                    }
+                }
 
                 loginSec.classList.add('hidden');
                 jaizaBox.classList.remove('hidden');
@@ -239,15 +280,14 @@
                     `;
                 });
 
-                if (!existingSnap.empty) {
-                    const existingData = existingSnap.docs[0].data();
-                    const sDate = new Date(existingData.timestamp);
+                if (existingRecord) {
+                    const sDate = new Date(existingRecord.timestamp);
                     const formattedDate = sDate.toLocaleDateString('ur-PK') + " - " + sDate.toLocaleTimeString('ur-PK', {hour: '2-digit', minute:'2-digit'});
 
                     document.getElementById('success-title').innerText = "وضاحت موصول ہو چکی ہے";
                     document.getElementById('success-desc').innerText = "آپ کا جواب پہلے ہی ریکارڈ میں محفوظ ہے۔";
                     document.getElementById('success-time').innerText = `Date: ${formattedDate}`;
-                    document.getElementById('final-wazahat-display').innerText = existingData.wazahat;
+                    document.getElementById('final-wazahat-display').innerText = existingRecord.wazahat;
                     document.getElementById('success-msg').classList.remove('hidden');
                 } else {
                     wForm.classList.remove('hidden');

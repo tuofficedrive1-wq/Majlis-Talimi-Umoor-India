@@ -141,6 +141,7 @@ export const renderPerformanceTab = (assignedJamiaat, currentUser, db) => {
         <div class="mb-4 md:mb-6">
             <div class="flex border-b border-slate-200 gap-2 md:gap-6 overflow-x-auto no-scrollbar">
                 <button class="sub-tab-btn active border-b-2 border-indigo-600 px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-indigo-600 whitespace-nowrap transition" data-sub="performance">Performance</button>
+                <button class="sub-tab-btn px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap hover:text-indigo-500 transition" data-sub="status">Submit Status</button>
                 <button class="sub-tab-btn px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap hover:text-indigo-500 transition" data-sub="summary">Summary</button>
                 <button class="sub-tab-btn px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap hover:text-indigo-500 transition" data-sub="structure">Structure</button>
                 <button class="sub-tab-btn px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold text-slate-500 whitespace-nowrap hover:text-indigo-500 transition" data-sub="profiles">Profiles</button>
@@ -216,6 +217,21 @@ const renderSubTabContent = async (tabName, assignedJamiaat, currentUser, db) =>
     
         loadPerformanceTable(assignedJamiaat, db, currentUser);
     
+    } else if (tabName === 'status') {
+        contentArea.innerHTML = `
+            <div class="bg-white rounded-2xl p-5 md:p-6 border border-gray-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-xl md:text-2xl font-bold text-slate-800">Teacher Submission Status</h3>
+                    <p class="text-sm text-gray-500 mt-1">Kis jamia ke kis ustad ne link fill ki hai aur kiski pending hai</p>
+                </div>
+                <label for="status-only-pending" class="flex items-center gap-3 bg-red-50 text-red-700 border border-red-100 rounded-xl px-4 py-2.5 cursor-pointer hover:bg-red-100/70 transition-colors">
+                    <input type="checkbox" id="status-only-pending" onchange="renderSubmitStatusReport()" class="h-4 w-4 rounded cursor-pointer">
+                    <span class="text-sm font-semibold select-none">Sirf Pending Dekhein</span>
+                </label>
+            </div>
+            <div id="submit-status-container" class="space-y-6 mt-4"></div>`;
+        loadSubmitStatus(assignedJamiaat, db, currentUser);
+
     } else if (tabName === 'summary') {
         contentArea.innerHTML = `
             <div class="bg-white p-3 md:p-5 rounded-xl md:rounded-2xl border border-slate-200 mb-4 md:mb-6 shadow-sm">
@@ -1623,6 +1639,8 @@ export const handleDashboardMonthChange = (newMonth, assignedJamiaat, db, curren
     if (db) gDb = db;
     if (currentUser) gCurrentUser = currentUser;
 
+    if (document.getElementById('submit-status-container')) { loadSubmitStatus(gAssignedJamiaat, gDb, gCurrentUser); return; }
+
     const tableBody = document.getElementById('performance-table-body');
     if (!tableBody) return; 
     
@@ -2366,3 +2384,263 @@ async function fetchTargetsForJamia(db, jamiaName) {
 
     return mergedTargets;
 }
+
+
+// =====================================================================
+// SUBMIT STATUS TAB  (karkardagi.html ke "Teacher Submission Status" jaisa)
+// Jamia-wise: kis ustad ne report di, deeni kaam ki karkardagi, date aur time
+// =====================================================================
+const fullMonthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+let gStatusData = null;
+
+const statusNorm = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
+const statusEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const statusTsMs = ts => {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (ts.seconds) return ts.seconds * 1000;
+    const t = new Date(ts).getTime();
+    return isNaN(t) ? 0 : t;
+};
+const statusSameJamia = (a, b) => {
+    if (!a || !b) return false;
+    const clean = s => String(s).replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim().toLowerCase().replace(/[\s_\-]+/g, ' ');
+    const x = clean(a), y = clean(b);
+    if (x === y) return true;
+    if (x.includes('bypass') !== y.includes('bypass')) return false;
+    const strip = s => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia)[\s_-]*/gi, '').trim();
+    return strip(x) === strip(y);
+};
+
+const loadSubmitStatus = async (jamiaat, db, currentUser) => {
+    const container = document.getElementById('submit-status-container');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="p-8 bg-white rounded-2xl border text-center text-gray-500 font-medium">
+            <i class="fas fa-circle-notch fa-spin text-3xl text-indigo-500 mb-2"></i>
+            <p>Data load ho raha hai...</p>
+        </div>`;
+    try {
+        const [calSnap, userSnap] = await Promise.all([
+            getDoc(doc(db, "settings", "academic_calendar")),
+            getDoc(doc(db, "users", currentUser.uid))
+        ]);
+        const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
+        const userData = userSnap.data() || {};
+        const structure = (userData.academicYears || {})[activeYear]?.karkardagiStructure || [];
+        if (structure.length === 0) {
+            container.innerHTML = `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500">Koi structure data nahi mila.</div>`;
+            return;
+        }
+
+        const monthKey = getActiveShortMonth();
+        const monthNum = monthNames.indexOf(monthKey);               // 0-11 (JS month index)
+        const years = activeYear.split('-').map(n => parseInt(n, 10));
+        const yearNum = monthNum <= 2 ? (years[1] || (years[0] + 1)) : years[0];   // Jan-Mar agle saal ke hote hain
+
+        // Admin ne jo report save ki (fallback)
+        let savedEntries = [], savedTime = null;
+        try {
+            const repSnap = await getDocs(query(collection(db, 'monthly_reports'), where('userId', '==', currentUser.uid), where('academicYear', '==', activeYear)));
+            repSnap.forEach(d => {
+                const r = d.data();
+                if (r.year === yearNum && r.monthNum === monthNum) {
+                    savedEntries = r.karkardagiReport?.data || [];
+                    savedTime = r.updatedAt || r.createdAt || null;
+                }
+            });
+        } catch (e) { console.warn('monthly_reports read failed', e); }
+
+        // Teachers ki submissions
+        const subSnap = await getDocs(query(collection(db, 'teacher_submissions'), where('submissionYear', '==', yearNum), where('submissionMonth', '==', monthNum)));
+
+        const findJamia = (teacherId, jamiaRaw) => {
+            let j = null;
+            if (teacherId) j = structure.find(x => (x.teachers || []).some(t => t.id === teacherId));
+            if (!j) j = structure.find(x => x.jamiaName === jamiaRaw) || structure.find(x => statusSameJamia(x.jamiaName, jamiaRaw));
+            return j;
+        };
+
+        const recMap = new Map();
+        subSnap.forEach(d => {
+            const data = d.data() || {};
+            const teacherId = String(data.teacherId || '').trim();
+            if (!teacherId) return;
+            const jamiaRaw = String(data.jamiaId || data.jamiaName || '');
+            const j = findJamia(teacherId, jamiaRaw);
+            if (!j) return;
+            const key = `${j.jamiaName}::${teacherId}`;
+            const r = recMap.get(key) || { submitted: false, ms: 0, ts: null, deeni: null, deeniMs: 0 };
+            const tsVal = data.submittedAt || data.updatedAt || data.createdAt || data.timestamp || null;
+            const ms = statusTsMs(tsVal);
+            let has = false;
+            if (data.role === 'user_update') {
+                has = (data.changedValues || []).some(cv => parseInt(cv.pagesTaught || 0, 10) > 0 || (cv.lastIbarat && String(cv.lastIbarat).trim() !== ''));
+            } else {
+                const hasPages = parseInt(data.pagesTaught || 0, 10) > 0;
+                const hasIbarat = data.lastIbarat && String(data.lastIbarat).trim() !== '';
+                const hasDeeni = data.deeniKaam && Object.keys(data.deeniKaam).length > 0;
+                has = hasPages || hasIbarat || hasDeeni;
+                if (hasDeeni && ms >= r.deeniMs) { r.deeni = data.deeniKaam; r.deeniMs = ms; }
+            }
+            if (has) {
+                r.submitted = true;
+                if (ms > r.ms) { r.ms = ms; r.ts = tsVal; }
+            }
+            recMap.set(key, r);
+        });
+
+        const jamias = [];
+        [...structure].sort((a, b) => (a.jamiaName || '').localeCompare(b.jamiaName || '')).forEach(j => {
+            if (!(j.teachers || []).length) return;
+            if (jamiaat && jamiaat.length && !jamiaat.some(a => statusSameJamia(a, j.jamiaName))) return;
+            const teachers = [...j.teachers].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(t => {
+                const r = recMap.get(`${j.jamiaName}::${t.id}`) || { submitted: false, ms: 0, ts: null, deeni: null };
+                let submitted = r.submitted, ms = r.ms, savedOnly = false;
+                if (!submitted) {
+                    const e = savedEntries.find(x => x && statusSameJamia(x.jamiaName, j.jamiaName) && (x.teacherId === t.id || (x.teacherName && statusNorm(x.teacherName) === statusNorm(t.name))));
+                    if (e && (e.pagesTaught > 0 || e.lastIbarat)) {
+                        submitted = true; savedOnly = true;
+                        ms = statusTsMs(savedTime);
+                    }
+                }
+                return { name: t.name, submitted, ms, savedOnly, deeni: r.deeni };
+            });
+            jamias.push({ name: j.jamiaName, teachers });
+        });
+
+        gStatusData = { monthLabel: `${fullMonthNames[monthNum]} ${yearNum}`, jamias };
+        renderSubmitStatus();
+    } catch (err) {
+        console.error('Submit status error:', err);
+        const msg = (err && err.code === 'permission-denied')
+            ? 'Is data ko dekhne ki permission nahi hai (Firestore rules: teacher_submissions).'
+            : 'Data load nahi ho saka. Dobara koshish karein.';
+        container.innerHTML = `<div class="p-6 bg-white rounded-2xl border border-red-100 text-center text-red-600 font-semibold text-sm">${msg}</div>`;
+    }
+};
+
+const renderSubmitStatus = () => {
+    const container = document.getElementById('submit-status-container');
+    if (!container || !gStatusData) return;
+    const onlyPending = !!(document.getElementById('status-only-pending') || {}).checked;
+    const { monthLabel, jamias } = gStatusData;
+    const urdu = "font-family:'Jameel Noori Nastaleeq','Noto Nastaliq Urdu',serif";
+
+    let totalTeachers = 0, totalSubmitted = 0;
+    jamias.forEach(j => { totalTeachers += j.teachers.length; totalSubmitted += j.teachers.filter(t => t.submitted).length; });
+    const pending = totalTeachers - totalSubmitted;
+    const pct = totalTeachers > 0 ? Math.round((totalSubmitted / totalTeachers) * 100) : 0;
+
+    let html = `
+        <div class="flex flex-col lg:flex-row justify-between items-center bg-slate-900 text-white p-5 rounded-2xl shadow-md mb-6 gap-5">
+            <div class="flex items-center gap-4 w-full lg:w-auto border-b lg:border-b-0 border-slate-700 pb-4 lg:pb-0">
+                <div class="bg-teal-500/20 p-3 rounded-xl border border-teal-500/30"><i class="far fa-calendar-alt text-teal-400 text-2xl"></i></div>
+                <div>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Report Period</p>
+                    <p class="text-xl font-bold">${monthLabel}</p>
+                </div>
+            </div>
+            <div class="flex flex-row justify-center items-center gap-4 px-4 py-2 border rounded-lg whitespace-nowrap overflow-x-auto max-w-full">
+                <div class="text-center">
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total Jamiaat</p>
+                    <p class="text-3xl font-black text-blue-400">${jamias.length}</p>
+                </div>
+                <div class="text-center border-l border-slate-700 pl-6 lg:pl-10">
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Kul Asatiza</p>
+                    <p class="text-3xl font-black text-white">${totalTeachers}</p>
+                </div>
+                <div class="text-center border-l border-slate-700 pl-6 lg:pl-10">
+                    <p class="text-[10px] text-emerald-400 uppercase tracking-widest font-bold mb-1">Report Aayi</p>
+                    <div class="flex items-center justify-center gap-2">
+                        <p class="text-3xl font-black text-emerald-400">${totalSubmitted}</p>
+                        <p class="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">${pct}%</p>
+                    </div>
+                </div>
+                <div class="text-center border-l border-slate-700 pl-6 lg:pl-10">
+                    <p class="text-[10px] text-rose-400 uppercase tracking-widest font-bold mb-1">Baqi (Pending)</p>
+                    <p class="text-3xl font-black text-rose-400">${pending}</p>
+                </div>
+            </div>
+        </div>`;
+
+    const yes = 'ہاں';
+    const icon = v => v === yes
+        ? '<i class="fas fa-check text-emerald-600 font-bold text-sm"></i>'
+        : '<i class="fas fa-times text-rose-500 font-bold text-sm"></i>';
+    const deeniHtml = d => {
+        if (!d) return '<span class="text-gray-300">-</span>';
+        const item = (label, v) => `<div class="flex items-center gap-1.5"><span class="text-gray-500">${label}:</span> <span>${icon(v)}</span></div>`;
+        const sep = '<div class="text-gray-300 text-xs">|</div>';
+        return `<div style="${urdu}" class="flex flex-row items-center justify-center gap-4 text-[12px] md:text-[13px] w-max mx-auto bg-slate-50 px-4 py-1.5 rounded-lg border border-slate-200 text-slate-800 shadow-sm font-medium">
+            ${item('درس', d.zoharDars)}${sep}${item('اجتماع', d.haftawarIjtima)}${sep}${item('مذاکرہ', d.madaniMuzakarah)}${sep}${item('نیک اعمال', d.naikAmaal)}${sep}${item('مدنی قافلہ', d.madaniQafilah)}</div>`;
+    };
+
+    let any = false;
+    jamias.forEach(j => {
+        let rows = '', sr = 1;
+        const submittedCount = j.teachers.filter(t => t.submitted).length;
+        j.teachers.forEach(t => {
+            if (onlyPending && t.submitted) return;
+            let dateTxt = '-', timeTxt = '-';
+            if (t.ms) {
+                const dt = new Date(t.ms);
+                dateTxt = dt.toLocaleDateString('ur-PK');
+                timeTxt = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            } else if (t.submitted) {
+                dateTxt = '<span class="text-xs text-slate-400">Saved</span>';
+            }
+            const badge = t.submitted
+                ? `<span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center gap-1"><i class="fas fa-check-circle text-[10px]"></i> Submitted</span>`
+                : `<span class="bg-rose-50 text-rose-700 text-xs font-semibold px-2.5 py-1 rounded-lg border border-rose-200 inline-flex items-center gap-1"><i class="fas fa-clock text-[10px]"></i> Pending</span>`;
+            rows += `
+                <tr class="hover:bg-slate-50/80 transition-colors border-b border-gray-100">
+                    <td class="p-3 text-center text-gray-400 font-bold">${sr++}</td>
+                    <td class="p-3 text-right font-medium text-slate-800" style="${urdu}">${statusEsc(t.name)}</td>
+                    <td class="p-3 text-center">${badge}</td>
+                    <td class="p-3 text-center">${deeniHtml(t.deeni)}</td>
+                    <td class="p-3 text-center text-xs font-bold text-slate-700" dir="ltr">${dateTxt}</td>
+                    <td class="p-3 text-center text-[11px] text-slate-500 font-mono" dir="ltr">${timeTxt}</td>
+                </tr>`;
+        });
+        if (!rows) return;
+        any = true;
+        html += `
+            <div class="border border-gray-100 rounded-2xl shadow-sm bg-white overflow-hidden mb-6">
+                <div class="bg-slate-50/60 border-b border-gray-100 px-5 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <h4 class="text-lg font-bold text-slate-800 uppercase">${statusEsc(j.name)}</h4>
+                    <div class="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border shadow-sm whitespace-nowrap">
+                        Total: ${j.teachers.length} | Submitted: <span class="text-emerald-600">${submittedCount}</span> | Pending: <span class="text-rose-600">${j.teachers.length - submittedCount}</span>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-200 text-slate-800 border-b-2 border-slate-300">
+                            <tr>
+                                <th class="p-3 font-bold text-center">SR.</th>
+                                <th class="p-3 font-bold text-center">Teacher Name</th>
+                                <th class="p-3 font-bold text-center">Status</th>
+                                <th class="p-3 font-bold text-center">Deeni Kaam Report</th>
+                                <th class="p-3 font-bold text-center">Submit Date</th>
+                                <th class="p-3 font-bold text-center">Submit Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    });
+
+    if (!any) {
+        html += onlyPending
+            ? `<div class="p-8 bg-emerald-50 rounded-2xl border border-emerald-100 text-center max-w-xl mx-auto mt-4">
+                    <i class="fas fa-check-circle text-emerald-500 text-4xl mb-3"></i>
+                    <h5 class="text-xl font-bold text-emerald-900 mt-3" style="${urdu}">الحمدللہ!</h5>
+                    <p class="text-emerald-700 mt-1 font-medium text-sm">Sabhi asatiza ne اپنی رپورٹ جمع کر دی ہے۔ Koi pending nahi.</p>
+               </div>`
+            : `<div class="p-6 bg-white rounded-2xl border text-center text-gray-500 mt-4">Koi data available nahi hai.</div>`;
+    }
+    container.innerHTML = html;
+};
+
+window.renderSubmitStatusReport = () => renderSubmitStatus();

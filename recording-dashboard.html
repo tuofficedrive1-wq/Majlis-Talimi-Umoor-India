@@ -304,6 +304,13 @@ body, input, textarea, select, button {
                     </div>
                 </div>
 
+                <div id="modal-checker-info" class="hidden bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm"></div>
+
+                <div id="modal-teacher-comments-box" class="hidden">
+                    <label class="block text-sm font-bold text-gray-700 mb-2"><i class="fas fa-comments text-green-600"></i> Comments (Teacher / Zimmedar):</label>
+                    <div id="modal-teacher-comments" class="space-y-2"></div>
+                </div>
+
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-2">Mufattish Tabsara (Final Comment):</label>
                     <textarea id="modal-comment" rows="4" 
@@ -373,6 +380,16 @@ body, input, textarea, select, button {
     let subUsersList = [];
     let jamiaRegionMap = {};
         let userRolesMap = {};
+
+    // ---- Ek hi jagah status ka logic (pehle 3 jagah alag tha) ----
+    // "handled" = Checked ya Rejected, yani checker ne apna kaam kar diya
+    function recState(r) {
+        if (r.status === "Rejected") return "rejected";
+        if (r.status === "Checked" || (r.tasurat && r.tasurat.trim() !== "")) return "checked";
+        return "pending";
+    }
+    const isHandled = r => recState(r) !== "pending";
+    const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
     async function fetchJamiaRegions() {
     try {
@@ -528,7 +545,12 @@ body, input, textarea, select, button {
                                     status: rec.status || "",
                                     performanceScore: rec.performanceScore || {},
                                     needsAttention: rec.needsAttention || false,
-                                    contactDone: rec.contactDone || false
+                                    contactDone: rec.contactDone || false,
+                                    teacherComments: Array.isArray(rec.teacherComments) ? rec.teacherComments : [],
+                                    zimmedarComment: rec.adminTasurat || "",
+                                    checkerName: rec.checkerName || (rec.checkedBy && rec.checkedBy.name) || "",
+                                    checkerPhone: rec.checkerPhone || (rec.checkedBy && rec.checkedBy.phone) || "",
+                                    checkedAt: rec.checkedAt || null
                                 });
                             });
                         }
@@ -634,7 +656,7 @@ function applyFilters() {
 
     function updateStatsLogic(dataSet) {
     const total = dataSet.length;
-    const checked = dataSet.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
+    const checked = dataSet.filter(isHandled).length;   // Checked + Rejected (checker wale dashboard ke barabar)
     const pending = total - checked;
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
 
@@ -659,7 +681,7 @@ function applyFilters() {
         const m = r.assignedTo || "Unassigned";
         if (!mStats[m]) mStats[m] = { total: 0, checked: 0 };
         mStats[m].total++;
-        if (r.tasurat && r.tasurat.trim() !== "") mStats[m].checked++;
+        if (isHandled(r)) mStats[m].checked++;
     });
 
     let rowsHtml = '';
@@ -769,6 +791,7 @@ function renderTable() {
                         <p class="text-xs text-gray-500 urdu-font">${r.zimmedarName}</p>
                     </div>
                     ${attentionBadge}
+                    ${(r.teacherComments && r.teacherComments.length) ? `<span class="inline-block mt-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold"><i class="fas fa-comment"></i> Teacher comment: ${r.teacherComments.length}</span>` : ''}
                 </td>
                 <td class="p-3 text-right urdu-font text-teal-700 font-semibold text-sm">${r.teacherName}</td>
                 <td class="p-3 text-center">
@@ -831,6 +854,29 @@ function renderTable() {
         document.getElementById('modal-date').innerText = r.date;
         document.getElementById('modal-comment').value = r.tasurat;
         document.getElementById('save-status').classList.add('hidden');
+
+        // Checker info (naam, phone, date)
+        const ciBox = document.getElementById('modal-checker-info');
+        const who = r.checkerName || r.assignedTo;
+        if (who) {
+            let h = `<i class="fas fa-user-check text-teal-600"></i> <b>Checker:</b> <span class="urdu-font">${escHtml(who)}</span>`;
+            if (r.checkerPhone) h += ` &nbsp;•&nbsp; <i class="fas fa-phone text-teal-600"></i> <span dir="ltr">${escHtml(r.checkerPhone)}</span>`;
+            const cd = r.checkedAt || r.tasuratDate;
+            if (cd) h += ` &nbsp;•&nbsp; <span class="text-gray-500">Check: ${escHtml(String(cd).slice(0, 16).replace('T', ' '))}</span>`;
+            ciBox.innerHTML = h;
+            ciBox.classList.remove('hidden');
+        } else { ciBox.classList.add('hidden'); }
+
+        // Teacher + Zimmedar comments
+        const tcBox = document.getElementById('modal-teacher-comments-box');
+        const tcList = document.getElementById('modal-teacher-comments');
+        let tcHtml = '';
+        if (r.zimmedarComment) tcHtml += `<div class="p-2 rounded bg-blue-50 border border-blue-200 text-right urdu-font text-sm"><div class="text-[10px] text-blue-600 font-bold mb-1">Zimmedar</div>${escHtml(r.zimmedarComment)}</div>`;
+        (r.teacherComments || []).forEach(c => {
+            tcHtml += `<div class="p-2 rounded bg-green-50 border border-green-200 text-right urdu-font text-sm"><div class="text-[10px] text-green-700 font-bold mb-1">Teacher${c.date ? ' • ' + escHtml(String(c.date).slice(0, 16).replace('T', ' ')) : ''}</div>${escHtml(c.text)}</div>`;
+        });
+        tcList.innerHTML = tcHtml;
+        tcBox.classList.toggle('hidden', !tcHtml);
 
         const player = document.getElementById('modal-audio-player');
         const linkBtn = document.getElementById('modal-link');
@@ -913,7 +959,7 @@ function renderTable() {
             const assignedRecs = allReportsData.filter(r => r.assignedTo === mufattish);
             const totalAssigned = assignedRecs.length;
             
-            const checkedRecs = assignedRecs.filter(r => r.tasurat && r.tasurat.trim() !== "");
+            const checkedRecs = assignedRecs.filter(isHandled);
             const totalChecked = checkedRecs.length;
             const totalPending = totalAssigned - totalChecked;
             
@@ -1132,7 +1178,9 @@ function downloadExcelReport() {
     const exportData = filteredReports.map((r, i) => {
         const assignedDateFormatted = r.assignedDate ? new Date(r.assignedDate).toLocaleDateString('en-GB') : "Not Recorded";
         const checkedDateFormatted = r.tasuratDate ? new Date(r.tasuratDate).toLocaleDateString('en-GB') : "Pending";
-        const status = (r.tasurat && r.tasurat.trim() !== "") ? "Mukammal (Checked)" : "Baqaya (Pending)";
+        const st = recState(r);
+        const status = st === "rejected" ? "Mustarad (Rejected)" : st === "checked" ? "Mukammal (Checked)" : "Baqaya (Pending)";
+        const teacherCommentsText = (r.teacherComments || []).map(c => c.text).join(" | ") || "-";
 
         return {
             "S.No": i + 1,
@@ -1148,7 +1196,8 @@ function downloadExcelReport() {
             "Mufattish (Assigned To)": r.assignedTo || "Unassigned",
             "Assigned Date": assignedDateFormatted,
             "Checked Date": checkedDateFormatted,
-            "Tasurat (Mufattish Comment)": r.tasurat || "-"
+            "Tasurat (Mufattish Comment)": r.tasurat || "-",
+            "Teacher Comments": teacherCommentsText
         };
     });
 
@@ -1156,7 +1205,7 @@ function downloadExcelReport() {
     dataSheet['!cols'] = [
         { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, 
         { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, 
-        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
+        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 40 }
     ];
 
     // Main Data Sheet ki Formatting (Headers ko color aur baqi ko border)
@@ -1183,7 +1232,7 @@ function downloadExcelReport() {
     // SHEET 2: DETAILED SUMMARY 
     // ==========================================
     const total = filteredReports.length;
-    const checked = filteredReports.filter(r => r.tasurat && r.tasurat.trim() !== "").length;
+    const checked = filteredReports.filter(isHandled).length;
     const pending = total - checked;
     const percentChecked = total > 0 ? ((checked / total) * 100).toFixed(2) + "%" : "0%";
     const percentPending = total > 0 ? ((pending / total) * 100).toFixed(2) + "%" : "0%";
@@ -1229,7 +1278,7 @@ function downloadExcelReport() {
             if (!keyVal || keyVal.trim() === "") keyVal = defaultValue;
             if (!statsMap[keyVal]) statsMap[keyVal] = { total: 0, checked: 0 };
             statsMap[keyVal].total++;
-            if (r.tasurat && r.tasurat.trim() !== "") statsMap[keyVal].checked++;
+            if (isHandled(r)) statsMap[keyVal].checked++;
         });
 
         const sortedKeys = Object.keys(statsMap).sort((a, b) => statsMap[b].total - statsMap[a].total);

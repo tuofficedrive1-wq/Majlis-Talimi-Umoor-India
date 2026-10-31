@@ -252,12 +252,34 @@ export async function initJaizaSummary(db, user, containerId, userProfileData) {
             btn.disabled = true;
 
             try {
-                // Agar ID nahi bani to Firebase me data save kar ke nayi ID banayein
+                // Agar ID pehle se nahi hai to check karein kya Firestore me pehle se short link bana hua hai
+                if (!sid) {
+                    try {
+                        const qShort = query(collection(db, 'jaiza_short_links'),
+                            where("month", "==", payloadData.month),
+                            where("teacher", "==", payloadData.teacher)
+                        );
+                        const snapShort = await getDocs(qShort);
+                        const existingLinkDoc = snapShort.docs.find(d => {
+                            const dData = d.data();
+                            return isSameJamia(dData.jamia, payloadData.jamia) ||
+                                   (payloadData.jamiaEnglish && isSameJamia(dData.jamia, payloadData.jamiaEnglish)) ||
+                                   dData.jamia === payloadData.jamia;
+                        });
+                        if (existingLinkDoc) {
+                            sid = existingLinkDoc.id;
+                        }
+                    } catch (e) {
+                        console.warn("Check existing short link warning:", e);
+                    }
+                }
+
+                // Agar abhi bhi sid nahi mila to Firebase me data save kar ke nayi ID banayein
                 if (!sid) {
                     const docRef = await addDoc(collection(db, 'jaiza_short_links'), payloadData);
                     sid = docRef.id;
-                    tr.setAttribute('data-sid', sid); // Isi row me save kar liya
                 }
+                tr.setAttribute('data-sid', sid); // Isi row me save kar liya
 
                 // YAHAN APNA ASLI GITHUB WALA LINK LAGAYEIN
                 const baseUrl = `https://tuofficedrive1-wq.github.io/Majlis-Talimi-Umoor-India/teacher-wazahat.html`;
@@ -734,12 +756,12 @@ async function fetchAndRenderReport(db, user, userProfileData) {
         const wQ = query(wazahatRef, where("month", ">=", startMonth), where("month", "<=", endMonth));
         const wSnap = await getDocs(wQ);
         
-        const submittedWazahats = {};
+        const submittedWazahatsList = [];
         wSnap.forEach(doc => {
-            const data = doc.data();
-            const key = `${data.jamia}_${data.teacherName}_${data.month}`;
-            submittedWazahats[key] = data; 
+            submittedWazahatsList.push({ id: doc.id, ...doc.data() }); 
         });
+        // Latest submission pehle aaye
+        submittedWazahatsList.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
 
         // --- 2. WAZAHAT DATA GROUPING & RENDERING (Tab 2) ---
         const wazahatData = {};
@@ -789,19 +811,54 @@ async function fetchAndRenderReport(db, user, userProfileData) {
                     });
                 }
 
-                // --- DATE AUR TIME NIKALNE KA NAYA LOGIC ---
-                // --- DATE AUR TIME NIKALNE KA NAYA LOGIC ---
-                const wKey = `${item.jamia}_${item.teacher}_${item.month}`;
+                // --- SMART WAZAHAT MATCHING (Urdu/English/AjeerCode/TeacherName Har Tarah Se Match Karega) ---
+                const cleanStr = (s) => String(s || '').replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '').trim();
+                const cleanTeacher = (t) => cleanStr(t).replace(/\s+/g, ' ');
+
+                const itemTeacher = cleanTeacher(item.teacher);
+                const itemMonth = cleanStr(item.month);
+                const itemCode = cleanStr(expectedCode);
+
+                const wData = submittedWazahatsList.find(s => {
+                    const sMonth = cleanStr(s.month);
+                    if (sMonth !== itemMonth) return false;
+
+                    // Match 1: Agar Ajeer Code match ho jaye (100% Unique)
+                    if (itemCode && cleanStr(s.ajeerCode) && cleanStr(s.ajeerCode) === itemCode) {
+                        return true;
+                    }
+
+                    // Match 2: Teacher Name + Jamia (Urdu / English / isSameJamia / Master)
+                    const sTeacher = cleanTeacher(s.teacherName);
+                    if (sTeacher === itemTeacher) {
+                        const sJamia = cleanStr(s.jamia);
+                        const jUrdu = cleanStr(item.jamia);
+                        const jEng = cleanStr(item.jamiaEnglish);
+
+                        if (sJamia === jUrdu || sJamia === jEng) return true;
+                        if (isSameJamia(sJamia, jUrdu) || isSameJamia(sJamia, jEng)) return true;
+
+                        // Check via masterList
+                        const mDoc = findMasterJamia(null, sJamia);
+                        if (mDoc) {
+                            if (mDoc.urduName && (mDoc.urduName === jUrdu || isSameJamia(mDoc.urduName, jUrdu))) return true;
+                            if (mDoc.name && (mDoc.name === jEng || isSameJamia(mDoc.name, jEng))) return true;
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+
                 let wazahatColumnHtml = `<span class="text-red-500 bg-red-50 px-2 py-1 rounded text-xs font-bold border border-red-200">انتظار میں...</span>`; 
-                
-                if (submittedWazahats[wKey]) {
-                    const wData = submittedWazahats[wKey];
+                let existingSid = "";
+
+                if (wData) {
+                    if (wData.linkId) existingSid = wData.linkId;
                     const dateObj = new Date(wData.timestamp);
                     const formattedDate = dateObj.toLocaleDateString('en-GB'); 
                     const formattedTime = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }); 
                     const formattedDateTime = `${formattedDate} | ${formattedTime}`;
                     
-                    // Yahan se line-clamp-3 hata kar whitespace-pre-wrap lagaya gaya hai
                     wazahatColumnHtml = `
                         <div class="text-right">
                             <p class="text-sm text-gray-800 leading-relaxed mb-3 whitespace-pre-wrap break-words">${wData.wazahat}</p>
@@ -816,7 +873,7 @@ async function fetchAndRenderReport(db, user, userProfileData) {
                 const encodedPayload = encodeURIComponent(JSON.stringify(payload));
 
                 wazahatTbody.innerHTML += `
-                    <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50" data-sid="">
+                    <tr class="hover:bg-amber-50 transition-colors odd:bg-white even:bg-slate-50" data-sid="${existingSid}">
                         <td class="px-4 py-3 border-l border-slate-200 font-sans">${index + 1}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-teal-800 font-bold">${item.jamia}</td>
                         <td class="px-4 py-3 border-l border-slate-200 text-gray-800 font-bold text-base">${item.teacher}</td>

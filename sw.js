@@ -1,11 +1,15 @@
-// Teacher Portal - Service Worker
-const CACHE_NAME = 'teacher-portal-v1';
+// Majlis Talimi Umoor - Service Worker (main app + teacher portal)
+const CACHE_NAME = 'mtu-app-v2';
 const STATIC_ASSETS = [
+  './index.html',
   './teacher-portal.html',
   './manifest.json',
-  './majlis_talimi_umoor_app_icon.png',
-  './icon-192.png',
-  './icon-512.png'
+  './manifest-teacher.json',
+  './app%20icon/majlis_talimi_umoor_app_icon.png',
+  './app%20icon/icon-192.png',
+  './app%20icon/icon-512.png',
+  './app%20icon/icon-maskable-512.png',
+  './app%20icon/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -55,7 +59,7 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
           return res;
         })
-        .catch(() => caches.match(e.request).then((res) => res || caches.match('./teacher-portal.html')))
+        .catch(() => caches.match(e.request).then((res) => res || caches.match(url.pathname.includes('teacher-portal') ? './teacher-portal.html' : './index.html')))
     );
     return;
   }
@@ -71,7 +75,7 @@ self.addEventListener('fetch', (e) => {
             caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
           }
           return res;
-        })
+        }).catch(() => new Response('', { status: 504, statusText: 'Offline' }))
       );
     })
   );

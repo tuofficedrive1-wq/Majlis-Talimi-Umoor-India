@@ -240,6 +240,12 @@
                     </div>
                 </div>
 
+                <!-- TEACHER / ZIMMEDAR COMMENTS (Teacher portal se aaye hue) -->
+                <div id="modal-teacher-comments-box" class="mb-6 hidden">
+                    <label class="block text-sm font-bold text-gray-700 mb-2"><i class="fas fa-comments text-amber-500"></i> Teacher / Zimmedar ke Comments:</label>
+                    <div id="modal-teacher-comments" class="space-y-2"></div>
+                </div>
+
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-2">Mufattish Tabsara (Final Comment):</label>
                    <!-- Naya Performance Grading System -->
@@ -339,6 +345,9 @@
         <input type="checkbox" id="modal-needs-attention" class="w-5 h-5 text-red-600 rounded focus:ring-red-500 cursor-pointer">
         <label for="modal-needs-attention" class="text-sm font-bold text-red-800 cursor-pointer">Zimmedar se baat karni hai (Highlight karein)</label>
     </div>
+    <p id="phone-share-note" class="text-[11px] text-gray-500 -mt-1">
+        * Call Alert lagane par aapka naam aur number Zimmedar ko dikhega, taake wo aap se raabta kar sakein.
+    </p>
     
     <div class="flex items-center gap-3 bg-emerald-50 p-2 rounded border border-emerald-200">
         <input type="checkbox" id="modal-contact-done" class="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer">
@@ -390,7 +399,14 @@
     let currentEditingDocId = null;
     let currentEditingIndex = null;
     let loggedInCheckerName = ""; 
+    let loggedInCheckerPhone = "";   // Call Alert par Zimmedar ko dikhane ke liye
+    let loggedInCheckerUid = "";
     let jamiaRegionMap = {};
+
+    // Teacher/Zimmedar comments ko safe tareeqe se HTML me dikhane ke liye
+    function escapeHtml(s) {
+        return String(s ?? "").replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    }
     async function fetchJamiaRegions() {
         try {
             const usersSnap = await db.collection('users').get();
@@ -419,6 +435,8 @@
                 if (!userQuery.empty) {
                     const userData = userQuery.docs[0].data();
                     loggedInCheckerName = userData.name || userData.email.split('@')[0];
+                    loggedInCheckerPhone = String(userData.phone || userData.mobile || userData.whatsapp || userData.contact || "").trim();
+                    loggedInCheckerUid = userQuery.docs[0].id;
                 } else {
                     loggedInCheckerName = user.email.split('@')[0];
                 }
@@ -506,7 +524,9 @@
                                     performanceScore: rec.performanceScore || {},
                                     status: rec.status || "",
                                     needsAttention: rec.needsAttention || false,
-                                    contactDone: rec.contactDone || false 
+                                    contactDone: rec.contactDone || false,
+                                    teacherComments: Array.isArray(rec.teacherComments) ? rec.teacherComments : [],
+                                    zimmedarComment: rec.adminTasurat || ""
                                 });
                             }
                         });
@@ -754,6 +774,35 @@ document.getElementById('modal-maktaba').innerText = r.maktaba || "-";
         document.getElementById('modal-comment').value = r.tasurat || '';
         document.getElementById('modal-needs-attention').checked = r.needsAttention || false;
         document.getElementById('modal-contact-done').checked = r.contactDone || false; // ✨ NAYA
+
+        // Phone number profile mein na ho to checker ko pehle hi bata dein
+        const phoneNote = document.getElementById('phone-share-note');
+        if (phoneNote) {
+            phoneNote.innerHTML = loggedInCheckerPhone
+                ? `* Call Alert lagane par aapka naam aur number (<b dir="ltr">${escapeHtml(loggedInCheckerPhone)}</b>) Zimmedar ko dikhega.`
+                : `<span class="text-red-600 font-bold">* Aapke profile mein phone number nahi hai. Call Alert lagane se pehle Admin se number add karwa lein, warna Zimmedar ko sirf naam dikhega.</span>`;
+        }
+
+        // Teacher / Zimmedar ke comments dikhayein
+        const tcBox = document.getElementById('modal-teacher-comments-box');
+        const tcList = document.getElementById('modal-teacher-comments');
+        const tcItems = [];
+        (r.teacherComments || []).forEach(c => {
+            tcItems.push(`
+                <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                    <p class="text-[10px] font-bold text-emerald-700 mb-1"><i class="fas fa-chalkboard-teacher"></i> Teacher ka comment${c.date ? ' • ' + new Date(c.date).toLocaleString('en-GB') : ''}</p>
+                    <p class="text-sm text-gray-800 urdu-font whitespace-pre-wrap">${escapeHtml(c.text)}</p>
+                </div>`);
+        });
+        if (r.zimmedarComment) {
+            tcItems.push(`
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p class="text-[10px] font-bold text-blue-700 mb-1"><i class="fas fa-user-tie"></i> Zimmedar ka comment</p>
+                    <p class="text-sm text-gray-800 urdu-font whitespace-pre-wrap">${escapeHtml(r.zimmedarComment)}</p>
+                </div>`);
+        }
+        tcList.innerHTML = tcItems.join('');
+        tcBox.classList.toggle('hidden', tcItems.length === 0);
         
         // Load hone par ek dafa calculation zarur run karein
         calculateScore();
@@ -864,6 +913,16 @@ async function saveFeedback(statusType) {
         arr[currentEditingIndex].status = statusType; // <-- NEW: Status (Checked ya Rejected)
         arr[currentEditingIndex].needsAttention = needsAttention; // ✨ NAYA
         arr[currentEditingIndex].contactDone = contactDone; // ✨ NAYA
+
+        // Checker ki pehchan (Zimmedar ke liye): naam hamesha, number sirf Call Alert par dikhaya jayega
+        arr[currentEditingIndex].checkedBy = {
+            uid: loggedInCheckerUid,
+            name: loggedInCheckerName,
+            phone: loggedInCheckerPhone
+        };
+        arr[currentEditingIndex].checkerName = loggedInCheckerName;
+        arr[currentEditingIndex].checkerPhone = loggedInCheckerPhone;
+        arr[currentEditingIndex].checkedAt = now;
 
         await reportRef.update({ "tadrisRecording.data": arr });
 
