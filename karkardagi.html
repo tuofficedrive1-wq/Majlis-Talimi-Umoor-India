@@ -382,9 +382,14 @@ html.embedded #loader{position:fixed!important;top:0!important;left:0!important;
                     </div>
 
                     <div id="setup-tab-content" class="tab-content hidden space-y-4">
-    <div class="bg-white p-4 border rounded-lg shadow-sm flex flex-col md:flex-row items-center gap-4">
-        <label class="font-semibold text-gray-700">Select Active Year:</label>
-        <select id="active-year-select" class="w-full md:w-64 p-2 border rounded-lg bg-white"></select>
+    <div class="bg-white p-4 border rounded-lg shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-3 w-full md:w-auto">
+            <label class="font-semibold text-gray-700 whitespace-nowrap">Select Active Year:</label>
+            <select id="active-year-select" class="w-full md:w-64 p-2 border rounded-lg bg-white"></select>
+        </div>
+        <button type="button" id="restore-structure-btn" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow text-sm transition">
+            <i class="fas fa-history"></i> اسٹرکچر درست اور بحال کریں (Restore & Fix Structure)
+        </button>
     </div>
 
     <p class="text-gray-600">Jamiaat aur Teachers ki tafseelat yahan dekhein.</p>
@@ -585,7 +590,10 @@ window.isSameJamia = (j1, j2) => {
     // Strict separation: agar ek me bypass hai aur doosre me nahi to match na karein
     if (clean1.includes('bypass') !== clean2.includes('bypass')) return false;
     const strip = (s) => s.replace(/^(jamia[\s_-]*tul[\s_-]*madina|jamia)[\s_-]*/gi, '').trim();
-    return strip(clean1) === strip(clean2);
+    const st1 = strip(clean1);
+    const st2 = strip(clean2);
+    if (!st1 || !st2) return false;
+    return st1 === st2;
 };
 
 window.findJamiaInStructure = (structure, identifier) => {
@@ -1679,6 +1687,14 @@ btn.addEventListener('click', async (e) => {
                 if (activeYearSelect) {
                     activeYearSelect.addEventListener('change', handleYearChange);
                 }
+                const restoreStructureBtn = document.getElementById('restore-structure-btn');
+                if (restoreStructureBtn) {
+                    restoreStructureBtn.addEventListener('click', () => {
+                        if (typeof window.repairAndRestoreStructure === 'function') {
+                            window.repairAndRestoreStructure(true);
+                        }
+                    });
+                }
             reportMonthSelect.addEventListener('change', handleMonthChange); 
             jamiaFilterSelect.addEventListener('change', handleJamiaFilterChange); 
             summaryMonthSelect.addEventListener('change', renderSummaryTab); 
@@ -1953,811 +1969,292 @@ if (editTeacherForm) {
             allAcademicYearsData[activeYear].sem2TotalDays = adminConfig.sem2TotalDays || 0;
         }
 
-        // 3.5. AUTO-ALIGNMENT & RECOVERY: Structure Jamia Names ko Assigned Jamia Names se synchronize karein
-        // Aur teachers ke duplicates, missing loginCodes, missing Sem 2 periods ko theek karein
+        // 3.5. SAFE & ACCURATE STRUCTURE SYNCHRONIZATION (Strict User & Jamia Isolation)
         if (allAcademicYearsData && userProfileData && userProfileData.jamiaatList) {
-            let structureNeedsUpdate = false;
             const assignedJamiaat = (userProfileData.jamiaatList || []).map(j => {
                 if (typeof j === 'object' && j) {
                     return { id: j.id || j.jamiaId || null, name: (j.name || j.jamiaName || '').trim() };
                 }
                 return { id: null, name: String(j || '').trim() };
             }).filter(j => j.name);
-            
-            const assignedNames = assignedJamiaat.map(j => j.name);
-            const uRole = (userProfileData.role || '').toLowerCase();
-            const isStandardRole = uRole === 'standard' || (!uRole.includes('inspector') && uRole !== 'shoba_qirat' && uRole !== 'education_office');
 
-            // Helper to check if a teacher structure is dummy/inspector pollution
-            const isInspectorPolluted = (teachers) => {
-                if (!Array.isArray(teachers) || teachers.length === 0) return false;
-                return teachers.some(t => {
-                    const name = (t.name || '').trim().toLowerCase();
-                    const code = String(t.loginCode || t.ajeerCode || '').trim();
-                    if (code === '72525' || code === '75163') return true;
-                    if (name.includes('chhaila') || name.startsWith('mr.') || /\bmr\b/i.test(name) || /\bsir\b/i.test(name)) return true;
-                    const books = (t.periods || []).map(p => (p.bookName || '').trim().toLowerCase());
-                    if (books.length > 0 && books.every(b => b === 'mathematics' || b === 'english' || b === 'general knowledge' || b === 'english grammar')) {
-                        return true;
-                    }
-                    return false;
-                });
-            };
-
-            // Helper to check if a structure is purely Shoba Qirat (only 1-2 teachers teaching only Tajweed)
-            const isShobaQiratStructure = (teachers) => {
-                if (!Array.isArray(teachers) || teachers.length === 0) return false;
-                if (teachers.length > 2) return false;
-                const allBooks = teachers.flatMap(t => (t.periods || []).map(p => (p.bookName || '').trim().toLowerCase()));
-                if (allBooks.length === 0) return false;
-                return allBooks.every(b => b.includes('\u062a\u062c\u0648\u06cc\u062f') || b.includes('tajweed') || b.includes('\u0642\u0631\u0627\u062a') || b.includes('qirat'));
-            };
-
-            // Helper to clean core teacher name by removing titles, honorifics, and nisbats
-            const getCoreTeacherName = (name) => {
-                if (!name) return "";
-                let s = String(name).trim().toLowerCase();
-                // Normalize Yeh, Alef, Heh
-                s = s.replace(/[\u064A\u0649\u06CC\u0670]/g, '\u06CC'); // Yeh
-                s = s.replace(/[\u0622\u0623\u0625\u0671]/g, '\u0627'); // Alef
-                s = s.replace(/[\u0629]/g, '\u06c1'); // Teh marbuta
-                // Remove titles: Ù…ÙØªÛŒ | Ù…ÙˆÙ„Ø§Ù†Ø§ | Ø§Ø³ØªØ§Ø° | Ø§Ø³ØªØ§Ø¯ | Ù‚Ø§Ø±ÛŒ | Ø­Ø§ÙØ¸ | Ø¬Ù†Ø§Ø¨ | ØµØ§Ø­Ø¨ | ØµØ§Ø¨ | Ù…ÛŒØ§Úº | Ø³ÛŒØ¯
-                s = s.replace(/(^|\s+)(\u0645\u0641\u062a\u06cc|\u0645\u0648\u0644\u0627\u0646\u0627|\u0627\u0633\u062a\u0627\u0630|\u0627\u0633\u062a\u0627\u062f|\u0642\u0627\u0631\u06cc|\u062d\u0627\u0641\u0638|\u062c\u0646\u0627\u0628|\u0635\u0627\u062d\u0628|\u0635\u0627\u0628|\u0645\u06cc\u0627\u06ba|\u0633\u06cc\u062f|\bmr\.?|\bsir|\bmolana|\bmufti|\bqari|\bhafiz|\bdr\.?)(\s+|$)/gi, ' ');
-                // Remove nisbats: Ù…Ø¯Ù†ÛŒ | Ù…ØµØ¨Ø§Ø­ÛŒ | Ù†Ø¸Ø§Ù…ÛŒ | Ù‚Ø§Ø¯Ø±ÛŒ | Ø±Ø¶ÙˆÛŒ | Ø¹Ø·Ø§Ø±ÛŒ | Ø¨Ø±Ú©Ø§ØªÛŒ
-                s = s.replace(/(^|\s+)(\u0645\u062f\u0646\u06cc|\u0645\u0635\u0628\u0627\u062d\u06cc|\u0646\u0638\u0627\u0645\u06cc|\u0642\u0627\u062f\u0631\u06cc|\u0631\u0636\u0648\u06cc|\u0639\u0637\u0627\u0631\u06cc|\u0628\u0631\u06a9\u0627\u062a\u06cc)(\s+|$)/gi, ' ');
-                return s.trim().replace(/[\s\-_]+/g, '');
-            };
-
-            // Helper to check bilingual name equivalence between English & Urdu AND title-agnostic equivalence
-            const isSameTeacherName = (n1, n2) => {
-                if (!n1 || !n2) return false;
-                const a = n1.trim().toLowerCase().replace(/[\s\-_]+/g, '');
-                const b = n2.trim().toLowerCase().replace(/[\s\-_]+/g, '');
-                if (a === b) return true;
-                
-                // Title-agnostic core match (e.g. "Ù…ÙØªÛŒ ÙØ§Ø±ÙˆÙ‚ ØµØ§Ø­Ø¨" == "Ø§Ø³ØªØ§Ø° ÙØ§Ø±ÙˆÙ‚ Ù…ØµØ¨Ø§Ø­ÛŒ ØµØ§Ø­Ø¨")
-                const c1 = getCoreTeacherName(n1);
-                const c2 = getCoreTeacherName(n2);
-                if (c1 && c2 && c1.length >= 3 && c2.length >= 3 && c1 === c2) {
-                    return true;
+            // Function to restore and repair structure 100% from authentic monthly reports
+            window.repairAndRestoreStructure = async (interactive = true) => {
+                if (!currentUser || !activeYear) return;
+                if (interactive && !confirm("Kya aap waqai saved monthly reports se structure ko 100% pehle jaisa restore aur saaf karna chahte hain?\n\n- Har Jamia ke teachers unki sahi Jamia me wapas aa jayenge.\n- Har teacher ki kitabein unhi ke paas set ho jayengi.\n- Maujooda structure ka backup save ho jayega.")) {
+                    return;
                 }
 
-                const pairs = [
-                    ['akbar', '\u0627\u06a9\u0628\u0631'],
-                    ['junaid', '\u062c\u0646\u06cc\u062f'],
-                    ['ziaunnabi', '\u0636\u06cc\u0627\u0621 \u0627\u0644\u0646\u0628\u06cc'],
-                    ['zia', '\u0636\u06cc\u0627'],
-                    ['asif', '\u0622\u0635\u0641'],
-                    ['jawed', '\u062c\u0627\u0648\u06cc\u062f'],
-                    ['javed', '\u062c\u0627\u0648\u06cc\u062f'],
-                    ['ansar', '\u0627\u0646\u0635\u0627\u0631'],
-                    ['wali', '\u0648\u0644\u06cc'],
-                    ['anas', '\u0627\u0646\u0633'],
-                    ['afzal', '\u0627\u0641\u0636\u0644'],
-                    ['talib', '\u0637\u0627\u0644\u0628'],
-                    ['arif', '\u0639\u0627\u0631\u0641'],
-                    ['rifaqat', '\u0631\u0641\u0627\u0642\u062a'],
-                    ['kashif', '\u06a9\u0627\u0634\u0641'],
-                    ['waseem', '\u0648\u0633\u06cc\u0645'],
-                    ['saqib', '\u062b\u0627\u0642\u0628'],
-                    ['aleem', '\u0639\u0644\u06cc\u0645']
-                ];
-                for (const [en, ur] of pairs) {
-                    if ((a.includes(en) || b.includes(en)) && (a.includes(ur) || b.includes(ur))) {
-                        return true;
+                showLoader(true);
+                try {
+                    if (assignedJamiaat.length === 0) {
+                        showNotification("Aapke profile me koi Jamia assigned nahi hai.", true);
+                        showLoader(false);
+                        return;
                     }
+
+                    // 1. Fetch user's own authentic monthly_reports from Firestore
+                    const repSnap = await getDocs(query(
+                        collection(db, "monthly_reports"),
+                        where("userId", "==", currentUser.uid),
+                        where("academicYear", "==", activeYear)
+                    ));
+
+                    const allUserReports = [];
+                    repSnap.forEach(d => allUserReports.push(d.data()));
+
+                    // Agar activeYear me reports kam hon to baki sabhi mahino ki reports bhi dekh lein
+                    if (allUserReports.length === 0) {
+                        const allRepSnap = await getDocs(query(
+                            collection(db, "monthly_reports"),
+                            where("userId", "==", currentUser.uid)
+                        ));
+                        allRepSnap.forEach(d => allUserReports.push(d.data()));
+                    }
+
+                    const norm = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
+
+                    // Pre-calculate which Jamia each teacher actually taught in from monthly_reports
+                    const teacherJamiaAffinity = new Map();
+                    allUserReports.forEach(r => {
+                        const items = r.karkardagiReport?.data || r.data || [];
+                        items.forEach(it => {
+                            if (!it || !it.teacherName || !it.jamiaName) return;
+                            const tNameKey = norm(it.teacherName);
+                            const jKey = norm(it.jamiaName);
+                            if (!teacherJamiaAffinity.has(tNameKey)) {
+                                teacherJamiaAffinity.set(tNameKey, new Map());
+                            }
+                            const jCounts = teacherJamiaAffinity.get(tNameKey);
+                            jCounts.set(jKey, (jCounts.get(jKey) || 0) + 1);
+                        });
+                    });
+
+                    // Build clean structure for each assigned Jamia
+                    const currentStruct = allAcademicYearsData[activeYear]?.karkardagiStructure || [];
+                    const restoredJamiaList = [];
+
+                    assignedJamiaat.forEach(assigned => {
+                        const aName = assigned.name;
+                        const aId = assigned.id;
+                        const aNorm = norm(aName);
+
+                        const existingJ = currentStruct.find(j => 
+                            (aId && (j.jamiaId === aId || j.id === aId)) ||
+                            norm(j.jamiaName) === aNorm ||
+                            window.isSameJamia(j.jamiaName, aName)
+                        );
+
+                        const teachersMap = new Map();
+
+                        // A. Add authentic teachers and periods from monthly_reports for THIS Jamia
+                        allUserReports.forEach(r => {
+                            const items = r.karkardagiReport?.data || r.data || [];
+                            items.forEach(it => {
+                                if (!it || !it.teacherName || !it.jamiaName) return;
+                                if (!window.isSameJamia(it.jamiaName, aName) && norm(it.jamiaName) !== aNorm) return;
+
+                                const rawName = it.teacherName.trim();
+                                const tId = it.teacherId ? String(it.teacherId).trim() : null;
+                                const tKey = tId ? ('id_' + tId) : ('name_' + norm(rawName));
+
+                                if (!teachersMap.has(tKey)) {
+                                    teachersMap.set(tKey, {
+                                        id: tId || ('teacher-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
+                                        name: rawName,
+                                        loginCode: it.loginCode || it.ajeerCode || '',
+                                        periods: []
+                                    });
+                                }
+                                const tObj = teachersMap.get(tKey);
+                                if (!tObj.loginCode && (it.loginCode || it.ajeerCode)) {
+                                    tObj.loginCode = it.loginCode || it.ajeerCode;
+                                }
+
+                                const pClass = String(it.className || it.class || '').trim();
+                                const pBook = String(it.bookName || it.book || '').trim();
+                                let pSem = String(it.semester || '');
+                                if (!pSem) {
+                                    pSem = (typeof r.monthNum === 'number' && (r.monthNum >= 8 || r.monthNum <= 1)) ? '2' : '1';
+                                }
+                                const pTotal = parseInt(it.totalPages || it.monthlyTarget || 0, 10);
+
+                                if (pClass && pBook) {
+                                    const hasP = tObj.periods.some(p => 
+                                        norm(p.className) === norm(pClass) &&
+                                        norm(p.bookName) === norm(pBook) &&
+                                        String(p.semester || '1') === pSem
+                                    );
+                                    if (!hasP) {
+                                        tObj.periods.push({
+                                            id: it.periodId || ('period-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
+                                            className: pClass,
+                                            bookName: pBook,
+                                            semester: pSem,
+                                            totalPages: pTotal,
+                                            status: 'active'
+                                        });
+                                    }
+                                }
+                            });
+                        });
+
+                        // B. Merge existing teachers of THIS Jamia (preserving login codes and un-reported periods like newly added Sem 2)
+                        if (existingJ && Array.isArray(existingJ.teachers)) {
+                            existingJ.teachers.forEach(curT => {
+                                const rawName = (curT.name || '').trim();
+                                if (!rawName) return;
+                                const curTNorm = norm(rawName);
+
+                                // Check if this teacher has strong affinity to ANOTHER assigned Jamia
+                                if (teacherJamiaAffinity.has(curTNorm)) {
+                                    const jCounts = teacherJamiaAffinity.get(curTNorm);
+                                    let topJ = null, topC = 0;
+                                    for (const [jK, c] of jCounts.entries()) {
+                                        if (c > topC) { topC = c; topJ = jK; }
+                                    }
+                                    if (topJ && topJ !== aNorm && assignedJamiaat.some(aj => norm(aj.name) === topJ)) {
+                                        console.log('Skipping misplaced teacher ' + rawName + ' from ' + aName + ' because they belong to Jamia ' + topJ);
+                                        return;
+                                    }
+                                }
+
+                                const tId = curT.id ? String(curT.id).trim() : null;
+                                const tKey = tId ? ('id_' + tId) : ('name_' + curTNorm);
+
+                                if (!teachersMap.has(tKey)) {
+                                    teachersMap.set(tKey, {
+                                        id: tId || ('teacher-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
+                                        name: rawName,
+                                        loginCode: curT.loginCode || curT.ajeerCode || '',
+                                        periods: []
+                                    });
+                                }
+                                const targetT = teachersMap.get(tKey);
+                                if (!targetT.loginCode && (curT.loginCode || curT.ajeerCode)) {
+                                    targetT.loginCode = curT.loginCode || curT.ajeerCode;
+                                }
+
+                                (curT.periods || []).forEach(curP => {
+                                    const c = String(curP.className || curP.class || '').trim();
+                                    const b = String(curP.bookName || curP.book || '').trim();
+                                    const sem = String(curP.semester || '1');
+                                    const tot = parseInt(curP.totalPages || curP.pages || 0, 10);
+
+                                    if (c && b) {
+                                        const hasP = targetT.periods.some(p => 
+                                            norm(p.className) === norm(c) &&
+                                            norm(p.bookName) === norm(b) &&
+                                            String(p.semester || '1') === sem
+                                        );
+                                        if (!hasP) {
+                                            targetT.periods.push({
+                                                id: curP.id || ('period-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
+                                                className: c,
+                                                bookName: b,
+                                                semester: sem,
+                                                totalPages: tot,
+                                                status: curP.status || 'active'
+                                            });
+                                        }
+                                    }
+                                });
+                            });
+                        }
+
+                        // Ensure each teacher has a unique 5-digit login code if missing
+                        const teacherList = Array.from(teachersMap.values());
+                        teacherList.forEach(t => {
+                            if (!t.loginCode || String(t.loginCode).trim() === '') {
+                                if (typeof generateTeacherLoginCode === 'function') {
+                                    t.loginCode = generateTeacherLoginCode(teacherList);
+                                } else {
+                                    t.loginCode = String(Math.floor(10000 + Math.random() * 90000));
+                                }
+                            }
+                        });
+
+                        restoredJamiaList.push({
+                            jamiaId: aId || undefined,
+                            jamiaName: aName,
+                            principalSignature: existingJ?.principalSignature || '',
+                            teachers: teacherList
+                        });
+                    });
+
+                    // Backup current structure before overwriting
+                    const backupCurrent = JSON.parse(JSON.stringify(allAcademicYearsData[activeYear]?.karkardagiStructure || []));
+
+                    // Save restored structure to Firestore
+                    const userRef = doc(db, 'users', currentUser.uid);
+                    await updateDoc(userRef, {
+                        ['academicYears.' + activeYear + '.karkardagiStructure']: restoredJamiaList,
+                        ['academicYears.' + activeYear + '.karkardagiStructure_backup']: backupCurrent,
+                        lastUpdated: serverTimestamp()
+                    });
+
+                    allAcademicYearsData[activeYear].karkardagiStructure = restoredJamiaList;
+                    allAcademicYearsData[activeYear].karkardagiStructure_backup = backupCurrent;
+
+                    renderSetupTab();
+                    renderReportingTab();
+                    populateTeacherProfileFilters();
+
+                    showNotification("Structure kamyabi se 100% pehle jaisa restore aur clean ho gaya!");
+                } catch (err) {
+                    console.error("Restore Error:", err);
+                    showNotification("Restore karne me masla aaya: " + err.message, true);
+                } finally {
+                    showLoader(false);
                 }
-                return false;
             };
 
-            // Helper to check if a teacher list is corrupted or incomplete
-            const isCorruptedOrIncomplete = (teachers) => {
-                if (!Array.isArray(teachers) || teachers.length === 0) return true;
-                if (isStandardRole && (isInspectorPolluted(teachers) || isShobaQiratStructure(teachers))) return true;
-                const names = teachers.map(t => (t.name || '').trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean);
-                const hasDuplicates = new Set(names).size < names.length;
-                if (hasDuplicates) return true;
-                const coreNames = teachers.map(t => getCoreTeacherName(t.name)).filter(Boolean);
-                const hasCoreDuplicates = new Set(coreNames).size < coreNames.length;
-                if (hasCoreDuplicates) return true;
-                const hasAnyCode = teachers.some(t => t.loginCode && String(t.loginCode).trim() !== '');
-                const hasSem2 = teachers.some(t => (t.periods || []).some(p => String(p.semester) === '2'));
-                if (!hasAnyCode || !hasSem2) return true;
-                return false;
-            };
-
-            // Current activeYear me karkardagiStructure ensure karein
+            // Standard safe synchronization for current session (Non-destructive)
             if (activeYear) {
                 if (!allAcademicYearsData[activeYear]) allAcademicYearsData[activeYear] = {};
                 if (!Array.isArray(allAcademicYearsData[activeYear].karkardagiStructure)) {
                     allAcademicYearsData[activeYear].karkardagiStructure = [];
                 }
 
-                // Pre-Disambiguate JABALPUR vs JABALPUR BYPASS across all structures
-                Object.keys(allAcademicYearsData).forEach(yr => {
-                    const struct = allAcademicYearsData[yr]?.karkardagiStructure;
-                    if (Array.isArray(struct)) {
-                        struct.forEach(j => {
-                            const teachers = j.teachers || [];
-                            const tNames = teachers.map(t => (t.name || '').trim());
-                            const isJabalpurTeachers = tNames.some(n => 
-                                n.includes('\u0635\u0627\u062f\u0642') || n.includes('\u0627\u06a9\u0628\u0631') || n.includes('\u0645\u0634\u0639\u0631') || 
-                                n.includes('\u0645\u06a9\u0631\u0645') || n.includes('\u0627\u062d\u0645\u062f \u0631\u0636\u0627') || n.includes('\u0637\u0627\u0644\u0628') || n.includes('\u0639\u0628\u062f \u0627\u0644\u0631\u0634\u06cc\u062f') || n.includes('\u0632\u06cc\u062f')
-                            );
-                            const isBypassTeachers = tNames.some(n => 
-                                n.includes('\u062f\u0633\u062a\u06af\u06cc\u0631') || n.includes('\u0637\u0627\u06c1\u0631') || n.includes('\u0646\u0648\u0631 \u0639\u0627\u0644\u0645')
-                            );
+                let currentStruct = allAcademicYearsData[activeYear].karkardagiStructure;
 
-                            if (isJabalpurTeachers && !isBypassTeachers) {
-                                const targetJabalpur = assignedNames.find(a => {
-                                    const c = a.toLowerCase();
-                                    return c.includes('jabalpur') && !c.includes('bypass');
-                                }) || 'JABALPUR';
-                                if (j.jamiaName !== targetJabalpur) {
-                                    console.log('[Auto-Align] Corrected Jamia name for Jabalpur teachers: "' + j.jamiaName + '" -> "' + targetJabalpur + '"');
-                                    j.jamiaName = targetJabalpur;
-                                    const matchAssigned = assignedJamiaat.find(a => a.name === targetJabalpur);
-                                    if (matchAssigned && matchAssigned.id) j.id = matchAssigned.id;
-                                    structureNeedsUpdate = true;
-                                }
-                            } else if (isBypassTeachers && !isJabalpurTeachers) {
-                                const targetBypass = assignedNames.find(a => {
-                                    const c = a.toLowerCase();
-                                    return c.includes('jabalpur') && c.includes('bypass');
-                                }) || 'JABALPUR BYPASS';
-                                if (j.jamiaName !== targetBypass) {
-                                    console.log('[Auto-Align] Corrected Jamia name for Jabalpur Bypass teachers: "' + j.jamiaName + '" -> "' + targetBypass + '"');
-                                    j.jamiaName = targetBypass;
-                                    const matchAssigned = assignedJamiaat.find(a => a.name === targetBypass);
-                                    if (matchAssigned && matchAssigned.id) j.id = matchAssigned.id;
-                                    structureNeedsUpdate = true;
-                                }
-                            }
-                        });
-                    }
-                });
-
-                // Deduplicate any multiple entries for the same Jamia across all structures
-                Object.keys(allAcademicYearsData).forEach(yr => {
-                    const struct = allAcademicYearsData[yr]?.karkardagiStructure;
-                    if (Array.isArray(struct)) {
-                        const uniqueJamiaList = [];
-                        struct.forEach(j => {
-                            const rawName = (j.jamiaName || '').trim();
-                            if (!rawName) return;
-
-                            const existingIdx = uniqueJamiaList.findIndex(uj => 
-                                (uj.id && j.id && uj.id === j.id) || 
-                                uj.jamiaName.trim().toLowerCase() === rawName.toLowerCase() ||
-                                window.isSameJamia(uj.jamiaName, rawName)
-                            );
-
-                            if (existingIdx === -1) {
-                                uniqueJamiaList.push(j);
-                            } else {
-                                console.log('[Auto-Align] Found duplicate Jamia entry for "' + rawName + '". Consolidating...');
-                                structureNeedsUpdate = true;
-                                const existing = uniqueJamiaList[existingIdx];
-                                
-                                if (isStandardRole) {
-                                    if (isInspectorPolluted(j.teachers)) return; // Ignore polluted candidate
-                                    if (isInspectorPolluted(existing.teachers)) {
-                                        uniqueJamiaList[existingIdx] = j; // Replace polluted existing entry
-                                        return;
-                                    }
-                                }
-
-                                const isJabalpur = rawName.toLowerCase().includes('jabalpur') && !rawName.toLowerCase().includes('bypass');
-                                if (isJabalpur) {
-                                    const isClean8 = (entry) => {
-                                        const count = entry.teachers?.length || 0;
-                                        const hasAkbar = (entry.teachers || []).some(t => (t.name || '').includes('\u0627\u06a9\u0628\u0631'));
-                                        const hasAzhar = (entry.teachers || []).some(t => (t.name || '').includes('\u0627\u0638\u06c1\u0631'));
-                                        return count === 8 && hasAkbar && !hasAzhar;
-                                    };
-                                    if (isClean8(j)) {
-                                        uniqueJamiaList[existingIdx] = j;
-                                    } else if (!isClean8(existing) && (j.teachers?.length || 0) < (existing.teachers?.length || 0)) {
-                                        uniqueJamiaList[existingIdx] = j;
-                                    }
-                                } else {
-                                    const score = (entry) => {
-                                        let sc = 0;
-                                        (entry.teachers || []).forEach(t => {
-                                            if (t.loginCode) sc += 5;
-                                            sc += (t.periods || []).length;
-                                        });
-                                        return sc;
-                                    };
-                                    if (score(j) > score(existing)) {
-                                        uniqueJamiaList[existingIdx] = j;
-                                    }
-                                }
-                            }
-                        });
-
-                        if (uniqueJamiaList.length !== struct.length) {
-                            allAcademicYearsData[yr].karkardagiStructure = uniqueJamiaList;
-                            structureNeedsUpdate = true;
-                            console.log('[Auto-Align] Deduplicated karkardagiStructure for ' + yr + ': ' + struct.length + ' -> ' + uniqueJamiaList.length + ' jamiaat');
-                        }
-                    }
-                });
-
-                // Har assigned Jamia ke liye structure check karein
+                const safeJamiaList = [];
                 for (const assigned of assignedJamiaat) {
                     const assignedName = assigned.name;
-                    let matchedInActive = allAcademicYearsData[activeYear].karkardagiStructure.find(j => {
-                        if (assigned.id && j.id === assigned.id) return true;
-                        if ((j.jamiaName || '').trim().toLowerCase() === assignedName.trim().toLowerCase()) return true;
-                        const isBypass = assignedName.toLowerCase().includes('bypass');
-                        const isJabalpur = assignedName.toLowerCase().includes('jabalpur');
-                        if (isJabalpur) {
-                            const tNames = (j.teachers || []).map(t => (t.name || '').trim());
-                            if (isBypass) {
-                                return tNames.some(n => n.includes('\u062f\u0633\u062a\u06af\u06cc\u0631') || n.includes('\u0637\u0627\u06c1\u0631') || n.includes('\u0646\u0648\u0631 \u0639\u0627\u0644\u0645'));
-                            } else {
-                                return tNames.some(n => n.includes('\u0635\u0627\u062f\u0642') || n.includes('\u0627\u06a9\u0628\u0631') || n.includes('\u0645\u0634\u0639\u0631') || n.includes('\u0645\u06a9\u0631\u0645') || n.includes('\u0627\u062d\u0645\u062f \u0631\u0636\u0627') || n.includes('\u0637\u0627\u0644\u0628') || n.includes('\u0639\u0628\u062f \u0627\u0644\u0631\u0634\u06cc\u062f') || n.includes('\u0632\u06cc\u062f'));
-                            }
-                        }
-                        return window.isSameJamia(j.jamiaName, assignedName);
+                    const assignedId = assigned.id;
+
+                    let matchedJ = currentStruct.find(j => 
+                        (assignedId && (j.jamiaId === assignedId || j.id === assignedId)) ||
+                        (j.jamiaName && j.jamiaName.trim().toLowerCase() === assignedName.trim().toLowerCase()) ||
+                        window.isSameJamia(j.jamiaName, assignedName)
+                    );
+
+                    if (!matchedJ) {
+                        matchedJ = {
+                            jamiaId: assignedId || undefined,
+                            jamiaName: assignedName,
+                            teachers: []
+                        };
+                    } else {
+                        matchedJ.jamiaName = assignedName;
+                        if (assignedId && !matchedJ.jamiaId) matchedJ.jamiaId = assignedId;
+                        if (!Array.isArray(matchedJ.teachers)) matchedJ.teachers = [];
+                    }
+
+                    // Normalize periods and semesters
+                    (matchedJ.teachers || []).forEach(t => {
+                        (t.periods || []).forEach(p => {
+                            p.semester = String(p.semester || '1');
+                        });
                     });
 
-                    // Standard user ke data se inspector dummy teachers aur Shoba Qirat structure foran saaf karein
-                    if (isStandardRole && matchedInActive && (isInspectorPolluted(matchedInActive.teachers) || isShobaQiratStructure(matchedInActive.teachers))) {
-                        console.warn(`[Auto-Align] Purging invalid/shoba-qirat/inspector teachers for "${assignedName}". Triggering recovery.`);
-                        matchedInActive.teachers = [];
-                        structureNeedsUpdate = true;
-                    }
-
-                    const needsRecovery = !matchedInActive || isCorruptedOrIncomplete(matchedInActive.teachers);
-
-                    if (needsRecovery) {
-                        console.log(`[Auto-Align] Needs recovery or cleanup for "${assignedName}" (teachers: ${matchedInActive?.teachers?.length || 0}). Searching sources...`);
-                        let foundSource = null;
-
-                        // 1. RECOVERY SOURCE A: Recover from monthly_reports submitted by this user (Most authentic for active year!)
-                        try {
-                            const repSnap = await getDocs(query(
-                                collection(db, "monthly_reports"),
-                                where("userId", "==", currentUser.uid)
-                            ));
-                            const recMap = new Map();
-                            repSnap.forEach(d => {
-                                const rData = d.data() || {};
-                                let repSemester = '1';
-                                if (rData.semester) {
-                                    repSemester = String(rData.semester);
-                                } else if (typeof rData.monthNum === 'number') {
-                                    repSemester = (rData.monthNum >= 8 || rData.monthNum <= 1) ? '2' : '1';
-                                }
-                                const items = rData.karkardagiReport?.data || rData.data || [];
-                                if (Array.isArray(items)) {
-                                    items.forEach(it => {
-                                        if (window.isSameJamia(it.jamiaName, assignedName) && it.teacherName) {
-                                            const rawName = String(it.teacherName).trim();
-                                            const normKey = rawName.toLowerCase().replace(/\s+/g, ' ');
-                                            if (!normKey) return;
-
-                                            // Match existing teacher by teacherId or bilingual name
-                                            let tObj = null;
-                                            for (const existingT of recMap.values()) {
-                                                if (it.teacherId && existingT.id === it.teacherId) { tObj = existingT; break; }
-                                                if (isSameTeacherName(existingT.name, rawName)) { tObj = existingT; break; }
-                                            }
-
-                                            if (!tObj) {
-                                                tObj = {
-                                                    id: it.teacherId || `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                                                    name: rawName,
-                                                    loginCode: it.loginCode || it.ajeerCode || '',
-                                                    periods: []
-                                                };
-                                                recMap.set(tObj.id, tObj);
-                                            } else {
-                                                // Prefer Urdu name over English name if present
-                                                const isUrdu = /[\u0600-\u06FF]/.test(rawName);
-                                                const existingIsUrdu = /[\u0600-\u06FF]/.test(tObj.name);
-                                                if (isUrdu && !existingIsUrdu) {
-                                                    tObj.name = rawName;
-                                                }
-                                                if (!tObj.loginCode && (it.loginCode || it.ajeerCode)) {
-                                                    tObj.loginCode = it.loginCode || it.ajeerCode;
-                                                }
-                                            }
-
-                                            const pSemester = String(it.semester || repSemester || '1');
-                                            const pClass = String(it.className || it.class || '').trim();
-                                            const pBook = String(it.bookName || it.book || '').trim();
-                                            const pTotal = parseInt(it.totalPages || 0, 10);
-
-                                            const existingPeriod = tObj.periods.find(p => 
-                                                p.className === pClass && p.bookName === pBook && String(p.semester) === pSemester
-                                            );
-                                            if (!existingPeriod && (pClass || pBook)) {
-                                                tObj.periods.push({
-                                                    id: it.periodId || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                                                    className: pClass,
-                                                    bookName: pBook,
-                                                    semester: pSemester,
-                                                    totalPages: pTotal
-                                                });
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-
-                            if (recMap.size > 0) {
-                                const recTeachers = Array.from(recMap.values());
-                                // Check loginCodes from other academic years
-                                Object.keys(allAcademicYearsData).forEach(yr => {
-                                    const oStruct = allAcademicYearsData[yr]?.karkardagiStructure || [];
-                                    const oMatch = oStruct.find(j => window.isSameJamia(j.jamiaName, assignedName));
-                                    if (oMatch && Array.isArray(oMatch.teachers)) {
-                                        recTeachers.forEach(t => {
-                                            if (!t.loginCode) {
-                                                const matchT = oMatch.teachers.find(ot => ot.id === t.id || isSameTeacherName(ot.name, t.name));
-                                                if (matchT && matchT.loginCode) t.loginCode = matchT.loginCode;
-                                            }
-                                        });
-                                    }
-                                });
-
-                                foundSource = {
-                                    jamiaName: assignedName,
-                                    teachers: recTeachers
-                                };
-                                console.log(`[Auto-Align] Recovered ${recTeachers.length} authentic teachers from monthly_reports for "${assignedName}"!`);
-                            }
-                        } catch(err) {
-                            console.warn("[Auto-Align] monthly_reports recovery warning:", err);
-                        }
-
-                        // 2. RECOVERY SOURCE B: Check current user's other academic years
-                        if (!foundSource || isCorruptedOrIncomplete(foundSource.teachers)) {
-                            for (const yr of Object.keys(allAcademicYearsData)) {
-                                if (yr === activeYear) continue;
-                                const otherStruct = allAcademicYearsData[yr]?.karkardagiStructure;
-                                const found = (otherStruct || []).find(j => (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName));
-                                if (found && Array.isArray(found.teachers) && found.teachers.length > 0) {
-                                    if (isStandardRole && isInspectorPolluted(found.teachers)) continue; // SKIP POLLUTED!
-                                    if (!foundSource || (!isCorruptedOrIncomplete(found.teachers) && isCorruptedOrIncomplete(foundSource.teachers))) {
-                                        foundSource = JSON.parse(JSON.stringify(found));
-                                        console.log(`[Auto-Align] Found ${found.teachers.length} teachers in year "${yr}"!`);
-                                    }
-                                    if (!isCorruptedOrIncomplete(found.teachers)) break;
-                                }
-                            }
-                        }
-
-                        // 3. RECOVERY SOURCE C: Check academicStructure on user profile
-                        if ((!foundSource || isCorruptedOrIncomplete(foundSource.teachers)) && Array.isArray(userProfileData.academicStructure)) {
-                            const found = userProfileData.academicStructure.find(j => (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName));
-                            if (found && Array.isArray(found.teachers) && found.teachers.length > 0 && !(isStandardRole && isInspectorPolluted(found.teachers))) {
-                                foundSource = JSON.parse(JSON.stringify(found));
-                                console.log(`[Auto-Align] Found ${found.teachers.length} teachers in userProfileData.academicStructure!`);
-                            }
-                        }
-
-                        // 4. RECOVERY SOURCE D: Search other users in Firestore (SIRF standard users / Zimmedar, NEVER Shoba Qirat ya Inspector!)
-                        if (!foundSource || isCorruptedOrIncomplete(foundSource.teachers)) {
-                            try {
-                                const allUsersSnap = await getDocs(collection(db, "users"));
-                                for (const uDoc of allUsersSnap.docs) {
-                                    if (uDoc.id === currentUser.uid) continue;
-                                    const uData = uDoc.data() || {};
-                                    const uRole = (uData.role || '').toLowerCase();
-                                    // ðŸ›¡ï¸ CRITICAL: Sirf STANDARD role (Zimmedar) se structure lein! Shoba Qirat, Inspector, Office sab reject!
-                                    if (uRole !== 'standard') {
-                                        continue;
-                                    }
-                                    if (uData.academicYears) {
-                                        const yearsToCheck = [activeYear, ...Object.keys(uData.academicYears).filter(y => y !== activeYear)];
-                                        for (const yr of yearsToCheck) {
-                                            const otherStruct = uData.academicYears[yr]?.karkardagiStructure;
-                                            if (Array.isArray(otherStruct)) {
-                                                const match = otherStruct.find(j => (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName));
-                                                if (match && Array.isArray(match.teachers) && match.teachers.length > 0) {
-                                                    if (isInspectorPolluted(match.teachers) || isShobaQiratStructure(match.teachers)) continue; // SKIP POLLUTED!
-                                                    const hasCodes = match.teachers.some(t => t.loginCode && String(t.loginCode).trim() !== '');
-                                                    const hasSem2 = match.teachers.some(t => (t.periods || []).some(p => String(p.semester) === '2'));
-                                                    const tNames = match.teachers.map(t => (t.name || '').trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean);
-                                                    const isClean = new Set(tNames).size === tNames.length;
-                                                    if ((hasCodes || hasSem2) && isClean) {
-                                                        foundSource = JSON.parse(JSON.stringify(match));
-                                                        console.log(`[Auto-Align] Found complete structure in user "${uDoc.id}" (${uData.name || uData.role}), year "${yr}"!`);
-                                                        break;
-                                                    } else if (!foundSource) {
-                                                        foundSource = JSON.parse(JSON.stringify(match));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (foundSource && !isCorruptedOrIncomplete(foundSource.teachers)) break;
-                                }
-                            } catch(e) {
-                                console.warn("[Auto-Align] Error searching other users:", e);
-                            }
-                        }
-
-                        // Apply foundSource if found and better
-                        if (foundSource && Array.isArray(foundSource.teachers) && foundSource.teachers.length > 0) {
-                            if (matchedInActive) {
-                                matchedInActive.teachers = JSON.parse(JSON.stringify(foundSource.teachers));
-                                matchedInActive.jamiaName = assignedName;
-                                if (assigned.id) matchedInActive.id = assigned.id;
-                                if (foundSource.principalSignature && !matchedInActive.principalSignature) {
-                                    matchedInActive.principalSignature = foundSource.principalSignature;
-                                }
-                            } else {
-                                matchedInActive = {
-                                    id: assigned.id || undefined,
-                                    jamiaName: assignedName,
-                                    teachers: JSON.parse(JSON.stringify(foundSource.teachers)),
-                                    principalSignature: foundSource.principalSignature || ''
-                                };
-                                const existJamiaIdx = allAcademicYearsData[activeYear].karkardagiStructure.findIndex(j => 
-                                    (assigned.id && j.id === assigned.id) || window.isSameJamia(j.jamiaName, assignedName)
-                                );
-                                if (existJamiaIdx !== -1) {
-                                    allAcademicYearsData[activeYear].karkardagiStructure[existJamiaIdx] = matchedInActive;
-                                } else {
-                                    allAcademicYearsData[activeYear].karkardagiStructure.push(matchedInActive);
-                                }
-                            }
-                            structureNeedsUpdate = true;
-                            console.log(`[Auto-Align] Applied restored ${foundSource.teachers.length} teachers for "${assignedName}" into ${activeYear}`);
-                        }
-                    }
-
-                    // ENSURE DEDUPLICATION & COMPLETENESS ON matchedInActive
-                    if (matchedInActive && Array.isArray(matchedInActive.teachers)) {
-                        // 1. Deduplicate Teachers by Name & Merge their Periods
-                        // 1. Build a lookup of known book page counts from all sources
-                        const knownBookPages = new Map([
-                            ['ہدایہ شریف', 220],
-                            ['ہدایہ', 220],
-                            ['خلاصۃ النحو', 120],
-                            ['شرح وقایہ', 200],
-                            ['آداب زندگی', 90],
-                            ['اصول الفقہ', 140],
-                            ['المنطق', 100],
-                            ['نحو', 110],
-                            ['الفقہ', 160],
-                            ['نور الایضاح', 130],
-                            ['قدوری', 180]
-                        ]);
-
-                        Object.keys(allAcademicYearsData).forEach(yr => {
-                            (allAcademicYearsData[yr]?.karkardagiStructure || []).forEach(j => {
-                                (j.teachers || []).forEach(t => {
-                                    (t.periods || []).forEach(p => {
-                                        const b = (p.bookName || '').trim();
-                                        const tot = parseInt(p.totalPages || p.pages || 0, 10);
-                                        if (b && tot > 0) {
-                                            knownBookPages.set(b.toLowerCase(), tot);
-                                        }
-                                    });
-                                });
-                            });
-                        });
-
-                        // 2. Deduplicate Teachers by Name or TeacherId (Bilingual aware)
-                        const uniqueMap = new Map();
-                        matchedInActive.teachers.forEach(t => {
-                            const rawName = (t.name || '').trim();
-                            const normKey = rawName.toLowerCase().replace(/\s+/g, ' ');
-                            if (!normKey) return;
-                            const tId = (t.id || '').trim();
-
-                            let existingKey = null;
-                            if (tId && uniqueMap.has(`id_${tId}`)) {
-                                existingKey = `id_${tId}`;
-                            } else if (uniqueMap.has(normKey)) {
-                                existingKey = normKey;
-                            } else {
-                                for (const [k, v] of uniqueMap.entries()) {
-                                    if (tId && v.id === tId) { existingKey = k; break; }
-                                    if (isSameTeacherName(v.name, rawName)) { existingKey = k; break; }
-                                }
-                            }
-
-                            if (!existingKey) {
-                                const newKey = tId ? `id_${tId}` : normKey;
-                                uniqueMap.set(newKey, {
-                                    ...t,
-                                    name: rawName,
-                                    loginCode: (t.loginCode || t.ajeerCode || '').trim(),
-                                    periods: Array.isArray(t.periods) ? [...t.periods] : []
-                                });
-                            } else {
-                                const existing = uniqueMap.get(existingKey);
-                                // Prefer Urdu name over English, and prefer richer title (e.g. Mufti / Molana over Ustad)
-                                const isUrdu = /[\u0600-\u06FF]/.test(rawName);
-                                const existingIsUrdu = /[\u0600-\u06FF]/.test(existing.name);
-                                if (isUrdu && !existingIsUrdu) {
-                                    existing.name = rawName;
-                                } else if (isUrdu && existingIsUrdu) {
-                                    if ((rawName.includes('Ù…ÙØªÛŒ') || rawName.includes('Ù…ÙˆÙ„Ø§Ù†Ø§')) && !existing.name.includes('Ù…ÙØªÛŒ') && !existing.name.includes('Ù…ÙˆÙ„Ø§Ù†Ø§')) {
-                                        existing.name = rawName;
-                                    }
-                                }
-                                if (!existing.loginCode && (t.loginCode || t.ajeerCode)) {
-                                    existing.loginCode = (t.loginCode || t.ajeerCode).trim();
-                                }
-                                (t.periods || []).forEach(p => {
-                                    const pClass = String(p.className || p.class || '').trim();
-                                    const pBook = String(p.bookName || p.book || '').trim();
-                                    const pSem = String(p.semester || '1');
-                                    if (pClass && pBook) {
-                                        const hasP = existing.periods.some(ep => 
-                                            ep.className.trim().toLowerCase() === pClass.toLowerCase() && 
-                                            ep.bookName.trim().toLowerCase() === pBook.toLowerCase() && 
-                                            String(ep.semester) === pSem
-                                        );
-                                        if (!hasP) {
-                                            existing.periods.push({
-                                                id: p.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                                                className: pClass,
-                                                bookName: pBook,
-                                                semester: pSem,
-                                                totalPages: parseInt(p.totalPages || p.pages || 0, 10)
-                                            });
-                                        }
-                                    }
-                                });
-                                structureNeedsUpdate = true;
-                            }
-                        });
-
-                        if (uniqueMap.size < matchedInActive.teachers.length) {
-                            console.log(`[Auto-Align] Cleaned duplicate teachers for "${assignedName}": ${matchedInActive.teachers.length} -> ${uniqueMap.size}`);
-                            matchedInActive.teachers = Array.from(uniqueMap.values());
-                            structureNeedsUpdate = true;
-                        }
-
-                        // 3. Clean and Deduplicate Periods per Teacher (remove blank classes and duplicates)
-                        matchedInActive.teachers.forEach(t => {
-                            if (!Array.isArray(t.periods)) t.periods = [];
-
-                            // Find valid classes for books if any exist
-                            const bookToClassMap = new Map();
-                            t.periods.forEach(p => {
-                                const c = String(p.className || p.class || '').trim();
-                                const b = String(p.bookName || p.book || '').trim();
-                                if (c && b && !bookToClassMap.has(b.toLowerCase())) {
-                                    bookToClassMap.set(b.toLowerCase(), c);
-                                }
-                            });
-
-                            const cleanPeriods = [];
-                            const seenKeys = new Set();
-
-                            t.periods.forEach(p => {
-                                let c = String(p.className || p.class || '').trim();
-                                const b = String(p.bookName || p.book || '').trim();
-                                const sem = String(p.semester || '1');
-                                let tot = parseInt(p.totalPages || p.pages || 0, 10);
-
-                                if (!b) return; // Drop if no book name
-
-                                // If class is empty, resolve from known class for this book
-                                if (!c && bookToClassMap.has(b.toLowerCase())) {
-                                    c = bookToClassMap.get(b.toLowerCase());
-                                }
-
-                                // If class is STILL empty, drop the ghost entry
-                                if (!c) return;
-
-                                const key = `${c.toLowerCase()}__${b.toLowerCase()}__${sem}`;
-                                if (seenKeys.has(key)) {
-                                    // Duplicate period: keep page number if existing was 0
-                                    const ex = cleanPeriods.find(cp => cp.className.toLowerCase() === c.toLowerCase() && cp.bookName.toLowerCase() === b.toLowerCase() && cp.semester === sem);
-                                    if (ex && ex.totalPages <= 0 && tot > 0) {
-                                        ex.totalPages = tot;
-                                    }
-                                    return;
-                                }
-
-                                // Auto-fill total pages if 0
-                                if (tot <= 0) {
-                                    if (knownBookPages.has(b.toLowerCase())) {
-                                        tot = knownBookPages.get(b.toLowerCase());
-                                    } else if (knownBookPages.has(b)) {
-                                        tot = knownBookPages.get(b);
-                                    }
-                                }
-
-                                seenKeys.add(key);
-                                cleanPeriods.push({
-                                    id: p.id || `period-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                                    className: c,
-                                    bookName: b,
-                                    semester: sem,
-                                    totalPages: tot
-                                });
-                            });
-
-                            if (t.periods.length !== cleanPeriods.length || cleanPeriods.some((p, i) => p.totalPages !== t.periods[i]?.totalPages)) {
-                                t.periods = cleanPeriods;
-                                structureNeedsUpdate = true;
-                            }
-                        });
-
-                        // 3.5. Realign teacher IDs and period IDs from saved monthly_reports so history matches 100%
-                        try {
-                            const repSnap = await getDocs(query(
-                                collection(db, "monthly_reports"),
-                                where("userId", "==", currentUser.uid),
-                                where("academicYear", "==", activeYear)
-                            ));
-                            const repItems = [];
-                            repSnap.forEach(d => {
-                                const dData = d.data() || {};
-                                const items = dData.karkardagiReport?.data || dData.data || [];
-                                if (Array.isArray(items)) {
-                                    items.forEach(it => {
-                                        if (it && it.periodId) repItems.push(it);
-                                    });
-                                }
-                            });
-
-                            if (repItems.length > 0) {
-                                const nMatch = s => (s || '').toString().trim().toLowerCase().replace(/[\s\-_]+/g, '');
-                                matchedInActive.teachers.forEach(t => {
-                                    const tMatch = repItems.find(it => 
-                                        window.isSameJamia(it.jamiaName, assignedName) && 
-                                        nMatch(it.teacherName) === nMatch(t.name)
-                                    );
-                                    if (tMatch && tMatch.teacherId && t.id !== tMatch.teacherId) {
-                                        console.log(`[Auto-Align] Realigned teacher ID for "${t.name}": ${t.id} -> ${tMatch.teacherId}`);
-                                        t.id = tMatch.teacherId;
-                                        structureNeedsUpdate = true;
-                                    }
-
-                                    (t.periods || []).forEach(p => {
-                                        const pMatch = repItems.find(it => 
-                                            window.isSameJamia(it.jamiaName, assignedName) && 
-                                            nMatch(it.teacherName) === nMatch(t.name) &&
-                                            nMatch(it.bookName || it.book) === nMatch(p.bookName) &&
-                                            (!it.className || !p.className || nMatch(it.className) === nMatch(p.className))
-                                        );
-                                        if (pMatch && pMatch.periodId && p.id !== pMatch.periodId) {
-                                            console.log(`[Auto-Align] Realigned period ID for "${t.name}" - "${p.bookName}": ${p.id} -> ${pMatch.periodId}`);
-                                            p.id = pMatch.periodId;
-                                            structureNeedsUpdate = true;
-                                        }
-                                    });
-                                });
-
-                                // Sem 2 clean-up: Sirf wahi Sem 2 kitabein rakhein jinme report bhari hui hai, extra copied kitabein drop karein
-                                const tSem2Books = new Map();
-                                repSnap.forEach(d => {
-                                    const dData = d.data() || {};
-                                    const isSem2Doc = (dData.semester === '2' || dData.semester === 2 || (typeof dData.monthNum === 'number' && (dData.monthNum >= 8 || dData.monthNum <= 1)));
-                                    if (isSem2Doc) {
-                                        const items = dData.karkardagiReport?.data || dData.data || [];
-                                        if (Array.isArray(items)) {
-                                            items.forEach(it => {
-                                                if (it && it.teacherName && (it.bookName || it.book)) {
-                                                    const tk = nMatch(it.teacherName);
-                                                    const bk = nMatch(it.bookName || it.book);
-                                                    if (!tSem2Books.has(tk)) tSem2Books.set(tk, new Set());
-                                                    tSem2Books.get(tk).add(bk);
-                                                }
-                                            });
-                                        }
-                                    }
-                                });
-
-                                matchedInActive.teachers.forEach(t => {
-                                    const tk = nMatch(t.name);
-                                    if (tSem2Books.has(tk)) {
-                                        const reportedSet = tSem2Books.get(tk);
-                                        if (reportedSet.size > 0 && Array.isArray(t.periods)) {
-                                            const oldCount = t.periods.length;
-                                            t.periods = t.periods.filter(p => {
-                                                if (String(p.semester) !== '2') return true; // Sem 1 remains safe
-                                                const bk = nMatch(p.bookName);
-                                                if (reportedSet.has(bk)) return true; // Reported in Sem 2: KEEP
-                                                // Unreported in Sem 2 and already exists in Sem 1: DROP extra copy
-                                                const inSem1 = t.periods.some(p1 => String(p1.semester || '1') === '1' && nMatch(p1.bookName) === bk);
-                                                if (inSem1) {
-                                                    console.log(`[Auto-Align] Purged extra/unreported Sem 2 book for "${t.name}": "${p.bookName}"`);
-                                                    return false;
-                                                }
-                                                return true;
-                                            });
-                                            if (t.periods.length !== oldCount) {
-                                                structureNeedsUpdate = true;
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                        } catch(e) {
-                            console.warn("[Auto-Align] Error realigning IDs from monthly_reports:", e);
-                        }
-
-                        // 4. Auto-Fill Missing Ajeer Codes (loginCode) from teacher user profiles
-                        const missingCodes = matchedInActive.teachers.some(t => !t.loginCode || String(t.loginCode).trim() === '');
-                        if (missingCodes) {
-                            try {
-                                const teachersSnap = await getDocs(query(
-                                    collection(db, "users"),
-                                    where("role", "==", "teacher")
-                                ));
-                                const teacherCodeMap = new Map();
-                                teachersSnap.forEach(td => {
-                                    const data = td.data() || {};
-                                    const code = data.ajeerCode || data.loginCode || (data.email ? data.email.split('@')[0] : '');
-                                    if (code && data.name) {
-                                        const k = data.name.trim().toLowerCase().replace(/\s+/g, ' ');
-                                        teacherCodeMap.set(k, String(code).trim());
-                                    }
-                                });
-
-                                matchedInActive.teachers.forEach(t => {
-                                    if (!t.loginCode || String(t.loginCode).trim() === '') {
-                                        const k = (t.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-                                        if (teacherCodeMap.has(k)) {
-                                            t.loginCode = teacherCodeMap.get(k);
-                                            structureNeedsUpdate = true;
-                                            console.log(`[Auto-Align] Assigned Ajeer Code "${t.loginCode}" to teacher "${t.name}"`);
-                                        }
-                                    }
-                                });
-                            } catch(e) {
-                                console.warn("[Auto-Align] Could not query teacher accounts:", e);
-                            }
-                        }
-
-                        // Fallback: If any teacher STILL lacks loginCode, generate a unique 5-digit code
-                        matchedInActive.teachers.forEach(t => {
-                            if (!t.loginCode || String(t.loginCode).trim() === '') {
-                                if (typeof generateTeacherLoginCode === 'function') {
-                                    t.loginCode = generateTeacherLoginCode(matchedInActive.teachers);
-                                } else {
-                                    t.loginCode = String(Math.floor(10000 + Math.random() * 90000));
-                                }
-                                structureNeedsUpdate = true;
-                                console.log(`[Auto-Align] Generated 5-digit login code "${t.loginCode}" for teacher "${t.name}"`);
-                            }
-                        });
-
-                        if (matchedInActive.jamiaName !== assignedName) {
-                            matchedInActive.jamiaName = assignedName;
-                            structureNeedsUpdate = true;
-                        }
-                    }
+                    safeJamiaList.push(matchedJ);
                 }
 
-                // Sabhi academic years me names ko align karein
-                Object.keys(allAcademicYearsData).forEach(yr => {
-                    const sArr = allAcademicYearsData[yr]?.karkardagiStructure;
-                    if (Array.isArray(sArr)) {
-                        sArr.forEach(j => {
-                            const m = assignedNames.find(a => window.isSameJamia(j.jamiaName, a));
-                            if (m && j.jamiaName !== m) {
-                                j.jamiaName = m;
-                                structureNeedsUpdate = true;
-                            }
-                        });
-                    }
-                });
-            }
-
-            if (structureNeedsUpdate) {
-                try {
-                    await updateDoc(doc(db, 'users', currentUser.uid), { academicYears: allAcademicYearsData });
-                    console.log("[Auto-Align] Saved synchronized academicYears to Firestore successfully.");
-                } catch(e) {
-                    console.warn("[Auto-Align] Failed to save updated academicYears:", e);
-                }
+                allAcademicYearsData[activeYear].karkardagiStructure = safeJamiaList;
             }
         }
+
 
         // 4. UI aur Data Reload
         populateYearSelector();
@@ -2814,20 +2311,7 @@ if (editTeacherForm) {
         if (currentReport) {
             currentMonthReport = currentReport;
             monthlyReportData = currentReport.karkardagiReport?.data || [];
-            if (Array.isArray(monthlyReportData)) {
-                monthlyReportData.forEach(item => {
-                    if (!item) return;
-                    const matchedJamia = currentStructure.find(j => 
-                        (j.teachers || []).some(t => 
-                            (item.teacherId && t.id === item.teacherId) || 
-                            (item.teacherName && normMatch(t.name) === normMatch(item.teacherName))
-                        )
-                    );
-                    if (matchedJamia && item.jamiaName !== matchedJamia.jamiaName) {
-                        item.jamiaName = matchedJamia.jamiaName;
-                    }
-                });
-            }
+            // monthlyReportData retains authentic jamiaName as saved in the report document
         }
 
         const submissionsRef = collection(db, 'teacher_submissions');
@@ -4590,8 +4074,8 @@ if (daysThisMonth === 0) {
                         .sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
 
                     sortedPeriods
-                        // Filter periods by the current report semester
-                        ?.filter(p => p.semester === currentSemester) 
+                        // Filter periods by the current report semester (string-safe for both "2" and 2)
+                        ?.filter(p => String(p.semester || '1') === String(currentSemester)) 
                         .forEach(period => {
                             if (!acc[jamia.jamiaName]) {
                                 acc[jamia.jamiaName] = [];
@@ -4737,11 +4221,7 @@ if (daysThisMonth === 0) {
                         // monthly_reports me saved data (Smart Match: ID first, then Teacher + Book + Class)
                         const savedEntry = monthlyReportData.find(entry => matchPeriodEntry(entry, teacher, period, jamiaName));
 
-                        // Agar savedEntry mil gaya aur period.id alag tha, to IDs ko sync kar dein
-                        if (savedEntry && savedEntry.periodId && period.id !== savedEntry.periodId) {
-                            period.id = savedEntry.periodId;
-                            if (savedEntry.teacherId) teacher.id = savedEntry.teacherId;
-                        }
+                        // Read from savedEntry without in-place mutation of teacher.id or period.id
 
                         let pagesTaughtValue = 0;
                         let lastIbarat = '';
