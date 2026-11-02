@@ -89,13 +89,14 @@ export async function initAcademicYearSetup(db, containerId) {
     });
 
 // 1. Subject Row function mein class add karein:
-function createSubjectRow(target, data = { eng: '', urdu: '' }) {
+function createSubjectRow(target, data = { eng: '', urdu: '', pages: '' }) {
     const div = document.createElement('div');
     // 'subject-row' class yahan add ki gayi hai (Zaroori)
     div.className = "subject-row flex gap-2 items-center bg-gray-50 p-2 rounded border border-dashed mb-2";
     div.innerHTML = `
-        <input type="text" placeholder="Subject (English)" class="sub-eng-name p-2 border rounded w-1/2" value="${data.eng}">
-        <input type="text" dir="rtl" placeholder="مضمون (اردو)" class="sub-urdu-name p-2 border rounded w-1/2 font-urdu" value="${data.urdu}">
+        <input type="text" placeholder="Subject (English)" class="sub-eng-name p-2 border rounded w-2/5" value="${data.eng || ''}">
+        <input type="text" dir="rtl" placeholder="مضمون (اردو)" class="sub-urdu-name p-2 border rounded w-2/5 font-urdu" value="${data.urdu || ''}">
+        <input type="number" min="0" placeholder="Total Pages" title="Total Pages" class="sub-pages p-2 border rounded w-1/5 text-center" value="${data.pages || ''}">
         <button class="remove-sub-btn text-red-500 hover:bg-red-100 p-2 rounded"><i class="fas fa-trash"></i></button>
     `;
     div.querySelector('.remove-sub-btn').onclick = () => div.remove();
@@ -189,7 +190,8 @@ function createSubjectRow(target, data = { eng: '', urdu: '' }) {
             const cUrdu = b.querySelector('.class-urdu-name').value.trim();
             const subs = Array.from(b.querySelectorAll('.subject-row')).map(sr => ({
                 eng: sr.querySelector('.sub-eng-name').value.trim(),
-                urdu: sr.querySelector('.sub-urdu-name').value.trim()
+                urdu: sr.querySelector('.sub-urdu-name').value.trim(),
+                pages: parseInt(sr.querySelector('.sub-pages').value) || 0
             })).filter(s => s.eng || s.urdu);
             if (cEng || cUrdu) classes.push({ classNameEng: cEng, classNameUrdu: cUrdu, subjects: subs });
         });
