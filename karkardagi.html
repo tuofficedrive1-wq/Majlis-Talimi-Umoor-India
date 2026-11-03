@@ -3273,10 +3273,12 @@ const handleUpdateTeacherName = async (e) => {
     }
 
     const oldTeacherName = teacherData.name;
+    const oldLoginCode = teacherData.loginCode ? String(teacherData.loginCode).trim() : '';
     
     // Update local values
     teacherData.name = newTeacherName;
     if (newTeacherCodeRaw) teacherData.loginCode = newTeacherCodeRaw;
+    const codeChanged = !!(newTeacherCodeRaw && oldLoginCode && newTeacherCodeRaw !== oldLoginCode);
 
     showLoader(true);
     try {
@@ -3287,6 +3289,19 @@ const handleUpdateTeacherName = async (e) => {
             lastUpdated: serverTimestamp()
         });
 
+        // 2b. Ajeer code badla ho to purana portal account band karein (naya Portal button se banega)
+        if (codeChanged) {
+            try {
+                const oldSnap = await getDocs(query(collection(db, 'users'), where('zimmedarId', '==', currentUser.uid), where('teacherId', '==', teacherId)));
+                for (const d of oldSnap.docs) {
+                    const u = d.data();
+                    if (u.role === 'teacher' && u.isActive !== false) {
+                        await updateDoc(d.ref, { isActive: false, replacedByCode: newTeacherCodeRaw, deactivatedAt: new Date().toISOString() });
+                    }
+                }
+            } catch (e2) { console.error('Purana account band nahi hua:', e2); }
+        }
+
         // 3. Modal band karein
         editTeacherModal.classList.add('hidden');
 
@@ -3296,6 +3311,7 @@ const handleUpdateTeacherName = async (e) => {
         populateTeacherProfileFilters(); // Summary tab ke filters refresh karein
 
         showNotification(`Teacher "${newTeacherName}" ki detail update ho gayi hai!`);
+        if (codeChanged) showNotification(`Ajeer code badal gaya. Ab is jamia ka "Portal" button dabayein - naye code se naya account ban jayega.`);
     } catch (error) {
         console.error("Teacher update failed:", error);
         showNotification("Update karne me error aayi.", true);
