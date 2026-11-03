@@ -783,7 +783,7 @@ const urduMonths = {
         };
         
         // Academic Month Array for easy iteration (0=Jan, 3=Apr, 7=Aug, 8=Sep)
-        const ACADEMIC_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0]; 
+        const ACADEMIC_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2]; 
         
         // Accordion State Management (Only for Setup)
         let openAccordionIds = new Set(); // Stores data-jamia-name and data-teacher-id
@@ -887,28 +887,53 @@ const urduMonths = {
 
             return { kaifiyat, colorClass };
         };
+// --- Global Helper: Academic Year for Month ---
+const getAcademicYearForMonth = (m) => {
+    const parts = (activeYear || '').split('-');
+    const sY = parseInt(parts[0], 10) || (currentReportPeriod?.yearNum || new Date().getFullYear());
+    let eY = parseInt(parts[1], 10) || (sY + 1);
+    if (eY < 100) eY += 2000;
+    return Number(m) >= 3 ? sY : eY;
+};
+
 // --- NAYA LOGIC: Admin Setup se Semester aur Months nikalna ---
 const determineSemester = (monthNum) => {
-    if (adminAcademicConfig && adminAcademicConfig.monthDetails && adminAcademicConfig.monthDetails[monthNum]) {
-        const detail = adminAcademicConfig.monthDetails[monthNum];
+    const m = Number(monthNum);
+    const cfg = window.adminAcademicConfig || adminAcademicConfig;
+    if (cfg && cfg.monthDetails && cfg.monthDetails[m]) {
+        const detail = cfg.monthDetails[m];
+        if (detail.sem === "2" || detail.sem === 2) return "2";
+        if (detail.sem === "1" || detail.sem === 1) return "1";
         if ((detail.sem2 || 0) > 0 && (detail.sem1 || 0) === 0) return "2";
-        if ((detail.sem1 || 0) > 0) return "1";
+        if ((detail.sem1 || 0) > 0 && (detail.sem2 || 0) === 0) return "1";
+        if ((detail.sem2 || 0) > (detail.sem1 || 0)) return "2";
+        if ((detail.sem1 || 0) > (detail.sem2 || 0)) return "1";
     }
-    // Fallback: Agar admin data na mile to purana default logic
-    return (monthNum >= 3 && monthNum <= 7) ? "1" : "2";
+    // Fallback: Sem 1 is Apr-Jul (3-6), Sem 2 is Aug-Mar (7,8,9,10,11,0,1,2)
+    return (m >= 3 && m <= 6) ? "1" : "2";
 };
 
 const getMonthsForSemester = (semester) => {
-    if (adminAcademicConfig && adminAcademicConfig.monthDetails) {
-        return Object.keys(adminAcademicConfig.monthDetails)
-            .filter(idx => semester === "1" ? adminAcademicConfig.monthDetails[idx].sem1 > 0 : adminAcademicConfig.monthDetails[idx].sem2 > 0)
+    const s = String(semester);
+    const cfg = window.adminAcademicConfig || adminAcademicConfig;
+    if (cfg && cfg.monthDetails) {
+        const ms = Object.keys(cfg.monthDetails)
+            .filter(idx => {
+                const d = cfg.monthDetails[idx] || {};
+                if (s === "1") {
+                    return (d.sem1 || 0) > 0 && !(d.sem2 > 0 && (d.sem2 > d.sem1 || d.sem === "2" || d.sem === 2));
+                } else {
+                    return (d.sem2 || 0) > 0 || d.sem === "2" || d.sem === 2;
+                }
+            })
             .map(Number)
             .sort((a, b) => {
                 const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
                 return order.indexOf(a) - order.indexOf(b);
             });
+        if (ms.length > 0) return ms;
     }
-    return semester === "1" ? [3, 4, 5, 6, 7] : [8, 9, 10, 11, 0];
+    return s === "1" ? [3, 4, 5, 6] : [7, 8, 9, 10, 11, 0, 1, 2];
 };
 
         // 🎯 FIX 3: DEADLINE LOGIC HATA DIYA GAYA
@@ -2020,7 +2045,8 @@ if (editTeacherForm) {
         let adminConfig = null;
         if (globalSnap.exists()) {
             adminConfig = globalSnap.data();
-            // Admin settings ko global variable mein save karein
+            window.adminAcademicConfig = adminConfig; 
+            adminAcademicConfig = adminConfig;// Admin settings ko global variable mein save karein
             window.adminAcademicConfig = adminConfig; 
         }
 
@@ -2381,13 +2407,7 @@ if (editTeacherForm) {
              for (let i = 0; i < ACADEMIC_MONTHS.length; i++) {
                  const monthIndex = ACADEMIC_MONTHS[i];
                  
-                 let reportingYear = academicYearStart;
-                 // Handle Jan (0) reporting year which is the academic year end
-                 if (monthIndex === 0) {
-                     reportingYear = academicYearEnd;
-                 } else if (monthIndex >= 8) { // Sep, Oct, Nov, Dec
-                     reportingYear = academicYearStart; 
-                 }
+                 let reportingYear = getAcademicYearForMonth(monthIndex);
                  
                  const monthName = getMonthName(monthIndex);
                  const value = `${reportingYear}-${monthIndex}`; // e.g., "2025-8" for Sep 2025
@@ -3828,53 +3848,195 @@ if (bookSelect.value === 'other') {
             return sameClass;
         };
 
-        // NAYA HELPER: Sirf pichle mahino ka cumulative nikalne ke liye
-        const getPreviousCumulative = (periodId, semester, currentMonthNum, allYearReportsData, periodObj = null, teacherObj = null, jamiaName = null) => {
-             let prevCumulative = 0;
-             const activeMonths = getMonthsForSemester(semester);
-             const currentIndex = activeMonths.indexOf(currentMonthNum);
-             
-             if (currentIndex <= 0) return 0; // Agar pehla mahina hai, to pichla 0 hoga
-             
-             const prevMonths = activeMonths.slice(0, currentIndex);
-             
-             allYearReportsData.forEach(report => {
-                 if (prevMonths.includes(report.monthNum)) {
-                     const periodEntry = (report.karkardagiReport?.data || []).find(entry => 
-                         (entry.periodId && entry.periodId === periodId) ||
-                         (periodObj && teacherObj && matchPeriodEntry(entry, teacherObj, periodObj, jamiaName))
-                     );
-                     if (periodEntry) {
-                         prevCumulative += parseInt(periodEntry.pagesTaught || 0, 10);
-                     }
-                 }
-             });
-             return prevCumulative;
+        const findPeriodAndTeacherFromStructure = (periodId) => {
+            if (!periodId) return { period: null, teacher: null, jamiaName: null };
+            const curAY = typeof activeYear !== 'undefined' ? activeYear : null;
+            if (!curAY || !allAcademicYearsData || !allAcademicYearsData[curAY]) {
+                if (typeof allAcademicYearsData !== 'undefined' && allAcademicYearsData) {
+                    for (const ay of Object.keys(allAcademicYearsData)) {
+                        const st = allAcademicYearsData[ay]?.karkardagiStructure || [];
+                        const pidStr = String(periodId).trim();
+                        for (const jamia of st) {
+                            for (const teacher of (jamia.teachers || [])) {
+                                const period = (teacher.periods || []).find(p => String(p.id || '').trim() === pidStr);
+                                if (period) return { period, teacher, jamiaName: jamia.jamiaName };
+                            }
+                        }
+                    }
+                }
+                return { period: null, teacher: null, jamiaName: null };
+            }
+            const structure = allAcademicYearsData[curAY]?.karkardagiStructure || [];
+            const pidStr = String(periodId).trim();
+            for (const jamia of structure) {
+                for (const teacher of (jamia.teachers || [])) {
+                    const period = (teacher.periods || []).find(p => String(p.id || '').trim() === pidStr);
+                    if (period) {
+                        return { period, teacher, jamiaName: jamia.jamiaName };
+                    }
+                }
+            }
+            return { period: null, teacher: null, jamiaName: null };
         };
+
+        const getPreviousCumulative = (periodId, semester, currentMonthNum, allYearReportsData, periodObj = null, teacherObj = null, jamiaName = null) => {
+            if (!periodObj && periodId) {
+                const found = findPeriodAndTeacherFromStructure(periodId);
+                periodObj = found.period;
+                teacherObj = teacherObj || found.teacher;
+                jamiaName = jamiaName || found.jamiaName;
+            }
+
+            let prevCumulative = 0;
+            const targetSem = String(semester || periodObj?.semester || '1');
+            const activeMonths = getMonthsForSemester(targetSem).map(Number);
+            const curM = Number(currentMonthNum);
+            const currentIndex = activeMonths.indexOf(curM);
+            
+            if (currentIndex <= 0) return 0; // Agar pehla mahina hai, to pichla 0 hoga
+            
+            const prevMonths = activeMonths.slice(0, currentIndex);
+
+            // Group allYearReportsData by monthNum to avoid double counting
+            const reportsByMonth = new Map();
+            (allYearReportsData || []).forEach(report => {
+                const rM = Number(report.monthNum);
+                if (!isNaN(rM) && prevMonths.includes(rM)) {
+                    const repSem = report.semester !== undefined ? String(report.semester) : null;
+                    if (!repSem || repSem === targetSem) {
+                        reportsByMonth.set(rM, report);
+                    }
+                }
+            });
+
+            const tId = (teacherObj?.id || '').toString().trim();
+            const pId = (periodId || periodObj?.id || '').toString().trim();
+            const bName = normMatch(periodObj?.bookName);
+            const cName = normMatch(periodObj?.className);
+            const jName = (jamiaName || '').toString().trim();
+            const totalBookPages = parseInt(periodObj?.totalPages || 0, 10);
+
+            prevMonths.forEach(m => {
+                let monthPages = 0;
+                let foundInAdmin = false;
+
+                const rep = reportsByMonth.get(m);
+                if (rep && rep.karkardagiReport?.data) {
+                    const periodEntry = (rep.karkardagiReport.data || []).find(entry => {
+                        if (entry.periodSemester && String(entry.periodSemester) !== targetSem) return false;
+                        return (entry.periodId && pId && entry.periodId === pId) ||
+                               (periodObj && teacherObj && matchPeriodEntry(entry, teacherObj, periodObj, jName));
+                    });
+                    if (periodEntry && periodEntry.pagesTaught !== undefined && periodEntry.pagesTaught !== null && periodEntry.pagesTaught !== '') {
+                        const val = parseInt(periodEntry.pagesTaught, 10);
+                        if (!isNaN(val) && val > 0 && !(totalBookPages > 0 && val > totalBookPages * 1.5)) {
+                            monthPages = val;
+                            foundInAdmin = true;
+                        }
+                    }
+                }
+
+                if (!foundInAdmin && window.allHistoricalSubmissionsMap) {
+                    let sub = null;
+                    if (jName && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${pId}::${m}`);
+                    if (!sub && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${pId}::${m}`);
+                    if (!sub && jName && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${bName}::${cName}::${m}`);
+                    if (!sub && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${bName}::${cName}::${m}`);
+                    if (sub && sub.pagesTaught) {
+                        const sVal = parseInt(sub.pagesTaught, 10) || 0;
+                        if (!(totalBookPages > 0 && sVal > totalBookPages * 1.5)) {
+                            monthPages = sVal;
+                        }
+                    }
+                }
+
+                prevCumulative += monthPages;
+            });
+
+            return prevCumulative;
+        };
+
         // Helper to calculate Cumulative Taught (Up to the given month)
         const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentYearNum, allYearReportsData, periodObj = null, teacherObj = null, jamiaName = null) => {
-             let cumulativeTaught = 0;
-             const activeMonths = getMonthsForSemester(semester);
-             const currentIndex = activeMonths.indexOf(currentMonthNum);
-             
-             // Hum chahte hain ke current month tak ka (inclusive) sum ho
-             const monthsToInclude = currentIndex !== -1 ? activeMonths.slice(0, currentIndex + 1) : activeMonths;
+            if (!periodObj && periodId) {
+                const found = findPeriodAndTeacherFromStructure(periodId);
+                periodObj = found.period;
+                teacherObj = teacherObj || found.teacher;
+                jamiaName = jamiaName || found.jamiaName;
+            }
 
-             allYearReportsData.forEach(report => {
-                 if (monthsToInclude.includes(report.monthNum)) {
-                     const periodEntry = (report.karkardagiReport?.data || []).find(entry => 
-                         (entry.periodId && entry.periodId === periodId) ||
-                         (periodObj && teacherObj && matchPeriodEntry(entry, teacherObj, periodObj, jamiaName))
-                     );
-                     if (periodEntry) {
-                         cumulativeTaught += parseInt(periodEntry.pagesTaught || 0, 10);
-                     }
-                 }
-             });
-             return cumulativeTaught;
+            const prevCumulative = getPreviousCumulative(periodId, semester, currentMonthNum, allYearReportsData, periodObj, teacherObj, jamiaName);
+
+            // Ab current month ke pages nikaalte hain
+            const curM = Number(currentMonthNum);
+            let curMonthPages = 0;
+            let foundCur = false;
+            const totalBookPages = parseInt(periodObj?.totalPages || 0, 10);
+
+            // 1. Agar monthlyReportData me hai (current open report)
+            if (typeof monthlyReportData !== 'undefined' && monthlyReportData && monthlyReportData.karkardagiReport?.data && Number(monthlyReportData.monthNum) === curM) {
+                const entry = (monthlyReportData.karkardagiReport.data || []).find(e =>
+                    (e.periodId && periodId && e.periodId === periodId) ||
+                    (periodObj && teacherObj && matchPeriodEntry(e, teacherObj, periodObj, jamiaName))
+                );
+                if (entry && entry.pagesTaught !== undefined && entry.pagesTaught !== null && entry.pagesTaught !== '') {
+                    const val = parseInt(entry.pagesTaught, 10);
+                    if (!isNaN(val) && val > 0 && !(totalBookPages > 0 && val > totalBookPages * 1.5)) {
+                        curMonthPages = val;
+                        foundCur = true;
+                    }
+                }
+            }
+
+            // 2. Agar allYearReportsData me current month ki entry hai
+            if (!foundCur && allYearReportsData) {
+                const rep = allYearReportsData.find(r => Number(r.monthNum) === curM);
+                if (rep && rep.karkardagiReport?.data) {
+                    const entry = (rep.karkardagiReport.data || []).find(e =>
+                        (e.periodId && periodId && e.periodId === periodId) ||
+                        (periodObj && teacherObj && matchPeriodEntry(e, teacherObj, periodObj, jamiaName))
+                    );
+                    if (entry && entry.pagesTaught !== undefined && entry.pagesTaught !== null && entry.pagesTaught !== '') {
+                        const val = parseInt(entry.pagesTaught, 10);
+                        if (!isNaN(val) && val > 0 && !(totalBookPages > 0 && val > totalBookPages * 1.5)) {
+                            curMonthPages = val;
+                            foundCur = true;
+                        }
+                    }
+                }
+            }
+
+            // 3. Fallback to teacherSubmissionsMap / allHistoricalSubmissionsMap for current month
+            if (!foundCur) {
+                const tId = (teacherObj?.id || '').toString().trim();
+                const pId = (periodId || periodObj?.id || '').toString().trim();
+                const bName = normMatch(periodObj?.bookName);
+                const cName = normMatch(periodObj?.className);
+                const jName = (jamiaName || '').toString().trim();
+
+                let sub = null;
+                if (typeof teacherSubmissionsMap !== 'undefined' && teacherSubmissionsMap) {
+                    if (jName && tId && pId) sub = teacherSubmissionsMap.get(`${jName}::${tId}::${pId}`);
+                    if (!sub && pId) sub = teacherSubmissionsMap.get(pId);
+                    if (!sub && bName) sub = teacherSubmissionsMap.get(`${bName}::${cName}`);
+                }
+                if (!sub && window.allHistoricalSubmissionsMap) {
+                    if (jName && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${pId}::${curM}`);
+                    if (!sub && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${pId}::${curM}`);
+                    if (!sub && jName && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${bName}::${cName}::${curM}`);
+                    if (!sub && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${bName}::${cName}::${curM}`);
+                }
+                if (sub && sub.pagesTaught) {
+                    const sVal = parseInt(sub.pagesTaught, 10) || 0;
+                    if (!(totalBookPages > 0 && sVal > totalBookPages * 1.5)) {
+                        curMonthPages = sVal;
+                    }
+                }
+            }
+
+            return prevCumulative + curMonthPages;
         };
-         
-        // Helper to update cumulative data on input change
+
         const updateCumulativeDataLocally = (periodId, semester, currentMonthNum, currentYearNum, taught, row, periodObj = null, teacherObj = null, jamiaName = null) => {
              const prevCumulative = getPreviousCumulative(periodId, semester, currentMonthNum, allYearReportsData, periodObj, teacherObj, jamiaName);
              const newCumulative = prevCumulative + taught; // Sirf pichle mahinon ke total me naya input add karein
@@ -3925,8 +4087,8 @@ if (monthNum === -1 || !isMonthValid) {
 }
 
 // Semester ke total days Admin config se lein
-const sem1TotalDays = adminAcademicConfig.sem1TotalDays || 0;
-const sem2TotalDays = adminAcademicConfig.sem2TotalDays || 0;
+const sem1TotalDays = (window.adminAcademicConfig || adminAcademicConfig)?.sem1TotalDays || 0;
+const sem2TotalDays = (window.adminAcademicConfig || adminAcademicConfig)?.sem2TotalDays || 0;
 const semesterTotalDays = currentSemester === '1' ? sem1TotalDays : sem2TotalDays;
 
 if (semesterTotalDays === 0) {
@@ -4364,7 +4526,7 @@ const renderMonthlyMunasibReport = async () => {
     const monthNum = parseInt(monthNumStr, 10);
     const yearNum = parseInt(year, 10);
     const semester = determineSemester(monthNum);
-    const { month } = currentReportPeriod; 
+    const month = currentReportPeriod.month || getMonthName(monthNum); 
 
     const selectedMonthReport = allYearReportsData.find(report => report.year === yearNum && report.monthNum === monthNum);
 
@@ -4551,7 +4713,7 @@ const wazahatText = wData ? wData.text : '';
                 const totalPagesSem = structurePeriod?.totalPages || 'N/A';
                 const className = structurePeriod?.className || 'N/A';
                 
-                const cumulativeTaught = calculateCumulativeTaught(period.periodId, semester, monthNum, yearNum, allYearReportsData); 
+                const cumulativeTaught = calculateCumulativeTaught(period.periodId, semester, monthNum, yearNum, allYearReportsData, structurePeriod, structureTeacher, jamiaName); 
                 
                 // Naye ustad ke uper Moti Line
                 const borderClass = index === 0 ? 'border-t-2 border-gray-300' : 'border-t border-gray-100';
@@ -4730,19 +4892,15 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
 
     // Get relevant months list
     const academicMonthsList = getMonthsForSemester(currentSemester).map(monthNum => {
-        let reportYear = currentYearNum;
-        const academicYearParts = activeYear.split('-');
-        if (currentSemester === '1') {
-            reportYear = parseInt(academicYearParts[0], 10);
-        } else {
-            reportYear = monthNum >= 8 ? parseInt(academicYearParts[0], 10) : parseInt(academicYearParts[1], 10);
-        }
-        return { monthNum, year: reportYear };
+        return { monthNum, year: getAcademicYearForMonth(monthNum) };
     }).filter(m => {
         if (m.year < currentYearNum) return true;
         if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
         return false;
-    }).sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
+    }).sort((a, b) => {
+        const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+        return (a.year * 100 + order.indexOf(a.monthNum)) - (b.year * 100 + order.indexOf(b.monthNum));
+    });
 
     let html = ``;
 
@@ -4824,8 +4982,68 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
 
         // Rows for each period
         periodsInSemester.forEach(period => {
-            const totalPages = period.totalPages;
-            const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
+            const totalPages = period.totalPages || 0;
+            const periodPagesByMonth = {};
+            let periodMonthlyCumulative = 0;
+
+            academicMonthsList.forEach(m => {
+                const monthReport = (allYearReportsData || []).find(r => Number(r.monthNum) === Number(m.monthNum) && Number(r.year) === Number(m.year));
+                const monthDetails = (window.adminAcademicConfig || adminAcademicConfig)?.monthDetails || {};
+                const monthConfig = monthDetails[m.monthNum];
+                const daysThisMonth = currentSemester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
+                const semTotalDays = currentSemester === '1' ? ((window.adminAcademicConfig || adminAcademicConfig)?.sem1TotalDays || 0) : ((window.adminAcademicConfig || adminAcademicConfig)?.sem2TotalDays || 0);
+
+                let monthlyTarget = 0;
+                if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
+                    const perDayTarget = totalPages / semTotalDays;
+                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                }
+
+                let pagesTaught = 0;
+                let foundInAdmin = false;
+
+                if (monthReport && monthReport.karkardagiReport?.data) {
+                    const repSem = monthReport.semester !== undefined ? String(monthReport.semester) : null;
+                    if (!repSem || repSem === currentSemester) {
+                        const periodEntry = (monthReport.karkardagiReport.data || []).find(e => {
+                            if (e.periodSemester && String(e.periodSemester) !== currentSemester) return false;
+                            return (e.periodId && e.periodId === period.id) ||
+                                matchPeriodEntry(e, teacher, period, selectedJamia);
+                        });
+                        if (periodEntry && periodEntry.pagesTaught !== undefined && periodEntry.pagesTaught !== null && periodEntry.pagesTaught !== '') {
+                            const val = parseInt(periodEntry.pagesTaught, 10);
+                            if (!isNaN(val) && val >= 0 && !(totalPages > 0 && val > totalPages * 1.5)) {
+                                pagesTaught = val;
+                                foundInAdmin = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!foundInAdmin && window.allHistoricalSubmissionsMap) {
+                    const tId = (teacher?.id || '').toString().trim();
+                    const pId = (period?.id || '').toString().trim();
+                    const bName = normMatch(period?.bookName);
+                    const cName = normMatch(period?.className);
+                    const jName = (selectedJamia || '').toString().trim();
+                    let sub = null;
+                    if (jName && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${pId}::${m.monthNum}`);
+                    if (!sub && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${pId}::${m.monthNum}`);
+                    if (!sub && jName && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${bName}::${cName}::${m.monthNum}`);
+                    if (!sub && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${bName}::${cName}::${m.monthNum}`);
+                    if (sub && sub.pagesTaught) {
+                        const sVal = parseInt(sub.pagesTaught, 10) || 0;
+                        if (!(totalPages > 0 && sVal > totalPages * 1.5)) {
+                            pagesTaught = sVal;
+                        }
+                    }
+                }
+
+                periodPagesByMonth[m.monthNum] = { monthlyTarget, pagesTaught };
+                periodMonthlyCumulative += pagesTaught;
+            });
+
+            const cumulativeTaught = periodMonthlyCumulative;
             const remainingPages = totalPages - cumulativeTaught;
             const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
             // Kaifiyat Logic
@@ -4860,27 +5078,10 @@ const renderTeacherProfileReport = async (e, isInitial = false) => {
             `;
 
             academicMonthsList.forEach(m => {
-                const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
-                const monthDetails = window.adminAcademicConfig?.monthDetails || {};
-                const monthConfig = monthDetails[m.monthNum];
-                const daysThisMonth = currentSemester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
-                const semTotalDays = currentSemester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
-
-                let monthlyTarget = 0;
-                if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
-                    const perDayTarget = totalPages / semTotalDays;
-                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                }
-
-                let pagesTaught = '0';
-                if (monthReport) {
-                    const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
-                    pagesTaught = (periodEntry?.pagesTaught || 0).toString();
-                }
-
+                const data = periodPagesByMonth[m.monthNum] || { monthlyTarget: 0, pagesTaught: 0 };
                 html += `
-                    <td class="text-center">${monthlyTarget}</td>
-                    <td class="text-center font-medium">${pagesTaught}</td>
+                    <td class="text-center">${data.monthlyTarget}</td>
+                    <td class="text-center font-medium">${data.pagesTaught}</td>
                 `;
             });
 
@@ -5827,22 +6028,16 @@ const downloadAllJamiaProfilesImage = async (e) => {
     `;
 
     // Filter months exactly like single profile
-const academicMonthsList = getMonthsForSemester(semester).map(monthNum => {
-        let reportYear = currentYearNum;
-        const academicYearParts = activeYear.split('-');
-        const academicYearStart = parseInt(academicYearParts[0], 10);
-        const academicYearEnd = parseInt(academicYearParts[1], 10);
-        if (semester === '1') {
-            reportYear = academicYearStart;
-        } else {
-            reportYear = monthNum >= 8 ? academicYearStart : academicYearEnd;
-        }
-        return { monthNum, year: reportYear };
+    const academicMonthsList = getMonthsForSemester(semester).map(monthNum => {
+        return { monthNum, year: getAcademicYearForMonth(monthNum) };
     }).filter(m => {
         if (m.year < currentYearNum) return true;
         if (m.year === currentYearNum && m.monthNum <= currentMonthNum) return true;
         return false;
-    }).sort((a, b) => a.year * 100 + a.monthNum - (b.year * 100 + b.monthNum));
+    }).sort((a, b) => {
+        const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+        return (a.year * 100 + order.indexOf(a.monthNum)) - (b.year * 100 + order.indexOf(b.monthNum));
+    });
 
     // Loop through each teacher
     jamiaData.teachers.forEach(teacher => {
@@ -5873,7 +6068,7 @@ const academicMonthsList = getMonthsForSemester(semester).map(monthNum => {
             fullHtml += `<th colspan="2" style="border: 1px solid #e5e7eb; padding: 8px;">${urduMonthNameObj} ${shortYear}</th>`;
         });
 
-       fullHtml += `</tr><tr>
+        fullHtml += `</tr><tr>
                      <th style="border: 1px solid #e5e7eb;"></th>
                      <th style="border: 1px solid #e5e7eb;"></th>
                      <th style="border: 1px solid #e5e7eb;"></th>
@@ -5889,9 +6084,68 @@ const academicMonthsList = getMonthsForSemester(semester).map(monthNum => {
         fullHtml += `</tr></thead><tbody>`;
 
         periodsInSemester.forEach(period => {
-            const totalPages = period.totalPages;
-            const cumulativeTaught = calculateCumulativeTaught(period.id, period.semester, currentMonthNum, currentYearNum, allYearReportsData);
-            
+            const totalPages = period.totalPages || 0;
+            const periodPagesByMonth = {};
+            let periodMonthlyCumulative = 0;
+
+            academicMonthsList.forEach(m => {
+                const monthReport = (allYearReportsData || []).find(r => Number(r.monthNum) === Number(m.monthNum) && Number(r.year) === Number(m.year));
+                const monthDetails = (window.adminAcademicConfig || adminAcademicConfig)?.monthDetails || {};
+                const monthConfig = monthDetails[m.monthNum];
+                const daysThisMonth = semester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
+                const semTotalDays = semester === '1' ? ((window.adminAcademicConfig || adminAcademicConfig)?.sem1TotalDays || 0) : ((window.adminAcademicConfig || adminAcademicConfig)?.sem2TotalDays || 0);
+
+                let monthlyTarget = 0;
+                if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
+                    const perDayTarget = totalPages / semTotalDays;
+                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
+                }
+
+                let pagesTaught = 0;
+                let foundInAdmin = false;
+
+                if (monthReport && monthReport.karkardagiReport?.data) {
+                    const repSem = monthReport.semester !== undefined ? String(monthReport.semester) : null;
+                    if (!repSem || repSem === semester) {
+                        const periodEntry = (monthReport.karkardagiReport.data || []).find(e => {
+                            if (e.periodSemester && String(e.periodSemester) !== semester) return false;
+                            return (e.periodId && e.periodId === period.id) ||
+                                matchPeriodEntry(e, teacher, period, jamiaName);
+                        });
+                        if (periodEntry && periodEntry.pagesTaught !== undefined && periodEntry.pagesTaught !== null && periodEntry.pagesTaught !== '') {
+                            const val = parseInt(periodEntry.pagesTaught, 10);
+                            if (!isNaN(val) && val >= 0 && !(totalPages > 0 && val > totalPages * 1.5)) {
+                                pagesTaught = val;
+                                foundInAdmin = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!foundInAdmin && window.allHistoricalSubmissionsMap) {
+                    const tId = (teacher?.id || '').toString().trim();
+                    const pId = (period?.id || '').toString().trim();
+                    const bName = normMatch(period?.bookName);
+                    const cName = normMatch(period?.className);
+                    const jName = (jamiaName || '').toString().trim();
+                    let sub = null;
+                    if (jName && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${pId}::${m.monthNum}`);
+                    if (!sub && tId && pId) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${pId}::${m.monthNum}`);
+                    if (!sub && jName && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`${jName}::${tId}::${bName}::${cName}::${m.monthNum}`);
+                    if (!sub && tId && bName) sub = window.allHistoricalSubmissionsMap.get(`ANY::${tId}::${bName}::${cName}::${m.monthNum}`);
+                    if (sub && sub.pagesTaught) {
+                        const sVal = parseInt(sub.pagesTaught, 10) || 0;
+                        if (!(totalPages > 0 && sVal > totalPages * 1.5)) {
+                            pagesTaught = sVal;
+                        }
+                    }
+                }
+
+                periodPagesByMonth[m.monthNum] = { monthlyTarget, pagesTaught };
+                periodMonthlyCumulative += pagesTaught;
+            });
+
+            const cumulativeTaught = periodMonthlyCumulative;
             const remainingPages = totalPages - cumulativeTaught;
             const percent = totalPages > 0 ? Math.round((cumulativeTaught / totalPages) * 100) : 0;
             // Kaifiyat Logic
@@ -5919,37 +6173,22 @@ const academicMonthsList = getMonthsForSemester(semester).map(monthNum => {
                     <td style="border: 1px solid #e5e7eb; padding: 8px; text-align: right;">${period.bookName} <span style="font-size: 13px; color: #6b7280; font-family: 'Poppins', sans-serif;">(${period.className})</span></td>
                     <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; font-family: 'Poppins', sans-serif;">${totalPages}</td>
                     <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; color: #1d4ed8; font-family: 'Poppins', sans-serif;">${cumulativeTaught}</td>
-                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; background-color: #fef9c3; color: #b91c1c; font-family: 'Poppins', sans-serif;">${remainingPages}</td>
-                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; background-color: #dcfce7; color: #15803d; font-family: 'Poppins', sans-serif;">${percent}%</td>
-                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; color: ${kaifiyatColor}; font-family: 'Jameel Noori Nastaleeq', serif;">${kaifiyatUrdu}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; color: #ef4444; background-color: #fef3c7; font-family: 'Poppins', sans-serif;">${remainingPages}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; color: #065f46; background-color: #d1fae5; font-family: 'Poppins', sans-serif;">${percent}%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: bold; color: ${kaifiyatColor};">${kaifiyatUrdu}</td>
             `;
 
             academicMonthsList.forEach(m => {
-                const monthReport = allYearReportsData.find(r => r.monthNum === m.monthNum && r.year === m.year);
-                const monthDetails = window.adminAcademicConfig?.monthDetails || {};
-                const monthConfig = monthDetails[m.monthNum];
-                const daysThisMonth = semester === '1' ? (monthConfig?.sem1 || 0) : (monthConfig?.sem2 || 0);
-                const semTotalDays = semester === '1' ? (window.adminAcademicConfig?.sem1TotalDays || 0) : (window.adminAcademicConfig?.sem2TotalDays || 0);
-
-                let monthlyTarget = 0;
-                if (semTotalDays > 0 && daysThisMonth > 0 && totalPages > 0) {
-                    const perDayTarget = totalPages / semTotalDays;
-                    monthlyTarget = Math.round(perDayTarget * daysThisMonth);
-                }
-
-                let pagesTaught = '0';
-                if (monthReport) {
-                    const periodEntry = monthReport.karkardagiReport?.data?.find(e => e.periodId === period.id);
-                    pagesTaught = (periodEntry?.pagesTaught || 0).toString();
-                }
-
+                const data = periodPagesByMonth[m.monthNum] || { monthlyTarget: 0, pagesTaught: 0 };
                 fullHtml += `
-                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-family: 'Poppins', sans-serif;">${monthlyTarget}</td>
-                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-family: 'Poppins', sans-serif;">${pagesTaught}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-family: 'Poppins', sans-serif;">${data.monthlyTarget}</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 500; font-family: 'Poppins', sans-serif;">${data.pagesTaught}</td>
                 `;
             });
+
             fullHtml += `</tr>`;
         });
+
         fullHtml += `</tbody></table></div>`;
     });
 

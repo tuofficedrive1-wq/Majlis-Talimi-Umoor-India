@@ -2027,9 +2027,10 @@ function closeNotifSheet() {
 async function getSubs() {
   if (C.subs) return C.subs;
   const docs = [];
-  if (T?.id) {
+  const tid = T?.id;
+  if (tid) {
     try {
-      const s = await db.collection('teacher_submissions').where('teacherId', '==', T.id).get();
+      const s = await db.collection('teacher_submissions').where('teacherId', '==', tid).get();
       s.docs.forEach(d => docs.push(d.data()));
     } catch(e) {}
   }
@@ -2043,6 +2044,28 @@ async function getSubs() {
         }
       });
     } catch(e) {}
+    try {
+      const s2num = await db.collection('teacher_submissions').where('ajeerCode', '==', Number(CODE)).get();
+      s2num.docs.forEach(d => {
+        const data = d.data();
+        if (!docs.some(x => x.periodId === data.periodId && x.submissionMonth === data.submissionMonth && x.submissionYear === data.submissionYear)) {
+          docs.push(data);
+        }
+      });
+    } catch(e) {}
+  }
+  if (J?.jamiaName && T?.name) {
+    try {
+      const s3 = await db.collection('teacher_submissions').where('jamiaId', '==', J.jamiaName).get();
+      s3.docs.forEach(d => {
+        const data = d.data();
+        if (matchTeacher(data.teacherName, T.name)) {
+          if (!docs.some(x => x.periodId === data.periodId && x.submissionMonth === data.submissionMonth && x.submissionYear === data.submissionYear)) {
+            docs.push(data);
+          }
+        }
+      });
+    } catch(e) {}
   }
   return C.subs = docs;
 }
@@ -2051,14 +2074,25 @@ const tms = x => x && x.toMillis ? x.toMillis() : 0;
 
 function monthRows(subs, y, m) {
   const map = {};
-  subs.filter(s => s.role !== 'user_update' && +s.submissionMonth === m && +s.submissionYear === y).forEach(s => { map[s.periodId] = { ...s }; });
-  subs.filter(s => s.role === 'user_update' && +s.submissionMonth === m && +s.submissionYear === y).sort((a, b) => tms(a.updatedAt) - tms(b.updatedAt)).forEach(u => {
+  (subs || []).filter(s => s.role !== 'user_update' && +s.submissionMonth === m && +s.submissionYear === y).forEach(s => {
+    const r = { ...s };
+    if (s.periodId) map[s.periodId] = r;
+    if (s.className && s.bookName) {
+      map[normUrdu(s.className) + '::' + normUrdu(s.bookName)] = r;
+    }
+  });
+  (subs || []).filter(s => s.role === 'user_update' && +s.submissionMonth === m && +s.submissionYear === y).sort((a, b) => tms(a.updatedAt) - tms(b.updatedAt)).forEach(u => {
     (u.changedValues || []).forEach(cv => {
       if (!cv.periodId) return;
       if ((+cv.pagesTaught || 0) === 0 && !(cv.lastIbarat || '').trim()) return;
-      const r = map[cv.periodId] || (map[cv.periodId] = { periodId: cv.periodId });
+      const pid = cv.periodId;
+      const r = map[pid] || { periodId: pid };
       ['pagesTaught', 'lastIbarat', 'lastPageNo'].forEach(k => { if (cv[k] !== undefined && cv[k] !== '') r[k] = cv[k]; });
       r.updated = true;
+      map[pid] = r;
+      if (r.className && r.bookName) {
+        map[normUrdu(r.className) + '::' + normUrdu(r.bookName)] = r;
+      }
     });
   });
   return map;
@@ -2066,11 +2100,68 @@ function monthRows(subs, y, m) {
 
 const metaOf = pid => (T.periods || []).find(p => p.id === pid) || {};
 
-function prevOf(subs, pid) {
-  for (let i = 1; i <= 24; i++) {
-    const d = new Date(ctx.y, ctx.m - i, 1), r = monthRows(subs, d.getFullYear(), d.getMonth())[pid];
-    if (r) return { ...r, label: `${MONTHS[d.getMonth()]} ${d.getFullYear()}` };
+function prevOf(subs, p, adm = {}) {
+  const pid = typeof p === 'object' ? p.id : p;
+  const pObj = typeof p === 'object' ? p : metaOf(pid);
+  const nk = pObj.className && pObj.bookName ? (normUrdu(pObj.className) + '::' + normUrdu(pObj.bookName)) : '';
+  const list = semMonthList(curAY(), ctx.m);
+  const curIdx = list.findIndex(x => x.y === ctx.y && x.m === ctx.m);
+
+  // 1. Check previous months within current semester first (backwards from immediately preceding month)
+  if (curIdx > 0) {
+    for (let i = curIdx - 1; i >= 0; i--) {
+      const item = list[i];
+      const k = item.y + '_' + item.m;
+      // Admin verified check
+      const a = (adm[pid] && adm[pid][k]) || (nk && adm[nk] && adm[nk][k]);
+      if (a && ((a.pagesTaught && a.pagesTaught > 0) || (a.lastIbarat && String(a.lastIbarat).trim() && a.lastIbarat !== '-'))) {
+        return {
+          pagesTaught: a.pagesTaught || 0,
+          lastIbarat: a.lastIbarat || '-',
+          lastPageNo: a.lastPageNo || '-',
+          label: `${MONTHS[item.m]} ${item.y}`
+        };
+      }
+      // Teacher submission check
+      const rMap = monthRows(subs, item.y, item.m);
+      const r = rMap[pid] || (nk && rMap[nk]);
+      if (r && ((r.pagesTaught && +r.pagesTaught > 0) || (r.lastIbarat && String(r.lastIbarat).trim() && r.lastIbarat !== '-'))) {
+        return {
+          pagesTaught: r.pagesTaught || 0,
+          lastIbarat: r.lastIbarat || '-',
+          lastPageNo: r.lastPageNo || '-',
+          label: `${MONTHS[item.m]} ${item.y}`
+        };
+      }
+    }
   }
+
+  // 2. If first month of semester (curIdx <= 0), only check the immediately preceding calendar month
+  if (curIdx <= 0) {
+    const prevDate = new Date(ctx.y, ctx.m - 1, 1);
+    const py = prevDate.getFullYear(), pm = prevDate.getMonth();
+    const pk = py + '_' + pm;
+    const a = (adm[pid] && adm[pid][pk]) || (nk && adm[nk] && adm[nk][pk]);
+    if (a && ((a.pagesTaught && a.pagesTaught > 0) || (a.lastIbarat && String(a.lastIbarat).trim() && a.lastIbarat !== '-'))) {
+      return {
+        pagesTaught: a.pagesTaught || 0,
+        lastIbarat: a.lastIbarat || '-',
+        lastPageNo: a.lastPageNo || '-',
+        label: `${MONTHS[pm]} ${py}`
+      };
+    }
+    const rMap = monthRows(subs, py, pm);
+    const r = rMap[pid] || (nk && rMap[nk]);
+    if (r && ((r.pagesTaught && +r.pagesTaught > 0) || (r.lastIbarat && String(r.lastIbarat).trim() && r.lastIbarat !== '-'))) {
+      return {
+        pagesTaught: r.pagesTaught || 0,
+        lastIbarat: r.lastIbarat || '-',
+        lastPageNo: r.lastPageNo || '-',
+        label: `${MONTHS[pm]} ${py}`
+      };
+    }
+  }
+
   return null;
 }
 
@@ -2087,6 +2178,21 @@ const reqId = () => `${T.id}_${ctx.y}_${ctx.m}`;
 async function getAdminKark(list) {
   C.adm = C.adm || {};
   const out = {};
+  const ay = curAY();
+  const st = U?.academicYears?.[ay]?.karkardagiStructure || [];
+  const teacherIds = new Set();
+  if (T?.id) teacherIds.add(T.id);
+  if (IDX?.teacherId) teacherIds.add(IDX.teacherId);
+  if (Array.isArray(st)) {
+    st.forEach(jam => {
+      (jam.teachers || []).forEach(teach => {
+        if (String(teach.loginCode) === String(CODE) || String(teach.ajeerCode) === String(CODE) || matchTeacher(teach.name, T?.name)) {
+          if (teach.id) teacherIds.add(teach.id);
+        }
+      });
+    });
+  }
+
   await Promise.all(list.map(async x => {
     const id = `${IDX.userId}_${curAY()}_${x.y}_${x.m}`;
     if (!(id in C.adm)) {
@@ -2095,8 +2201,28 @@ async function getAdminKark(list) {
         C.adm[id] = d.exists ? (d.data().karkardagiReport?.data || []) : [];
       } catch(e) { C.adm[id] = []; }
     }
-    C.adm[id].filter(i => i.teacherId === T.id && (!i.jamiaName || i.jamiaName === J.jamiaName)).forEach(i => {
-      (out[i.periodId] = out[i.periodId] || {})[x.y + '_' + x.m] = parseInt(i.pagesTaught || 0, 10);
+    (C.adm[id] || []).filter(i => {
+      if (i.periodSemester && String(i.periodSemester) !== semOf(x.m)) return false;
+      const matchT = (i.teacherId && teacherIds.has(i.teacherId)) ||
+                     (CODE && (String(i.teacherCode || i.ajeerCode) === String(CODE))) ||
+                     (matchTeacher(i.teacherName, T?.name));
+      const matchJ = !i.jamiaName || !J?.jamiaName || matchUrdu(i.jamiaName, J.jamiaName);
+      return matchT && matchJ;
+    }).forEach(i => {
+      const k = x.y + '_' + x.m;
+      const entryObj = {
+        pagesTaught: parseInt(i.pagesTaught || 0, 10),
+        lastIbarat: i.lastIbarat || '',
+        lastPageNo: i.lastPageNo || '',
+        source: 'admin'
+      };
+      if (i.periodId) {
+        (out[i.periodId] = out[i.periodId] || {})[k] = entryObj;
+      }
+      if (i.className && i.bookName) {
+        const nk = normUrdu(i.className) + '::' + normUrdu(i.bookName);
+        (out[nk] = out[nk] || {})[k] = entryObj;
+      }
     });
   }));
   return out;
@@ -2131,13 +2257,29 @@ async function semTable(subs) {
   per.forEach(p => {
     const total = parseInt(p.totalPages || 0, 10);
     let sum = 0;
+    const nk = normUrdu(p.className) + '::' + normUrdu(p.bookName);
     const cells = list.map(x => {
       const k = x.y + '_' + x.m;
-      const a = adm[p.id] && adm[p.id][k];
-      const r = rm[k][p.id];
-      const v = a !== undefined ? a : (r ? (parseInt(r.pagesTaught || 0, 10) || 0) : 0);
+      const aObj = (adm[p.id] && adm[p.id][k]) || (adm[nk] && adm[nk][k]);
+      const r = (rm[k] && rm[k][p.id]) || (rm[k] && rm[k][nk]);
+      const aVal = aObj ? parseInt(aObj.pagesTaught || 0, 10) : undefined;
+      const rVal = r ? (parseInt(r.pagesTaught || 0, 10) || 0) : 0;
+      
+      let v = 0;
+      let isVerified = false;
+      if (aVal !== undefined && aVal > 0) {
+        v = aVal;
+        isVerified = true;
+      } else if (rVal > 0) {
+        v = rVal;
+        isVerified = false;
+      } else if (aVal !== undefined) {
+        v = 0;
+        isVerified = true;
+      }
+      
       sum += v;
-      return `<td ${a !== undefined ? 'style="background:#E8F5E9"' : ''}><b>${v > 0 ? v : '-'}</b></td>`;
+      return `<td ${isVerified && v > 0 ? 'style="background:#E8F5E9"' : ''}><b>${v > 0 ? v : '-'}</b></td>`;
     }).join('');
     const rem = total - sum;
     const pct = total > 0 ? Math.min(100, Math.round(sum / total * 100)) : null;
@@ -2427,10 +2569,20 @@ async function vKark() {
   const subs = await getSubs(), sem = semOf(ctx.m);
   const rows = monthRows(subs, ctx.y, ctx.m);
   const active = (T.periods || []).filter(p => p.status !== 'transferred' && String(p.semester || '1') === sem);
-  const open = active.filter(p => !rows[p.id]);
-  const filledIds = Object.keys(rows);
+
+  const isPeriodFilled = p => {
+    const nk = normUrdu(p.className) + '::' + normUrdu(p.bookName);
+    return !!(rows[p.id] || rows[nk]);
+  };
+
+  const open = active.filter(p => !isPeriodFilled(p));
+  const filledPeriods = active.filter(p => isPeriodFilled(p));
   const deeniOld = subs.find(s => s.role !== 'user_update' && +s.submissionMonth === ctx.m && +s.submissionYear === ctx.y && s.deeniKaam)?.deeniKaam || null;
   const g = open.length ? await gateState() : { open:true };
+
+  // Fetch admin data so that prevOf can use it
+  const list = semMonthList(curAY(), ctx.m);
+  const adm = await getAdminKark(list);
 
   // Notice if any other month is currently unlocked for this teacher by central admin
   let otherMonthNotice = '';
@@ -2486,8 +2638,8 @@ async function vKark() {
     <div class="card">
       <div class="card-title">
         <h3><i class="fas fa-book-open-reader"></i> ${monthLabel()} — ماہانہ کارکردگی</h3>
-        <span class="pill ${open.length ? (g.open ? (filledIds.length ? 'wait' : 'no') : (g.early ? 'wait' : 'no')) : ''}">
-          ${!active.length && !filledIds.length ? 'کوئی کتاب نہیں' : open.length ? (g.open ? (filledIds.length ? 'کچھ کتب باقی' : 'جمع نہیں ہوئی') : (g.early ? (g.scheduledDate ? `${fmtYmd(g.scheduledDate)} کو کھلے گی` : 'ابھی کھلی نہیں') : (g.expired ? 'رعایت ختم — لاک' : 'لاک ہے'))) : 'مکمل جمع شدہ — لاک'}
+        <span class="pill ${open.length ? (g.open ? (filledPeriods.length ? 'wait' : 'no') : (g.early ? 'wait' : 'no')) : ''}">
+          ${!active.length && !filledPeriods.length ? 'کوئی کتاب نہیں' : open.length ? (g.open ? (filledPeriods.length ? 'کچھ کتب باقی' : 'جمع نہیں ہوئی') : (g.early ? (g.scheduledDate ? `${fmtYmd(g.scheduledDate)} کو کھلے گی` : 'ابھی کھلی نہیں') : (g.expired ? 'رعایت ختم — لاک' : 'لاک ہے'))) : 'مکمل جمع شدہ — لاک'}
         </span>
       </div>
       ${open.length && g.open && g.note ? `<div class="muted" style="margin-top:4px"><i class="fas fa-clock" style="color:var(--gold)"></i> ${g.note}</div>` : ''}
@@ -2496,21 +2648,22 @@ async function vKark() {
 
   html += otherMonthNotice;
 
-  if (filledIds.length) {
+  if (filledPeriods.length) {
     html += `
       <div class="card">
         <div class="card-title"><h3><i class="fas fa-lock"></i> ${monthLabel()} کی جمع شدہ رپورٹ</h3></div>
         <div class="tw">
           <table>
             <tr><th>کلاس / کتاب</th><th>اس ماہ پڑھایا</th><th>آخری عبارت</th><th>صفحہ نمبر</th></tr>
-            ${filledIds.map(pid => {
-              const r = rows[pid], p = metaOf(pid);
+            ${filledPeriods.map(p => {
+              const nk = normUrdu(p.className) + '::' + normUrdu(p.bookName);
+              const r = rows[p.id] || rows[nk] || {};
               return `
                 <tr>
-                  <td class="l"><b>${esc(r.className || p.className)}</b><br><span class="muted">${esc(r.bookName || p.bookName)}</span>${r.updated ? '<br><span class="pill wait">ذمہ دار نے اپ ڈیٹ کیا</span>' : ''}</td>
-                  <td dir="ltr"><b>${esc(r.pagesTaught)}</b></td>
-                  <td class="l">${esc(r.lastIbarat)}</td>
-                  <td dir="ltr">${esc(r.lastPageNo)}</td>
+                  <td class="l"><b>${esc(p.className)}</b><br><span class="muted">${esc(p.bookName)}</span>${r.updated ? '<br><span class="pill wait">ذمہ دار نے اپ ڈیٹ کیا</span>' : ''}</td>
+                  <td dir="ltr"><b>${esc(r.pagesTaught !== undefined ? r.pagesTaught : '-')}</b></td>
+                  <td class="l">${esc(r.lastIbarat || '-')}</td>
+                  <td dir="ltr">${esc(r.lastPageNo || '-')}</td>
                 </tr>
               `;
             }).join('')}
@@ -2527,7 +2680,7 @@ async function vKark() {
 
   if (open.length && g.open) {
     html += `<div class="sec"><i class="fas fa-pen-to-square"></i> باقی کتب — رپورٹ درج کریں</div>` + open.map(p => {
-      const pv = prevOf(subs, p.id);
+      const pv = prevOf(subs, p, adm);
       return `
         <div class="card" data-pid="${esc(p.id)}">
           <b style="font-size:18px;color:var(--g)">${esc(p.className)} — ${esc(p.bookName)}</b>
@@ -2562,7 +2715,7 @@ async function vKark() {
     html += `<button class="btn" id="ks" onclick="saveKark()"><i class="fas fa-paper-plane"></i> جمع کریں (جمع کے بعد لاک ہو جائے گی)</button>`;
   }
 
-  if (!open.length && !filledIds.length) html += '<p class="center muted">اس مہینے میں آپ کی کوئی فعال کتاب نہیں ہے۔</p>';
+  if (!open.length && !filledPeriods.length) html += '<p class="center muted">اس مہینے میں آپ کی کوئی فعال کتاب نہیں ہے۔</p>';
   V(html);
 }
 
@@ -2583,16 +2736,43 @@ async function saveKark() {
   }
 
   const batch = db.batch(), ay = curAY();
+  const newlySubmitted = [];
+
   for (const c of cards) {
-    const p = metaOf(c.dataset.pid), pg = c.querySelector('.pg').value, ib = c.querySelector('.ib').value.trim(), pn = c.querySelector('.pn').value.trim();
+    const pid = c.dataset.pid;
+    const p = metaOf(pid);
+    const pg = c.querySelector('.pg').value, ib = c.querySelector('.ib').value.trim(), pn = c.querySelector('.pn').value.trim();
     if (pg === '' || +pg < 0 || !ib || !pn) return toast(`${p.bookName || 'ہر کتاب'}: تمام خانے مکمل بھریں`);
-    if (rows[c.dataset.pid]) continue;
-    batch.set(db.collection('teacher_submissions').doc(), {
-      jamiaId: J.jamiaName, teacherId: T.id, teacherName: T.name, ajeerCode: String(CODE), periodId: c.dataset.pid,
-      className: p.className || '', bookName: p.bookName || '', pagesTaught: +pg,
-      lastIbarat: ib, lastPageNo: pn, deeniKaam: deeni, submissionMonth: ctx.m,
-      submissionYear: ctx.y, activeYear: ay, submittedAt: firebase.firestore.FieldValue.serverTimestamp(), source: 'teacher-portal'
-    });
+    const nk = normUrdu(p.className) + '::' + normUrdu(p.bookName);
+    if (rows[pid] || rows[nk]) continue;
+
+    const subDoc = {
+      jamiaId: p.jamiaName || J.jamiaName,
+      teacherId: p.teacherId || T.id,
+      teacherName: T.name,
+      teacherCode: String(CODE),
+      ajeerCode: String(CODE),
+      periodId: pid,
+      className: p.className || '',
+      bookName: p.bookName || '',
+      pagesTaught: +pg,
+      lastIbarat: ib,
+      lastPageNo: pn,
+      deeniKaam: deeni,
+      submissionMonth: ctx.m,
+      submissionYear: ctx.y,
+      activeYear: ay,
+      submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      source: 'teacher-portal'
+    };
+
+    batch.set(db.collection('teacher_submissions').doc(), subDoc);
+    newlySubmitted.push(subDoc);
+  }
+
+  if (newlySubmitted.length === 0) {
+    toast('تمام کتب پہلے ہی جمع ہو چکی ہیں');
+    return vKark();
   }
 
   if (!confirm('جمع کرنے کے بعد یہ رپورٹ لاک ہو جائے گی۔ کیا آپ جمع کرنا چاہتے ہیں؟')) return;
@@ -2600,6 +2780,8 @@ async function saveKark() {
   try {
     await batch.commit();
     C.subs = null;
+    C.adm = null;
+    C.subs = [...(subs || []), ...newlySubmitted];
     toast('رپورٹ کامیابی سے جمع ہو گئی — جزاک اللہ');
     checkNotifications();
     vKark();

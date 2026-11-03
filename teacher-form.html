@@ -613,145 +613,153 @@ const activePeriods = teacher.periods.filter(p => {
 
     async function loadAndShowPreviousRecord(jamiaName, teacherId, currentMonth, currentYear) {
         try {
-            // 🔹 previous month calculate
-            let pm = currentMonth - 1;
-            let py = currentYear;
-            if (pm < 0) {
-                pm = 11;
-                py -= 1;
-            }
-
             const urlParams = new URLSearchParams(window.location.search);
             const activeYear = urlParams.get('activeYear');
             const userId     = urlParams.get('userId');
             const teacherName = selectedTeacherData?.name || '';
+            const mIndex = parseInt(currentMonth, 10);
+
+            // 1. Determine semester months
+            let semMonths = [];
+            if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
+                semMonths = globalAcademicConfig.sem1Months;
+            } else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
+                semMonths = globalAcademicConfig.sem2Months;
+            } else if (globalAcademicConfig && globalAcademicConfig.monthDetails) {
+                const md = globalAcademicConfig.monthDetails;
+                const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+                const s1 = Object.keys(md).filter(k => (md[k]?.sem1 || 0) > 0).map(Number).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+                const s2 = Object.keys(md).filter(k => (md[k]?.sem2 || 0) > 0).map(Number).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+                semMonths = s1.includes(mIndex) ? s1 : s2;
+            } else {
+                const isSem1 = (mIndex >= 3 && mIndex <= 6);
+                semMonths = isSem1 ? [3, 4, 5, 6] : [7, 8, 9, 10, 11, 0, 1, 2];
+            }
+
+            const cIdx = semMonths.indexOf(mIndex);
+            // Search candidate previous months within this semester first
+            const candidateMonths = cIdx > 0 ? semMonths.slice(0, cIdx).reverse() : [mIndex === 0 ? 11 : mIndex - 1];
 
             const submissionsRef = db.collection('teacher_submissions');
-
             let periodData = {};
             let periodDataByName = {};
-            let adminUpdates = [];
+            let foundLabel = '';
 
-            // 🔹 STEP 1: Query teacher_submissions for previous month
-            let snap = await submissionsRef
-                .where('jamiaId', '==', jamiaName)
-                .where('teacherId', '==', teacherId)
-                .where('submissionMonth', '==', pm)
-                .where('submissionYear', '==', py)
-                .get();
+            const [sYear, rawEYear] = String(activeYear || `${currentYear}-${currentYear+1}`).split('-').map(Number);
+            const eYear = rawEYear < 100 ? 2000 + rawEYear : rawEYear;
 
-            // Agar direct teacherId se na mile to jamia ke documents se teacher name match karein
-            if (snap.empty && teacherName) {
-                const jamiaSnap = await submissionsRef
+            for (const pm of candidateMonths) {
+                const py = pm >= 3 ? sYear : eYear;
+                let adminUpdates = [];
+
+                // A. Check teacher_submissions for candidate month
+                let snap = await submissionsRef
                     .where('jamiaId', '==', jamiaName)
+                    .where('teacherId', '==', teacherId)
                     .where('submissionMonth', '==', pm)
                     .where('submissionYear', '==', py)
                     .get();
 
-                if (!jamiaSnap.empty) {
-                    const normCurTeacher = normUrdu(teacherName).replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
-                    const matchingDocs = [];
-                    jamiaSnap.forEach(d => {
-                        const dat = d.data();
-                        const normDocTeacher = normUrdu(dat.teacherName || '').replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
-                        if (dat.teacherId === teacherId || (normCurTeacher && (normDocTeacher.includes(normCurTeacher) || normCurTeacher.includes(normDocTeacher)))) {
-                            matchingDocs.push(d);
+                if (snap.empty && teacherName) {
+                    const jamiaSnap = await submissionsRef
+                        .where('jamiaId', '==', jamiaName)
+                        .where('submissionMonth', '==', pm)
+                        .where('submissionYear', '==', py)
+                        .get();
+
+                    if (!jamiaSnap.empty) {
+                        const normCurTeacher = normUrdu(teacherName).replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+                        const matchingDocs = [];
+                        jamiaSnap.forEach(d => {
+                            const dat = d.data();
+                            const normDocTeacher = normUrdu(dat.teacherName || '').replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+                            if (dat.teacherId === teacherId || (normCurTeacher && (normDocTeacher.includes(normCurTeacher) || normCurTeacher.includes(normDocTeacher)))) {
+                                matchingDocs.push(d);
+                            }
+                        });
+                        if (matchingDocs.length > 0) {
+                            snap = { empty: false, forEach: cb => matchingDocs.forEach(cb) };
                         }
-                    });
-                    if (matchingDocs.length > 0) {
-                        snap = { empty: false, forEach: cb => matchingDocs.forEach(cb) };
                     }
                 }
-            }
 
-            if (!snap.empty) {
-                // ✅ CASE A: Teacher ya Admin ka data mila
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    
-                    if (d.role === 'user_update') {
-                        adminUpdates.push(d);
-                    } else if (d.periodId) {
-                        if (!periodData[d.periodId]) {
-                            periodData[d.periodId] = {
-                                pages: 0,
+                if (!snap.empty) {
+                    snap.forEach(doc => {
+                        const d = doc.data();
+                        if (d.role === 'user_update') {
+                            adminUpdates.push(d);
+                        } else if (d.periodId || (d.className && d.bookName)) {
+                            const entry = {
+                                pages: parseInt(d.pagesTaught || 0, 10),
                                 lastIbarat: d.lastIbarat || '-',
                                 lastPageNo: d.lastPageNo || '-'
                             };
-                        }
-                        periodData[d.periodId].pages += parseInt(d.pagesTaught || 0, 10);
-                        
-                        if (d.lastIbarat) periodData[d.periodId].lastIbarat = d.lastIbarat;
-                        if (d.lastPageNo) periodData[d.periodId].lastPageNo = d.lastPageNo;
-
-                        const nameKey = normUrdu(d.className) + '::' + normUrdu(d.bookName);
-                        periodDataByName[nameKey] = periodData[d.periodId];
-                    }
-                });
-
-                // ✅ STEP 2: Admin ke updates ko Teacher ke data par Override karo
-                if (adminUpdates.length > 0) {
-                    adminUpdates.sort((a, b) => {
-                        const ta = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0;
-                        const tb = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0;
-                        return ta - tb;
-                    });
-
-                    adminUpdates.forEach(updateDoc => {
-                        if (Array.isArray(updateDoc.changedValues)) {
-                            updateDoc.changedValues.forEach(cv => {
-                                const pid = cv.periodId;
-                                if (!pid) return;
-
-                                if (!periodData[pid]) {
-                                    periodData[pid] = { pages: 0, lastIbarat: '-', lastPageNo: '-' };
-                                }
-                                
-                                if (cv.pagesTaught !== undefined && cv.pagesTaught !== null) {
-                                    periodData[pid].pages = parseInt(cv.pagesTaught, 10);
-                                }
-                                if (cv.lastIbarat !== undefined && cv.lastIbarat !== null) {
-                                    periodData[pid].lastIbarat = cv.lastIbarat;
-                                }
-                                if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) {
-                                    periodData[pid].lastPageNo = cv.lastPageNo;
-                                }
-                            });
+                            if (d.periodId) periodData[d.periodId] = entry;
+                            const nameKey = normUrdu(d.className) + '::' + normUrdu(d.bookName);
+                            periodDataByName[nameKey] = entry;
                         }
                     });
-                }
-            }
 
-            // 🔹 STEP 3: Fallback to monthly_reports collection (Dashboard reports)
-            if (userId && activeYear) {
-                try {
-                    const repDocId = `${userId}_${activeYear}_${py}_${pm}`;
-                    const repSnap = await db.collection('monthly_reports').doc(repDocId).get();
-                    if (repSnap.exists) {
-                        const rData = repSnap.data();
-                        const repItems = rData?.karkardagiReport?.data || [];
-                        const normCurTeacher = normUrdu(teacherName).replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+                    if (adminUpdates.length > 0) {
+                        adminUpdates.sort((a, b) => {
+                            const ta = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0;
+                            const tb = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0;
+                            return ta - tb;
+                        });
 
-                        repItems.forEach(item => {
-                            const normItemTeacher = normUrdu(item.teacherName || '').replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
-                            const isMatch = item.teacherId === teacherId || (normCurTeacher && (normItemTeacher.includes(normCurTeacher) || normCurTeacher.includes(normItemTeacher)));
-                            if (!isMatch) return;
-
-                            const pid = item.periodId;
-                            const nameKey = normUrdu(item.className) + '::' + normUrdu(item.bookName);
-                            if (!periodData[pid] && !periodDataByName[nameKey]) {
-                                const entry = {
-                                    pages: parseInt(item.pagesTaught || 0, 10),
-                                    lastIbarat: item.lastIbarat || '-',
-                                    lastPageNo: item.lastPageNo || '-'
-                                };
-                                if (pid) periodData[pid] = entry;
-                                periodDataByName[nameKey] = entry;
+                        adminUpdates.forEach(updateDoc => {
+                            if (Array.isArray(updateDoc.changedValues)) {
+                                updateDoc.changedValues.forEach(cv => {
+                                    const pid = cv.periodId;
+                                    if (!pid) return;
+                                    if (!periodData[pid]) periodData[pid] = { pages: 0, lastIbarat: '-', lastPageNo: '-' };
+                                    if (cv.pagesTaught !== undefined && cv.pagesTaught !== null) periodData[pid].pages = parseInt(cv.pagesTaught, 10);
+                                    if (cv.lastIbarat !== undefined && cv.lastIbarat !== null) periodData[pid].lastIbarat = cv.lastIbarat;
+                                    if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) periodData[pid].lastPageNo = cv.lastPageNo;
+                                });
                             }
                         });
                     }
-                } catch (repErr) {
-                    console.warn('monthly_reports fallback check error:', repErr);
+                }
+
+                // B. Fallback to monthly_reports for candidate month
+                if (userId && activeYear) {
+                    try {
+                        const repDocId = `${userId}_${activeYear}_${py}_${pm}`;
+                        const repSnap = await db.collection('monthly_reports').doc(repDocId).get();
+                        if (repSnap.exists) {
+                            const rData = repSnap.data();
+                            const repItems = rData?.karkardagiReport?.data || [];
+                            const normCurTeacher = normUrdu(teacherName).replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+
+                            repItems.forEach(item => {
+                                const normItemTeacher = normUrdu(item.teacherName || '').replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+                                const isMatch = item.teacherId === teacherId || (normCurTeacher && (normItemTeacher.includes(normCurTeacher) || normCurTeacher.includes(normItemTeacher)));
+                                if (!isMatch) return;
+
+                                const pid = item.periodId;
+                                const nameKey = normUrdu(item.className) + '::' + normUrdu(item.bookName);
+                                if (!periodData[pid] && !periodDataByName[nameKey]) {
+                                    const entry = {
+                                        pages: parseInt(item.pagesTaught || 0, 10),
+                                        lastIbarat: item.lastIbarat || '-',
+                                        lastPageNo: item.lastPageNo || '-'
+                                    };
+                                    if (pid) periodData[pid] = entry;
+                                    periodDataByName[nameKey] = entry;
+                                }
+                            });
+                        }
+                    } catch (repErr) {
+                        console.warn('monthly_reports fallback check error:', repErr);
+                    }
+                }
+
+                // Check if we found ANY period record for this candidate month
+                const hasAnyRecord = Object.keys(periodData).length > 0 || Object.keys(periodDataByName).length > 0;
+                if (hasAnyRecord) {
+                    foundLabel = `${getMonthNameUrdu(pm)} ${py}`;
+                    break;
                 }
             }
 
@@ -765,9 +773,10 @@ const activePeriods = teacher.periods.filter(p => {
                         const jamia = yearData?.karkardagiStructure?.find(j => j.jamiaName === jamiaName);
                         const teacher = jamia?.teachers?.find(t => t.id === teacherId);
                         if (teacher && Array.isArray(teacher.periods)) {
+                            const lastPm = candidateMonths[0];
                             teacher.periods.forEach(p => {
                                 if (!Array.isArray(p.monthlyData)) return;
-                                const m = p.monthlyData.find(x => x.monthIndex === pm);
+                                const m = p.monthlyData.find(x => x.monthIndex === lastPm);
                                 if (!m) return;
                                 const entry = {
                                     pages: parseInt(m.pagesTaught || 0, 10),
@@ -778,6 +787,9 @@ const activePeriods = teacher.periods.filter(p => {
                                 const nameKey = normUrdu(p.className) + '::' + normUrdu(p.bookName);
                                 periodDataByName[nameKey] = entry;
                             });
+                            if (Object.keys(periodData).length > 0) {
+                                foundLabel = `${getMonthNameUrdu(lastPm)}`;
+                            }
                         }
                     }
                 } catch (userErr) {
@@ -798,12 +810,18 @@ const activePeriods = teacher.periods.filter(p => {
                 }
 
                 if (d && (d.pages > 0 || (d.lastIbarat && d.lastIbarat !== '-') || (d.lastPageNo && d.lastPageNo !== '-'))) {
+                    const titleEl = box.querySelector('.font-bold');
+                    if (titleEl) {
+                        titleEl.textContent = foundLabel ? `گزشتہ ماہ کی رپورٹ (${foundLabel}):` : `گزشتہ ماہ کی رپورٹ:`;
+                    }
                     box.querySelector('.content').innerHTML = `
                         <div>پڑھائے گئے صفحات: <b style="color: #1d4ed8;">${d.pages}</b></div>
                         <div>آخری عبارت: <span class="urdu-font">${d.lastIbarat}</span></div>
                         <div>صفحہ نمبر: <span>${d.lastPageNo}</span></div>
                     `;
                     box.classList.remove('hidden');
+                } else {
+                    box.classList.add('hidden');
                 }
             });
 
@@ -1240,33 +1258,45 @@ function escapeHtml(str) {
 
         try {
             const mIndex = parseInt(currentMonthIndex, 10);
-let semMonths = [];
-let semTotalDays = 0;
-let isSem1 = true;
+            let semMonths = [];
+            let semTotalDays = 0;
+            let isSem1 = true;
 
-// --- AUTO DETECT FROM ADMIN DATA ---
-// YAHAN BHI UPDATE KIYA HAI
-if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
-    isSem1 = true;
-    semMonths = globalAcademicConfig.sem1Months; 
-    semTotalDays = parseInt(globalAcademicConfig.sem1TotalDays || 0, 10);
-} else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
-    isSem1 = false;
-    semMonths = globalAcademicConfig.sem2Months; 
-    semTotalDays = parseInt(globalAcademicConfig.sem2TotalDays || 0, 10);
-} else {
-    // Fallback logic
-    isSem1 = (mIndex >= 3 && mIndex <= 6);
-    if (isSem1) {
-        semMonths = [3, 4, 5, 6]; 
-        semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10); // currentYearData backup ke tor pe
-    } else {
-        semMonths = [7, 8, 9, 10, 11, 0, 1, 2]; 
-        semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
-    }
-}
+            // --- AUTO DETECT FROM ADMIN DATA ---
+            if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicConfig.sem1Months.includes(mIndex)) {
+                isSem1 = true;
+                semMonths = globalAcademicConfig.sem1Months; 
+                semTotalDays = parseInt(globalAcademicConfig.sem1TotalDays || 0, 10);
+            } else if (globalAcademicConfig && globalAcademicConfig.sem2Months && globalAcademicConfig.sem2Months.includes(mIndex)) {
+                isSem1 = false;
+                semMonths = globalAcademicConfig.sem2Months; 
+                semTotalDays = parseInt(globalAcademicConfig.sem2TotalDays || 0, 10);
+            } else if (globalAcademicConfig && globalAcademicConfig.monthDetails) {
+                const md = globalAcademicConfig.monthDetails;
+                const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+                const s1 = Object.keys(md).filter(k => (md[k]?.sem1 || 0) > 0).map(Number).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+                const s2 = Object.keys(md).filter(k => (md[k]?.sem2 || 0) > 0).map(Number).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+                if (s1.includes(mIndex)) {
+                    isSem1 = true;
+                    semMonths = s1;
+                } else {
+                    isSem1 = false;
+                    semMonths = s2;
+                }
+                semTotalDays = parseInt(isSem1 ? (globalAcademicConfig.sem1TotalDays || 0) : (globalAcademicConfig.sem2TotalDays || 0), 10);
+            } else {
+                // Fallback logic
+                isSem1 = (mIndex >= 3 && mIndex <= 6);
+                if (isSem1) {
+                    semMonths = [3, 4, 5, 6]; 
+                    semTotalDays = parseInt(currentYearData.sem1TotalDays || 0, 10);
+                } else {
+                    semMonths = [7, 8, 9, 10, 11, 0, 1, 2]; 
+                    semTotalDays = parseInt(currentYearData.sem2TotalDays || 0, 10);
+                }
+            }
 
-            // Cutoff: Aage ke mahine nahi dikhane (optional, agar poora sem dikhana ho to ye hata dein)
+            // Cutoff: Aage ke mahine nahi dikhane
             const cutoffIndex = semMonths.indexOf(mIndex);
             if (cutoffIndex !== -1) {
                 semMonths = semMonths.slice(0, cutoffIndex + 1);
@@ -1282,60 +1312,75 @@ if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicCon
                 .where('teacherId', '==', teacherId);
             const subSnap = await q.get();
 
-            subSnap.forEach(doc => {
-                const d = doc.data();
+            const processSubDoc = (d) => {
+                if (d.role === 'user_update') return;
                 if (currentActiveYear && d.activeYear && d.activeYear !== currentActiveYear) return;
 
                 const mid = parseInt(d.submissionMonth, 10);
                 const pId = d.periodId;
-                
-                // Sirf tab count karein agar ye 'user_update' na ho (duplicate se bachne ke liye)
-                // ya fir hum simple logic use karein: Latest data wins.
-                // Filhal hum teacher ka raw data store kar rahe hain.
+                const nk = (d.className && d.bookName) ? (normUrdu(d.className) + '::' + normUrdu(d.bookName)) : '';
+                const pages = parseInt(d.pagesTaught || 0, 10);
+
                 if (pId) {
                     if (!smartMap[pId]) smartMap[pId] = {};
-                    // Teacher Data ko temporary save karein
-                    if (!smartMap[pId][mid]) {
-                        smartMap[pId][mid] = { pages: parseInt(d.pagesTaught || 0, 10), source: 'teacher' };
-                    } else if (smartMap[pId][mid].source === 'teacher') {
-                         // Aggregate if multiple entries exist (rare)
-                         smartMap[pId][mid].pages += parseInt(d.pagesTaught || 0, 10);
+                    if (!smartMap[pId][mid] || smartMap[pId][mid].source === 'teacher') {
+                        smartMap[pId][mid] = { pages: pages, source: 'teacher' };
                     }
                 }
-            });
+                if (nk) {
+                    if (!smartMap[nk]) smartMap[nk] = {};
+                    if (!smartMap[nk][mid] || smartMap[nk][mid].source === 'teacher') {
+                        smartMap[nk][mid] = { pages: pages, source: 'teacher' };
+                    }
+                }
+            };
+
+            subSnap.forEach(doc => processSubDoc(doc.data()));
 
             // STEP B: Fetch Admin Monthly Reports (FINAL AUTHORITY)
-            // Ye wo loop hai jo Admin ki saved file check karega
             if (userId && currentActiveYear) {
-                const [startYear, endYear] = currentActiveYear.split('-').map(Number);
+                const [startYear, rawEndYear] = currentActiveYear.split('-').map(Number);
+                const endYear = rawEndYear < 100 ? 2000 + rawEndYear : rawEndYear;
+                const teacherStruct = currentJamiaData.teachers.find(t => t.id === teacherId);
+                const tName = teacherStruct?.name || selectedTeacherData?.name || '';
 
-                // Har mahine ke liye Admin Report check karein
                 const adminPromises = semMonths.map(async (m) => {
-                    // Year calculate karein (Apr-Dec = startYear, Jan = endYear)
-                    let reportYear = startYear;
-                    if (m === 0 || m === 1 || m === 2) reportYear = endYear;
-
-                    // Doc ID: userId_activeYear_year_month
-                    // Example: UID_2025-2026_2025_3
+                    let reportYear = m >= 3 ? startYear : endYear;
                     const reportId = `${userId}_${currentActiveYear}_${reportYear}_${m}`;
                     
                     try {
                         const reportDoc = await db.collection('monthly_reports').doc(reportId).get();
                         if (reportDoc.exists) {
                             const data = reportDoc.data();
+                            const repSem = data.semester !== undefined ? String(data.semester) : null;
+                            const currentTargetSem = isSem1 ? '1' : '2';
+                            if (repSem && repSem !== currentTargetSem) return;
+
                             const karkardagiData = data.karkardagiReport?.data || [];
-                            
-                            // Filter for THIS teacher inside the big array
-                            const teacherEntries = karkardagiData.filter(item => item.teacherId === teacherId && item.jamiaName === jamiaName);
+                            const normCurTeacher = normUrdu(tName).replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+                            const normJ = normUrdu(jamiaName || '');
+
+                            const teacherEntries = karkardagiData.filter(item => {
+                                if (item.periodSemester && String(item.periodSemester) !== currentTargetSem) return false;
+                                const normItemTeacher = normUrdu(item.teacherName || '').replace(/(صاحب|مولانا|استاذ|قاری)/g, '');
+                                const matchT = item.teacherId === teacherId || (normCurTeacher && (normItemTeacher.includes(normCurTeacher) || normCurTeacher.includes(normItemTeacher)));
+                                const matchJ = !item.jamiaName || !normJ || normUrdu(item.jamiaName).includes(normJ) || normJ.includes(normUrdu(item.jamiaName));
+                                return matchT && matchJ;
+                            });
                             
                             teacherEntries.forEach(entry => {
                                 const pId = entry.periodId;
+                                const nk = (entry.className && entry.bookName) ? (normUrdu(entry.className) + '::' + normUrdu(entry.bookName)) : '';
                                 const val = parseInt(entry.pagesTaught || 0, 10);
                                 
-                                if (!smartMap[pId]) smartMap[pId] = {};
-                                
-                                // OVERWRITE teacher data with Admin data
-                                smartMap[pId][m] = { pages: val, source: 'admin' };
+                                if (pId) {
+                                    if (!smartMap[pId]) smartMap[pId] = {};
+                                    smartMap[pId][m] = { pages: val, source: 'admin' };
+                                }
+                                if (nk) {
+                                    if (!smartMap[nk]) smartMap[nk] = {};
+                                    smartMap[nk][m] = { pages: val, source: 'admin' };
+                                }
                             });
                         }
                     } catch (err) {
@@ -1353,7 +1398,7 @@ if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicCon
                 return;
             }
 
-           let tableHtml = `
+            let tableHtml = `
     <table class="w-full text-sm border border-gray-300 text-center whitespace-nowrap">
         <thead class="bg-emerald-100 text-emerald-900">
             <tr>
@@ -1374,22 +1419,18 @@ if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicCon
         <tbody class="bg-white">
 `;
 
-           // Rows
-           // --- FIXED ROWS LOGIC ---
-    let hasRows = false;
-    teacherStruct.periods.forEach(p => {
-        
-        // --- NAYA LOGIC: Transferred kitab ko profile table se bhi hide karein ---
-        if (p.status === 'transferred') return; 
+            let hasRows = false;
+            teacherStruct.periods.forEach(p => {
+                if (p.status === 'transferred') return; 
 
-        const pSem = p.semester || "1";
-        // Purani 'isSem1' wali line yahan se HATA di gayi hai, kyunki humne isay function ke shuru mein auto-detect kar liya hai.
-        const isCurrentSemPeriod = (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
+                const pSem = p.semester || "1";
+                const isCurrentSemPeriod = (isSem1 && pSem == "1") || (!isSem1 && pSem == "2");
                 
                 if (isCurrentSemPeriod) {
                     hasRows = true;
                     const totalBookPages = parseInt(p.totalPages || 0, 10);
                     let rowCumulativeTaught = 0;
+                    const nk = normUrdu(p.className) + '::' + normUrdu(p.bookName);
 
                     tableHtml += `<tr class="hover:bg-gray-50">
                         <td class="p-3 border urdu-font text-right font-medium" style="position:sticky; right:0; background:white; z-index:5;">
@@ -1400,9 +1441,10 @@ if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicCon
                         let taught = 0;
                         let isFromAdmin = false;
 
-                        if (smartMap[p.id] && smartMap[p.id][m]) {
-                            taught = smartMap[p.id][m].pages;
-                            isFromAdmin = smartMap[p.id][m].source === 'admin';
+                        const entry = (smartMap[p.id] && smartMap[p.id][m]) || (smartMap[nk] && smartMap[nk][m]);
+                        if (entry) {
+                            taught = entry.pages || 0;
+                            isFromAdmin = entry.source === 'admin';
                         }
                         
                         rowCumulativeTaught += taught;
@@ -1426,7 +1468,7 @@ if (globalAcademicConfig && globalAcademicConfig.sem1Months && globalAcademicCon
                         <td class="p-2 border ${remColor} bg-blue-50" dir="ltr">${remaining}</td>
                     </tr>`;
                 }
-            }); // <-- yahan forEach band hua
+            });
 
             tableHtml += `</tbody></table>`; // <-- table body yahan band hui
 
