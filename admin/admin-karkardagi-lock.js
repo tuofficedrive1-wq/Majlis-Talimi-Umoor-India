@@ -85,7 +85,7 @@ function renderBaseLayout(root) {
                         ماہانہ کارکردگی — ایڈمن لاک و ان لاک کنٹرول
                     </h2>
                     <p class="text-slate-300 text-sm mt-1">
-                        یہاں سے آپ ماہ کے آخر اور 1 تاریخ کے عمومی لاک کی تاریخوں میں توسیع کر سکتے ہیں۔ تمام بھارت، مخصوص ریجن، ریاست، جامعہ یا استاد کے لیے ان لاک رول سیٹ کریں۔
+                        یہاں سے آپ ماہ کے آخر اور 1 تاریخ کے عمومی لاک کی تاریخوں میں توسیع کر سکتے ہیں۔ تمام ہند، مخصوص ریجن، ریاست، جامعہ یا استاد کے لیے ان لاک رول سیٹ کریں۔
                     </p>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
@@ -112,7 +112,7 @@ function renderBaseLayout(root) {
 
                 <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                     <div>
-                        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">تمام بھارت (All India Event)</div>
+                        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">تمام ہند (All India Event)</div>
                         <div id="stat-all-india" class="text-sm font-bold text-slate-700 mt-1">کوئی فعال نہیں</div>
                     </div>
                     <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-xl font-bold">
@@ -166,7 +166,7 @@ function renderBaseLayout(root) {
                         </div>
                         <div class="self-end">
                             <button id="btn-quick-unlock-all" type="button" class="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2.5 rounded-lg text-sm shadow transition flex items-center gap-2">
-                                <i class="fas fa-check-circle"></i> تمام بھارت پر لاگو کریں
+                                <i class="fas fa-check-circle"></i> تمام ہند پر لاگو کریں
                             </button>
                         </div>
                     </div>
@@ -195,7 +195,7 @@ function renderBaseLayout(root) {
                         <div class="flex items-center gap-2">
                             <select id="filter-rule-scope" class="p-2 border border-slate-300 rounded-lg text-xs bg-white font-bold">
                                 <option value="all">تمام اسکوپ (All Scopes)</option>
-                                <option value="all_india">تمام بھارت (All India)</option>
+                                <option value="all_india">تمام ہند (All India)</option>
                                 <option value="region">ریجن (Region)</option>
                                 <option value="state">ریاست (State)</option>
                                 <option value="jamia">جامعہ (Jamia)</option>
@@ -289,7 +289,7 @@ function renderBaseLayout(root) {
                                 کس دائرے پر لاگو کرنا ہے؟ (Scope) <span class="text-red-500">*</span>
                             </label>
                             <select id="rule-scope-select" class="w-full p-2.5 border border-slate-300 rounded-xl font-bold bg-slate-50 focus:ring-2 focus:ring-teal-500 outline-none text-sm" required>
-                                <option value="all">🌍 تمام بھارت / سبھی اساتذہ (All India)</option>
+                                <option value="all">🌍 تمام ہند / سبھی اساتذہ (All India)</option>
                                 <option value="region">📍 مخصوص خطہ / ریجن (Specific Region)</option>
                                 <option value="state">🏛️ مخصوص ریاست / صوبہ (Specific State)</option>
                                 <option value="jamia">🏫 مخصوص جامعہ (Specific Jamia)</option>
@@ -577,7 +577,7 @@ function renderRulesTable() {
 
         let scopeBadge = '';
         if (r.scope === 'all') {
-            scopeBadge = '<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-black">🌍 تمام بھارت</span>';
+            scopeBadge = '<span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-black">🌍 تمام ہند</span>';
         } else if (r.scope === 'region') {
             scopeBadge = '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-black">📍 ریجن</span>';
         } else if (r.scope === 'state') {
@@ -774,14 +774,14 @@ function attachEventListeners(db) {
         const toDate = document.getElementById('quick-to-date').value;
         if (!toDate) return showToast('آخری تاریخ درج کریں', true);
 
-        const reason = 'مرکزی ایڈمن کی فوری عمومی رعایت برائے تمام بھارت';
+        const reason = 'مرکزی ایڈمن کی فوری عمومی رعایت برائے تمام ہند کے اساتذہ';
         const docId = `all_india_${new Date().getFullYear()}_${m}`;
 
         try {
             await setDoc(doc(db, LOCK_RULES_COL, docId), {
                 scope: 'all',
                 targetValue: 'ALL',
-                targetLabel: 'تمام بھارت (All India)',
+                targetLabel: 'تمام ہند (All India)',
                 month: m,
                 year: new Date().getFullYear(),
                 openFrom: ymd(),
@@ -792,7 +792,7 @@ function attachEventListeners(db) {
                 createdAt: new Date().toISOString()
             }, { merge: true });
 
-            showToast('تمام بھارت کے لیے ان لاک رول کامیابی سے فعال کر دیا گیا!');
+            showToast('تمام ہند کے لیے ان لاک رول کامیابی سے فعال کر دیا گیا!');
             await loadRules(db);
         } catch(e) {
             showToast('خرابی: ' + e.message, true);
@@ -816,7 +816,7 @@ function attachEventListeners(db) {
         }
 
         let targetValue = 'ALL';
-        let targetLabel = 'تمام بھارت (All India)';
+        let targetLabel = 'تمام ہند (All India)';
 
         if (scope !== 'all') {
             const targetEl = document.getElementById('rule-target-val');
