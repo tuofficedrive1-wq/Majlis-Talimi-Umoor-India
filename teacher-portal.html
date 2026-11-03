@@ -1738,6 +1738,19 @@ function initCtx() {
   ctx = { y: c.y, m: c.m };
 }
 
+/* Karkardagi tab: by default show the month whose report is actually fillable.
+   Window = last day of month + 1st of next month, so:
+   - 1st..30th/29th  -> previous month
+   - last day of month -> current month */
+function karkDefaultCtx() {
+  const w = WALL(), y = w.getUTCFullYear(), m = w.getUTCMonth();
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  let ty = y, tm = m;
+  if (w.getUTCDate() !== lastDay) { tm = m - 1; if (tm < 0) { tm = 11; ty = y - 1; } }
+  const l = monthList();
+  return l.find(x => x.y === ty && x.m === tm) || null;
+}
+
 function monthOpts() {
   return monthList().map(x => `<option value="${x.y}-${x.m}" ${x.y === ctx.y && x.m === ctx.m ? 'selected' : ''}>${MONTHS[x.m]} ${x.y}</option>`).join('');
 }
@@ -1830,9 +1843,11 @@ function shell(targetTab = null) {
 let activeJaizaMonthKey = null;
 let selectedTestMonthKey = null;
 
+let karkKeepCtx = false; // true when a month was chosen explicitly (selector / admin-unlock notice)
 function chMonth(v) {
   const [y, m] = v.split('-').map(Number);
   ctx = { y, m };
+  karkKeepCtx = true;
   const mk = `${y}-${String(m + 1).padStart(2, '0')}`;
   activeJaizaMonthKey = mk;
   selectedTestMonthKey = mk;
@@ -1844,6 +1859,20 @@ function chMonth(v) {
 const SUB = { res: 'نتائج', jai: 'ماہانہ جائزہ', mtest: 'ماہانہ ٹیسٹ', dee: 'دینی کام', pro: 'پروفائل' };
 
 function go(t) {
+  if (t === 'kark') {
+    if (!karkKeepCtx) {
+      const d = karkDefaultCtx();
+      if (d && (d.y !== ctx.y || d.m !== ctx.m)) {
+        ctx = { y: d.y, m: d.m };
+        try { setTeacher(); } catch (e) {}
+      }
+    }
+    karkKeepCtx = false;
+    const sel = document.getElementById('msel');
+    if (sel) sel.value = ctx.y + '-' + ctx.m;
+  } else {
+    karkKeepCtx = false;
+  }
   tab = t;
   const hl = SUB[t] ? 'more' : t;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === hl));
