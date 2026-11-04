@@ -648,13 +648,10 @@ const updateMonthDropdown = () => {
     ];
 
     // Filter active months (days > 0)
-    const activeMonths = monthsData.filter(m => {
-        const config = adminAcademicConfig.monthDetails?.[m.idx];
-        return config && config.days > 0;
-    });
+    const activeMonths = monthsData.filter(m => getSemesterOfMonth(m.idx) !== null);
 
     monthSelect.innerHTML = activeMonths.map(m => {
-        const sem = adminAcademicConfig.monthDetails[m.idx].sem;
+        const sem = getSemesterOfMonth(m.idx);
         return `<option value="${m.idx}">${m.name} (Sem-${sem})</option>`;
     }).join('');
 };     
@@ -822,17 +819,8 @@ const urduMonths = {
     if (!adminAcademicConfig || !adminAcademicConfig.monthDetails) return null;
 
     // Admin ki setting se wo mahine nikaalein jo is semester (sem1 ya sem2) ke hain
-    const semesterMonths = Object.keys(adminAcademicConfig.monthDetails)
-        .filter(idx => {
-            const detail = adminAcademicConfig.monthDetails[idx];
-            return semester === "1" ? (detail.sem1 > 0) : (detail.sem2 > 0);
-        })
-        .map(Number)
-        .sort((a, b) => {
-            // Sorting logic (April=3 se shuru ho kar March=2 par khatam)
-            const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
-            return order.indexOf(a) - order.indexOf(b);
-        });
+    // Semester ke mahine (admin ke days ke hisaab se) - April=3 se March=2 tak ki tarteeb
+    const semesterMonths = getMonthsForSemester(semester).map(Number);
 
     const index = semesterMonths.indexOf(Number(monthNum));
     return index === -1 ? null : index + 1;
@@ -897,19 +885,25 @@ const getAcademicYearForMonth = (m) => {
 };
 
 // --- NAYA LOGIC: Admin Setup se Semester aur Months nikalna ---
+// Jis mahine me admin ne Sem 1 ya Sem 2 ke days (>0) add kiye hain, wahi us semester ka mahina hai.
+// Dono semester ke days ek hi mahine me hon to zyada days wala semester liya jaata hai.
+const getSemesterOfMonth = (idx) => {
+    const cfg = window.adminAcademicConfig || adminAcademicConfig;
+    const d = cfg?.monthDetails?.[idx];
+    if (!d) return null;
+    const s1 = Number(d.sem1) || 0;
+    const s2 = Number(d.sem2) || 0;
+    if (s1 > 0 && s2 === 0) return "1";
+    if (s2 > 0 && s1 === 0) return "2";
+    if (s1 > 0 && s2 > 0) return s2 > s1 ? "2" : "1";
+    return null; // is mahine me koi days set nahi
+};
+
 const determineSemester = (monthNum) => {
     const m = Number(monthNum);
-    const cfg = window.adminAcademicConfig || adminAcademicConfig;
-    if (cfg && cfg.monthDetails && cfg.monthDetails[m]) {
-        const detail = cfg.monthDetails[m];
-        if (detail.sem === "2" || detail.sem === 2) return "2";
-        if (detail.sem === "1" || detail.sem === 1) return "1";
-        if ((detail.sem2 || 0) > 0 && (detail.sem1 || 0) === 0) return "2";
-        if ((detail.sem1 || 0) > 0 && (detail.sem2 || 0) === 0) return "1";
-        if ((detail.sem2 || 0) > (detail.sem1 || 0)) return "2";
-        if ((detail.sem1 || 0) > (detail.sem2 || 0)) return "1";
-    }
-    // Fallback: Sem 1 is Apr-Jul (3-6), Sem 2 is Aug-Mar (7,8,9,10,11,0,1,2)
+    const sem = getSemesterOfMonth(m);
+    if (sem) return sem;
+    // Fallback (admin ne is mahine ke days set nahi kiye): Sem 1 is Apr-Jul (3-6), baqi Sem 2
     return (m >= 3 && m <= 6) ? "1" : "2";
 };
 
@@ -918,14 +912,7 @@ const getMonthsForSemester = (semester) => {
     const cfg = window.adminAcademicConfig || adminAcademicConfig;
     if (cfg && cfg.monthDetails) {
         const ms = Object.keys(cfg.monthDetails)
-            .filter(idx => {
-                const d = cfg.monthDetails[idx] || {};
-                if (s === "1") {
-                    return (d.sem1 || 0) > 0 && !(d.sem2 > 0 && (d.sem2 > d.sem1 || d.sem === "2" || d.sem === 2));
-                } else {
-                    return (d.sem2 || 0) > 0 || d.sem === "2" || d.sem === 2;
-                }
-            })
+            .filter(idx => getSemesterOfMonth(idx) === s)
             .map(Number)
             .sort((a, b) => {
                 const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
@@ -2507,11 +2494,7 @@ const handleCopyWazahatLink = async (jamiaName, teacherId, teacherName, btnEleme
         
         // --- LOGIC: Check Last Month & Filter ---
         const semester = determineSemester(monthNum);
-        const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
-        const activeMonthsInSem = Object.keys(adminAcademicConfig?.monthDetails || {})
-            .filter(idx => semester === "1" ? adminAcademicConfig.monthDetails[idx].sem1 > 0 : adminAcademicConfig.monthDetails[idx].sem2 > 0)
-            .map(Number)
-            .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        const activeMonthsInSem = getMonthsForSemester(semester);
         const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
 
         // 1. Munasib Data Filter Karna
@@ -4537,11 +4520,7 @@ const renderMonthlyMunasibReport = async () => {
     }
 
 // --- SEMESTER LAST MONTH LOGIC ---
-    const order = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
-    const activeMonthsInSem = Object.keys(adminAcademicConfig?.monthDetails || {})
-        .filter(idx => semester === "1" ? adminAcademicConfig.monthDetails[idx].sem1 > 0 : adminAcademicConfig.monthDetails[idx].sem2 > 0)
-        .map(Number)
-        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const activeMonthsInSem = getMonthsForSemester(semester);
     
     const isLastMonth = activeMonthsInSem.length > 0 && activeMonthsInSem[activeMonthsInSem.length - 1] === monthNum;
 
