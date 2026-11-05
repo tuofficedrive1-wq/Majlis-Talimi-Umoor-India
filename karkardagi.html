@@ -610,6 +610,15 @@ window.isSameJamia = (j1, j2) => {
     return st1 === st2;
 };
 
+// Teacher tab tak dikhayein jab tak uska kam az kam ek period transfer na hua ho (active ho).
+// Jis teacher ke sare periods transfer ho chuke hon ya koi period hi na ho, woh Reporting/Submit tab me nahi dikhega.
+// Sirf current semester ke periods dekhe jate hain: agar us semester me koi active (transferred nahi) period nahi, to teacher chhupa do.
+window.teacherHasActivePeriods = (teacher, semester) => {
+    const periods = (teacher && teacher.periods) || [];
+    const sem = String(semester || '');
+    return periods.some(p => p && p.status !== 'transferred' && (!sem || String(p.semester || '1') === sem));
+};
+
 window.findJamiaInStructure = (structure, identifier) => {
     if (!Array.isArray(structure) || !identifier) return null;
     const targetId = typeof identifier === 'object' ? (identifier.id || identifier.jamiaId) : null;
@@ -903,8 +912,9 @@ const determineSemester = (monthNum) => {
     const m = Number(monthNum);
     const sem = getSemesterOfMonth(m);
     if (sem) return sem;
-    // Fallback (admin ne is mahine ke days set nahi kiye): Sem 1 is Apr-Jul (3-6), baqi Sem 2
-    return (m >= 3 && m <= 6) ? "1" : "2";
+    // Fallback (admin ne is mahine ke days set nahi kiye): Sem 1 Apr-Aug (3-7), Sem 2 Sep-Mar (8-2)
+    // Setup ke labels ("Sem 1 (Apr-Aug)", "Sem 2 (Sep-Jan)") ke mutabiq
+    return (m >= 3 && m <= 7) ? "1" : "2";
 };
 
 const getMonthsForSemester = (semester) => {
@@ -2082,11 +2092,35 @@ if (editTeacherForm) {
                     const assignedName = assigned.name;
                     const assignedId = assigned.id;
 
-                    let matchedJ = currentStruct.find(j => 
+                    // Saare matching entries (ID ya naam se) — duplicates ho sakte hain
+                    const allMatches = currentStruct.filter(j =>
                         (assignedId && (j.jamiaId === assignedId || j.id === assignedId)) ||
                         (j.jamiaName && j.jamiaName.trim().toLowerCase() === assignedName.trim().toLowerCase()) ||
                         window.isSameJamia(j.jamiaName, assignedName)
                     );
+                    let matchedJ = allMatches[0];
+
+                    // Duplicate entries ke teachers/periods ko pehli entry me merge karein
+                    // (warna dusri entry ke teachers/periods Setup me gayab ho jate the)
+                    if (matchedJ && allMatches.length > 1) {
+                        if (!Array.isArray(matchedJ.teachers)) matchedJ.teachers = [];
+                        const nrm = s => String(s || '').replace(/\s+/g, ' ').trim();
+                        allMatches.slice(1).forEach(dup => {
+                            (dup.teachers || []).forEach(dt => {
+                                let target = matchedJ.teachers.find(t => (dt.id && t.id === dt.id))
+                                    || matchedJ.teachers.find(t => nrm(t.name) && nrm(t.name) === nrm(dt.name));
+                                if (!target) {
+                                    matchedJ.teachers.push(dt);
+                                } else {
+                                    if (!Array.isArray(target.periods)) target.periods = [];
+                                    if (!target.loginCode && dt.loginCode) target.loginCode = dt.loginCode;
+                                    (dt.periods || []).forEach(dp => {
+                                        if (!target.periods.some(p => p.id && p.id === dp.id)) target.periods.push(dp);
+                                    });
+                                }
+                            });
+                        });
+                    }
 
                     if (!matchedJ) {
                         matchedJ = {
@@ -4102,7 +4136,7 @@ if (daysThisMonth === 0) {
                      return acc;
                 }
                 
-                jamia.teachers?.forEach(teacher => { 
+                jamia.teachers?.filter(t => window.teacherHasActivePeriods(t, currentSemester)).forEach(teacher => {
                     const sortedPeriods = (teacher.periods || [])
                         .sort((a, b) => getTimestampFromId(a.id) - getTimestampFromId(b.id));
 
@@ -6455,9 +6489,9 @@ window.renderSubmitStatusReport = () => {
     const sortedJamias = [...structure].sort((a, b) => a.jamiaName.localeCompare(b.jamiaName));
 
     sortedJamias.forEach(jamia => {
-        const teachers = jamia.teachers || [];
+        const teachers = (jamia.teachers || []).filter(t => window.teacherHasActivePeriods(t, currentReportPeriod?.semester));
         if (teachers.length === 0) return;
-        
+
         grandTotalJamiaat++;
         grandTotalTeachers += teachers.length;
 
@@ -6527,7 +6561,7 @@ window.renderSubmitStatusReport = () => {
 
     sortedJamias.forEach(jamia => {
         const jamiaName = jamia.jamiaName;
-        const teachers = jamia.teachers || [];
+        const teachers = (jamia.teachers || []).filter(t => window.teacherHasActivePeriods(t, currentReportPeriod?.semester));
         if (teachers.length === 0) return;
 
         let jamiaRows = '';
