@@ -3,6 +3,9 @@
 <head> 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Karkardagi Reporting</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -740,7 +743,9 @@ html #reporting-container .reporting-table-container table td.rp-action-cell{
         </label>
         <input id="modal-teacher-code-input" type="number"
                class="mt-1 block w-full border rounded-lg p-2 text-left"
-               placeholder="12345">
+               placeholder="12345"
+               max="99999"
+               oninput="if(this.value.length > 5) this.value = this.value.slice(0, 5)">
         <p class="mt-1 text-xs text-gray-500 text-right urdu-font">
           ہر استاد کیلئے الگ 5 digit code ہونا ضروری ہے۔
         </p>
@@ -3143,9 +3148,12 @@ if (saveAcademicMonthsBtn) {
            required>
 
     <input type="text"
+           inputmode="numeric"
            placeholder="Teacher Code (5 digits)"
            class="teacher-code-input w-full sm:w-40 p-2 border rounded-lg"
-           maxlength="5">
+           maxlength="5"
+           oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 5);"
+           required>
 
     <button type="submit"
             class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
@@ -3269,6 +3277,7 @@ if (saveAcademicMonthsBtn) {
         
         function handleSetupSubmitDelegation(e) {
              if (e.target.classList.contains('add-period-form')) { handleAddPeriod(e); }
+             if (e.target.classList.contains('add-teacher-form')) { handleAddTeacher(e); }
         }
 
 
@@ -3489,21 +3498,9 @@ if (saveAcademicMonthsBtn) {
     }
 };
         
-// Har teacher ke liye unique 5-digit login code (Jamia ke andar)
-function generateTeacherLoginCode(existingTeachers = []) {
-    const usedCodes = new Set(
-        (existingTeachers || [])
-            .map(t => t.loginCode)
-            .filter(Boolean)
-    );
-
-    let code;
-    do {
-        // 5 digit: 10000 – 99999
-        code = String(Math.floor(10000 + Math.random() * 90000));
-    } while (usedCodes.has(code));
-
-    return code;
+// Auto-generation system mukammal khatam kar diya gaya hai
+function generateTeacherLoginCode() {
+    return '';
 }
         
        const handleAddTeacher = async (e) => {
@@ -3513,16 +3510,32 @@ function generateTeacherLoginCode(existingTeachers = []) {
     // UI ki current state (open accordions) ko save karein
     captureAccordionState();
 
-    const form = e.currentTarget;
+    const form = e.target.closest('.add-teacher-form') || e.currentTarget;
     const jamiaDiv = form.closest('.border.rounded-lg[data-jamia-name]');
     const jamiaName = jamiaDiv?.dataset.jamiaName;
     const teacherNameInput = form.querySelector('.teacher-name-input');
     const teacherCodeInput = form.querySelector('.teacher-code-input');
     
-    const teacherName = teacherNameInput.value.trim();
+    const teacherName = (teacherNameInput?.value || '').trim();
     const typedCodeRaw = (teacherCodeInput?.value || '').trim();
 
-    if (!jamiaName || !teacherName) return;
+    if (!jamiaName || !teacherName) {
+        showNotification("Teacher ka naam likhna zaroori hai.", true);
+        if (teacherNameInput) teacherNameInput.focus();
+        return;
+    }
+
+    if (!typedCodeRaw) {
+        showNotification("Teacher code likhna zaroori hai. Baghair code ke teacher add nahi ho sakta.", true);
+        if (teacherCodeInput) teacherCodeInput.focus();
+        return;
+    }
+
+    if (typedCodeRaw.length > 5) {
+        showNotification("Teacher code 5 number se ziyada nahi ho sakta.", true);
+        if (teacherCodeInput) teacherCodeInput.focus();
+        return;
+    }
 
     // Local copy nikaalein update karne ke liye
     let currentStructure = [...(allAcademicYearsData[activeYear].karkardagiStructure || [])];
@@ -3536,14 +3549,21 @@ function generateTeacherLoginCode(existingTeachers = []) {
     }
     if (!jamiaData.teachers) jamiaData.teachers = [];
 
-    // Duplicate check
+    // Duplicate check (naam ke liye)
     if (jamiaData.teachers.some(t => t.name === teacherName)) {
         showNotification("Yeh teacher pehle se add hai.", true);
         return;
     }
 
-    // Code logic
-    let loginCode = typedCodeRaw || generateTeacherLoginCode(jamiaData.teachers);
+    // Duplicate check (code ke liye)
+    if (jamiaData.teachers.some(t => String(t.loginCode || '').trim() === typedCodeRaw)) {
+        showNotification("Yeh Teacher Code is Jamia me pehle se kisi teacher ko diya gaya hai.", true);
+        if (teacherCodeInput) teacherCodeInput.focus();
+        return;
+    }
+
+    // Code logic: Auto-generation system khatam kar diya gaya hai, sirf entered code use hoga
+    let loginCode = typedCodeRaw;
     
     const newTeacher = {
         id: `teacher-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -3629,6 +3649,11 @@ const handleUpdateTeacherName = async (e) => {
 
     if (!newTeacherName) {
         showNotification("Naya naam khali nahi ho sakta.", true);
+        return;
+    }
+
+    if (newTeacherCodeRaw && newTeacherCodeRaw.length > 5) {
+        showNotification("Teacher code 5 number se ziyada nahi ho sakta.", true);
         return;
     }
 
