@@ -1491,9 +1491,35 @@ async function triggerPwaInstall() {
 const DOM = '@teacher.mtu.local';
 let ME = null;
 
+const ADMIN_UID = "xB1E48oIdvN7jruPCIp7tzlH9lA2";
+
+function impersonateTarget() {
+  try { return sessionStorage.getItem('impersonateUserId'); } catch(e) { return null; }
+}
+
+function showAdminModeBanner() {
+  if (document.getElementById('admin-mode-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'admin-mode-banner';
+  b.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:#eab308;color:#000;text-align:center;padding:8px;z-index:9999;font-weight:700;font-size:13px';
+  b.innerHTML = 'Admin Mode: Aap is waqt ek استاد ka portal dekh rahe hain. <button onclick="exitAdminMode()" style="margin-inline-start:12px;background:#111827;color:#fff;border:0;border-radius:8px;padding:4px 12px;cursor:pointer">Wapas Admin Panel</button>';
+  document.body.prepend(b);
+}
+
+function exitAdminMode() {
+  try { sessionStorage.removeItem('impersonateUserId'); } catch(e) {}
+  location.href = 'admin/admin.html';
+}
+
 function boot() {
   let first = true;
   auth.onAuthStateChanged(async u => {
+    // Admin ne "Dashboard" button se kisi teacher ka portal khola hai
+    const imp = (u && u.uid === ADMIN_UID) ? impersonateTarget() : null;
+    if (imp) {
+      if (first || !ME) { first = false; await enter({ uid: imp, email: '' }); showAdminModeBanner(); }
+      return;
+    }
     if (u && u.email && u.email.endsWith(DOM)) {
       if (first || !ME) { first = false; await enter(u); }
     } else if (u && !u.isAnonymous) {
@@ -1638,7 +1664,8 @@ async function enter(user) {
   }
   await syncClock();
   initCtx();
-  if (ME.mustChangePw) return forceChangeView();
+  // Admin impersonation mein password change screen nahi dikhani (admin ka password na badle)
+  if (ME.mustChangePw && !impersonateTarget()) return forceChangeView();
   finish();
 }
 
